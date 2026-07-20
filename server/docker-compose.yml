@@ -1,0 +1,28 @@
+# Local development Postgres for Recycle Online (Phase 1a).
+# One service only. Not for production.
+#
+# The container superuser (postgres) is used ONLY to bootstrap the two
+# runtime roles and the application database via ./db/init (which runs
+# once, on first initialisation of an empty data volume).
+services:
+  db:
+    image: postgres:16
+    container_name: recycle_pg
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      # host 5544 -> container 5432, to avoid clashing with any local Postgres.
+      - "5544:5432"
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - recycle_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  recycle_pgdata:
