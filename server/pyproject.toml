@@ -1,14 +1,16 @@
 [project]
 name = "recycle-server"
 version = "0.1.0"
-description = "Recycle Online - server (FastAPI + PostgreSQL). Phase 1a: schema + tenant isolation only."
+description = "Recycle Online - server (FastAPI + PostgreSQL). Phase 1b: auth + per-request tenant context."
 requires-python = ">=3.12"
 dependencies = [
     "sqlalchemy[asyncio]>=2.0.30",
     "asyncpg>=0.29.0",
     "alembic>=1.13.0",
     "python-dotenv>=1.0.1",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pyjwt>=2.9.0",
+    "argon2-cffi>=23.1.0",
+    "httpx>=0.27.0",
 ]
-
-# NOTE: FastAPI is intentionally NOT a dependency yet. Phase 1a is schema +
-# tenant isolation only; the web framework arrives in a later phase.
