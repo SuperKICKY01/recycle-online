@@ -59,6 +59,11 @@ profile images, QR codes, scale integration, Excel export, reports.
   been run (server: actual HTTP request; not "it should work").
 - Read actual files before stating numbers or facts. Never guess.
 - Fix root causes, not symptoms.
+- For any debugging — device, build, or server misbehaviour — follow
+  debug-mantra: reproduce reliably before hypothesising, run the
+  disproof first, keep a ledger across runs. buddhist-method's
+  Kalāma: never assert what the device or server did from memory,
+  only from an observed response.
 - If something doesn't work, say so plainly. Negative results are
   valuable.
 - At the start of every session, read `lessons/README.md` (and any
