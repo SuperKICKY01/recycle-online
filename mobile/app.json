@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "device",
+    "slug": "device",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-sqlite"
+    ],
+    "extra": {
+      "_comment": "apiBaseUrl is THE server address for the whole app. Change it HERE and nowhere else; device/src/config.ts is the single reader. Swap in a cloud URL later with no code edits.",
+      "apiBaseUrl": "http://192.168.1.238:8000"
+    }
+  }
+}

@@ -1,3 +1,9 @@
 node_modules/
 dist/
 *.tsbuildinfo
+dist-export/
+.expo/
+
+# Runtime logs from the local dev servers (never part of the product)
+.expo-start.log
+.expo-start.err.log

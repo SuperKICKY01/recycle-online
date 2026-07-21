@@ -1,34 +1,21 @@
 {
+  // The EXPO APP program. Metro/babel do the actual bundling; this exists so
+  // the app typechecks and the editor is accurate.
+  //
+  // Node-only files are excluded because pulling @types/node into this program
+  // is what redefines URL and breaks React Native's globals (proven in 2b).
+  // The mirror image lives in tsconfig.node.json, which excludes src/device.
+  "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022"],
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
-    "rootDir": "src",
-    "outDir": "dist",
-    "types": ["node"],
-
     "strict": true,
-    "exactOptionalPropertyTypes": true,
     "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "useUnknownInCatchVariables": true,
-    "verbatimModuleSyntax": true,
-    "isolatedModules": true,
-    "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
-    "declaration": true,
-    "sourceMap": true
+    "exactOptionalPropertyTypes": true
   },
-  "include": ["src"],
-
-  // src/device is the expo-sqlite driver. Excluded on purpose: importing
-  // expo-sqlite pulls React Native's global type declarations into the program,
-  // which redefine URL and break the node code. It is typechecked separately by
-  // tsconfig.device.json.
-  "exclude": ["src/device"]
+  "include": ["App.tsx", "index.ts", "app", "src"],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "src/proof",
+    "src/adapters/sqlite/nodeDriver.ts"
+  ]
 }
