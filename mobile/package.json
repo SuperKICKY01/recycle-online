@@ -1,0 +1,16 @@
+{
+  "name": "recycle-online-mobile",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Recycle Online mobile client. Phase 2a: local store + sync engine only, no UI.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "prove:sync": "tsc && node dist/proof/proveSync.js"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2"
+  }
+}
