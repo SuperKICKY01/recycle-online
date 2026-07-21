@@ -101,9 +101,9 @@ async def seed_tenant(conn, tid, label: str) -> dict:
          "idem": f"idem-{label}-0001", "amt": Decimal("105.00")})
     await conn.execute(
         text("INSERT INTO purchase_bill_items"
-             " (id, tenant_id, bill_id, product_id, line_no, grade,"
+             " (id, tenant_id, bill_id, product_id, line_no,"
              "  gross_weight, tare_weight, net_weight, unit_price, list_price, amount)"
-             " VALUES (:id, :t, :b, :p, 1, 'A', :gw, :tw, :nw, :up, :lp, :amt)"),
+             " VALUES (:id, :t, :b, :p, 1, :gw, :tw, :nw, :up, :lp, :amt)"),
         {"id": ids["item"], "t": tid, "b": ids["bill"], "p": ids["product"],
          "gw": Decimal("10.500"), "tw": Decimal("0.500"), "nw": Decimal("10.000"),
          "up": Decimal("10.50"), "lp": Decimal("10.50"), "amt": Decimal("105.00")})
@@ -249,10 +249,10 @@ async def main() -> int:
             async with tenant_tx(conn, tenant_a):
                 await conn.execute(
                     text("INSERT INTO purchase_bill_items"
-                         " (id, tenant_id, bill_id, product_id, line_no, grade,"
+                         " (id, tenant_id, bill_id, product_id, line_no,"
                          "  gross_weight, tare_weight, net_weight,"
                          "  unit_price, list_price, amount)"
-                         " VALUES (:id, :t, :b, :p, 2, 'A',"
+                         " VALUES (:id, :t, :b, :p, 2,"
                          "  1.000, 0.000, 1.000, 1.00, 1.00, 1.00)"),
                     {"id": uuid.uuid4(), "t": tenant_a,
                      "b": ids_a["bill"], "p": ids_b["product"]})

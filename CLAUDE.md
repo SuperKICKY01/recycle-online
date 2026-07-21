@@ -61,6 +61,13 @@ profile images, QR codes, scale integration, Excel export, reports.
 - Fix root causes, not symptoms.
 - If something doesn't work, say so plainly. Negative results are
   valuable.
+- At the start of every session, read `lessons/README.md` (and any
+  lesson file relevant to the task at hand).
+- Before finishing a phase, if a real mistake was made and fixed, or
+  a non-obvious constraint was discovered, write or update a lesson
+  file (one per lesson) and its index line in `lessons/README.md`.
+  Lessons are only for things that would cause a real bug if
+  forgotten — not general tips.
 
 ## Conventions
 
