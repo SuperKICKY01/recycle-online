@@ -1,0 +1,10 @@
+# Lessons
+
+Hard-won rules that would cause a real bug if forgotten. One file per lesson.
+Read these at the start of a session; add/update one before finishing a phase
+whenever a real mistake was made and fixed, or a non-obvious constraint was
+found. Not for general tips — only for things that bite.
+
+- set-local-per-request.md — applies whenever code sets tenant/RLS context: use SET LOCAL inside the request transaction, never session SET; unset = no context (fail closed), never all-tenants.
+- revoke-in-migration.md — applies to any privilege GRANT/REVOKE or DB permission change: put it in the migration, never run it live once.
+- login-resolves-under-tenant.md — applies to auth/login and any per-tenant identity lookup: resolve the user inside tenant context; return one generic error for both unknown-user and bad-password.
