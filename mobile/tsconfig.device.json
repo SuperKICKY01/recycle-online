@@ -1,0 +1,17 @@
+// Typecheck-only config for the device (expo-sqlite) driver.
+//
+// It gets its own program because importing expo-sqlite pulls React Native's
+// global type declarations in, and those redefine URL in a way that breaks the
+// node-side code. Nothing here is emitted or executed by the Phase 2b proof.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "types": [],
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src/device", "src/adapters/sqlite/driver.ts"],
+  "exclude": []
+}

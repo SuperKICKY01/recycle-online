@@ -7,10 +7,15 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc",
-    "prove:sync": "tsc && node dist/proof/proveSync.js"
+    "prove:sync": "tsc && node dist/proof/proveSync.js",
+    "prove:sqlite": "tsc && node dist/proof/sqliteProof.js",
+    "typecheck:device": "tsc -p tsconfig.device.json"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "expo-sqlite": "^57.0.1"
   }
 }

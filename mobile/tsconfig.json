@@ -24,5 +24,11 @@
     "declaration": true,
     "sourceMap": true
   },
-  "include": ["src"]
+  "include": ["src"],
+
+  // src/device is the expo-sqlite driver. Excluded on purpose: importing
+  // expo-sqlite pulls React Native's global type declarations into the program,
+  // which redefine URL and break the node code. It is typechecked separately by
+  // tsconfig.device.json.
+  "exclude": ["src/device"]
 }

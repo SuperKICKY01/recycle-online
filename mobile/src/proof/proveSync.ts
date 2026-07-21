@@ -12,13 +12,12 @@ import { fileURLToPath } from "node:url";
 
 import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
-import type { BillItemPayload, LocalBill } from "../sync/types.js";
+import type { BillItemPayload, LocalBill, LocalStore } from "../sync/types.js";
 import {
   FakeClock,
   FakeServer,
   FlakyTransport,
   GatedTransport,
-  InMemoryStore,
   LostAckTransport,
   OfflineTransport,
   OnlineTransport,
@@ -27,6 +26,8 @@ import {
   SeqIds,
   mulberry32,
 } from "./fakes.js";
+import type { StoreHarness, StoreSession } from "./harness.js";
+import { memoryHarness, sqliteHarness } from "./harness.js";
 
 let failures = 0;
 
@@ -57,16 +58,30 @@ function items(ids: SeqIds): BillItemPayload[] {
 
 interface Rig {
   clock: FakeClock;
-  store: InMemoryStore;
+  /** The interface type, never a concrete store — cases must not know which. */
+  store: LocalStore;
+  session: StoreSession;
   server: FakeServer;
   billIds: SeqIds;
   itemIds: SeqIds;
 }
 
-function rig(prefix: string): Rig {
+/** Every session opened this run, so main() can close and delete them all. */
+const openSessions: StoreSession[] = [];
+
+async function disposeAll(): Promise<void> {
+  // Newest first: CASE 4's restarted session shares a directory with the one it
+  // replaced, and the directory can only be removed once nothing holds it open.
+  for (const s of openSessions.splice(0).reverse()) await s.dispose();
+}
+
+async function rig(harness: StoreHarness, prefix: string): Promise<Rig> {
+  const session = await harness.open(prefix);
+  openSessions.push(session);
   return {
     clock: new FakeClock(),
-    store: new InMemoryStore(),
+    store: session.store,
+    session,
     server: new FakeServer(),
     billIds: new SeqIds(prefix),
     itemIds: new SeqIds(`${prefix}-item`),
@@ -122,9 +137,9 @@ function case0Purity(): void {
 
 /* ------------------------------------------------------------------ 1 ---- */
 
-async function case1Happy(): Promise<void> {
+async function case1Happy(harness: StoreHarness): Promise<void> {
   header("CASE 1: happy path");
-  const r = rig("bill-h");
+  const r = await rig(harness, "bill-h");
   const counter = new SendCounter();
   const engine = new SyncEngine({
     store: r.store,
@@ -150,9 +165,9 @@ async function case1Happy(): Promise<void> {
 
 /* ------------------------------------------------------------------ 2 ---- */
 
-async function case2OfflineThenRestored(): Promise<void> {
+async function case2OfflineThenRestored(harness: StoreHarness): Promise<void> {
   header("CASE 2: transport fails (offline), then network restored");
-  const r = rig("bill-o");
+  const r = await rig(harness, "bill-o");
   const created = await createBills(r, 1);
   const bill = created[0]!;
 
@@ -190,9 +205,9 @@ async function case2OfflineThenRestored(): Promise<void> {
 
 /* ------------------------------------------------------------------ 3 ---- */
 
-async function case3LostResponse(): Promise<void> {
+async function case3LostResponse(harness: StoreHarness): Promise<void> {
   header("CASE 3: LOST RESPONSE (server committed, ack never arrived)");
-  const r = rig("bill-l");
+  const r = await rig(harness, "bill-l");
   const created = await createBills(r, 1);
   const bill = created[0]!;
   const counter = new SendCounter();
@@ -225,19 +240,21 @@ async function case3LostResponse(): Promise<void> {
 
 /* ------------------------------------------------------------------ 4 ---- */
 
-async function case4CrashDuringSyncing(): Promise<void> {
+async function case4CrashDuringSyncing(harness: StoreHarness): Promise<void> {
   header("CASE 4: crash while syncing, then restart");
-  const r = rig("bill-c");
+  const r = await rig(harness, "bill-c");
   const created = await createBills(r, 1);
   const bill = created[0]!;
 
   // Kill the process exactly between claim and outcome.
-  r.store.forceState(bill.id, "syncing");
+  await r.session.forceSyncing(bill.id);
   const stranded = await r.store.getBill(bill.id);
   check("bill is stranded in syncing", stranded?.sync_state === "syncing");
 
   // Restart: new process, new engine, same durable rows.
-  const rebooted = new InMemoryStore(r.store.snapshot());
+  const restarted = await r.session.restart();
+  openSessions.push(restarted);
+  const rebooted = restarted.store;
   const counter = new SendCounter();
   const engine = new SyncEngine({
     store: rebooted,
@@ -261,9 +278,9 @@ async function case4CrashDuringSyncing(): Promise<void> {
 
 /* ------------------------------------------------------------------ 5 ---- */
 
-async function case5FlakyMany(seed: number, count: number): Promise<void> {
+async function case5FlakyMany(harness: StoreHarness, seed: number, count: number): Promise<void> {
   header(`CASE 5: ${count} pending bills, flaky transport (seed=${seed})`);
-  const r = rig("bill-f");
+  const r = await rig(harness, "bill-f");
   const created = await createBills(r, count);
   const counter = new SendCounter();
   const transport = new FlakyTransport(r.server, mulberry32(seed), counter);
@@ -297,9 +314,9 @@ async function case5FlakyMany(seed: number, count: number): Promise<void> {
 
 /* ------------------------------------------------------------------ 6 ---- */
 
-async function case6DoubleTrigger(): Promise<void> {
+async function case6DoubleTrigger(harness: StoreHarness): Promise<void> {
   header("CASE 6: rapid double-trigger of sync while a send is in flight");
-  const r = rig("bill-d");
+  const r = await rig(harness, "bill-d");
   const created = await createBills(r, 1);
   const bill = created[0]!;
   const counter = new SendCounter();
@@ -336,9 +353,9 @@ async function case6DoubleTrigger(): Promise<void> {
 
 /* ------------------------------------------------------------------ 7 ---- */
 
-async function case7RejectionIsNotRetry(): Promise<void> {
+async function case7RejectionIsNotRetry(harness: StoreHarness): Promise<void> {
   header("CASE 7 (extra): a server REJECTION is not a transport failure");
-  const r = rig("bill-r");
+  const r = await rig(harness, "bill-r");
   const created = await createBills(r, 1);
   const bill = created[0]!;
   const engine = new SyncEngine({
@@ -361,46 +378,50 @@ async function case7RejectionIsNotRetry(): Promise<void> {
 
 /* ---------------------------------------------------------------- main --- */
 
+const SEED = 20260721;
+
+/**
+ * The same suite, run against each store. The cases are identical — none of
+ * them knows or asks which store it is on. A case that needed adjusting to pass
+ * on SQLite would mean the interface is not really the contract.
+ */
+async function runSuite(harness: StoreHarness): Promise<void> {
+  console.log(`
+################ STORE: ${harness.name} ################`);
+  console.log(`  CASE 4 restart = ${harness.restartKind}`);
+  await case1Happy(harness);
+  await case2OfflineThenRestored(harness);
+  await case3LostResponse(harness);
+  await case4CrashDuringSyncing(harness);
+  await case5FlakyMany(harness, SEED, 50);
+  await case6DoubleTrigger(harness);
+  await case7RejectionIsNotRetry(harness);
+}
+
 async function main(): Promise<number> {
-  const seed = 20260721;
-  console.log("Phase 2a — mobile local store + sync engine, headless proof");
-  console.log(`node ${process.version}, fake adapters only, no network, no device`);
+  console.log("Phase 2a suite re-run on both stores (Phase 2b deliverable)");
+  console.log(`node ${process.version} — fake transports, but a REAL SQLite file for the second store`);
 
   case0Purity();
-  await case1Happy();
-  await case2OfflineThenRestored();
-  await case3LostResponse();
-  await case4CrashDuringSyncing();
-  await case5FlakyMany(seed, 50);
-  await case6DoubleTrigger();
-  await case7RejectionIsNotRetry();
-
-  console.log("");
-  if (failures === 0) {
-    console.log("ALL CASES PASSED");
-  } else {
-    console.log(`INVARIANT FAILED — ${failures} check(s) failed`);
+  try {
+    await runSuite(memoryHarness);
+    await runSuite(sqliteHarness);
+  } finally {
+    await disposeAll();
   }
 
   console.log("");
-  console.log("NOT PROVEN BY THIS RUN:");
-  console.log("  - The real expo-sqlite LocalStore adapter. It does not exist yet and is");
-  console.log("    not exercised here; every case above ran against an in-memory fake.");
-  console.log("    Durability across a real process kill, SQLite transaction semantics,");
-  console.log("    and the atomicity of claimForSend on a real device are UNVERIFIED.");
-  console.log("  - HttpTransport against the real server. It is written but was never");
-  console.log("    called in this run; the status mapping (201/200/422) is asserted only");
-  console.log("    against the Phase 1c contract on paper, not over HTTP.");
-  console.log("  - Anything on a device or emulator: React Native, Expo, app lifecycle,");
-  console.log("    background sync, real clocks, real network transitions.");
-  console.log("  That is Phase 2b.");
-
+  if (failures === 0) {
+    console.log("ALL CASES PASSED ON BOTH STORES");
+  } else {
+    console.log(`INVARIANT FAILED — ${failures} check(s) failed`);
+  }
   return failures === 0 ? 0 : 1;
 }
 
 main()
   .then((code) => {
-    console.log(`SCRIPT_EXIT=${code}`);
+    console.log(`SUITE_EXIT=${code}`);
     process.exitCode = code;
   })
   .catch((err: unknown) => {
