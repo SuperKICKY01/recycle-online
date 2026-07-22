@@ -15,3 +15,4 @@ found. Not for general tips — only for things that bite.
 - sqlite-busy-timeout-first.md — applies to every SQLite connection: PRAGMA busy_timeout must precede all other statements, including journal_mode, or setup itself throws "database is locked" intermittently.
 - concurrency-tests-need-a-barrier.md — applies to any test asserting behaviour under concurrency: without a start barrier and printed overlap evidence, the workers ran sequentially and a green result proves nothing.
 - metro-file-map-nesting.md — applies when a bundler/resolver claims a file is missing that exists on disk: ask its index, not the OS. Never nest npm packages; keep a run ledger, because one green run pinned the wrong cause.
+- proof-must-run-twice.md — applies to every proof script: it must pass twice in a row against a live DB with no truncate between. Hardcoded idempotency keys and absolute doc_no assertions proved the environment, not the code.
