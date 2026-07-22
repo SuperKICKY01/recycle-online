@@ -24,14 +24,15 @@ if (!extra.apiBaseUrl) {
 export const API_BASE_URL: string = extra.apiBaseUrl;
 
 /**
- * Seeded tenant-A identities from server/app/seeddata.py. Hardcoded ON PURPOSE
- * for this vertical slice: there is no login form, no seller picker and no
- * product picker yet. Phase 2c-1 proves the pipes connect, nothing more.
+ * Seeded tenant-A login, still hardcoded because there is no login form yet.
+ *
+ * The product and seller UUIDs that used to live here are GONE as of Phase
+ * 2c-2: the app fetches them from /products and /sellers under the token, so
+ * the yard sees this tenant's real master data and nothing is baked into the
+ * binary. A real login screen and customer selection come later.
  */
 export const DEMO = {
   tenantId: "11111111-1111-1111-1111-111111111111",
   username: "admin",
   password: "tenantA-pw-123",
-  sellerId: "aaaa0000-0000-0000-0000-0000000000a4",
-  productId: "aaaa0000-0000-0000-0000-0000000000a3",
 } as const;

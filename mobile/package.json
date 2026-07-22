@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "main": "index.ts",
-  "description": "Recycle Online mobile client: Expo app, sync engine, storage adapters, and headless node proofs. ONE npm package on purpose — nesting a second one inside it breaks Metro's file map.",
+  "description": "Recycle Online mobile client: Expo app, sync engine, storage adapters, and headless node proofs. ONE npm package on purpose \u0e42\u20ac\u201d nesting a second one inside it breaks Metro's file map.",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
@@ -12,9 +12,11 @@
     "typecheck:app": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.node.json && node tools/finish-build.mjs",
     "prove:sync": "npm run build && node dist/proof/proveSync.js",
-    "prove:sqlite": "npm run build && node dist/proof/sqliteProof.js"
+    "prove:sqlite": "npm run build && node dist/proof/sqliteProof.js",
+    "prove:money": "npm run build && node dist/proof/proveMoney.js"
   },
   "dependencies": {
+    "decimal.js": "^10.6.0",
     "expo": "~54.0.0",
     "expo-constants": "~18.0.13",
     "expo-crypto": "~15.0.9",

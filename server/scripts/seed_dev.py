@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from decimal import Decimal
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -55,24 +56,43 @@ async def main() -> None:
                     ),
                     {"id": s["category_id"], "t": s["tenant_id"]},
                 )
+                for p in s["products"]:
+                    await conn.execute(
+                        text(
+                            "INSERT INTO products (id, tenant_id, category_id, uom_id, code, name)"
+                            " VALUES (:id, :t, :c, :u, :code, :name)"
+                            " ON CONFLICT (id) DO UPDATE SET code = EXCLUDED.code,"
+                            "                                name = EXCLUDED.name"
+                        ),
+                        {"id": p["id"], "t": s["tenant_id"], "c": s["category_id"],
+                         "u": s["uom_id"], "code": p["code"], "name": p["name"]},
+                    )
+                    for grade, price in p["prices"].items():
+                        await conn.execute(
+                            text(
+                                "INSERT INTO product_prices (tenant_id, product_id, grade, price)"
+                                " VALUES (:t, :p, :g, :price)"
+                                " ON CONFLICT (tenant_id, product_id, grade)"
+                                " DO UPDATE SET price = EXCLUDED.price"
+                            ),
+                            # Decimal, never float: price is NUMERIC(14,2).
+                            {"t": s["tenant_id"], "p": p["id"], "g": grade,
+                             "price": Decimal(price)},
+                        )
                 await conn.execute(
                     text(
-                        "INSERT INTO products (id, tenant_id, category_id, uom_id, code, name)"
-                        " VALUES (:id, :t, :c, :u, 'FE-STEEL', 'Steel scrap')"
-                        " ON CONFLICT (id) DO NOTHING"
-                    ),
-                    {"id": s["product_id"], "t": s["tenant_id"],
-                     "c": s["category_id"], "u": s["uom_id"]},
-                )
-                await conn.execute(
-                    text(
-                        "INSERT INTO sellers (id, tenant_id, code, name, phone)"
-                        " VALUES (:id, :t, 'S001', :nm, '0800000000') ON CONFLICT (id) DO NOTHING"
+                        "INSERT INTO sellers (id, tenant_id, code, name, phone, grade)"
+                        " VALUES (:id, :t, 'S001', :nm, '0800000000', :g)"
+                        " ON CONFLICT (id) DO UPDATE SET grade = EXCLUDED.grade"
                     ),
                     {"id": s["seller_id"], "t": s["tenant_id"],
-                     "nm": f"Seller of {s['tenant_name']}"},
+                     "nm": f"Seller of {s['tenant_name']}", "g": s["seller_grade"]},
                 )
-            print(f"seeded tenant {s['tenant_id']}: admin user + uom/category/product/seller")
+            print(
+                f"seeded tenant {s['tenant_id']}: admin user, uom/category,"
+                f" {len(s['products'])} products with A-D price tiers,"
+                f" seller (grade {s['seller_grade']})"
+            )
     finally:
         await engine.dispose()
 

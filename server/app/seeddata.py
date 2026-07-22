@@ -27,6 +27,37 @@ CATEGORY_B_ID = uuid.UUID("bbbb0000-0000-0000-0000-0000000000b2")
 PRODUCT_B_ID = uuid.UUID("bbbb0000-0000-0000-0000-0000000000b3")
 SELLER_B_ID = uuid.UUID("bbbb0000-0000-0000-0000-0000000000b4")
 
+# Extra products (Phase 2c-2) so the mobile form has a real list to pick from,
+# and price tiers so unit_price has something to default from.
+PRODUCT_A2_ID = uuid.UUID("aaaa0000-0000-0000-0000-0000000000a5")
+PRODUCT_A3_ID = uuid.UUID("aaaa0000-0000-0000-0000-0000000000a6")
+PRODUCT_B2_ID = uuid.UUID("bbbb0000-0000-0000-0000-0000000000b5")
+PRODUCT_B3_ID = uuid.UUID("bbbb0000-0000-0000-0000-0000000000b6")
+
+# The seller's grade picks which product_prices tier applies (SRS 1.6). Tenant A
+# is deliberately grade B, not A, so the app is seen choosing a tier rather than
+# just taking the first one.
+#
+# FE-STEEL grade B is exactly 15.00 on purpose: with gross 10.005 / tare 0.002
+# the amount lands on 150.045, the HALF_UP vs HALF_EVEN tie. The rounding edge
+# is therefore reachable with the DEFAULT price, no override needed.
+PRODUCTS_A = [
+    {"id": PRODUCT_A_ID, "code": "FE-STEEL", "name": "Steel scrap",
+     "prices": {"A": "15.50", "B": "15.00", "C": "14.50", "D": "14.00"}},
+    {"id": PRODUCT_A2_ID, "code": "AL-CAN", "name": "อลูมิเนียมกระป๋อง",
+     "prices": {"A": "45.00", "B": "44.00", "C": "43.00", "D": "42.00"}},
+    {"id": PRODUCT_A3_ID, "code": "CU-WIRE", "name": "ทองแดงสายไฟ",
+     "prices": {"A": "215.00", "B": "212.50", "C": "210.00", "D": "205.00"}},
+]
+PRODUCTS_B = [
+    {"id": PRODUCT_B_ID, "code": "FE-STEEL", "name": "Steel scrap",
+     "prices": {"A": "9.50", "B": "9.00", "C": "8.50", "D": "8.00"}},
+    {"id": PRODUCT_B2_ID, "code": "PET-BOTTLE", "name": "ขวดพลาสติกใส",
+     "prices": {"A": "7.00", "B": "6.50", "C": "6.00", "D": "5.50"}},
+    {"id": PRODUCT_B3_ID, "code": "PAPER-KRAFT", "name": "กระดาษลูกฟูก",
+     "prices": {"A": "3.20", "B": "3.00", "C": "2.80", "D": "2.60"}},
+]
+
 SEED = [
     {
         "tenant_id": TENANT_A_ID,
@@ -38,6 +69,8 @@ SEED = [
         "category_id": CATEGORY_A_ID,
         "product_id": PRODUCT_A_ID,
         "seller_id": SELLER_A_ID,
+        "seller_grade": "B",
+        "products": PRODUCTS_A,
     },
     {
         "tenant_id": TENANT_B_ID,
@@ -49,5 +82,7 @@ SEED = [
         "category_id": CATEGORY_B_ID,
         "product_id": PRODUCT_B_ID,
         "seller_id": SELLER_B_ID,
+        "seller_grade": "A",
+        "products": PRODUCTS_B,
     },
 ]

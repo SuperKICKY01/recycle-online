@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from .auth import Principal, get_principal
 from .bills import router as bills_router
 from .db import engine, tenant_connection
+from .master import router as master_router
 from .security import DUMMY_HASH, create_access_token, verify_password
 
 
@@ -36,8 +37,9 @@ async def lifespan(_: FastAPI):
     await engine.dispose()
 
 
-app = FastAPI(title="Recycle Online API (Phase 1c)", lifespan=lifespan)
+app = FastAPI(title="Recycle Online API (Phase 2c-2)", lifespan=lifespan)
 app.include_router(bills_router)
+app.include_router(master_router)
 
 _INVALID_LOGIN = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials"
