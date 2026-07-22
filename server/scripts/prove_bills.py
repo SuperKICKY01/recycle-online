@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import sys
+import re
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -32,6 +33,12 @@ from app.seeddata import (  # noqa: E402
 
 BASE = os.environ.get("API_BASE_URL", "http://127.0.0.1:8099")
 BE_YEAR = datetime.now(tz=timezone.utc).year + 543
+
+# Idempotency keys are scoped to THIS run. With fixed keys the script could only
+# ever run once against a database: the second run collides with the first run's
+# bills, the server correctly returns those existing bills instead of creating
+# new ones, and every downstream assertion fails for the wrong reason.
+RUN = uuid.uuid4().hex[:8]
 
 failures: list[str] = []
 
@@ -101,7 +108,7 @@ def main() -> int:
         # ---------------------------------------------------------------- CASE 1
         banner("CASE 1 - normal create (NUMERIC: net 0.1 + 0.2 = 0.3, exact)")
         body1 = bill_body(
-            SELLER_A_ID, "bill-A-0001",
+            SELLER_A_ID, f"bill-A-{RUN}-0001",
             [item(PRODUCT_A_ID, 1, "0.100"), item(PRODUCT_A_ID, 2, "0.200")],
         )
         r = client.post(f"{BASE}/bills", headers=auth(token_a), json=body1)
@@ -109,7 +116,8 @@ def main() -> int:
         print(f"  status={r.status_code}  doc_no={b1.get('doc_no')}  total={b1.get('total_amount')}")
         print(f"  item amounts = {[i['amount'] for i in b1.get('items', [])]}")
         check(r.status_code == 201, "case1: create not 201")
-        check(b1.get("doc_no") == f"B-{BE_YEAR}-1", "case1: first doc_no is not B-<beYear>-1")
+        check(re.fullmatch(rf"B-{BE_YEAR}-\d+", b1.get("doc_no") or "") is not None,
+              "case1: doc_no is not B-<beYear>-<seq>")
         check(b1.get("total_amount") == "0.30", "case1: total 0.1+0.2 != 0.30 (float drift?)")
         check([i["amount"] for i in b1.get("items", [])] == ["0.10", "0.20"],
               "case1: line amounts wrong")
@@ -140,7 +148,7 @@ def main() -> int:
         # 3a: A submits with tenant B's seller
         bad_id_a = str(uuid.uuid4())
         r = client.post(f"{BASE}/bills", headers=auth(token_a),
-                        json=bill_body(SELLER_B_ID, "bill-A-xseller",
+                        json=bill_body(SELLER_B_ID, f"bill-A-{RUN}-xseller",
                                        [item(PRODUCT_A_ID, 1, "1.000")], bill_id=bad_id_a))
         print(f"  A -> seller_B : status={r.status_code}  detail={r.json().get('detail')}")
         check(r.status_code in (400, 404, 409, 422), "case3a: foreign seller not rejected")
@@ -149,7 +157,7 @@ def main() -> int:
         # 3b: A submits an item with tenant B's product
         bad_id_b = str(uuid.uuid4())
         r = client.post(f"{BASE}/bills", headers=auth(token_a),
-                        json=bill_body(SELLER_A_ID, "bill-A-xproduct",
+                        json=bill_body(SELLER_A_ID, f"bill-A-{RUN}-xproduct",
                                        [item(PRODUCT_B_ID, 1, "1.000")], bill_id=bad_id_b))
         print(f"  A -> product_B: status={r.status_code}  detail={r.json().get('detail')}")
         check(r.status_code in (400, 404, 409, 422), "case3b: foreign product not rejected")
@@ -175,19 +183,20 @@ def main() -> int:
               "case4: voided bill still in active list")
         # a NEW bill takes the NEXT number, not the voided one's
         r = client.post(f"{BASE}/bills", headers=auth(token_a),
-                        json=bill_body(SELLER_A_ID, "bill-A-0002", [item(PRODUCT_A_ID, 1, "5.000")]))
+                        json=bill_body(SELLER_A_ID, f"bill-A-{RUN}-0002", [item(PRODUCT_A_ID, 1, "5.000")]))
         b_new = r.json()
         doc_new = b_new.get("doc_no")
         print(f"  new bill after void: doc_no={doc_new}  (voided was {doc1})")
-        check(r.status_code == 201 and doc_new == f"B-{BE_YEAR}-2", "case4: new doc_no not the next seq")
+        check(r.status_code == 201 and doc_new == f"B-{BE_YEAR}-{seq_of(doc1) + 1}",
+              "case4: new doc_no not the next seq")
         check(doc_new != doc1, "case4: voided doc_no was reused")
-        prev_max = seq_of(doc_new)  # = 2
+        prev_max = seq_of(doc_new)  # whatever the counter is at, not a fixed 2
 
         # ---------------------------------------------------------------- CASE 5
         banner("CASE 5 - doc_no under CONCURRENCY: two near-simultaneous submits")
         bodies = [
-            bill_body(SELLER_A_ID, "bill-A-conc-1", [item(PRODUCT_A_ID, 1, "1.000")]),
-            bill_body(SELLER_A_ID, "bill-A-conc-2", [item(PRODUCT_A_ID, 1, "1.000")]),
+            bill_body(SELLER_A_ID, f"bill-A-{RUN}-conc-1", [item(PRODUCT_A_ID, 1, "1.000")]),
+            bill_body(SELLER_A_ID, f"bill-A-{RUN}-conc-2", [item(PRODUCT_A_ID, 1, "1.000")]),
         ]
         barrier = threading.Barrier(2)
         results: list[httpx.Response | None] = [None, None]
@@ -214,7 +223,7 @@ def main() -> int:
         # ---------------------------------------------------------------- CASE 6
         banner("CASE 6 - client-sent total that mismatches server -> rejected")
         r = client.post(f"{BASE}/bills", headers=auth(token_a),
-                        json=bill_body(SELLER_A_ID, "bill-A-badtotal",
+                        json=bill_body(SELLER_A_ID, f"bill-A-{RUN}-badtotal",
                                        [item(PRODUCT_A_ID, 1, "1.000")], total="999.99"))
         print(f"  status={r.status_code}  detail={r.json().get('detail')}")
         check(r.status_code == 422, "case6: mismatched client total not rejected")
