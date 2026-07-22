@@ -27,6 +27,8 @@
  * STRICT is kept because it does protect the INTEGER columns and rejects
  * unknown types, not because it makes money safe.
  */
+import type { SqlDriver } from "./driver.js";
+
 export const SCHEMA_STATEMENTS: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS local_bills (
      id              TEXT    NOT NULL PRIMARY KEY,
@@ -46,6 +48,49 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
   // fixed-width format, so lexicographic ordering IS chronological ordering.
   `CREATE INDEX IF NOT EXISTS ix_local_bills_ready
      ON local_bills (sync_state, next_attempt_at, created_at)`,
+
+  /*
+   * THE CART DRAFT (Phase 2c-3). Separate tables on purpose.
+   *
+   * A draft is not a bill in a different state — it is a different thing. By
+   * living outside local_bills it is unreachable by every query the sync engine
+   * runs (listReadyToSend, listByState, claimForSend all name local_bills), so
+   * "the engine must never send a draft" is a structural fact rather than a
+   * condition someone has to keep remembering in a WHERE clause.
+   *
+   * There is no id and no idempotency_key here: both are minted at the moment
+   * of promotion. Nothing is consumed while the yard is still typing.
+   */
+  `CREATE TABLE IF NOT EXISTS local_draft (
+     id          TEXT    NOT NULL PRIMARY KEY,
+     seller_id   TEXT    NOT NULL,
+     vehicle_no  TEXT,
+     next_seq    INTEGER NOT NULL,
+     form_json   TEXT    NOT NULL,
+     updated_at  TEXT    NOT NULL
+   ) STRICT`,
+
+  // Money and weight are TEXT here for the same reason as in local_bills: a
+  // NUMERIC column would silently convert '10.500' to the float 10.5.
+  `CREATE TABLE IF NOT EXISTS local_draft_lines (
+     id            TEXT    NOT NULL PRIMARY KEY,
+     draft_id      TEXT    NOT NULL REFERENCES local_draft(id) ON DELETE CASCADE,
+     seq           INTEGER NOT NULL,
+     product_id    TEXT    NOT NULL,
+     product_code  TEXT    NOT NULL,
+     product_name  TEXT    NOT NULL,
+     uom_code      TEXT    NOT NULL,
+     gross_weight  TEXT    NOT NULL,
+     tare_weight   TEXT    NOT NULL,
+     net_weight    TEXT    NOT NULL,
+     unit_price    TEXT    NOT NULL,
+     list_price    TEXT    NOT NULL,
+     amount        TEXT    NOT NULL,
+     UNIQUE (draft_id, seq)
+   ) STRICT`,
+
+  `CREATE INDEX IF NOT EXISTS ix_draft_lines_draft
+     ON local_draft_lines (draft_id, seq)`,
 ];
 
 /**
@@ -63,3 +108,16 @@ export const CONNECTION_PRAGMAS: readonly string[] = [
   "PRAGMA journal_mode = WAL",
   "PRAGMA foreign_keys = ON",
 ];
+
+/**
+ * Brings a fresh connection up: pragmas in order, then the schema.
+ *
+ * Both stores share one connection and either may be opened first, so this is
+ * idempotent (every statement is IF NOT EXISTS or a pragma) and lives in one
+ * place — two copies of the pragma loop would be two chances to get the
+ * busy_timeout ordering wrong.
+ */
+export async function initConnection(db: SqlDriver): Promise<void> {
+  for (const pragma of CONNECTION_PRAGMAS) await db.exec(pragma);
+  for (const ddl of SCHEMA_STATEMENTS) await db.exec(ddl);
+}

@@ -19,10 +19,35 @@ export interface SqlRunResult {
   changes: number;
 }
 
+/**
+ * Handle for statements INSIDE a transaction.
+ *
+ * Deliberately a separate type from SqlDriver. The statements of a transaction
+ * must not re-enter the connection lock the transaction already holds, so they
+ * cannot go through the driver's own run/all. Passing this handle to the
+ * callback makes that a compile-time distinction instead of a rule someone has
+ * to remember: calling `driver.run` inside a transaction body would deadlock.
+ */
+export interface SqlTx {
+  run(sql: string, params?: readonly SqlValue[]): Promise<SqlRunResult>;
+  all<T>(sql: string, params?: readonly SqlValue[]): Promise<T[]>;
+}
+
 export interface SqlDriver {
   /** Statements without parameters: pragmas, DDL. */
   exec(sql: string): Promise<void>;
   run(sql: string, params?: readonly SqlValue[]): Promise<SqlRunResult>;
   all<T>(sql: string, params?: readonly SqlValue[]): Promise<T[]>;
+  /**
+   * Runs `fn` as ONE atomic unit: BEGIN IMMEDIATE, the body, COMMIT — or
+   * ROLLBACK if the body throws. Nothing else may touch the connection while
+   * it runs (see mutex.ts for why that exclusion is load-bearing rather than
+   * merely tidy).
+   *
+   * Used for exactly one thing so far: promoting a cart draft to a pending
+   * bill, where a crash must leave either an intact draft or an intact bill
+   * and never both or neither.
+   */
+  transaction<T>(fn: (tx: SqlTx) => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }

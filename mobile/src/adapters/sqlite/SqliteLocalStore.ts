@@ -2,22 +2,30 @@
  * Production LocalStore over SQLite. Implements the exact interface the sync
  * engine already depends on — the engine was not changed to fit the database.
  *
- * EVERY method is exactly ONE SQL statement. That is deliberate:
+ * EVERY method here is exactly ONE SQL statement. That is deliberate:
  *
  *  - SQLite wraps every statement in an implicit transaction, so a single
  *    conditional UPDATE is already atomic; the claim cannot half-happen.
- *  - It removes the interleaving hazard entirely. On an async driver
- *    (expo-sqlite), two overlapping awaits sharing one connection could
- *    interleave an explicit BEGIN/COMMIT pair into nonsense. With no explicit
- *    transaction there is nothing to interleave, and no mutex is needed.
+ *  - Nothing in the bill lifecycle needs to span statements, so none of it
+ *    depends on explicit transaction handling at all.
  *
  * The claim's atomicity therefore rests on one thing: UPDATE ... WHERE
  * sync_state = 'pending' reporting an exact rowcount. Proven under four real
  * OS threads on one database file in src/proof/sqliteProof.ts.
+ *
+ * AMENDED IN PHASE 2c-3. This header used to conclude "and no mutex is
+ * needed". That was true only while every operation in the whole app was a
+ * single statement. The cart's draft -> bill promotion is genuinely
+ * multi-statement (insert the bill, clear the draft, indivisibly), so the
+ * driver now serialises the connection and offers `transaction()`. The
+ * statements below are unchanged and still need nothing from it — but the
+ * blanket claim was no longer true and would have misled the next reader into
+ * adding a second statement to one of these methods believing it was safe.
+ * See adapters/sqlite/mutex.ts.
  */
 import type { LocalBill, LocalStore, SyncState } from "../../sync/types.js";
-import type { SqlDriver } from "./driver.js";
-import { CONNECTION_PRAGMAS, SCHEMA_STATEMENTS } from "./schema.js";
+import type { SqlDriver, SqlValue } from "./driver.js";
+import { initConnection } from "./schema.js";
 
 interface BillRow {
   id: string;
@@ -35,6 +43,32 @@ interface BillRow {
 const COLUMNS =
   "id, idempotency_key, payload_json, sync_state, attempt_count, last_error," +
   " created_at, next_attempt_at, doc_no, synced_at";
+
+/**
+ * The bill INSERT, defined once and exported.
+ *
+ * SqliteDraftStore.promoteToBill has to perform this same insert inside its
+ * transaction. Writing it out a second time there would be a column list free
+ * to drift from this one — silently, since both would still compile and only
+ * the promoted bills would be wrong. One definition, two call sites.
+ */
+export const BILL_INSERT_SQL =
+  `INSERT INTO local_bills (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+export function billInsertParams(bill: LocalBill): SqlValue[] {
+  return [
+    bill.id,
+    bill.idempotency_key,
+    JSON.stringify(bill.payload),
+    bill.sync_state,
+    bill.attempt_count,
+    bill.last_error,
+    bill.created_at,
+    bill.next_attempt_at,
+    bill.doc_no,
+    bill.synced_at,
+  ];
+}
 
 function toBill(row: BillRow): LocalBill {
   return {
@@ -56,8 +90,7 @@ export class SqliteLocalStore implements LocalStore {
 
   /** Opens (or reopens) the store and ensures the schema exists. */
   static async open(db: SqlDriver): Promise<SqliteLocalStore> {
-    for (const pragma of CONNECTION_PRAGMAS) await db.exec(pragma);
-    for (const ddl of SCHEMA_STATEMENTS) await db.exec(ddl);
+    await initConnection(db);
     return new SqliteLocalStore(db);
   }
 
@@ -68,22 +101,7 @@ export class SqliteLocalStore implements LocalStore {
   async putBill(bill: LocalBill): Promise<void> {
     // Plain INSERT, not INSERT OR REPLACE: a duplicate bill id is a bug that
     // must surface, never silently overwrite a bill that may already be synced.
-    await this.db.run(
-      `INSERT INTO local_bills (${COLUMNS})
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        bill.id,
-        bill.idempotency_key,
-        JSON.stringify(bill.payload),
-        bill.sync_state,
-        bill.attempt_count,
-        bill.last_error,
-        bill.created_at,
-        bill.next_attempt_at,
-        bill.doc_no,
-        bill.synced_at,
-      ],
-    );
+    await this.db.run(BILL_INSERT_SQL, billInsertParams(bill));
   }
 
   async getBill(id: string): Promise<LocalBill | null> {

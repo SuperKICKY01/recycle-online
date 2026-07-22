@@ -314,6 +314,26 @@ async function case5FlakyMany(harness: StoreHarness, seed: number, count: number
 
 /* ------------------------------------------------------------------ 6 ---- */
 
+/**
+ * Yields to the event loop until `cond` holds, returning how many yields it
+ * took. Used instead of a fixed number of `await Promise.resolve()` ticks.
+ *
+ * Phase 2c-3 is why: the SQLite driver now serialises every statement through
+ * a Mutex, which adds microtask hops, so "three ticks" stopped being a point at
+ * which the claim had happened. A fixed tick count encodes the scheduler's
+ * current shape into the test and silently changes WHAT MOMENT is observed
+ * whenever the storage layer changes — a green that has quietly stopped
+ * measuring the thing it names. Waiting for the observable event is stable
+ * across both stores.
+ */
+async function waitFor(cond: () => boolean, maxYields = 500): Promise<number> {
+  for (let i = 0; i < maxYields; i += 1) {
+    if (cond()) return i;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  return -1;
+}
+
 async function case6DoubleTrigger(harness: StoreHarness): Promise<void> {
   header("CASE 6: rapid double-trigger of sync while a send is in flight");
   const r = await rig(harness, "bill-d");
@@ -330,10 +350,10 @@ async function case6DoubleTrigger(harness: StoreHarness): Promise<void> {
 
   const first = engine.runOnce();
   const second = engine.runOnce();
-  // Let both runs get as far as they can while the send hangs.
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  // Let both runs get as far as they can, then observe at the moment the send
+  // is genuinely in flight — not at a guessed number of ticks.
+  const yields = await waitFor(() => gated.started.length === 1);
+  console.log(`  send entered after ${String(yields)} yield(s); transport is holding it open`);
 
   const midFlight = await r.store.getBill(bill.id);
   check("bill is claimed (syncing) while in flight", midFlight?.sync_state === "syncing", `state=${midFlight?.sync_state}`);

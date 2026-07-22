@@ -7,10 +7,14 @@
  */
 import type { BillItemPayload, Clock, IdSource, LocalBill, LocalStore } from "./types.js";
 
-export interface CreateBillDeps {
-  store: LocalStore;
+/** What building a bill needs. Deliberately no store — see buildLocalBill. */
+export interface BuildBillDeps {
   clock: Clock;
   ids: IdSource;
+}
+
+export interface CreateBillDeps extends BuildBillDeps {
+  store: LocalStore;
 }
 
 export interface BillDraft {
@@ -21,10 +25,21 @@ export interface BillDraft {
   total_amount: string | null;
 }
 
-export async function createLocalBill(
-  deps: CreateBillDeps,
-  draft: BillDraft,
-): Promise<LocalBill> {
+/**
+ * Builds the bill WITHOUT persisting it. Pure apart from the injected clock
+ * and id source.
+ *
+ * Split out in Phase 2c-3 so the cart can mint a bill and insert it inside the
+ * same transaction that clears the draft. Promotion cannot call
+ * createLocalBill: that would write the bill in its own statement, and a crash
+ * before the draft was cleared would leave BOTH — the duplicate the whole
+ * transaction exists to prevent.
+ *
+ * Note what is minted here and nowhere earlier: the bill id and the
+ * idempotency_key. A draft carries neither, so nothing is consumed until the
+ * user actually commits the bill.
+ */
+export function buildLocalBill(deps: BuildBillDeps, draft: BillDraft): LocalBill {
   const now = deps.clock.now();
   const nowIso = now.toISOString();
   const id = deps.ids.newId();
@@ -32,7 +47,7 @@ export async function createLocalBill(
   // Generated exactly here, exactly once, for the lifetime of this bill.
   const idempotencyKey = deps.ids.newId();
 
-  const bill: LocalBill = {
+  return {
     id,
     idempotency_key: idempotencyKey,
     payload: {
@@ -52,7 +67,13 @@ export async function createLocalBill(
     doc_no: null,
     synced_at: null,
   };
+}
 
+export async function createLocalBill(
+  deps: CreateBillDeps,
+  draft: BillDraft,
+): Promise<LocalBill> {
+  const bill = buildLocalBill(deps, draft);
   await deps.store.putBill(bill);
   return bill;
 }
