@@ -8,6 +8,9 @@
 import { lineAmount, netWeight, parsePrice, parseWeight, sumAmounts } from "../money/money.js";
 import type { FieldError } from "../money/money.js";
 import type { BillItemPayload } from "../sync/types.js";
+import { onSellerChange } from "./entry.js";
+import type { Locks } from "./entry.js";
+import { cleanVehicleNo } from "./sellers.js";
 import type { Draft, DraftForm, DraftLine } from "./types.js";
 import { emptyForm } from "./types.js";
 
@@ -162,6 +165,115 @@ export function clearLines(draft: Draft, updatedAt: string): Draft {
 
 export function setForm(draft: Draft, form: DraftForm, updatedAt: string): Draft {
   return { ...draft, form, updated_at: updatedAt };
+}
+
+/**
+ * The plate, as typed. NOT normalised here — see cleanVehicleNo. Storing the
+ * raw keystrokes is what lets "70 1234" be typed at all.
+ */
+export function setVehicleNo(draft: Draft, raw: string, updatedAt: string): Draft {
+  return { ...draft, vehicle_no: raw === "" ? null : raw, updated_at: updatedAt };
+}
+
+/** Trim the plate down to its storable form. Applied on blur and at save. */
+export function normaliseVehicleNo(draft: Draft, updatedAt: string): Draft {
+  const cleaned = cleanVehicleNo(draft.vehicle_no);
+  if (cleaned === draft.vehicle_no) return draft;
+  return { ...draft, vehicle_no: cleaned, updated_at: updatedAt };
+}
+
+/** What a seller change did, so the operator can be told the truth about it. */
+export interface SellerChangeImpact {
+  /** Lines already in the cart. Their money is untouched — see changeSeller. */
+  keptLines: number;
+  /** Lines whose grade REFERENCE price moved to the new tier. */
+  rereferenced: number;
+  /** Lines with no tier under the new grade; their reference was left alone. */
+  withoutTier: number;
+  /** True when a price lock stopped the pending price from re-defaulting. */
+  priceLockHeld: boolean;
+  pendingPriceWas: string;
+  pendingPriceNow: string;
+}
+
+export interface SellerChangeResult {
+  draft: Draft;
+  impact: SellerChangeImpact;
+}
+
+/**
+ * THIS BILL BELONGS TO SOMEONE ELSE (Phase 2c-6).
+ *
+ * The decision the phase asks for, and why it is not "block the change":
+ *
+ * Blocking leaves the operator two ways out, and both cost more than the
+ * problem. Clearing the cart destroys weights for loads that have already been
+ * tipped onto the pile and can no longer be re-measured. Saving to the wrong
+ * seller and voiding puts a wrong-money bill and a reversal on a permanent
+ * record that never forgets (hard rule 5) — for a mis-tap. Meanwhile the change
+ * itself is always benign in the one way that matters: one bill has exactly one
+ * seller, so this can only ever be a CORRECTION of who the bill in progress
+ * belongs to, never a second customer arriving mid-bill.
+ *
+ * So the change is allowed, and the rule is:
+ *
+ *   unit_price, amount and the cart total of existing lines DO NOT MOVE.
+ *     Those are what the customer was told and, for lines already handed cash
+ *     for, what was actually paid. Re-pricing them to the new grade would edit
+ *     an agreed number after the fact — the one silent rewrite the phase
+ *     forbids. Proven byte-identical in proveSeller S3.
+ *
+ *   list_price — the grade REFERENCE, not the money — is re-pointed to the new
+ *     grade's tier where one exists. It is not the client's value in any case:
+ *     the server discards it and stamps its own from product_prices at the
+ *     seller's grade (bills.py). Leaving the old grade's number would make the
+ *     device disagree with the record and, worse, would hide the override —
+ *     the "paid off list" badge compares the two, so against a stale reference
+ *     a line priced at grade B under a grade-C bill looks perfectly ordinary.
+ *     Where the new grade has no tier at all, the last known reference is kept
+ *     rather than invented over, and the count is reported.
+ *
+ * Locks are an input, never an output: this function cannot release one. See
+ * entry.ts on why a seller change must not.
+ */
+export function changeSeller(
+  draft: Draft,
+  sellerId: string,
+  locks: Locks,
+  /** The new seller's tier for a product, or null if that grade has no row. */
+  tierFor: (productId: string) => string | null,
+  updatedAt: string,
+): SellerChangeResult {
+  let rereferenced = 0;
+  let withoutTier = 0;
+
+  const lines = draft.lines.map((l) => {
+    const tier = tierFor(l.product_id);
+    if (tier === null) {
+      withoutTier += 1;
+      return l;
+    }
+    if (tier === l.list_price) return l;
+    rereferenced += 1;
+    // Only list_price. gross/tare/net/unit_price/amount are carried verbatim.
+    return { ...l, list_price: tier };
+  });
+
+  const pendingTier =
+    draft.form.product_id === null ? null : tierFor(draft.form.product_id);
+  const form = onSellerChange(draft.form, locks, pendingTier);
+
+  return {
+    draft: { ...draft, seller_id: sellerId, lines, form, updated_at: updatedAt },
+    impact: {
+      keptLines: draft.lines.length,
+      rereferenced,
+      withoutTier,
+      priceLockHeld: locks.price,
+      pendingPriceWas: draft.form.price,
+      pendingPriceNow: form.price,
+    },
+  };
 }
 
 /**

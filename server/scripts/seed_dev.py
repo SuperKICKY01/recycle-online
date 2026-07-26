@@ -79,19 +79,24 @@ async def main() -> None:
                             {"t": s["tenant_id"], "p": p["id"], "g": grade,
                              "price": Decimal(price)},
                         )
-                await conn.execute(
-                    text(
-                        "INSERT INTO sellers (id, tenant_id, code, name, phone, grade)"
-                        " VALUES (:id, :t, 'S001', :nm, '0800000000', :g)"
-                        " ON CONFLICT (id) DO UPDATE SET grade = EXCLUDED.grade"
-                    ),
-                    {"id": s["seller_id"], "t": s["tenant_id"],
-                     "nm": f"Seller of {s['tenant_name']}", "g": s["seller_grade"]},
-                )
+                for sl in s["sellers"]:
+                    await conn.execute(
+                        text(
+                            "INSERT INTO sellers (id, tenant_id, code, name, phone, grade)"
+                            " VALUES (:id, :t, :code, :nm, :ph, :g)"
+                            " ON CONFLICT (id) DO UPDATE SET code = EXCLUDED.code,"
+                            "                                name = EXCLUDED.name,"
+                            "                                phone = EXCLUDED.phone,"
+                            "                                grade = EXCLUDED.grade"
+                        ),
+                        {"id": sl["id"], "t": s["tenant_id"], "code": sl["code"],
+                         "nm": sl["name"], "ph": sl["phone"], "g": sl["grade"]},
+                    )
+            grades = ", ".join(str(sl["grade"] or "no grade") for sl in s["sellers"])
             print(
                 f"seeded tenant {s['tenant_id']}: admin user, uom/category,"
                 f" {len(s['products'])} products with A-D price tiers,"
-                f" seller (grade {s['seller_grade']})"
+                f" {len(s['sellers'])} sellers (grades: {grades})"
             )
     finally:
         await engine.dispose()

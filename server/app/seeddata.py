@@ -27,6 +27,19 @@ CATEGORY_B_ID = uuid.UUID("bbbb0000-0000-0000-0000-0000000000b2")
 PRODUCT_B_ID = uuid.UUID("bbbb0000-0000-0000-0000-0000000000b3")
 SELLER_B_ID = uuid.UUID("bbbb0000-0000-0000-0000-0000000000b4")
 
+# Extra sellers (Phase 2c-6) so the picker has a real list to search and the
+# seller's GRADE can be seen selecting a different price tier per bill.
+#
+# The grades are spread across A-D deliberately, and SELLER_A5 has NO GRADE on
+# purpose: that is the resolvable-refusal path (424 seller_grade_unset), and it
+# has to be reachable from the yard app to be testable at all. SELLER_A_ID keeps
+# grade B, because prove_master_data_gate.py borrows and restores exactly that.
+SELLER_A2_ID = uuid.UUID("aaaa0000-0000-0000-0000-0000000000a7")
+SELLER_A3_ID = uuid.UUID("aaaa0000-0000-0000-0000-0000000000a8")
+SELLER_A4_ID = uuid.UUID("aaaa0000-0000-0000-0000-0000000000a9")
+SELLER_A5_ID = uuid.UUID("aaaa0000-0000-0000-0000-0000000000aa")
+SELLER_B2_ID = uuid.UUID("bbbb0000-0000-0000-0000-0000000000b7")
+
 # Extra products (Phase 2c-2) so the mobile form has a real list to pick from,
 # and price tiers so unit_price has something to default from.
 PRODUCT_A2_ID = uuid.UUID("aaaa0000-0000-0000-0000-0000000000a5")
@@ -58,6 +71,21 @@ PRODUCTS_B = [
      "prices": {"A": "3.20", "B": "3.00", "C": "2.80", "D": "2.60"}},
 ]
 
+# code is UNIQUE per tenant (uq_sellers_tenant_code), so the same S00n codes
+# appear in both tenants — which is also what makes the isolation proof honest.
+SELLERS_A = [
+    {"id": SELLER_A_ID, "code": "S001", "name": "สมชาย ใจดี", "phone": "0800000001", "grade": "B"},
+    {"id": SELLER_A2_ID, "code": "S002", "name": "ร้านรับซื้อ พี่แดง", "phone": "0800000002", "grade": "A"},
+    {"id": SELLER_A3_ID, "code": "S003", "name": "สมหญิง รุ่งเรือง", "phone": "0800000003", "grade": "C"},
+    {"id": SELLER_A4_ID, "code": "S004", "name": "โรงงาน ทองไทย", "phone": "0800000004", "grade": "D"},
+    # No grade: the 424 seller_grade_unset path, reachable from the app.
+    {"id": SELLER_A5_ID, "code": "S005", "name": "ลูกค้าใหม่ ยังไม่จัดเกรด", "phone": None, "grade": None},
+]
+SELLERS_B = [
+    {"id": SELLER_B_ID, "code": "S001", "name": "Seller of Shop B", "phone": "0800000000", "grade": "A"},
+    {"id": SELLER_B2_ID, "code": "S002", "name": "ลูกค้าร้าน B", "phone": None, "grade": "C"},
+]
+
 SEED = [
     {
         "tenant_id": TENANT_A_ID,
@@ -68,9 +96,8 @@ SEED = [
         "uom_id": UOM_A_ID,
         "category_id": CATEGORY_A_ID,
         "product_id": PRODUCT_A_ID,
-        "seller_id": SELLER_A_ID,
-        "seller_grade": "B",
         "products": PRODUCTS_A,
+        "sellers": SELLERS_A,
     },
     {
         "tenant_id": TENANT_B_ID,
@@ -81,8 +108,7 @@ SEED = [
         "uom_id": UOM_B_ID,
         "category_id": CATEGORY_B_ID,
         "product_id": PRODUCT_B_ID,
-        "seller_id": SELLER_B_ID,
-        "seller_grade": "A",
         "products": PRODUCTS_B,
+        "sellers": SELLERS_B,
     },
 ]

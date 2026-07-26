@@ -1,0 +1,214 @@
+/**
+ * Who is this bill for? (Phase 2c-6)
+ *
+ * A yard has hundreds of sellers and the operator has one free hand, so this is
+ * a SEARCH screen with a list under it, not a list to scroll. The box is
+ * focused on open and every row is TAP_MIN tall.
+ *
+ * SEARCHING BY PLATE, AND WHAT IT ACTUALLY SEARCHES. Sellers carry no plate:
+ * the plate belongs to the BILL (SRS 1.6), because the same customer arrives in
+ * different trucks. So plate search matches the plates THIS DEVICE has recorded
+ * for that seller on previous bills — a memory, not master data. A device that
+ * has not written a bill yet knows none, and the screen says so rather than
+ * looking broken.
+ *
+ * The search box is FREE TEXT and uses the OS keyboard. That is not a
+ * regression against the Phase 2c-4 numpad rule: the rule is about the numeric
+ * entry path, where a pasted or auto-corrected value becomes money. Nothing
+ * typed here is stored on anything — it only filters a list.
+ */
+import { useMemo, useState } from "react";
+import {
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+
+import { searchSellers } from "../src/cart/sellers";
+import type { SellerMatch } from "../src/cart/sellers";
+import type { Seller } from "./api";
+
+const TAP_MIN = 56;
+
+interface Props {
+  visible: boolean;
+  sellers: Seller[];
+  /** Plates this device has seen per seller, newest first. */
+  platesBySeller: ReadonlyMap<string, readonly string[]>;
+  /** The bill's current seller, so the row can be marked. Null before the pick. */
+  currentSellerId: string | null;
+  /** True when the cart has lines — changes the wording from "choose" to "change". */
+  changing: boolean;
+  onClose: () => void;
+  onPick: (seller: Seller) => void;
+}
+
+export function SellerPicker({
+  visible,
+  sellers,
+  platesBySeller,
+  currentSellerId,
+  changing,
+  onClose,
+  onPick,
+}: Props) {
+  const [query, setQuery] = useState("");
+
+  const matches = useMemo(
+    () => searchSellers(sellers, query, platesBySeller),
+    [sellers, query, platesBySeller],
+  );
+
+  const anyPlatesKnown = platesBySeller.size > 0;
+
+  const close = (): void => {
+    setQuery("");
+    onClose();
+  };
+
+  const pick = (m: SellerMatch): void => {
+    const full = sellers.find((s) => s.id === m.seller.id);
+    if (full === undefined) return;
+    setQuery("");
+    onPick(full);
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={close}>
+      <KeyboardAvoidingView
+        style={styles.fill}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <View style={styles.head}>
+          <Text style={styles.title}>{changing ? "เปลี่ยนผู้ขาย" : "เลือกผู้ขาย"}</Text>
+          <Pressable style={styles.closeBtn} onPress={close}>
+            <Text style={styles.closeText}>ปิด</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.searchWrap}>
+          <TextInput
+            style={styles.search}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="ค้นหา: ชื่อ / รหัส / ทะเบียนรถ"
+            placeholderTextColor="#94a3b8"
+            autoFocus
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
+          <Text style={styles.searchHint}>
+            {anyPlatesKnown
+              ? "ค้นทะเบียนได้จากบิลที่เคยบันทึกในเครื่องนี้"
+              : "เครื่องนี้ยังไม่มีบิล จึงยังค้นด้วยทะเบียนรถไม่ได้"}
+          </Text>
+        </View>
+
+        <FlatList
+          data={matches}
+          keyExtractor={(m) => m.seller.id}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.body}
+          ListEmptyComponent={
+            <Text style={styles.empty}>
+              {sellers.length === 0
+                ? "ยังไม่มีผู้ขายในระบบ — ต้องเพิ่มที่สำนักงานก่อน"
+                : `ไม่พบผู้ขายที่ตรงกับ “${query}”`}
+            </Text>
+          }
+          renderItem={({ item }) => {
+            const s = item.seller;
+            const isCurrent = s.id === currentSellerId;
+            const noGrade = s.grade === null;
+            return (
+              <Pressable
+                style={[styles.row, isCurrent && styles.rowCurrent]}
+                onPress={() => pick(item)}
+              >
+                <View style={styles.rowTop}>
+                  <Text style={styles.name} numberOfLines={1}>
+                    {s.name}
+                  </Text>
+                  <Text style={[styles.grade, noGrade && styles.gradeNone]}>
+                    {noGrade ? "ไม่มีเกรด" : `เกรด ${s.grade}`}
+                  </Text>
+                </View>
+                <Text style={styles.meta} numberOfLines={1}>
+                  {s.code}
+                  {item.plates.length > 0 ? ` · ทะเบียน ${item.plates.join(", ")}` : ""}
+                </Text>
+                {/*
+                  Said HERE, before the pick, not after the bill is refused: a
+                  seller with no grade has no price tier, so the server parks the
+                  bill (424 seller_grade_unset) until the office sets one. The
+                  purchase can still be recorded — that is the whole point of
+                  parking — but the operator should know before typing weights.
+                */}
+                {noGrade ? (
+                  <Text style={styles.warn}>
+                    ยังไม่ได้จัดเกรด — ไม่มีราคาตั้งต้น และบิลจะค้างรอสำนักงานกำหนดเกรดก่อนจึงจะส่งได้
+                  </Text>
+                ) : null}
+                {isCurrent ? <Text style={styles.current}>ผู้ขายของบิลนี้</Text> : null}
+              </Pressable>
+            );
+          }}
+        />
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  fill: { flex: 1, backgroundColor: "#f8fafc" },
+  head: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12,
+    backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0",
+  },
+  title: { fontSize: 20, fontWeight: "900", color: "#0f172a" },
+  closeBtn: {
+    minHeight: 48, paddingHorizontal: 20, borderRadius: 10,
+    backgroundColor: "#e2e8f0", alignItems: "center", justifyContent: "center",
+  },
+  closeText: { fontSize: 16, fontWeight: "800", color: "#334155" },
+
+  searchWrap: {
+    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, backgroundColor: "#fff",
+    borderBottomWidth: 1, borderBottomColor: "#e2e8f0",
+  },
+  search: {
+    borderWidth: 2, borderColor: "#0f766e", borderRadius: 12, paddingHorizontal: 14,
+    minHeight: TAP_MIN, fontSize: 20, fontWeight: "700", color: "#0f172a",
+    backgroundColor: "#fff",
+  },
+  searchHint: { fontSize: 12, color: "#64748b", marginTop: 6, fontWeight: "600" },
+
+  body: { padding: 16, paddingBottom: 48 },
+  empty: { textAlign: "center", color: "#64748b", marginTop: 40, fontSize: 15 },
+
+  row: {
+    backgroundColor: "#fff", borderRadius: 12, padding: 12, marginBottom: 10,
+    borderWidth: 1, borderColor: "#e2e8f0", minHeight: TAP_MIN, justifyContent: "center",
+  },
+  rowCurrent: { borderColor: "#0f766e", borderWidth: 2, backgroundColor: "#f0fdfa" },
+  rowTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+  name: { flex: 1, fontSize: 18, fontWeight: "800", color: "#0f172a" },
+  grade: {
+    fontSize: 12, fontWeight: "900", color: "#fff", backgroundColor: "#0f766e",
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, overflow: "hidden",
+  },
+  gradeNone: { backgroundColor: "#b91c1c" },
+  meta: { fontSize: 13, color: "#64748b", marginTop: 4 },
+  warn: { fontSize: 12, color: "#7f1d1d", backgroundColor: "#fee2e2", borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 6, marginTop: 8, fontWeight: "700" },
+  current: { fontSize: 12, color: "#0f766e", fontWeight: "800", marginTop: 6 },
+});

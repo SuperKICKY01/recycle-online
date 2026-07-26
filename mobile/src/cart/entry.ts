@@ -52,6 +52,16 @@ export function toggleLock(locks: Locks, field: LockableField): Locks {
  * Locks are released wholesale. Their scope is one customer / one vehicle, so
  * they end when the bill does — see releaseOnSave / releaseOnClear, which are
  * distinct names on purpose so the call sites read as the rule they implement.
+ *
+ * THERE IS NO releaseOnSellerChange, and that is a decision, not an omission
+ * (Phase 2c-6). One bill has exactly one seller, so changing the seller mid-bill
+ * is never "the next customer has arrived" — it can only be a correction of who
+ * the bill in progress belongs to. The container on the scale did not move when
+ * the operator fixed the name, so a tare they deliberately pinned must not
+ * silently clear; the next line would then be weighed with tare 0 and the shop
+ * would pay for the container. A locked price is likewise an explicit override
+ * and survives, but it is then flagged off-tier against the new grade by
+ * priceIsOffTier, so the operator is told rather than left to notice.
  */
 export const releaseOnSave = (): Locks => NO_LOCKS;
 export const releaseOnClear = (): Locks => NO_LOCKS;
@@ -73,6 +83,41 @@ export function onProductChange(
     tare: locks.tare ? form.tare : "",
     price: locks.price ? form.price : next.listPrice,
   };
+}
+
+/**
+ * The selected SELLER changed (Phase 2c-6).
+ *
+ * Deliberately NOT the same rule as onProductChange, and the difference is the
+ * whole point:
+ *
+ *   product changed -> what is ON THE SCALE changed, so gross is definitionally
+ *                      stale and tare probably is.
+ *   seller  changed -> nothing physical moved. The same load is on the same
+ *                      plate in the same container; only who it belongs to was
+ *                      corrected. Clearing the weights here would destroy
+ *                      measurements of scrap that may already be in the pile.
+ *
+ * So gross, tare and the selected product all survive, and exactly one field
+ * moves: the price re-defaults to the NEW grade's tier, because the grade is
+ * the only thing about a seller that prices anything.
+ *
+ * A null tier (grade-less seller, or no row for this grade) CLEARS the price
+ * rather than leaving the previous grade's number in the box. A price belonging
+ * to a grade this bill is not filed under is the stale-value error this whole
+ * area exists to prevent — see sellers.ts on why no tier is invented.
+ *
+ * LOCKS ARE NOT AN ARGUMENT THIS FUNCTION CAN RELEASE. It takes `locks` and
+ * returns only a form, so there is no way for a seller change to clear a lock;
+ * that is the enforcement, not a comment. See the note on releaseOnSave.
+ */
+export function onSellerChange(
+  form: DraftForm,
+  locks: Locks,
+  nextListPrice: string | null,
+): DraftForm {
+  if (locks.price) return form;
+  return { ...form, price: nextListPrice ?? "" };
 }
 
 /**

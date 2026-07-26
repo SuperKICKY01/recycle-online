@@ -55,19 +55,19 @@ export const fetchProducts = (token: string): Promise<Product[]> =>
 export const fetchSellers = (token: string): Promise<Seller[]> =>
   getJson<{ sellers: Seller[] }>("/sellers", token).then((b) => b.sellers);
 
-/**
- * The list price for a product given the seller's grade. Falls back to the
- * first tier present when the seller has no grade, so the field is never blank
- * — but the staff member can always override it at the yard.
+/*
+ * listPriceFor USED TO LIVE HERE. It is now gradePrice in src/cart/sellers.ts,
+ * for two reasons.
+ *
+ * It had to become provable: the grade -> tier rule is the thing Phase 2c-6
+ * turns into a per-bill decision, and a function in app/ cannot be reached by a
+ * headless proof (this file pulls in expo-constants through ./config).
+ *
+ * And it had to lose its fallback. It used to return the first tier present
+ * when the seller had no grade "so the field is never blank" — which quoted
+ * grade A, the HIGHEST tier, for exactly the sellers whose bills the server
+ * refuses (424 seller_grade_unset). The yard pays cash against that number, so
+ * the fallback could never make the bill valid, only make the shop overpay
+ * before finding out. gradePrice returns null instead and the picker says which
+ * sellers are in that state.
  */
-export function listPriceFor(product: Product, sellerGrade: string | null): string | null {
-  if (sellerGrade !== null) {
-    const exact = product.prices[sellerGrade];
-    if (exact !== undefined) return exact;
-  }
-  for (const g of ["A", "B", "C", "D"]) {
-    const p = product.prices[g];
-    if (p !== undefined) return p;
-  }
-  return null;
-}

@@ -19,6 +19,10 @@ interface Props {
   lineCount: number;
   total: string;
   sellerName: string;
+  /** Null means the seller has no grade — the bill will park. Say so here. */
+  sellerGrade: string | null;
+  /** The plate, already trimmed. Null when none was entered. */
+  vehicleNo: string | null;
   busy: boolean;
   onCancel: () => void;
   onConfirm: () => void;
@@ -29,6 +33,8 @@ export function ConfirmSaveDialog({
   lineCount,
   total,
   sellerName,
+  sellerGrade,
+  vehicleNo,
   busy,
   onCancel,
   onConfirm,
@@ -46,9 +52,29 @@ export function ConfirmSaveDialog({
             <Text style={styles.label}>รวมทั้งสิ้น (บาท)</Text>
             <Text style={styles.total}>{total}</Text>
 
+            {/*
+              Seller and plate are shown HERE, at the last irreversible step,
+              because both are now per-bill choices: a bill filed to the wrong
+              customer is only recoverable by a void, which stays on the record
+              forever.
+            */}
             <Text style={styles.label}>ผู้ขาย</Text>
             <Text style={styles.seller}>{sellerName}</Text>
+            <Text style={sellerGrade === null ? styles.gradeNone : styles.grade}>
+              {sellerGrade === null ? "ยังไม่ได้จัดเกรด" : `เกรด ${sellerGrade}`}
+            </Text>
+
+            <Text style={styles.label}>ทะเบียนรถ</Text>
+            <Text style={vehicleNo === null ? styles.vehicleNone : styles.vehicle}>
+              {vehicleNo ?? "ไม่ได้ระบุ"}
+            </Text>
           </View>
+
+          {sellerGrade === null ? (
+            <Text style={styles.park}>
+              ผู้ขายรายนี้ยังไม่มีเกรด — บันทึกได้ แต่บิลจะค้างรอสำนักงานกำหนดเกรดก่อนจึงจะส่งเข้าระบบ
+            </Text>
+          ) : null}
 
           <Text style={styles.warn}>
             บันทึกแล้วจะส่งเข้าระบบทันที แก้ไขไม่ได้ — หากผิดต้องยกเลิกบิลและออกใบใหม่
@@ -84,6 +110,14 @@ const styles = StyleSheet.create({
   lines: { fontSize: 34, fontWeight: "900", color: "#0f172a" },
   total: { fontSize: 44, fontWeight: "900", color: "#0f766e" },
   seller: { fontSize: 22, fontWeight: "800", color: "#0f172a" },
+  grade: { fontSize: 15, fontWeight: "800", color: "#0f766e", marginTop: 2 },
+  gradeNone: { fontSize: 15, fontWeight: "900", color: "#b91c1c", marginTop: 2 },
+  vehicle: { fontSize: 22, fontWeight: "800", color: "#0f172a" },
+  vehicleNone: { fontSize: 18, fontWeight: "700", color: "#94a3b8" },
+  park: {
+    fontSize: 13, color: "#7f1d1d", backgroundColor: "#fee2e2", padding: 10,
+    borderRadius: 8, marginTop: 16, fontWeight: "700",
+  },
   warn: {
     fontSize: 13, color: "#78350f", backgroundColor: "#fef3c7", padding: 10,
     borderRadius: 8, marginTop: 16, fontWeight: "600",

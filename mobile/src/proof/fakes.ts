@@ -167,6 +167,11 @@ export class InMemoryStore implements LocalStore {
       if (!all && new Date(row.next_attempt_at).getTime() > now.getTime()) continue;
       row.master_data_missing_at = null;
       row.master_data_code = null;
+      // Cleared for the same reason as in SqliteLocalStore: this transition
+      // retires the parked state, so the text that state produced must not
+      // outlive it. The two stores must not diverge here — the suite runs the
+      // same cases against both and a difference would make one of them a lie.
+      row.last_error = null;
       row.next_attempt_at = now.toISOString();
       released += 1;
     }

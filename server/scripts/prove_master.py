@@ -87,10 +87,24 @@ async def main() -> int:
                                headers={"authorization": f"Bearer {tok_a}"})).json()["sellers"]
         sb = (await client.get(f"{BASE}/sellers",
                                headers={"authorization": f"Bearer {tok_b}"})).json()["sellers"]
-        check("tenant A sees exactly its own seller", len(sa) == 1 and sa[0]["id"] == str(SELLER_A_ID),
-              f"n={len(sa)}")
-        check("seller A carries grade B (selects the price tier)", sa[0]["grade"] == "B",
-              f"grade={sa[0]['grade']}")
+        # Tenant A now has SEVERAL sellers (Phase 2c-6 needs a list to pick from),
+        # so the isolation claim is stated as a SET relation rather than a count:
+        # every id tenant B can see must be invisible to tenant A, and vice
+        # versa. Asserting len(sa) == 1 only ever tested the size of the seed.
+        ids_a = {s["id"] for s in sa}
+        ids_b = {s["id"] for s in sb}
+        check("tenant A sees its own seller", str(SELLER_A_ID) in ids_a, f"n={len(sa)}")
+        check("no seller is visible to BOTH tenants", ids_a.isdisjoint(ids_b),
+              f"overlap={ids_a & ids_b}")
+        by_id = {s["id"]: s for s in sa}
+        check("seller S001 carries grade B (selects the price tier)",
+              by_id[str(SELLER_A_ID)]["grade"] == "B",
+              f"grade={by_id[str(SELLER_A_ID)]['grade']}")
+        # A grade-less seller is a real, seeded state — not a data error. It is
+        # the 424 seller_grade_unset path, and the mobile picker must show it.
+        check("at least one seeded seller has NO grade, and the API says null",
+              any(s["grade"] is None for s in sa),
+              f"grades={sorted(str(s['grade']) for s in sa)}")
         check("tenant B's seller is a different row", sb[0]["id"] != sa[0]["id"])
 
         print("\n=== P4: no token, no data ===")

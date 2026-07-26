@@ -307,6 +307,16 @@ export class SqliteLocalStore implements LocalStore {
    * it rejoins the queue at its WEIGHING position, so if it is the oldest it goes
    * straight back to the head. If the price is still missing it simply parks
    * again on that attempt, without having blocked anything.
+   *
+   * last_error IS CLEARED HERE, and leaving it out was a real defect found on
+   * device (Phase 2c-6). This statement retires the parked state, so the failure
+   * text that state produced — `HTTP 424: {...json...}` — stops describing the
+   * bill the instant it runs. Keeping it made this a HALF-UPDATE: for the length
+   * of the retry the row said "not parked" and "here is why it was parked" at the
+   * same time, and the UI, seeing no parked flag, fell back to rendering that raw
+   * diagnostic in red. Compare markSynced below, which has always cleared
+   * last_error alongside the columns that justified it. The rule is that no
+   * transition may leave behind an error describing a state it just left.
    */
   async releaseMasterDataBlocked(now: Date, all: boolean): Promise<number> {
     const nowIso = now.toISOString();
@@ -315,6 +325,7 @@ export class SqliteLocalStore implements LocalStore {
     const r = await this.db.run(
       `UPDATE local_bills
        SET master_data_missing_at = NULL, master_data_code = NULL,
+           last_error = NULL,
            next_attempt_at = ?
        WHERE master_data_missing_at IS NOT NULL AND sync_state = 'pending'${due}`,
       params,

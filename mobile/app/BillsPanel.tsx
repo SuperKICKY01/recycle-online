@@ -25,6 +25,7 @@ import {
   View,
 } from "react-native";
 
+import { billNotice } from "../src/sync/parkedReason";
 import type { LocalBill, SyncState } from "../src/sync/types";
 import { isVoided, isVoidSettled } from "../src/sync/types";
 import { shopDateTime } from "../src/time/shopTime";
@@ -99,10 +100,31 @@ export function BillsPanel({ visible, bills, busy, blockerId, onClose, onVoid }:
             const voided = isVoided(b);
             const settled = isVoidSettled(b);
             const isBlocker = b.id === blockerId;
+            /*
+              PARKED IS NOT FAILED. A resolvable refusal means the bill is fine,
+              the network is fine, and the office has something to set up — so it
+              is rendered in the calm amber family, never red, never ผิดพลาด.
+
+              This panel deliberately does NOT read b.last_error any more. What a
+              bill says is decided by billNotice, in one pure function that the
+              proof enumerates states over; a condition here was what let the
+              retry window leak the raw 424 body back onto the screen.
+
+              NOT named `reason`: that is the void-reason state above, and
+              shadowing it silently detached the void TextInput from it. Caught by
+              the app typecheck, which is why both programs are run bare.
+            */
+            const notice = billNotice(b);
+            const parked = notice.tone === "parked";
             return (
               <View
                 key={b.id}
-                style={[styles.card, voided && styles.cardVoided, isBlocker && styles.cardBlocker]}
+                style={[
+                  styles.card,
+                  voided && styles.cardVoided,
+                  parked && styles.cardParked,
+                  isBlocker && styles.cardBlocker,
+                ]}
               >
                 {isBlocker ? (
                   <Text style={styles.blockerBanner}>
@@ -112,6 +134,14 @@ export function BillsPanel({ visible, bills, busy, blockerId, onClose, onVoid }:
                 <View style={styles.cardTop}>
                   {voided ? (
                     <Text style={[styles.badge, styles.badgeVoid]}>ยกเลิกแล้ว</Text>
+                  ) : notice.badge !== null ? (
+                    /*
+                      A parked bill's sync_state is still 'pending', so the plain
+                      badge would read รอส่ง — true but misleading: nothing at
+                      the yard will make it send. The badge names WHO it waits
+                      for instead, in the same amber as รอส่ง.
+                    */
+                    <Text style={[styles.badge, styles.badgeParked]}>{notice.badge}</Text>
                   ) : (
                     <Text style={[styles.badge, { backgroundColor: STATE_COLOR[b.sync_state] }]}>
                       {STATE_TH[b.sync_state]}
@@ -147,8 +177,31 @@ export function BillsPanel({ visible, bills, busy, blockerId, onClose, onVoid }:
                   </View>
                 ) : null}
 
-                {b.last_error !== null && !voided ? (
-                  <Text style={styles.err}>ผิดพลาด: {b.last_error}</Text>
+                {/*
+                  THE notice region. One branch, driven entirely by billNotice —
+                  parked text and error text are the same code path here, so
+                  there is no third state for a stale diagnostic to slip through.
+                  The first fix had two conditions and the retry window fell
+                  between them.
+                */}
+                {notice.tone === "parked" ? (
+                  <View style={styles.parkBox}>
+                    {/* 0 = what to fix, 1 = nothing owed by you, 2 = an unknown code. */}
+                    {notice.lines.map((line, i) => (
+                      <Text
+                        key={i}
+                        style={i === 0 ? styles.parkWhat : i === 1 ? styles.parkCalm : styles.parkCode}
+                      >
+                        {line}
+                      </Text>
+                    ))}
+                  </View>
+                ) : notice.tone === "error" ? (
+                  notice.lines.map((line, i) => (
+                    <Text key={i} style={styles.err}>
+                      {line}
+                    </Text>
+                  ))
                 ) : null}
 
                 {!voided && voidingId !== b.id ? (
@@ -223,6 +276,9 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "#e2e8f0",
   },
   cardVoided: { backgroundColor: "#f8fafc", borderColor: "#cbd5e1" },
+  // Amber, matching รอส่ง and the offline strip — the "waiting" family, NOT the
+  // red "something is wrong" family that cardBlocker belongs to.
+  cardParked: { borderColor: "#b45309", backgroundColor: "#fffbeb" },
   cardBlocker: { borderColor: "#b91c1c", borderWidth: 2, backgroundColor: "#fef2f2" },
   blockerBanner: {
     fontSize: 13, fontWeight: "800", color: "#7f1d1d", backgroundColor: "#fee2e2",
@@ -234,6 +290,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3, borderRadius: 6, overflow: "hidden",
   },
   badgeVoid: { backgroundColor: "#475569" },
+  badgeParked: { backgroundColor: "#b45309" },
   doc: { flex: 1, fontSize: 15, fontWeight: "800", color: "#0f172a" },
   total: { fontSize: 20, fontWeight: "900", color: "#0f766e" },
   struck: { textDecorationLine: "line-through", color: "#94a3b8" },
@@ -245,6 +302,13 @@ const styles = StyleSheet.create({
   },
   voidReason: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
   voidState: { fontSize: 12, color: "#475569", marginTop: 4 },
+
+  parkBox: {
+    marginTop: 10, padding: 10, backgroundColor: "#fef3c7", borderRadius: 8,
+  },
+  parkWhat: { fontSize: 14, fontWeight: "800", color: "#78350f" },
+  parkCalm: { fontSize: 12, color: "#78350f", marginTop: 6, fontWeight: "600" },
+  parkCode: { fontSize: 11, color: "#92400e", marginTop: 6, fontWeight: "700" },
 
   voidBtn: {
     marginTop: 12, minHeight: 48, borderRadius: 10, backgroundColor: "#fee2e2",

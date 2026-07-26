@@ -22,7 +22,15 @@
  * Money is never a JS number here; every value is a decimal string.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import {
   addLine,
@@ -44,6 +52,7 @@ import {
   toggleLock,
 } from "../src/cart/entry";
 import type { LockableField, Locks, NumKey } from "../src/cart/entry";
+import { gradePrice } from "../src/cart/sellers";
 import type { Draft, DraftLine } from "../src/cart/types";
 import {
   MONEY_DP,
@@ -52,7 +61,6 @@ import {
   WEIGHT_MAX_INT_DIGITS,
 } from "../src/money/money";
 import type { Product, Seller } from "./api";
-import { listPriceFor } from "./api";
 import { messageFor } from "./messages";
 import type { LineErrorCode } from "./messages";
 import { Numpad } from "./Numpad";
@@ -77,7 +85,16 @@ const FIELD_SCALE: Record<NumField, { dp: number; maxInt: number }> = {
 
 interface Props {
   products: Product[];
-  seller: Seller;
+  /**
+   * The bill's seller, resolved from draft.seller_id against the fetched list.
+   *
+   * NULLABLE (Phase 2c-6): the draft always carries a seller_id, but the id may
+   * not resolve — a draft restored from before the list was fetched, or a seller
+   * this token cannot see. Rendering "-" and carrying on would let the operator
+   * confirm a bill without being able to check WHO it is for, so that state
+   * disables entry and asks for the seller again.
+   */
+  seller: Seller | null;
   draft: Draft;
   locks: Locks;
   busy: boolean;
@@ -85,6 +102,9 @@ interface Props {
   nowIso: () => string;
   onDraftChange: (next: Draft, immediate: boolean) => void;
   onLocksChange: (next: Locks) => void;
+  onPickSeller: () => void;
+  onVehicleChange: (raw: string) => void;
+  onVehicleBlur: () => void;
   onSubmit: () => void;
 }
 
@@ -98,6 +118,9 @@ export function CartScreen({
   nowIso,
   onDraftChange,
   onLocksChange,
+  onPickSeller,
+  onVehicleChange,
+  onVehicleBlur,
   onSubmit,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -111,7 +134,10 @@ export function CartScreen({
   const total = cartTotal(draft);
 
   const product = products.find((p) => p.id === form.product_id) ?? null;
-  const listPrice = product ? listPriceFor(product, seller.grade) : null;
+  // No seller, or a seller with no grade, means NO default price — the field
+  // stays blank and the operator types what was agreed. See src/cart/sellers.ts.
+  const grade = seller?.grade ?? null;
+  const listPrice = product ? gradePrice(product.prices, grade) : null;
 
   useEffect(
     () => () => {
@@ -133,7 +159,7 @@ export function CartScreen({
     putForm(
       onProductChange(form, locks, {
         productId: p.id,
-        listPrice: listPriceFor(p, seller.grade) ?? "",
+        listPrice: gradePrice(p.prices, grade) ?? "",
       }),
       true,
     );
@@ -239,7 +265,10 @@ export function CartScreen({
     );
   };
 
-  const canSave = lines.length > 0 && !busy;
+  // An unresolvable seller blocks entry AND saving: a bill nobody can identify
+  // must not be committed, and every price on it would be blank anyway.
+  const sellerKnown = seller !== null;
+  const canSave = lines.length > 0 && !busy && sellerKnown;
   const offTier = priceIsOffTier(form.price, listPrice);
 
   return (
@@ -249,6 +278,70 @@ export function CartScreen({
         contentContainerStyle={styles.scrollBody}
         keyboardShouldPersistTaps="handled"
       >
+        {/* ---------------------------------------------- who and which truck */}
+        <Pressable
+          style={[styles.sellerBox, !sellerKnown && styles.sellerBoxBad]}
+          onPress={onPickSeller}
+          disabled={busy}
+        >
+          <View style={styles.sellerTop}>
+            <Text style={styles.label}>ผู้ขาย</Text>
+            <Text style={styles.changeBtn}>{sellerKnown ? "เปลี่ยน ›" : "เลือก ›"}</Text>
+          </View>
+          {seller !== null ? (
+            <>
+              <Text style={styles.sellerName} numberOfLines={1}>
+                {seller.name}
+              </Text>
+              <Text style={styles.sellerMeta}>
+                {seller.code} ·{" "}
+                {seller.grade === null ? (
+                  <Text style={styles.noGrade}>ยังไม่ได้จัดเกรด</Text>
+                ) : (
+                  `เกรด ${seller.grade}`
+                )}
+              </Text>
+              {seller.grade === null ? (
+                <Text style={styles.sellerWarn}>
+                  ไม่มีราคาตั้งต้นให้ และบิลจะค้างรอสำนักงานกำหนดเกรดก่อนจึงจะส่งได้
+                </Text>
+              ) : null}
+            </>
+          ) : (
+            <Text style={styles.sellerWarn}>
+              ไม่พบข้อมูลผู้ขายของบิลนี้ในรายชื่อ — แตะเพื่อเลือกผู้ขายอีกครั้ง
+              (บันทึกบิลไม่ได้จนกว่าจะเลือก)
+            </Text>
+          )}
+        </Pressable>
+
+        {/*
+          vehicle_no. FREE TEXT, so the OS keyboard is correct here — the same
+          exception the void reason takes. The Phase 2c-4 numpad rule exists
+          because a pasted or auto-corrected value in a MONEY field becomes
+          money; a plate is an identifier and is never computed with.
+
+          Written through the debounced draft save like the other form fields,
+          and flushed on blur so the last keystrokes are on disk before the
+          operator's attention moves on.
+        */}
+        <View style={styles.fieldBlock}>
+          <Text style={styles.label}>ทะเบียนรถ (ถ้ามี)</Text>
+          <TextInput
+            style={styles.vehicleInput}
+            value={draft.vehicle_no ?? ""}
+            onChangeText={onVehicleChange}
+            onBlur={onVehicleBlur}
+            onEndEditing={onVehicleBlur}
+            placeholder="เช่น 70-1234 หรือ 1กก 5678"
+            placeholderTextColor="#94a3b8"
+            autoCorrect={false}
+            autoCapitalize="characters"
+            maxLength={20}
+            editable={!busy}
+          />
+        </View>
+
         <Text style={styles.section}>
           {editingId === null ? "เพิ่มรายการ" : "แก้ไขรายการ"}
         </Text>
@@ -261,11 +354,11 @@ export function CartScreen({
               key={p.id}
               style={[styles.product, isOn && styles.productActive]}
               onPress={() => selectProduct(p)}
-              disabled={busy}
+              disabled={busy || !sellerKnown}
             >
               <Text style={[styles.productName, isOn && styles.onDark]}>{p.name}</Text>
               <Text style={[styles.productMeta, isOn && styles.onDark]}>
-                {p.code} · {listPriceFor(p, seller.grade) ?? "-"} บาท/{p.uom_code}
+                {p.code} · {gradePrice(p.prices, grade) ?? "ไม่มีราคาตามเกรด"} บาท/{p.uom_code}
               </Text>
             </Pressable>
           );
@@ -332,9 +425,9 @@ export function CartScreen({
 
         <View style={styles.row}>
           <Pressable
-            style={[styles.addBtn, styles.grow, !candidate.ok && styles.dim]}
+            style={[styles.addBtn, styles.grow, (!candidate.ok || !sellerKnown) && styles.dim]}
             onPress={commitLine}
-            disabled={busy}
+            disabled={busy || !sellerKnown}
           >
             <Text style={styles.addText}>
               {editingId === null ? "เพิ่มลงบิล" : "อัปเดตรายการ"}
@@ -504,6 +597,29 @@ const styles = StyleSheet.create({
   readRow: { flexDirection: "row", gap: 12, marginTop: 14 },
   col: { flex: 1 },
   grow: { flex: 1 },
+
+  sellerBox: {
+    backgroundColor: "#fff", borderRadius: 12, padding: 12, borderWidth: 2,
+    borderColor: "#0f766e", minHeight: TAP_MIN, justifyContent: "center",
+  },
+  sellerBoxBad: { borderColor: "#b91c1c", backgroundColor: "#fef2f2" },
+  sellerTop: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+  },
+  sellerName: { fontSize: 20, fontWeight: "900", color: "#0f172a", marginTop: 2 },
+  sellerMeta: { fontSize: 13, color: "#64748b", marginTop: 2, fontWeight: "600" },
+  noGrade: { color: "#b91c1c", fontWeight: "800" },
+  sellerWarn: {
+    fontSize: 12, color: "#7f1d1d", backgroundColor: "#fee2e2", borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 6, marginTop: 8, fontWeight: "700",
+  },
+  changeBtn: { fontSize: 15, fontWeight: "900", color: "#0f766e" },
+
+  vehicleInput: {
+    borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, paddingHorizontal: 14,
+    minHeight: TAP_MIN, fontSize: 22, fontWeight: "800", color: "#0f172a",
+    backgroundColor: "#fff", marginTop: 6,
+  },
 
   product: {
     borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, padding: 12,

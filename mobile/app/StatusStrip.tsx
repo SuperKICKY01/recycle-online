@@ -14,6 +14,7 @@
  */
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { parkedSummary } from "../src/sync/parkedReason";
 import { shopTime } from "../src/time/shopTime";
 
 export interface SyncStatus {
@@ -36,13 +37,21 @@ export interface SyncStatus {
    */
   blocked: { behind: number; forMs: number; attempts: number } | null;
   /**
-   * Bills parked because the server said master data is missing (no price for
-   * this grade). A DIFFERENT problem from every other state here: the network is
-   * fine, the bill is fine, and waiting will not fix it — someone must set the
-   * price in the back office. So it gets its own message and its own action,
-   * never the amber "we'll send it later" wording, which would be a lie.
+   * Bills parked because the server said master data is missing. A DIFFERENT
+   * problem from every other state here: the network is fine, the bill is fine,
+   * and waiting will not fix it — someone must set something up in the back
+   * office. So it gets its own message and its own action, never the amber
+   * "we'll send it later" wording, which would be a lie.
    */
   waitingOnMasterData: number;
+  /**
+   * The server's `code` for each parked bill. Carried instead of just the count
+   * because the two causes need DIFFERENT things from the office, and this strip
+   * used to hardcode the price wording — so a bill parked on a seller with no
+   * GRADE told the office to go and set a price, which is not what releases it.
+   * Codes only; the response body never comes up here.
+   */
+  masterDataCodes: readonly string[];
   onRetryMasterData: () => void;
 }
 
@@ -67,6 +76,7 @@ export function StatusStrip({
   lastSyncedAt,
   blocked,
   waitingOnMasterData,
+  masterDataCodes,
   onRetryMasterData,
 }: SyncStatus) {
   let tone = TONES.idle;
@@ -91,13 +101,15 @@ export function StatusStrip({
       ` — ค้างหน้าคิวจนอีก ${String(blocked.behind)} ใบส่งไม่ได้ ต้องติดต่อฝ่ายสนับสนุน`;
   } else if (waitingOnMasterData > 0) {
     // Ranked above `failed` on purpose: this one is time-sensitive and cheap to
-    // fix. Staff are often still at the yard, and the office can add the price in
-    // seconds — whereas a malformed bill needs someone to sit down and correct
-    // it. Say what to do, not what went wrong.
+    // fix. Staff are often still at the yard, and the office can act in seconds —
+    // whereas a malformed bill needs someone to sit down and correct it. Say what
+    // to do, not what went wrong.
+    //
+    // Amber, not red: parking is a WAITING state. The wording now comes from the
+    // server's code (parkedSummary) rather than being hardcoded to the price
+    // case, which was wrong for every bill parked on a grade-less seller.
     tone = TONES.warn;
-    message =
-      `${String(waitingOnMasterData)} ใบรอราคาสินค้า — ยังไม่ได้ตั้งราคาสำหรับเกรดของผู้ขายรายนี้` +
-      ` บิลถูกเก็บไว้ครบ ให้สำนักงานตั้งราคาแล้วกดส่งอีกครั้ง`;
+    message = `${parkedSummary(waitingOnMasterData, masterDataCodes)} — ไม่ต้องชั่งใหม่`;
     action = "ส่งอีกครั้ง";
   } else if (failed > 0) {
     tone = TONES.bad;
