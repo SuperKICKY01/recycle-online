@@ -66,6 +66,42 @@ must persist before red, measured from `first_server_error_at` so time merely
 spent offline never counts toward it. The offline/amber state has no timer at all;
 it is honest for as long as the network is down.
 
+## Amendment: a COUNT may escalate, but must never classify
+
+Read this before concluding the code contradicts the paragraph above.
+
+`assessQueue` now raises the red alarm on EITHER of two triggers: the refusal has
+persisted past `POISON_ALARM_MS`, **or** the reachable server has refused the head
+`POISON_ALARM_ATTEMPTS` times in a row. That is not a reversal of "not attempt
+count", because the two statements are about different questions:
+
+- **Classifying** a jam as offline vs poisoned — still decided SOLELY by whether
+  the server answered. Unchanged, and it is what the paragraph above is about.
+- **Escalating** a head that is ALREADY classified poisoned — may use a count.
+
+The clock alone assumed a poisoned bill takes time to become obvious. That holds
+only while the backoff is short: a fast-answering server, a device retrying since
+before a restart, or a backoff already at its cap can burn through many refusals
+inside one threshold window. Each of those refusals is direct evidence the bill
+will not go, so waiting out a timer while holding five of them is simply a later
+alarm.
+
+**The property that makes the count safe is that it RESETS.**
+`server_error_attempts` is incremented only on a server-answered bounce and set
+back to 0 by any transport-level one, exactly like `first_server_error_at`. An
+offline yard therefore cannot accumulate it, however long it is down. Using
+`attempt_count` instead would reintroduce precisely the cry-wolf failure this
+lesson warns about: it counts every attempt of any kind and never resets, so a
+device that spent a night offline would arrive at morning with a large count, no
+server error at all, and a red alarm.
+
+If you ever move this counter, keep the reset. The reset is the lesson.
+
+**Where the amendment is proven.** `proveSync.ts` CASE 9d, on both stores: the
+alarm fires at 30s elapsed against a 90s clock threshold (so it was the count, not
+the clock), the head is still never skipped, and — the disproof — an OFFLINE head
+bounced 10 times with `serverErrorAttempts` still 0 and stayed calm amber.
+
 ## How to apply
 
 1. Any strict in-order queue with no-give-up retry can deadlock behind a

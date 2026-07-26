@@ -52,6 +52,41 @@ overnight still arrives after today's bills and still takes a later number.
 `doc_no` is a gap-free arrival sequence and nothing more. **Never present it as
 chronological, sort a report by it, or infer "which came first" from it.**
 
+### The exemption, and its bound
+
+There is exactly ONE deliberate exception to head-of-line ordering, added when
+resolvable rejections were split out (see [[unavailable-is-not-rejected]]):
+
+> **Ordering holds within the SENDABLE queue. A bill parked on missing master
+> data is exempt from it.**
+
+A bill the server refuses with 424 (no price tier for the seller's grade) leaves
+the sendable queue entirely. Bills weighed after it are then sent first, so when
+the office adds the price and the parked bill finally syncs, it receives a HIGHER
+`doc_no` than loads weighed later.
+
+That is a real weakening and it is accepted, for a reason that has to be stated
+rather than assumed: the alternative is keeping it at the head, where one
+un-priced product stops the ENTIRE yard from syncing until the office acts. The
+exemption trades one bill's number for the whole shop's ability to record sales.
+
+It is not the silent auto-skip [[queue-jam-must-be-visible]] forbids. That
+lesson's objection is *"and nobody is told"* — here the bill sits in a named,
+operator-visible state carrying the server's own reason code, with an explicit
+retry. Visible reordering and silent reordering are different things.
+
+**Hold the bound.** The exemption covers parked bills and nothing else; every
+bill that stays in the sendable queue keeps weighing order. If a future change
+makes some other bill skippable, that is a new exception needing its own
+argument — do not let this one generalise into "ordering is best-effort".
+
+**Where the exemption is proven.** `proveSync.ts` CASE 10b, on both stores,
+asserts BOTH halves: the parked bill weighed first takes the highest `doc_no`
+(A=3), and the two bills that never left the queue keep their order (B=1 < C=2).
+The second assertion is what makes it a bounded exception rather than a general
+loss — without it the case would pass just as happily if parking had scrambled
+everything.
+
 ## 2. The device clock is measurably wrong
 
 Same device, four bills, `server_received_at - device_created_at`:
