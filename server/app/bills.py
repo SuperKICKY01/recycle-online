@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from .auth import Principal, get_principal
+from .config import SHOP_TIMEZONE
 from .db import tenant_connection
 
 router = APIRouter()
@@ -108,7 +109,19 @@ _BE_OFFSET = 543  # Gregorian year + 543 = Buddhist-era year
 
 
 def _be_year(when: datetime) -> int:
-    return when.year + _BE_OFFSET
+    """The Buddhist-era year of `when` AS THE SHOP RECKONS IT.
+
+    Converted into the shop's timezone FIRST. Deriving this from the UTC date put
+    the wrong year on a legal document for seven hours either side of new year: a
+    bill received at 2027-01-01 00:30 in Bangkok is still 2026-12-31 in UTC, so it
+    took be_year 2569 instead of 2570. Worse than a cosmetic slip, because
+    doc_no_counters is keyed on (tenant_id, be_year) — the bill would also have
+    continued the PREVIOUS year's sequence, so the new year's numbering would not
+    start at 1 and two business years would share one counter.
+
+    `when` must be timezone-aware; the only caller passes datetime.now(utc).
+    """
+    return when.astimezone(SHOP_TIMEZONE).year + _BE_OFFSET
 
 
 def _line_amount(net_weight: Decimal, unit_price: Decimal) -> Decimal:

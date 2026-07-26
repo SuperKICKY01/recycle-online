@@ -1,11 +1,40 @@
 """Runtime configuration, loaded from the environment (.env)."""
 from __future__ import annotations
 
+import datetime as dt
 import os
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# ---------------------------------------------------------------------------
+# SHOP TIMEZONE — the ONE place a timezone is defined server-side.
+#
+# A business day belongs to the SHOP, not to whichever device or server happens
+# to handle the request. doc_no's Buddhist-era year and the SRS 3.3 daily reports
+# must not change depending on who opens them or where the server runs, so every
+# shop-local date derives from here and from nowhere else.
+#
+# NOTHING may read a timezone from anywhere else — not the server's local clock,
+# not os.environ["TZ"], not a device-supplied value. If you need a shop-local
+# date, convert with SHOP_TIMEZONE.
+#
+# TEMPORARY SHAPE: one constant for all tenants. This BECOMES A PER-TENANT
+# SETTING (a timezone column on `tenants`) once there is a shop outside
+# Thailand; this constant is then the default, not the answer.
+#
+# WHY A FIXED OFFSET rather than ZoneInfo("Asia/Bangkok"): Thailand has observed
+# UTC+7 with no daylight saving since 1920, so the two are identical here, and a
+# fixed offset needs no IANA database. That is not a theoretical concern —
+# verified on this dev box, zoneinfo raises ZoneInfoNotFoundError for
+# "Asia/Bangkok" because Windows ships no IANA db and `tzdata` is not installed.
+# When this becomes per-tenant it MUST move to real ZoneInfo (and `tzdata` must
+# join the dependencies for Windows dev), because a zone that observes daylight
+# saving cannot be expressed as a fixed offset.
+# ---------------------------------------------------------------------------
+SHOP_TIMEZONE_NAME: str = "Asia/Bangkok"
+SHOP_TIMEZONE: dt.timezone = dt.timezone(dt.timedelta(hours=7), SHOP_TIMEZONE_NAME)
 
 # The app connects ONLY as the RLS-bound application role. It must never use the
 # owner/migration URL at runtime.

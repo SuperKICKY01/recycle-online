@@ -27,6 +27,7 @@ import {
 
 import type { LocalBill, SyncState } from "../src/sync/types";
 import { isVoided, isVoidSettled } from "../src/sync/types";
+import { shopDateTime } from "../src/time/shopTime";
 
 const STATE_TH: Record<SyncState, string> = {
   pending: "รอส่ง",
@@ -122,9 +123,15 @@ export function BillsPanel({ visible, bills, busy, blockerId, onClose, onVoid }:
                   </Text>
                 </View>
 
+                {/*
+                  created_at is a UTC instant; shopDateTime is the only thing
+                  allowed to turn it into a wall clock. This line used to slice
+                  the ISO string, which printed UTC verbatim — a load weighed
+                  15:16 in Bangkok showed as 08:16, and for anything weighed
+                  before 07:00 the DATE was a day behind too.
+                */}
                 <Text style={styles.meta}>
-                  {b.payload.items.length} รายการ · {b.created_at.slice(0, 10)}{" "}
-                  {b.created_at.slice(11, 16)}
+                  {b.payload.items.length} รายการ · {shopDateTime(b.created_at)}
                 </Text>
 
                 {voided ? (

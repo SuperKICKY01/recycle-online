@@ -16,7 +16,8 @@
     "prove:money": "npm run build && node dist/proof/proveMoney.js",
     "prove:cart": "npm run build && node dist/proof/proveCart.js",
     "prove:entry": "npm run build && node dist/proof/proveEntry.js",
-    "prove:void": "npm run build && node dist/proof/proveVoid.js"
+    "prove:void": "npm run build && node dist/proof/proveVoid.js",
+    "prove:time": "npm run build && node dist/proof/proveTime.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

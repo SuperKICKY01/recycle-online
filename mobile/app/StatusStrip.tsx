@@ -14,6 +14,8 @@
  */
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { shopTime } from "../src/time/shopTime";
+
 export interface SyncStatus {
   /** null = not attempted since launch, so unknown rather than assumed good. */
   online: boolean | null;
@@ -43,12 +45,6 @@ export interface SyncStatus {
   waitingOnMasterData: number;
   onRetryMasterData: () => void;
 }
-
-const hhmm = (iso: string): string => {
-  const d = new Date(iso);
-  const p = (n: number): string => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}`;
-};
 
 interface Tone {
   bg: string;
@@ -133,8 +129,14 @@ export function StatusStrip({
           <Text style={styles.actionText}>{action}</Text>
         </Pressable>
       ) : null}
+      {/*
+        shopTime, not a local getHours()/getMinutes() pair. That happened to be
+        RIGHT on a phone set to Bangkok and silently wrong on one that is not, so
+        it is routed through the same helper as the bill list: one code path, and
+        the answer no longer depends on the handset.
+      */}
       {lastSyncedAt !== null && action === null ? (
-        <Text style={[styles.time, { color: tone.fg }]}>ส่งล่าสุด {hhmm(lastSyncedAt)}</Text>
+        <Text style={[styles.time, { color: tone.fg }]}>ส่งล่าสุด {shopTime(lastSyncedAt)}</Text>
       ) : null}
     </View>
   );
