@@ -1,7 +1,13 @@
 # Recycle Online — server
 
-FastAPI + PostgreSQL backend. **Phase 1a status: database schema + tenant
-isolation only.** No API/web framework yet (that is a later phase).
+FastAPI + PostgreSQL backend, and the single source of truth for business rules.
+
+**Status: running API.** Login (`/auth/login`), purchase bills (create, read,
+list, void), and read-only master data (`/products`, `/sellers`), over a schema
+with per-tenant row-level security. Every request is scoped to its token's tenant
+via `SET LOCAL`. Five proof scripts in `scripts/` exercise the real paths against
+a live database — tenant isolation, auth, master data, bills, and the
+master-data rejection gate.
 
 ## Local setup
 
