@@ -33,9 +33,17 @@ Decimal.set({ rounding: Decimal.ROUND_HALF_UP, precision: 50 });
 export const WEIGHT_DP = 3;
 export const MONEY_DP = 2;
 
-/** numeric(14,3) holds at most 11 integer digits; numeric(14,2) at most 12. */
-const WEIGHT_MAX_INT_DIGITS = 11;
-const MONEY_MAX_INT_DIGITS = 12;
+/**
+ * numeric(14,3) holds at most 11 integer digits; numeric(14,2) at most 12.
+ *
+ * Exported as of Phase 2c-4 so the in-app numpad refuses over-long input using
+ * the SAME bound this module validates against. Hardcoding 11/12 in the UI
+ * would be two copies of one fact, free to drift apart the day a column is
+ * widened — and the drift would show up as a keypad that silently refuses
+ * values the server would have accepted. No behaviour here changes.
+ */
+export const WEIGHT_MAX_INT_DIGITS = 11;
+export const MONEY_MAX_INT_DIGITS = 12;
 
 export type FieldError =
   | "empty"

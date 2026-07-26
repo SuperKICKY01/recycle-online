@@ -1,12 +1,11 @@
 /**
  * The cart: many line items on ONE bill, with the draft persisted as it is
- * edited.
+ * edited, and (Phase 2c-4) entry-screen safety around the fields themselves.
  *
  * Designed for the yard, not for a desk — outdoors, one-handed, dirty hands.
- * Concretely that means: every tappable thing is at least TAP_MIN tall, the
- * numbers that carry money are large, and the running total plus the line count
- * live in a bar pinned to the bottom of the screen so they are readable without
- * scrolling, whatever is on screen above.
+ * Every tappable thing is at least TAP_MIN tall, the numbers that carry money
+ * are large, and the running total plus the line count live in a bar pinned to
+ * the bottom so they are readable without scrolling.
  *
  * DELETE IS UNDOABLE, CLEAR-ALL IS CONFIRMED. Deliberately not the same:
  * a confirm dialog on every line delete is tapped through reflexively within a
@@ -15,50 +14,77 @@
  * the accident. Clearing the whole cart is rare, and losing ten lines is not
  * something an undo banner should be the only guard for, so that one asks.
  *
- * Money is never a JS number here; every value is a decimal string from
- * src/money via src/cart.
+ * ENTRY SAFETY (2c-4): changing product clears the stale weights, tare and
+ * price can be locked to survive that, gross can never be, and all numeric
+ * entry goes through the in-app pad rather than the OS keyboard. The rules
+ * themselves live in src/cart/entry.ts and are proven headless.
+ *
+ * Money is never a JS number here; every value is a decimal string.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
   addLine,
   buildLine,
   cartTotal,
+  clearLines,
   orderedLines,
   removeLine,
   replaceLine,
   restoreLine,
-  clearLines,
 } from "../src/cart/cart";
 import type { LineField } from "../src/cart/cart";
+import {
+  afterLineCommitted,
+  applyKey,
+  onProductChange,
+  priceIsOffTier,
+  releaseOnClear,
+  toggleLock,
+} from "../src/cart/entry";
+import type { LockableField, Locks, NumKey } from "../src/cart/entry";
 import type { Draft, DraftLine } from "../src/cart/types";
-import { emptyForm } from "../src/cart/types";
+import {
+  MONEY_DP,
+  MONEY_MAX_INT_DIGITS,
+  WEIGHT_DP,
+  WEIGHT_MAX_INT_DIGITS,
+} from "../src/money/money";
 import type { Product, Seller } from "./api";
 import { listPriceFor } from "./api";
 import { messageFor } from "./messages";
 import type { LineErrorCode } from "./messages";
+import { Numpad } from "./Numpad";
 
 const TAP_MIN = 56;
 const UNDO_MS = 8000;
+
+/** The three numeric fields. Only two of them appear in LockableField. */
+type NumField = "gross" | "tare" | "price";
+
+const FIELD_LABEL: Record<NumField, string> = {
+  gross: "น้ำหนักรวม",
+  tare: "น้ำหนักภาชนะ",
+  price: "ราคา/หน่วย",
+};
+
+const FIELD_SCALE: Record<NumField, { dp: number; maxInt: number }> = {
+  gross: { dp: WEIGHT_DP, maxInt: WEIGHT_MAX_INT_DIGITS },
+  tare: { dp: WEIGHT_DP, maxInt: WEIGHT_MAX_INT_DIGITS },
+  price: { dp: MONEY_DP, maxInt: MONEY_MAX_INT_DIGITS },
+};
 
 interface Props {
   products: Product[];
   seller: Seller;
   draft: Draft;
+  locks: Locks;
   busy: boolean;
   newLineId: () => string;
   nowIso: () => string;
-  /** `immediate` writes through at once; otherwise the caller may debounce. */
   onDraftChange: (next: Draft, immediate: boolean) => void;
+  onLocksChange: (next: Locks) => void;
   onSubmit: () => void;
 }
 
@@ -66,15 +92,18 @@ export function CartScreen({
   products,
   seller,
   draft,
+  locks,
   busy,
   newLineId,
   nowIso,
   onDraftChange,
+  onLocksChange,
   onSubmit,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const [undo, setUndo] = useState<DraftLine | null>(null);
+  const [active, setActive] = useState<NumField | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const form = draft.form;
@@ -91,16 +120,25 @@ export function CartScreen({
     [],
   );
 
-  const setForm = (patch: Partial<typeof form>): void => {
-    onDraftChange({ ...draft, form: { ...form, ...patch }, updated_at: nowIso() }, false);
+  const putForm = (next: typeof form, immediate = false): void => {
+    onDraftChange({ ...draft, form: next, updated_at: nowIso() }, immediate);
   };
 
+  /**
+   * Product changed. The stale-weight rule lives in entry.onProductChange —
+   * gross always clears, tare survives only if locked, price re-defaults to the
+   * new tier unless locked.
+   */
   const selectProduct = (p: Product): void => {
-    // Price defaults from the seller's grade tier but stays editable.
-    setForm({ product_id: p.id, price: listPriceFor(p, seller.grade) ?? "" });
+    putForm(
+      onProductChange(form, locks, {
+        productId: p.id,
+        listPrice: listPriceFor(p, seller.grade) ?? "",
+      }),
+      true,
+    );
   };
 
-  /** The single source of truth for "is this line valid" — same code the proof runs. */
   const candidate = useMemo(
     () =>
       buildLine({
@@ -123,6 +161,12 @@ export function CartScreen({
     return messageFor(candidate.error as LineErrorCode);
   };
 
+  const pressKey = (key: NumKey): void => {
+    if (active === null) return;
+    const { dp, maxInt } = FIELD_SCALE[active];
+    putForm({ ...form, [active]: applyKey(form[active], key, dp, maxInt) });
+  };
+
   const commitLine = (): void => {
     setTouched(true);
     if (!candidate.ok) return;
@@ -130,24 +174,23 @@ export function CartScreen({
       editingId === null
         ? addLine(draft, { ...candidate.line, id: newLineId() }, nowIso())
         : replaceLine(draft, editingId, candidate.line, nowIso());
-    onDraftChange({ ...next, form: emptyForm() }, true);
+    // Locked fields carry to the next line; everything else resets.
+    onDraftChange({ ...next, form: afterLineCommitted(form, locks) }, true);
     setEditingId(null);
     setTouched(false);
+    setActive(null);
   };
 
   const startEdit = (l: DraftLine): void => {
     setEditingId(l.id);
     setTouched(false);
-    onDraftChange(
+    setActive(null);
+    putForm(
       {
-        ...draft,
-        form: {
-          product_id: l.product_id,
-          gross: l.gross_weight,
-          tare: l.tare_weight,
-          price: l.unit_price,
-        },
-        updated_at: nowIso(),
+        product_id: l.product_id,
+        gross: l.gross_weight,
+        tare: l.tare_weight,
+        price: l.unit_price,
       },
       true,
     );
@@ -156,7 +199,8 @@ export function CartScreen({
   const cancelEdit = (): void => {
     setEditingId(null);
     setTouched(false);
-    onDraftChange({ ...draft, form: emptyForm(), updated_at: nowIso() }, true);
+    setActive(null);
+    putForm(afterLineCommitted(form, locks), true);
   };
 
   const deleteLine = (l: DraftLine): void => {
@@ -169,7 +213,6 @@ export function CartScreen({
 
   const undoDelete = (): void => {
     if (undo === null) return;
-    // restoreLine puts it back at its original seq, so the order is unchanged.
     onDraftChange(restoreLine(draft, undo, nowIso()), true);
     setUndo(null);
     if (undoTimer.current) clearTimeout(undoTimer.current);
@@ -186,8 +229,10 @@ export function CartScreen({
           style: "destructive",
           onPress: () => {
             onDraftChange(clearLines(draft, nowIso()), true);
+            onLocksChange(releaseOnClear()); // locks end with the bill
             setEditingId(null);
             setUndo(null);
+            setActive(null);
           },
         },
       ],
@@ -195,6 +240,7 @@ export function CartScreen({
   };
 
   const canSave = lines.length > 0 && !busy;
+  const offTier = priceIsOffTier(form.price, listPrice);
 
   return (
     <View style={styles.fill}>
@@ -203,23 +249,22 @@ export function CartScreen({
         contentContainerStyle={styles.scrollBody}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ------------------------------------------------- entry form -- */}
         <Text style={styles.section}>
           {editingId === null ? "เพิ่มรายการ" : "แก้ไขรายการ"}
         </Text>
 
         <Text style={styles.label}>สินค้า</Text>
         {products.map((p) => {
-          const active = p.id === form.product_id;
+          const isOn = p.id === form.product_id;
           return (
             <Pressable
               key={p.id}
-              style={[styles.product, active && styles.productActive]}
+              style={[styles.product, isOn && styles.productActive]}
               onPress={() => selectProduct(p)}
               disabled={busy}
             >
-              <Text style={[styles.productName, active && styles.onDark]}>{p.name}</Text>
-              <Text style={[styles.productMeta, active && styles.onDark]}>
+              <Text style={[styles.productName, isOn && styles.onDark]}>{p.name}</Text>
+              <Text style={[styles.productMeta, isOn && styles.onDark]}>
                 {p.code} · {listPriceFor(p, seller.grade) ?? "-"} บาท/{p.uom_code}
               </Text>
             </Pressable>
@@ -227,34 +272,50 @@ export function CartScreen({
         })}
         {errorFor("product") ? <Text style={styles.err}>{errorFor("product")}</Text> : null}
 
-        <View style={styles.row}>
-          <View style={styles.col}>
-            <Text style={styles.label}>น้ำหนักรวม</Text>
-            <TextInput
-              style={styles.input}
-              value={form.gross}
-              onChangeText={(v) => setForm({ gross: v })}
-              keyboardType="decimal-pad"
-              placeholder="0.000"
-              editable={!busy}
-            />
-          </View>
-          <View style={styles.col}>
-            <Text style={styles.label}>น้ำหนักภาชนะ</Text>
-            <TextInput
-              style={styles.input}
-              value={form.tare}
-              onChangeText={(v) => setForm({ tare: v })}
-              keyboardType="decimal-pad"
-              placeholder="0.000"
-              editable={!busy}
-            />
-          </View>
-        </View>
+        {/*
+          gross passes NO `lockable` prop, so no lock control is rendered for it
+          — the UI mirrors the type, where LockableField has no "gross" member.
+        */}
+        <NumericField
+          field="gross"
+          value={form.gross}
+          active={active === "gross"}
+          onPress={() => setActive("gross")}
+          disabled={busy}
+        />
         {errorFor("gross") ? <Text style={styles.err}>{errorFor("gross")}</Text> : null}
+
+        <NumericField
+          field="tare"
+          value={form.tare}
+          active={active === "tare"}
+          lockable="tare"
+          locked={locks.tare}
+          onToggleLock={() => onLocksChange(toggleLock(locks, "tare"))}
+          onPress={() => setActive("tare")}
+          disabled={busy}
+        />
         {errorFor("tare") ? <Text style={styles.err}>{errorFor("tare")}</Text> : null}
 
-        <View style={styles.row}>
+        <NumericField
+          field="price"
+          value={form.price}
+          active={active === "price"}
+          lockable="price"
+          locked={locks.price}
+          onToggleLock={() => onLocksChange(toggleLock(locks, "price"))}
+          onPress={() => setActive("price")}
+          disabled={busy}
+        />
+        {errorFor("price") ? <Text style={styles.err}>{errorFor("price")}</Text> : null}
+        {offTier ? (
+          <Text style={styles.note}>
+            ราคาถูกแก้จากราคาตามเกรด ({listPrice})
+            {locks.price ? " — ราคานี้ค้างไว้จากสินค้าก่อนหน้า ตรวจสอบก่อนบันทึก" : ""}
+          </Text>
+        ) : null}
+
+        <View style={styles.readRow}>
           <View style={styles.col}>
             <Text style={styles.label}>น้ำหนักสุทธิ</Text>
             <Text style={styles.computed}>
@@ -262,24 +323,12 @@ export function CartScreen({
             </Text>
           </View>
           <View style={styles.col}>
-            <Text style={styles.label}>ราคา/หน่วย</Text>
-            <TextInput
-              style={styles.input}
-              value={form.price}
-              onChangeText={(v) => setForm({ price: v })}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              editable={!busy}
-            />
+            <Text style={styles.label}>เป็นเงิน</Text>
+            <Text style={styles.lineAmount}>
+              {candidate.ok ? candidate.line.amount : "—"}
+            </Text>
           </View>
         </View>
-        {errorFor("price") ? <Text style={styles.err}>{errorFor("price")}</Text> : null}
-        {listPrice !== null && form.price !== "" && form.price !== listPrice ? (
-          <Text style={styles.note}>ราคาถูกแก้จากราคาตามเกรด ({listPrice})</Text>
-        ) : null}
-
-        <Text style={styles.label}>เป็นเงิน</Text>
-        <Text style={styles.lineAmount}>{candidate.ok ? candidate.line.amount : "—"}</Text>
 
         <View style={styles.row}>
           <Pressable
@@ -298,7 +347,6 @@ export function CartScreen({
           ) : null}
         </View>
 
-        {/* ----------------------------------------------------- lines -- */}
         {lines.length > 0 ? (
           <View style={styles.linesHead}>
             <Text style={styles.section}>รายการในบิล ({lines.length})</Text>
@@ -339,7 +387,6 @@ export function CartScreen({
         ))}
       </ScrollView>
 
-      {/* ------------------------------------------------ undo banner -- */}
       {undo !== null ? (
         <View style={styles.undoBar}>
           <Text style={styles.undoText} numberOfLines={1}>
@@ -351,7 +398,17 @@ export function CartScreen({
         </View>
       ) : null}
 
-      {/* --------- pinned summary: never scrolls out of sight ---------- */}
+      {active !== null ? (
+        <Numpad
+          fieldLabel={FIELD_LABEL[active]}
+          value={form[active]}
+          net={candidate.ok ? candidate.line.net_weight : "—"}
+          amount={candidate.ok ? candidate.line.amount : "—"}
+          onKey={pressKey}
+          onDone={() => setActive(null)}
+        />
+      ) : null}
+
       <View style={styles.totalBar}>
         <View>
           <Text style={styles.totalLabel}>{lines.length} รายการ</Text>
@@ -369,13 +426,82 @@ export function CartScreen({
   );
 }
 
+/**
+ * One numeric field. Rendered as Text inside a Pressable, never a TextInput —
+ * that is what removes the OS keyboard and, with it, paste.
+ *
+ * `lockable` is typed LockableField, so a caller cannot pass "gross": the lock
+ * control is unreachable for it by the same type that makes the lock state
+ * unrepresentable.
+ */
+function NumericField({
+  field,
+  value,
+  active,
+  lockable,
+  locked = false,
+  onToggleLock,
+  onPress,
+  disabled,
+}: {
+  field: NumField;
+  value: string;
+  active: boolean;
+  lockable?: LockableField;
+  locked?: boolean;
+  onToggleLock?: () => void;
+  onPress: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <View style={styles.fieldBlock}>
+      <View style={styles.fieldHead}>
+        <Text style={styles.label}>{FIELD_LABEL[field]}</Text>
+        {lockable !== undefined ? (
+          <Pressable
+            style={[styles.lockBtn, locked && styles.lockBtnOn]}
+            onPress={onToggleLock}
+            disabled={disabled}
+          >
+            <Text style={[styles.lockBtnText, locked && styles.lockBtnTextOn]}>
+              {locked ? "ปลดล็อก" : "ค้างค่า"}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      <Pressable
+        style={[
+          styles.fieldBox,
+          active && styles.fieldBoxActive,
+          locked && styles.fieldBoxLocked,
+        ]}
+        onPress={onPress}
+        disabled={disabled}
+      >
+        <Text style={[styles.fieldValue, value === "" && styles.fieldPlaceholder]}>
+          {value === "" ? "แตะเพื่อกรอก" : value}
+        </Text>
+      </Pressable>
+
+      {locked ? (
+        <Text style={styles.lockHint}>
+          ค้างค่าไว้ — ค่านี้จะคงอยู่เมื่อเปลี่ยนสินค้าและเมื่อเพิ่มรายการ
+          แตะปุ่ม “ปลดล็อก” เพื่อยกเลิก
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  scrollBody: { padding: 16, paddingBottom: 32 },
+  scrollBody: { padding: 16, paddingBottom: 24 },
 
   section: { fontSize: 17, fontWeight: "800", color: "#0f172a", marginTop: 8 },
-  label: { marginTop: 12, fontSize: 13, fontWeight: "700", color: "#475569" },
+  label: { fontSize: 13, fontWeight: "700", color: "#475569" },
   row: { flexDirection: "row", gap: 12 },
+  readRow: { flexDirection: "row", gap: 12, marginTop: 14 },
   col: { flex: 1 },
   grow: { flex: 1 },
 
@@ -388,19 +514,36 @@ const styles = StyleSheet.create({
   productMeta: { fontSize: 13, color: "#64748b", marginTop: 2 },
   onDark: { color: "#fff" },
 
-  input: {
+  fieldBlock: { marginTop: 14 },
+  fieldHead: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  fieldBox: {
     borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, paddingHorizontal: 14,
-    height: TAP_MIN, fontSize: 26, fontWeight: "700", backgroundColor: "#fff",
-    marginTop: 6, color: "#0f172a",
+    minHeight: TAP_MIN, backgroundColor: "#fff", justifyContent: "center",
   },
-  computed: {
-    height: TAP_MIN, marginTop: 6, fontSize: 26, fontWeight: "800",
-    color: "#0f172a", textAlignVertical: "center", lineHeight: TAP_MIN,
+  fieldBoxActive: { borderColor: "#0f172a", borderWidth: 3 },
+  // Locked: background AND border both change, so it reads at a glance in
+  // daylight rather than depending on a small icon.
+  fieldBoxLocked: { backgroundColor: "#fef3c7", borderColor: "#b45309", borderWidth: 3 },
+  fieldValue: { fontSize: 26, fontWeight: "800", color: "#0f172a" },
+  fieldPlaceholder: { color: "#94a3b8", fontSize: 18, fontWeight: "600" },
+
+  lockBtn: {
+    minHeight: 44, paddingHorizontal: 16, borderRadius: 10, backgroundColor: "#e2e8f0",
+    alignItems: "center", justifyContent: "center",
   },
-  lineAmount: { fontSize: 34, fontWeight: "900", color: "#0f766e", marginTop: 4 },
+  lockBtnOn: { backgroundColor: "#b45309" },
+  lockBtnText: { fontSize: 14, fontWeight: "800", color: "#334155" },
+  lockBtnTextOn: { color: "#fff" },
+  lockHint: { fontSize: 12, color: "#78350f", marginTop: 6, fontWeight: "600" },
+
+  computed: { fontSize: 26, fontWeight: "800", color: "#0f172a", marginTop: 4 },
+  lineAmount: { fontSize: 30, fontWeight: "900", color: "#0f766e", marginTop: 4 },
 
   err: { color: "#b91c1c", fontSize: 13, marginTop: 6, fontWeight: "600" },
-  note: { color: "#b45309", fontSize: 13, marginTop: 6 },
+  note: { color: "#b45309", fontSize: 13, marginTop: 6, fontWeight: "600" },
   empty: { color: "#64748b", fontSize: 15, marginTop: 20, textAlign: "center" },
 
   addBtn: {
@@ -454,11 +597,11 @@ const styles = StyleSheet.create({
 
   totalBar: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingVertical: 12, backgroundColor: "#fff",
+    paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#fff",
     borderTopWidth: 1, borderTopColor: "#e2e8f0",
   },
   totalLabel: { fontSize: 13, color: "#64748b", fontWeight: "700" },
-  totalValue: { fontSize: 34, fontWeight: "900", color: "#0f172a" },
+  totalValue: { fontSize: 30, fontWeight: "900", color: "#0f172a" },
   saveBtn: {
     minHeight: TAP_MIN, paddingHorizontal: 28, borderRadius: 12,
     backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center",

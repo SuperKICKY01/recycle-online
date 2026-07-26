@@ -63,9 +63,22 @@ export function buildLocalBill(deps: BuildBillDeps, draft: BillDraft): LocalBill
     attempt_count: 0,
     last_error: null,
     created_at: nowIso,
+    // The weighing time, denormalised out of the payload so the send queue can
+    // be ordered by it. Same value, same instant — payload.device_created_at
+    // is the copy that goes to the server.
+    device_created_at: nowIso,
     next_attempt_at: nowIso,
+    // Never attempted yet, so neither the total-stuck nor the poison clock has
+    // started.
+    first_attempt_at: null,
+    first_server_error_at: null,
     doc_no: null,
     synced_at: null,
+    void_reason: null,
+    void_requested_at: null,
+    voided_at: null,
+    void_attempts: 0,
+    void_last_error: null,
   };
 }
 

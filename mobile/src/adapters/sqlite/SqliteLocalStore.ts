@@ -23,7 +23,7 @@
  * adding a second statement to one of these methods believing it was safe.
  * See adapters/sqlite/mutex.ts.
  */
-import type { LocalBill, LocalStore, SyncState } from "../../sync/types.js";
+import type { LocalBill, LocalStore, QueueSnapshot, SyncState } from "../../sync/types.js";
 import type { SqlDriver, SqlValue } from "./driver.js";
 import { initConnection } from "./schema.js";
 
@@ -35,14 +35,24 @@ interface BillRow {
   attempt_count: number;
   last_error: string | null;
   created_at: string;
+  device_created_at: string;
   next_attempt_at: string;
   doc_no: string | null;
   synced_at: string | null;
+  void_reason: string | null;
+  void_requested_at: string | null;
+  voided_at: string | null;
+  void_attempts: number;
+  void_last_error: string | null;
+  first_attempt_at: string | null;
+  first_server_error_at: string | null;
 }
 
 const COLUMNS =
   "id, idempotency_key, payload_json, sync_state, attempt_count, last_error," +
-  " created_at, next_attempt_at, doc_no, synced_at";
+  " created_at, device_created_at, next_attempt_at, doc_no, synced_at," +
+  " void_reason, void_requested_at, voided_at, void_attempts, void_last_error," +
+  " first_attempt_at, first_server_error_at";
 
 /**
  * The bill INSERT, defined once and exported.
@@ -53,7 +63,8 @@ const COLUMNS =
  * the promoted bills would be wrong. One definition, two call sites.
  */
 export const BILL_INSERT_SQL =
-  `INSERT INTO local_bills (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  `INSERT INTO local_bills (${COLUMNS})` +
+  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 export function billInsertParams(bill: LocalBill): SqlValue[] {
   return [
@@ -64,9 +75,17 @@ export function billInsertParams(bill: LocalBill): SqlValue[] {
     bill.attempt_count,
     bill.last_error,
     bill.created_at,
+    bill.device_created_at,
     bill.next_attempt_at,
     bill.doc_no,
     bill.synced_at,
+    bill.void_reason,
+    bill.void_requested_at,
+    bill.voided_at,
+    bill.void_attempts,
+    bill.void_last_error,
+    bill.first_attempt_at,
+    bill.first_server_error_at,
   ];
 }
 
@@ -79,9 +98,20 @@ function toBill(row: BillRow): LocalBill {
     attempt_count: row.attempt_count,
     last_error: row.last_error,
     created_at: row.created_at,
+    // Backfilled rows can still be null if a legacy payload lacked the field;
+    // fall back to created_at so ordering never sees a null and silently sorts
+    // that bill to one end of the queue.
+    device_created_at: row.device_created_at ?? row.created_at,
     next_attempt_at: row.next_attempt_at,
     doc_no: row.doc_no,
     synced_at: row.synced_at,
+    void_reason: row.void_reason,
+    void_requested_at: row.void_requested_at,
+    voided_at: row.voided_at,
+    void_attempts: row.void_attempts,
+    void_last_error: row.void_last_error,
+    first_attempt_at: row.first_attempt_at,
+    first_server_error_at: row.first_server_error_at,
   };
 }
 
@@ -122,15 +152,65 @@ export class SqliteLocalStore implements LocalStore {
     return rows.map(toBill);
   }
 
+  /**
+   * ORDER BY device_created_at: the bill weighed FIRST is sent first, so within
+   * any backlog it receives the lower doc_no.
+   *
+   * Ordering by created_at (the row's own timestamp) looked equivalent — both
+   * are written from the same clock in the same breath — but it is the wrong
+   * field to name. The queue's contract is "weighing order", and
+   * device_created_at is the field that means that; created_at only happens to
+   * agree today. Ordering on the field that carries the meaning is what keeps
+   * this correct if the two ever diverge.
+   *
+   * `id` remains the tiebreaker so the order is total, never arbitrary, when
+   * two bills share a timestamp.
+   */
   async listReadyToSend(now: Date, limit: number): Promise<LocalBill[]> {
     const rows = await this.db.all<BillRow>(
       `SELECT ${COLUMNS} FROM local_bills
        WHERE sync_state = 'pending' AND next_attempt_at <= ?
-       ORDER BY created_at, id
+       ORDER BY device_created_at, created_at, id
        LIMIT ?`,
       [now.toISOString(), limit],
     );
     return rows.map(toBill);
+  }
+
+  /** Every pending bill in weighing order, INCLUDING ones still in backoff. */
+  async listPendingOldestFirst(limit: number): Promise<LocalBill[]> {
+    const rows = await this.db.all<BillRow>(
+      `SELECT ${COLUMNS} FROM local_bills
+       WHERE sync_state = 'pending'
+       ORDER BY device_created_at, created_at, id
+       LIMIT ?`,
+      [limit],
+    );
+    return rows.map(toBill);
+  }
+
+  /**
+   * Drop the retry backoff on every pending bill.
+   *
+   * Called after a send SUCCEEDS. The backoff exists to stop us hammering a
+   * server we cannot reach; the moment one bill gets through we have direct
+   * evidence the server IS reachable, so every other bill's delay was computed
+   * against a world that no longer exists.
+   *
+   * This is the other half of the ordering fix, and on real device evidence it
+   * was the half that actually mattered: an older bill that had failed a few
+   * times sat with next_attempt_at up to 30s out, so listReadyToSend could not
+   * see it at all, while a bill weighed 73 seconds LATER was sent immediately
+   * and took the lower number. Sorting cannot rescue a bill that is not in the
+   * candidate set.
+   */
+  async clearBackoffForPending(now: Date): Promise<number> {
+    const r = await this.db.run(
+      `UPDATE local_bills SET next_attempt_at = ?
+       WHERE sync_state = 'pending' AND next_attempt_at > ?`,
+      [now.toISOString(), now.toISOString()],
+    );
+    return r.changes;
   }
 
   /**
@@ -156,7 +236,8 @@ export class SqliteLocalStore implements LocalStore {
     await this.db.run(
       `UPDATE local_bills
        SET sync_state = 'synced', doc_no = ?, attempt_count = ?,
-           last_error = NULL, synced_at = ?
+           last_error = NULL, synced_at = ?,
+           first_attempt_at = NULL, first_server_error_at = NULL
        WHERE id = ?`,
       [docNo, attempt, now.toISOString(), id],
     );
@@ -177,14 +258,66 @@ export class SqliteLocalStore implements LocalStore {
     reason: string,
     attempt: number,
     nextAttemptAt: Date,
+    now: Date,
+    reachable: boolean,
   ): Promise<void> {
+    // first_attempt_at is stamped with COALESCE, so it records the FIRST bounce
+    // of any kind and never moves — the total-stuck clock.
+    //
+    // first_server_error_at is the POISON clock and it is conditional: when the
+    // server answered (reachable), COALESCE stamps it once and lets it run; when
+    // the bounce was transport-level (offline), it is RESET to null. So it is
+    // non-null exactly while the reachable server has been refusing this bill
+    // continuously — an offline spell in the middle wipes it and the poison timer
+    // starts fresh only if the server refuses again. That is what stops a long
+    // outage (all transport-level) from ever tripping the red alarm.
+    const nowIso = now.toISOString();
     await this.db.run(
       `UPDATE local_bills
        SET sync_state = 'pending', attempt_count = ?, last_error = ?,
-           next_attempt_at = ?
+           next_attempt_at = ?,
+           first_attempt_at = COALESCE(first_attempt_at, ?),
+           first_server_error_at =
+             CASE WHEN ? = 1 THEN COALESCE(first_server_error_at, ?) ELSE NULL END
        WHERE id = ?`,
-      [attempt, reason, nextAttemptAt.toISOString(), id],
+      [attempt, reason, nextAttemptAt.toISOString(), nowIso, reachable ? 1 : 0, nowIso, id],
     );
+  }
+
+  /**
+   * Two reads, no write: how many bills are pending and which one is the head.
+   *
+   * The head is chosen by the SAME order the engine sends in
+   * (device_created_at, created_at, id), so the bill reported as the blocker is
+   * exactly the bill the engine is stuck on — the UI cannot point at a different
+   * row than the one actually holding up the queue.
+   */
+  async pendingQueueSnapshot(): Promise<QueueSnapshot> {
+    const counts = await this.db.all<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM local_bills WHERE sync_state = 'pending'",
+    );
+    const pendingCount = counts[0]?.n ?? 0;
+    const rows = await this.db.all<BillRow>(
+      `SELECT ${COLUMNS} FROM local_bills
+       WHERE sync_state = 'pending'
+       ORDER BY device_created_at, created_at, id
+       LIMIT 1`,
+    );
+    const head = rows[0];
+    return {
+      pendingCount,
+      head:
+        head === undefined
+          ? null
+          : {
+              id: head.id,
+              doc_no: head.doc_no,
+              attempts: head.attempt_count,
+              first_attempt_at: head.first_attempt_at,
+              first_server_error_at: head.first_server_error_at,
+              last_error: head.last_error,
+            },
+    };
   }
 
   /**
@@ -192,6 +325,69 @@ export class SqliteLocalStore implements LocalStore {
    * ids is exactly the set that changed — no second SELECT that another writer
    * could invalidate in between.
    */
+  /* ---------------------------------------------------------------- void -- */
+
+  /**
+   * Records the owner's intent, once.
+   *
+   * `WHERE void_requested_at IS NULL` is what makes a second press harmless:
+   * the row changes zero times and the ORIGINAL reason survives. Without it a
+   * double-tap would quietly rewrite the reason on a real-money reversal, and
+   * the second reason might be blank-ish, hurried, or simply not what the owner
+   * meant the first time.
+   */
+  async requestVoid(id: string, reason: string, now: Date): Promise<boolean> {
+    const r = await this.db.run(
+      `UPDATE local_bills SET void_reason = ?, void_requested_at = ?
+       WHERE id = ? AND void_requested_at IS NULL`,
+      [reason, now.toISOString(), id],
+    );
+    return r.changes === 1;
+  }
+
+  /**
+   * Voids still owed to the server.
+   *
+   * `sync_state = 'synced'` is the sequencing rule in one clause: a bill the
+   * server has never seen is NOT eligible, so it syncs through the normal path
+   * first and acquires its doc_no. The void then applies to a bill that exists,
+   * which is what lets the owner see it was created and then cancelled instead
+   * of it silently never existing.
+   */
+  async listVoidsToApply(limit: number): Promise<LocalBill[]> {
+    const rows = await this.db.all<BillRow>(
+      `SELECT ${COLUMNS} FROM local_bills
+       WHERE void_requested_at IS NOT NULL AND voided_at IS NULL
+         AND sync_state = 'synced' AND doc_no IS NOT NULL
+       ORDER BY void_requested_at, id
+       LIMIT ?`,
+      [limit],
+    );
+    return rows.map(toBill);
+  }
+
+  async markVoidApplied(id: string, attempt: number, now: Date): Promise<void> {
+    await this.db.run(
+      `UPDATE local_bills
+       SET voided_at = ?, void_attempts = ?, void_last_error = NULL
+       WHERE id = ?`,
+      [now.toISOString(), attempt, id],
+    );
+  }
+
+  /**
+   * A failed attempt. Note what is NOT written: void_requested_at is untouched,
+   * so the void stays owed no matter how many attempts fail. There is no
+   * attempt cap and no terminal "void failed" state that would drop it —
+   * the same reasoning as an offline bill never being marked failed.
+   */
+  async markVoidAttemptFailed(id: string, reason: string, attempt: number): Promise<void> {
+    await this.db.run(
+      `UPDATE local_bills SET void_attempts = ?, void_last_error = ? WHERE id = ?`,
+      [attempt, reason, id],
+    );
+  }
+
   async resetSyncingToPending(now: Date): Promise<string[]> {
     const rows = await this.db.all<{ id: string }>(
       `UPDATE local_bills

@@ -14,7 +14,9 @@
     "prove:sync": "npm run build && node dist/proof/proveSync.js",
     "prove:sqlite": "npm run build && node dist/proof/sqliteProof.js",
     "prove:money": "npm run build && node dist/proof/proveMoney.js",
-    "prove:cart": "npm run build && node dist/proof/proveCart.js"
+    "prove:cart": "npm run build && node dist/proof/proveCart.js",
+    "prove:entry": "npm run build && node dist/proof/proveEntry.js",
+    "prove:void": "npm run build && node dist/proof/proveVoid.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

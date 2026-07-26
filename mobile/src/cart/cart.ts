@@ -26,9 +26,14 @@ export interface LineInput {
 
 export type LineField = "product" | "gross" | "tare" | "price";
 
+export type LineError = FieldError | "no_product" | "zero_net" | "zero_amount";
+
 export type LineResult =
   | { ok: true; line: Omit<DraftLine, "seq"> }
-  | { ok: false; field: LineField; error: FieldError | "no_product" };
+  | { ok: false; field: LineField; error: LineError };
+
+/** True for "0", "0.0", "0.00", "0.000" — any spelling of nothing. */
+const isZero = (decimal: string): boolean => /^0(\.0*)?$/.test(decimal);
 
 export function newDraft(id: string, sellerId: string, updatedAt: string): Draft {
   return {
@@ -63,6 +68,27 @@ export function buildLine(input: LineInput): LineResult {
   const n = netWeight(g.value, t.value);
   if (!n.ok) return { ok: false, field: "tare", error: n.error };
 
+  /*
+   * Zero-value guard (Phase 2c-5).
+   *
+   * A zero line is not a validation error in the arithmetic sense — the money
+   * module computes it correctly and the server would accept it. It is a
+   * BUSINESS error: a line that pays nothing is either a mistyped weight or a
+   * mistyped price, and once it is on a printed slip nobody can tell which.
+   * So the guard lives here, in the cart, and money.ts keeps permitting net = 0
+   * because that is arithmetically true.
+   *
+   * Note the asymmetry the phase calls for: a tare of 0.000 is perfectly
+   * normal — loose scrap tipped straight onto the plate has no container — so
+   * only the NET and the AMOUNT are checked, never the tare itself.
+   */
+  if (isZero(n.value)) return { ok: false, field: "gross", error: "zero_net" };
+
+  const amount = lineAmount(n.value, p.value);
+  // Reachable with a non-zero net AND a non-zero price: 0.001 x 0.01 rounds to
+  // 0.00. So this is a separate check, not a restatement of the one above.
+  if (isZero(amount)) return { ok: false, field: "price", error: "zero_amount" };
+
   return {
     ok: true,
     line: {
@@ -76,7 +102,7 @@ export function buildLine(input: LineInput): LineResult {
       net_weight: n.value,
       unit_price: p.value,
       list_price: input.list_price,
-      amount: lineAmount(n.value, p.value),
+      amount,
     },
   };
 }

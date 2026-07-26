@@ -8,9 +8,11 @@ import type {
   IdSource,
   LocalBill,
   LocalStore,
+  QueueSnapshot,
   SendOutcome,
   SyncState,
   Transport,
+  VoidOutcome,
 } from "../sync/types.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
@@ -88,14 +90,35 @@ export class InMemoryStore implements LocalStore {
     return Promise.resolve(out);
   }
 
+  /** Ordered by device_created_at — weighing order — like the SQLite store. */
   listReadyToSend(now: Date, limit: number): Promise<LocalBill[]> {
     const out = [...this.rows.values()]
       .filter((b) => b.sync_state === "pending")
       .filter((b) => new Date(b.next_attempt_at).getTime() <= now.getTime())
-      .sort(byCreatedAt)
+      .sort(byDeviceCreatedAt)
       .slice(0, limit)
       .map(clone);
     return Promise.resolve(out);
+  }
+
+  listPendingOldestFirst(limit: number): Promise<LocalBill[]> {
+    const out = [...this.rows.values()]
+      .filter((b) => b.sync_state === "pending")
+      .sort(byDeviceCreatedAt)
+      .slice(0, limit)
+      .map(clone);
+    return Promise.resolve(out);
+  }
+
+  clearBackoffForPending(now: Date): Promise<number> {
+    let freed = 0;
+    for (const row of this.rows.values()) {
+      if (row.sync_state !== "pending") continue;
+      if (new Date(row.next_attempt_at).getTime() <= now.getTime()) continue;
+      row.next_attempt_at = now.toISOString();
+      freed += 1;
+    }
+    return Promise.resolve(freed);
   }
 
   claimForSend(id: string, _now: Date): Promise<boolean> {
@@ -112,6 +135,8 @@ export class InMemoryStore implements LocalStore {
     row.attempt_count = attempt;
     row.last_error = null;
     row.synced_at = now.toISOString();
+    row.first_attempt_at = null;
+    row.first_server_error_at = null;
     return Promise.resolve();
   }
 
@@ -129,13 +154,44 @@ export class InMemoryStore implements LocalStore {
     reason: string,
     attempt: number,
     nextAttemptAt: Date,
+    now: Date,
+    reachable: boolean,
   ): Promise<void> {
     const row = this.require(id);
     row.sync_state = "pending";
     row.attempt_count = attempt;
     row.last_error = reason;
     row.next_attempt_at = nextAttemptAt.toISOString();
+    // COALESCE: stamp the FIRST bounce only, never move it after.
+    row.first_attempt_at = row.first_attempt_at ?? now.toISOString();
+    // The poison clock: run it only while the reachable server is refusing
+    // (COALESCE), and RESET it on a transport-level bounce. Mirrors the CASE
+    // expression in SqliteLocalStore.markPendingAgain exactly.
+    row.first_server_error_at = reachable
+      ? (row.first_server_error_at ?? now.toISOString())
+      : null;
     return Promise.resolve();
+  }
+
+  pendingQueueSnapshot(): Promise<QueueSnapshot> {
+    const pending = [...this.rows.values()]
+      .filter((b) => b.sync_state === "pending")
+      .sort(byDeviceCreatedAt);
+    const head = pending[0];
+    return Promise.resolve({
+      pendingCount: pending.length,
+      head:
+        head === undefined
+          ? null
+          : {
+              id: head.id,
+              doc_no: head.doc_no,
+              attempts: head.attempt_count,
+              first_attempt_at: head.first_attempt_at,
+              first_server_error_at: head.first_server_error_at,
+              last_error: head.last_error,
+            },
+    });
   }
 
   resetSyncingToPending(now: Date): Promise<string[]> {
@@ -149,6 +205,44 @@ export class InMemoryStore implements LocalStore {
       }
     }
     return Promise.resolve(recovered.sort());
+  }
+
+  requestVoid(id: string, reason: string, now: Date): Promise<boolean> {
+    const row = this.require(id);
+    if (row.void_requested_at !== null) return Promise.resolve(false);
+    row.void_reason = reason;
+    row.void_requested_at = now.toISOString();
+    return Promise.resolve(true);
+  }
+
+  listVoidsToApply(limit: number): Promise<LocalBill[]> {
+    const out = [...this.rows.values()]
+      .filter(
+        (b) =>
+          b.void_requested_at !== null &&
+          b.voided_at === null &&
+          b.sync_state === "synced" &&
+          b.doc_no !== null,
+      )
+      .sort(byCreatedAt)
+      .slice(0, limit)
+      .map(clone);
+    return Promise.resolve(out);
+  }
+
+  markVoidApplied(id: string, attempt: number, now: Date): Promise<void> {
+    const row = this.require(id);
+    row.voided_at = now.toISOString();
+    row.void_attempts = attempt;
+    row.void_last_error = null;
+    return Promise.resolve();
+  }
+
+  markVoidAttemptFailed(id: string, reason: string, attempt: number): Promise<void> {
+    const row = this.require(id);
+    row.void_attempts = attempt;
+    row.void_last_error = reason;
+    return Promise.resolve();
   }
 
   /** Test-only: force a state, e.g. to simulate a kill mid-send. */
@@ -168,12 +262,20 @@ const byCreatedAt = (a: LocalBill, b: LocalBill): number =>
     ? a.id.localeCompare(b.id)
     : a.created_at.localeCompare(b.created_at);
 
+/** Weighing order, with id as a total-order tiebreaker. */
+const byDeviceCreatedAt = (a: LocalBill, b: LocalBill): number =>
+  a.device_created_at === b.device_created_at
+    ? byCreatedAt(a, b)
+    : a.device_created_at.localeCompare(b.device_created_at);
+
 /* --------------------------------------------------------- fake server --- */
 
 export interface ServerBill {
   id: string;
   doc_no: string;
   idempotency_key: string;
+  voided_at: string | null;
+  void_reason: string | null;
 }
 
 /**
@@ -193,9 +295,38 @@ export class FakeServer {
       id: payload.id,
       doc_no: `B-2569-${this.byKey.size + 1}`,
       idempotency_key: payload.idempotency_key,
+      voided_at: null,
+      void_reason: null,
     };
     this.byKey.set(payload.idempotency_key, bill);
     return { kind: "accepted", bill };
+  }
+
+  /**
+   * Mirrors POST /bills/{id}/void from Phase 1c: 404 unknown, 409 already
+   * voided, otherwise voided. doc_no is deliberately left alone — a voided
+   * bill KEEPS its number and the counter never rewinds, so the number is
+   * never handed to a different bill.
+   */
+  voidBill(id: string, reason: string): { kind: "voided" | "already_voided" | "not_found"; bill?: ServerBill } {
+    this.voidCalls += 1;
+    const bill = [...this.byKey.values()].find((b) => b.id === id);
+    if (!bill) return { kind: "not_found" };
+    if (bill.voided_at !== null) return { kind: "already_voided", bill };
+    bill.voided_at = "2026-07-22T10:00:00.000Z";
+    bill.void_reason = reason;
+    return { kind: "voided", bill };
+  }
+
+  /** Every void request that reached the server, repeats included. */
+  voidCalls = 0;
+
+  findById(id: string): ServerBill | undefined {
+    return [...this.byKey.values()].find((b) => b.id === id);
+  }
+
+  get voidedCount(): number {
+    return [...this.byKey.values()].filter((b) => b.voided_at !== null).length;
   }
 
   get billCount(): number {
@@ -230,6 +361,17 @@ export class SendCounter {
   }
 }
 
+/** Maps the fake server's answer onto the same union the HTTP transport uses. */
+export function toVoidOutcome(r: {
+  kind: "voided" | "already_voided" | "not_found";
+  bill?: ServerBill;
+}): VoidOutcome {
+  if (r.kind === "not_found") {
+    return { kind: "rejected", reason: "HTTP 404: bill not found" };
+  }
+  return { kind: r.kind, doc_no: r.bill?.doc_no ?? null };
+}
+
 export class OnlineTransport implements Transport {
   constructor(
     private readonly server: FakeServer,
@@ -241,12 +383,46 @@ export class OnlineTransport implements Transport {
     const r = this.server.submit(bill.payload);
     return Promise.resolve({ kind: r.kind, doc_no: r.bill.doc_no });
   }
+
+  voidBill(bill: LocalBill, reason: string): Promise<VoidOutcome> {
+    return Promise.resolve(toVoidOutcome(this.server.voidBill(bill.id, reason)));
+  }
 }
 
 /** Never reaches the server at all. */
 export class OfflineTransport implements Transport {
   sendBill(): Promise<SendOutcome> {
     return Promise.reject(new Error("Network request failed"));
+  }
+
+  voidBill(): Promise<VoidOutcome> {
+    return Promise.reject(new Error("Network request failed"));
+  }
+}
+
+/**
+ * The void equivalent of LostAckTransport, and the reason void retries have to
+ * be safe: the FIRST void reaches the server and is applied, then the response
+ * is lost. The client cannot know it worked. Every later attempt behaves
+ * normally, so the server answers "already voided".
+ */
+export class VoidLosesFirstAckTransport implements Transport {
+  voidAttempts = 0;
+
+  constructor(private readonly server: FakeServer) {}
+
+  sendBill(bill: LocalBill): Promise<SendOutcome> {
+    const r = this.server.submit(bill.payload);
+    return Promise.resolve({ kind: r.kind, doc_no: r.bill.doc_no });
+  }
+
+  voidBill(bill: LocalBill, reason: string): Promise<VoidOutcome> {
+    this.voidAttempts += 1;
+    const r = this.server.voidBill(bill.id, reason);
+    if (this.voidAttempts === 1) {
+      return Promise.reject(new Error("socket hang up after the void committed"));
+    }
+    return Promise.resolve(toVoidOutcome(r));
   }
 }
 
@@ -265,6 +441,11 @@ export class LostAckTransport implements Transport {
     this.server.submit(bill.payload);
     return Promise.reject(new Error("socket hang up after commit"));
   }
+
+  voidBill(bill: LocalBill, reason: string): Promise<VoidOutcome> {
+    this.server.voidBill(bill.id, reason);
+    return Promise.reject(new Error("socket hang up after commit"));
+  }
 }
 
 /** Server understood the bill and refused it on its merits. */
@@ -274,6 +455,53 @@ export class RejectingTransport implements Transport {
       kind: "rejected",
       reason: "HTTP 422: seller_id does not exist in this tenant",
     });
+  }
+
+  voidBill(): Promise<VoidOutcome> {
+    return Promise.resolve({
+      kind: "rejected",
+      reason: "HTTP 404: bill not found",
+    });
+  }
+}
+
+/**
+ * The poison pill. One specific bill (by id) makes the server fail
+ * DETERMINISTICALLY with a 5xx — reachable server, understood request, but it
+ * errors on that payload every single time. Crucially that is `unavailable`,
+ * NOT `rejected`: the engine cannot know the server will never accept it, so it
+ * retries forever. Under strict head-of-line order that one bill dams the whole
+ * queue. Every other bill would submit and succeed — but with the poison bill at
+ * the head, nothing behind it is ever even attempted, which `attemptedIds`
+ * proves.
+ */
+export class HeadFailingTransport implements Transport {
+  readonly attemptedIds: string[] = [];
+
+  constructor(
+    private readonly server: FakeServer,
+    private readonly failId: string,
+  ) {}
+
+  sendBill(bill: LocalBill): Promise<SendOutcome> {
+    this.attemptedIds.push(bill.id);
+    if (bill.id === this.failId) {
+      // reachable: true — the server ANSWERED with a 503. That is the poison
+      // shape: the network is fine, the reachable server keeps erroring on this
+      // one payload. It is what the UI must escalate to a red alarm, unlike a
+      // transport-level failure that only means offline.
+      return Promise.resolve({
+        kind: "unavailable",
+        reason: "HTTP 503: server error on this payload",
+        reachable: true,
+      });
+    }
+    const r = this.server.submit(bill.payload);
+    return Promise.resolve({ kind: r.kind, doc_no: r.bill.doc_no });
+  }
+
+  voidBill(bill: LocalBill, reason: string): Promise<VoidOutcome> {
+    return Promise.resolve(toVoidOutcome(this.server.voidBill(bill.id, reason)));
   }
 }
 
@@ -309,6 +537,10 @@ export class FlakyTransport implements Transport {
     const r = this.server.submit(bill.payload);
     return Promise.resolve({ kind: r.kind, doc_no: r.bill.doc_no });
   }
+
+  voidBill(bill: LocalBill, reason: string): Promise<VoidOutcome> {
+    return Promise.resolve(toVoidOutcome(this.server.voidBill(bill.id, reason)));
+  }
 }
 
 /**
@@ -335,6 +567,10 @@ export class GatedTransport implements Transport {
     await this.gate;
     const r = this.server.submit(bill.payload);
     return { kind: r.kind, doc_no: r.bill.doc_no };
+  }
+
+  voidBill(bill: LocalBill, reason: string): Promise<VoidOutcome> {
+    return Promise.resolve(toVoidOutcome(this.server.voidBill(bill.id, reason)));
   }
 
   open(): void {

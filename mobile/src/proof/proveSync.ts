@@ -12,12 +12,14 @@ import { fileURLToPath } from "node:url";
 
 import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
+import { assessQueue, POISON_ALARM_MS } from "../sync/queueHealth.js";
 import type { BillItemPayload, LocalBill, LocalStore } from "../sync/types.js";
 import {
   FakeClock,
   FakeServer,
   FlakyTransport,
   GatedTransport,
+  HeadFailingTransport,
   LostAckTransport,
   OfflineTransport,
   OnlineTransport,
@@ -373,6 +375,380 @@ async function case6DoubleTrigger(harness: StoreHarness): Promise<void> {
 
 /* ------------------------------------------------------------------ 7 ---- */
 
+/**
+ * CASE 8 — the doc_no ordering defect found on the device.
+ *
+ * Observed: B-2569-34 was weighed at 22:53:38 and B-2569-33 at 22:54:51, yet 34
+ * arrived at the server SECOND and took the higher number, so the document
+ * numbers contradicted the order the loads were actually bought.
+ *
+ * Two mechanisms had to be fixed, and this case exercises both:
+ *   - the queue was ordered by the row's created_at, not by the weighing time;
+ *   - an older bill that had failed a few times sat behind its retry backoff,
+ *     so it was not even a candidate while newer bills went straight out.
+ */
+async function case8WeighingOrder(harness: StoreHarness): Promise<void> {
+  header("CASE 8: a backlog syncs in WEIGHING order, so doc_no follows it");
+  const r = await rig(harness, "bill-ord");
+
+  // Five bills whose weighing times are deliberately NOT in insertion order:
+  // the clock jumps around, as it would if bills were entered from notes.
+  const offsets = [40, 10, 50, 0, 25];
+  const created: LocalBill[] = [];
+  for (const min of offsets) {
+    r.clock.advance(min * 60_000);
+    created.push(
+      await createLocalBill(
+        { store: r.store, clock: r.clock, ids: r.billIds },
+        { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(r.itemIds), total_amount: null },
+      ),
+    );
+    r.clock.advance(-min * 60_000); // rewind, so the NEXT offset is absolute
+  }
+
+  // All five fail while offline, collecting a backoff.
+  const offline = new SyncEngine({
+    store: r.store,
+    transport: new OfflineTransport(),
+    clock: r.clock,
+    backoffBaseMs: 30_000,
+  });
+  await offline.runOnce();
+  await offline.runOnce();
+
+  const gatedBefore = await r.store.listReadyToSend(r.clock.now(), 100);
+  console.log(`  after the outage, ${String(gatedBefore.length)} of 5 bills are past their backoff`);
+
+  const byWeighing = [...created].sort((a, b) =>
+    a.device_created_at.localeCompare(b.device_created_at),
+  );
+  console.log(`  weighing order: ${byWeighing.map((b) => b.device_created_at.slice(11, 19)).join(" < ")}`);
+
+  // Network returns.
+  const engine = new SyncEngine({
+    store: r.store,
+    transport: new OnlineTransport(r.server),
+    clock: r.clock,
+    backoffBaseMs: 1000,
+  });
+  const run = await engine.runUntilQuiescent();
+  console.log(`  run -> synced=${String(run.synced)} backoffsCleared=${String(run.backoffsCleared)}`);
+
+  const finals = await Promise.all(byWeighing.map((b) => r.store.getBill(b.id)));
+  const docNos = finals.map((b) => b?.doc_no ?? "-");
+  const seqs = docNos.map((d) => Number(d.split("-").pop()));
+  console.log(`  doc_no in weighing order: ${docNos.join(" , ")}`);
+
+  check("all five reached the server", r.server.billCount === 5 && run.synced === 5);
+  check(
+    "doc_no increases strictly with weighing time",
+    seqs.every((n, i) => i === 0 || n > seqs[i - 1]!),
+    `sequence=${seqs.join(",")}`,
+  );
+  check(
+    "the earliest-weighed bill has the LOWEST doc_no",
+    seqs[0] === Math.min(...seqs),
+    `first=${String(seqs[0])} min=${String(Math.min(...seqs))}`,
+  );
+  check(
+    "a stale backoff did not gate an older bill out of the queue",
+    run.backoffsCleared > 0 || gatedBefore.length === 5,
+    `backoffsCleared=${String(run.backoffsCleared)} readyBefore=${String(gatedBefore.length)}`,
+  );
+  invariant(r, created, "server holds exactly the five bills");
+
+  /* ---- the exact device sequence that produced B-2569-33/34 ------------- */
+
+  header("CASE 8b: a newer bill may NOT overtake an older one stuck in backoff");
+  const q = await rig(harness, "bill-hol");
+
+  // A is weighed, and its send fails — it now sits behind a 30s backoff.
+  const a = (await createBills(q, 1))[0]!;
+  const offlineEngine = new SyncEngine({
+    store: q.store,
+    transport: new OfflineTransport(),
+    clock: q.clock,
+    backoffBaseMs: 30_000,
+  });
+  await offlineEngine.runOnce();
+
+  // 10 seconds later the network is fine and B is weighed. This is the shape
+  // that produced the defect: B is immediately sendable, A is not.
+  q.clock.advance(10_000);
+  const b = (await createBills(q, 1))[0]!;
+
+  const onlineEngine = new SyncEngine({
+    store: q.store,
+    transport: new OnlineTransport(q.server),
+    clock: q.clock,
+    backoffBaseMs: 1000,
+  });
+  const blocked = await onlineEngine.runOnce();
+  const readyNow = await q.store.listReadyToSend(q.clock.now(), 10);
+
+  console.log(`  A weighed ${a.device_created_at.slice(11, 19)} (send failed, in backoff)`);
+  console.log(`  B weighed ${b.device_created_at.slice(11, 19)} (network fine)`);
+  console.log(`  backoff-filtered queue would offer: ${JSON.stringify(readyNow.map((x) => (x.id === b.id ? "B" : "A")))}`);
+  console.log(`  runOnce while A is gated -> sent=${String(blocked.synced)}  billsOnServer=${String(q.server.billCount)}`);
+
+  check(
+    "B alone is past its backoff, so a naive queue WOULD send it",
+    readyNow.length === 1 && readyNow[0]?.id === b.id,
+    "this is the state that caused the defect — the case is not vacuous",
+  );
+  check(
+    "but nothing is sent: the head of the queue blocks it",
+    blocked.synced === 0 && q.server.billCount === 0,
+    `synced=${String(blocked.synced)}`,
+  );
+
+  // Once A's backoff elapses, both go — oldest first, in one pass.
+  q.clock.advance(30_000);
+  const drained = await onlineEngine.runOnce();
+  const aFinal = await q.store.getBill(a.id);
+  const bFinal = await q.store.getBill(b.id);
+  const aSeq = Number(aFinal?.doc_no?.split("-").pop());
+  const bSeq = Number(bFinal?.doc_no?.split("-").pop());
+  console.log(`  after the backoff elapses -> synced=${String(drained.synced)}  A=${String(aFinal?.doc_no)}  B=${String(bFinal?.doc_no)}`);
+
+  check("both bills sync in the same pass", drained.synced === 2);
+  check(
+    "the EARLIER-weighed bill got the LOWER doc_no",
+    aSeq < bSeq,
+    `A(${a.device_created_at.slice(11, 19)})=${String(aFinal?.doc_no)} < B(${b.device_created_at.slice(11, 19)})=${String(bFinal?.doc_no)}`,
+  );
+}
+
+/* ------------------------------------------------------------------ 9 ---- */
+
+/**
+ * CASE 9 — a jammed head is VISIBLE, and OFFLINE is told apart from POISONED.
+ *
+ * Strict head-of-line order (CASE 8) is deliberately unforgiving: one unsendable
+ * bill holds up every bill behind it. Two very different things can cause that,
+ * and staff respond to them differently:
+ *
+ *   OFFLINE — the whole network is down. A backlog is normal and honest; it must
+ *   stay CALM AMBER however long it lasts, or the alarm cries wolf every time a
+ *   yard loses signal and staff learn to ignore the strip.
+ *
+ *   POISONED — one bill makes the REACHABLE server fail every time (a 5xx on its
+ *   own payload, classified `unavailable`, not `rejected`, so it retries
+ *   forever). Only support can clear it; it must go LOUD RED.
+ *
+ * The signal that separates them is NOT elapsed time and NOT attempt count —
+ * both bounce for minutes. It is whether the server ANSWERED. This case drives
+ * BOTH paths past the SAME threshold and asserts they end in DIFFERENT states,
+ * then fixes the poison server and watches the backlog drain in weighing order —
+ * proving the poisoned queue was jammed, not dead.
+ */
+async function case9OfflineVsPoison(harness: StoreHarness): Promise<void> {
+  // Both paths are driven the same distance past the threshold, on purpose: the
+  // only thing that may differ between them is the reachable-server signal.
+  const totalMs = POISON_ALARM_MS + 30_000;
+  const stepMs = 10_000;
+
+  /* ---- 9a: a pure-OFFLINE backlog stays amber, even past the threshold ---- */
+
+  header("CASE 9a: an OFFLINE backlog stays calm amber — even long past the alarm threshold");
+  const off = await rig(harness, "bill-off");
+
+  // Three bills weighed in order; the network is simply down for all of them.
+  const offBills: LocalBill[] = [];
+  for (let i = 0; i < 3; i += 1) {
+    offBills.push(
+      await createLocalBill(
+        { store: off.store, clock: off.clock, ids: off.billIds },
+        { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(off.itemIds), total_amount: null },
+      ),
+    );
+    off.clock.advance(60_000);
+  }
+  const offlineEngine = new SyncEngine({
+    store: off.store,
+    transport: new OfflineTransport(),
+    clock: off.clock,
+    backoffBaseMs: 1000,
+    backoffMaxMs: 5000,
+    batchLimit: 50,
+  });
+
+  // Keep bouncing, offline, for well past the alarm threshold.
+  for (let elapsed = 0; elapsed < totalMs; elapsed += stepMs) {
+    off.clock.advance(stepMs);
+    await offlineEngine.runOnce();
+  }
+  const offSnap = await off.store.pendingQueueSnapshot();
+  const offlineHealth = assessQueue(offSnap, off.clock.now());
+
+  check(
+    "the head bounced repeatedly and all three bills are still pending",
+    (offSnap.head?.attempts ?? 0) >= 3 && offSnap.pendingCount === 3,
+    `attempts=${String(offSnap.head?.attempts)} pending=${String(offSnap.pendingCount)}`,
+  );
+  check("nothing reached the server", off.server.billCount === 0);
+  check(
+    "it has been unable to send for LONGER than the alarm threshold",
+    offlineHealth.blockedForMs >= POISON_ALARM_MS,
+    `blockedForMs=${String(offlineHealth.blockedForMs)} threshold=${String(POISON_ALARM_MS)}`,
+  );
+  check(
+    "yet it reads as OFFLINE, not poisoned — the server never answered",
+    offlineHealth.offline === true &&
+      offlineHealth.poisoned === false &&
+      offlineHealth.poisonedForMs === 0,
+    `offline=${String(offlineHealth.offline)} poisoned=${String(offlineHealth.poisoned)} poisonedForMs=${String(offlineHealth.poisonedForMs)}`,
+  );
+  check(
+    "so NO red alarm and NO blocker marked — a long outage is honest amber",
+    offlineHealth.alarm === false && offlineHealth.blockerId === null,
+    `alarm=${String(offlineHealth.alarm)} blockerId=${String(offlineHealth.blockerId)}`,
+  );
+
+  /* ---- 9b: a POISONED head goes loud red once it persists ---- */
+
+  header("CASE 9b: a POISONED head (reachable server, 5xx every time) goes LOUD RED");
+  const r = await rig(harness, "bill-blk");
+
+  // Four bills weighed strictly in order A < B < C < D.
+  const created: LocalBill[] = [];
+  for (let i = 0; i < 4; i += 1) {
+    created.push(
+      await createLocalBill(
+        { store: r.store, clock: r.clock, ids: r.billIds },
+        { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(r.itemIds), total_amount: null },
+      ),
+    );
+    r.clock.advance(60_000); // each later bill is weighed a minute after the last
+  }
+  const a = created[0]!;
+  const b = created[1]!;
+  const c = created[2]!;
+  const d = created[3]!;
+
+  // A is the poison pill: the REACHABLE server errors on it every time — a 5xx,
+  // so `unavailable` with reachable:true, NOT rejected. It retries forever.
+  const failing = new HeadFailingTransport(r.server, a.id);
+  const engine = new SyncEngine({
+    store: r.store,
+    transport: failing,
+    clock: r.clock,
+    backoffBaseMs: 1000,
+    backoffMaxMs: 5000,
+    batchLimit: 50,
+  });
+
+  // One pass: A is tried and bounces; B, C, D sit behind it, untried.
+  await engine.runOnce();
+  let snap = await r.store.pendingQueueSnapshot();
+  let health = assessQueue(snap, r.clock.now());
+
+  check(
+    "only the poisoned head was ever attempted",
+    failing.attemptedIds.length >= 1 && failing.attemptedIds.every((id) => id === a.id),
+    `attempted=${JSON.stringify(failing.attemptedIds)}`,
+  );
+  check("nothing reached the server", r.server.billCount === 0);
+  check("all four bills are still pending", snap.pendingCount === 4, `pending=${String(snap.pendingCount)}`);
+  check(
+    "the head is A (earliest weighed) and it has bounced",
+    snap.head?.id === a.id && (snap.head?.attempts ?? 0) >= 1,
+    `head=${String(snap.head?.id)} attempts=${String(snap.head?.attempts)}`,
+  );
+  check(
+    "it reads as POISONED — the server answered (5xx) — with three bills behind it",
+    health.poisoned === true && health.offline === false && health.behind === 3,
+    `poisoned=${String(health.poisoned)} offline=${String(health.offline)} behind=${String(health.behind)}`,
+  );
+  check(
+    "but the LOUD alarm holds off below the threshold (not vacuous)",
+    health.alarm === false && health.blockerId === null,
+    `poisonedForMs=${String(health.poisonedForMs)} threshold=${String(POISON_ALARM_MS)}`,
+  );
+
+  // The reachable server keeps erroring on A for well past the threshold. Each
+  // step advances the clock beyond the capped backoff, so A really is retried.
+  for (let elapsed = 0; elapsed < totalMs; elapsed += stepMs) {
+    r.clock.advance(stepMs);
+    await engine.runOnce();
+  }
+
+  snap = await r.store.pendingQueueSnapshot();
+  const poisonHealth = assessQueue(snap, r.clock.now());
+
+  check(
+    "A was retried many times, never given up on",
+    (snap.head?.attempts ?? 0) >= 3,
+    `attempts=${String(snap.head?.attempts)}`,
+  );
+  check(
+    "STILL nothing behind it synced",
+    r.server.billCount === 0 && snap.pendingCount === 4,
+    `onServer=${String(r.server.billCount)} pending=${String(snap.pendingCount)}`,
+  );
+  check(
+    "B, C and D were never attempted while A blocked",
+    ![b, c, d].some((x) => failing.attemptedIds.includes(x.id)),
+    `distinct attempted=${JSON.stringify([...new Set(failing.attemptedIds)])}`,
+  );
+  check(
+    "the block is now reported LOUDLY: one POISONED bill, 3 behind, and for how long",
+    poisonHealth.alarm === true &&
+      poisonHealth.poisoned === true &&
+      poisonHealth.blockerId === a.id &&
+      poisonHealth.behind === 3 &&
+      poisonHealth.poisonedForMs >= POISON_ALARM_MS,
+    `alarm=${String(poisonHealth.alarm)} blockerId=${String(poisonHealth.blockerId)} behind=${String(poisonHealth.behind)} poisonedForMs=${String(poisonHealth.poisonedForMs)}`,
+  );
+
+  /* ---- 9c: the two are DISTINGUISHABLE, and by the signal, not the clock ---- */
+
+  header("CASE 9c: offline and poisoned are told apart by the reachable-server signal, not by elapsed time");
+  check(
+    "at comparable elapsed times, offline stays amber while poison goes red",
+    offlineHealth.alarm === false && poisonHealth.alarm === true,
+    `offline.alarm=${String(offlineHealth.alarm)} poison.alarm=${String(poisonHealth.alarm)}`,
+  );
+  check(
+    "and it is NOT the clock that separates them — both waited past the threshold",
+    offlineHealth.blockedForMs >= POISON_ALARM_MS && poisonHealth.poisonedForMs >= POISON_ALARM_MS,
+    `offline.blockedForMs=${String(offlineHealth.blockedForMs)} poison.poisonedForMs=${String(poisonHealth.poisonedForMs)}`,
+  );
+
+  // NON-VACUITY: the poisoned queue is jammed, not dead. Fix the server and the
+  // whole backlog drains — in weighing order, A first now that it can send.
+  const online = new SyncEngine({
+    store: r.store,
+    transport: new OnlineTransport(r.server),
+    clock: r.clock,
+    backoffBaseMs: 1000,
+  });
+  const drained = await online.runUntilQuiescent();
+  const finals = await Promise.all(created.map((x) => r.store.getBill(x.id)));
+  const seqs = finals.map((x) => Number(x?.doc_no?.split("-").pop()));
+  console.log(`  after the server recovers -> synced=${String(drained.synced)}  doc_no order: ${seqs.join(" , ")}`);
+
+  check(
+    "once the head can send, the whole backlog drains",
+    r.server.billCount === 4 && drained.synced === 4,
+    `onServer=${String(r.server.billCount)} synced=${String(drained.synced)}`,
+  );
+  check(
+    "and doc_no follows weighing order A < B < C < D",
+    seqs.every((n, i) => i === 0 || n > seqs[i - 1]!),
+    `seqs=${seqs.join(",")}`,
+  );
+
+  const clearSnap = await r.store.pendingQueueSnapshot();
+  const clearHealth = assessQueue(clearSnap, r.clock.now());
+  check(
+    "the alarm clears once the queue drains",
+    clearHealth.alarm === false && clearHealth.blockerId === null && clearSnap.pendingCount === 0,
+    `alarm=${String(clearHealth.alarm)} pending=${String(clearSnap.pendingCount)}`,
+  );
+  invariant(r, created, "server holds exactly the four bills");
+}
+
 async function case7RejectionIsNotRetry(harness: StoreHarness): Promise<void> {
   header("CASE 7 (extra): a server REJECTION is not a transport failure");
   const r = await rig(harness, "bill-r");
@@ -416,6 +792,8 @@ async function runSuite(harness: StoreHarness): Promise<void> {
   await case5FlakyMany(harness, SEED, 50);
   await case6DoubleTrigger(harness);
   await case7RejectionIsNotRetry(harness);
+  await case8WeighingOrder(harness);
+  await case9OfflineVsPoison(harness);
 }
 
 async function main(): Promise<number> {

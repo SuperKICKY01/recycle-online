@@ -41,6 +41,25 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
      next_attempt_at TEXT    NOT NULL,
      doc_no          TEXT,
      synced_at       TEXT,
+     /*
+      * A REAL COLUMN, not read out of payload_json, because the send queue is
+      * ordered by it. Ordering is the one thing that decides which bill gets
+      * the lower doc_no, so it must be indexable and it must be the actual
+      * weighing time — see ix_local_bills_ready_dev.
+      */
+     device_created_at TEXT,
+     void_reason       TEXT,
+     void_requested_at TEXT,
+     voided_at         TEXT,
+     void_attempts     INTEGER NOT NULL DEFAULT 0,
+     void_last_error   TEXT,
+     /* When the bill first failed to send, for any reason. Set once, on the
+        first bounce; never moved. The total-stuck clock. */
+     first_attempt_at  TEXT,
+     /* When the REACHABLE server last started refusing it (offline bounces reset
+        it to null). Non-null ⟺ poisoned; the clock the red alarm is measured
+        from, so a plain outage never trips it. See sync/queueHealth.ts. */
+     first_server_error_at TEXT,
      CHECK (sync_state IN ('pending', 'syncing', 'synced', 'failed'))
    ) STRICT`,
 
@@ -94,6 +113,78 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
 ];
 
 /**
+ * Statements that depend on the migrated columns, so they must run AFTER
+ * migrateBillColumns and never alongside SCHEMA_STATEMENTS.
+ *
+ * This index sat in SCHEMA_STATEMENTS for about a minute during Phase 2c-5 and
+ * would have thrown on any UPGRADED device — a fresh install has the columns
+ * from CREATE TABLE, so it works there and only there. Ordering is the whole
+ * content of this constant's existence.
+ */
+const POST_MIGRATION_STATEMENTS: readonly string[] = [
+  // Drives listVoidsToApply: voids still owed to the server.
+  `CREATE INDEX IF NOT EXISTS ix_local_bills_void_owed
+     ON local_bills (void_requested_at, voided_at, sync_state)`,
+
+  /*
+   * Backfill for bills written before device_created_at was a column. The value
+   * has always been in the payload — it is what the server stores — so nothing
+   * is invented here, it is only lifted somewhere it can be ordered by.
+   * Idempotent: after the first run there is nothing left NULL to update.
+   */
+  `UPDATE local_bills
+     SET device_created_at = json_extract(payload_json, '$.device_created_at')
+   WHERE device_created_at IS NULL`,
+
+  // Drives listReadyToSend. device_created_at leads the sort so a backlog
+  // drains in weighing order.
+  `CREATE INDEX IF NOT EXISTS ix_local_bills_ready_dev
+     ON local_bills (sync_state, next_attempt_at, device_created_at)`,
+];
+
+/**
+ * Columns added to local_bills AFTER the table first shipped.
+ *
+ * CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so a
+ * device upgraded from Phase 2c-4 would keep the old five-column-shorter
+ * local_bills and every void query would fail at runtime — on a database that
+ * already holds the shop's unsynced bills. Fresh installs get these from the
+ * CREATE above; existing ones get them from here. Both paths must end at the
+ * same shape, which is what proveVoid V0 checks.
+ */
+const ADDED_BILL_COLUMNS: readonly { name: string; ddl: string }[] = [
+  { name: "device_created_at", ddl: "device_created_at TEXT" },
+  { name: "void_reason", ddl: "void_reason TEXT" },
+  { name: "void_requested_at", ddl: "void_requested_at TEXT" },
+  { name: "voided_at", ddl: "voided_at TEXT" },
+  { name: "void_attempts", ddl: "void_attempts INTEGER NOT NULL DEFAULT 0" },
+  { name: "void_last_error", ddl: "void_last_error TEXT" },
+  { name: "first_attempt_at", ddl: "first_attempt_at TEXT" },
+  { name: "first_server_error_at", ddl: "first_server_error_at TEXT" },
+];
+
+/**
+ * Adds any missing column, by asking the database what it actually has.
+ *
+ * Deliberately driven by PRAGMA table_info rather than by running ALTER TABLE
+ * and swallowing the "duplicate column name" error: a blanket catch would hide
+ * a REAL failure (disk full, locked, STRICT rejecting the type) behind the same
+ * silence as the benign case, on the one operation that decides whether the
+ * shop's existing bills remain readable.
+ */
+async function migrateBillColumns(db: SqlDriver): Promise<string[]> {
+  const existing = await db.all<{ name: string }>("PRAGMA table_info(local_bills)");
+  const have = new Set(existing.map((c) => c.name));
+  const added: string[] = [];
+  for (const col of ADDED_BILL_COLUMNS) {
+    if (have.has(col.name)) continue;
+    await db.exec(`ALTER TABLE local_bills ADD COLUMN ${col.ddl}`);
+    added.push(col.name);
+  }
+  return added;
+}
+
+/**
  * Connection pragmas. ORDER MATTERS — busy_timeout MUST be first.
  *
  * Every later statement can need a lock, including the journal_mode switch
@@ -117,7 +208,10 @@ export const CONNECTION_PRAGMAS: readonly string[] = [
  * place — two copies of the pragma loop would be two chances to get the
  * busy_timeout ordering wrong.
  */
-export async function initConnection(db: SqlDriver): Promise<void> {
+export async function initConnection(db: SqlDriver): Promise<string[]> {
   for (const pragma of CONNECTION_PRAGMAS) await db.exec(pragma);
   for (const ddl of SCHEMA_STATEMENTS) await db.exec(ddl);
+  const added = await migrateBillColumns(db);
+  for (const ddl of POST_MIGRATION_STATEMENTS) await db.exec(ddl);
+  return added;
 }
