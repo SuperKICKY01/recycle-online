@@ -5,9 +5,11 @@ FastAPI + PostgreSQL backend, and the single source of truth for business rules.
 **Status: running API.** Login (`/auth/login`), purchase bills (create, read,
 list, void), and read-only master data (`/products`, `/sellers`), over a schema
 with per-tenant row-level security. Every request is scoped to its token's tenant
-via `SET LOCAL`. Five proof scripts in `scripts/` exercise the real paths against
-a live database — tenant isolation, auth, master data, bills, and the
-master-data rejection gate.
+via `SET LOCAL`. Seven proof scripts in `scripts/` exercise the real paths
+against a live database — tenant isolation, auth, master data, bills, the
+master-data rejection gate, shop-timezone numbering, and per-bill seller
+pricing. Each must pass twice in a row without reseeding
+(`lessons/proof-must-run-twice.md`).
 
 ## Local setup
 

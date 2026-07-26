@@ -56,6 +56,28 @@ The invariants being proven — gap-free, never reused, monotonic under
 concurrency — are all *relative* properties. Asserting them with absolute
 numbers was never testing the invariant, only the starting state.
 
+## AMENDED (Phase 2c-6): the seed's SIZE is an environment fact too
+
+The same mistake has a second shape, and a per-run UUID does not catch it.
+`prove_master.py` asserted tenant isolation like this:
+
+```python
+check("tenant A sees exactly its own seller", len(sa) == 1 and sa[0]["id"] == ...)
+```
+
+It was green for a year. Adding four sellers to the dev seed — a change that
+touches no isolation logic whatsoever — turned it red. The count was never the
+property: **isolation is a set relation**, not a cardinality. The rewrite says
+what was actually meant, and is immune to the seed growing again:
+
+```python
+check("no seller is visible to BOTH tenants", ids_a.isdisjoint(ids_b))
+```
+
+An assertion that breaks when a fixture is *added* was measuring the fixture. Ask
+of every count in a proof: if this number changed, would the property I am
+claiming actually be false? If not, assert the property.
+
 ## How to apply
 
 Before trusting any proof script:
@@ -66,6 +88,8 @@ Before trusting any proof script:
    idempotency key, external reference, or generated number must be per-run.
 3. Assert the shape and the *delta*, not the value, for anything the server
    assigns.
+4. Grep it for `len(...) == <n>` on seeded data. Rewrite as a membership or
+   disjointness claim unless the exact count really is the invariant.
 
 This sits alongside the other lessons about a green result that proves nothing:
 [[concurrency-tests-need-a-barrier]] (workers that never overlapped),
