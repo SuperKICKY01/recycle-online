@@ -46,13 +46,31 @@ interface BillRow {
   void_last_error: string | null;
   first_attempt_at: string | null;
   first_server_error_at: string | null;
+  server_error_attempts: number;
+  master_data_missing_at: string | null;
+  master_data_code: string | null;
 }
 
 const COLUMNS =
   "id, idempotency_key, payload_json, sync_state, attempt_count, last_error," +
   " created_at, device_created_at, next_attempt_at, doc_no, synced_at," +
   " void_reason, void_requested_at, voided_at, void_attempts, void_last_error," +
-  " first_attempt_at, first_server_error_at";
+  " first_attempt_at, first_server_error_at, server_error_attempts," +
+  " master_data_missing_at, master_data_code";
+
+/**
+ * The head-of-line queue excludes parked bills, in ONE place, reused by every
+ * query that defines "queued to send".
+ *
+ * This is the deliberate ordering trade, and it is the only place it happens:
+ * a parked bill is passed by bills weighed after it, so it will take a HIGHER
+ * doc_no when it finally syncs. That is a real weakening of weighing order — see
+ * lessons/doc-no-is-arrival-order-not-event-time.md — accepted because the
+ * alternative is one un-priced product stopping the whole yard from syncing, and
+ * because the bill is parked VISIBLY rather than silently skipped, which is the
+ * distinction lessons/queue-jam-must-be-visible.md actually draws.
+ */
+const QUEUED = "sync_state = 'pending' AND master_data_missing_at IS NULL";
 
 /**
  * The bill INSERT, defined once and exported.
@@ -64,7 +82,7 @@ const COLUMNS =
  */
 export const BILL_INSERT_SQL =
   `INSERT INTO local_bills (${COLUMNS})` +
-  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 export function billInsertParams(bill: LocalBill): SqlValue[] {
   return [
@@ -86,6 +104,9 @@ export function billInsertParams(bill: LocalBill): SqlValue[] {
     bill.void_last_error,
     bill.first_attempt_at,
     bill.first_server_error_at,
+    bill.server_error_attempts,
+    bill.master_data_missing_at,
+    bill.master_data_code,
   ];
 }
 
@@ -112,6 +133,9 @@ function toBill(row: BillRow): LocalBill {
     void_last_error: row.void_last_error,
     first_attempt_at: row.first_attempt_at,
     first_server_error_at: row.first_server_error_at,
+    server_error_attempts: row.server_error_attempts,
+    master_data_missing_at: row.master_data_missing_at,
+    master_data_code: row.master_data_code,
   };
 }
 
@@ -169,7 +193,7 @@ export class SqliteLocalStore implements LocalStore {
   async listReadyToSend(now: Date, limit: number): Promise<LocalBill[]> {
     const rows = await this.db.all<BillRow>(
       `SELECT ${COLUMNS} FROM local_bills
-       WHERE sync_state = 'pending' AND next_attempt_at <= ?
+       WHERE ${QUEUED} AND next_attempt_at <= ?
        ORDER BY device_created_at, created_at, id
        LIMIT ?`,
       [now.toISOString(), limit],
@@ -181,7 +205,7 @@ export class SqliteLocalStore implements LocalStore {
   async listPendingOldestFirst(limit: number): Promise<LocalBill[]> {
     const rows = await this.db.all<BillRow>(
       `SELECT ${COLUMNS} FROM local_bills
-       WHERE sync_state = 'pending'
+       WHERE ${QUEUED}
        ORDER BY device_created_at, created_at, id
        LIMIT ?`,
       [limit],
@@ -206,8 +230,11 @@ export class SqliteLocalStore implements LocalStore {
    */
   async clearBackoffForPending(now: Date): Promise<number> {
     const r = await this.db.run(
+      // Parked bills are excluded: their next_attempt_at is a slow master-data
+      // cadence, not a network backoff, and a reachable server says nothing about
+      // whether the office has added the price yet.
       `UPDATE local_bills SET next_attempt_at = ?
-       WHERE sync_state = 'pending' AND next_attempt_at > ?`,
+       WHERE ${QUEUED} AND next_attempt_at > ?`,
       [now.toISOString(), now.toISOString()],
     );
     return r.changes;
@@ -219,12 +246,80 @@ export class SqliteLocalStore implements LocalStore {
    * claimer to slip into, in this process or any other.
    */
   async claimForSend(id: string, now: Date): Promise<boolean> {
+    // QUEUED, not just 'pending': a bill parked on master data must not be
+    // claimable, or a concurrent pass could send it while the UI shows it as
+    // waiting on the office.
     const r = await this.db.run(
       `UPDATE local_bills SET sync_state = 'syncing', next_attempt_at = ?
-       WHERE id = ? AND sync_state = 'pending'`,
+       WHERE id = ? AND ${QUEUED}`,
       [now.toISOString(), id],
     );
     return r.changes === 1;
+  }
+
+  /* --------------------------------------------------- master-data park -- */
+
+  /**
+   * Park a bill the server refused for a RESOLVABLE reason.
+   *
+   * sync_state goes back to 'pending' — the bill is still owed and nothing may
+   * drop it — but master_data_missing_at takes it out of the head-of-line queue.
+   * The poison clocks are CLEARED: this is not a server fault and must never
+   * raise the "call support" alarm. It is a "call the office" state.
+   */
+  async markMasterDataMissing(
+    id: string,
+    code: string,
+    reason: string,
+    attempt: number,
+    retryAt: Date,
+    now: Date,
+  ): Promise<void> {
+    await this.db.run(
+      `UPDATE local_bills
+       SET sync_state = 'pending', attempt_count = ?, last_error = ?,
+           master_data_missing_at = ?, master_data_code = ?,
+           next_attempt_at = ?,
+           first_attempt_at = NULL, first_server_error_at = NULL,
+           server_error_attempts = 0
+       WHERE id = ?`,
+      [attempt, reason, now.toISOString(), code, retryAt.toISOString(), id],
+    );
+  }
+
+  async listMasterDataBlocked(limit: number): Promise<LocalBill[]> {
+    const rows = await this.db.all<BillRow>(
+      `SELECT ${COLUMNS} FROM local_bills
+       WHERE master_data_missing_at IS NOT NULL AND sync_state = 'pending'
+       ORDER BY device_created_at, created_at, id
+       LIMIT ?`,
+      [limit],
+    );
+    return rows.map(toBill);
+  }
+
+  /**
+   * Un-park. `all` is the operator pressing retry — try everything right now,
+   * because they have just added the price and want to see it clear. Otherwise
+   * only bills whose slow cadence is due.
+   *
+   * next_attempt_at is reset to now so a released bill is immediately eligible;
+   * it rejoins the queue at its WEIGHING position, so if it is the oldest it goes
+   * straight back to the head. If the price is still missing it simply parks
+   * again on that attempt, without having blocked anything.
+   */
+  async releaseMasterDataBlocked(now: Date, all: boolean): Promise<number> {
+    const nowIso = now.toISOString();
+    const due = all ? "" : " AND next_attempt_at <= ?";
+    const params: SqlValue[] = all ? [nowIso] : [nowIso, nowIso];
+    const r = await this.db.run(
+      `UPDATE local_bills
+       SET master_data_missing_at = NULL, master_data_code = NULL,
+           next_attempt_at = ?
+       WHERE master_data_missing_at IS NOT NULL AND sync_state = 'pending'${due}`,
+      params,
+    );
+    return r.changes;
   }
 
   async markSynced(
@@ -237,7 +332,9 @@ export class SqliteLocalStore implements LocalStore {
       `UPDATE local_bills
        SET sync_state = 'synced', doc_no = ?, attempt_count = ?,
            last_error = NULL, synced_at = ?,
-           first_attempt_at = NULL, first_server_error_at = NULL
+           first_attempt_at = NULL, first_server_error_at = NULL,
+           server_error_attempts = 0,
+           master_data_missing_at = NULL, master_data_code = NULL
        WHERE id = ?`,
       [docNo, attempt, now.toISOString(), id],
     );
@@ -271,16 +368,35 @@ export class SqliteLocalStore implements LocalStore {
     // continuously — an offline spell in the middle wipes it and the poison timer
     // starts fresh only if the server refuses again. That is what stops a long
     // outage (all transport-level) from ever tripping the red alarm.
+    //
+    // server_error_attempts moves on the SAME condition and for the same reason:
+    // +1 while the server is answering-and-failing, reset to 0 the moment a
+    // bounce is transport-level. It is the count-based trigger for the same red
+    // alarm, so a server that refuses this bill quickly surfaces after N
+    // refusals instead of waiting out the wall clock. Keeping both on one CASE
+    // means they can never disagree about whether the server answered.
     const nowIso = now.toISOString();
+    const reachableFlag = reachable ? 1 : 0;
     await this.db.run(
       `UPDATE local_bills
        SET sync_state = 'pending', attempt_count = ?, last_error = ?,
            next_attempt_at = ?,
            first_attempt_at = COALESCE(first_attempt_at, ?),
            first_server_error_at =
-             CASE WHEN ? = 1 THEN COALESCE(first_server_error_at, ?) ELSE NULL END
+             CASE WHEN ? = 1 THEN COALESCE(first_server_error_at, ?) ELSE NULL END,
+           server_error_attempts =
+             CASE WHEN ? = 1 THEN server_error_attempts + 1 ELSE 0 END
        WHERE id = ?`,
-      [attempt, reason, nextAttemptAt.toISOString(), nowIso, reachable ? 1 : 0, nowIso, id],
+      [
+        attempt,
+        reason,
+        nextAttemptAt.toISOString(),
+        nowIso,
+        reachableFlag,
+        nowIso,
+        reachableFlag,
+        id,
+      ],
     );
   }
 
@@ -294,18 +410,26 @@ export class SqliteLocalStore implements LocalStore {
    */
   async pendingQueueSnapshot(): Promise<QueueSnapshot> {
     const counts = await this.db.all<{ n: number }>(
-      "SELECT COUNT(*) AS n FROM local_bills WHERE sync_state = 'pending'",
+      `SELECT COUNT(*) AS n FROM local_bills WHERE ${QUEUED}`,
     );
     const pendingCount = counts[0]?.n ?? 0;
+    // Parked bills are counted separately and NEVER as "behind": they are not
+    // waiting their turn in a queue, they are waiting on the office, and folding
+    // them into the queue depth would report a backlog no network can drain.
+    const blocked = await this.db.all<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM local_bills" +
+        " WHERE master_data_missing_at IS NOT NULL AND sync_state = 'pending'",
+    );
     const rows = await this.db.all<BillRow>(
       `SELECT ${COLUMNS} FROM local_bills
-       WHERE sync_state = 'pending'
+       WHERE ${QUEUED}
        ORDER BY device_created_at, created_at, id
        LIMIT 1`,
     );
     const head = rows[0];
     return {
       pendingCount,
+      masterDataBlockedCount: blocked[0]?.n ?? 0,
       head:
         head === undefined
           ? null
@@ -315,6 +439,7 @@ export class SqliteLocalStore implements LocalStore {
               attempts: head.attempt_count,
               first_attempt_at: head.first_attempt_at,
               first_server_error_at: head.first_server_error_at,
+              server_error_attempts: head.server_error_attempts,
               last_error: head.last_error,
             },
     };

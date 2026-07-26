@@ -203,6 +203,24 @@ export default function App() {
     return () => clearInterval(t);
   }, [ready, syncOnce]);
 
+  /**
+   * The office has added the missing price; release every parked bill at once
+   * rather than waiting out the slow cadence. Nothing is re-created here — the
+   * same bills, with the same ids and idempotency keys, simply rejoin the queue.
+   */
+  const retryMasterData = useCallback(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    void (async () => {
+      const released = await engine.retryMasterDataNow();
+      setStatus(
+        released > 0 ? `ลองส่งใหม่ ${String(released)} ใบ` : "ไม่มีบิลที่รอราคา",
+      );
+      await refresh();
+      void syncOnce();
+    })();
+  }, [refresh, syncOnce]);
+
   /* ------------------------------------------------------ draft persistence */
 
   const flushDraft = useCallback(async () => {
@@ -362,9 +380,15 @@ export default function App() {
           lastSyncedAt={lastSyncedAt}
           blocked={
             health?.alarm
-              ? { behind: health.behind, forMs: health.poisonedForMs }
+              ? {
+                  behind: health.behind,
+                  forMs: health.poisonedForMs,
+                  attempts: health.serverErrorAttempts,
+                }
               : null
           }
+          waitingOnMasterData={health?.masterDataBlocked ?? 0}
+          onRetryMasterData={retryMasterData}
         />
 
         {bills.length > 0 ? (

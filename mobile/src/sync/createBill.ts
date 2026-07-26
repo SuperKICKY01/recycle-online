@@ -72,6 +72,9 @@ export function buildLocalBill(deps: BuildBillDeps, draft: BillDraft): LocalBill
     // started.
     first_attempt_at: null,
     first_server_error_at: null,
+    server_error_attempts: 0,
+    master_data_missing_at: null,
+    master_data_code: null,
     doc_no: null,
     synced_at: null,
     void_reason: null,

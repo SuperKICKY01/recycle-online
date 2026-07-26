@@ -12,7 +12,7 @@
  * "พร้อมใช้งาน" (ready) rather than claiming a connection it has not tested.
  * Adding a reachability probe would be a new feature and is out of scope here.
  */
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 export interface SyncStatus {
   /** null = not attempted since launch, so unknown rather than assumed good. */
@@ -27,9 +27,21 @@ export interface SyncStatus {
    * calm amber "ออฟไลน์" message below — you wait it out; this you call support
    * for). This outranks every other message: a poisoned queue silently loses the
    * shop the ability to sync while staff keep saving into the backlog unaware.
-   * `forMs` is how long the reachable server has been refusing it.
+   * `forMs` is how long the reachable server has been refusing it, `attempts`
+   * how many times in a row it has refused. Both are reported because either one
+   * can be what raised the alarm, and "refused 5 times" is the more legible
+   * reason when the elapsed time is still under a minute.
    */
-  blocked: { behind: number; forMs: number } | null;
+  blocked: { behind: number; forMs: number; attempts: number } | null;
+  /**
+   * Bills parked because the server said master data is missing (no price for
+   * this grade). A DIFFERENT problem from every other state here: the network is
+   * fine, the bill is fine, and waiting will not fix it — someone must set the
+   * price in the back office. So it gets its own message and its own action,
+   * never the amber "we'll send it later" wording, which would be a lie.
+   */
+  waitingOnMasterData: number;
+  onRetryMasterData: () => void;
 }
 
 const hhmm = (iso: string): string => {
@@ -52,9 +64,18 @@ const TONES: Record<"bad" | "warn" | "busy" | "good" | "idle", Tone> = {
   idle: { bg: "#f1f5f9", fg: "#334155", dot: "#64748b" },
 };
 
-export function StatusStrip({ online, pending, failed, lastSyncedAt, blocked }: SyncStatus) {
+export function StatusStrip({
+  online,
+  pending,
+  failed,
+  lastSyncedAt,
+  blocked,
+  waitingOnMasterData,
+  onRetryMasterData,
+}: SyncStatus) {
   let tone = TONES.idle;
   let message: string;
+  let action: string | null = null;
 
   if (blocked !== null) {
     // A bill the REACHABLE server keeps refusing is damming every bill behind
@@ -62,10 +83,26 @@ export function StatusStrip({ online, pending, failed, lastSyncedAt, blocked }: 
     // staff know this is not "wait for signal" but "call support" — with how
     // long and how many, no jargon, visible without opening anything.
     tone = TONES.bad;
-    const mins = Math.max(1, Math.round(blocked.forMs / 60_000));
+    // Report the REFUSAL COUNT, not just elapsed minutes. The alarm can now be
+    // raised by the count alone, and in that case the elapsed time may still be
+    // well under a minute — rounding it up to "1 นาที" would understate a bill
+    // the server has already refused five times.
+    const mins = Math.round(blocked.forMs / 60_000);
+    const howLong = mins >= 1 ? ` นาน ${String(mins)} นาที` : "";
     message =
-      `บิล 1 ใบส่งไม่ผ่านซ้ำ ๆ มา ${String(mins)} นาที ทั้งที่เชื่อมต่อเซิร์ฟเวอร์ได้` +
+      `บิล 1 ใบส่งไม่ผ่าน ${String(blocked.attempts)} ครั้งติด${howLong}` +
+      ` ทั้งที่เชื่อมต่อเซิร์ฟเวอร์ได้` +
       ` — ค้างหน้าคิวจนอีก ${String(blocked.behind)} ใบส่งไม่ได้ ต้องติดต่อฝ่ายสนับสนุน`;
+  } else if (waitingOnMasterData > 0) {
+    // Ranked above `failed` on purpose: this one is time-sensitive and cheap to
+    // fix. Staff are often still at the yard, and the office can add the price in
+    // seconds — whereas a malformed bill needs someone to sit down and correct
+    // it. Say what to do, not what went wrong.
+    tone = TONES.warn;
+    message =
+      `${String(waitingOnMasterData)} ใบรอราคาสินค้า — ยังไม่ได้ตั้งราคาสำหรับเกรดของผู้ขายรายนี้` +
+      ` บิลถูกเก็บไว้ครบ ให้สำนักงานตั้งราคาแล้วกดส่งอีกครั้ง`;
+    action = "ส่งอีกครั้ง";
   } else if (failed > 0) {
     tone = TONES.bad;
     message = `ส่งไม่สำเร็จ ${String(failed)} ใบ — ต้องแก้ไข`;
@@ -88,10 +125,15 @@ export function StatusStrip({ online, pending, failed, lastSyncedAt, blocked }: 
   return (
     <View style={[styles.strip, { backgroundColor: tone.bg }]}>
       <View style={[styles.dot, { backgroundColor: tone.dot }]} />
-      <Text style={[styles.text, { color: tone.fg }]} numberOfLines={2}>
+      <Text style={[styles.text, { color: tone.fg }]} numberOfLines={3}>
         {message}
       </Text>
-      {lastSyncedAt !== null ? (
+      {action !== null ? (
+        <Pressable style={styles.action} onPress={onRetryMasterData}>
+          <Text style={styles.actionText}>{action}</Text>
+        </Pressable>
+      ) : null}
+      {lastSyncedAt !== null && action === null ? (
         <Text style={[styles.time, { color: tone.fg }]}>ส่งล่าสุด {hhmm(lastSyncedAt)}</Text>
       ) : null}
     </View>
@@ -106,4 +148,9 @@ const styles = StyleSheet.create({
   dot: { width: 12, height: 12, borderRadius: 6 },
   text: { flex: 1, fontSize: 13, fontWeight: "800" },
   time: { fontSize: 12, fontWeight: "700", opacity: 0.85 },
+  action: {
+    minHeight: 36, paddingHorizontal: 12, justifyContent: "center",
+    borderRadius: 8, backgroundColor: "#0f766e",
+  },
+  actionText: { color: "#fff", fontSize: 13, fontWeight: "800" },
 });

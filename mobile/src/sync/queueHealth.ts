@@ -49,6 +49,32 @@ import type { QueueSnapshot } from "./types.js";
  */
 export const POISON_ALARM_MS = 90_000;
 
+/**
+ * POISON_ALARM_ATTEMPTS — the SECOND trigger for the same red alarm: this many
+ * consecutive failures against a REACHABLE server escalate the head regardless of
+ * how little wall-clock time has passed.
+ *
+ * Why a count as well as a clock. POISON_ALARM_MS assumes a poisoned bill takes
+ * time to become obvious, which is only true while the backoff is short. A server
+ * that answers instantly, a device that has been retrying since before the app
+ * restarted, or a backoff already capped at 30s can all burn through many
+ * refusals inside one threshold window — and every one of those refusals is
+ * direct evidence the server will not take this bill. Waiting out a timer while
+ * holding that evidence is just a slower alarm.
+ *
+ * READ THIS BEFORE CHANGING IT. Attempt count is used here ONLY to escalate a
+ * head that is ALREADY classified poisoned. It plays no part in deciding whether
+ * a jam is offline or poisoned — that remains solely the reachability signal, per
+ * lessons/queue-jam-must-be-visible.md, which is explicit that neither time nor
+ * attempt count can separate a long outage from a poison pill. The count is safe
+ * here precisely because server_error_attempts RESETS on any transport-level
+ * bounce: an offline yard cannot accumulate it, so this cannot cry wolf on a dead
+ * spot. Using attempt_count instead would break exactly that property.
+ *
+ * A guess like the threshold above, to be tuned against a real yard.
+ */
+export const POISON_ALARM_ATTEMPTS = 5;
+
 export interface QueueHealth {
   /**
    * The head has failed at least once AND there are bills waiting behind it.
@@ -89,6 +115,19 @@ export interface QueueHealth {
    * "failing for N minutes even though the server is reachable".
    */
   poisonedForMs: number;
+  /**
+   * Consecutive failures against a reachable server. 0 whenever the head is
+   * offline. The count that can raise `alarm` on its own once it reaches
+   * POISON_ALARM_ATTEMPTS.
+   */
+  serverErrorAttempts: number;
+  /**
+   * Bills parked waiting on master data. NOT part of `blocking`/`behind`: they
+   * are not stuck in the queue, they have left it, and no network event will
+   * clear them — only the office adding the price, or the operator retrying.
+   * Surfaced here so the UI has one source for the whole queue picture.
+   */
+  masterDataBlocked: number;
   last_error: string | null;
 }
 
@@ -102,6 +141,8 @@ const CLEAR: QueueHealth = {
   attempts: 0,
   blockedForMs: 0,
   poisonedForMs: 0,
+  serverErrorAttempts: 0,
+  masterDataBlocked: 0,
   last_error: null,
 };
 
@@ -112,17 +153,27 @@ const CLEAR: QueueHealth = {
  * merely to be sitting there unsent — a queue that has not had a chance to try
  * is not jammed, it is new. Whether a jam is `offline` or `poisoned` is read
  * straight off first_server_error_at: non-null means the last bounce reached the
- * server (poison), null means it did not (offline). The red `alarm` fires only
- * once poison has persisted past the threshold, measured from
- * first_server_error_at so time spent offline never counts toward it.
+ * server (poison), null means it did not (offline).
+ *
+ * The red `alarm` then fires on EITHER of two triggers, both gated behind
+ * `poisoned`: the refusal has persisted past thresholdMs (measured from
+ * first_server_error_at, so time spent offline never counts), OR the reachable
+ * server has now refused this bill thresholdAttempts times in a row. Two
+ * triggers because a poisoned bill can become obvious either slowly or quickly,
+ * and waiting out a clock while holding N explicit refusals is just a later
+ * alarm. Neither trigger can fire for an offline head.
  */
 export function assessQueue(
   snap: QueueSnapshot,
   now: Date,
   thresholdMs: number = POISON_ALARM_MS,
+  thresholdAttempts: number = POISON_ALARM_ATTEMPTS,
 ): QueueHealth {
   const head = snap.head;
-  if (head === null) return CLEAR;
+  // No sendable head: the queue is clear as far as the NETWORK is concerned, but
+  // parked bills must still be reported or they would vanish from the UI the
+  // moment they were the only thing left.
+  if (head === null) return { ...CLEAR, masterDataBlocked: snap.masterDataBlockedCount };
 
   const behind = Math.max(0, snap.pendingCount - 1);
   const attempts = head.attempts;
@@ -142,7 +193,15 @@ export function assessQueue(
   const serverRefusing = head.first_server_error_at !== null;
   const poisoned = blocking && serverRefusing;
   const offline = blocking && !serverRefusing;
-  const alarm = poisoned && poisonedForMs >= thresholdMs;
+  // EITHER trigger escalates, and both are gated behind `poisoned` — so an
+  // offline backlog can reach neither, however long it lasts or however many
+  // times it has bounced. The count catches a server that refuses fast; the
+  // clock catches one that refuses slowly. Whichever arrives first is the one
+  // that had the evidence first.
+  const serverErrorAttempts = head.server_error_attempts;
+  const alarm =
+    poisoned &&
+    (poisonedForMs >= thresholdMs || serverErrorAttempts >= thresholdAttempts);
 
   return {
     blocking,
@@ -154,6 +213,8 @@ export function assessQueue(
     attempts,
     blockedForMs,
     poisonedForMs,
+    serverErrorAttempts,
+    masterDataBlocked: snap.masterDataBlockedCount,
     last_error: head.last_error,
   };
 }

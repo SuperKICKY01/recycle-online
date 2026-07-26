@@ -93,7 +93,7 @@ export class InMemoryStore implements LocalStore {
   /** Ordered by device_created_at — weighing order — like the SQLite store. */
   listReadyToSend(now: Date, limit: number): Promise<LocalBill[]> {
     const out = [...this.rows.values()]
-      .filter((b) => b.sync_state === "pending")
+      .filter(queued)
       .filter((b) => new Date(b.next_attempt_at).getTime() <= now.getTime())
       .sort(byDeviceCreatedAt)
       .slice(0, limit)
@@ -103,7 +103,7 @@ export class InMemoryStore implements LocalStore {
 
   listPendingOldestFirst(limit: number): Promise<LocalBill[]> {
     const out = [...this.rows.values()]
-      .filter((b) => b.sync_state === "pending")
+      .filter(queued)
       .sort(byDeviceCreatedAt)
       .slice(0, limit)
       .map(clone);
@@ -113,7 +113,7 @@ export class InMemoryStore implements LocalStore {
   clearBackoffForPending(now: Date): Promise<number> {
     let freed = 0;
     for (const row of this.rows.values()) {
-      if (row.sync_state !== "pending") continue;
+      if (!queued(row)) continue;
       if (new Date(row.next_attempt_at).getTime() <= now.getTime()) continue;
       row.next_attempt_at = now.toISOString();
       freed += 1;
@@ -123,9 +123,54 @@ export class InMemoryStore implements LocalStore {
 
   claimForSend(id: string, _now: Date): Promise<boolean> {
     const row = this.rows.get(id);
-    if (!row || row.sync_state !== "pending") return Promise.resolve(false);
+    if (!row || !queued(row)) return Promise.resolve(false);
     row.sync_state = "syncing";
     return Promise.resolve(true);
+  }
+
+  markMasterDataMissing(
+    id: string,
+    code: string,
+    reason: string,
+    attempt: number,
+    retryAt: Date,
+    now: Date,
+  ): Promise<void> {
+    const row = this.require(id);
+    row.sync_state = "pending";
+    row.attempt_count = attempt;
+    row.last_error = reason;
+    row.master_data_missing_at = now.toISOString();
+    row.master_data_code = code;
+    row.next_attempt_at = retryAt.toISOString();
+    // Not a server fault: the poison clocks must not run, or a missing price
+    // would eventually raise the "call support" alarm.
+    row.first_attempt_at = null;
+    row.first_server_error_at = null;
+    row.server_error_attempts = 0;
+    return Promise.resolve();
+  }
+
+  listMasterDataBlocked(limit: number): Promise<LocalBill[]> {
+    const out = [...this.rows.values()]
+      .filter((b) => b.sync_state === "pending" && b.master_data_missing_at !== null)
+      .sort(byDeviceCreatedAt)
+      .slice(0, limit)
+      .map(clone);
+    return Promise.resolve(out);
+  }
+
+  releaseMasterDataBlocked(now: Date, all: boolean): Promise<number> {
+    let released = 0;
+    for (const row of this.rows.values()) {
+      if (row.sync_state !== "pending" || row.master_data_missing_at === null) continue;
+      if (!all && new Date(row.next_attempt_at).getTime() > now.getTime()) continue;
+      row.master_data_missing_at = null;
+      row.master_data_code = null;
+      row.next_attempt_at = now.toISOString();
+      released += 1;
+    }
+    return Promise.resolve(released);
   }
 
   markSynced(id: string, docNo: string | null, attempt: number, now: Date): Promise<void> {
@@ -137,6 +182,9 @@ export class InMemoryStore implements LocalStore {
     row.synced_at = now.toISOString();
     row.first_attempt_at = null;
     row.first_server_error_at = null;
+    row.server_error_attempts = 0;
+    row.master_data_missing_at = null;
+    row.master_data_code = null;
     return Promise.resolve();
   }
 
@@ -170,16 +218,21 @@ export class InMemoryStore implements LocalStore {
     row.first_server_error_at = reachable
       ? (row.first_server_error_at ?? now.toISOString())
       : null;
+    // Same condition, same reason: consecutive server-answered failures, reset
+    // by any transport-level bounce. Mirrors the CASE in SqliteLocalStore.
+    row.server_error_attempts = reachable ? row.server_error_attempts + 1 : 0;
     return Promise.resolve();
   }
 
   pendingQueueSnapshot(): Promise<QueueSnapshot> {
-    const pending = [...this.rows.values()]
-      .filter((b) => b.sync_state === "pending")
-      .sort(byDeviceCreatedAt);
+    const pending = [...this.rows.values()].filter(queued).sort(byDeviceCreatedAt);
+    const blocked = [...this.rows.values()].filter(
+      (b) => b.sync_state === "pending" && b.master_data_missing_at !== null,
+    );
     const head = pending[0];
     return Promise.resolve({
       pendingCount: pending.length,
+      masterDataBlockedCount: blocked.length,
       head:
         head === undefined
           ? null
@@ -189,6 +242,7 @@ export class InMemoryStore implements LocalStore {
               attempts: head.attempt_count,
               first_attempt_at: head.first_attempt_at,
               first_server_error_at: head.first_server_error_at,
+              server_error_attempts: head.server_error_attempts,
               last_error: head.last_error,
             },
     });
@@ -256,6 +310,15 @@ export class InMemoryStore implements LocalStore {
     return row;
   }
 }
+
+/**
+ * "Queued to send": pending AND not parked on missing master data. Mirrors the
+ * QUEUED predicate in SqliteLocalStore — both stores must agree exactly on what
+ * the head-of-line queue contains, or the proofs would pass on one and not the
+ * other for reasons that have nothing to do with the engine.
+ */
+const queued = (b: LocalBill): boolean =>
+  b.sync_state === "pending" && b.master_data_missing_at === null;
 
 const byCreatedAt = (a: LocalBill, b: LocalBill): number =>
   a.created_at === b.created_at
@@ -494,6 +557,49 @@ export class HeadFailingTransport implements Transport {
         kind: "unavailable",
         reason: "HTTP 503: server error on this payload",
         reachable: true,
+      });
+    }
+    const r = this.server.submit(bill.payload);
+    return Promise.resolve({ kind: r.kind, doc_no: r.bill.doc_no });
+  }
+
+  voidBill(bill: LocalBill, reason: string): Promise<VoidOutcome> {
+    return Promise.resolve(toVoidOutcome(this.server.voidBill(bill.id, reason)));
+  }
+}
+
+/**
+ * The RESOLVABLE refusal. One bill references a product whose price tier the
+ * office has not set up, so the server refuses it with 424 + a reason code —
+ * until `addPrice()` models the office adding it, after which the SAME bill,
+ * unchanged, is accepted.
+ *
+ * The contrast with HeadFailingTransport is the whole point: that one is a 5xx
+ * the server will never resolve (poison, call support); this one is a definite
+ * refusal that a human clears in seconds (call the office). Same "the bill did
+ * not go", opposite correct responses.
+ */
+export class MasterDataMissingTransport implements Transport {
+  readonly attemptedIds: string[] = [];
+  private priced = false;
+
+  constructor(
+    private readonly server: FakeServer,
+    private readonly blockedId: string,
+  ) {}
+
+  /** The back office sets the price. Nothing about the bill changes. */
+  addPrice(): void {
+    this.priced = true;
+  }
+
+  sendBill(bill: LocalBill): Promise<SendOutcome> {
+    this.attemptedIds.push(bill.id);
+    if (bill.id === this.blockedId && !this.priced) {
+      return Promise.resolve({
+        kind: "rejected_resolvable",
+        reason: "HTTP 424: ยังไม่ได้ตั้งราคาสินค้าสำหรับเกรด B",
+        code: "product_price_unset",
       });
     }
     const r = this.server.submit(bill.payload);

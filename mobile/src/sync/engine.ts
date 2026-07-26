@@ -24,6 +24,13 @@ export interface SyncEngineOptions {
   backoffMaxMs?: number;
   /** Bills examined per pass. Bounds the work of one run; not a retry cap. */
   batchLimit?: number;
+  /**
+   * How long a bill parked on missing master data waits before it is retried
+   * automatically. Deliberately SLOW and deliberately not a backoff: retrying
+   * sooner cannot make the office add a price faster, and the operator has an
+   * explicit retry for the moment they have added it.
+   */
+  masterDataRetryMs?: number;
 }
 
 export interface SyncRunResult {
@@ -45,6 +52,10 @@ export interface SyncRunResult {
   voidsRejected: number;
   /** Pending bills whose stale backoff was released by a successful send. */
   backoffsCleared: number;
+  /** Bills the server refused for a RESOLVABLE reason; parked, not failed. */
+  masterDataBlocked: number;
+  /** Parked bills whose slow retry came due and were returned to the queue. */
+  masterDataReleased: number;
 }
 
 const emptyResult = (): SyncRunResult => ({
@@ -57,6 +68,8 @@ const emptyResult = (): SyncRunResult => ({
   voidsRetryable: 0,
   voidsRejected: 0,
   backoffsCleared: 0,
+  masterDataBlocked: 0,
+  masterDataReleased: 0,
 });
 
 function describeError(err: unknown): string {
@@ -71,6 +84,7 @@ export class SyncEngine {
   private readonly backoffBaseMs: number;
   private readonly backoffMaxMs: number;
   private readonly batchLimit: number;
+  private readonly masterDataRetryMs: number;
 
   /** Fast in-process guard. The durable guard is store.claimForSend. */
   private readonly inFlight = new Set<string>();
@@ -82,6 +96,16 @@ export class SyncEngine {
     this.backoffBaseMs = opts.backoffBaseMs ?? 1_000;
     this.backoffMaxMs = opts.backoffMaxMs ?? 5 * 60_000;
     this.batchLimit = opts.batchLimit ?? 100;
+    this.masterDataRetryMs = opts.masterDataRetryMs ?? 5 * 60_000;
+  }
+
+  /**
+   * The operator has added the missing price and wants to see it clear NOW.
+   * Releases every parked bill regardless of its slow cadence; the next pass
+   * sends them in weighing order.
+   */
+  async retryMasterDataNow(): Promise<number> {
+    return this.store.releaseMasterDataBlocked(this.clock.now(), true);
   }
 
   /**
@@ -118,6 +142,16 @@ export class SyncEngine {
       skipped.add(id);
       result.skippedInFlight += 1;
     };
+
+    // Bills parked on missing master data whose slow cadence has come due rejoin
+    // the queue FIRST, at their weighing position — so if one is the oldest it
+    // goes straight back to the head and is tried before anything newer. If the
+    // price is still missing it parks again on that attempt without having
+    // blocked anything behind it.
+    result.masterDataReleased += await this.store.releaseMasterDataBlocked(
+      this.clock.now(),
+      false,
+    );
 
     for (let guard = 0; guard < this.batchLimit; guard += 1) {
       /*
@@ -263,13 +297,20 @@ export class SyncEngine {
       total.voidsRetryable += r.voidsRetryable;
       total.voidsRejected += r.voidsRejected;
       total.backoffsCleared += r.backoffsCleared;
+      total.masterDataBlocked += r.masterDataBlocked;
+      total.masterDataReleased += r.masterDataReleased;
 
-      // Quiescent means nothing left to send AND nothing left to void. Testing
+      // Quiescent means nothing left to SEND and nothing left to void. Testing
       // only `pending` would return while a void was still owed, and a proof
       // built on that would assert the final state before it was final.
-      const pending = await this.store.listByState("pending");
+      //
+      // listPendingOldestFirst, not listByState('pending'): a bill parked on
+      // missing master data is still `pending` but is NOT work this loop can
+      // make progress on — no number of passes will conjure a price. Counting it
+      // would spin every caller to maxPasses and call a settled queue busy.
+      const sendable = await this.store.listPendingOldestFirst(1);
       const owedVoids = await this.store.listVoidsToApply(1);
-      if (pending.length === 0 && owedVoids.length === 0) return total;
+      if (sendable.length === 0 && owedVoids.length === 0) return total;
       await this.clock.sleep(pollMs);
     }
     return total;
@@ -306,11 +347,34 @@ export class SyncEngine {
         return;
 
       case "rejected":
-        // The server saw the bill and refused it. Retrying cannot fix that, so
-        // it stops here — visibly failed, with the reason kept for the UI.
+        // The server saw the bill and refused it PERMANENTLY: the payload itself
+        // is wrong and no action by anyone makes it valid. It stops here —
+        // visibly failed, with the reason kept for the UI.
         await this.store.markFailed(bill.id, outcome.reason, attempt, this.clock.now());
         result.rejected += 1;
         return;
+
+      case "rejected_resolvable": {
+        // The server refused it, but said the cause is master data that has not
+        // been set up. That BECOMES valid when the office adds the price, so
+        // marking it `failed` would strand a load that is already in the pile and
+        // force a re-weigh of scrap that no longer exists as a separate load.
+        //
+        // It is parked instead: still pending, still owed, out of the
+        // head-of-line queue so it blocks nothing, and visible to the operator
+        // with the server's own reason code.
+        const now = this.clock.now();
+        await this.store.markMasterDataMissing(
+          bill.id,
+          outcome.code,
+          outcome.reason,
+          attempt,
+          new Date(now.getTime() + this.masterDataRetryMs),
+          now,
+        );
+        result.masterDataBlocked += 1;
+        return;
+      }
 
       case "unavailable": {
         // No attempt cap on purpose: a yard can be offline for days, and a bill

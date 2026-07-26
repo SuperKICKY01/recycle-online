@@ -60,6 +60,21 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
         it to null). Non-null ⟺ poisoned; the clock the red alarm is measured
         from, so a plain outage never trips it. See sync/queueHealth.ts. */
      first_server_error_at TEXT,
+     /* Consecutive failures against a REACHABLE server: +1 on a server-answered
+        bounce, reset to 0 by a transport-level one or a success. The COUNT
+        trigger for the same red alarm, so a server refusing this bill quickly is
+        surfaced after N refusals rather than only after the wall-clock
+        threshold. Deliberately NOT attempt_count, which includes offline
+        bounces and never resets. */
+     server_error_attempts INTEGER NOT NULL DEFAULT 0,
+     /* Non-null ⟺ parked waiting on master data the office has not set up. The
+        bill stays 'pending' (still owed) but is excluded from the head-of-line
+        queue so it cannot dam the bills behind it. Deliberately NOT a new
+        sync_state value: the CHECK below is baked into CREATE TABLE and SQLite
+        cannot alter a CHECK without rebuilding the table — on a database already
+        holding the shop's unsynced bills. */
+     master_data_missing_at TEXT,
+     master_data_code       TEXT,
      CHECK (sync_state IN ('pending', 'syncing', 'synced', 'failed'))
    ) STRICT`,
 
@@ -161,6 +176,12 @@ const ADDED_BILL_COLUMNS: readonly { name: string; ddl: string }[] = [
   { name: "void_last_error", ddl: "void_last_error TEXT" },
   { name: "first_attempt_at", ddl: "first_attempt_at TEXT" },
   { name: "first_server_error_at", ddl: "first_server_error_at TEXT" },
+  {
+    name: "server_error_attempts",
+    ddl: "server_error_attempts INTEGER NOT NULL DEFAULT 0",
+  },
+  { name: "master_data_missing_at", ddl: "master_data_missing_at TEXT" },
+  { name: "master_data_code", ddl: "master_data_code TEXT" },
 ];
 
 /**

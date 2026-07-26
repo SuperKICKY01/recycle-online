@@ -144,6 +144,16 @@ async function v0Migration(): Promise<void> {
     "device_created_at", "void_reason", "void_requested_at",
     "voided_at", "void_attempts", "void_last_error", "first_attempt_at",
     "first_server_error_at",
+    // The consecutive-reachable-failure counter behind the count-based poison
+    // alarm. An UPGRADED device must gain it too: markPendingAgain writes to it
+    // on every bounce, so without it the first failed send would throw on a
+    // database that already holds the shop's unsynced bills.
+    "server_error_attempts",
+    // The master-data park. An upgraded device must gain these too: every
+    // head-of-line query filters on master_data_missing_at, so without them the
+    // send queue itself would fail to read on a database holding real bills.
+    "master_data_missing_at",
+    "master_data_code",
   ];
   check(
     "every new column was added",

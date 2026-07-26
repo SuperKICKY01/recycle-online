@@ -87,6 +87,39 @@ export interface LocalBill {
    * POISON_ALARM_MS, raises the loud red alarm. See sync/queueHealth.ts.
    */
   first_server_error_at: string | null;
+  /**
+   * How many times IN A ROW the reachable server has failed this bill.
+   *
+   * Incremented on a server-answered bounce, RESET TO 0 by a transport-level one
+   * and by a successful send — the same discipline as first_server_error_at, so
+   * "consecutive" really is consecutive and an offline spell cannot inflate it.
+   *
+   * Why this is not attempt_count: attempt_count counts every attempt of any
+   * kind and never resets, so a bill that spent a night offline arrives at
+   * morning with a large count and no server error at all. Using it to escalate
+   * would fire the red alarm on every yard that lost signal — precisely the
+   * cry-wolf failure queue-jam-must-be-visible.md warns about.
+   *
+   * This is a SECOND trigger for the existing red alarm, not a new
+   * classification: whether a jam is offline or poisoned is still decided solely
+   * by the reachability signal. See sync/queueHealth.ts.
+   */
+  server_error_attempts: number;
+  /**
+   * Non-null ⟺ PARKED WAITING ON MASTER DATA: the server refused this bill with
+   * a resolvable reason and this is when. The bill is still `pending` — it is
+   * still owed to the server and nothing may drop it — but it is excluded from
+   * the head-of-line queue so it cannot dam the bills behind it.
+   *
+   * Modelled as a flag on `pending` rather than as a new SyncState value ON
+   * PURPOSE: sync_state carries a CHECK constraint written into CREATE TABLE, and
+   * SQLite cannot alter a CHECK without rebuilding the table — on a database that
+   * already holds the shop's unsynced bills. A nullable column is the safe
+   * migration and says the same thing.
+   */
+  master_data_missing_at: string | null;
+  /** The server's machine-readable reason code, for the UI. Null when not parked. */
+  master_data_code: string | null;
   /** Assigned by the server at sync time; null while the bill is offline. */
   doc_no: string | null;
   synced_at: string | null;
@@ -113,6 +146,10 @@ export interface LocalBill {
   void_attempts: number;
   void_last_error: string | null;
 }
+
+/** Parked waiting on master data the back office has not set up yet. */
+export const isMasterDataBlocked = (bill: LocalBill): boolean =>
+  bill.master_data_missing_at !== null;
 
 /** Locally voided the moment the owner confirms, server round trip or not. */
 export const isVoided = (bill: LocalBill): boolean => bill.void_requested_at !== null;
@@ -141,6 +178,26 @@ export type SendOutcome =
   | { kind: "accepted"; doc_no: string | null }
   | { kind: "duplicate"; doc_no: string | null }
   | { kind: "rejected"; reason: string }
+  /**
+   * The server understood the bill, refused it, and said the refusal is
+   * RESOLVABLE: the payload is well-formed but master data it depends on has not
+   * been set up (no price tier for the seller's grade, seller has no grade).
+   *
+   * Distinct from `rejected` because the two have opposite futures. A malformed
+   * bill can never become valid, so it is terminal. This one becomes valid the
+   * moment the back office adds the price — and if it were terminal, the yard
+   * would have to re-weigh a load that has already been tipped into the pile.
+   *
+   * Distinct from `unavailable` because the server DID answer definitively. It
+   * does not retry on a network backoff and it never sits invisibly in the send
+   * queue; it parks in a named, operator-visible state and retries slowly or when
+   * the operator asks.
+   *
+   * `code` is the server's machine-readable reason (product_price_unset,
+   * seller_grade_unset). Carried so the UI can explain the fix without anyone
+   * string-matching an error message.
+   */
+  | { kind: "rejected_resolvable"; reason: string; code: string }
   | { kind: "unavailable"; reason: string; reachable: boolean };
 
 /**
@@ -202,13 +259,26 @@ export interface QueueHead {
    * was offline (or it never failed). Non-null ⟺ poisoned, and the poison clock.
    */
   first_server_error_at: string | null;
+  /**
+   * Consecutive failures against a REACHABLE server. The count-based trigger for
+   * the red alarm, so a bill the server refuses rapidly is surfaced after N
+   * refusals instead of waiting out the wall-clock threshold.
+   */
+  server_error_attempts: number;
   last_error: string | null;
 }
 
 /** A snapshot of the pending send queue for health assessment. */
 export interface QueueSnapshot {
+  /**
+   * Bills queued to send. EXCLUDES bills parked on missing master data — those
+   * are not waiting their turn, they are waiting on the office, and counting them
+   * here would report a queue depth that no amount of network will drain.
+   */
   pendingCount: number;
   head: QueueHead | null;
+  /** Bills parked waiting on master data. Reported separately and never as "behind". */
+  masterDataBlockedCount: number;
 }
 
 export interface LocalStore {
@@ -244,6 +314,30 @@ export interface LocalStore {
   claimForSend(id: string, now: Date): Promise<boolean>;
   markSynced(id: string, docNo: string | null, attempt: number, now: Date): Promise<void>;
   markFailed(id: string, reason: string, attempt: number, now: Date): Promise<void>;
+  /**
+   * Park a bill the server refused for a RESOLVABLE reason. It stays `pending`
+   * (still owed, never dropped) but leaves the head-of-line queue, so it cannot
+   * block the bills behind it while the office sorts the price out.
+   *
+   * `retryAt` is a slow cadence, not a network backoff — nothing about retrying
+   * sooner makes a price appear faster.
+   */
+  markMasterDataMissing(
+    id: string,
+    code: string,
+    reason: string,
+    attempt: number,
+    retryAt: Date,
+    now: Date,
+  ): Promise<void>;
+  /** Every bill currently parked on master data, for the UI. */
+  listMasterDataBlocked(limit: number): Promise<LocalBill[]>;
+  /**
+   * Un-park bills so the next pass tries them again. `all` = the operator pressed
+   * retry (try everything now); otherwise only those whose slow retry is due.
+   * Returns how many were released.
+   */
+  releaseMasterDataBlocked(now: Date, all: boolean): Promise<number>;
   markPendingAgain(
     id: string,
     reason: string,

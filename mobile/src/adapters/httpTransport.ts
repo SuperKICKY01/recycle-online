@@ -88,6 +88,22 @@ export class HttpTransport implements Transport {
     if (response.status === 400 || response.status === 422) {
       return { kind: "rejected", reason: `HTTP ${response.status}: ${describe(body.detail)}` };
     }
+    if (response.status === 424) {
+      // RESOLVABLE: well-formed bill, master data not set up yet. The status code
+      // carries the classification so it survives a body we cannot parse; the
+      // code inside the body is for the UI. Nothing here string-matches a
+      // message — that is the whole point of the server naming the kind.
+      const detail = body.detail;
+      const code =
+        typeof detail === "object" && detail !== null && "code" in detail
+          ? String((detail as { code: unknown }).code)
+          : "master_data_missing";
+      return {
+        kind: "rejected_resolvable",
+        reason: `HTTP 424: ${describe(detail)}`,
+        code,
+      };
+    }
     // A status we could not use (401/403/5xx). The server ANSWERED, so the
     // network is usable and this is reachable-but-refusing: reachable: true.
     return {

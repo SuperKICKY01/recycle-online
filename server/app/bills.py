@@ -8,6 +8,7 @@ totals are only ever used to REJECT on mismatch, never trusted.
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
@@ -15,13 +16,93 @@ from decimal import ROUND_HALF_UP, Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from .auth import Principal, get_principal
 from .db import tenant_connection
 
 router = APIRouter()
+
+logger = logging.getLogger("recycle.bills")
+
+# ---------------------------------------------------------------------------
+# TWO SPECIES OF REJECTION
+#
+# A rejection means the server understood the bill and refused it. But refusals
+# differ in one way that decides whether a real load survives:
+#
+#   PERMANENT (422)  — malformed input: a 4dp weight, a negative price, net that
+#                      does not equal gross - tare. No action by anyone makes
+#                      this payload valid. Retrying is pointless, so the bill is
+#                      terminally `failed` and shown for correction.
+#
+#   RESOLVABLE (424) — the bill is well-formed and its references exist, but a
+#                      piece of MASTER DATA it depends on has not been set up:
+#                      no price tier for the seller's grade, or the seller has no
+#                      grade at all. This BECOMES valid the moment the back office
+#                      adds the price. Treating it as terminal would strand a load
+#                      that has very likely already been tipped into the pile, and
+#                      the yard would have to re-weigh scrap that no longer exists
+#                      as a separate load.
+#
+# The distinction is carried by the STATUS CODE first, so it survives a body that
+# fails to parse, and repeated in a machine-readable `code` for diagnostics. The
+# client must never infer it by string-matching an error message.
+#
+# WHERE THE LINE SITS, deliberately: "the referenced row exists but is missing an
+# attribute the back office routinely fills in" is resolvable. A reference that
+# does not resolve at all (unknown seller_id/product_id) stays PERMANENT — the
+# device got those ids from this tenant's own /sellers and /products, so a miss
+# means a corrupt or stale reference, not a setup gap, and re-creating master data
+# under an identical UUID is not a routine operation. Revisit that line if master
+# data ever gains a delete.
+# ---------------------------------------------------------------------------
+_RESOLVABLE_STATUS = status.HTTP_424_FAILED_DEPENDENCY
+
+
+def _master_data_missing(code: str, message: str, **context: str) -> HTTPException:
+    """A refusal the OPERATOR can clear by setting up master data."""
+    return HTTPException(
+        status_code=_RESOLVABLE_STATUS,
+        detail={
+            "kind": "master_data_missing",
+            "code": code,
+            "message": message,
+            **context,
+        },
+    )
+
+
+def _log_poison_candidate(
+    principal: "Principal", body: "BillCreate", exc: BaseException
+) -> None:
+    """Record a database error that is about to reach the client as a 500.
+
+    DISTINCT AND GREPPABLE ON PURPOSE — grep the logs for BILL_POISON_CANDIDATE.
+
+    A 500 is `unavailable` to the mobile client, never `rejected`, because the
+    client genuinely cannot know whether the server committed
+    (lessons/unavailable-is-not-rejected.md). Under strict head-of-line order
+    that means the bill retries forever and dams every bill behind it on that
+    device (lessons/queue-jam-must-be-visible.md). Phase-2 fixes narrow the known
+    causes, but ANY future one has the same blast radius.
+
+    The device raises its own alarm once such a bill has been refused N times in
+    a row — but the device only knows THAT it failed, never WHY. This line is the
+    server-side half of that pair: it names the exact tenant, bill and
+    idempotency key, so a jammed yard can be diagnosed from the logs instead of
+    guessed at. It does not change the response; the 500 is still honest.
+    """
+    logger.error(
+        "BILL_POISON_CANDIDATE tenant_id=%s bill_id=%s idempotency_key=%s"
+        " error=%s detail=%s",
+        principal.tenant_id,
+        body.id,
+        body.idempotency_key,
+        type(exc).__name__,
+        str(getattr(exc, "orig", exc)).replace("\n", " ")[:500],
+    )
 
 _BE_OFFSET = 543  # Gregorian year + 543 = Buddhist-era year
 
@@ -35,14 +116,35 @@ def _line_amount(net_weight: Decimal, unit_price: Decimal) -> Decimal:
 
 
 class BillItemIn(BaseModel):
+    """The wire contract for one line.
+
+    SCALE AND SIGN ARE DECLARED HERE, on the edge, because Postgres does NOT
+    reject an out-of-scale value — it silently ROUNDS it to the column's scale.
+    Verified against the live DB: `1.005` into NUMERIC(14,2) stores `1.01`, and
+    gross `1.0005` / tare `0.0004` / net `1.0001` each round INDEPENDENTLY to
+    `1.001` / `0.000` / `1.000`, after which `ck_items_net` (net = gross - tare)
+    fails on three values that were exactly consistent in Python.
+
+    That surfaced as an unhandled 500 — and a 500 is `unavailable` to the mobile
+    client, never `rejected` (lessons/unavailable-is-not-rejected.md), so under
+    strict head-of-line order the bill retries forever and dams every bill behind
+    it on that device (lessons/queue-jam-must-be-visible.md). Rejecting at the
+    edge converts a permanent silent jam into a terminal, visible 422.
+
+    max_digits/decimal_places mirror the columns exactly: weights NUMERIC(14,3),
+    money NUMERIC(14,2). ge=0 mirrors the CHECK constraints.
+    """
+
     id: uuid.UUID
     product_id: uuid.UUID
     line_no: int = Field(gt=0)
-    gross_weight: Decimal
-    tare_weight: Decimal
-    net_weight: Decimal
-    unit_price: Decimal
-    list_price: Decimal
+    gross_weight: Decimal = Field(ge=0, max_digits=14, decimal_places=3)
+    tare_weight: Decimal = Field(ge=0, max_digits=14, decimal_places=3)
+    net_weight: Decimal = Field(ge=0, max_digits=14, decimal_places=3)
+    unit_price: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+    # list_price is deliberately NOT accepted from the client — the server stamps
+    # it from product_prices at the seller's grade (see create_bill). Pydantic
+    # ignores unknown keys, so a client still sending one is simply overridden.
 
 
 class BillCreate(BaseModel):
@@ -54,7 +156,9 @@ class BillCreate(BaseModel):
     items: list[BillItemIn] = Field(min_length=1)
     # Optional client-computed total. If present it must equal the server total,
     # otherwise the request is rejected. It is never used as the stored value.
-    total_amount: Decimal | None = None
+    total_amount: Decimal | None = Field(
+        default=None, ge=0, max_digits=14, decimal_places=2
+    )
 
 
 class VoidRequest(BaseModel):
@@ -157,25 +261,69 @@ async def create_bill(
             # References must exist IN THIS TENANT. RLS hides other tenants' rows,
             # so a foreign seller/product is simply "not found" here; the composite
             # (tenant_id, id) FKs are the hard structural backstop at insert time.
-            if (
+            #
+            # The seller's GRADE is read here too, because it selects the price
+            # tier (SRS 1.6) and the server — not the client — resolves list_price.
+            seller = (
                 await conn.execute(
-                    text("SELECT 1 FROM sellers WHERE id = :s"), {"s": body.seller_id}
+                    text("SELECT grade FROM sellers WHERE id = :s"), {"s": body.seller_id}
                 )
-            ).first() is None:
+            ).mappings().first()
+            if seller is None:
                 raise HTTPException(
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
                     "seller_id does not exist in this tenant",
                 )
+            grade = seller["grade"]
+            if grade is None:
+                # RESOLVABLE: the back office sets the seller's grade and this
+                # exact bill goes through, unchanged.
+                raise _master_data_missing(
+                    "seller_grade_unset",
+                    "ผู้ขายรายนี้ยังไม่ได้กำหนดเกรด จึงยังไม่มีราคาตั้งต้น",
+                    seller_id=str(body.seller_id),
+                )
+
+            # list_price is stamped from the tenant's OWN price list, at this
+            # seller's grade, and the client's value (if any) is discarded.
+            #
+            # WHY THIS MATTERS. Storing unit_price AND list_price (hard rule 6)
+            # exists so an audit can see that a yard paid something other than the
+            # list. While the client supplied both, that comparison proved nothing:
+            # a device paying an inflated unit_price could send a matching
+            # list_price and the row would look perfectly ordinary. The reference
+            # value has to come from the side that owns the price list.
+            #
+            # Fail CLOSED when there is no tier for this grade: a 422 is terminal
+            # and visible, so it can never dam the send queue the way a 500 would.
+            list_prices: list[Decimal] = []
             for it in body.items:
-                if (
+                row = (
                     await conn.execute(
-                        text("SELECT 1 FROM products WHERE id = :p"), {"p": it.product_id}
+                        text(
+                            "SELECT pp.price FROM products p"
+                            " LEFT JOIN product_prices pp"
+                            "   ON pp.product_id = p.id AND pp.grade = :g"
+                            " WHERE p.id = :p"
+                        ),
+                        {"p": it.product_id, "g": grade},
                     )
-                ).first() is None:
+                ).mappings().first()
+                if row is None:
                     raise HTTPException(
                         status.HTTP_422_UNPROCESSABLE_ENTITY,
                         f"product_id {it.product_id} does not exist in this tenant",
                     )
+                if row["price"] is None:
+                    # RESOLVABLE: adding this product's price for this grade makes
+                    # the SAME bill valid. Never fabricate a price to get past it.
+                    raise _master_data_missing(
+                        "product_price_unset",
+                        f"ยังไม่ได้ตั้งราคาสินค้าสำหรับเกรด {grade}",
+                        product_id=str(it.product_id),
+                        grade=grade,
+                    )
+                list_prices.append(row["price"])
 
             # Assign a GAP-FREE doc_no. The counter row is upserted then locked by
             # the UPDATE, in the SAME transaction as the insert: concurrent submits
@@ -212,7 +360,7 @@ async def create_bill(
                     "dca": body.device_created_at, "vn": body.vehicle_no,
                 },
             )
-            for it, amt in zip(body.items, item_amounts):
+            for it, amt, lp in zip(body.items, item_amounts, list_prices):
                 await conn.execute(
                     text(
                         "INSERT INTO purchase_bill_items (id, tenant_id, bill_id, product_id,"
@@ -224,7 +372,7 @@ async def create_bill(
                         "id": it.id, "t": principal.tenant_id, "b": body.id,
                         "p": it.product_id, "ln": it.line_no,
                         "gw": it.gross_weight, "tw": it.tare_weight, "nw": it.net_weight,
-                        "up": it.unit_price, "lp": it.list_price, "amt": amt,
+                        "up": it.unit_price, "lp": lp, "amt": amt,
                     },
                 )
             return await _read_bill(conn, body.id)
@@ -243,6 +391,14 @@ async def create_bill(
                 if existing is not None:
                     response.status_code = status.HTTP_200_OK
                     return await _read_bill(conn, existing)
+        # Not the idempotency race: this 500 is about to jam a device queue.
+        _log_poison_candidate(principal, body, e)
+        raise
+    except SQLAlchemyError as e:
+        # DataError (numeric overflow), CheckViolation, connection loss — anything
+        # the DB layer raises that we did not anticipate. Same blast radius, so
+        # the same distinct log line.
+        _log_poison_candidate(principal, body, e)
         raise
 
 

@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 
 import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
-import { assessQueue, POISON_ALARM_MS } from "../sync/queueHealth.js";
+import { assessQueue, POISON_ALARM_ATTEMPTS, POISON_ALARM_MS } from "../sync/queueHealth.js";
 import type { BillItemPayload, LocalBill, LocalStore } from "../sync/types.js";
 import {
   FakeClock,
@@ -20,6 +20,7 @@ import {
   FlakyTransport,
   GatedTransport,
   HeadFailingTransport,
+  MasterDataMissingTransport,
   LostAckTransport,
   OfflineTransport,
   OnlineTransport,
@@ -749,6 +750,408 @@ async function case9OfflineVsPoison(harness: StoreHarness): Promise<void> {
   invariant(r, created, "server holds exactly the four bills");
 }
 
+/* ----------------------------------------------------------------- 9d ---- */
+
+/**
+ * CASE 9d — the COUNT trigger: N consecutive reachable refusals raise the alarm
+ * even when almost no wall-clock time has passed.
+ *
+ * POISON_ALARM_MS alone assumes a poisoned bill takes time to become obvious.
+ * That is only true while the backoff is short: a fast-answering server, or one
+ * already at the capped backoff, can refuse a bill many times inside a single
+ * threshold window. Every refusal is direct evidence the bill will not go, so
+ * sitting on N of them waiting for a clock is just a later alarm.
+ *
+ * The risk this case has to disprove is the one queue-jam-must-be-visible.md
+ * warns about: attempt count cannot separate a long outage from a poison pill,
+ * so a count-based alarm could cry wolf on every dead spot. It does not here,
+ * because server_error_attempts RESETS on any transport-level bounce — 9d proves
+ * that directly by bouncing an OFFLINE head the same number of times and
+ * asserting it stays calm.
+ */
+async function case9dAttemptTrigger(harness: StoreHarness): Promise<void> {
+  header("CASE 9d: N consecutive REACHABLE refusals raise the alarm without waiting out the clock");
+
+  // Deliberately far too little time for the clock trigger: the whole point is
+  // that the alarm fires on evidence, not on elapsed time.
+  const stepMs = 6_000;
+  const r = await rig(harness, "bill-cnt");
+
+  const created: LocalBill[] = [];
+  for (let i = 0; i < 3; i += 1) {
+    created.push(
+      await createLocalBill(
+        { store: r.store, clock: r.clock, ids: r.billIds },
+        { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(r.itemIds), total_amount: null },
+      ),
+    );
+    r.clock.advance(1_000);
+  }
+  const head = created[0]!;
+
+  const failing = new HeadFailingTransport(r.server, head.id);
+  const engine = new SyncEngine({
+    store: r.store,
+    transport: failing,
+    clock: r.clock,
+    backoffBaseMs: 1000,
+    backoffMaxMs: 5000,
+    batchLimit: 50,
+  });
+
+  // NON-VACUITY: one refusal must NOT be enough, or the case proves nothing
+  // about the threshold.
+  await engine.runOnce();
+  let snap = await r.store.pendingQueueSnapshot();
+  const afterOne = assessQueue(snap, r.clock.now());
+  check(
+    "one refusal is poisoned but NOT yet alarming",
+    afterOne.poisoned === true && afterOne.alarm === false && afterOne.serverErrorAttempts === 1,
+    `poisoned=${String(afterOne.poisoned)} alarm=${String(afterOne.alarm)} serverErrorAttempts=${String(afterOne.serverErrorAttempts)}`,
+  );
+
+  // Keep refusing until the count threshold is crossed.
+  for (let i = 0; i < POISON_ALARM_ATTEMPTS; i += 1) {
+    r.clock.advance(stepMs);
+    await engine.runOnce();
+  }
+  snap = await r.store.pendingQueueSnapshot();
+  const counted = assessQueue(snap, r.clock.now());
+  console.log(
+    `  serverErrorAttempts=${String(counted.serverErrorAttempts)} (threshold ${String(POISON_ALARM_ATTEMPTS)})` +
+      `  poisonedForMs=${String(counted.poisonedForMs)} (clock threshold ${String(POISON_ALARM_MS)})`,
+  );
+
+  check(
+    "the reachable server has now refused it at least N times in a row",
+    counted.serverErrorAttempts >= POISON_ALARM_ATTEMPTS,
+    `serverErrorAttempts=${String(counted.serverErrorAttempts)}`,
+  );
+  check(
+    "and the alarm is RAISED",
+    counted.alarm === true && counted.blockerId === head.id && counted.behind === 2,
+    `alarm=${String(counted.alarm)} blockerId=${String(counted.blockerId)} behind=${String(counted.behind)}`,
+  );
+  check(
+    "it was the COUNT that raised it, not the clock — elapsed is still under POISON_ALARM_MS",
+    counted.poisonedForMs < POISON_ALARM_MS,
+    `poisonedForMs=${String(counted.poisonedForMs)} < ${String(POISON_ALARM_MS)}`,
+  );
+  check(
+    "the head was never skipped — nothing behind it reached the server",
+    r.server.billCount === 0 && snap.pendingCount === 3,
+    `onServer=${String(r.server.billCount)} pending=${String(snap.pendingCount)}`,
+  );
+
+  /* ---- the disproof: the same number of OFFLINE bounces must stay calm ---- */
+
+  const off = await rig(harness, "bill-cnt-off");
+  for (let i = 0; i < 3; i += 1) {
+    await createLocalBill(
+      { store: off.store, clock: off.clock, ids: off.billIds },
+      { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(off.itemIds), total_amount: null },
+    );
+    off.clock.advance(1_000);
+  }
+  const offEngine = new SyncEngine({
+    store: off.store,
+    transport: new OfflineTransport(),
+    clock: off.clock,
+    backoffBaseMs: 1000,
+    backoffMaxMs: 5000,
+    batchLimit: 50,
+  });
+  for (let i = 0; i < POISON_ALARM_ATTEMPTS * 2; i += 1) {
+    off.clock.advance(stepMs);
+    await offEngine.runOnce();
+  }
+  const offSnap = await off.store.pendingQueueSnapshot();
+  const offHealth = assessQueue(offSnap, off.clock.now());
+
+  check(
+    "an OFFLINE head bounced at least as many times",
+    (offSnap.head?.attempts ?? 0) >= POISON_ALARM_ATTEMPTS,
+    `attempts=${String(offSnap.head?.attempts)} threshold=${String(POISON_ALARM_ATTEMPTS)}`,
+  );
+  check(
+    "yet its consecutive-server-error count stayed 0 — transport bounces reset it",
+    offHealth.serverErrorAttempts === 0,
+    `serverErrorAttempts=${String(offHealth.serverErrorAttempts)}`,
+  );
+  check(
+    "so the count trigger does NOT cry wolf on a dead spot: still calm amber",
+    offHealth.alarm === false && offHealth.offline === true && offHealth.blockerId === null,
+    `alarm=${String(offHealth.alarm)} offline=${String(offHealth.offline)}`,
+  );
+
+  /* ---- and a recovery resets the count, so a blip cannot accumulate ---- */
+
+  const recovered = new SyncEngine({
+    store: r.store,
+    transport: new OnlineTransport(r.server),
+    clock: r.clock,
+    backoffBaseMs: 1000,
+  });
+  await recovered.runUntilQuiescent();
+  const clearSnap = await r.store.pendingQueueSnapshot();
+  const clearHealth = assessQueue(clearSnap, r.clock.now());
+  const headAfter = await r.store.getBill(head.id);
+  check(
+    "once it finally sends, the queue drains and the count is cleared",
+    r.server.billCount === 3 &&
+      clearHealth.alarm === false &&
+      clearSnap.pendingCount === 0 &&
+      headAfter?.server_error_attempts === 0,
+    `onServer=${String(r.server.billCount)} pending=${String(clearSnap.pendingCount)} headCount=${String(headAfter?.server_error_attempts)}`,
+  );
+}
+
+/* ----------------------------------------------------------------- 10 ---- */
+
+/**
+ * CASE 10 — a RESOLVABLE rejection parks; a PERMANENT one stays terminal.
+ *
+ * Both are rejections: the server answered definitively and refused the bill. But
+ * they have opposite futures, and conflating them costs a real load either way:
+ *
+ *   PERMANENT (malformed money) — no action makes this payload valid. Terminal
+ *   `failed`, surfaced for correction. Retrying forever would hide it.
+ *
+ *   RESOLVABLE (no price tier for the seller's grade) — becomes valid the moment
+ *   the office adds the price. If this were terminal, the yard would have to
+ *   re-weigh a load that has already been tipped into the pile and no longer
+ *   exists as a separate load. So it PARKS: still pending, still owed, out of the
+ *   head-of-line queue so it blocks nothing, visible with the server's own code.
+ *
+ * THE COST, asserted rather than hidden: a parked bill is passed by bills weighed
+ * after it, so it takes a HIGHER doc_no when it finally syncs. That is a real
+ * weakening of weighing order (doc-no-is-arrival-order-not-event-time). It is
+ * accepted because the alternative is one un-priced product stopping the entire
+ * yard from syncing, and because the bill is parked VISIBLY — which is the
+ * distinction queue-jam-must-be-visible actually draws, its objection being to a
+ * SILENT skip.
+ */
+async function case10ResolvableVsPermanent(harness: StoreHarness): Promise<void> {
+  header("CASE 10a: a RESOLVABLE rejection parks the bill and does NOT jam the queue");
+  const r = await rig(harness, "bill-md");
+
+  // A is weighed FIRST and is the one whose product has no price tier.
+  const created: LocalBill[] = [];
+  for (let i = 0; i < 3; i += 1) {
+    created.push(
+      await createLocalBill(
+        { store: r.store, clock: r.clock, ids: r.billIds },
+        { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(r.itemIds), total_amount: null },
+      ),
+    );
+    r.clock.advance(60_000);
+  }
+  const a = created[0]!;
+  const b = created[1]!;
+  const c = created[2]!;
+  const originalKey = a.idempotency_key;
+
+  const transport = new MasterDataMissingTransport(r.server, a.id);
+  const engine = new SyncEngine({
+    store: r.store,
+    transport,
+    clock: r.clock,
+    backoffBaseMs: 1000,
+    backoffMaxMs: 5000,
+    batchLimit: 50,
+    masterDataRetryMs: 300_000,
+  });
+
+  const run = await engine.runUntilQuiescent();
+  let snap = await r.store.pendingQueueSnapshot();
+  let health = assessQueue(snap, r.clock.now());
+  const parked = await r.store.listMasterDataBlocked(10);
+  const aRow = await r.store.getBill(a.id);
+
+  check(
+    "the resolvable refusal was recorded as parked, not as a failure",
+    run.masterDataBlocked === 1 && run.rejected === 0,
+    `masterDataBlocked=${String(run.masterDataBlocked)} rejected=${String(run.rejected)}`,
+  );
+  check(
+    "the parked bill is NOT terminally failed — it is still pending and still owed",
+    aRow?.sync_state === "pending" && aRow.master_data_missing_at !== null,
+    `state=${String(aRow?.sync_state)} parkedAt=${String(aRow?.master_data_missing_at)}`,
+  );
+  check(
+    "it carries the server's machine-readable code — nothing string-matched a message",
+    aRow?.master_data_code === "product_price_unset",
+    `code=${String(aRow?.master_data_code)}`,
+  );
+  check(
+    "it is VISIBLE as waiting on master data",
+    parked.length === 1 && parked[0]?.id === a.id && health.masterDataBlocked === 1,
+    `parked=${String(parked.length)} healthBlocked=${String(health.masterDataBlocked)}`,
+  );
+  check(
+    "and it did NOT jam the queue — the two bills behind it reached the server",
+    r.server.billCount === 2 && r.server.hasBillId(b.id) && r.server.hasBillId(c.id),
+    `onServer=${String(r.server.billCount)}`,
+  );
+  check(
+    "the send queue is empty and raises NO alarm — this is not a poisoned head",
+    snap.pendingCount === 0 && health.alarm === false && health.poisoned === false,
+    `pending=${String(snap.pendingCount)} alarm=${String(health.alarm)} poisoned=${String(health.poisoned)}`,
+  );
+  check(
+    "the parked bill is counted separately, never as a queue backlog",
+    snap.masterDataBlockedCount === 1 && health.behind === 0,
+    `blockedCount=${String(snap.masterDataBlockedCount)} behind=${String(health.behind)}`,
+  );
+
+  /* ---- 10b: the office adds the price; the SAME bill goes, no re-weighing ---- */
+
+  header("CASE 10b: the office adds the price — the SAME bill syncs, same idempotency key, no duplicate");
+  transport.addPrice();
+  const releasedCount = await engine.retryMasterDataNow();
+  await engine.runUntilQuiescent();
+  const aFinal = await r.store.getBill(a.id);
+  snap = await r.store.pendingQueueSnapshot();
+  health = assessQueue(snap, r.clock.now());
+
+  check(
+    "the operator's retry released exactly the parked bill",
+    releasedCount === 1,
+    `released=${String(releasedCount)}`,
+  );
+  check(
+    "it synced on the SAME bill id — nothing was re-created and nothing re-weighed",
+    aFinal?.sync_state === "synced" && r.server.hasBillId(a.id),
+    `state=${String(aFinal?.sync_state)} onServer=${String(r.server.hasBillId(a.id))}`,
+  );
+  check(
+    "with the SAME idempotency key it was born with — the dedup guarantee is intact",
+    aFinal?.idempotency_key === originalKey,
+    `key=${String(aFinal?.idempotency_key)} original=${originalKey}`,
+  );
+  check(
+    "exactly three bills on the server — the park never produced a duplicate",
+    r.server.billCount === 3 && r.server.distinctBillIds().size === 3,
+    `billCount=${String(r.server.billCount)} distinct=${String(r.server.distinctBillIds().size)}`,
+  );
+  check(
+    "the park is cleared and nothing is left waiting",
+    aFinal?.master_data_missing_at === null &&
+      aFinal.master_data_code === null &&
+      health.masterDataBlocked === 0,
+    `parkedAt=${String(aFinal?.master_data_missing_at)} blocked=${String(health.masterDataBlocked)}`,
+  );
+
+  /*
+   * THE ORDERING EXCEPTION, asserted out loud rather than left to be discovered
+   * — AND BOUNDED, because "we gave up weighing order" and "we gave it up for
+   * exactly the parked bill" are very different claims and only the second one
+   * is true. Both halves are checked:
+   *
+   *   the exception — A was weighed FIRST and takes the HIGHEST doc_no;
+   *   the bound     — B and C, which never left the sendable queue, are still
+   *                   in weighing order relative to each other.
+   *
+   * Without the second check this case would pass just as happily if parking had
+   * scrambled the whole queue, and the invariant from 2c-5.1 would have been
+   * silently traded away rather than narrowed.
+   */
+  const seqOf = (bill: LocalBill | null): number => Number(bill?.doc_no?.split("-").pop());
+  const seqs = [aFinal, await r.store.getBill(b.id), await r.store.getBill(c.id)].map(seqOf);
+  const sa = seqs[0] ?? -1;
+  const sb = seqs[1] ?? -1;
+  const sc = seqs[2] ?? -1;
+  console.log(`  doc_no: A(weighed 1st, parked)=${String(sa)}  B=${String(sb)}  C=${String(sc)}`);
+  check(
+    "ACCEPTED EXCEPTION: the parked bill was weighed FIRST but took the HIGHEST doc_no",
+    sa > sb && sa > sc,
+    `A=${String(sa)} B=${String(sb)} C=${String(sc)} — weighing order is deliberately given up for a bill parked on missing master data; doc_no is arrival order and reports key on server_received_at`,
+  );
+  check(
+    "THE BOUND: every bill that stayed in the sendable queue kept weighing order",
+    sb < sc,
+    `B=${String(sb)} < C=${String(sc)} — the exception is exactly the parked bill, not a general loss of ordering`,
+  );
+
+  /* ---- 10c: the slow cadence releases it even with no operator ---- */
+
+  header("CASE 10c: with no operator at all, the slow cadence retries a parked bill");
+  const s = await rig(harness, "bill-md2");
+  const only = await createLocalBill(
+    { store: s.store, clock: s.clock, ids: s.billIds },
+    { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(s.itemIds), total_amount: null },
+  );
+  const t2 = new MasterDataMissingTransport(s.server, only.id);
+  const e2 = new SyncEngine({
+    store: s.store,
+    transport: t2,
+    clock: s.clock,
+    backoffBaseMs: 1000,
+    batchLimit: 50,
+    masterDataRetryMs: 300_000,
+  });
+  await e2.runOnce();
+  check(
+    "parked, and a pass BEFORE the cadence is due does not retry it",
+    (await s.store.listMasterDataBlocked(5)).length === 1 &&
+      (await e2.runOnce()).masterDataReleased === 0,
+    "still parked, not released early",
+  );
+
+  // The office adds the price; nobody presses anything. Time passes.
+  t2.addPrice();
+  s.clock.advance(300_001);
+  const auto = await e2.runUntilQuiescent();
+  const onlyFinal = await s.store.getBill(only.id);
+  check(
+    "once the cadence comes due it is released and syncs on its own",
+    auto.masterDataReleased >= 1 &&
+      onlyFinal?.sync_state === "synced" &&
+      s.server.billCount === 1,
+    `released=${String(auto.masterDataReleased)} state=${String(onlyFinal?.sync_state)} onServer=${String(s.server.billCount)}`,
+  );
+
+  /* ---- 10d: the contrast — a PERMANENT rejection is still terminal ---- */
+
+  header("CASE 10d: a PERMANENT rejection (malformed) is still terminal — never parked");
+  const p = await rig(harness, "bill-perm");
+  const bad = await createLocalBill(
+    { store: p.store, clock: p.clock, ids: p.billIds },
+    { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(p.itemIds), total_amount: null },
+  );
+  const permEngine = new SyncEngine({
+    store: p.store,
+    transport: new RejectingTransport(),
+    clock: p.clock,
+    backoffBaseMs: 1000,
+  });
+  const permRun = await permEngine.runOnce();
+  const badRow = await p.store.getBill(bad.id);
+  const permParked = await p.store.listMasterDataBlocked(5);
+
+  check(
+    "it is counted as a rejection, NOT as a master-data park",
+    permRun.rejected === 1 && permRun.masterDataBlocked === 0,
+    `rejected=${String(permRun.rejected)} blocked=${String(permRun.masterDataBlocked)}`,
+  );
+  check(
+    "the bill is terminally failed, with the reason kept",
+    badRow?.sync_state === "failed" && (badRow.last_error ?? "").includes("422"),
+    `state=${String(badRow?.sync_state)} err=${String(badRow?.last_error)}`,
+  );
+  check(
+    "and it is NOT parked — a malformed bill must never wait on the office",
+    permParked.length === 0 && badRow?.master_data_missing_at === null,
+    `parked=${String(permParked.length)}`,
+  );
+  check(
+    "nor is it retried by the release path — releasing touches only parked bills",
+    (await permEngine.retryMasterDataNow()) === 0 &&
+      (await p.store.getBill(bad.id))?.sync_state === "failed",
+    "still failed after a retry press",
+  );
+}
+
 async function case7RejectionIsNotRetry(harness: StoreHarness): Promise<void> {
   header("CASE 7 (extra): a server REJECTION is not a transport failure");
   const r = await rig(harness, "bill-r");
@@ -794,6 +1197,8 @@ async function runSuite(harness: StoreHarness): Promise<void> {
   await case7RejectionIsNotRetry(harness);
   await case8WeighingOrder(harness);
   await case9OfflineVsPoison(harness);
+  await case9dAttemptTrigger(harness);
+  await case10ResolvableVsPermanent(harness);
 }
 
 async function main(): Promise<number> {
