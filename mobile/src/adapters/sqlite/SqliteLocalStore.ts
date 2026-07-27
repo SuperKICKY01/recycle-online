@@ -287,6 +287,41 @@ export class SqliteLocalStore implements LocalStore {
     );
   }
 
+  /* -------------------------------------------------------- session end -- */
+
+  /**
+   * The send bounced on a 401. The session ended; the bill is untouched.
+   *
+   * sync_state goes back to 'pending' — still owed, still in the head-of-line
+   * queue in weighing order, so nothing is reordered by an expiry — and the two
+   * POISON columns are CLEARED. That is the whole point of this being its own
+   * statement: while a 401 was classified `unavailable, reachable: true`, every
+   * bounce stamped first_server_error_at and incremented server_error_attempts,
+   * so an expired session with bills behind it reached POISON_ALARM_ATTEMPTS and
+   * raised the red "ติดต่อฝ่ายสนับสนุน" alarm. There is nothing for support to do.
+   *
+   * first_attempt_at is still stamped with COALESCE: the bill genuinely has been
+   * unable to send since then, which is what that clock measures. Only the
+   * poison judgement is off the table.
+   */
+  async markSessionExpired(
+    id: string,
+    reason: string,
+    attempt: number,
+    retryAt: Date,
+    now: Date,
+  ): Promise<void> {
+    await this.db.run(
+      `UPDATE local_bills
+       SET sync_state = 'pending', attempt_count = ?, last_error = ?,
+           next_attempt_at = ?,
+           first_attempt_at = COALESCE(first_attempt_at, ?),
+           first_server_error_at = NULL, server_error_attempts = 0
+       WHERE id = ?`,
+      [attempt, reason, retryAt.toISOString(), now.toISOString(), id],
+    );
+  }
+
   async listMasterDataBlocked(limit: number): Promise<LocalBill[]> {
     const rows = await this.db.all<BillRow>(
       `SELECT ${COLUMNS} FROM local_bills

@@ -47,6 +47,7 @@ import {
   parkedReason,
   parkedSummary,
 } from "../sync/parkedReason.js";
+import type { NoticeInput } from "../sync/parkedReason.js";
 import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { buildLocalBill } from "../sync/createBill.js";
 import { FakeClock, SeqIds } from "./fakes.js";
@@ -717,19 +718,28 @@ async function s8RetryWindowLeaksNothing(): Promise<void> {
    */
   const ERROR_WORD = "ผิดพลาด";
 
+  /*
+   * PHASE 2c-7 NOTE, so this section is not read as stronger evidence than it
+   * is. billNotice no longer TAKES last_error — the parameter is gone — so for
+   * these six body fragments there is now no longer any input through which they
+   * could arrive. These checks are therefore an invariant statement, not a live
+   * test; the thing they were guarding is now unrepresentable rather than
+   * merely avoided.
+   *
+   * What is still a live test here, and was the actual defect, is the STORE:
+   * releaseMasterDataBlocked must clear last_error in the same statement that
+   * retires the parked state. That runs against the real SqliteLocalStore below
+   * and would still fail if someone dropped the clause. The live rendering
+   * matrix (offline, session-ended, failed, every tone) is proveNotice.
+   */
   /** Everything billNotice would put on the card, as one string. */
-  const renderable = (b: {
-    last_error: string | null;
-    master_data_missing_at: string | null;
-    master_data_code: string | null;
-    void_requested_at: string | null;
-  }): string => {
-    const n = billNotice(b);
+  const renderable = (b: NoticeInput): string => {
+    const n = billNotice(b, "active");
     return `${n.badge ?? ""} ${n.lines.join(" ")}`;
   };
 
-  const assertClean = (label: string, b: Parameters<typeof renderable>[0]): void => {
-    const tone = billNotice(b).tone;
+  const assertClean = (label: string, b: NoticeInput): void => {
+    const tone = billNotice(b, "active").tone;
     const text = renderable(b);
     const leaked = BODY_FRAGMENTS.filter(([, needle]) => text.includes(needle)).map(([l]) => l);
     // Calling a resolvable refusal an error is the original defect, so the word
@@ -797,10 +807,19 @@ async function s8RetryWindowLeaksNothing(): Promise<void> {
     `last_error=${retrying?.last_error === null ? "null" : JSON.stringify(retrying?.last_error)}`,
   );
   if (retrying !== null) assertClean("RETRY WINDOW: nothing leaks", retrying);
+  /*
+   * AMENDED IN 2c-7. This used to assert tone === "none" for the retry window.
+   * It is now "waiting": the bill has bounced once (attempt_count = 1, from the
+   * 424) and is pending again, which is exactly the state the calm waiting
+   * notice describes. What the window must never be is "error" — that was the
+   * defect — and it must never carry a diagnostic, which assertClean checks
+   * byte-wise on the line below.
+   */
+  const retryTone = retrying === null ? "?" : billNotice(retrying, "active").tone;
   check(
-    "and the card shows no notice at all during the retry — nothing is wrong yet",
-    retrying !== null && billNotice(retrying).tone === "none",
-    `tone=${retrying === null ? "?" : billNotice(retrying).tone}`,
+    "during the retry the card reads as WAITING, never as an error",
+    retryTone === "waiting",
+    `tone=${retryTone}`,
   );
 
   // ---- state 3: it is claimed and sent (syncing), still mid-flight
@@ -816,7 +835,7 @@ async function s8RetryWindowLeaksNothing(): Promise<void> {
   if (reparked !== null) assertClean("re-parked: nothing leaks", reparked);
   check(
     "re-parking restores the calm parked presentation",
-    reparked !== null && billNotice(reparked).tone === "parked",
+    reparked !== null && billNotice(reparked, "active").tone === "parked",
   );
 
   // ---- state 5: the office fixed it and the bill syncs
@@ -833,31 +852,47 @@ async function s8RetryWindowLeaksNothing(): Promise<void> {
 
   // ---- the invariant that replaces the gate, stated over EVERY combination.
   //
-  // last_error can only hold a 424 body while the bill is parked, because
-  // markMasterDataMissing is its only writer and every other transition either
-  // overwrites or clears it. So "tone: error" can never carry one.
+  // These are the STATE combinations the card can be in around parking. Note
+  // that last_error does not appear: it is no longer an input to billNotice at
+  // all (2c-7), which is what makes the leak unrepresentable rather than merely
+  // absent. The exhaustive state matrix — offline, session-ended, failed, voided
+  // and every tone — lives in proveNotice.
   console.log("");
-  const combos: { label: string; b: Parameters<typeof renderable>[0] }[] = [
-    { label: "parked + raw", b: { last_error: RAW, master_data_missing_at: "t", master_data_code: "seller_grade_unset", void_requested_at: null } },
-    { label: "parked + raw + unknown code", b: { last_error: RAW, master_data_missing_at: "t", master_data_code: "future_code", void_requested_at: null } },
-    { label: "parked + raw + null code", b: { last_error: RAW, master_data_missing_at: "t", master_data_code: null, void_requested_at: null } },
-    { label: "not parked + no error", b: { last_error: null, master_data_missing_at: null, master_data_code: null, void_requested_at: null } },
-    { label: "not parked + real 422 error", b: { last_error: "HTTP 422: line 1: net_weight must equal gross_weight - tare_weight", master_data_missing_at: null, master_data_code: null, void_requested_at: null } },
-    { label: "voided + raw still set", b: { last_error: RAW, master_data_missing_at: "t", master_data_code: "seller_grade_unset", void_requested_at: "t" } },
+  const parkedRow = (
+    label: string,
+    code: string | null,
+    voided: boolean,
+  ): { label: string; b: NoticeInput } => ({
+    label,
+    b: {
+      sync_state: "pending",
+      attempt_count: 1,
+      master_data_missing_at: "t",
+      master_data_code: code,
+      void_requested_at: voided ? "t" : null,
+    },
+  });
+  const combos: { label: string; b: NoticeInput }[] = [
+    parkedRow("parked", "seller_grade_unset", false),
+    parkedRow("parked + unknown code", "future_code", false),
+    parkedRow("parked + null code", null, false),
+    { label: "never attempted", b: { sync_state: "pending", attempt_count: 0, master_data_missing_at: null, master_data_code: null, void_requested_at: null } },
+    { label: "terminally failed (422)", b: { sync_state: "failed", attempt_count: 1, master_data_missing_at: null, master_data_code: null, void_requested_at: null } },
+    parkedRow("voided while parked", "seller_grade_unset", true),
   ];
   for (const { label, b } of combos) {
-    const n = billNotice(b);
+    const n = billNotice(b, "active");
     console.log(`  ${label.padEnd(28)} tone=${n.tone.padEnd(7)} ${n.lines.join(" / ").slice(0, 52)}`);
   }
   for (const { label, b } of combos) assertClean(`combo ${label}: nothing leaks`, b);
   check(
     "a genuine 422 still surfaces as a red error — parking did not silence real failures",
-    billNotice(combos[4]!.b).tone === "error",
+    billNotice(combos[4]!.b, "active").tone === "error",
     "the fix must not have made every failure calm",
   );
   check(
-    "a voided bill shows no send notice, even with the raw text still on the row",
-    billNotice(combos[5]!.b).tone === "none",
+    "a bill voided while parked shows no send notice — the void region owns the card",
+    billNotice(combos[5]!.b, "active").tone === "none",
   );
 
   await driver.close();

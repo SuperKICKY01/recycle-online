@@ -6,12 +6,21 @@
  *   201 -> created                                          (accepted)
  *   200 -> idempotency key already seen, same bill returned (duplicate)
  *   400/422 -> validation refusal                           (rejected: terminal)
- *   401/403/5xx -> server answered but unusable  (unavailable, reachable: true)
+ *   424     -> master data not set up yet                  (rejected_resolvable)
+ *   401     -> the session ended, sign in again            (session_expired)
+ *   403/5xx -> server answered but unusable      (unavailable, reachable: true)
  *   timeout / network / no token -> no answer    (unavailable, reachable: false)
  *
- * `reachable` is the poison signal: a retry that keeps hitting 401/403/5xx is a
+ * `reachable` is the poison signal: a retry that keeps hitting 403/5xx is a
  * reachable server refusing this bill, which the UI escalates to a loud alarm,
  * unlike a yard that is simply offline. See sync/queueHealth.ts.
+ *
+ * 401 WAS IN THAT LINE UNTIL PHASE 2c-7 and it did not belong there. An expired
+ * token is not an unknown outcome and it is not this bill's fault: it made three
+ * queued bills look like a poisoned queue ("call support") and one queued bill
+ * look like a dead spot ("ออฟไลน์"), neither of which names the fix. 403 stays —
+ * the server has no permission model in the MVP, so a 403 here would be a
+ * genuine server-side surprise, not a session that simply ran out.
  *
  * NOT VERIFIED against the running server in Phase 2a. See the note at the end
  * of the proof output.
@@ -88,6 +97,12 @@ export class HttpTransport implements Transport {
     if (response.status === 400 || response.status === 422) {
       return { kind: "rejected", reason: `HTTP ${response.status}: ${describe(body.detail)}` };
     }
+    if (response.status === 401) {
+      // The token expired, was revoked, or names a user that no longer exists
+      // (server/app/auth.py answers all three with 401). The bill is fine and
+      // stays queued; only a sign-in unblocks it.
+      return { kind: "session_expired", reason: `HTTP 401: ${describe(body.detail)}` };
+    }
     if (response.status === 424) {
       // RESOLVABLE: well-formed bill, master data not set up yet. The status code
       // carries the classification so it survives a body we cannot parse; the
@@ -123,6 +138,7 @@ export class HttpTransport implements Transport {
    *          would retry forever over a bill that is already correct.
    *   404 -> the server does not have this bill under this tenant. A definite
    *          answer, so terminal, not a retry.
+   *   401 -> the session ended. Still owed, retried after a sign-in.
    *   anything else / network -> unknown, retry.
    */
   async voidBill(bill: LocalBill, reason: string): Promise<VoidOutcome> {
@@ -159,6 +175,12 @@ export class HttpTransport implements Transport {
 
     if (response.status === 200) return { kind: "voided", doc_no: docNo };
     if (response.status === 409) return { kind: "already_voided", doc_no: docNo };
+    // Same reasoning as sendBill: a void owed by a device whose session ended is
+    // not an outage. Without this, a bill that is synced and only owes a void
+    // would meet an expired session with nothing on the screen explaining it.
+    if (response.status === 401) {
+      return { kind: "session_expired", reason: `HTTP 401: ${describe(body.detail)}` };
+    }
     if (response.status === 404 || response.status === 400 || response.status === 422) {
       return { kind: "rejected", reason: `HTTP ${response.status}: ${describe(body.detail)}` };
     }

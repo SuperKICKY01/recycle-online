@@ -56,6 +56,15 @@ export interface SyncRunResult {
   masterDataBlocked: number;
   /** Parked bills whose slow retry came due and were returned to the queue. */
   masterDataReleased: number;
+  /**
+   * Sends or voids that bounced because THE SESSION ENDED (401).
+   *
+   * Reported separately from `retryable` on purpose, because the UI's reaction
+   * is different and opposite: `retryable` means "wait, it will go by itself"
+   * and this one means "it will NOT go by itself — sign in". Folding it into
+   * retryable is exactly how an expired session came to be displayed as ออฟไลน์.
+   */
+  sessionExpired: number;
 }
 
 const emptyResult = (): SyncRunResult => ({
@@ -70,6 +79,7 @@ const emptyResult = (): SyncRunResult => ({
   backoffsCleared: 0,
   masterDataBlocked: 0,
   masterDataReleased: 0,
+  sessionExpired: 0,
 });
 
 function describeError(err: unknown): string {
@@ -106,6 +116,22 @@ export class SyncEngine {
    */
   async retryMasterDataNow(): Promise<number> {
     return this.store.releaseMasterDataBlocked(this.clock.now(), true);
+  }
+
+  /**
+   * The operator has signed in again after the session ended. Returns how many
+   * bills were freed.
+   *
+   * Every backoff currently on the queue was computed while there was no usable
+   * session, which is not a fact about the network at all — so without this the
+   * yard signs in, sees the sign-in succeed, and then watches nothing happen for
+   * up to backoffMaxMs. Same reasoning as clearBackoffForPending after a
+   * successful send: the delay was computed against a world that no longer
+   * exists. It does NOT re-send anything itself; the next pass does that, in
+   * weighing order, with the same idempotency keys.
+   */
+  async resumeAfterSignIn(): Promise<number> {
+    return this.store.clearBackoffForPending(this.clock.now());
   }
 
   /**
@@ -264,6 +290,14 @@ export class SyncEngine {
             result.voidsRejected += 1;
             break;
 
+          case "session_expired":
+            // Still owed — void_requested_at is never cleared — and NOT counted
+            // as a rejection or as an outage. The pass reports it so the UI can
+            // ask for a sign-in instead of blaming the network.
+            await this.store.markVoidAttemptFailed(bill.id, outcome.reason, attempt);
+            result.sessionExpired += 1;
+            break;
+
           case "unavailable":
             await this.store.markVoidAttemptFailed(bill.id, outcome.reason, attempt);
             result.voidsRetryable += 1;
@@ -299,6 +333,14 @@ export class SyncEngine {
       total.backoffsCleared += r.backoffsCleared;
       total.masterDataBlocked += r.masterDataBlocked;
       total.masterDataReleased += r.masterDataReleased;
+      total.sessionExpired += r.sessionExpired;
+
+      // A session that has ended is not progress this loop can make. No number
+      // of passes conjures a token, so spinning to maxPasses would only inflate
+      // attempt_count and the backoff on every queued bill before the operator
+      // has even seen the sign-in prompt. Same reasoning as the parked bills
+      // below, and the caller learns why from the returned totals.
+      if (r.sessionExpired > 0) return total;
 
       // Quiescent means nothing left to SEND and nothing left to void. Testing
       // only `pending` would return while a void was still owed, and a proof
@@ -373,6 +415,24 @@ export class SyncEngine {
           now,
         );
         result.masterDataBlocked += 1;
+        return;
+      }
+
+      case "session_expired": {
+        // The session ended. This is NOT the bill's fault and NOT an outage:
+        // the server answered, promptly and correctly, that we are no longer
+        // signed in. So the bill goes back to pending untouched and the POISON
+        // counters are cleared by markSessionExpired — with three bills queued
+        // the old classification (unavailable, reachable: true) counted these
+        // toward POISON_ALARM_ATTEMPTS and told the yard to call support.
+        //
+        // The backoff is the ordinary one. It is cleared wholesale by
+        // resumeAfterSignIn the moment the operator signs in, so a queue does
+        // not sit out a 30s delay that was never about the network.
+        const now = this.clock.now();
+        const next = new Date(now.getTime() + this.backoffFor(attempt));
+        await this.store.markSessionExpired(bill.id, outcome.reason, attempt, next, now);
+        result.sessionExpired += 1;
         return;
       }
 

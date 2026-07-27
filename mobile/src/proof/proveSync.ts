@@ -12,14 +12,18 @@ import { fileURLToPath } from "node:url";
 
 import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
+import { billNotice } from "../sync/parkedReason.js";
 import { assessQueue, POISON_ALARM_ATTEMPTS, POISON_ALARM_MS } from "../sync/queueHealth.js";
+import { statusNotice } from "../sync/statusNotice.js";
 import type { BillItemPayload, LocalBill, LocalStore } from "../sync/types.js";
 import {
+  ExpiredSessionTransport,
   FakeClock,
   FakeServer,
   FlakyTransport,
   GatedTransport,
   HeadFailingTransport,
+  LegacyUnauthorizedTransport,
   MasterDataMissingTransport,
   LostAckTransport,
   OfflineTransport,
@@ -1152,6 +1156,309 @@ async function case10ResolvableVsPermanent(harness: StoreHarness): Promise<void>
   );
 }
 
+/* ----------------------------------------------------------------- 11 ---- */
+
+/**
+ * CASE 11: THE SESSION ENDS.
+ *
+ * JWT_TTL_SECONDS is 3600 and there is no refresh token, so on a long shift the
+ * token simply runs out. Until Phase 2c-7 the transport classified the 401 as
+ * `unavailable, reachable: true` — an unknown outcome from a server that
+ * answered — and the app then told the operator one of two false things,
+ * depending only on how many bills happened to be queued:
+ *
+ *   1 bill   -> `retryable`, so App set online=false: "ออฟไลน์ — จะส่งให้เอง
+ *               เมื่อเน็ตกลับมา". The network was fine. Waiting fixes nothing.
+ *   3 bills  -> reachable-and-refusing, so first_server_error_at ran and
+ *               server_error_attempts climbed to POISON_ALARM_ATTEMPTS: the red
+ *               "ติดต่อฝ่ายสนับสนุน" alarm. There is nothing for support to do.
+ *
+ * Neither names the fix. Both are asserted below as the DISPROOF (11a-legacy and
+ * 11c), driven by LegacyUnauthorizedTransport, which differs from the new
+ * classification in nothing but the SendOutcome member it returns.
+ *
+ * Run on both stores, because markSessionExpired is a store transition and the
+ * in-memory fake mirroring it is the only thing keeping the two honest.
+ */
+async function case11SessionExpired(harness: StoreHarness): Promise<void> {
+  /* ---- 11a: ONE queued bill ---- */
+
+  header("CASE 11a: the session expires with ONE bill queued — not offline, not poison");
+  const one = await rig(harness, "bill-s1");
+  const oneCreated = await createBills(one, 1);
+  const solo = oneCreated[0]!;
+  const t1 = new ExpiredSessionTransport(one.server);
+  const e1 = new SyncEngine({
+    store: one.store,
+    transport: t1,
+    clock: one.clock,
+    backoffBaseMs: 1000,
+    backoffMaxMs: 5000,
+  });
+
+  const run1 = await e1.runOnce();
+  const soloRow = await one.store.getBill(solo.id);
+  const soloHealth = assessQueue(await one.store.pendingQueueSnapshot(), one.clock.now());
+
+  check(
+    "the pass reports a SESSION problem, and not a retryable one",
+    run1.sessionExpired === 1 && run1.retryable === 0 && run1.rejected === 0 && run1.synced === 0,
+    `run=${JSON.stringify(run1)}`,
+  );
+  check(
+    "the bill is untouched and still queued — nothing failed, nothing was dropped",
+    soloRow?.sync_state === "pending" && soloRow.doc_no === null,
+    `state=${String(soloRow?.sync_state)}`,
+  );
+  check(
+    "the POISON clocks never started — a 401 is not the server refusing this bill",
+    soloRow?.first_server_error_at === null && soloRow.server_error_attempts === 0,
+    `first_server_error_at=${String(soloRow?.first_server_error_at)} serverErrorAttempts=${String(soloRow?.server_error_attempts)}`,
+  );
+  check("nothing reached the server", one.server.billCount === 0);
+
+  /*
+   * What the yard actually sees. App derives session="expired" from
+   * SyncRunResult.sessionExpired and online=true (the server ANSWERED), so these
+   * are the exact inputs the screen gets.
+   */
+  const soloStrip = statusNotice({
+    session: "expired",
+    online: true,
+    pending: 1,
+    failed: 0,
+    blocked: soloHealth.alarm
+      ? { behind: soloHealth.behind, forMs: soloHealth.poisonedForMs, attempts: soloHealth.serverErrorAttempts }
+      : null,
+    waitingOnMasterData: 0,
+    masterDataCodes: [],
+  });
+  console.log(`  strip: ${soloStrip.message}`);
+  console.log(`  card : ${billNotice(soloRow!, "expired").lines.join(" / ")}`);
+  check(
+    "the strip does NOT say ออฟไลน์ and does NOT send anyone to support",
+    !soloStrip.message.includes("ออฟไลน์") && !soloStrip.message.includes("ฝ่ายสนับสนุน"),
+    soloStrip.message,
+  );
+  check(
+    "it names the sign-in and carries the button",
+    soloStrip.message.includes("เข้าสู่ระบบ") && soloStrip.action?.kind === "sign_in",
+    `action=${String(soloStrip.action?.kind)}`,
+  );
+  check(
+    "the bill's own card reads as a session problem, not an error",
+    billNotice(soloRow!, "expired").tone === "session",
+    `tone=${billNotice(soloRow!, "expired").tone}`,
+  );
+
+  /* ---- 11a-legacy: THE DISPROOF for one bill ---- */
+
+  const legacyOne = await rig(harness, "bill-s1L");
+  await createBills(legacyOne, 1);
+  const legacyRun = await new SyncEngine({
+    store: legacyOne.store,
+    transport: new LegacyUnauthorizedTransport(),
+    clock: legacyOne.clock,
+    backoffBaseMs: 1000,
+  }).runOnce();
+  // This is the number App branched on: retryable > 0 -> setOnline(false).
+  const legacyStrip = statusNotice({
+    session: "active",
+    online: false,
+    pending: 1,
+    failed: 0,
+    blocked: null,
+    waitingOnMasterData: 0,
+    masterDataCodes: [],
+  });
+  console.log(`  BEFORE (401 as unavailable): ${legacyStrip.message}`);
+  check(
+    "DISPROOF: the old classification produced a RETRYABLE, which is what set online=false",
+    legacyRun.retryable === 1 && legacyRun.sessionExpired === 0,
+    `run=${JSON.stringify(legacyRun)}`,
+  );
+  check(
+    "DISPROOF: and that is the input on which the strip said ออฟไลน์",
+    legacyStrip.message.includes("ออฟไลน์"),
+    legacyStrip.message,
+  );
+
+  /* ---- 11b: THREE queued bills, driven past BOTH alarm triggers ---- */
+
+  header("CASE 11b: the session expires with THREE queued — the poison counter stays 0");
+  const many = await rig(harness, "bill-s3");
+  const created: LocalBill[] = [];
+  for (let i = 0; i < 3; i += 1) {
+    created.push(
+      await createLocalBill(
+        { store: many.store, clock: many.clock, ids: many.billIds },
+        { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(many.itemIds), total_amount: null },
+      ),
+    );
+    many.clock.advance(60_000); // weighed a minute apart, so order is unambiguous
+  }
+  const t3 = new ExpiredSessionTransport(many.server);
+  const e3 = new SyncEngine({
+    store: many.store,
+    transport: t3,
+    clock: many.clock,
+    backoffBaseMs: 1000,
+    backoffMaxMs: 5000,
+    batchLimit: 50,
+  });
+
+  // Past the clock threshold AND past the count threshold, so neither trigger
+  // can be said to have simply not been reached yet.
+  const passes = POISON_ALARM_ATTEMPTS + 3;
+  for (let i = 0; i < passes; i += 1) {
+    many.clock.advance(15_000);
+    await e3.runOnce();
+  }
+  const manySnap = await many.store.pendingQueueSnapshot();
+  const manyHealth = assessQueue(manySnap, many.clock.now());
+
+  console.log(
+    `  after ${String(passes)} passes: attempts=${String(manySnap.head?.attempts)}` +
+      ` serverErrorAttempts=${String(manySnap.head?.server_error_attempts)}` +
+      ` blockedForMs=${String(manyHealth.blockedForMs)} alarm=${String(manyHealth.alarm)}`,
+  );
+  check(
+    "the head really has bounced past BOTH alarm triggers' worth of attempts and time",
+    (manySnap.head?.attempts ?? 0) >= POISON_ALARM_ATTEMPTS &&
+      manyHealth.blockedForMs >= POISON_ALARM_MS,
+    `attempts=${String(manySnap.head?.attempts)} (>= ${String(POISON_ALARM_ATTEMPTS)})` +
+      ` blockedForMs=${String(manyHealth.blockedForMs)} (>= ${String(POISON_ALARM_MS)}) — so this case is not vacuous`,
+  );
+  check(
+    "yet the consecutive-server-refusal counter is still ZERO",
+    manySnap.head?.server_error_attempts === 0 && manySnap.head.first_server_error_at === null,
+    `serverErrorAttempts=${String(manySnap.head?.server_error_attempts)}`,
+  );
+  check(
+    "so NO poison, NO red alarm and NO blocker — nobody is told to call support",
+    manyHealth.poisoned === false && manyHealth.alarm === false && manyHealth.blockerId === null,
+    `poisoned=${String(manyHealth.poisoned)} alarm=${String(manyHealth.alarm)}`,
+  );
+  check(
+    "all three bills are still queued, in weighing order, and nothing reached the server",
+    manySnap.pendingCount === 3 && many.server.billCount === 0,
+    `pending=${String(manySnap.pendingCount)} onServer=${String(many.server.billCount)}`,
+  );
+
+  const manyStrip = statusNotice({
+    session: "expired",
+    online: true,
+    pending: 3,
+    failed: 0,
+    blocked: manyHealth.alarm
+      ? { behind: manyHealth.behind, forMs: manyHealth.poisonedForMs, attempts: manyHealth.serverErrorAttempts }
+      : null,
+    waitingOnMasterData: 0,
+    masterDataCodes: [],
+  });
+  console.log(`  strip: ${manyStrip.message}`);
+  check(
+    "three bills produce the SAME honest message as one — not a different, scarier lie",
+    !manyStrip.message.includes("ฝ่ายสนับสนุน") &&
+      !manyStrip.message.includes("ออฟไลน์") &&
+      manyStrip.action?.kind === "sign_in",
+    manyStrip.message,
+  );
+
+  /* ---- 11c: THE DISPROOF for three bills ---- */
+
+  header("CASE 11c: DISPROOF — the same three bills under the OLD 401 classification");
+  const legacyMany = await rig(harness, "bill-s3L");
+  for (let i = 0; i < 3; i += 1) {
+    await createLocalBill(
+      { store: legacyMany.store, clock: legacyMany.clock, ids: legacyMany.billIds },
+      { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(legacyMany.itemIds), total_amount: null },
+    );
+    legacyMany.clock.advance(60_000);
+  }
+  const eLegacy = new SyncEngine({
+    store: legacyMany.store,
+    transport: new LegacyUnauthorizedTransport(),
+    clock: legacyMany.clock,
+    backoffBaseMs: 1000,
+    backoffMaxMs: 5000,
+    batchLimit: 50,
+  });
+  for (let i = 0; i < passes; i += 1) {
+    legacyMany.clock.advance(15_000);
+    await eLegacy.runOnce();
+  }
+  const legacySnap = await legacyMany.store.pendingQueueSnapshot();
+  const legacyHealth = assessQueue(legacySnap, legacyMany.clock.now());
+  const legacyManyStrip = statusNotice({
+    session: "active",
+    online: true,
+    pending: 3,
+    failed: 0,
+    blocked: legacyHealth.alarm
+      ? { behind: legacyHealth.behind, forMs: legacyHealth.poisonedForMs, attempts: legacyHealth.serverErrorAttempts }
+      : null,
+    waitingOnMasterData: 0,
+    masterDataCodes: [],
+  });
+  console.log(
+    `  serverErrorAttempts=${String(legacySnap.head?.server_error_attempts)}` +
+      ` poisoned=${String(legacyHealth.poisoned)} alarm=${String(legacyHealth.alarm)}`,
+  );
+  console.log(`  BEFORE: ${legacyManyStrip.message}`);
+  check(
+    "DISPROOF: the old classification DID run the poison counter past the threshold",
+    (legacySnap.head?.server_error_attempts ?? 0) >= POISON_ALARM_ATTEMPTS &&
+      legacyHealth.poisoned === true &&
+      legacyHealth.alarm === true,
+    `serverErrorAttempts=${String(legacySnap.head?.server_error_attempts)} alarm=${String(legacyHealth.alarm)}`,
+  );
+  check(
+    "DISPROOF: and the yard was told to call support about an expired token",
+    legacyManyStrip.message.includes("ฝ่ายสนับสนุน"),
+    legacyManyStrip.message,
+  );
+
+  /* ---- 11d: sign in again — the queue drains, unchanged ---- */
+
+  header("CASE 11d: after signing in, the SAME bills drain — no duplicates, nothing re-typed");
+  t3.signIn();
+  const freed = await e3.resumeAfterSignIn();
+  const drained = await e3.runUntilQuiescent();
+  const finals = await Promise.all(created.map((b) => many.store.getBill(b.id)));
+
+  check(
+    "signing in freed the backoff that was never about the network",
+    freed > 0,
+    `freed=${String(freed)} — without this the yard signs in and watches nothing happen`,
+  );
+  check(
+    "all three bills synced",
+    finals.every((b) => b?.sync_state === "synced" && b.doc_no !== null),
+    finals.map((b) => `${String(b?.doc_no)}:${String(b?.sync_state)}`).join(" "),
+  );
+  invariant(many, created, "exactly the three created bills exist on the server — no duplicates");
+  check(
+    "every idempotency key is the one the bill was born with",
+    finals.every((b, i) => b?.idempotency_key === created[i]?.idempotency_key),
+  );
+  check(
+    "every payload is byte-identical to what was weighed — nothing was re-typed",
+    finals.every((b, i) => JSON.stringify(b?.payload) === JSON.stringify(created[i]?.payload)),
+  );
+  const docSeq = finals.map((b) => Number(b?.doc_no?.split("-").pop()));
+  console.log(`  doc_no order: ${docSeq.join(" < ")}  (drained=${JSON.stringify(drained.synced)})`);
+  check(
+    "and they arrived in WEIGHING order — an expired session did not reorder the queue",
+    docSeq.every((n, i) => i === 0 || n > (docSeq[i - 1] ?? -1)),
+    docSeq.join(","),
+  );
+  check(
+    "the session state is over: nothing is left pending or blocked",
+    (await many.store.listPendingOldestFirst(10)).length === 0,
+  );
+}
+
 async function case7RejectionIsNotRetry(harness: StoreHarness): Promise<void> {
   header("CASE 7 (extra): a server REJECTION is not a transport failure");
   const r = await rig(harness, "bill-r");
@@ -1199,6 +1506,7 @@ async function runSuite(harness: StoreHarness): Promise<void> {
   await case9OfflineVsPoison(harness);
   await case9dAttemptTrigger(harness);
   await case10ResolvableVsPermanent(harness);
+  await case11SessionExpired(harness);
 }
 
 async function main(): Promise<number> {

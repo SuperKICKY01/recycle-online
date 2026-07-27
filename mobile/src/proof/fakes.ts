@@ -151,6 +151,30 @@ export class InMemoryStore implements LocalStore {
     return Promise.resolve();
   }
 
+  /**
+   * Mirrors SqliteLocalStore.markSessionExpired statement for statement: back to
+   * pending, first_attempt_at stamped once, and BOTH poison columns cleared. The
+   * suite runs the same cases against both stores, so a difference here would
+   * make one of them a lie about what an expired session does to the alarm.
+   */
+  markSessionExpired(
+    id: string,
+    reason: string,
+    attempt: number,
+    retryAt: Date,
+    now: Date,
+  ): Promise<void> {
+    const row = this.require(id);
+    row.sync_state = "pending";
+    row.attempt_count = attempt;
+    row.last_error = reason;
+    row.next_attempt_at = retryAt.toISOString();
+    row.first_attempt_at = row.first_attempt_at ?? now.toISOString();
+    row.first_server_error_at = null;
+    row.server_error_attempts = 0;
+    return Promise.resolve();
+  }
+
   listMasterDataBlocked(limit: number): Promise<LocalBill[]> {
     const out = [...this.rows.values()]
       .filter((b) => b.sync_state === "pending" && b.master_data_missing_at !== null)
@@ -613,6 +637,66 @@ export class MasterDataMissingTransport implements Transport {
 
   voidBill(bill: LocalBill, reason: string): Promise<VoidOutcome> {
     return Promise.resolve(toVoidOutcome(this.server.voidBill(bill.id, reason)));
+  }
+}
+
+/**
+ * THE EXPIRED SESSION. Every request is answered 401 until `signIn()` is called,
+ * after which the SAME bills — same ids, same idempotency keys, nothing re-typed
+ * — go through normally.
+ *
+ * Note what it is NOT: it is not offline (the server answers every time) and it
+ * is not poison (the bills are perfectly valid, as signIn() then demonstrates).
+ * Those are the two things the app used to say instead.
+ */
+export class ExpiredSessionTransport implements Transport {
+  readonly attemptedIds: string[] = [];
+  private signedIn = false;
+
+  constructor(private readonly server: FakeServer) {}
+
+  /** The operator signs in again. Nothing about any bill changes. */
+  signIn(): void {
+    this.signedIn = true;
+  }
+
+  sendBill(bill: LocalBill): Promise<SendOutcome> {
+    this.attemptedIds.push(bill.id);
+    if (!this.signedIn) {
+      return Promise.resolve({ kind: "session_expired", reason: "HTTP 401: Not authenticated" });
+    }
+    const r = this.server.submit(bill.payload);
+    return Promise.resolve({ kind: r.kind, doc_no: r.bill.doc_no });
+  }
+
+  voidBill(bill: LocalBill, reason: string): Promise<VoidOutcome> {
+    if (!this.signedIn) {
+      return Promise.resolve({ kind: "session_expired", reason: "HTTP 401: Not authenticated" });
+    }
+    return Promise.resolve(toVoidOutcome(this.server.voidBill(bill.id, reason)));
+  }
+}
+
+/**
+ * The PRE-FIX behaviour, kept so the proof can show what it prevents rather than
+ * merely asserting the new state is fine.
+ *
+ * A 401 classified the way httpTransport classified it until Phase 2c-7: an
+ * `unavailable` whose server ANSWERED, so `reachable: true`. Byte-identical
+ * reason string; only the classification differs. Used by CASE 11c to run the
+ * exact same scenario and watch the red poison alarm fire.
+ */
+export class LegacyUnauthorizedTransport implements Transport {
+  sendBill(): Promise<SendOutcome> {
+    return Promise.resolve({
+      kind: "unavailable",
+      reason: "HTTP 401: Not authenticated",
+      reachable: true,
+    });
+  }
+
+  voidBill(): Promise<VoidOutcome> {
+    return Promise.resolve({ kind: "unavailable", reason: "HTTP 401: Not authenticated" });
   }
 }
 

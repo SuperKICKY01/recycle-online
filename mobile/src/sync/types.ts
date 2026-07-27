@@ -167,12 +167,19 @@ export const isVoidSettled = (bill: LocalBill): boolean => bill.voided_at !== nu
  * it; retrying forever would never help, so it becomes visibly `failed`.
  *
  * Within `unavailable`, `reachable` records whether the SERVER ANSWERED at all:
- * true for an HTTP status we could not use (5xx/401/403 — the network works, the
+ * true for an HTTP status we could not use (5xx, 403 — the network works, the
  * server erred or refused), false for a transport-level failure (timeout, DNS,
  * no connection, no token — we never got a word back). Both retry forever; the
  * flag is not about retrying. It is what lets the UI tell an offline yard ("wait
  * it out", amber) apart from a head bill the reachable server keeps failing
  * ("call support", red). See sync/queueHealth.ts.
+ *
+ * 401 IS NO LONGER IN `unavailable`. It used to be, as a reachable one, and that
+ * was two lies at once: with bills behind it the expired session accumulated
+ * server_error_attempts and raised the POISON alarm ("call support"), and with
+ * one bill it merely bounced, so the UI called it ออฟไลน์ while the server was
+ * answering every request. Neither names the fix, which is to sign in again. It
+ * is its own member below.
  */
 export type SendOutcome =
   | { kind: "accepted"; doc_no: string | null }
@@ -198,6 +205,25 @@ export type SendOutcome =
    * string-matching an error message.
    */
   | { kind: "rejected_resolvable"; reason: string; code: string }
+  /**
+   * THE SESSION ENDED. The server answered 401: the token is expired, revoked,
+   * or names a user that no longer exists. Nothing is wrong with the bill, the
+   * network, or the server.
+   *
+   * Distinct from `unavailable` because the outcome is NOT unknown — we know
+   * exactly why the send did not happen and exactly what fixes it, and because
+   * `unavailable`'s reachable flag would drive the poison alarm: an expired
+   * session with three bills queued told the yard to call support.
+   *
+   * Distinct from `rejected` because the bill is untouched and perfectly valid.
+   * Re-sending it after a sign-in is the whole fix; nothing is re-typed and the
+   * idempotency key is unchanged, so the retry cannot duplicate.
+   *
+   * There is deliberately NO refresh token (Phase 2c-7 scope). Re-login is the
+   * recovery, so the ONE thing this state must do is say so where the operator
+   * can act on it.
+   */
+  | { kind: "session_expired"; reason: string }
   | { kind: "unavailable"; reason: string; reachable: boolean };
 
 /**
@@ -214,6 +240,13 @@ export type VoidOutcome =
   | { kind: "voided"; doc_no: string | null }
   | { kind: "already_voided"; doc_no: string | null }
   | { kind: "rejected"; reason: string }
+  /**
+   * Same meaning as SendOutcome.session_expired, and here for the same reason:
+   * a bill whose only outstanding work is a void would otherwise hit an expired
+   * session with nothing at all on the screen to say so. Fixing one path and
+   * leaving the other is how a state comes back through the door nobody watched.
+   */
+  | { kind: "session_expired"; reason: string }
   | { kind: "unavailable"; reason: string };
 
 export interface Transport {
@@ -325,6 +358,25 @@ export interface LocalStore {
   markMasterDataMissing(
     id: string,
     code: string,
+    reason: string,
+    attempt: number,
+    retryAt: Date,
+    now: Date,
+  ): Promise<void>;
+  /**
+   * The send bounced because THE SESSION ENDED (401), not because anything is
+   * wrong with the bill, the network or the server.
+   *
+   * A named transition rather than markPendingAgain(reachable: false), even
+   * though the row ends up in a similar shape. `reachable` is documented as "did
+   * the server ANSWER" — and for a 401 it did — so passing false there would
+   * make the field lie about its own meaning, and the next person to read a
+   * metric off it would get wrong numbers. What we actually want is stated here:
+   * the bill goes back to pending, and the POISON counters are cleared so an
+   * expired session can never raise the "call support" alarm.
+   */
+  markSessionExpired(
+    id: string,
     reason: string,
     attempt: number,
     retryAt: Date,

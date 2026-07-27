@@ -25,9 +25,10 @@ import {
   View,
 } from "react-native";
 
-import { billNotice } from "../src/sync/parkedReason";
+import { billNotice, canRequestVoid, voidProgressLine } from "../src/sync/parkedReason";
+import type { NoticeTone, SessionState } from "../src/sync/parkedReason";
 import type { LocalBill, SyncState } from "../src/sync/types";
-import { isVoided, isVoidSettled } from "../src/sync/types";
+import { isVoided } from "../src/sync/types";
 import { shopDateTime } from "../src/time/shopTime";
 
 const STATE_TH: Record<SyncState, string> = {
@@ -44,10 +45,73 @@ const STATE_COLOR: Record<SyncState, string> = {
   failed: "#b91c1c",
 };
 
+/**
+ * The notice box, one style per tone. A Record — NOT a ternary chain — so adding
+ * a tone to billNotice without deciding how it looks is a compile error rather
+ * than an unstyled or invisible message. The old chain ended in `: null`, which
+ * is precisely the shape that renders nothing for a state nobody thought about.
+ */
+const TONE_BOX: Record<Exclude<NoticeTone, "none">, object> = {
+  // Amber "waiting" family: the bill is fine and nothing is owed at the yard.
+  waiting: { backgroundColor: "#f1f5f9" },
+  session: { backgroundColor: "#fef3c7" },
+  parked: { backgroundColor: "#fef3c7" },
+  // Red, and the only one: the server has permanently refused this bill.
+  error: { backgroundColor: "#fee2e2" },
+};
+
+const TONE_LEAD: Record<Exclude<NoticeTone, "none">, object> = {
+  waiting: { color: "#334155" },
+  session: { color: "#78350f" },
+  parked: { color: "#78350f" },
+  error: { color: "#7f1d1d" },
+};
+
+/**
+ * The notice region for one bill.
+ *
+ * It takes the tone as a PROP typed `Exclude<NoticeTone, "none">`, and that is
+ * the whole point of it existing rather than being inlined. Written inline, the
+ * `notice.tone !== "none"` check narrows correctly at the outer element and then
+ * SILENTLY EVAPORATES inside the `.map` callback — TypeScript cannot know the
+ * property has not changed by the time a closure runs, so `TONE_LEAD[notice.tone]`
+ * was an implicit `any` (TS7053) and would have rendered an unstyled line for a
+ * "none" that cannot occur. A cast or a `!` there would have re-asserted by hand
+ * exactly the thing the compiler had just refused to grant.
+ *
+ * Passing the narrowed value across a typed boundary hands the guarantee to the
+ * compiler instead: inside here the tone simply IS one of the four, everywhere,
+ * closures included. Same discipline as the branded shop-time type — make the
+ * wrong thing fail to compile rather than remember not to write it.
+ */
+function NoticeBox({
+  tone,
+  lines,
+}: {
+  tone: Exclude<NoticeTone, "none">;
+  lines: string[];
+}) {
+  return (
+    <View style={[styles.noticeBox, TONE_BOX[tone]]}>
+      {lines.map((line, i) => (
+        <Text key={i} style={[i === 0 ? styles.noticeLead : styles.noticeCalm, TONE_LEAD[tone]]}>
+          {line}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
 interface Props {
   visible: boolean;
   bills: LocalBill[];
   busy: boolean;
+  /**
+   * Whether the device has a usable session. Device-global, so it is passed in
+   * rather than read off a bill: the token is in memory only, and a per-bill
+   * copy would keep telling the operator to sign in after they already had.
+   */
+  session: SessionState;
   /**
    * The bill currently jamming the send queue (stuck at the head past the alarm
    * threshold), or null. It is called out here so the operator can find the one
@@ -58,7 +122,7 @@ interface Props {
   onVoid: (billId: string, reason: string) => void;
 }
 
-export function BillsPanel({ visible, bills, busy, blockerId, onClose, onVoid }: Props) {
+export function BillsPanel({ visible, bills, busy, session, blockerId, onClose, onVoid }: Props) {
   const [voidingId, setVoidingId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
 
@@ -98,24 +162,27 @@ export function BillsPanel({ visible, bills, busy, blockerId, onClose, onVoid }:
 
           {bills.map((b) => {
             const voided = isVoided(b);
-            const settled = isVoidSettled(b);
             const isBlocker = b.id === blockerId;
             /*
-              PARKED IS NOT FAILED. A resolvable refusal means the bill is fine,
-              the network is fine, and the office has something to set up — so it
-              is rendered in the calm amber family, never red, never ผิดพลาด.
+              PARKED IS NOT FAILED, AND NEITHER IS OFFLINE. A resolvable refusal
+              means the bill is fine, the network is fine, and the office has
+              something to set up. An unsent bill means the bill is fine and the
+              network is not. Both are the calm amber WAITING family — never red,
+              never ผิดพลาด, which is reserved for a bill the server has refused
+              permanently and will never accept.
 
-              This panel deliberately does NOT read b.last_error any more. What a
-              bill says is decided by billNotice, in one pure function that the
-              proof enumerates states over; a condition here was what let the
-              retry window leak the raw 424 body back onto the screen.
+              This panel cannot read b.last_error even if someone tries: it is
+              not a field of NoticeInput any more. That is deliberate — a gate
+              you have to remember is a bug you have not found yet, and the first
+              version of this fix was a gate with a hole in it.
 
               NOT named `reason`: that is the void-reason state above, and
               shadowing it silently detached the void TextInput from it. Caught by
               the app typecheck, which is why both programs are run bare.
             */
-            const notice = billNotice(b);
+            const notice = billNotice(b, session);
             const parked = notice.tone === "parked";
+            const voidLine = voidProgressLine(b);
             return (
               <View
                 key={b.id}
@@ -171,47 +238,32 @@ export function BillsPanel({ visible, bills, busy, blockerId, onClose, onVoid }:
                   {b.payload.items.length} รายการ · {shopDateTime(b.created_at)}
                 </Text>
 
-                {voided ? (
+                {voidLine !== null ? (
                   <View style={styles.voidBox}>
                     <Text style={styles.voidReason}>เหตุผล: {b.void_reason}</Text>
-                    <Text style={styles.voidState}>
-                      {settled
-                        ? "แจ้งระบบแล้ว"
-                        : b.doc_no === null
-                          ? "รอส่งบิลเข้าระบบก่อน แล้วจะยกเลิกให้อัตโนมัติ"
-                          : "รอแจ้งระบบ จะดำเนินการให้อัตโนมัติ"}
-                    </Text>
+                    {/*
+                      voidProgressLine, not a doc_no ternary. "Has it got a
+                      number yet" is a different question from "can it ever get
+                      one": a terminally failed bill has no doc_no and never
+                      will, so branching on doc_no promised it would be cancelled
+                      automatically — a promise nothing in the system can keep.
+                    */}
+                    <Text style={styles.voidState}>{voidLine}</Text>
                   </View>
                 ) : null}
 
                 {/*
-                  THE notice region. One branch, driven entirely by billNotice —
-                  parked text and error text are the same code path here, so
-                  there is no third state for a stale diagnostic to slip through.
-                  The first fix had two conditions and the retry window fell
+                  THE notice region. ONE branch for every tone, styled from a
+                  Record — so parked, waiting, session-ended and error travel the
+                  same code path and a tone nobody styled will not compile. The
+                  first fix here had two conditions and the retry window fell
                   between them.
                 */}
-                {notice.tone === "parked" ? (
-                  <View style={styles.parkBox}>
-                    {/* 0 = what to fix, 1 = nothing owed by you, 2 = an unknown code. */}
-                    {notice.lines.map((line, i) => (
-                      <Text
-                        key={i}
-                        style={i === 0 ? styles.parkWhat : i === 1 ? styles.parkCalm : styles.parkCode}
-                      >
-                        {line}
-                      </Text>
-                    ))}
-                  </View>
-                ) : notice.tone === "error" ? (
-                  notice.lines.map((line, i) => (
-                    <Text key={i} style={styles.err}>
-                      {line}
-                    </Text>
-                  ))
+                {notice.tone !== "none" ? (
+                  <NoticeBox tone={notice.tone} lines={notice.lines} />
                 ) : null}
 
-                {!voided && voidingId !== b.id ? (
+                {canRequestVoid(b) && voidingId !== b.id ? (
                   <Pressable
                     style={styles.voidBtn}
                     onPress={() => startVoid(b.id)}
@@ -302,7 +354,6 @@ const styles = StyleSheet.create({
   total: { fontSize: 20, fontWeight: "900", color: "#0f766e" },
   struck: { textDecorationLine: "line-through", color: "#94a3b8" },
   meta: { fontSize: 12, color: "#64748b", marginTop: 6 },
-  err: { fontSize: 12, color: "#b91c1c", marginTop: 6, fontWeight: "600" },
 
   voidBox: {
     marginTop: 10, padding: 10, backgroundColor: "#f1f5f9", borderRadius: 8,
@@ -310,12 +361,10 @@ const styles = StyleSheet.create({
   voidReason: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
   voidState: { fontSize: 12, color: "#475569", marginTop: 4 },
 
-  parkBox: {
-    marginTop: 10, padding: 10, backgroundColor: "#fef3c7", borderRadius: 8,
-  },
-  parkWhat: { fontSize: 14, fontWeight: "800", color: "#78350f" },
-  parkCalm: { fontSize: 12, color: "#78350f", marginTop: 6, fontWeight: "600" },
-  parkCode: { fontSize: 11, color: "#92400e", marginTop: 6, fontWeight: "700" },
+  // ONE box for every notice tone; the colour comes from TONE_BOX/TONE_LEAD.
+  noticeBox: { marginTop: 10, padding: 10, borderRadius: 8 },
+  noticeLead: { fontSize: 14, fontWeight: "800" },
+  noticeCalm: { fontSize: 12, marginTop: 6, fontWeight: "600" },
 
   voidBtn: {
     marginTop: 12, minHeight: 48, borderRadius: 10, backgroundColor: "#fee2e2",

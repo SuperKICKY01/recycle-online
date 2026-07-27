@@ -40,6 +40,7 @@ import type { Draft } from "./src/cart/types";
 import { ExpoSqliteDriver } from "./src/device/expoSqliteDriver";
 import { buildLocalBill } from "./src/sync/createBill";
 import { SyncEngine } from "./src/sync/engine";
+import type { SessionState } from "./src/sync/parkedReason";
 import { assessQueue } from "./src/sync/queueHealth";
 import type { QueueHealth } from "./src/sync/queueHealth";
 import { systemClock } from "./src/sync/systemClock";
@@ -150,6 +151,28 @@ export default function App() {
    */
   const [locks, setLocks] = useState<Locks>(NO_LOCKS);
 
+  /**
+   * The server answered 401: our token is no longer accepted (JWT_TTL is 3600s
+   * and there is no refresh token — re-login IS the recovery, by decision).
+   *
+   * NOT persisted and NOT stamped on any bill. The token itself lives only in
+   * memory, so after a restart the app is signed out anyway and this would be
+   * stale the moment it survived. Cleared by any send the server accepts.
+   */
+  const [sessionEnded, setSessionEnded] = useState(false);
+
+  /*
+   * Can this device act as someone right now? One derived value, consumed by
+   * both the strip and the bill cards, so they cannot disagree.
+   *
+   * "signed_out" and "expired" are kept apart because they read differently to
+   * an operator mid-shift — one has never worked yet, the other stopped working
+   * — but they mean the same thing for every bill: it stays queued, intact, and
+   * goes the moment someone signs in.
+   */
+  const session: SessionState =
+    token === null ? "signed_out" : sessionEnded ? "expired" : "active";
+
   const [online, setOnline] = useState<boolean | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
@@ -253,13 +276,29 @@ export default function App() {
     const engine = engineRef.current;
     if (!engine || !tokenRef.current) return;
     const r = await engine.runOnce();
+
+    // THE SESSION ENDED — checked FIRST and above `attempted === 0`, because a
+    // pass that sent no bills can still have tried to push a void and been told
+    // 401. It is also the reason `online` is set TRUE here: the server answered,
+    // promptly, so calling this an outage was never anything but wrong.
+    if (r.sessionExpired > 0) {
+      setSessionEnded(true);
+      setOnline(true);
+      return;
+    }
     if (r.attempted === 0) return;
     // A rejection means the server ANSWERED — that is a working connection with
     // a bad bill, not an outage. Conflating the two is the mistake the
     // unavailable-is-not-rejected lesson is about, and it would show here as a
     // yard being told it is offline while the server is refusing its data.
-    if (r.synced > 0 || r.rejected > 0) setOnline(true);
-    else if (r.retryable > 0) setOnline(false);
+    //
+    // A 424 (parked) counts as an answer for the same reason. And any answer at
+    // all clears sessionEnded: the token evidently works, so the prompt must go
+    // even if nothing here ever asked it to.
+    if (r.synced > 0 || r.rejected > 0 || r.masterDataBlocked > 0) {
+      setOnline(true);
+      setSessionEnded(false);
+    } else if (r.retryable > 0) setOnline(false);
   }, []);
 
   useEffect(() => {
@@ -324,6 +363,13 @@ export default function App() {
       setProducts(ps);
       setSellers(ss);
       setOnline(true); // we just spoke to the server
+      setSessionEnded(false);
+      // Every backoff on the queue was computed while there was no usable
+      // session, which says nothing about the network. Without this the yard
+      // signs in, the sign-in succeeds, and then nothing visibly happens for up
+      // to 30 seconds — which reads as "signing in did not work".
+      const freed = (await engineRef.current?.resumeAfterSignIn()) ?? 0;
+      if (freed > 0) void syncOnce();
       // NO draft is created here any more. A bill starts when a seller is
       // picked, so signing in never silently opens one for whoever happened to
       // come back first from /sellers.
@@ -336,7 +382,7 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [syncOnce]);
 
   /* ------------------------------------------------------- seller choice -- */
 
@@ -529,10 +575,18 @@ export default function App() {
         </View>
 
         <StatusStrip
+          /*
+            Three states, one derived value: no token at all (never signed in on
+            this launch), a token the server has stopped accepting, or a working
+            session. Derived rather than stored, so signing in fixes every screen
+            at once and nothing can be left saying "sign in" after they have.
+          */
+          session={session}
           online={online}
           pending={pendingCount}
           failed={failedCount}
           lastSyncedAt={lastSyncedAt}
+          onSignIn={() => void signIn()}
           blocked={
             health?.alarm
               ? {
@@ -650,6 +704,7 @@ export default function App() {
           visible={billsOpen}
           bills={bills}
           busy={busy}
+          session={session}
           blockerId={health?.blockerId ?? null}
           onClose={() => setBillsOpen(false)}
           onVoid={voidBill}
