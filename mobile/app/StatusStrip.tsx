@@ -34,6 +34,11 @@ export interface StatusStripProps extends StatusInput {
    * because that screen renders on `token === null` — which is exactly false
    * when a token has EXPIRED, so an operator whose session ran out had no button
    * to press anywhere on the device.
+   *
+   * This matters MORE since Phase 2c-8, not less: a restored token is treated as
+   * usable until a server says otherwise, so the ordinary way an expiry now
+   * surfaces is mid-shift on this strip, with the login screen never shown at
+   * all.
    */
   onSignIn: () => void;
 }

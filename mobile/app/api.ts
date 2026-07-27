@@ -26,11 +26,37 @@ export interface Seller {
   grade: string | null;
 }
 
+/**
+ * A refusal the server ANSWERED, carrying the status.
+ *
+ * Phase 2c-8 needs this because master data is now fetched with a RESTORED
+ * token, which may already be expired — and "the server said 401" and "there is
+ * no network" have opposite fixes and opposite screens. Without the status the
+ * caller can only string-match a message, which is exactly what
+ * lessons/unavailable-is-not-rejected.md and the 401 lesson both forbid: the
+ * classification has to come from the status code, not from prose.
+ *
+ * A thrown fetch (no answer at all) stays a plain Error, so `instanceof` is the
+ * whole test. See isUnauthorized below.
+ */
+export class HttpStatusError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = "HttpStatusError";
+  }
+}
+
+/** The caller is no longer anyone. Nothing to do with the network. */
+export const isUnauthorized = (err: unknown): boolean =>
+  err instanceof HttpStatusError && err.status === 401;
+
 async function getJson<T>(path: string, token: string): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
     headers: { authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`GET ${path} -> HTTP ${String(res.status)}`);
+  if (!res.ok) {
+    throw new HttpStatusError(res.status, `GET ${path} -> HTTP ${String(res.status)}`);
+  }
   return (await res.json()) as T;
 }
 
@@ -44,7 +70,7 @@ export async function login(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ tenant_id: tenantId, username, password }),
   });
-  if (!res.ok) throw new Error(`login -> HTTP ${String(res.status)}`);
+  if (!res.ok) throw new HttpStatusError(res.status, `login -> HTTP ${String(res.status)}`);
   const body = (await res.json()) as { access_token: string };
   return body.access_token;
 }

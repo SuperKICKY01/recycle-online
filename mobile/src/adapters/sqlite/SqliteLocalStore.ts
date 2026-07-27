@@ -49,6 +49,7 @@ interface BillRow {
   server_error_attempts: number;
   master_data_missing_at: string | null;
   master_data_code: string | null;
+  master_as_of: string | null;
 }
 
 const COLUMNS =
@@ -56,7 +57,7 @@ const COLUMNS =
   " created_at, device_created_at, next_attempt_at, doc_no, synced_at," +
   " void_reason, void_requested_at, voided_at, void_attempts, void_last_error," +
   " first_attempt_at, first_server_error_at, server_error_attempts," +
-  " master_data_missing_at, master_data_code";
+  " master_data_missing_at, master_data_code, master_as_of";
 
 /**
  * The head-of-line queue excludes parked bills, in ONE place, reused by every
@@ -82,7 +83,7 @@ const QUEUED = "sync_state = 'pending' AND master_data_missing_at IS NULL";
  */
 export const BILL_INSERT_SQL =
   `INSERT INTO local_bills (${COLUMNS})` +
-  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 export function billInsertParams(bill: LocalBill): SqlValue[] {
   return [
@@ -107,6 +108,7 @@ export function billInsertParams(bill: LocalBill): SqlValue[] {
     bill.server_error_attempts,
     bill.master_data_missing_at,
     bill.master_data_code,
+    bill.master_as_of,
   ];
 }
 
@@ -136,6 +138,7 @@ function toBill(row: BillRow): LocalBill {
     server_error_attempts: row.server_error_attempts,
     master_data_missing_at: row.master_data_missing_at,
     master_data_code: row.master_data_code,
+    master_as_of: row.master_as_of,
   };
 }
 

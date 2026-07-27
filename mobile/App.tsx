@@ -1,4 +1,27 @@
 /**
+ * Phase 2c-8. THE APP MUST WORK FROM A COLD START.
+ *
+ * Until now products, sellers and the token all lived in React state, fetched
+ * once at sign-in. Opening the app with the server unreachable therefore gave no
+ * products, no sellers, no token, and a login button that could not succeed — a
+ * yard opening at 07:00 during an outage could not write a single bill. That
+ * contradicts hard rule 8 at the first step.
+ *
+ * Three things change here and nothing else:
+ *
+ *   the TOKEN is persisted in the OS keystore and restored at boot
+ *     (src/session/tokenStore.ts states the trade this reverses, and why);
+ *   MASTER DATA is cached in SQLite, written on every successful fetch, read at
+ *     boot, and re-fetched when the picker opens and when a cart is started;
+ *   the PRICE DEFAULT is gated on how old that cache is — see
+ *     src/master/freshness.ts, which is where the money argument lives.
+ *
+ * What deliberately does NOT change: a restored token is used as if it works,
+ * because offline there is no way to ask. If it has expired the first send gets
+ * a 401 and lands in the Phase 2c-7 session-ended path, which already says the
+ * right thing and already carries the sign-in button.
+ *
+ * ---------------------------------------------------------------------------
  * Phase 2c-6. The seller becomes a PER-BILL choice.
  *
  * Until now `seller` was whoever /sellers returned first, for every bill this
@@ -24,6 +47,7 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { HttpTransport } from "./src/adapters/httpTransport";
 import { SqliteDraftStore } from "./src/adapters/sqlite/SqliteDraftStore";
 import { SqliteLocalStore } from "./src/adapters/sqlite/SqliteLocalStore";
+import { SqliteMasterStore } from "./src/adapters/sqlite/SqliteMasterStore";
 import {
   cartTotal,
   changeSeller,
@@ -32,12 +56,14 @@ import {
   setVehicleNo,
   toBillItems,
 } from "./src/cart/cart";
-import type { SellerChangeImpact } from "./src/cart/cart";
+import type { GradeTiers, SellerChangeImpact } from "./src/cart/cart";
 import { NO_LOCKS, releaseOnSave } from "./src/cart/entry";
 import type { Locks } from "./src/cart/entry";
 import { cleanVehicleNo, gradePrice, indexPlates } from "./src/cart/sellers";
 import type { Draft } from "./src/cart/types";
 import { ExpoSqliteDriver } from "./src/device/expoSqliteDriver";
+import { SecureTokenStore } from "./src/device/secureTokenStore";
+import { assessFreshness, defaultUnitPrice, masterNotice } from "./src/master/freshness";
 import { buildLocalBill } from "./src/sync/createBill";
 import { SyncEngine } from "./src/sync/engine";
 import type { SessionState } from "./src/sync/parkedReason";
@@ -47,13 +73,14 @@ import { systemClock } from "./src/sync/systemClock";
 import type { LocalBill, SyncState } from "./src/sync/types";
 import { isMasterDataBlocked, isVoided } from "./src/sync/types";
 import type { Product, Seller } from "./app/api";
-import { fetchProducts, fetchSellers, login } from "./app/api";
+import { fetchProducts, fetchSellers, isUnauthorized, login } from "./app/api";
 import { BillsPanel } from "./app/BillsPanel";
 import { CartScreen } from "./app/CartScreen";
 import { ConfirmSaveDialog } from "./app/ConfirmSaveDialog";
 import { ConfirmSellerChangeDialog } from "./app/ConfirmSellerChangeDialog";
 import { API_BASE_URL, DEMO } from "./app/config";
 import { deviceIds } from "./app/ids";
+import { MasterDataStrip } from "./app/MasterDataStrip";
 import { SellerPicker } from "./app/SellerPicker";
 import { StatusStrip } from "./app/StatusStrip";
 
@@ -78,6 +105,19 @@ const FORM_DEBOUNCE_MS = 400;
 
 const nowIso = (): string => new Date().toISOString();
 
+/**
+ * Now, rounded DOWN to the minute, as the clock the freshness assessment reads.
+ *
+ * Rounded because the ages this drives are rendered in whole minutes, hours or
+ * days: a value that changed every 400ms would rebuild the strip's text several
+ * times a second to say the same sentence. Rounding down can put this up to 59
+ * seconds behind a fetch that just completed, which lands inside the fresh
+ * window and changes nothing — it is nowhere near the 5-minute clock-suspect
+ * threshold, which is the only place a backwards `now` matters.
+ */
+const nowMinuteIso = (): string =>
+  new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString();
+
 export default function App() {
   const [status, setStatus] = useState("กำลังเปิดฐานข้อมูล…");
   const [ready, setReady] = useState(false);
@@ -85,6 +125,19 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [sellers, setSellers] = useState<Seller[]>([]);
+  /*
+   * WHEN each cached list was last fetched. Two values, not one: a refresh is
+   * two requests and the second can fail alone, so a shared timestamp would
+   * claim the seller list had been re-read when only the product list had. See
+   * src/master/types.ts.
+   *
+   * null means NEVER FETCHED — a device that cannot start a bill at all, which
+   * is a different sentence to the operator than "your prices are old".
+   */
+  const [productsFetchedAt, setProductsFetchedAt] = useState<string | null>(null);
+  const [sellersFetchedAt, setSellersFetchedAt] = useState<string | null>(null);
+  /** Minute-granular clock driving the cache ages. See nowMinuteIso. */
+  const [nowMinute, setNowMinute] = useState(nowMinuteIso);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [bills, setBills] = useState<LocalBill[]>([]);
   const [latest, setLatest] = useState<LocalBill | null>(null);
@@ -106,6 +159,20 @@ export default function App() {
     () => sellers.find((s) => s.id === draft?.seller_id) ?? null,
     [sellers, draft?.seller_id],
   );
+
+  /*
+   * HOW OLD IS WHAT WE ARE PRICING AGAINST, and may the app fill a price in.
+   *
+   * Derived, never stored, so every screen that consumes it agrees by
+   * construction and a refresh fixes all of them at once. The rules and every
+   * sentence live in src/master/freshness.ts, which the headless proof can
+   * reach — this file only routes the answer.
+   */
+  const freshness = useMemo(
+    () => assessFreshness({ productsFetchedAt, sellersFetchedAt, now: nowMinute }),
+    [productsFetchedAt, sellersFetchedAt, nowMinute],
+  );
+  const masterMessage = useMemo(() => masterNotice(freshness), [freshness]);
 
   /*
    * Plates this device has recorded, per seller, newest first — the index the
@@ -155,9 +222,23 @@ export default function App() {
    * The server answered 401: our token is no longer accepted (JWT_TTL is 3600s
    * and there is no refresh token — re-login IS the recovery, by decision).
    *
-   * NOT persisted and NOT stamped on any bill. The token itself lives only in
-   * memory, so after a restart the app is signed out anyway and this would be
-   * stale the moment it survived. Cleared by any send the server accepts.
+   * NOT persisted and NOT stamped on any bill. Cleared by any send the server
+   * accepts.
+   *
+   * ITS REASON FOR NOT BEING PERSISTED CHANGED IN PHASE 2c-8 and the conclusion
+   * did not, so read this rather than assuming: it used to be "the token lives
+   * only in memory, so a restart is signed out anyway". The token now survives a
+   * restart. What has not changed is that this flag is a fact about the SERVER's
+   * last answer, and a stored one would be a guess about the next — the token
+   * may have been renewed, or the shift may start with a fresh one. It is
+   * re-derived within seconds by the send loop, which is cheaper than being
+   * wrong.
+   *
+   * AND THE EXPIRED TOKEN ITSELF IS DELIBERATELY NOT DELETED from the keystore.
+   * Deleting it would make the next launch `token === null`, which renders the
+   * LOGIN SCREEN — putting the yard back at the one screen an offline morning
+   * cannot get past, over a token that costs nothing to carry and that a single
+   * sign-in replaces.
    */
   const [sessionEnded, setSessionEnded] = useState(false);
 
@@ -181,11 +262,93 @@ export default function App() {
 
   const billStoreRef = useRef<SqliteLocalStore | null>(null);
   const draftStoreRef = useRef<SqliteDraftStore | null>(null);
+  const masterStoreRef = useRef<SqliteMasterStore | null>(null);
   const engineRef = useRef<SyncEngine | null>(null);
   const tokenRef = useRef<string | null>(null);
+  /**
+   * The keystore. One instance, created once — the token is read at boot and
+   * written on every sign-in, and there is nothing to configure per call.
+   */
+  const tokenStoreRef = useRef(new SecureTokenStore());
+  /**
+   * A refresh already in flight. Master data is now re-fetched on operator
+   * ACTIONS (opening the picker, starting a cart), which can be tapped twice in
+   * a second — and two overlapping refreshes would race to write the same two
+   * tables and could leave the older answer on disk under the newer timestamp.
+   */
+  const refreshingRef = useRef(false);
 
   const pendingDraft = useRef<Draft | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* ------------------------------------------------------- master refresh -- */
+
+  /**
+   * Re-read products and sellers and write them through to the cache.
+   *
+   * THE TWO LISTS ARE FETCHED AND SAVED INDEPENDENTLY, not under one
+   * Promise.all. A single connection can die between the two requests, and with
+   * all-or-nothing the device would discard a product list it successfully
+   * received because the seller list failed — throwing away the fresher of the
+   * two for no reason. Each writes its own rows with its own timestamp, and the
+   * price default is gated on the OLDER of them, so a half-refresh is recorded
+   * honestly rather than papered over.
+   *
+   * Failure is NEVER destructive: the cache keeps whatever it had, and the age
+   * simply carries on growing where the operator can see it.
+   *
+   * A 401 here is the session ending, not an outage — the server answered. It is
+   * routed to the same device-global state a 401 on a SEND produces, so the
+   * strip says "sign in" and carries the button, rather than blaming the
+   * network. lessons/401-is-about-the-caller-not-the-bill.md.
+   */
+  const refreshMaster = useCallback(async (token: string): Promise<void> => {
+    const store = masterStoreRef.current;
+    if (!store || refreshingRef.current) return;
+    refreshingRef.current = true;
+    let answered = false;
+    let expired = false;
+    let failed = false;
+    try {
+      try {
+        const ps = await fetchProducts(token);
+        const at = nowIso();
+        await store.saveProducts(ps, at);
+        setProducts(ps);
+        setProductsFetchedAt(at);
+        answered = true;
+      } catch (err) {
+        if (isUnauthorized(err)) expired = true;
+        else failed = true;
+      }
+      try {
+        const ss = await fetchSellers(token);
+        const at = nowIso();
+        await store.saveSellers(ss, at);
+        setSellers(ss);
+        setSellersFetchedAt(at);
+        answered = true;
+      } catch (err) {
+        if (isUnauthorized(err)) expired = true;
+        else failed = true;
+      }
+    } finally {
+      refreshingRef.current = false;
+    }
+    // Ranked: a 401 is about the CALLER and outranks a transport failure on the
+    // other request, because signing in is the only thing that fixes either.
+    if (expired) {
+      setSessionEnded(true);
+      setOnline(true); // the server answered, promptly. This is not an outage.
+      return;
+    }
+    if (answered) {
+      setOnline(true);
+      setSessionEnded(false);
+      return;
+    }
+    if (failed) setOnline(false);
+  }, []);
 
   /* ---------------------------------------------------------------- boot -- */
 
@@ -196,9 +359,11 @@ export default function App() {
         const driver = await ExpoSqliteDriver.open("recycle.db");
         const billStore = await SqliteLocalStore.open(driver);
         const draftStore = await SqliteDraftStore.open(driver);
+        const masterStore = await SqliteMasterStore.open(driver);
         if (cancelled) return;
         billStoreRef.current = billStore;
         draftStoreRef.current = draftStore;
+        masterStoreRef.current = masterStore;
 
         engineRef.current = new SyncEngine({
           store: billStore,
@@ -214,14 +379,42 @@ export default function App() {
 
         const recovered = await engineRef.current.recoverInterrupted();
         const restored = await draftStore.load();
+
+        /*
+         * THE COLD START, in the order that matters.
+         *
+         * Master data and the token come off local storage BEFORE anything
+         * touches the network, and neither waits on it. With the server down
+         * this is the whole of what the yard gets, and it is enough: a seller
+         * can be picked, a load weighed, a bill saved and queued.
+         *
+         * The token is restored as-is. It may already be expired and, offline,
+         * that is unknowable — there is nothing to ask. Treating it as usable is
+         * deliberate: bills queue behind it either way, and the first send that
+         * reaches a server resolves it through the 2c-7 session-ended path.
+         */
+        const cache = await masterStoreRef.current.load();
+        const token = await tokenStoreRef.current.load();
         if (cancelled) return;
+        setProducts(cache.products);
+        setSellers(cache.sellers);
+        setProductsFetchedAt(cache.productsFetchedAt);
+        setSellersFetchedAt(cache.sellersFetchedAt);
+        tokenRef.current = token;
+        setToken(token);
+
         setDraft(restored);
         setReady(true);
         setStatus(
           API_BASE_URL +
             (recovered.length > 0 ? ` · กู้คืน ${String(recovered.length)} บิลที่ค้าง` : "") +
-            (restored ? ` · พบบิลค้างไว้ ${String(restored.lines.length)} รายการ` : ""),
+            (restored ? ` · พบบิลค้างไว้ ${String(restored.lines.length)} รายการ` : "") +
+            ` · ในเครื่อง: สินค้า ${String(cache.products.length)} · ผู้ขาย ${String(cache.sellers.length)} ราย`,
         );
+
+        // Only NOW does the network get involved, and nothing above depends on
+        // it. A failure here leaves the cache exactly as it was and says so.
+        if (token !== null) void refreshMaster(token);
       } catch (err) {
         setStatus(`เปิดฐานข้อมูลไม่สำเร็จ: ${describe(err)}`);
       }
@@ -267,7 +460,13 @@ export default function App() {
 
   useEffect(() => {
     if (!ready) return undefined;
-    const t = setInterval(() => void refresh(), 400);
+    const t = setInterval(() => {
+      void refresh();
+      // The cache ages on screen without anything happening. Set from the same
+      // tick rather than its own timer, and minute-rounded, so it changes
+      // identity ~once a minute instead of 150 times.
+      setNowMinute(nowMinuteIso());
+    }, 400);
     return () => clearInterval(t);
   }, [ready, refresh]);
 
@@ -359,11 +558,16 @@ export default function App() {
       const t = await login(DEMO.tenantId, DEMO.username, DEMO.password);
       tokenRef.current = t;
       setToken(t);
-      const [ps, ss] = await Promise.all([fetchProducts(t), fetchSellers(t)]);
-      setProducts(ps);
-      setSellers(ss);
+      // Persisted BEFORE anything else is attempted, so a fetch that fails
+      // straight afterwards still leaves the next launch able to work offline.
+      // A keystore write that fails is swallowed by SecureTokenStore — it costs
+      // one sign-in tomorrow and must never cost this one.
+      await tokenStoreRef.current.save(t);
       setOnline(true); // we just spoke to the server
       setSessionEnded(false);
+      // The SAME path the boot and the picker use. Duplicating the fetch here
+      // is how the cache write would come to be missing from one of the three.
+      await refreshMaster(t);
       // Every backoff on the queue was computed while there was no usable
       // session, which says nothing about the network. Without this the yard
       // signs in, the sign-in succeeds, and then nothing visibly happens for up
@@ -373,27 +577,73 @@ export default function App() {
       // NO draft is created here any more. A bill starts when a seller is
       // picked, so signing in never silently opens one for whoever happened to
       // come back first from /sellers.
-      setStatus(
-        `${API_BASE_URL} · สินค้า ${String(ps.length)} · ผู้ขาย ${String(ss.length)} ราย`,
-      );
+      setStatus(`${API_BASE_URL} · เข้าสู่ระบบแล้ว`);
     } catch (err) {
       setOnline(false);
       setStatus(`เข้าสู่ระบบไม่สำเร็จ: ${describe(err)}`);
     } finally {
       setBusy(false);
     }
-  }, [syncOnce]);
+  }, [refreshMaster, syncOnce]);
+
+  /**
+   * Open the seller picker, and re-read master data while it is open.
+   *
+   * The refresh is fired and NOT waited on: the picker opens immediately with
+   * whatever is cached, and the list simply updates underneath if the network
+   * answers. Blocking the picker on a request would put a spinner between the
+   * operator and a customer standing at the scale, and would fail hardest
+   * offline — which is the case this phase exists for.
+   */
+  const openPicker = useCallback(() => {
+    setPickerOpen(true);
+    const t = tokenRef.current;
+    if (t !== null) void refreshMaster(t);
+  }, [refreshMaster]);
+
+  /*
+   * A CART WAS OPENED, so the product list is on screen — re-read it.
+   *
+   * Keyed on the draft's id, so this fires when a bill starts (and once at boot
+   * for a restored draft) and not on every keystroke of the one in progress.
+   * Together with openPicker this is what makes a product or seller added at the
+   * office during the day appear without a force-quit.
+   */
+  useEffect(() => {
+    if (!ready || draft === null) return;
+    const t = tokenRef.current;
+    if (t !== null) void refreshMaster(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the draft's IDENTITY
+    // is the event; re-running on every edit would refetch while typing.
+  }, [ready, draft?.id, refreshMaster]);
 
   /* ------------------------------------------------------- seller choice -- */
 
-  /** The chosen seller's tier for a product, or null if that grade has no row. */
+  /**
+   * The chosen seller's tiers, split into the two questions a grade answers.
+   *
+   * `reference` is the grade's list price as the device last heard it, used for
+   * line.list_price and the off-tier badge — a cached answer is correct there,
+   * because it is a comparison value shown as information and the server
+   * discards the client's list_price anyway.
+   *
+   * `pendingDefault` is what may be written INTO the money field with nobody
+   * deciding, and it goes through defaultUnitPrice — so once the cache is past
+   * the cutoff the box is left empty and the operator enters the agreed price.
+   * See src/master/freshness.ts for the whole argument.
+   */
   const tierResolver = useCallback(
-    (grade: string | null) =>
-      (productId: string): string | null => {
+    (grade: string | null): GradeTiers => {
+      const reference = (productId: string): string | null => {
         const p = products.find((x) => x.id === productId);
         return p === undefined ? null : gradePrice(p.prices, grade);
-      },
-    [products],
+      };
+      return {
+        reference,
+        pendingDefault: (productId) => defaultUnitPrice(reference(productId), freshness),
+      };
+    },
+    [products, freshness],
   );
 
   /**
@@ -426,7 +676,11 @@ export default function App() {
       // No bill in progress: this pick STARTS one.
       if (draft === null) {
         void (async () => {
-          const fresh = newDraft(deviceIds.newId(), s.id, nowIso());
+          // master_as_of is stamped HERE, at the start, and never moved. It is
+          // the oldest master data any line on this bill can have been priced
+          // from — see src/master/freshness.ts on why stamping it at save time
+          // would be the false negative that makes the marker worthless.
+          const fresh = newDraft(deviceIds.newId(), s.id, nowIso(), freshness.asOf);
           await draftStore.save(fresh);
           setDraft(fresh);
           setStatus(`เริ่มบิลใหม่ · ผู้ขาย ${s.name}`);
@@ -449,7 +703,7 @@ export default function App() {
       const preview = changeSeller(draft, s.id, locks, tierResolver(s.grade), nowIso());
       setPendingChange({ to: s, impact: preview.impact });
     },
-    [applySellerChange, draft, locks, tierResolver],
+    [applySellerChange, draft, freshness.asOf, locks, tierResolver],
   );
 
   /* ------------------------------------------------------------ vehicle -- */
@@ -528,6 +782,10 @@ export default function App() {
             vehicle_no: cleanVehicleNo(draft.vehicle_no),
             total_amount: cartTotal(draft),
             items: toBillItems(draft),
+            // From the DRAFT, not from `freshness` — the age that matters is
+            // the data these prices came from, not the data available at the
+            // moment the confirm button was tapped.
+            master_as_of: draft.master_as_of,
           },
         );
         const lineCount = draft.lines.length;
@@ -601,6 +859,16 @@ export default function App() {
           onRetryMasterData={retryMasterData}
         />
 
+        {/*
+          A SECOND strip, below the first and never merged into it. StatusStrip
+          answers "are my bills getting out"; this answers "is what I am pricing
+          against still true". They fail independently — a yard can be online
+          with an empty queue and still be looking at a price list from before a
+          change — so one line would mean one of the two facts being silently
+          outranked. Renders nothing when the data was just refreshed.
+        */}
+        <MasterDataStrip notice={masterMessage} />
+
         {bills.length > 0 ? (
           <Pressable style={styles.latest} onPress={() => setBillsOpen(true)}>
             {latest !== null ? (
@@ -640,10 +908,19 @@ export default function App() {
           /* No bill in progress. It starts with WHO, not with what. */
           <View style={styles.center}>
             <Text style={styles.startHint}>ยังไม่มีบิลที่กำลังทำอยู่</Text>
+            {/*
+              THE COLD START WITH AN EMPTY CACHE. A device that has never
+              fetched master data cannot begin a bill — there is no customer to
+              file it to and no product to weigh. The button is disabled rather
+              than opening an empty picker, because a picker that says "no
+              sellers" reads as "this shop has no customers", which is a
+              different and alarming claim. The strip above already says what is
+              missing and what fixes it; this only stops the dead end.
+            */}
             <Pressable
-              style={[styles.loginBtn, busy && styles.dim]}
-              disabled={busy}
-              onPress={() => setPickerOpen(true)}
+              style={[styles.loginBtn, (busy || freshness.state === "empty") && styles.dim]}
+              disabled={busy || freshness.state === "empty"}
+              onPress={openPicker}
             >
               <Text style={styles.loginText}>เลือกผู้ขาย เพื่อเริ่มบิลใหม่</Text>
             </Pressable>
@@ -655,11 +932,12 @@ export default function App() {
             draft={draft}
             locks={locks}
             busy={busy}
+            freshness={freshness}
             newLineId={() => deviceIds.newId()}
             nowIso={nowIso}
             onDraftChange={onDraftChange}
             onLocksChange={setLocks}
-            onPickSeller={() => setPickerOpen(true)}
+            onPickSeller={openPicker}
             onVehicleChange={onVehicleChange}
             onVehicleBlur={onVehicleBlur}
             onSubmit={() => setConfirmOpen(true)}
@@ -672,6 +950,9 @@ export default function App() {
           platesBySeller={platesBySeller}
           currentSellerId={draft?.seller_id ?? null}
           changing={draft !== null}
+          /* Tells "this device has never downloaded the list" apart from "the
+             office has not added anyone" — same empty screen, opposite fixes. */
+          neverFetched={!freshness.haveSellers}
           onClose={() => setPickerOpen(false)}
           onPick={chooseSeller}
         />
@@ -696,6 +977,17 @@ export default function App() {
           sellerGrade={seller?.grade ?? null}
           vehicleNo={cleanVehicleNo(draft?.vehicle_no ?? null)}
           busy={busy}
+          /*
+            The last screen before cash leaves the drawer, so it is the last
+            chance to say the prices came from data this old. Computed from the
+            DRAFT's stamp, not from the current freshness: what matters is the
+            data these numbers were priced against.
+          */
+          pricedFrom={
+            draft === null
+              ? null
+              : { master_as_of: draft.master_as_of, device_created_at: nowMinute }
+          }
           onCancel={() => setConfirmOpen(false)}
           onConfirm={doSaveBill}
         />

@@ -120,6 +120,21 @@ export interface LocalBill {
   master_data_missing_at: string | null;
   /** The server's machine-readable reason code, for the UI. Null when not parked. */
   master_data_code: string | null;
+  /**
+   * DEVICE-ONLY, NEVER SENT: the fetch time of the master data this bill's
+   * prices were defaulted from — carried over from the draft, which stamps it
+   * when the bill is started.
+   *
+   * It is on LocalBill and not on BillPayload because there is nowhere on the
+   * server to put it and this phase forbids adding one. It is what makes "was
+   * this bill priced from a stale cache" answerable on the device afterwards.
+   * See master/freshness.ts, including what it would take to answer the same
+   * question in the OFFICE, which this cannot do.
+   *
+   * Null on any bill written before Phase 2c-8, which reads as "unknown" and is
+   * never rendered as "fresh".
+   */
+  master_as_of: string | null;
   /** Assigned by the server at sync time; null while the bill is offline. */
   doc_no: string | null;
   synced_at: string | null;

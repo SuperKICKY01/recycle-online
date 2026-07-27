@@ -28,8 +28,10 @@ import {
   newDraft,
   normaliseVehicleNo,
   orderedLines,
+  sameTierForBoth,
   setVehicleNo,
 } from "../cart/cart.js";
+import type { GradeTiers } from "../cart/cart.js";
 import { NO_LOCKS, onProductChange, priceIsOffTier, releaseOnSave } from "../cart/entry.js";
 import type { Locks } from "../cart/entry.js";
 import {
@@ -91,11 +93,20 @@ const seller = (id: string): SellerOption => {
   return s;
 };
 
-/** The tier resolver the app builds from /products for a chosen seller. */
-const tierForGrade =
-  (grade: string | null) =>
-  (productId: string): string | null =>
-    gradePrice(PRICES[productId] ?? {}, grade);
+/**
+ * The tier resolver the app builds from /products for a chosen seller.
+ *
+ * Phase 2c-8 split changeSeller's tier argument in two — the grade REFERENCE and
+ * the value that may be DEFAULTED into the money field — because a cached price
+ * list can be too old to default from. Every case in this file is about the
+ * seller-change rules with current data, where the two answers are identical, so
+ * they are bound together here rather than threaded through thirty call sites.
+ * The split itself is proven in proveCold (C2), against a stale cache.
+ */
+const tierForGrade = (grade: string | null): GradeTiers =>
+  sameTierForBoth((productId: string): string | null =>
+    gradePrice(PRICES[productId] ?? {}, grade),
+  );
 
 const ALL_LOCK_STATES: Locks[] = [
   { tare: false, price: false },
@@ -120,7 +131,7 @@ interface LineSpec {
 /** A cart belonging to `sellerId`, priced at that seller's grade. */
 function cartFor(sellerId: string, specs: LineSpec[]): Draft {
   const s = seller(sellerId);
-  let d = newDraft("draft-0001", sellerId, NOW);
+  let d = newDraft("draft-0001", sellerId, NOW, NOW);
   for (const spec of specs) {
     const list = gradePrice(PRICES[spec.product] ?? {}, s.grade);
     const r = buildLine({
@@ -193,7 +204,7 @@ function s2SellerChangeRedefaultsPendingPrice(): void {
     tare: "0.002",
     price: "15.00",
   };
-  const base: Draft = { ...newDraft("d", "s-001", NOW), form: pending };
+  const base: Draft = { ...newDraft("d", "s-001", NOW, NOW), form: pending };
 
   for (const s of SELLERS) {
     const r = changeSeller(base, s.id, NO_LOCKS, tierForGrade(s.grade), LATER);
@@ -332,7 +343,7 @@ function s3CartLinesKeepTheirPrices(): void {
   );
 
   // And the same change with an EMPTY cart is a no-op on lines.
-  const empty = changeSeller(newDraft("d", "s-001", NOW), "s-003", NO_LOCKS, tierForGrade("C"), LATER);
+  const empty = changeSeller(newDraft("d", "s-001", NOW, NOW), "s-003", NO_LOCKS, tierForGrade("C"), LATER);
   check(
     "an empty cart reports nothing kept, so the UI knows not to warn",
     empty.impact.keptLines === 0 && empty.draft.lines.length === 0,
@@ -760,6 +771,7 @@ async function s8RetryWindowLeaksNothing(): Promise<void> {
       seller_id: "s-005",
       vehicle_no: "S005-TEST",
       total_amount: "150.05",
+      master_as_of: null,
       items: [
         {
           id: "item-1", product_id: "prod-FE", line_no: 1,

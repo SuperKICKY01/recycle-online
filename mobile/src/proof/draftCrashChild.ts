@@ -35,7 +35,10 @@ async function main(): Promise<void> {
   const store = await SqliteDraftStore.open(NodeSqliteDriver.open(dbFile));
 
   const now = "2026-07-26T09:00:00.000Z";
-  let draft = setVehicleNo(newDraft(draftId, sellerId, now), vehicleNo, now);
+  // The master data this draft was priced against. Any fixed instant does;
+  // what the case checks is that it SURVIVES the crash like every other field.
+  const MASTER_AS_OF = "2026-07-26T08:00:00.000Z";
+  let draft = setVehicleNo(newDraft(draftId, sellerId, now, MASTER_AS_OF), vehicleNo, now);
   const line = buildLine({
     id: "line-crash-1",
     product_id: "prod-FE",

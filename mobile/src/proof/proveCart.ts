@@ -82,7 +82,7 @@ const SPECS: Spec[] = [
 ];
 
 function draftWithSpecs(specs: Spec[], ids: SeqIds): Draft {
-  let d = newDraft("draft-0001", "sell-aaaa-0001", NOW);
+  let d = newDraft("draft-0001", "sell-aaaa-0001", NOW, NOW);
   for (const s of specs) {
     const r = buildLine({
       id: ids.newId(),
@@ -303,6 +303,7 @@ async function c4EngineNeverSeesADraft(): Promise<void> {
       vehicle_no: null,
       items: toBillItems(loaded!),
       total_amount: cartTotal(loaded!),
+      master_as_of: loaded!.master_as_of,
     },
   );
   await draftStore.promoteToBill(loaded!, bill);

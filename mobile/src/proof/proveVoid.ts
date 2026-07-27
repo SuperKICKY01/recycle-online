@@ -61,7 +61,10 @@ const ITEM = {
 async function makeBill(store: SqliteLocalStore, clock: FakeClock, ids: SeqIds): Promise<LocalBill> {
   return createLocalBill(
     { store, clock, ids },
-    { seller_id: "sell-1", vehicle_no: null, items: [ITEM], total_amount: "150.05" },
+    {
+      seller_id: "sell-1", vehicle_no: null, items: [ITEM],
+      total_amount: "150.05", master_as_of: null,
+    },
   );
 }
 
@@ -154,11 +157,29 @@ async function v0Migration(): Promise<void> {
     // send queue itself would fail to read on a database holding real bills.
     "master_data_missing_at",
     "master_data_code",
-  ];
+    // Phase 2c-8: which master-data cache the bill's prices were defaulted from.
+    // An upgraded device must gain it too — BILL_INSERT_SQL names it, so without
+    // it every save would throw on a database already holding real bills.
+    "master_as_of",
+  ].map((c) => `local_bills.${c}`);
   check(
-    "every new column was added",
-    expected.every((c) => added.includes(c)) && added.length === expected.length,
-    JSON.stringify(added),
+    "every new column was added to local_bills",
+    expected.every((c) => added.includes(c)),
+    JSON.stringify(added.filter((c) => c.startsWith("local_bills."))),
+  );
+  /*
+   * local_draft grew its first migrated column in Phase 2c-8 (master_as_of).
+   * It is asserted SEPARATELY rather than folded into a total, because the two
+   * tables fail differently: a missing bill column breaks saving a bill, a
+   * missing draft column breaks saving the cart the operator is typing into.
+   * This legacy database was built with the pre-2c-3 bill table only, so
+   * local_draft is created fresh here and legitimately needs no ALTER — what is
+   * asserted is that nothing was added to it BY SURPRISE.
+   */
+  check(
+    "and nothing unexpected was altered on any other table",
+    added.every((c) => c.startsWith("local_bills.") || c === "local_draft.master_as_of"),
+    JSON.stringify(added.filter((c) => !c.startsWith("local_bills."))),
   );
 
   const backfilled = await driver.all<{ id: string; device_created_at: string | null }>(

@@ -150,6 +150,7 @@ async function s2DecimalRoundTrip(): Promise<void> {
       vehicle_no: "1กก-1234",
       items: [HOSTILE_ITEM],
       total_amount: "0.30",
+      master_as_of: null,
     },
   );
 
@@ -208,6 +209,7 @@ async function s3ConcurrentClaims(workers: number, bills: number): Promise<void>
           vehicle_no: null,
           items: [{ ...HOSTILE_ITEM, id: `item-${i}` }],
           total_amount: "0.30",
+          master_as_of: null,
         },
       ),
     );
@@ -308,6 +310,7 @@ async function s4DurabilityAcrossRestart(): Promise<void> {
         vehicle_no: "1กก-1234",
         items: [HOSTILE_ITEM],
         total_amount: "0.30",
+        master_as_of: null,
       },
     );
 

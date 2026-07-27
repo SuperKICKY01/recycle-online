@@ -101,7 +101,11 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
      vehicle_no  TEXT,
      next_seq    INTEGER NOT NULL,
      form_json   TEXT    NOT NULL,
-     updated_at  TEXT    NOT NULL
+     updated_at  TEXT    NOT NULL,
+     /* Fetch time of the master data available when this draft was STARTED —
+        the oldest data any line on it could have been priced from. Carried to
+        the bill at promotion. See master/freshness.ts. */
+     master_as_of TEXT
    ) STRICT`,
 
   // Money and weight are TEXT here for the same reason as in local_bills: a
@@ -125,6 +129,47 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
 
   `CREATE INDEX IF NOT EXISTS ix_draft_lines_draft
      ON local_draft_lines (draft_id, seq)`,
+
+  /*
+   * THE MASTER-DATA CACHE (Phase 2c-8). Products and sellers, so the yard can
+   * open the app with the server unreachable and still pick a customer, weigh,
+   * and save.
+   *
+   * WHEN each list was fetched, kept per KIND rather than as one row. A refresh
+   * is two requests over one connection and the second can fail on its own; a
+   * shared timestamp would then claim the seller list had been re-read when only
+   * the product list had. The price default is gated on the OLDER of the two
+   * (master/freshness.ts), which only means anything if they can differ.
+   */
+  `CREATE TABLE IF NOT EXISTS master_cache (
+     kind       TEXT NOT NULL PRIMARY KEY,
+     fetched_at TEXT NOT NULL
+   ) STRICT`,
+
+  /*
+   * PRICES ARE TEXT, and this is the same rule as local_bills.payload_json, for
+   * the same reason: a column declared NUMERIC silently converts a bound decimal
+   * string into an IEEE-754 float, so '15.50' would come back 15.5 and '10.500'
+   * as 10.5, with hard rule 1 violated invisibly at the storage layer. The whole
+   * tier map is one JSON TEXT column holding the server's decimal strings
+   * verbatim. See lessons/sqlite-money-is-text.md.
+   */
+  `CREATE TABLE IF NOT EXISTS cached_products (
+     id          TEXT NOT NULL PRIMARY KEY,
+     code        TEXT NOT NULL,
+     name        TEXT NOT NULL,
+     uom_code    TEXT NOT NULL,
+     uom_name    TEXT NOT NULL,
+     prices_json TEXT NOT NULL
+   ) STRICT`,
+
+  `CREATE TABLE IF NOT EXISTS cached_sellers (
+     id    TEXT NOT NULL PRIMARY KEY,
+     code  TEXT NOT NULL,
+     name  TEXT NOT NULL,
+     phone TEXT,
+     grade TEXT
+   ) STRICT`,
 ];
 
 /**
@@ -182,6 +227,20 @@ const ADDED_BILL_COLUMNS: readonly { name: string; ddl: string }[] = [
   },
   { name: "master_data_missing_at", ddl: "master_data_missing_at TEXT" },
   { name: "master_data_code", ddl: "master_data_code TEXT" },
+  { name: "master_as_of", ddl: "master_as_of TEXT" },
+];
+
+/**
+ * Columns added to local_draft after IT first shipped.
+ *
+ * local_draft has never needed one before, which is exactly why this list is
+ * being created rather than the column being quietly appended to the CREATE
+ * TABLE above: CREATE TABLE IF NOT EXISTS does nothing to a table that already
+ * exists, so on a device upgraded from Phase 2c-7 the column would simply not be
+ * there and every draft save would throw — on a phone with a cart open.
+ */
+const ADDED_DRAFT_COLUMNS: readonly { name: string; ddl: string }[] = [
+  { name: "master_as_of", ddl: "master_as_of TEXT" },
 ];
 
 /**
@@ -193,14 +252,18 @@ const ADDED_BILL_COLUMNS: readonly { name: string; ddl: string }[] = [
  * silence as the benign case, on the one operation that decides whether the
  * shop's existing bills remain readable.
  */
-async function migrateBillColumns(db: SqlDriver): Promise<string[]> {
-  const existing = await db.all<{ name: string }>("PRAGMA table_info(local_bills)");
+async function migrateColumns(
+  db: SqlDriver,
+  table: string,
+  columns: readonly { name: string; ddl: string }[],
+): Promise<string[]> {
+  const existing = await db.all<{ name: string }>(`PRAGMA table_info(${table})`);
   const have = new Set(existing.map((c) => c.name));
   const added: string[] = [];
-  for (const col of ADDED_BILL_COLUMNS) {
+  for (const col of columns) {
     if (have.has(col.name)) continue;
-    await db.exec(`ALTER TABLE local_bills ADD COLUMN ${col.ddl}`);
-    added.push(col.name);
+    await db.exec(`ALTER TABLE ${table} ADD COLUMN ${col.ddl}`);
+    added.push(`${table}.${col.name}`);
   }
   return added;
 }
@@ -232,7 +295,10 @@ export const CONNECTION_PRAGMAS: readonly string[] = [
 export async function initConnection(db: SqlDriver): Promise<string[]> {
   for (const pragma of CONNECTION_PRAGMAS) await db.exec(pragma);
   for (const ddl of SCHEMA_STATEMENTS) await db.exec(ddl);
-  const added = await migrateBillColumns(db);
+  const added = [
+    ...(await migrateColumns(db, "local_bills", ADDED_BILL_COLUMNS)),
+    ...(await migrateColumns(db, "local_draft", ADDED_DRAFT_COLUMNS)),
+  ];
   for (const ddl of POST_MIGRATION_STATEMENTS) await db.exec(ddl);
   return added;
 }

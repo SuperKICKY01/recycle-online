@@ -18,6 +18,8 @@ interface DraftRow {
   next_seq: number;
   form_json: string;
   updated_at: string;
+  /** Null on a draft written before Phase 2c-8 added the column. */
+  master_as_of: string | null;
 }
 
 interface LineRow {
@@ -58,14 +60,20 @@ export class SqliteDraftStore {
   async save(draft: Draft): Promise<void> {
     await this.db.transaction(async (tx) => {
       await tx.run(
-        `INSERT INTO local_draft (id, seller_id, vehicle_no, next_seq, form_json, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO local_draft
+           (id, seller_id, vehicle_no, next_seq, form_json, updated_at, master_as_of)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET
            seller_id = excluded.seller_id,
            vehicle_no = excluded.vehicle_no,
            next_seq = excluded.next_seq,
            form_json = excluded.form_json,
            updated_at = excluded.updated_at`,
+        // master_as_of is deliberately ABSENT from the DO UPDATE list: it is
+        // written when the draft is created and must never move afterwards. A
+        // refresh that lands mid-cart would otherwise overwrite the age of the
+        // data the lines were actually priced from — the false negative that
+        // makes the marker worthless. See master/freshness.ts.
         [
           draft.id,
           draft.seller_id,
@@ -73,6 +81,7 @@ export class SqliteDraftStore {
           draft.next_seq,
           JSON.stringify(draft.form),
           draft.updated_at,
+          draft.master_as_of,
         ],
       );
       await tx.run("DELETE FROM local_draft_lines WHERE draft_id = ?", [draft.id]);
@@ -93,7 +102,7 @@ export class SqliteDraftStore {
   /** The single active draft, or null. Lines come back in seq order. */
   async load(): Promise<Draft | null> {
     const heads = await this.db.all<DraftRow>(
-      "SELECT id, seller_id, vehicle_no, next_seq, form_json, updated_at" +
+      "SELECT id, seller_id, vehicle_no, next_seq, form_json, updated_at, master_as_of" +
         " FROM local_draft ORDER BY updated_at DESC LIMIT 1",
     );
     const head = heads[0];
@@ -113,6 +122,7 @@ export class SqliteDraftStore {
       next_seq: head.next_seq,
       form: JSON.parse(head.form_json) as DraftForm,
       updated_at: head.updated_at,
+      master_as_of: head.master_as_of,
       lines: rows.map(
         (r): DraftLine => ({
           id: r.id,

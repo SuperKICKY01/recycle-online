@@ -56,6 +56,17 @@ export interface Draft {
   next_seq: number;
   form: DraftForm;
   updated_at: string;
+  /**
+   * Fetch time of the master data available when this draft was STARTED, or
+   * null on a draft restored from before the field existed.
+   *
+   * Written once and never moved. The cache can only get NEWER while a bill is
+   * open, so the value at the start is the oldest data any line on this bill
+   * could have been priced from — see master/freshness.ts on why the false
+   * positive (a draft whose data refreshed mid-cart) is the safe direction and
+   * stamping at save time is not.
+   */
+  master_as_of: string | null;
 }
 
 export const emptyForm = (): DraftForm => ({

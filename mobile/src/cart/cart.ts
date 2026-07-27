@@ -38,7 +38,20 @@ export type LineResult =
 /** True for "0", "0.0", "0.00", "0.000" — any spelling of nothing. */
 const isZero = (decimal: string): boolean => /^0(\.0*)?$/.test(decimal);
 
-export function newDraft(id: string, sellerId: string, updatedAt: string): Draft {
+/**
+ * A bill starts here.
+ *
+ * `masterAsOf` is the fetch time of the master data the operator is about to
+ * price against — required, not optional, so a caller has to have an answer.
+ * Null is a legitimate one (the device has never fetched), and is the state the
+ * bill card reports as "unknown" rather than inventing freshness for.
+ */
+export function newDraft(
+  id: string,
+  sellerId: string,
+  updatedAt: string,
+  masterAsOf: string | null,
+): Draft {
   return {
     id,
     seller_id: sellerId,
@@ -47,6 +60,7 @@ export function newDraft(id: string, sellerId: string, updatedAt: string): Draft
     next_seq: 1,
     form: emptyForm(),
     updated_at: updatedAt,
+    master_as_of: masterAsOf,
   };
 }
 
@@ -236,19 +250,48 @@ export interface SellerChangeResult {
  * Locks are an input, never an output: this function cannot release one. See
  * entry.ts on why a seller change must not.
  */
+/**
+ * The two DIFFERENT questions a grade answers about a product's price.
+ *
+ * They were one function until Phase 2c-8, and they had to split the moment the
+ * tier could come out of a cache that is hours old:
+ *
+ *   reference — "what does the device believe this grade's list price is". Used
+ *               for line.list_price and for the off-tier badge. A cached answer
+ *               is fine: it is a comparison value, shown as information, and the
+ *               server discards the client's list_price and stamps its own.
+ *   pendingDefault — "what may be WRITTEN INTO THE MONEY FIELD without anyone
+ *               deciding". Null once the cache is too old to stand behind, so
+ *               the box stays empty and the operator types the agreed price.
+ *
+ * Passing the same function for both is the correct thing to do when the data is
+ * current, and it is what the freshness assessment produces. The type exists so
+ * that "which of the two is this" is answered at the call site rather than
+ * assumed here.
+ */
+export interface GradeTiers {
+  reference: (productId: string) => string | null;
+  pendingDefault: (productId: string) => string | null;
+}
+
+/** Both questions with the same answer — current data, nothing withheld. */
+export const sameTierForBoth = (
+  tierFor: (productId: string) => string | null,
+): GradeTiers => ({ reference: tierFor, pendingDefault: tierFor });
+
 export function changeSeller(
   draft: Draft,
   sellerId: string,
   locks: Locks,
-  /** The new seller's tier for a product, or null if that grade has no row. */
-  tierFor: (productId: string) => string | null,
+  /** The new seller's tiers — see GradeTiers on why this is two functions. */
+  tiers: GradeTiers,
   updatedAt: string,
 ): SellerChangeResult {
   let rereferenced = 0;
   let withoutTier = 0;
 
   const lines = draft.lines.map((l) => {
-    const tier = tierFor(l.product_id);
+    const tier = tiers.reference(l.product_id);
     if (tier === null) {
       withoutTier += 1;
       return l;
@@ -259,8 +302,13 @@ export function changeSeller(
     return { ...l, list_price: tier };
   });
 
+  // The PENDING price field takes the default resolver, never the reference
+  // one. With a stale cache these differ, and using the reference here would put
+  // a price the app has just told the operator not to trust straight back into
+  // the money box — through the seller-change door, which is exactly the kind of
+  // neighbour that gets missed when only the case that bit is fixed.
   const pendingTier =
-    draft.form.product_id === null ? null : tierFor(draft.form.product_id);
+    draft.form.product_id === null ? null : tiers.pendingDefault(draft.form.product_id);
   const form = onSellerChange(draft.form, locks, pendingTier);
 
   return {

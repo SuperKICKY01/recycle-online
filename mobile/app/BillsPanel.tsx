@@ -25,6 +25,7 @@ import {
   View,
 } from "react-native";
 
+import { pricingProvenanceLine } from "../src/master/freshness";
 import { billNotice, canRequestVoid, voidProgressLine } from "../src/sync/parkedReason";
 import type { NoticeTone, SessionState } from "../src/sync/parkedReason";
 import type { LocalBill, SyncState } from "../src/sync/types";
@@ -238,6 +239,25 @@ export function BillsPanel({ visible, bills, busy, session, blockerId, onClose, 
                   {b.payload.items.length} รายการ · {shopDateTime(b.created_at)}
                 </Text>
 
+                {/*
+                  WAS THIS BILL PRICED FROM OLD DATA? The bill carries
+                  master_as_of — the fetch time of the master data its prices
+                  were defaulted from — and this is where that becomes readable
+                  after the fact.
+
+                  It matters because the server stamps list_price from the
+                  CURRENT list, so a bill priced off a stale cache arrives with
+                  unit_price != list_price and looks exactly like a deliberate
+                  override. This line is the device's own record that it was not.
+
+                  KNOWN LIMIT: device-only. The office reconciling on the server
+                  cannot see it, and closing that needs a server field — named,
+                  and deliberately not added, at the foot of freshness.ts.
+                */}
+                {pricingProvenanceLine(b) !== null ? (
+                  <Text style={styles.pricedFrom}>{pricingProvenanceLine(b)}</Text>
+                ) : null}
+
                 {voidLine !== null ? (
                   <View style={styles.voidBox}>
                     <Text style={styles.voidReason}>เหตุผล: {b.void_reason}</Text>
@@ -354,6 +374,14 @@ const styles = StyleSheet.create({
   total: { fontSize: 20, fontWeight: "900", color: "#0f766e" },
   struck: { textDecorationLine: "line-through", color: "#94a3b8" },
   meta: { fontSize: 12, color: "#64748b", marginTop: 6 },
+  // Informational blue, not amber: this is provenance, not a fault. The bill is
+  // valid and may well be priced correctly — what is being recorded is where the
+  // number came from, so an unexpected list_price on the server can be explained
+  // rather than guessed at.
+  pricedFrom: {
+    fontSize: 12, color: "#0c4a6e", backgroundColor: "#e0f2fe", borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 6, marginTop: 8, fontWeight: "700",
+  },
 
   voidBox: {
     marginTop: 10, padding: 10, backgroundColor: "#f1f5f9", borderRadius: 8,

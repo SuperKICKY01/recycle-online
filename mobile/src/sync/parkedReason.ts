@@ -144,11 +144,18 @@ export type NoticeTone = "none" | "waiting" | "session" | "parked" | "error";
 /**
  * Whether the device can talk to the server AS SOMEONE at all.
  *
- * Device-global and deliberately NOT stored per bill. The token lives in memory
- * only, so a per-bill "session expired" flag would outlive its own truth: sign
- * in, and every bill still carrying the flag keeps telling the operator to sign
- * in until it is next attempted. Derived state cannot go stale — that is the
- * same failure mode as the half-updated parked row, avoided by construction.
+ * Device-global and deliberately NOT stored per bill: a per-bill "session
+ * expired" flag would outlive its own truth, because signing in fixes every bill
+ * at once while the flags would keep telling the operator to sign in until each
+ * was next attempted. Derived state cannot go stale — the same failure mode as
+ * the half-updated parked row, avoided by construction.
+ *
+ * PHASE 2c-8 NOTE, because this paragraph used to lean on a premise that has
+ * changed: the supporting argument was "the token lives in memory only, so a
+ * restart is signed out anyway". It no longer does — the token is restored from
+ * the OS keystore at boot (src/session/tokenStore.ts). The rule above is
+ * unaffected: it never depended on the token being volatile, only on this being
+ * one fact about the DEVICE rather than N copies on rows.
  */
 export type SessionState = "active" | "expired" | "signed_out";
 

@@ -54,6 +54,8 @@ import {
 import type { LockableField, Locks, NumKey } from "../src/cart/entry";
 import { gradePrice } from "../src/cart/sellers";
 import type { Draft, DraftLine } from "../src/cart/types";
+import { defaultUnitPrice, stalePriceHint } from "../src/master/freshness";
+import type { Freshness } from "../src/master/freshness";
 import {
   MONEY_DP,
   MONEY_MAX_INT_DIGITS,
@@ -98,6 +100,11 @@ interface Props {
   draft: Draft;
   locks: Locks;
   busy: boolean;
+  /**
+   * How old the cached master data is, and therefore whether a tier price may
+   * be written into the money field at all. See src/master/freshness.ts.
+   */
+  freshness: Freshness;
   newLineId: () => string;
   nowIso: () => string;
   onDraftChange: (next: Draft, immediate: boolean) => void;
@@ -114,6 +121,7 @@ export function CartScreen({
   draft,
   locks,
   busy,
+  freshness,
   newLineId,
   nowIso,
   onDraftChange,
@@ -137,7 +145,23 @@ export function CartScreen({
   // No seller, or a seller with no grade, means NO default price — the field
   // stays blank and the operator types what was agreed. See src/cart/sellers.ts.
   const grade = seller?.grade ?? null;
+
+  /*
+   * TWO PRICES, AND THEY ARE NOT THE SAME QUESTION (Phase 2c-8).
+   *
+   * listPrice is the grade REFERENCE: what the device last heard this grade's
+   * list price to be. It still comes straight from the cache however old that
+   * is, because it is a comparison value shown as information — the off-tier
+   * badge, line.list_price — and the server discards the client's list_price and
+   * stamps its own from the current list anyway.
+   *
+   * priceDefault is what may be written INTO the money field with nobody
+   * deciding. Past the staleness cutoff it is null and the box stays empty. The
+   * yard pays cash against whatever is in that box, so it is the one of the two
+   * that has to be withheld when the app cannot stand behind it.
+   */
   const listPrice = product ? gradePrice(product.prices, grade) : null;
+  const stale = !freshness.mayDefaultPrice;
 
   useEffect(
     () => () => {
@@ -159,7 +183,9 @@ export function CartScreen({
     putForm(
       onProductChange(form, locks, {
         productId: p.id,
-        listPrice: gradePrice(p.prices, grade) ?? "",
+        // The DEFAULT, not the reference. With a stale cache this is null and
+        // the price box is left empty for the operator to fill in deliberately.
+        listPrice: defaultUnitPrice(gradePrice(p.prices, grade), freshness) ?? "",
       }),
       true,
     );
@@ -169,7 +195,22 @@ export function CartScreen({
     () =>
       buildLine({
         id: editingId ?? "pending",
-        product_id: form.product_id ?? "",
+        /*
+         * THE RESOLVED product's id, not the raw form value (Phase 2c-8).
+         *
+         * They differ in one reachable case and it costs money: a draft is open,
+         * the office deletes that product, a refresh replaces the cache, and
+         * form.product_id now names a product this device no longer has. The old
+         * expression passed the phantom id straight through — buildLine only
+         * checks that it is non-empty — so the line committed with a BLANK code
+         * and name, at whatever price was typed, and the server refused the
+         * whole bill (422 product does not exist) after the cash was paid.
+         *
+         * Resolving first turns that into "no product chosen", which the form
+         * already refuses to commit and already explains. A cached row that has
+         * gone away must fail closed, not price something wrong.
+         */
+        product_id: product?.id ?? "",
         product_code: product?.code ?? "",
         product_name: product?.name ?? "",
         uom_code: product?.uom_code ?? "",
@@ -357,8 +398,17 @@ export function CartScreen({
               disabled={busy || !sellerKnown}
             >
               <Text style={[styles.productName, isOn && styles.onDark]}>{p.name}</Text>
+              {/*
+                The cached tier is still SHOWN when it is stale, marked as old.
+                Hiding it would not make anyone safer — the operator would type
+                a remembered number with no idea it differs from what the shop
+                last published — and it is the only price information the device
+                holds. Next to a price box the app has refused to fill in, it
+                reads as evidence; inside that box it would be an assertion.
+              */}
               <Text style={[styles.productMeta, isOn && styles.onDark]}>
                 {p.code} · {gradePrice(p.prices, grade) ?? "ไม่มีราคาตามเกรด"} บาท/{p.uom_code}
+                {stale && gradePrice(p.prices, grade) !== null ? " (ราคาเก่า)" : ""}
               </Text>
             </Pressable>
           );
@@ -401,7 +451,23 @@ export function CartScreen({
           disabled={busy}
         />
         {errorFor("price") ? <Text style={styles.err}>{errorFor("price")}</Text> : null}
-        {offTier ? (
+        {/*
+          WHICH note appears is decided by whether the app was willing to default
+          at all, and the two are mutually exclusive on purpose.
+
+          Stale: the box was left empty BY THE APP, so "the price was changed
+          from the grade price" would be an accusation about something the
+          operator had no choice about — and it would fire on every single line.
+          What is true instead is why it is empty and what the device last knew,
+          which is what stalePriceHint says.
+
+          Current: the reference is trustworthy, so a difference really is an
+          override and is worth flagging — especially a LOCKED price carried
+          across a product change, where nothing was retyped.
+        */}
+        {stale && product !== null ? (
+          <Text style={styles.note}>{stalePriceHint(listPrice, freshness)}</Text>
+        ) : offTier ? (
           <Text style={styles.note}>
             ราคาถูกแก้จากราคาตามเกรด ({listPrice})
             {locks.price ? " — ราคานี้ค้างไว้จากสินค้าก่อนหน้า ตรวจสอบก่อนบันทึก" : ""}

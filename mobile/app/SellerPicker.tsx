@@ -45,6 +45,15 @@ interface Props {
   currentSellerId: string | null;
   /** True when the cart has lines — changes the wording from "choose" to "change". */
   changing: boolean;
+  /**
+   * This device has NEVER fetched the seller list, as opposed to having fetched
+   * it and found nobody.
+   *
+   * Both produce an empty list and they need opposite sentences: "the office has
+   * not added anyone" sends someone to the office over a network problem, and it
+   * is an alarming thing to tell a shop with hundreds of customers.
+   */
+  neverFetched: boolean;
   onClose: () => void;
   onPick: (seller: Seller) => void;
 }
@@ -55,6 +64,7 @@ export function SellerPicker({
   platesBySeller,
   currentSellerId,
   changing,
+  neverFetched,
   onClose,
   onPick,
 }: Props) {
@@ -119,9 +129,11 @@ export function SellerPicker({
           contentContainerStyle={styles.body}
           ListEmptyComponent={
             <Text style={styles.empty}>
-              {sellers.length === 0
-                ? "ยังไม่มีผู้ขายในระบบ — ต้องเพิ่มที่สำนักงานก่อน"
-                : `ไม่พบผู้ขายที่ตรงกับ “${query}”`}
+              {sellers.length > 0
+                ? `ไม่พบผู้ขายที่ตรงกับ “${query}”`
+                : neverFetched
+                  ? "เครื่องนี้ยังไม่เคยดึงรายชื่อผู้ขายมาเก็บไว้ — ต้องต่อเน็ตและเข้าสู่ระบบสักครั้งก่อน"
+                  : "ยังไม่มีผู้ขายในระบบ — ต้องเพิ่มที่สำนักงานก่อน"}
             </Text>
           }
           renderItem={({ item }) => {

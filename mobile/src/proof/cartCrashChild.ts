@@ -121,6 +121,7 @@ async function main(): Promise<void> {
       vehicle_no: draft.vehicle_no,
       items: toBillItems(draft),
       total_amount: cartTotal(draft),
+      master_as_of: draft.master_as_of,
     },
   );
 

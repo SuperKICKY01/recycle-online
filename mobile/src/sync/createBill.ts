@@ -23,6 +23,12 @@ export interface BillDraft {
   items: BillItemPayload[];
   /** Optional client-computed total. The server recomputes and rejects a mismatch. */
   total_amount: string | null;
+  /**
+   * Fetch time of the master data these prices were defaulted from, carried
+   * over from the cart draft. Device-only; it does not enter the payload. Null
+   * means unknown, never "fresh". See master/freshness.ts.
+   */
+  master_as_of: string | null;
 }
 
 /**
@@ -75,6 +81,9 @@ export function buildLocalBill(deps: BuildBillDeps, draft: BillDraft): LocalBill
     server_error_attempts: 0,
     master_data_missing_at: null,
     master_data_code: null,
+    // Note where this is: OUTSIDE `payload`. It is a device record of what the
+    // prices were defaulted from, and there is nothing on the wire to carry it.
+    master_as_of: draft.master_as_of,
     doc_no: null,
     synced_at: null,
     void_reason: null,

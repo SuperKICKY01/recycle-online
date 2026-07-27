@@ -14,6 +14,9 @@
  */
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { pricingProvenanceLine } from "../src/master/freshness";
+import type { PricingProvenance } from "../src/master/freshness";
+
 interface Props {
   visible: boolean;
   lineCount: number;
@@ -24,6 +27,13 @@ interface Props {
   /** The plate, already trimmed. Null when none was entered. */
   vehicleNo: string | null;
   busy: boolean;
+  /**
+   * Which master data these prices were defaulted from, so the last screen
+   * before the cash leaves can say it was not current. Null when there is no
+   * draft to describe. The sentence itself comes from src/master/freshness.ts —
+   * this file decides nothing.
+   */
+  pricedFrom: PricingProvenance | null;
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -36,9 +46,11 @@ export function ConfirmSaveDialog({
   sellerGrade,
   vehicleNo,
   busy,
+  pricedFrom,
   onCancel,
   onConfirm,
 }: Props) {
+  const pricedLine = pricedFrom === null ? null : pricingProvenanceLine(pricedFrom);
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.backdrop}>
@@ -75,6 +87,14 @@ export function ConfirmSaveDialog({
               ผู้ขายรายนี้ยังไม่มีเกรด — บันทึกได้ แต่บิลจะค้างรอสำนักงานกำหนดเกรดก่อนจึงจะส่งเข้าระบบ
             </Text>
           ) : null}
+
+          {/*
+            The prices on this bill came from data that was not current. Said
+            HERE, at the last irreversible step, because this is the moment the
+            cash is about to be counted out — and because a strip at the top of
+            the screen has been there all morning and stopped being read.
+          */}
+          {pricedLine !== null ? <Text style={styles.priced}>{pricedLine}</Text> : null}
 
           <Text style={styles.warn}>
             บันทึกแล้วจะส่งเข้าระบบทันที แก้ไขไม่ได้ — หากผิดต้องยกเลิกบิลและออกใบใหม่
@@ -121,6 +141,10 @@ const styles = StyleSheet.create({
   warn: {
     fontSize: 13, color: "#78350f", backgroundColor: "#fef3c7", padding: 10,
     borderRadius: 8, marginTop: 16, fontWeight: "600",
+  },
+  priced: {
+    fontSize: 13, color: "#0c4a6e", backgroundColor: "#e0f2fe", padding: 10,
+    borderRadius: 8, marginTop: 16, fontWeight: "700",
   },
   buttons: { flexDirection: "row", gap: 12, marginTop: 18 },
   btn: { flex: 1, minHeight: 60, borderRadius: 12, alignItems: "center", justifyContent: "center" },

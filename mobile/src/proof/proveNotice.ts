@@ -701,6 +701,7 @@ async function n5ReachableAndRendered(): Promise<void> {
       seller_id: "s-001",
       vehicle_no: "70-1234",
       total_amount: "150.05",
+      master_as_of: null,
       items: [
         {
           id: ids.newId(), product_id: "prod-FE", line_no: 1,

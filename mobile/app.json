@@ -22,7 +22,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-secure-store"
     ],
     "extra": {
       "_comment": "apiBaseUrl is THE server address for the whole app. Change it HERE and nowhere else; device/src/config.ts is the single reader. Swap in a cloud URL later with no code edits.",
