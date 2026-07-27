@@ -146,6 +146,12 @@ export function StatusStrip({
         RIGHT on a phone set to Bangkok and silently wrong on one that is not, so
         it is routed through the same helper as the bill list: one code path, and
         the answer no longer depends on the handset.
+
+        A CLOCK ONLY, no date — so the พ.ศ. change does not reach this line;
+        there is no year here to be in the wrong era. Known limit, unchanged by
+        that work: a sync from yesterday still reads as a bare time. Adding a
+        date here means deciding what "ส่งล่าสุด เมื่อวาน" should say, which is
+        a wording change, not a formatting one.
       */}
       {lastSyncedAt !== null && action === null ? (
         <Text style={[styles.time, { color: tone.fg }]}>ส่งล่าสุด {shopTime(lastSyncedAt)}</Text>

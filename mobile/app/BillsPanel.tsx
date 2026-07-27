@@ -159,6 +159,13 @@ export function BillsPanel({ visible, bills, busy, blockerId, onClose, onVoid }:
                   the ISO string, which printed UTC verbatim — a load weighed
                   15:16 in Bangkok showed as 08:16, and for anything weighed
                   before 07:00 the DATE was a day behind too.
+
+                  The date is พ.ศ. (26/07/2569), and it must be, because doc_no
+                  is rendered ten lines above with the server's be_year in it.
+                  This card previously read 2026-07-26 beside B-2569-105 —
+                  contradicting itself about which business year the load
+                  belongs to. Both numbers now come from a shop-time year:
+                  shopTime.ts here, _be_year in app/bills.py there.
                 */}
                 <Text style={styles.meta}>
                   {b.payload.items.length} รายการ · {shopDateTime(b.created_at)}
