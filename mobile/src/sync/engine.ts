@@ -6,6 +6,7 @@
  * wires it to in-memory fakes. The engine cannot tell the difference, which is
  * exactly why it can be proven headless.
  */
+import { SEND_SCHEDULE_HORIZON_MS, scheduledInstantIsDue } from "../time/clockSanity.js";
 import type {
   Clock,
   LocalBill,
@@ -107,6 +108,35 @@ export class SyncEngine {
     this.backoffMaxMs = opts.backoffMaxMs ?? 5 * 60_000;
     this.batchLimit = opts.batchLimit ?? 100;
     this.masterDataRetryMs = opts.masterDataRetryMs ?? 5 * 60_000;
+
+    /*
+     * THE HORIZON MUST DOMINATE EVERY DELAY THIS ENGINE CAN WRITE.
+     *
+     * `next_attempt_at` is trusted only up to SEND_SCHEDULE_HORIZON_MS out;
+     * past that it is read as evidence the clock moved and the bill is treated
+     * as due (time/clockSanity.ts). If a knob were ever raised above the
+     * horizon, this engine would write real schedules that its own reader
+     * discards — a backoff silently reduced to zero, which is the kind of
+     * defect that shows up as "the server is being hammered" months later and
+     * is never traced back to a constant.
+     *
+     * A throw, not a comment and not a clamp: it fires at construction, on
+     * every path that builds an engine including the proofs, so the two numbers
+     * cannot drift apart in silence.
+     */
+    for (const [name, ms] of [
+      ["backoffMaxMs", this.backoffMaxMs],
+      ["masterDataRetryMs", this.masterDataRetryMs],
+    ] as const) {
+      if (ms > SEND_SCHEDULE_HORIZON_MS) {
+        throw new Error(
+          `${name}=${String(ms)}ms exceeds SEND_SCHEDULE_HORIZON_MS=` +
+            `${String(SEND_SCHEDULE_HORIZON_MS)}ms: schedules this engine writes` +
+            " would be discarded as clock damage by its own reader. Raise the" +
+            " horizon in time/clockSanity.ts deliberately, or lower the knob.",
+        );
+      }
+    }
   }
 
   /**
@@ -219,8 +249,25 @@ export class SyncEngine {
         noteSkip(bill.id);
         break;
       }
-      // The head is still in backoff, so the whole queue waits.
-      if (new Date(bill.next_attempt_at).getTime() > this.clock.now().getTime()) break;
+      /*
+       * The head is still in backoff, so the whole queue waits — UNLESS its
+       * next_attempt_at is further out than any backoff this engine can write,
+       * in which case it is not a schedule at all but a reading from a clock
+       * that has since moved. See time/clockSanity.ts.
+       *
+       * OBSERVED ON A DEVICE. A bill bounced while the phone was ~14h fast took
+       * a next_attempt_at ~14h in the future. The clock was then corrected
+       * BACKWARDS, and because this `break` stops the pass at the head, that one
+       * bill held the entire queue for fourteen hours while the server was
+       * reachable and answering — and the strip said
+       * "ยังส่งเข้าระบบไม่ได้ตอนนี้ ระบบจะส่งให้เองเมื่อเชื่อมต่อได้", because a
+       * pass that attempts nothing returns before anything updates `online`.
+       *
+       * Deliberately a READ-time judgement. Clamping on write cannot help: the
+       * stamp was legitimate when it was written and only became evidence when
+       * the clock moved afterwards.
+       */
+      if (!scheduledInstantIsDue(bill.next_attempt_at, this.clock.now().getTime())) break;
 
       attempted.add(bill.id);
       this.inFlight.add(bill.id);

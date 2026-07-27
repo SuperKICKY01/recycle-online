@@ -2,6 +2,7 @@
  * Test doubles for the headless proof. These are NOT production code — the
  * production adapters are expo-sqlite (Phase 2b) and HttpTransport.
  */
+import { scheduledInstantIsDue } from "../time/clockSanity.js";
 import type {
   BillPayload,
   Clock,
@@ -90,11 +91,19 @@ export class InMemoryStore implements LocalStore {
     return Promise.resolve(out);
   }
 
-  /** Ordered by device_created_at — weighing order — like the SQLite store. */
+  /**
+   * Ordered by device_created_at — weighing order — like the SQLite store.
+   *
+   * The due test mirrors SqliteLocalStore's DUE_OR_UNBELIEVABLE exactly: due, OR
+   * scheduled further out than any backoff this app writes, which means the
+   * clock moved rather than that a schedule exists. Both stores must agree, or
+   * the same proof case would pass on one and fail on the other for reasons that
+   * have nothing to do with the engine.
+   */
   listReadyToSend(now: Date, limit: number): Promise<LocalBill[]> {
     const out = [...this.rows.values()]
       .filter(queued)
-      .filter((b) => new Date(b.next_attempt_at).getTime() <= now.getTime())
+      .filter((b) => scheduledInstantIsDue(b.next_attempt_at, now.getTime()))
       .sort(byDeviceCreatedAt)
       .slice(0, limit)
       .map(clone);
@@ -188,7 +197,10 @@ export class InMemoryStore implements LocalStore {
     let released = 0;
     for (const row of this.rows.values()) {
       if (row.sync_state !== "pending" || row.master_data_missing_at === null) continue;
-      if (!all && new Date(row.next_attempt_at).getTime() > now.getTime()) continue;
+      // Mirrors SqliteLocalStore.releaseMasterDataBlocked: the slow cadence is
+      // the other writer of a future next_attempt_at, so it gets the same clock
+      // rule.
+      if (!all && !scheduledInstantIsDue(row.next_attempt_at, now.getTime())) continue;
       row.master_data_missing_at = null;
       row.master_data_code = null;
       // Cleared for the same reason as in SqliteLocalStore: this transition

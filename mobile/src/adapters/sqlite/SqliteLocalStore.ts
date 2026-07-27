@@ -23,6 +23,7 @@
  * adding a second statement to one of these methods believing it was safe.
  * See adapters/sqlite/mutex.ts.
  */
+import { SEND_SCHEDULE_HORIZON_MS } from "../../time/clockSanity.js";
 import type { LocalBill, LocalStore, QueueSnapshot, SyncState } from "../../sync/types.js";
 import type { SqlDriver, SqlValue } from "./driver.js";
 import { initConnection } from "./schema.js";
@@ -72,6 +73,37 @@ const COLUMNS =
  * distinction lessons/queue-jam-must-be-visible.md actually draws.
  */
 const QUEUED = "sync_state = 'pending' AND master_data_missing_at IS NULL";
+
+/**
+ * "The scheduled time has come, OR the schedule is not believable."
+ *
+ * The SQL half of time/clockSanity.ts's `scheduledInstantIsDue`, and it must
+ * stay the same rule: a next_attempt_at further out than any delay this app can
+ * write is a reading from a clock that has since moved backwards, not a
+ * schedule, and the bill is due now. Fails OPEN — a stranded bill is real money
+ * on one phone with no server record, and an early send is harmless because the
+ * idempotency_key is unchanged.
+ *
+ * WHY IT IS HERE AND NOT ONLY IN THE ENGINE. The engine no longer calls
+ * listReadyToSend at all — it reads listPendingOldestFirst and gates in TS. But
+ * five proof cases still read listReadyToSend (proveSync, proveCart,
+ * sqliteProof), so a rule that landed only in the engine would leave those
+ * asserting the pre-fix semantics: the suite would go green while proving the
+ * old behaviour. Same reason the in-memory fake mirrors it statement for
+ * statement.
+ *
+ * Timestamps are fixed-width toISOString() output, so lexicographic comparison
+ * IS chronological comparison (see schema.ts).
+ */
+const DUE_OR_UNBELIEVABLE = "(next_attempt_at <= ? OR next_attempt_at > ?)";
+
+/** now, and the furthest out a real schedule could reach, as bound params. */
+function dueParams(now: Date): [string, string] {
+  return [
+    now.toISOString(),
+    new Date(now.getTime() + SEND_SCHEDULE_HORIZON_MS).toISOString(),
+  ];
+}
 
 /**
  * The bill INSERT, defined once and exported.
@@ -196,10 +228,10 @@ export class SqliteLocalStore implements LocalStore {
   async listReadyToSend(now: Date, limit: number): Promise<LocalBill[]> {
     const rows = await this.db.all<BillRow>(
       `SELECT ${COLUMNS} FROM local_bills
-       WHERE ${QUEUED} AND next_attempt_at <= ?
+       WHERE ${QUEUED} AND ${DUE_OR_UNBELIEVABLE}
        ORDER BY device_created_at, created_at, id
        LIMIT ?`,
-      [now.toISOString(), limit],
+      [...dueParams(now), limit],
     );
     return rows.map(toBill);
   }
@@ -358,8 +390,15 @@ export class SqliteLocalStore implements LocalStore {
    */
   async releaseMasterDataBlocked(now: Date, all: boolean): Promise<number> {
     const nowIso = now.toISOString();
-    const due = all ? "" : " AND next_attempt_at <= ?";
-    const params: SqlValue[] = all ? [nowIso] : [nowIso, nowIso];
+    // Same clock rule as the send queue. The park cadence is the OTHER writer of
+    // a future next_attempt_at (masterDataRetryMs), so a backwards clock jump
+    // would otherwise defer a parked bill's automatic retry by the whole skew.
+    // Bounded harm — parked bills block nothing and the operator's ส่งอีกครั้ง
+    // passes all=true, which ignores the cadence entirely — but it is the same
+    // defect, and fixing the instance instead of the class is what produced the
+    // 2c-7 amendment.
+    const due = all ? "" : ` AND ${DUE_OR_UNBELIEVABLE}`;
+    const params: SqlValue[] = all ? [nowIso] : [nowIso, ...dueParams(now)];
     const r = await this.db.run(
       `UPDATE local_bills
        SET master_data_missing_at = NULL, master_data_code = NULL,

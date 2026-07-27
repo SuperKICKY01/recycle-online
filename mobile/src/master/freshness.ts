@@ -79,6 +79,7 @@
  * This number is a judgement, not a measurement. It is one constant, in one
  * place, named, and the proof prints what it costs on both sides.
  */
+import { instantMs, pastStampSuspect } from "../time/clockSanity.js";
 import { shopDateTime } from "../time/shopTime.js";
 
 /* ------------------------------------------------------------ thresholds -- */
@@ -143,10 +144,12 @@ export interface FreshnessInput {
   now: string;
 }
 
-const msOf = (iso: string): number | null => {
-  const t = new Date(iso).getTime();
-  return Number.isNaN(t) ? null : t;
-};
+/**
+ * Parsing moved to time/clockSanity.ts so there is ONE definition of "this
+ * string is not a usable instant" shared with the sync side. Unchanged
+ * behaviour: unparseable is null, and null is treated exactly like missing.
+ */
+const msOf = instantMs;
 
 /**
  * What the device knows and how much it may act on it.
@@ -191,8 +194,14 @@ export function assessFreshness(input: FreshnessInput): Freshness {
    * was affected: the min silently picked the other, still-plausible timestamp
    * and the assessment carried on as if nothing had happened. Any timestamp in
    * the future condemns BOTH ages, so the test is on the newest one.
+   *
+   * THE PREDICATE ITSELF now lives in time/clockSanity.ts, unchanged in meaning
+   * — `now - newest < -TOL` is exactly `newest - now > TOL`. It moved because
+   * the send queue needs the same rule against a different bound, and one rule
+   * written twice is two behaviours waiting to drift. What stays HERE is the
+   * REACTION, which is the opposite of the queue's: this fails CLOSED.
    */
-  const clockSuspect = now - Math.max(p, s) < -FRESH_MAX_AGE_MS;
+  const clockSuspect = pastStampSuspect(Math.max(p, s), now, FRESH_MAX_AGE_MS);
 
   if (clockSuspect) {
     return {
@@ -300,12 +309,31 @@ export function masterNotice(f: Freshness): MasterNotice | null {
   const asOf = f.asOf === null ? "" : shopDateTime(f.asOf);
   const age = f.ageMs === null ? "" : thaiAge(f.ageMs);
 
+  /*
+   * WHICH HALF OF THIS SENTENCE IS A FACT.
+   *
+   * `asOf` is a STORED STAMP — the shop-time instant the fetch actually
+   * completed. It is true whatever the clock has done since.
+   *
+   * `age` is `now - asOf`, DERIVED from the device clock, and a forward jump
+   * makes it arbitrarily wrong: a 14h jump renders data fetched two minutes ago
+   * as "เก่า 14 ชั่วโมง". That direction is not detectable from one stamp (an
+   * ordinary 14h-old cache looks identical), so it cannot be gated away — see
+   * time/clockSanity.ts on what a single stamp can and cannot bound.
+   *
+   * What CAN be fixed is the claim. The fetch time leads, and the age is
+   * attributed to the device's clock instead of asserted as a fact about the
+   * data. A banner that is occasionally absurd is a banner staff stop reading,
+   * and the fetch time beside it is what lets someone see for themselves that
+   * the age is nonsense. Same discipline as never rendering a diagnostic:
+   * lessons/correct-classification-can-still-render-as-an-error.md.
+   */
   if (f.state === "aging") {
     return {
       tone: "info",
       message:
         `ใช้ข้อมูลผู้ขายและราคาที่เก็บไว้ในเครื่อง` +
-        ` อัปเดตล่าสุด ${asOf} (เก่า ${age})`,
+        ` อัปเดตล่าสุด ${asOf} (ตามเวลาในเครื่อง เก่า ${age})`,
     };
   }
 
@@ -321,7 +349,7 @@ export function masterNotice(f: Freshness): MasterNotice | null {
   return {
     tone: "warn",
     message:
-      `ราคาที่เก็บไว้ในเครื่องเก่าเกิน 12 ชั่วโมง (อัปเดตล่าสุด ${asOf} — เก่า ${age})` +
+      `ข้อมูลราคาในเครื่องอัปเดตล่าสุด ${asOf} (ตามเวลาในเครื่อง เก่า ${age} — เกิน 12 ชั่วโมง)` +
       " — ระบบจะไม่กรอกราคาให้ ต้องกรอกราคาที่ตกลงกับผู้ขายเอง บันทึกบิลได้ตามปกติ",
   };
 }
@@ -380,11 +408,42 @@ export function pricingProvenanceLine(bill: PricingProvenance): string | null {
   const asOf = msOf(bill.master_as_of);
   const made = msOf(bill.device_created_at);
   if (asOf === null || made === null) return null;
+
+  /*
+   * A NEGATIVE AGE IS NOT A FRESH BILL — IT IS A CLOCK THAT MOVED.
+   *
+   * master_as_of is stamped when the draft is STARTED and never moves after
+   * (SqliteDraftStore.save excludes it from the DO UPDATE list), and
+   * device_created_at is stamped when the bill is BUILT. So asOf <= made holds
+   * by construction, and the largest gap the writer could have produced in the
+   * other direction is zero: predicate 1, with no tolerance to allow, because
+   * these two stamps are strictly ordered rather than concurrent.
+   *
+   * The old code computed `age = made - asOf` and returned null for anything
+   * `<= FRESH_MAX_AGE_MS`. A backwards clock jump between opening the cart and
+   * saving makes that difference NEGATIVE, which sails through the same test —
+   * so the marker vanished on exactly the bill most likely to have been priced
+   * from a cache of unknowable age. A false negative on a money marker, which
+   * is the direction that hides things (Rule 4,
+   * lessons/cached-master-data-is-a-price-claim.md).
+   *
+   * It FAILS CLOSED: the line is shown, and it states the fetch time — which is
+   * a stored fact — instead of an age it cannot compute. Naming the clock is
+   * also the only honest thing to say, because "how old was this data" genuinely
+   * has no answer once the clock has moved underneath it.
+   */
+  if (pastStampSuspect(asOf, made, 0)) {
+    return (
+      `ตอนบันทึกบิลนี้ ใช้ข้อมูลราคาที่เก็บไว้ในเครื่องเมื่อ ${shopDateTime(bill.master_as_of)}` +
+      ` — เวลาในเครื่องเปลี่ยนระหว่างทำบิล จึงบอกไม่ได้ว่าข้อมูลเก่าแค่ไหน`
+    );
+  }
+
   const age = made - asOf;
   if (age <= FRESH_MAX_AGE_MS) return null;
   return (
     `ตอนบันทึกบิลนี้ ใช้ข้อมูลราคาที่เก็บไว้ในเครื่องเมื่อ ${shopDateTime(bill.master_as_of)}` +
-    ` (เก่า ${thaiAge(age)} ณ ตอนบันทึก)`
+    ` (ตามเวลาในเครื่อง เก่า ${thaiAge(age)} ณ ตอนบันทึก)`
   );
 }
 

@@ -20,7 +20,8 @@
     "prove:notice": "npm run build && node dist/proof/proveNotice.js",
     "prove:void": "npm run build && node dist/proof/proveVoid.js",
     "prove:time": "npm run build && node dist/proof/proveTime.js",
-    "prove:cold": "npm run build && node dist/proof/proveCold.js"
+    "prove:cold": "npm run build && node dist/proof/proveCold.js",
+    "prove:clock": "npm run build && node dist/proof/proveClock.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

@@ -32,6 +32,7 @@
  *   first_server_error_at — non-null iff the reachable server has been refusing
  *   the head continuously. This module only reads it.
  */
+import { credibleElapsedMs, instantMs } from "../time/clockSanity.js";
 import type { QueueSnapshot } from "./types.js";
 
 /**
@@ -75,6 +76,43 @@ export const POISON_ALARM_MS = 90_000;
  */
 export const POISON_ALARM_ATTEMPTS = 5;
 
+/**
+ * THE CLOCK BOUND ON A REPORTED DURATION. How much wall-clock time ONE observed
+ * refusal can account for: the request itself (HttpTransport's 20s timeout) plus
+ * the longest gap before the next try (backoffMaxMs, 30s in App.tsx), rounded up.
+ *
+ * WHY A DURATION NEEDS A BOUND AT ALL. `poisonedForMs` claims something specific
+ * — "the reachable server has been refusing this bill continuously for N
+ * minutes" — and it was computed as `now - first_server_error_at` with nothing
+ * checking that the device had actually been THERE for those N minutes. Two
+ * ordinary events break that claim outright:
+ *
+ *   the device clock jumps FORWARD (manual correction, NTP, timezone). Observed
+ *     shape: a 14h jump turned one bounce into "บิล 1 ใบส่งไม่ผ่าน 1 ครั้งติด
+ *     นาน 840 นาที ... ต้องติดต่อฝ่ายสนับสนุน" — a red call-support alarm, on a
+ *     bill that had failed once, with an absurd number attached to it;
+ *   the app is simply CLOSED overnight. Nothing is observed and nothing is
+ *     retried, yet on reopen the subtraction happily reports 14 hours of
+ *     "continuous refusal" that nobody watched.
+ *
+ * Both are the same error: reporting elapsed time as though it were elapsed
+ * EVIDENCE. N consecutive refusals can only account for N cycles, so that is the
+ * cap. It cannot make the alarm fire — it can only hold it back — and the COUNT
+ * trigger below is untouched, so a genuinely poisoned bill still surfaces after
+ * POISON_ALARM_ATTEMPTS refusals however the clock behaves.
+ *
+ * A guess like the two above, to be tuned against a real yard.
+ */
+export const MAX_ATTEMPT_CYCLE_MS = 60_000;
+
+/**
+ * Slack on "a stamp cannot be in the future". These stamps are written and read
+ * by the SAME device clock, so ordinary jitter is nil; this is only wide enough
+ * that a rounded or slightly stale `now` cannot trip it, and far narrower than
+ * any real clock move (the coarsest timezone step is 15 minutes).
+ */
+const STAMP_TOLERANCE_MS = 5_000;
+
 export interface QueueHealth {
   /**
    * The head has failed at least once AND there are bills waiting behind it.
@@ -107,12 +145,23 @@ export interface QueueHealth {
   behind: number;
   /** Failed attempts on the head so far. */
   attempts: number;
-  /** Total time the head has been unable to send, any reason, in ms. Amber context. */
+  /**
+   * Total time the head has been unable to send, any reason, in ms. Amber
+   * context, never a trigger. 0 when the stamp is not believable (a backwards
+   * clock puts it in the future). Nothing bounds it upwards — see the note in
+   * assessQueue on why an offline device legitimately accumulates elapsed time
+   * with no attempts to account for it.
+   */
   blockedForMs: number;
   /**
    * Time the REACHABLE server has been refusing the head, in ms. 0 whenever the
    * head is offline (server not answering). This is what the red alarm reports —
    * "failing for N minutes even though the server is reachable".
+   *
+   * BOUNDED by what the refusals account for (MAX_ATTEMPT_CYCLE_MS per
+   * consecutive refusal), so it reports observed continuity rather than raw
+   * subtraction: neither a forward clock jump nor an app that was closed
+   * overnight can inflate it into a red alarm.
    */
   poisonedForMs: number;
   /**
@@ -177,14 +226,72 @@ export function assessQueue(
 
   const behind = Math.max(0, snap.pendingCount - 1);
   const attempts = head.attempts;
+  const nowMs = now.getTime();
+  const serverErrorAttempts = head.server_error_attempts;
+
+  /*
+   * BOTH DURATIONS GO THROUGH credibleElapsedMs, and they pass DIFFERENT bounds
+   * because they are answering different questions. Reporting 0 for an
+   * unbelievable duration is the same answer the old Math.max(0, ...) gave for a
+   * backwards clock; what changes is that `null` is now distinguishable inside
+   * this function, so it cannot be compared to a threshold by accident.
+   *
+   * blockedForMs — "how long has this bill been unable to send, for any reason".
+   * NOTHING BOUNDS IT, and that is stated rather than skipped: a yard can be
+   * offline for days with the app closed, accumulating real elapsed time and no
+   * attempts at all, so capping it by attempts would understate a genuine
+   * outage — the honest amber context this field exists to give. It is not a
+   * trigger for anything, so believing it is safe. A forward jump therefore
+   * still inflates this number; it is a known, bounded-by-nothing limit.
+   */
   const blockedForMs =
     head.first_attempt_at === null
       ? 0
-      : Math.max(0, now.getTime() - new Date(head.first_attempt_at).getTime());
-  const poisonedForMs =
+      : (credibleElapsedMs(
+          instantMs(head.first_attempt_at) ?? nowMs,
+          nowMs,
+          STAMP_TOLERANCE_MS,
+          Number.POSITIVE_INFINITY,
+        ) ?? 0);
+
+  /*
+   * poisonedForMs — "how long has the REACHABLE server been refusing this bill
+   * continuously". This one IS bounded, because continuity is a claim about
+   * OBSERVATIONS: each consecutive refusal accounts for at most one attempt
+   * cycle, so N refusals account for at most N of them. Beyond that the device
+   * was not watching — clock jump, or the app was closed — and the extra time is
+   * not evidence of anything. See MAX_ATTEMPT_CYCLE_MS.
+   *
+   * TWO VALUES COME OUT OF THIS, NOT ONE, and collapsing them was a real
+   * mistake caught by proveClock K3 before it shipped. Capping the NUMBER stops
+   * it being absurd on screen but does not stop it raising the alarm: at
+   * MAX_ATTEMPT_CYCLE_MS = 60s, merely TWO refusals account for 120s, which
+   * clears POISON_ALARM_MS on its own — so a forward clock jump would still have
+   * fired "ติดต่อฝ่ายสนับสนุน" at two refusals instead of five, undercutting
+   * POISON_ALARM_ATTEMPTS by exactly the cry-wolf failure this was meant to fix.
+   *
+   *   poisonedForMs   what the operator is TOLD. Capped, so never absurd.
+   *   poisonObserved  whether the duration is EVIDENCE. False the moment the
+   *                   raw span exceeds what the refusals account for, because
+   *                   then the device demonstrably was not watching for most of
+   *                   it. Only this may arm the clock trigger.
+   *
+   * A "worst case" and a "sanity check" computed off one expression is the exact
+   * shape of the bug in lessons/cached-master-data-is-a-price-claim.md. Two
+   * questions, two answers.
+   */
+  const accountedForMs = serverErrorAttempts * MAX_ATTEMPT_CYCLE_MS;
+  const rawPoisonMs =
     head.first_server_error_at === null
-      ? 0
-      : Math.max(0, now.getTime() - new Date(head.first_server_error_at).getTime());
+      ? null
+      : credibleElapsedMs(
+          instantMs(head.first_server_error_at) ?? nowMs,
+          nowMs,
+          STAMP_TOLERANCE_MS,
+          Number.POSITIVE_INFINITY,
+        );
+  const poisonedForMs = rawPoisonMs === null ? 0 : Math.min(rawPoisonMs, accountedForMs);
+  const poisonObserved = rawPoisonMs !== null && rawPoisonMs <= accountedForMs;
 
   const blocking = attempts > 0 && behind > 0;
   // Reachable-and-refusing right now iff the poison clock is running: it is
@@ -198,10 +305,16 @@ export function assessQueue(
   // times it has bounced. The count catches a server that refuses fast; the
   // clock catches one that refuses slowly. Whichever arrives first is the one
   // that had the evidence first.
-  const serverErrorAttempts = head.server_error_attempts;
+  //
+  // The clock trigger now reads a BOUNDED duration (above), so it can only fire
+  // on time the device actually spent watching the server refuse. The count
+  // trigger is deliberately untouched: it is the one that does not depend on a
+  // clock at all, which is precisely why a poisoned bill still surfaces when the
+  // clock is unreliable.
   const alarm =
     poisoned &&
-    (poisonedForMs >= thresholdMs || serverErrorAttempts >= thresholdAttempts);
+    ((poisonObserved && poisonedForMs >= thresholdMs) ||
+      serverErrorAttempts >= thresholdAttempts);
 
   return {
     blocking,

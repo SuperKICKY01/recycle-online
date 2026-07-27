@@ -982,11 +982,21 @@ export default function App() {
             chance to say the prices came from data this old. Computed from the
             DRAFT's stamp, not from the current freshness: what matters is the
             data these numbers were priced against.
+
+            NOT nowMinute. That value is rounded DOWN to the minute for the
+            freshness strip (see nowMinuteIso), so it sits up to 59 seconds
+            behind the truth — which UNDERSTATES the age by up to a minute and,
+            within a minute of the FRESH_MAX_AGE_MS boundary, suppresses this
+            line entirely. Understating is the direction that hides things on a
+            money marker (lessons/cached-master-data-is-a-price-claim.md Rule 4),
+            and this is the screen where it matters most. The honest value is the
+            real instant the operator is deciding at, which is also what the
+            bill's own device_created_at will be stamped with a moment later.
           */
           pricedFrom={
             draft === null
               ? null
-              : { master_as_of: draft.master_as_of, device_created_at: nowMinute }
+              : { master_as_of: draft.master_as_of, device_created_at: nowIso() }
           }
           onCancel={() => setConfirmOpen(false)}
           onConfirm={doSaveBill}
