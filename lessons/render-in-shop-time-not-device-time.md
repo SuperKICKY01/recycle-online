@@ -103,6 +103,14 @@ the new-year window INCLUDING the disproof that the old UTC expression really
 answered 2569, then proves over real HTTP that the value reaches both `doc_no`
 and the `doc_no_counters` key.
 
-**Still outstanding:** CLAUDE.md specifies พ.ศ. dates in the UI and on printed
-slips; `shopDate()` returns Gregorian. Deliberately not mixed into a timezone fix
-— a wrong year and a wrong offset look identical in a screenshot.
+**DONE since:** `shopDate()` now returns พ.ศ. (`26/07/2569`) — see
+[[be-year-comes-after-the-timezone]]. Splitting it out was the right call: the
+`+543` has to land *after* the conversion this lesson is about, and separating
+the two passes is what made the ordering provable instead of entangled. A wrong
+year and a wrong offset still look identical in a screenshot.
+
+**Still outstanding:** the desktop thermal slip. `desktop/` is empty, so no
+printed slip exists yet, but CLAUDE.md requires พ.ศ. there too and a slip is what
+the seller keeps. It is the next consumer of this module and must port the module,
+not re-implement the formatting — a second `+543` in Electron is a second
+behaviour, and the two would drift at exactly the boundary neither author tested.
