@@ -198,6 +198,63 @@ have pushed the fix toward silencing real failures.
 7. A resolvable refusal is amber and says who will fix it. Red is for
    [[queue-jam-must-be-visible]] — something that needs a human now.
 
+## Amendment (2c-7): the fix covered the state that bit, and left its neighbours
+
+Everything above was applied to the PARKED case, because that is the one that
+appeared on a phone. Three states next to it were left exactly as they were, and
+two of them were the same defect verbatim:
+
+- **an OFFLINE bill.** `billNotice` still rendered `ผิดพลาด: ${last_error}` for
+  any non-null `last_error` that was not parked — so every offline card in the
+  yard read `ผิดพลาด: network: Network request failed`, in red, while the status
+  strip two centimetres above it said ออฟไลน์. The invariant recorded above
+  ("`last_error` can only hold a 424 body while parked, so tone: error can never
+  carry one") was true, and beside the point: it proved the *424* could not leak
+  while every *other* diagnostic still did.
+- **an expired session**, which had no representation at all. See
+  [[401-is-about-the-caller-not-the-bill]].
+- **a terminally failed bill**, which offered a ยกเลิก button and promised
+  "รอส่งบิลเข้าระบบก่อน แล้วจะยกเลิกให้อัตโนมัติ". `listVoidsToApply` requires
+  `sync_state='synced'` and nothing moves a failed bill there, so that promise
+  could never come true — on a bill for which cash had been paid and the server
+  holds no record whatsoever.
+
+**Fixing the instance instead of the class is what produced all three.** The
+2c-6 fix asked "what does the screen say for a PARKED bill". The question that
+would have caught these is "what does the screen say for EVERY state", and it is
+answered by enumeration, not by inspection — `proveNotice` now sweeps the full
+cross product (96 card cells, 32 void, 144 strip) and asserts properties over all
+of it, rather than sampling the states someone thought of.
+
+Three refinements worth separating out:
+
+**A parameter you do not have cannot leak.** Point 4 above said to take only the
+classification as input. `billNotice` had kept `last_error` "for the error case",
+which is how the error case kept printing it. It now takes `sync_state` and
+`attempt_count`; the tone is derived from state (`error` ⟺ `sync_state ===
+"failed"`, and `markFailed` is its only writer) and there is no longer any value
+the function could render a diagnostic from. That is strictly stronger than an
+invariant about who writes the column, because it survives someone adding a
+writer.
+
+**Never promise what the system cannot perform.** A message can be free of
+jargon, calm, correctly classified — and still be a lie about the future. The
+void line branched on `doc_no`, which answers "has it got a number yet" when the
+question is "can it ever get one". Where the answer is never, the card must say
+so and the button must go: an offered action the system cannot carry out is worse
+than no action, because someone stops looking for the real one. What replaces it
+names the office and keeps the row, because on a bill the server never received,
+that row is the only evidence the purchase happened (hard rule 5).
+
+**Narrowing does not cross a closure.** `notice.tone !== "none"` narrows at the
+element and silently evaporates inside the `.map` callback — TypeScript cannot
+know the property is unchanged by the time the closure runs. The honest fix is to
+pass the narrowed value across a typed boundary (`tone: Exclude<NoticeTone,
+"none">` as a prop) so the compiler carries the guarantee; a cast or a `!` there
+re-asserts by hand exactly what the compiler just refused to grant. Caught only
+by `npm run typecheck:app`, which is the second time the separately-typechecked
+Expo program has been the one to find something — see the footnote below.
+
 ## Footnote: the fix nearly broke the void path
 
 Naming the local `const reason = parkedReason(...)` inside the bill `.map()`
