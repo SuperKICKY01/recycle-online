@@ -10,9 +10,17 @@ not been OBSERVED: a proof that ran, an endpoint that answered, a
 screen seen on a device. Implemented is not verified, and a dated
 green in here is only as fresh as its date.
 
-**Last updated: 2026-07-27, at the close of phase 2c-8.**
+**Last updated: 2026-07-28, at the close of the backup/restore work.**
 
 ## Current phase
+
+**Backup and restore — complete** (server-side; `server/scripts/`
+only, no app changes). The money data had exactly one copy, on an
+un-backed-up docker volume. It now has a dump script, a restore
+script, and a round trip proven against a live database:
+`backup_db.py`, `restore_db.py`, `prove_backup_restore.py`, and the
+operator runbook `server/scripts/BACKUP.md`. Deliberately NOT built:
+scheduling, off-site upload, retention, encryption at rest.
 
 **2c-8 — complete.** Master data (products, sellers, prices) is
 cached in SQLite and the session token is persisted, so the yard can
@@ -41,12 +49,20 @@ CLAUDE.md workflow, this is a boundary: stop for review.
   `GET /bills`, `GET /bills/{id}`, `POST /bills/{id}/void`. Every
   request is scoped to its token's tenant with `SET LOCAL` inside the
   request transaction.
-- **Proofs** — seven scripts in `server/scripts/`, each exercising a
+- **Proofs** — eight scripts in `server/scripts/`, each exercising a
   real path against a live database: `prove_rls`, `prove_auth`,
   `prove_master`, `prove_bills`, `prove_master_data_gate`,
-  `prove_shop_time`, `prove_seller_pricing`. Each must pass twice in
-  a row without reseeding (`lessons/proof-must-run-twice.md`).
-  `seed_dev.py` loads the dev fixture.
+  `prove_shop_time`, `prove_seller_pricing`,
+  `prove_backup_restore`. Each must pass twice in a row without
+  reseeding (`lessons/proof-must-run-twice.md`). `seed_dev.py` loads
+  the dev fixture.
+- **Backup** — `backup_db.py` writes plain `globals.sql` /
+  `database.sql` / `recycle.sql` + manifests + sha256 to a host path
+  outside the docker volume; `restore_db.py` restores into a scratch
+  database by default and refuses to touch an existing live one
+  without `--overwrite-live`. Runbook: `server/scripts/BACKUP.md`.
+  `prove_backup_restore.py` mutates the source AFTER the dump, so a
+  restore that did nothing cannot pass.
 - **Local runtime**: Postgres 16 via `server/docker-compose.yml`,
   container `recycle_pg`, host port `5544`. `JWT_SECRET` has no
   default and the API will not start without one.
@@ -108,11 +124,12 @@ it is the gap between "built" and "usable by one paying yard". Every
 item below is missing infrastructure around work that already exists,
 not a new feature:
 
-- **A reachable server, with backups.** The API runs on this box and
-  the app points at a LAN address (`mobile/app.json`
-  `extra.apiBaseUrl`). A shop needs a host it can reach from
-  anywhere, and a backup of the money data — the Postgres volume is
-  the only copy today.
+- **A reachable server.** The API runs on this box and the app points
+  at a LAN address (`mobile/app.json` `extra.apiBaseUrl`). A shop
+  needs a host it can reach from anywhere. (The backup half of this
+  item is done — see Backup above — but a local-only backup does not
+  survive fire, theft or ransomware, and NOTHING SCHEDULES IT. Until
+  someone runs it, the honest statement is still "one copy".)
 - **An installable build.** Staff need the app on their own phone,
   not Expo served from a development machine.
 - **Real per-shop login.** Accounts and credentials the shop owns,
@@ -173,6 +190,19 @@ Dated, because they decay. Re-run them; do not cite them.
 - 2026-07-27 — `npm run typecheck` → exit 0, and
   `npm run typecheck:app` → exit 0, each run bare.
 - 2026-07-27 — `recycle_pg` up and `(healthy)` on `5544->5432`.
-- Server and mobile proof scripts were NOT re-run for this update
-  (documentation-only change). Their last green is the phase that
-  wrote them.
+- 2026-07-28 — `prove_backup_restore.py` → exit 0 twice in a row
+  against the live database, no reseed between.
+- 2026-07-28 — disaster-recovery rehearsal on a THROWAWAY empty
+  cluster (`postgres:16`, no `db/init`, no migrations, no seed):
+  `restore_db.py --into recycle --with-globals` rebuilt roles,
+  database and all 727 rows; uvicorn against it answered
+  `POST /auth/login` 200, `GET /bills` 50 bills, item weights and
+  money identical to the source, and A's password against tenant B
+  still 401. The throwaway cluster was removed afterwards.
+- 2026-07-28 — restore safety gates each observed refusing:
+  overwriting the live database without `--overwrite-live`, a
+  truncated dump (sha256 mismatch), and a body containing `\connect`
+  with valid checksums.
+- The other server and mobile proof scripts were NOT re-run for this
+  update (no app changes). Their last green is the phase that wrote
+  them.
