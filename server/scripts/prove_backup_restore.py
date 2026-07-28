@@ -26,7 +26,14 @@ WHAT IS COMPARED
         the FILE, not from either database
     P2  mutate the source (marker bill + counter bump) AFTER the dump
     P3  scripts/restore_db.py -> a scratch database, live data untouched
-    P4  restored == the dump's moment, and != the source's:
+    P4  restored == the dump's moment, and != the source's (below)
+    --  cleanup: the marker is VOIDED once P4 has compared, so each run leaves
+        the fixture with nothing live added. It is voided rather than deleted:
+        a delete would gap the doc_no sequence while doc_no_counters kept
+        counting, and the dev data would then contradict the invariant that
+        counter exists to provide.
+
+    P4 in detail:
           - row counts per table
           - the doc_no counter (source is +1)
           - the marker bill: in the source, not in the restore
@@ -68,6 +75,7 @@ from app.seeddata import PRODUCT_A_ID, SELLER_A_ID, TENANT_A_ID, TENANT_B_ID  # 
 CONTAINER = os.environ.get("RECYCLE_PG_CONTAINER", "recycle_pg")
 SCRATCH_DB = "recycle_restore_scratch"
 SUPERUSER = "postgres"
+VOID_REASON = "proof fixture: prove_backup_restore.py marker, not a real purchase"
 
 failures: list[str] = []
 
@@ -214,6 +222,34 @@ async def insert_bill(tenant_id: uuid.UUID, note: str) -> dict:
     return {"bill_id": str(bill_id), "doc_no": doc_no, "be_year": be_year, "seq": int(seq)}
 
 
+async def void_marker(tenant_id: uuid.UUID, bill_id: str) -> None:
+    """Void the marker this run created, so each run cleans up after itself.
+
+    Deliberately NOT POST /bills/{id}/void. This proof is about the database and
+    must keep working when no API is running; acquiring an HTTP dependency for
+    teardown would make it fail for a reason that has nothing to do with
+    backups. prove_bills.py is what proves the endpoint. This writes the same
+    three columns the endpoint writes, by the same route the marker was
+    inserted — fixture teardown, not a second implementation of a business rule.
+
+    The bill is VOIDED rather than deleted. A delete would leave the doc_no
+    sequence gapped while doc_no_counters kept counting, so the dev fixture
+    would contradict the one invariant that counter exists to provide, and any
+    future gap-freedom check would fail on data rather than on code.
+    """
+    async with tenant_connection(tenant_id) as conn:
+        # voided_by must be a user in the SAME tenant (composite FK), and
+        # ck_bills_void_consistency requires all three columns to move together.
+        user_id = (
+            await conn.execute(text("SELECT id FROM users ORDER BY created_at LIMIT 1"))
+        ).scalar_one()
+        await conn.execute(
+            text("UPDATE purchase_bills SET voided_at = now(), voided_by = :by,"
+                 " void_reason = :r WHERE id = :id AND voided_at IS NULL"),
+            {"by": user_id, "r": VOID_REASON, "id": uuid.UUID(bill_id)},
+        )
+
+
 def counter_seq(db: str, tenant_id: uuid.UUID, be_year: int) -> int | None:
     v = scalar(db, "select last_seq::text from public.doc_no_counters where tenant_id ="
                    f" '{tenant_id}' and be_year = {be_year}")
@@ -279,7 +315,15 @@ async def main() -> int:
 
         be_year = _be_year(datetime.now(tz=timezone.utc))
         seq_before = counter_seq(live_db, TENANT_A_ID, be_year)
+        # The number this run must give back. Rows and the counter both advance
+        # by one and stay that way — a voided bill keeps its row and its doc_no,
+        # and the counter is never decremented — but nothing LIVE may be left
+        # behind.
+        live_bills_before = int(scalar(
+            live_db, "select count(*)::text from public.purchase_bills where tenant_id ="
+                     f" '{TENANT_A_ID}' and voided_at is null") or "0")
         print(f"  doc_no counter for tenant A, BE {be_year}: last_seq={seq_before}")
+        print(f"  live (unvoided) bills for tenant A: {live_bills_before}")
         hex_before = thai_hex(live_db, TENANT_A_ID)
         alembic_before = scalar(live_db, "select version_num from public.alembic_version")
 
@@ -441,13 +485,43 @@ async def main() -> int:
         check("it cannot see tenant B's bills while scoped to tenant A", seen_b_rows == 0,
               f"count={seen_b_rows}")
 
+        # ------------------------------------------------------------ cleanup
+        # THIS MUST STAY BELOW P4a. The marker's whole job is to be absent from
+        # the restore, and P4a is the last check that reads it:
+        #   P2  "the marker is NOT in the dump file"   — reads the file
+        #   P4a "the marker bill is in the SOURCE"     — reads it by id
+        #   P4a "the marker bill is ABSENT from the RESTORE"  <- the vacuity check
+        # Voiding above any of those would remove the evidence they look for.
+        # Nothing in P4b/c/d touches the marker, so after P4d is the safe point.
+        # Voiding does not change any row COUNT, so it could not have rescued a
+        # count assertion either way.
+        print("\n=== cleanup: this run voids its own marker ===")
+        await void_marker(TENANT_A_ID, marker["bill_id"])
+        voided = bill_row(live_db, marker["bill_id"])
+        check("the marker is voided, not deleted", voided is not None
+              and voided["voided_at"] is not None, str(voided and voided["voided_at"]))
+        check("it carries the reason a human can act on",
+              voided is not None and voided["void_reason"] == VOID_REASON,
+              str(voided and voided["void_reason"]))
+        check("it keeps its doc_no, so the sequence stays gap-free",
+              voided is not None and voided["doc_no"] == marker["doc_no"], marker["doc_no"])
+        seq_end = counter_seq(live_db, TENANT_A_ID, be_year)
+        check("the counter was NOT decremented (a doc_no is never reused)",
+              seq_end == seq_after, f"{seq_after} -> {seq_end}")
+        live_bills_after = int(scalar(
+            live_db, "select count(*)::text from public.purchase_bills where tenant_id ="
+                     f" '{TENANT_A_ID}' and voided_at is null") or "0")
+        check("the fixture ends where it started: nothing live left behind",
+              live_bills_after == live_bills_before,
+              f"live bills {live_bills_before} -> {live_bills_after}")
+
         print("")
         print(f"dump directory : {dump_dir}")
         print(f"scratch database: {SCRATCH_DB} (drop it with:"
               f' docker exec {CONTAINER} psql -U postgres -c'
               f' "DROP DATABASE {SCRATCH_DB} WITH (FORCE)")')
-        print(f"marker bill left in the source: {marker['doc_no']} — bills are never hard"
-              " deleted (hard rule 5), so proof markers accumulate on purpose")
+        print(f"marker bill {marker['doc_no']}: voided, not deleted — its row and its"
+              " doc_no stay, so the sequence stays gap-free and nothing live is left behind")
         print("")
         print("ALL BACKUP/RESTORE CASES PASSED" if not failures else f"FAILED: {failures}")
         return 0 if not failures else 1
