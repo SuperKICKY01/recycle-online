@@ -268,6 +268,39 @@ re-discovered as a mystery.
   behind `role === "admin"` (the role is now in the token and in
   `/whoami` for exactly that).
 
+## SRS references
+
+**THE SRS IS NOT IN THIS REPOSITORY.** The owner holds it. Everything
+below is a TRANSCRIPTION, confirmed by the owner on 2026-07-28, recorded
+only so a session that cannot read the document does not have to guess at
+it. It is not the source of truth and must not be treated as one: if it
+disagrees with the owner, the owner is right. Code comments citing "SRS
+1.6" throughout `server/` refer to this.
+
+### SRS 1.6 — seller (ผู้ขาย) fields
+
+| SRS field | Column | Notes |
+| --- | --- | --- |
+| code | `sellers.code` | the PK in SRS terms; here a `uuid` PK plus `UNIQUE (tenant_id, code)`, and immutable after create |
+| customer grade | `sellers.grade` | nullable, `A`–`D`; selects the `product_prices` tier |
+| national ID / juristic person number | `sellers.id_number` | nullable free text |
+| name | `sellers.name` | required |
+| address | `sellers.address` | nullable |
+| phone | `sellers.phone` | nullable |
+| vehicle registration | `sellers.vehicle_no` | nullable; the seller's USUAL vehicle — not `purchase_bills.vehicle_no`, which is the truck that turned up on the day |
+
+Added by migration `0004`: `id_number`, `address`, `vehicle_no`.
+
+**Why `id_number` is free text with no format check and no UNIQUE**, and
+why that is the spec's own shape rather than a shortcut: the SRS names the
+field "national ID / juristic person number" — นิติบุคคล, juristic person,
+is in the document itself. A personal ID and a company registration number
+are both 13 digits but are DIFFERENT SCHEMES, so a single format check
+would reject one of the two kinds of seller a yard actually buys from. And
+a walk-in may carry neither. A UNIQUE would additionally turn a typo in one
+seller's row into a refusal to create an unrelated one. If the office wants
+duplicates surfaced, that is a report, not a constraint.
+
 ## Baseline observations
 
 Dated, because they decay. Re-run them; do not cite them.
