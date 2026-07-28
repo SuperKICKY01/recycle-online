@@ -19,7 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from .auth import Principal, get_principal
+from .auth import Principal, get_principal, require_admin
 from .config import SHOP_TIMEZONE
 from .db import tenant_connection
 
@@ -463,7 +463,12 @@ async def get_bill(
 async def void_bill(
     bill_id: uuid.UUID,
     body: VoidRequest,
-    principal: Principal = Depends(get_principal),
+    # ADMIN ONLY. Voiding is the one destructive act the yard app can perform on
+    # money already recorded — hard rule 5 means it is also the ONLY way to
+    # correct a bill, so it cannot be locked away, but it must not be something
+    # every phone on the floor can do to any bill. Creating bills stays open to
+    # staff; unwinding one does not.
+    principal: Principal = Depends(require_admin),
 ) -> dict:
     async with tenant_connection(principal.tenant_id) as conn:
         h = (

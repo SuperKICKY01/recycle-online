@@ -1,6 +1,6 @@
-"""Seed DEV fixtures: two tenants, each with an admin user (known password) and
-master data (uom, category, product, seller). Runs as the app role under tenant
-context (SET LOCAL), exactly like the runtime. Idempotent.
+"""Seed DEV fixtures: two tenants, each with an admin AND a staff user (known
+passwords) and master data (uom, category, product, seller). Runs as the app role
+under tenant context (SET LOCAL), exactly like the runtime. Idempotent.
 
     python scripts/seed_dev.py      (from the server/ directory)
 """
@@ -23,7 +23,9 @@ from app.seeddata import SEED  # noqa: E402
 async def main() -> None:
     try:
         for s in SEED:
-            pw_hash = await hash_password(s["password"])
+            user_hashes = [
+                (u, await hash_password(u["password"])) for u in s["users"]
+            ]
             async with tenant_connection(s["tenant_id"]) as conn:
                 await conn.execute(
                     text(
@@ -32,16 +34,24 @@ async def main() -> None:
                     ),
                     {"id": s["tenant_id"], "name": s["tenant_name"]},
                 )
-                await conn.execute(
-                    text(
-                        "INSERT INTO users (tenant_id, username, full_name, role, password_hash)"
-                        " VALUES (:t, :u, :fn, 'admin', :ph)"
-                        " ON CONFLICT (tenant_id, username)"
-                        " DO UPDATE SET password_hash = EXCLUDED.password_hash,"
-                        "               full_name = EXCLUDED.full_name"
-                    ),
-                    {"t": s["tenant_id"], "u": s["username"], "fn": s["full_name"], "ph": pw_hash},
-                )
+                for u, pw_hash in user_hashes:
+                    await conn.execute(
+                        text(
+                            "INSERT INTO users (tenant_id, username, full_name, role,"
+                            " password_hash) VALUES (:t, :u, :fn, :role, :ph)"
+                            " ON CONFLICT (tenant_id, username)"
+                            " DO UPDATE SET password_hash = EXCLUDED.password_hash,"
+                            "               full_name = EXCLUDED.full_name,"
+                            # role is re-asserted on conflict on purpose. Without
+                            # it, re-running the seed would leave a role edited in
+                            # the database in place while claiming to have seeded
+                            # a known fixture — and the role gate would then be
+                            # proven against whatever happened to be there.
+                            "               role = EXCLUDED.role"
+                        ),
+                        {"t": s["tenant_id"], "u": u["username"], "fn": u["full_name"],
+                         "role": u["role"], "ph": pw_hash},
+                    )
                 await conn.execute(
                     text(
                         "INSERT INTO uoms (id, tenant_id, code, name)"
@@ -93,8 +103,9 @@ async def main() -> None:
                          "nm": sl["name"], "ph": sl["phone"], "g": sl["grade"]},
                     )
             grades = ", ".join(str(sl["grade"] or "no grade") for sl in s["sellers"])
+            users = ", ".join(f"{u['username']}={u['role']}" for u in s["users"])
             print(
-                f"seeded tenant {s['tenant_id']}: admin user, uom/category,"
+                f"seeded tenant {s['tenant_id']}: users ({users}), uom/category,"
                 f" {len(s['products'])} products with A-D price tiers,"
                 f" {len(s['sellers'])} sellers (grades: {grades})"
             )

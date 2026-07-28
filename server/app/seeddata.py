@@ -16,6 +16,14 @@ ADMIN_USERNAME = "admin"
 TENANT_A_PASSWORD = "tenantA-pw-123"
 TENANT_B_PASSWORD = "tenantB-pw-456"
 
+# A STAFF user per tenant. Every proof written before this phase logs in as
+# `admin`, so they are untouched; this account exists so the role gate can be
+# proven from the refused side, which is the only side that matters. Without a
+# real staff token, "admin-only" is a claim about code that was never executed.
+STAFF_USERNAME = "staff"
+TENANT_A_STAFF_PASSWORD = "tenantA-staff-789"
+TENANT_B_STAFF_PASSWORD = "tenantB-staff-012"
+
 # Master data (fixed ids). a* = tenant A, b* = tenant B.
 UOM_A_ID = uuid.UUID("aaaa0000-0000-0000-0000-0000000000a1")
 CATEGORY_A_ID = uuid.UUID("aaaa0000-0000-0000-0000-0000000000a2")
@@ -90,9 +98,12 @@ SEED = [
     {
         "tenant_id": TENANT_A_ID,
         "tenant_name": "Shop A",
-        "username": ADMIN_USERNAME,
-        "full_name": "Admin of Shop A",
-        "password": TENANT_A_PASSWORD,
+        "users": [
+            {"username": ADMIN_USERNAME, "full_name": "Admin of Shop A",
+             "role": "admin", "password": TENANT_A_PASSWORD},
+            {"username": STAFF_USERNAME, "full_name": "Yard staff of Shop A",
+             "role": "staff", "password": TENANT_A_STAFF_PASSWORD},
+        ],
         "uom_id": UOM_A_ID,
         "category_id": CATEGORY_A_ID,
         "product_id": PRODUCT_A_ID,
@@ -102,9 +113,12 @@ SEED = [
     {
         "tenant_id": TENANT_B_ID,
         "tenant_name": "Shop B",
-        "username": ADMIN_USERNAME,
-        "full_name": "Admin of Shop B",
-        "password": TENANT_B_PASSWORD,
+        "users": [
+            {"username": ADMIN_USERNAME, "full_name": "Admin of Shop B",
+             "role": "admin", "password": TENANT_B_PASSWORD},
+            {"username": STAFF_USERNAME, "full_name": "Yard staff of Shop B",
+             "role": "staff", "password": TENANT_B_STAFF_PASSWORD},
+        ],
         "uom_id": UOM_B_ID,
         "category_id": CATEGORY_B_ID,
         "product_id": PRODUCT_B_ID,

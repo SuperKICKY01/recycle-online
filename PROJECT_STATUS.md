@@ -10,9 +10,40 @@ not been OBSERVED: a proof that ran, an endpoint that answered, a
 screen seen on a device. Implemented is not verified, and a dated
 green in here is only as fresh as its date.
 
-**Last updated: 2026-07-28, at the close of the backup/restore work.**
+**Last updated: 2026-07-28, at the close of the role + master-write work.**
 
 ## Current phase
+
+**Role enforcement + master-data writes — complete EXCEPT deactivation**
+(server only; no mobile, no desktop, no UI). `users.role` existed since
+migration 0001 and nothing read it, so every device was effectively admin
+and any yard phone could void any bill. Now:
+
+- role travels in the JWT as ADVISORY display data, and the SERVER resolves
+  it from the `users` row under tenant context on every request — so a
+  demotion takes effect at once instead of surviving until the token
+  expires. Proven both ways (X1).
+- `admin` is required for `POST /bills/{id}/void` and for every master-data
+  write. `staff` keeps login, whoami, master-data reads, bill create, bill
+  list/read.
+- a staff refusal is a **403** carrying `kind: "forbidden"`, distinguishable
+  from 401 / 404 / 422-permanent / 424-resolvable **on status alone and on
+  `kind` independently**, so the sync engine's existing classes cannot
+  absorb it.
+- writes: `POST`/`PATCH` for uoms, product-categories, products and sellers,
+  plus `PUT /products/{id}/prices/{grade}`; new reads `GET /uoms` and
+  `GET /product-categories`. All admin-only, all tenant-scoped through the
+  existing RLS path — `app/master.py` contains no hand-written
+  `WHERE tenant_id`, and INSERTs take tenant_id from the same GUC the policy
+  reads.
+
+**NOT built, blocked on a migration that was deliberately not added:**
+deactivation. No `is_active` column exists on `sellers`, `products`, `uoms`
+or `product_categories` (0001–0003, verified against the live DB), and
+`sellers` has no `id_number` / `address` / `vehicle_no`. So there is no
+deactivate endpoint, no seller id-number/address/vehicle fields, and reads
+do not filter inactive rows. There is also **no delete route anywhere**
+(proven: 405), which is the safe direction to be missing.
 
 **Backup and restore — complete** (server-side; `server/scripts/`
 only, no app changes). The money data had exactly one copy, on an
@@ -44,18 +75,23 @@ CLAUDE.md workflow, this is a boundary: stop for review.
   `purchase_bill_items`. Row-level security is FORCEd per tenant; the
   runtime role `recycle_app` is NOSUPERUSER + NOBYPASSRLS and holds
   DML only.
-- **Endpoints** (`server/app/`): `GET /health`, `POST /auth/login`,
-  `GET /whoami`, `GET /products`, `GET /sellers`, `POST /bills`,
-  `GET /bills`, `GET /bills/{id}`, `POST /bills/{id}/void`. Every
-  request is scoped to its token's tenant with `SET LOCAL` inside the
-  request transaction.
-- **Proofs** — eight scripts in `server/scripts/`, each exercising a
+- **Endpoints** (`server/app/`). Open to any signed-in user: `GET /health`,
+  `POST /auth/login`, `GET /whoami`, `GET /products`, `GET /sellers`,
+  `GET /uoms`, `GET /product-categories`, `POST /bills`, `GET /bills`,
+  `GET /bills/{id}`. **Admin only**: `POST /bills/{id}/void`,
+  `POST`+`PATCH` on `/uoms`, `/product-categories`, `/products`,
+  `/sellers`, and `PUT /products/{id}/prices/{grade}`. Every request is
+  scoped to its token's tenant with `SET LOCAL` inside the request
+  transaction. `code` is immutable after create on every entity — it is
+  what a historical bill is read against.
+- **Proofs** — nine scripts in `server/scripts/`, each exercising a
   real path against a live database: `prove_rls`, `prove_auth`,
   `prove_master`, `prove_bills`, `prove_master_data_gate`,
-  `prove_shop_time`, `prove_seller_pricing`,
-  `prove_backup_restore`. Each must pass twice in a row without
+  `prove_shop_time`, `prove_seller_pricing`, `prove_backup_restore`,
+  `prove_master_write`. Each must pass twice in a row without
   reseeding (`lessons/proof-must-run-twice.md`). `seed_dev.py` loads
-  the dev fixture.
+  the dev fixture — now an `admin` AND a `staff` user per tenant, since
+  a role gate cannot be proven without a token that gets refused.
 - **Backup** — `backup_db.py` writes plain `globals.sql` /
   `database.sql` / `recycle.sql` + manifests + sha256 to a host path
   outside the docker volume; `restore_db.py` restores into a scratch
@@ -134,10 +170,11 @@ not a new feature:
   not Expo served from a development machine.
 - **Real per-shop login.** Accounts and credentials the shop owns,
   created for it — not the dev fixture from `seed_dev.py`.
-- **A master-data write path.** `/products` and `/sellers` are
-  read-only (`server/app/master.py` exposes GET only), so a shop
-  cannot enter its own products, prices or sellers by any route that
-  is not a seed script.
+- **Retiring a master-data row.** The write path now exists (see Current
+  phase), but nothing can take a product or seller OUT of the list: no
+  `is_active` column, so no deactivate endpoint, and delete is forbidden.
+  A shop that mistypes a product code is stuck with it in the picker. This
+  is the migration described above and it is the smallest remaining gap.
 - **A daily money view.** What was bought and paid out today. The
   bills exist; nothing totals them for the person who has to balance
   the cash.
@@ -183,6 +220,23 @@ re-discovered as a mystery.
   program is `tsconfig.json` (`npm run typecheck:app`). Comment only;
   no behaviour depends on it.
 
+- **`mobile/src/adapters/httpTransport.ts:18-23` is now WRONG, and this
+  one has behaviour behind it.** It says *"403 stays — the server has no
+  permission model in the MVP, so a 403 here would be a genuine
+  server-side surprise"*. As of this phase the server DOES have a
+  permission model. The transport still maps 403 into
+  `unavailable, reachable: true` (lines 122-128), which means a STAFF
+  phone tapping void gets: retry forever, plus `reachable: true` feeding
+  the poison counter, so the queue-health alarm escalates to red
+  ("call support") over a request that is simply not allowed and will
+  never be allowed. The server's half is done and proven — the 403 is
+  distinguishable from every other class on status AND on `kind`
+  (`prove_master_write` C1) — but the CLIENT has not been taught it yet.
+  Nothing under `mobile/` was touched in this phase, by instruction.
+  This is the first item of the follow-up phase, alongside hiding void
+  behind `role === "admin"` (the role is now in the token and in
+  `/whoami` for exactly that).
+
 ## Baseline observations
 
 Dated, because they decay. Re-run them; do not cite them.
@@ -203,6 +257,12 @@ Dated, because they decay. Re-run them; do not cite them.
   overwriting the live database without `--overwrite-live`, a
   truncated dump (sha256 mismatch), and a body containing `\connect`
   with valid checksums.
-- The other server and mobile proof scripts were NOT re-run for this
-  update (no app changes). Their last green is the phase that wrote
-  them.
+- 2026-07-28 — `prove_master_write.py` → exit 0 TWICE in a row against
+  the live database, no reseed between, no run fixtures left behind.
+- 2026-07-28 — ALL EIGHT pre-existing server proofs re-run bare and
+  green after the auth/bills/db changes: `prove_auth`, `prove_bills`,
+  `prove_rls`, `prove_master`, `prove_master_data_gate`,
+  `prove_shop_time`, `prove_seller_pricing`, `prove_backup_restore`.
+- The MOBILE proofs and both TypeScript programs were NOT re-run for
+  this update — no file under `mobile/` was touched. Their last green
+  is the phase that wrote them.

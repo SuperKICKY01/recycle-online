@@ -61,7 +61,7 @@ async def login(body: LoginRequest) -> LoginResponse:
         row = (
             await conn.execute(
                 text(
-                    "SELECT id, tenant_id, username, password_hash"
+                    "SELECT id, tenant_id, username, role, password_hash"
                     " FROM users WHERE username = :u"
                 ),
                 {"u": body.username},
@@ -76,7 +76,10 @@ async def login(body: LoginRequest) -> LoginResponse:
         raise _INVALID_LOGIN
 
     token = create_access_token(
-        user_id=row["id"], tenant_id=row["tenant_id"], username=row["username"]
+        user_id=row["id"],
+        tenant_id=row["tenant_id"],
+        username=row["username"],
+        role=row["role"],
     )
     return LoginResponse(access_token=token)
 
@@ -109,6 +112,10 @@ async def whoami(
         "tenant_id": str(principal.tenant_id),
         "user_id": str(principal.user_id),
         "username": principal.username,
+        # The role the SERVER resolved for this request, read from the users row
+        # under tenant context — not the role the token claimed. Those differ
+        # after a demotion, and this is the one that gates.
+        "role": principal.role,
         "db_tenant_context": db_tenant,
         "user_visible_under_tenant": user is not None,
         "db_username": user["username"] if user else None,

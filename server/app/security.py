@@ -44,14 +44,24 @@ async def verify_password(hash_: str, password: str) -> bool:
     return await asyncio.to_thread(_verify, hash_, password)
 
 
-def create_access_token(*, user_id: uuid.UUID, tenant_id: uuid.UUID, username: str) -> str:
+def create_access_token(
+    *, user_id: uuid.UUID, tenant_id: uuid.UUID, username: str, role: str
+) -> str:
     """Sign a token. Identity is keyed on the STABLE ids (user_id, tenant_id);
-    username travels along only for display, it is not the identity."""
+    username travels along only for display, it is not the identity.
+
+    `role` travels the same way: ADVISORY, so a client can render with it (hide
+    a void button a staff device may not use) without an extra round trip. It is
+    NOT what the server authorises on — get_principal re-reads the role from the
+    database under tenant context on every request, so a token minted before a
+    demotion cannot outlive it. See the note there.
+    """
     now = dt.datetime.now(tz=dt.timezone.utc)
     payload = {
         "sub": str(user_id),
         "tenant_id": str(tenant_id),
         "username": username,
+        "role": role,
         "iat": int(now.timestamp()),
         "exp": int((now + dt.timedelta(seconds=JWT_TTL_SECONDS)).timestamp()),
     }
