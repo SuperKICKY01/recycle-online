@@ -390,20 +390,36 @@ async def create_bill(
                 )
             return await _read_bill(conn, body.id)
     except IntegrityError as e:
-        # Concurrent duplicate idempotency_key: the unique index fired. Return the
-        # winner's bill instead of surfacing an error.
-        constraint = getattr(getattr(e, "orig", None), "constraint_name", "") or ""
-        if "idem" in constraint:
-            async with tenant_connection(principal.tenant_id) as conn:
-                existing = (
-                    await conn.execute(
-                        text("SELECT id FROM purchase_bills WHERE idempotency_key = :k"),
-                        {"k": body.idempotency_key},
-                    )
-                ).scalar_one_or_none()
-                if existing is not None:
-                    response.status_code = status.HTTP_200_OK
-                    return await _read_bill(conn, existing)
+        # A concurrent submit of the SAME bill lost the race. ASK THE DATABASE
+        # whether that is what happened; do not try to recognise it from the
+        # constraint name.
+        #
+        # This used to read `if "idem" in constraint`, where `constraint` came
+        # from `e.orig.constraint_name` — an attribute that DOES NOT EXIST on
+        # what SQLAlchemy's asyncpg dialect puts in `.orig` (see
+        # db.constraint_name_of). It was therefore always "", the branch never
+        # ran once, and the loser of a race got a 500. A 500 is `unavailable` to
+        # the client, so that bill retried forever and dammed every bill behind
+        # it on that device — the exact head-of-line jam
+        # lessons/queue-jam-must-be-visible.md is about, on the path hard rule 4
+        # exists to protect.
+        #
+        # Even with the name read correctly, matching it would be fragile: the
+        # bill's PRIMARY KEY is client-generated too, so a device retrying the
+        # same bill collides on `purchase_bills_pkey` OR on
+        # `uq_bills_tenant_idem` depending on which index Postgres checks first —
+        # not something the handler can predict. The key resolving to a bill is
+        # the fact that actually matters, and it is one SELECT away.
+        async with tenant_connection(principal.tenant_id) as conn:
+            existing = (
+                await conn.execute(
+                    text("SELECT id FROM purchase_bills WHERE idempotency_key = :k"),
+                    {"k": body.idempotency_key},
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                response.status_code = status.HTTP_200_OK
+                return await _read_bill(conn, existing)
         # Not the idempotency race: this 500 is about to jam a device queue.
         _log_poison_candidate(principal, body, e)
         raise

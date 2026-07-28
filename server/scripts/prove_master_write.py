@@ -36,6 +36,8 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import threading
+import time
 import uuid
 from decimal import Decimal
 
@@ -477,6 +479,62 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
         check("a product referencing a category that is not in this tenant -> 422, not a FK 500",
               r.status_code == 422 and (detail_of(r) or {}).get("code") == "category_not_found",
               f"status={r.status_code} detail={detail_of(r)!r}")
+
+        # ------------------------------------------------------------------ I1
+        header("I1: two devices race the SAME idempotency_key -> the loser gets the"
+               " winner's bill, not a 500")
+        # Found while building this phase, not looked for: the branch that handles
+        # this race read e.orig.constraint_name, which does not exist on what the
+        # asyncpg dialect puts in .orig (app/db.py::constraint_name_of), so it was
+        # always "" and the branch had never executed. prove_bills CASE 2 tests
+        # the SEQUENTIAL replay, which the pre-check SELECT answers, and CASE 5
+        # races DIFFERENT keys — so nothing reached it. The loser got a 500, which
+        # is `unavailable` to a device: retried forever, damming the queue behind
+        # it, on the path hard rule 4 exists to protect.
+        race_body = bill_body(str(uuid.uuid4()), f"mw-{RUN}-race",
+                              SELLER_A_ID, PRODUCT_A_ID, "15.00")
+        barrier = threading.Barrier(2)
+        race_results: list[tuple[int, float, float]] = []
+        race_lock = threading.Lock()
+
+        def racer() -> None:
+            # Its own client: sharing one would serialise on the connection pool
+            # and the "race" would be two sequential requests wearing a costume.
+            c = httpx.Client(timeout=20.0)
+            try:
+                barrier.wait(timeout=10)
+                started = time.perf_counter()
+                resp = c.post(f"{BASE}/bills", headers=admin, json=race_body)
+                ended = time.perf_counter()
+                with race_lock:
+                    race_results.append((resp.status_code, started, ended))
+            finally:
+                c.close()
+
+        threads = [threading.Thread(target=racer) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+
+        if len(race_results) != 2:
+            check("both racers returned", False, f"got {len(race_results)}")
+        else:
+            (s1, a1, b1), (s2, a2, b2) = race_results
+            # A concurrency test without printed overlap evidence proves nothing
+            # about concurrency (lessons/concurrency-tests-need-a-barrier.md).
+            overlap_ms = (min(b1, b2) - max(a1, a2)) * 1000
+            print(f"    statuses={sorted([s1, s2])}  windows overlapped by {overlap_ms:.1f} ms")
+            check("the two requests genuinely overlapped in time", overlap_ms > 0,
+                  f"overlap={overlap_ms:.1f}ms — they ran sequentially, this proves nothing")
+            check("NEITHER racer got a 500 — a lost race never jams a device queue",
+                  s1 != 500 and s2 != 500, f"statuses={[s1, s2]}")
+            check("one created it (201) and the other was handed the same bill (200)",
+                  sorted([s1, s2]) == [200, 201], f"statuses={sorted([s1, s2])}")
+        one = await db.fetchval(
+            "SELECT count(*) FROM purchase_bills WHERE idempotency_key = $1", f"mw-{RUN}-race"
+        )
+        check("and exactly ONE bill exists for that key", one == 1, f"count={one}")
 
         # ------------------------------------------------------------------ D1
         header("D1: there is NO delete route — a bill's references cannot be removed")

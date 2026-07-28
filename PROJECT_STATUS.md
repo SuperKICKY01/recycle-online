@@ -45,6 +45,14 @@ deactivate endpoint, no seller id-number/address/vehicle fields, and reads
 do not filter inactive rows. There is also **no delete route anywhere**
 (proven: 405), which is the safe direction to be missing.
 
+**Found and fixed on the way, not looked for:** `bills.py`'s
+idempotency-race handler had been dead code since Phase 1c — it read
+`e.orig.constraint_name`, which does not exist on what SQLAlchemy's asyncpg
+dialect puts in `.orig`, so the loser of a concurrent same-key submit got a
+500 (= `unavailable` = a permanently jammed device queue) instead of the
+winner's bill. It now re-SELECTs the key instead of matching a constraint
+name. See `lessons/a-defaulted-getattr-is-a-silent-dead-branch.md`.
+
 **Backup and restore — complete** (server-side; `server/scripts/`
 only, no app changes). The money data had exactly one copy, on an
 un-backed-up docker volume. It now has a dump script, a restore
@@ -263,6 +271,10 @@ Dated, because they decay. Re-run them; do not cite them.
   green after the auth/bills/db changes: `prove_auth`, `prove_bills`,
   `prove_rls`, `prove_master`, `prove_master_data_gate`,
   `prove_shop_time`, `prove_seller_pricing`, `prove_backup_restore`.
+- 2026-07-28 — the concurrent same-key race observed directly: two
+  overlapping submits (37.5 ms of measured overlap) returned
+  `[200, 201]` with exactly one bill. Before the fix that path was a
+  500.
 - The MOBILE proofs and both TypeScript programs were NOT re-run for
   this update — no file under `mobile/` was touched. Their last green
   is the phase that wrote them.
