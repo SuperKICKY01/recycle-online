@@ -20,14 +20,23 @@ THERE IS NO DELETE ON THIS ROUTER, ANYWHERE, ON PURPOSE
 Old bills reference these rows through composite (tenant_id, id) foreign keys,
 and proveCold C6 already showed what removing a referenced product does to
 history: a priced line rendering with a blank code, on a bill that is legally a
-receipt. The retirement path is `is_active = false`.
+receipt. The retirement path is `is_active = false` (migration 0004).
 
-THAT COLUMN DOES NOT EXIST YET. sellers/products/uoms/product_categories have no
-`is_active` in migrations 0001-0003, verified against the live database, so the
-deactivate endpoints and "reads exclude inactive by default" are NOT in this
-file. They need a migration. Until it lands, retirement has no route at all —
-which is the safe direction to be missing, because the alternative on offer was
-a hard delete.
+RETIREMENT HAS EXACTLY TWO HALVES, AND BOTH ARE LOAD-BEARING:
+
+  - the LIST endpoints stop offering the row. That is what an operator means by
+    "remove it" — it leaves the picker, so no new bill can be written against
+    it. `?include_inactive=true` is how the back office finds it again, because
+    a row that cannot be listed cannot be reactivated either.
+
+  - every row-level read still RESOLVES it, with no is_active predicate
+    anywhere. _read_seller/_read_product answer for inactive rows, and so does
+    the product join in bills._read_bill. A receipt from last year must still
+    print its product's code and name. Retirement is about the FUTURE only; it
+    must never reach backwards into money already recorded.
+
+Deactivating is therefore not a soft delete and must not be implemented like
+one. The row keeps its id, code, name and price tiers, and keeps answering.
 
 TENANT SCOPING — THERE IS NOT ONE HAND-WRITTEN `WHERE tenant_id` IN THIS FILE
 -----------------------------------------------------------------------------
@@ -53,7 +62,7 @@ import uuid
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -190,6 +199,39 @@ def _changes(body: BaseModel, nullable: frozenset[str]) -> dict[str, Any]:
     return data
 
 
+# ---------------------------------------------------------------------------
+# Retirement
+# ---------------------------------------------------------------------------
+def _active_filter(include_inactive: bool, column: str = "is_active") -> str:
+    """The WHERE clause for a LIST endpoint. Row-level reads never use this."""
+    return "" if include_inactive else f" WHERE {column}"
+
+
+IncludeInactive = Annotated[
+    bool,
+    Query(
+        description=(
+            "Include retired rows. Default false: the yard app must never be"
+            " offered a retired product. The back office needs true to find one"
+            " again — a row it cannot list is a row it cannot reactivate."
+        )
+    ),
+]
+
+
+async def _set_active(
+    conn: AsyncConnection, table: str, entity: str, row_id: uuid.UUID, active: bool
+) -> None:
+    """Flip is_active, or 404 if the row is not in this tenant.
+
+    Deliberately idempotent: deactivating an already-retired row succeeds. The
+    caller asked for a STATE, not for a transition, and answering 409 would make
+    a retried request from a flaky connection look like a failure.
+    """
+    if not await _update_row(conn, table, row_id, {"is_active": active}):
+        raise _not_found(entity)
+
+
 async def _update_row(
     conn: AsyncConnection, table: str, row_id: uuid.UUID, changes: dict[str, Any]
 ) -> bool:
@@ -228,23 +270,35 @@ class UomUpdate(BaseModel):
 
 
 def _uom_payload(r: Any) -> dict:
-    return {"id": str(r["id"]), "code": r["code"], "name": r["name"]}
+    return {
+        "id": str(r["id"]),
+        "code": r["code"],
+        "name": r["name"],
+        "is_active": r["is_active"],
+    }
+
+
+_UOM_SELECT = "SELECT id, code, name, is_active FROM uoms"
 
 
 async def _read_uom(conn: AsyncConnection, uom_id: uuid.UUID) -> dict | None:
+    # No is_active predicate: a row-level read must answer for retired rows too.
     row = (
-        await conn.execute(
-            text("SELECT id, code, name FROM uoms WHERE id = :id"), {"id": uom_id}
-        )
+        await conn.execute(text(f"{_UOM_SELECT} WHERE id = :id"), {"id": uom_id})
     ).mappings().first()
     return _uom_payload(row) if row else None
 
 
 @router.get("/uoms")
-async def list_uoms(principal: Principal = Depends(get_principal)) -> dict:
+async def list_uoms(
+    include_inactive: IncludeInactive = False,
+    principal: Principal = Depends(get_principal),
+) -> dict:
     async with tenant_connection(principal.tenant_id) as conn:
         rows = (
-            await conn.execute(text("SELECT id, code, name FROM uoms ORDER BY code"))
+            await conn.execute(
+                text(f"{_UOM_SELECT}{_active_filter(include_inactive)} ORDER BY code")
+            )
         ).mappings().all()
     return {"uoms": [_uom_payload(r) for r in rows]}
 
@@ -260,7 +314,7 @@ async def create_uom(
                     text(
                         f"INSERT INTO uoms (tenant_id, code, name)"
                         f" VALUES ({_TENANT}, :code, :name)"
-                        f" RETURNING id, code, name"
+                        f" RETURNING id, code, name, is_active"
                     ),
                     {"code": body.code, "name": body.name},
                 )
@@ -284,6 +338,24 @@ async def update_uom(
         return await _read_uom(conn, uom_id)
 
 
+@router.post("/uoms/{uom_id}/deactivate")
+async def deactivate_uom(
+    uom_id: uuid.UUID, principal: Principal = Depends(require_admin)
+) -> dict:
+    async with tenant_connection(principal.tenant_id) as conn:
+        await _set_active(conn, "uoms", "uom", uom_id, False)
+        return await _read_uom(conn, uom_id)
+
+
+@router.post("/uoms/{uom_id}/activate")
+async def activate_uom(
+    uom_id: uuid.UUID, principal: Principal = Depends(require_admin)
+) -> dict:
+    async with tenant_connection(principal.tenant_id) as conn:
+        await _set_active(conn, "uoms", "uom", uom_id, True)
+        return await _read_uom(conn, uom_id)
+
+
 # ---------------------------------------------------------------------------
 # product_categories
 # ---------------------------------------------------------------------------
@@ -299,25 +371,37 @@ class CategoryUpdate(BaseModel):
 
 
 def _category_payload(r: Any) -> dict:
-    return {"id": str(r["id"]), "code": r["code"], "name": r["name"]}
+    return {
+        "id": str(r["id"]),
+        "code": r["code"],
+        "name": r["name"],
+        "is_active": r["is_active"],
+    }
+
+
+_CATEGORY_SELECT = "SELECT id, code, name, is_active FROM product_categories"
 
 
 async def _read_category(conn: AsyncConnection, category_id: uuid.UUID) -> dict | None:
     row = (
         await conn.execute(
-            text("SELECT id, code, name FROM product_categories WHERE id = :id"),
-            {"id": category_id},
+            text(f"{_CATEGORY_SELECT} WHERE id = :id"), {"id": category_id}
         )
     ).mappings().first()
     return _category_payload(row) if row else None
 
 
 @router.get("/product-categories")
-async def list_categories(principal: Principal = Depends(get_principal)) -> dict:
+async def list_categories(
+    include_inactive: IncludeInactive = False,
+    principal: Principal = Depends(get_principal),
+) -> dict:
     async with tenant_connection(principal.tenant_id) as conn:
         rows = (
             await conn.execute(
-                text("SELECT id, code, name FROM product_categories ORDER BY code")
+                text(
+                    f"{_CATEGORY_SELECT}{_active_filter(include_inactive)} ORDER BY code"
+                )
             )
         ).mappings().all()
     return {"product_categories": [_category_payload(r) for r in rows]}
@@ -334,7 +418,7 @@ async def create_category(
                     text(
                         f"INSERT INTO product_categories (tenant_id, code, name)"
                         f" VALUES ({_TENANT}, :code, :name)"
-                        f" RETURNING id, code, name"
+                        f" RETURNING id, code, name, is_active"
                     ),
                     {"code": body.code, "name": body.name},
                 )
@@ -355,6 +439,24 @@ async def update_category(
     async with tenant_connection(principal.tenant_id) as conn:
         if not await _update_row(conn, "product_categories", category_id, changes):
             raise _not_found("product_category")
+        return await _read_category(conn, category_id)
+
+
+@router.post("/product-categories/{category_id}/deactivate")
+async def deactivate_category(
+    category_id: uuid.UUID, principal: Principal = Depends(require_admin)
+) -> dict:
+    async with tenant_connection(principal.tenant_id) as conn:
+        await _set_active(conn, "product_categories", "product_category", category_id, False)
+        return await _read_category(conn, category_id)
+
+
+@router.post("/product-categories/{category_id}/activate")
+async def activate_category(
+    category_id: uuid.UUID, principal: Principal = Depends(require_admin)
+) -> dict:
+    async with tenant_connection(principal.tenant_id) as conn:
+        await _set_active(conn, "product_categories", "product_category", category_id, True)
         return await _read_category(conn, category_id)
 
 
@@ -393,8 +495,11 @@ class PriceSet(BaseModel):
 
 
 _PRODUCT_SELECT = (
-    "SELECT p.id, p.code, p.name, p.category_id, p.uom_id,"
+    "SELECT p.id, p.code, p.name, p.category_id, p.uom_id, p.is_active,"
     " u.code AS uom_code, u.name AS uom_name"
+    # No is_active predicate on the uom either: a product whose unit was retired
+    # still has to render its unit. Retiring a uom stops it being OFFERED, it
+    # does not un-say what a product is measured in.
     " FROM products p JOIN uoms u ON u.id = p.uom_id"
 )
 
@@ -408,6 +513,7 @@ def _product_payload(r: Any, prices: dict[str, str]) -> dict:
         "uom_id": str(r["uom_id"]),
         "uom_code": r["uom_code"],
         "uom_name": r["uom_name"],
+        "is_active": r["is_active"],
         # {"A": "12.50", "B": "12.00", ...} — strings, never floats.
         "prices": prices,
     }
@@ -443,39 +549,61 @@ async def _require_product(conn: AsyncConnection, product_id: uuid.UUID) -> None
 
 
 async def _require_refs(conn: AsyncConnection, changes: dict[str, Any]) -> None:
-    """category_id / uom_id must resolve IN THIS TENANT.
+    """category_id / uom_id must resolve IN THIS TENANT, and must not be retired.
 
     The composite FKs (tenant_id, category_id) -> product_categories make a
     cross-tenant reference structurally impossible, but they enforce it by
     raising, and that raise is a 500. Checking first turns it into a named 422:
     permanent and terminal, which is what it is.
+
+    A RETIRED category or uom is refused too. Filing a NEW product under a
+    category the shop has just taken out of use would quietly resurrect it in
+    every grouping and report, which is the opposite of what deactivating it
+    meant. Existing products keep theirs — this is a check on the write, not a
+    cascade.
     """
-    for field, table, code in (
-        ("category_id", "product_categories", "category_not_found"),
-        ("uom_id", "uoms", "uom_not_found"),
+    for field, table, entity in (
+        ("category_id", "product_categories", "category"),
+        ("uom_id", "uoms", "uom"),
     ):
         ref_id = changes.get(field)
         if ref_id is None:
             continue
         found = (
             await conn.execute(
-                text(f"SELECT 1 FROM {table} WHERE id = :id"), {"id": ref_id}
+                text(f"SELECT is_active FROM {table} WHERE id = :id"), {"id": ref_id}
             )
-        ).first()
+        ).mappings().first()
         if found is None:
             raise _invalid(
-                code,
+                f"{entity}_not_found",
                 "ไม่พบข้อมูลอ้างอิงนี้ในร้านของคุณ",
+                field=field,
+                value=str(ref_id),
+            )
+        if not found["is_active"]:
+            raise _invalid(
+                f"{entity}_inactive",
+                "ข้อมูลอ้างอิงนี้ถูกปิดใช้งานแล้ว",
                 field=field,
                 value=str(ref_id),
             )
 
 
 @router.get("/products")
-async def list_products(principal: Principal = Depends(get_principal)) -> dict:
+async def list_products(
+    include_inactive: IncludeInactive = False,
+    principal: Principal = Depends(get_principal),
+) -> dict:
     async with tenant_connection(principal.tenant_id) as conn:
         rows = (
-            await conn.execute(text(f"{_PRODUCT_SELECT} ORDER BY p.code"))
+            await conn.execute(
+                text(
+                    f"{_PRODUCT_SELECT}"
+                    f"{_active_filter(include_inactive, 'p.is_active')}"
+                    f" ORDER BY p.code"
+                )
+            )
         ).mappings().all()
         prices = (
             await conn.execute(
@@ -545,6 +673,33 @@ async def update_product(
         return await _read_product(conn, product_id)
 
 
+@router.post("/products/{product_id}/deactivate")
+async def deactivate_product(
+    product_id: uuid.UUID, principal: Principal = Depends(require_admin)
+) -> dict:
+    """Retire a product. IT KEEPS ANSWERING FOR EVERY BILL THAT REFERENCES IT.
+
+    Nothing cascades and nothing is rewritten: its price tiers stay, its row
+    stays, and bills.py resolves its code and name for historical bills with no
+    is_active predicate. What changes is only that GET /products stops offering
+    it and POST /bills refuses a NEW bill against it (424, resolvable — the yard
+    may already have tipped that load, and reactivating makes the same bill go
+    through unchanged).
+    """
+    async with tenant_connection(principal.tenant_id) as conn:
+        await _set_active(conn, "products", "product", product_id, False)
+        return await _read_product(conn, product_id)
+
+
+@router.post("/products/{product_id}/activate")
+async def activate_product(
+    product_id: uuid.UUID, principal: Principal = Depends(require_admin)
+) -> dict:
+    async with tenant_connection(principal.tenant_id) as conn:
+        await _set_active(conn, "products", "product", product_id, True)
+        return await _read_product(conn, product_id)
+
+
 @router.put("/products/{product_id}/prices/{grade}")
 async def set_product_price(
     product_id: uuid.UUID,
@@ -578,6 +733,15 @@ async def set_product_price(
 # ---------------------------------------------------------------------------
 # sellers
 # ---------------------------------------------------------------------------
+# Free text, and generously sized, because all three are transcribed by hand at
+# a weighbridge. id_number is NOT validated as a 13-digit national id: a shop
+# also buys from companies and from walk-ins carrying a passport or nothing at
+# all, and a format check here would refuse the purchase rather than the typo.
+IdNumber = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
+Address = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+VehicleNo = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
+
+
 class SellerCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     code: Code
@@ -588,21 +752,31 @@ class SellerCreate(BaseModel):
     # grade here would instead quote a real price the yard pays cash against
     # (lessons/fallback-default-is-a-wrong-number.md).
     grade: Grade | None = None
+    # SRS 1.6. All optional: a yard weighs a walk-in's scrap and pays cash long
+    # before it has their address, and refusing the seller row would refuse the
+    # purchase. NOTE this vehicle_no is the one the seller USUALLY arrives in —
+    # purchase_bills.vehicle_no is the truck that actually turned up that day.
+    # Two different facts; do not collapse them.
+    id_number: IdNumber | None = None
+    address: Address | None = None
+    vehicle_no: VehicleNo | None = None
 
 
 class SellerUpdate(BaseModel):
-    """name / grade / phone. `code` is immutable — see ProductUpdate.
-
-    NOT HERE, AND NOT FOR WANT OF TRYING: id number, address and vehicle. The
-    sellers table has no such columns (migrations 0001-0003, checked against the
-    live database), so those three need a migration and are deliberately absent
-    rather than silently dropped.
-    """
+    """Everything except `code`, which is immutable — see ProductUpdate."""
 
     model_config = ConfigDict(extra="forbid")
     name: Name | None = None
     phone: Phone | None = None
     grade: Grade | None = None
+    id_number: IdNumber | None = None
+    address: Address | None = None
+    vehicle_no: VehicleNo | None = None
+
+
+# Every nullable seller column, so an explicit null CLEARS it. A seller who
+# changes truck must be able to have the old one removed, not merely replaced.
+_SELLER_NULLABLE = frozenset({"phone", "grade", "id_number", "address", "vehicle_no"})
 
 
 def _seller_payload(r: Any) -> dict:
@@ -613,10 +787,17 @@ def _seller_payload(r: Any) -> dict:
         "phone": r["phone"],
         # Seller grade selects which product_prices tier applies (SRS 1.6).
         "grade": r["grade"],
+        "id_number": r["id_number"],
+        "address": r["address"],
+        "vehicle_no": r["vehicle_no"],
+        "is_active": r["is_active"],
     }
 
 
-_SELLER_SELECT = "SELECT id, code, name, phone, grade FROM sellers"
+_SELLER_SELECT = (
+    "SELECT id, code, name, phone, grade, id_number, address, vehicle_no, is_active"
+    " FROM sellers"
+)
 
 
 async def _read_seller(conn: AsyncConnection, seller_id: uuid.UUID) -> dict | None:
@@ -627,10 +808,15 @@ async def _read_seller(conn: AsyncConnection, seller_id: uuid.UUID) -> dict | No
 
 
 @router.get("/sellers")
-async def list_sellers(principal: Principal = Depends(get_principal)) -> dict:
+async def list_sellers(
+    include_inactive: IncludeInactive = False,
+    principal: Principal = Depends(get_principal),
+) -> dict:
     async with tenant_connection(principal.tenant_id) as conn:
         rows = (
-            await conn.execute(text(f"{_SELLER_SELECT} ORDER BY code"))
+            await conn.execute(
+                text(f"{_SELLER_SELECT}{_active_filter(include_inactive)} ORDER BY code")
+            )
         ).mappings().all()
     return {"sellers": [_seller_payload(r) for r in rows]}
 
@@ -644,15 +830,21 @@ async def create_seller(
             row = (
                 await conn.execute(
                     text(
-                        f"INSERT INTO sellers (tenant_id, code, name, phone, grade)"
-                        f" VALUES ({_TENANT}, :code, :name, :phone, :grade)"
-                        f" RETURNING id, code, name, phone, grade"
+                        f"INSERT INTO sellers (tenant_id, code, name, phone, grade,"
+                        f" id_number, address, vehicle_no)"
+                        f" VALUES ({_TENANT}, :code, :name, :phone, :grade,"
+                        f" :id_number, :address, :vehicle_no)"
+                        f" RETURNING id, code, name, phone, grade, id_number,"
+                        f" address, vehicle_no, is_active"
                     ),
                     {
                         "code": body.code,
                         "name": body.name,
                         "phone": body.phone,
                         "grade": body.grade,
+                        "id_number": body.id_number,
+                        "address": body.address,
+                        "vehicle_no": body.vehicle_no,
                     },
                 )
             ).mappings().one()
@@ -668,11 +860,30 @@ async def update_seller(
     body: SellerUpdate,
     principal: Principal = Depends(require_admin),
 ) -> dict:
-    # phone and grade are nullable columns, so an EXPLICIT null clears them —
-    # which must be possible: a seller can lose their grade, and the resulting
-    # bills are then refused with a resolvable 424 rather than mispriced.
-    changes = _changes(body, nullable=frozenset({"phone", "grade"}))
+    # These are nullable columns, so an EXPLICIT null clears them — which must be
+    # possible: a seller can lose their grade, and the resulting bills are then
+    # refused with a resolvable 424 rather than mispriced.
+    changes = _changes(body, nullable=_SELLER_NULLABLE)
     async with tenant_connection(principal.tenant_id) as conn:
         if not await _update_row(conn, "sellers", seller_id, changes):
             raise _not_found("seller")
+        return await _read_seller(conn, seller_id)
+
+
+@router.post("/sellers/{seller_id}/deactivate")
+async def deactivate_seller(
+    seller_id: uuid.UUID, principal: Principal = Depends(require_admin)
+) -> dict:
+    """Retire a seller. Their existing bills are untouched and stay readable."""
+    async with tenant_connection(principal.tenant_id) as conn:
+        await _set_active(conn, "sellers", "seller", seller_id, False)
+        return await _read_seller(conn, seller_id)
+
+
+@router.post("/sellers/{seller_id}/activate")
+async def activate_seller(
+    seller_id: uuid.UUID, principal: Principal = Depends(require_admin)
+) -> dict:
+    async with tenant_connection(principal.tenant_id) as conn:
+        await _set_active(conn, "sellers", "seller", seller_id, True)
         return await _read_seller(conn, seller_id)

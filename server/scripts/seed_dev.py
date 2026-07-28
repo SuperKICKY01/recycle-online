@@ -69,10 +69,12 @@ async def main() -> None:
                 for p in s["products"]:
                     await conn.execute(
                         text(
-                            "INSERT INTO products (id, tenant_id, category_id, uom_id, code, name)"
-                            " VALUES (:id, :t, :c, :u, :code, :name)"
+                            "INSERT INTO products (id, tenant_id, category_id, uom_id,"
+                            " code, name, is_active)"
+                            " VALUES (:id, :t, :c, :u, :code, :name, true)"
                             " ON CONFLICT (id) DO UPDATE SET code = EXCLUDED.code,"
-                            "                                name = EXCLUDED.name"
+                            "                                name = EXCLUDED.name,"
+                            "                                is_active = true"
                         ),
                         {"id": p["id"], "t": s["tenant_id"], "c": s["category_id"],
                          "u": s["uom_id"], "code": p["code"], "name": p["name"]},
@@ -92,15 +94,26 @@ async def main() -> None:
                 for sl in s["sellers"]:
                     await conn.execute(
                         text(
-                            "INSERT INTO sellers (id, tenant_id, code, name, phone, grade)"
-                            " VALUES (:id, :t, :code, :nm, :ph, :g)"
+                            "INSERT INTO sellers (id, tenant_id, code, name, phone, grade,"
+                            " id_number, address, vehicle_no, is_active)"
+                            " VALUES (:id, :t, :code, :nm, :ph, :g, :idn, :addr, :veh, true)"
                             " ON CONFLICT (id) DO UPDATE SET code = EXCLUDED.code,"
                             "                                name = EXCLUDED.name,"
                             "                                phone = EXCLUDED.phone,"
-                            "                                grade = EXCLUDED.grade"
+                            "                                grade = EXCLUDED.grade,"
+                            "                                id_number = EXCLUDED.id_number,"
+                            "                                address = EXCLUDED.address,"
+                            "                                vehicle_no = EXCLUDED.vehicle_no,"
+                            # Re-asserted for the same reason as role: a seller a
+                            # proof retired and failed to restore would otherwise
+                            # stay invisible, and the next run would measure that
+                            # instead of the fixture.
+                            "                                is_active = true"
                         ),
                         {"id": sl["id"], "t": s["tenant_id"], "code": sl["code"],
-                         "nm": sl["name"], "ph": sl["phone"], "g": sl["grade"]},
+                         "nm": sl["name"], "ph": sl["phone"], "g": sl["grade"],
+                         "idn": sl.get("id_number"), "addr": sl.get("address"),
+                         "veh": sl.get("vehicle_no")},
                     )
             grades = ", ".join(str(sl["grade"] or "no grade") for sl in s["sellers"])
             users = ", ".join(f"{u['username']}={u['role']}" for u in s["users"])

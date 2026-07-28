@@ -81,9 +81,16 @@ PRODUCTS_B = [
 
 # code is UNIQUE per tenant (uq_sellers_tenant_code), so the same S00n codes
 # appear in both tenants — which is also what makes the isolation proof honest.
+# id_number / address / vehicle_no (SRS 1.6, migration 0004) are all optional and
+# are seeded UNEVENLY on purpose: a real seller list is ragged, and a fixture
+# where every field is filled would let a null-handling bug through unnoticed.
+# S001 has all three, S002 has a vehicle but no id, the rest have none.
 SELLERS_A = [
-    {"id": SELLER_A_ID, "code": "S001", "name": "สมชาย ใจดี", "phone": "0800000001", "grade": "B"},
-    {"id": SELLER_A2_ID, "code": "S002", "name": "ร้านรับซื้อ พี่แดง", "phone": "0800000002", "grade": "A"},
+    {"id": SELLER_A_ID, "code": "S001", "name": "สมชาย ใจดี", "phone": "0800000001", "grade": "B",
+     "id_number": "1234567890123", "address": "99/1 หมู่ 4 ต.บางพลี อ.บางพลี จ.สมุทรปราการ 10540",
+     "vehicle_no": "กท 1234"},
+    {"id": SELLER_A2_ID, "code": "S002", "name": "ร้านรับซื้อ พี่แดง", "phone": "0800000002", "grade": "A",
+     "vehicle_no": "82-0099"},
     {"id": SELLER_A3_ID, "code": "S003", "name": "สมหญิง รุ่งเรือง", "phone": "0800000003", "grade": "C"},
     {"id": SELLER_A4_ID, "code": "S004", "name": "โรงงาน ทองไทย", "phone": "0800000004", "grade": "D"},
     # No grade: the 424 seller_grade_unset path, reachable from the app.

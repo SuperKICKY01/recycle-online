@@ -56,8 +56,20 @@ logger = logging.getLogger("recycle.bills")
 # does not resolve at all (unknown seller_id/product_id) stays PERMANENT — the
 # device got those ids from this tenant's own /sellers and /products, so a miss
 # means a corrupt or stale reference, not a setup gap, and re-creating master data
-# under an identical UUID is not a routine operation. Revisit that line if master
-# data ever gains a delete.
+# under an identical UUID is not a routine operation.
+#
+# THAT LINE WAS REVISITED IN 0004, exactly as the old note here said it should be
+# if master data ever gained a delete. It gained a RETIREMENT instead, and a
+# retired seller or product is firmly on the RESOLVABLE side:
+#
+#   - the row exists and resolves; only its is_active flag says otherwise;
+#   - one admin click (POST .../activate) makes the SAME bill valid, unchanged;
+#   - the device very likely holds a cached list from before the retirement, so
+#     this is a stale-cache race, not a corrupt reference — the yard did nothing
+#     wrong and the scrap is already on the pile.
+#
+# Calling it PERMANENT would fail a bill for a load that has been tipped, over a
+# back-office click that happened while the truck was on the weighbridge.
 # ---------------------------------------------------------------------------
 _RESOLVABLE_STATUS = status.HTTP_424_FAILED_DEPENDENCY
 
@@ -191,12 +203,28 @@ async def _read_bill(conn: AsyncConnection, bill_id) -> dict | None:
     ).mappings().first()
     if h is None:
         return None
+    # THE PRODUCT JOIN HAS NO is_active PREDICATE, and must never gain one.
+    # A bill is a receipt for money already paid; retiring a product stops it
+    # being offered for NEW work and must not reach backwards and blank the code
+    # and name on last year's slip. That failure has a precedent — proveCold C6
+    # showed a priced line rendering with a blank code.
+    #
+    # LEFT JOIN, not INNER, purely for the failure mode. The composite FK
+    # (tenant_id, product_id) makes a missing product impossible today, so the
+    # two are equivalent — but if one ever went missing (a partial restore, say),
+    # an INNER JOIN would silently DROP that line from the bill, and the header
+    # total would then disagree with the lines with nothing to show why. A LEFT
+    # JOIN keeps the money on the page and leaves the name null. Never lose a
+    # money line to make a name resolve.
     items = (
         await conn.execute(
             text(
-                "SELECT id, product_id, line_no, gross_weight, tare_weight,"
-                " net_weight, unit_price, list_price, amount"
-                " FROM purchase_bill_items WHERE bill_id = :id ORDER BY line_no"
+                "SELECT i.id, i.product_id, i.line_no, i.gross_weight, i.tare_weight,"
+                " i.net_weight, i.unit_price, i.list_price, i.amount,"
+                " p.code AS product_code, p.name AS product_name"
+                " FROM purchase_bill_items i"
+                " LEFT JOIN products p ON p.id = i.product_id"
+                " WHERE i.bill_id = :id ORDER BY i.line_no"
             ),
             {"id": bill_id},
         )
@@ -218,6 +246,10 @@ async def _read_bill(conn: AsyncConnection, bill_id) -> dict | None:
             {
                 "id": str(i["id"]),
                 "product_id": str(i["product_id"]),
+                # Resolved regardless of whether the product has since been
+                # retired — that is the point of the LEFT JOIN above.
+                "product_code": i["product_code"],
+                "product_name": i["product_name"],
                 "line_no": i["line_no"],
                 "gross_weight": str(i["gross_weight"]),
                 "tare_weight": str(i["tare_weight"]),
@@ -279,13 +311,24 @@ async def create_bill(
             # tier (SRS 1.6) and the server — not the client — resolves list_price.
             seller = (
                 await conn.execute(
-                    text("SELECT grade FROM sellers WHERE id = :s"), {"s": body.seller_id}
+                    text("SELECT grade, is_active FROM sellers WHERE id = :s"),
+                    {"s": body.seller_id},
                 )
             ).mappings().first()
             if seller is None:
                 raise HTTPException(
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
                     "seller_id does not exist in this tenant",
+                )
+            if not seller["is_active"]:
+                # Checked BEFORE the grade: if a retired seller also has no
+                # grade, "this seller was retired" is the fact the office can
+                # act on, and setting a grade on a retired seller would not
+                # let the bill through anyway.
+                raise _master_data_missing(
+                    "seller_inactive",
+                    "ผู้ขายรายนี้ถูกปิดใช้งานแล้ว",
+                    seller_id=str(body.seller_id),
                 )
             grade = seller["grade"]
             if grade is None:
@@ -314,7 +357,7 @@ async def create_bill(
                 row = (
                     await conn.execute(
                         text(
-                            "SELECT pp.price FROM products p"
+                            "SELECT p.is_active, pp.price FROM products p"
                             " LEFT JOIN product_prices pp"
                             "   ON pp.product_id = p.id AND pp.grade = :g"
                             " WHERE p.id = :p"
@@ -326,6 +369,14 @@ async def create_bill(
                     raise HTTPException(
                         status.HTTP_422_UNPROCESSABLE_ENTITY,
                         f"product_id {it.product_id} does not exist in this tenant",
+                    )
+                if not row["is_active"]:
+                    # RESOLVABLE: reactivating the product lets this exact bill
+                    # through. See the note at the top of this file.
+                    raise _master_data_missing(
+                        "product_inactive",
+                        "สินค้านี้ถูกปิดใช้งานแล้ว",
+                        product_id=str(it.product_id),
                     )
                 if row["price"] is None:
                     # RESOLVABLE: adding this product's price for this grade makes

@@ -78,6 +78,41 @@ An assertion that breaks when a fixture is *added* was measuring the fixture. As
 of every count in a proof: if this number changed, would the property I am
 claiming actually be false? If not, assert the property.
 
+## AMENDED AGAIN (migration 0004): a fixture a BILL points at can never be cleaned up
+
+The per-run UUID makes fixtures unique. It does not make them *removable*, and
+those are different problems.
+
+`prove_master_write.py` creates a product, seller, uom and category per run and
+deletes them in its `finally`. One case then wrote an accepted bill against the
+run's own product, to show that reactivating it let the bill through. That bill
+can never be deleted — hard rule 5 — so `fk_items_product` pinned the product
+forever. Three things went wrong at once:
+
+- the `DELETE` raised inside `finally`, so **every restore after it was
+  skipped** — including putting a borrowed seeded row back;
+- the traceback replaced the summary that would have said so;
+- and the run left a live product in the dev picker, which then turned
+  `prove_master.py` red for a completely unrelated-looking reason.
+
+Two rules come out of it:
+
+1. **A proof may write a bill against a SEEDED row, or against a row it can
+   delete — never both in one fixture.** If a case needs "a bill already
+   references this", borrow a seeded row and restore it, the way
+   `prove_master_data_gate.py` borrows a price. Retirement (`is_active`) is not
+   an escape either: the row still exists and still accumulates.
+2. **Every statement in a `finally` must be isolated.** Wrap each cleanup in its
+   own `try/except`, record the failure as a named check, and let the rest run.
+   A cleanup block that aborts halfway is worse than one that never ran, because
+   it leaves the fixture in a state nobody chose and no output explaining it.
+
+The corollary for the count rule above: it bites in **both** directions. The
+products assertion in `prove_master.py` was still `len(pa) == 3` after the
+sellers one had been fixed — the amendment was applied to the line that failed
+rather than to the class. When you fix an assertion of this shape, grep for its
+siblings in the same file before moving on.
+
 ## How to apply
 
 Before trusting any proof script:
@@ -89,7 +124,11 @@ Before trusting any proof script:
 3. Assert the shape and the *delta*, not the value, for anything the server
    assigns.
 4. Grep it for `len(...) == <n>` on seeded data. Rewrite as a membership or
-   disjointness claim unless the exact count really is the invariant.
+   disjointness claim unless the exact count really is the invariant — and fix
+   every one you find, not only the one that went red.
+5. Check what the script leaves behind, by querying for its run tag after it
+   exits. "It passed" and "it cleaned up" are separate claims, and the second
+   one needs its own assertion in the script.
 
 This sits alongside the other lessons about a green result that proves nothing:
 [[concurrency-tests-need-a-barrier]] (workers that never overlapped),

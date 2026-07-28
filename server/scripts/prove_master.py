@@ -21,6 +21,8 @@ from app.seeddata import (  # noqa: E402
     ADMIN_USERNAME,
     PRODUCT_A_ID,
     PRODUCT_B_ID,
+    PRODUCTS_A,
+    PRODUCTS_B,
     SELLER_A_ID,
     TENANT_A_ID,
     TENANT_A_PASSWORD,
@@ -63,10 +65,29 @@ async def main() -> int:
 
         print(f"  tenant A sees: {[p['code'] for p in pa]}")
         print(f"  tenant B sees: {[p['code'] for p in pb]}")
-        check("tenant A gets its own 3 products", len(pa) == 3, f"n={len(pa)}")
-        check("tenant B gets its own 3 products", len(pb) == 3, f"n={len(pb)}")
+        # SET RELATIONS, NOT COUNTS — the same amendment P3 already carries for
+        # sellers, applied here where it was missed. `len(pa) == 3` measured the
+        # SIZE OF THE SEED, not tenant isolation, and it went red the first time
+        # a product existed that the fixture had not put there. That is no longer
+        # a hypothetical: master data became writable, so a shop adding its
+        # fourth product is now the ordinary case. What isolation actually claims
+        # is: A sees all of A's, none of B's, and neither list is empty.
+        # (lessons/proof-must-run-twice.md)
+        seeded_a = {str(p["id"]) for p in PRODUCTS_A}
+        seeded_b = {str(p["id"]) for p in PRODUCTS_B}
+        check("tenant A sees every one of its seeded products",
+              seeded_a <= ids_a, f"missing={seeded_a - ids_a}")
+        check("tenant B sees every one of its seeded products",
+              seeded_b <= ids_b, f"missing={seeded_b - ids_b}")
+        check("tenant A sees NONE of tenant B's seeded products",
+              not (seeded_b & ids_a), f"leaked={seeded_b & ids_a}")
+        check("tenant B sees NONE of tenant A's seeded products",
+              not (seeded_a & ids_b), f"leaked={seeded_a & ids_b}")
         check("the two tenants share NO product id", ids_a.isdisjoint(ids_b),
               f"overlap={ids_a & ids_b}")
+        # Without this, an empty database would satisfy every claim above.
+        check("and neither list is empty — isolation, not an empty database",
+              len(pa) > 0 and len(pb) > 0, f"a={len(pa)} b={len(pb)}")
         check("tenant A's seeded product is visible to A", str(PRODUCT_A_ID) in ids_a)
         check("tenant B's product is INVISIBLE to A", str(PRODUCT_B_ID) not in ids_a)
 

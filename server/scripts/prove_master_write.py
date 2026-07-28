@@ -15,18 +15,22 @@ Two things, and the second rests on the first.
          sellers. Admin only, tenant-scoped through the existing RLS path, with
          no hand-written WHERE tenant_id anywhere in app/master.py.
 
-WHAT THIS DOES NOT PROVE, because it cannot be built yet: deactivation. Neither
-sellers, products, uoms nor product_categories has an `is_active` column
-(migrations 0001-0003, checked against the live database), so "deactivate a
-product referenced by a bill and the bill stays intact" has no endpoint to
-exercise. What IS proven instead is the half of that requirement that stands
-today: there is no delete route at all (D1), so nothing can remove a row a bill
-depends on.
+  RETIRE Migration 0004 added is_active to all four master-data tables. A retired
+         row leaves the picker and refuses NEW bills, and goes on answering every
+         bill that already references it — code, name and money intact. There is
+         still no delete route anywhere (D1).
 
 STATE. Everything this script creates is per-run (codes carry a RUN suffix) and
-is deleted in the finally block. The two things it BORROWS from the seed — the
-FE-STEEL grade-B price and the admin's role — are saved, mutated and restored,
-and the restore is verified. The bills it creates are left in place: hard rule 5,
+is deleted in the finally block. The three things it BORROWS from the seed — the
+FE-STEEL grade-B price, the admin's role, and FE-STEEL's own is_active — are
+saved, mutated and restored, and every restore is verified.
+
+WHY THE RETIREMENT CASE BORROWS THE SEEDED PRODUCT rather than using this run's:
+proving it needs a product that an EXISTING bill references, and bills cannot be
+deleted (hard rule 5). Retiring this run's fresh product would leave a permanent
+row behind on every run. So V2 retires FE-STEEL, checks the bill written in H1,
+and reactivates it in the finally block — the same borrow-and-restore shape
+prove_master_data_gate uses for the price. The bills it creates are left in place: hard rule 5,
 no hard deletes on transactions. Idempotency keys, bill ids and every code are
 per-run, and no assertion counts rows, so it passes twice in a row against a live
 database (lessons/proof-must-run-twice.md).
@@ -143,6 +147,7 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
     client = httpx.Client(timeout=20.0)
     created: dict[str, str] = {}
     demoted = False
+    product_a_retired = False
 
     try:
         try:
@@ -536,6 +541,210 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
         )
         check("and exactly ONE bill exists for that key", one == 1, f"count={one}")
 
+        # ------------------------------------------------------------------ V1
+        header("V1: retiring a row takes it out of the picker, and only that")
+        r = client.post(f"{BASE}/products/{created['product']}/deactivate", headers=admin)
+        check("POST /products/{id}/deactivate -> 200", r.status_code == 200,
+              f"status={r.status_code}")
+        check("the row comes back flagged inactive", r.json().get("is_active") is False,
+              f"is_active={r.json().get('is_active')}")
+        check("its price tier was NOT wiped — retirement is not a soft delete",
+              r.json().get("prices", {}).get("A") == "88.25", f"prices={r.json().get('prices')}")
+
+        default_list = client.get(f"{BASE}/products", headers=staff).json()["products"]
+        with_inactive = client.get(f"{BASE}/products", headers=staff,
+                                   params={"include_inactive": "true"}).json()["products"]
+        check("GET /products no longer offers it — the yard cannot pick it",
+              not any(p["id"] == created["product"] for p in default_list))
+        check("but ?include_inactive=true finds it, so the office can undo this",
+              any(p["id"] == created["product"] for p in with_inactive))
+        check("and the default list is not simply empty — everything else is still there",
+              len(default_list) > 0 and len(with_inactive) == len(default_list) + 1,
+              f"default={len(default_list)} with_inactive={len(with_inactive)}")
+
+        r = client.post(f"{BASE}/products/{created['product']}/activate", headers=admin)
+        check("activate -> 200 and is_active true again",
+              r.status_code == 200 and r.json().get("is_active") is True,
+              f"status={r.status_code}")
+        # NOTE: no bill is written against this run's product, deliberately. A
+        # bill would pin it forever (hard rule 5 — bills are never deleted), so
+        # the cleanup could not remove it and every run would leak one row. The
+        # bill-level cases below borrow the SEEDED product instead. This bit me
+        # once: V1c used to create an accepted bill here and the finally block
+        # died on fk_items_product.
+
+        # ------------------------------------------------------------------ V2
+        header("V2: THE ONE THAT MATTERS — retire a product an existing bill references")
+        before = client.get(f"{BASE}/bills/{keep_id}", headers=admin).json()
+        seeded_code = before["items"][0].get("product_code")
+        seeded_name = before["items"][0].get("product_name")
+        check("the bill resolves its product's code and name to begin with",
+              bool(seeded_code) and bool(seeded_name),
+              f"code={seeded_code!r} name={seeded_name!r}")
+
+        r = client.post(f"{BASE}/products/{PRODUCT_A_ID}/deactivate", headers=admin)
+        product_a_retired = r.status_code == 200
+        check("the seeded product the bill points at is now retired",
+              product_a_retired and r.json().get("is_active") is False,
+              f"status={r.status_code}")
+        check("and it really has left the picker (so this is not a no-op)",
+              not any(p["id"] == str(PRODUCT_A_ID)
+                      for p in client.get(f"{BASE}/products", headers=staff).json()["products"]))
+
+        after = client.get(f"{BASE}/bills/{keep_id}", headers=admin)
+        check("the bill is STILL READABLE — 200, not 404", after.status_code == 200,
+              f"status={after.status_code}")
+        a = after.json()
+        check("it still has its line — a retired product never drops a money line",
+              len(a["items"]) == len(before["items"]) == 1,
+              f"items={len(a['items'])}")
+        check("the product CODE is intact", a["items"][0].get("product_code") == seeded_code,
+              f"now={a['items'][0].get('product_code')!r} was={seeded_code!r}")
+        check("the product NAME is intact", a["items"][0].get("product_name") == seeded_name,
+              f"now={a['items'][0].get('product_name')!r} was={seeded_name!r}")
+        check("every money and weight column is byte-identical",
+              a["items"][0] == before["items"][0],
+              f"differs: { {k: (before['items'][0][k], a['items'][0][k]) for k in before['items'][0] if before['items'][0][k] != a['items'][0].get(k)} }")
+        check("the header total and doc_no did not move",
+              a["total_amount"] == before["total_amount"] and a["doc_no"] == before["doc_no"],
+              f"total={a['total_amount']} doc_no={a['doc_no']}")
+        check("and it is still listed as a live bill",
+              any(b["id"] == keep_id for b in
+                  client.get(f"{BASE}/bills", headers=admin, params={"limit": 200}).json()["bills"]))
+
+        header("V2b: while retired, a NEW bill against it is refused — RESOLVABLE, not permanent")
+        retry_body = bill_body(str(uuid.uuid4()), f"mw-{RUN}-inactive",
+                               SELLER_A_ID, PRODUCT_A_ID, "15.00")
+        r = client.post(f"{BASE}/bills", headers=admin, json=retry_body)
+        d = detail_of(r)
+        check("424, not 422 — one admin click makes this same bill valid, and the"
+              " load is already on the pile",
+              r.status_code == 424, f"status={r.status_code}")
+        check("named product_inactive, so the office knows which fix to apply",
+              isinstance(d, dict) and d.get("code") == "product_inactive",
+              f"detail={d!r}")
+        burned = await db.fetchval(
+            "SELECT count(*) FROM purchase_bills WHERE idempotency_key = $1",
+            f"mw-{RUN}-inactive",
+        )
+        check("and the refusal cost nothing — no bill row was written", burned == 0,
+              f"rows={burned}")
+
+        header("V2c: reactivating puts it back, and the SAME payload then goes through")
+        r = client.post(f"{BASE}/products/{PRODUCT_A_ID}/activate", headers=admin)
+        product_a_retired = r.status_code != 200
+        check("FE-STEEL restored to active", not product_a_retired, f"status={r.status_code}")
+        # Byte-identical payload: same bill id, same idempotency key, same items.
+        r = client.post(f"{BASE}/bills", headers=admin, json=retry_body)
+        check("the identical payload is now accepted — nothing was re-weighed",
+              r.status_code == 201, f"status={r.status_code}")
+        check("and it resolves the product it was parked on",
+              r.status_code == 201 and r.json()["items"][0].get("product_code") == seeded_code,
+              f"product_code={r.json().get('items', [{}])[0].get('product_code')!r}")
+
+        # ------------------------------------------------------------------ V3
+        header("V3: sellers retire the same way, and their bills survive it too")
+        r = client.post(f"{BASE}/sellers/{created['seller']}/deactivate", headers=admin)
+        check("deactivate seller -> 200, is_active false",
+              r.status_code == 200 and r.json().get("is_active") is False,
+              f"status={r.status_code}")
+        check("gone from GET /sellers",
+              not any(s["id"] == created["seller"]
+                      for s in client.get(f"{BASE}/sellers", headers=staff).json()["sellers"]))
+        check("found again with ?include_inactive=true",
+              any(s["id"] == created["seller"] for s in
+                  client.get(f"{BASE}/sellers", headers=staff,
+                             params={"include_inactive": "true"}).json()["sellers"]))
+        r = client.post(f"{BASE}/bills", headers=admin,
+                        json=bill_body(str(uuid.uuid4()), f"mw-{RUN}-inactseller",
+                                       created["seller"], PRODUCT_A_ID, "15.00"))
+        d = detail_of(r)
+        check("a new bill for a retired seller is 424 seller_inactive",
+              r.status_code == 424 and isinstance(d, dict)
+              and d.get("code") == "seller_inactive",
+              f"status={r.status_code} detail={d!r}")
+        client.post(f"{BASE}/sellers/{created['seller']}/activate", headers=admin)
+
+        header("V3b: uoms and categories retire too, and a new product cannot use a retired one")
+        r = client.post(f"{BASE}/product-categories/{created['category']}/deactivate",
+                        headers=admin)
+        check("deactivate category -> 200", r.status_code == 200, f"status={r.status_code}")
+        r = client.post(f"{BASE}/products", headers=admin, json={
+            "code": f"UNDERDEAD-{RUN}", "name": "x",
+            "category_id": created["category"], "uom_id": created["uom"],
+        })
+        check("filing a NEW product under a retired category is refused 422 category_inactive",
+              r.status_code == 422 and (detail_of(r) or {}).get("code") == "category_inactive",
+              f"status={r.status_code} detail={detail_of(r)!r}")
+        existing = client.get(f"{BASE}/products", headers=admin,
+                              params={"include_inactive": "true"}).json()["products"]
+        check("but the product ALREADY filed under it is untouched — no cascade",
+              any(p["id"] == created["product"] and p["is_active"] for p in existing))
+        client.post(f"{BASE}/product-categories/{created['category']}/activate", headers=admin)
+
+        r = client.post(f"{BASE}/uoms/{created['uom']}/deactivate", headers=admin)
+        check("deactivate uom -> 200, and the product still renders its unit",
+              r.status_code == 200
+              and next(p for p in client.get(f"{BASE}/products", headers=admin).json()["products"]
+                       if p["id"] == created["product"])["uom_code"] == f"KG-{RUN}",
+              f"status={r.status_code}")
+        client.post(f"{BASE}/uoms/{created['uom']}/activate", headers=admin)
+
+        header("V3c: deactivating is idempotent, and staff cannot do any of it")
+        client.post(f"{BASE}/sellers/{created['seller']}/deactivate", headers=admin)
+        r = client.post(f"{BASE}/sellers/{created['seller']}/deactivate", headers=admin)
+        check("deactivating an already-retired row succeeds (a retry is not a failure)",
+              r.status_code == 200 and r.json().get("is_active") is False,
+              f"status={r.status_code}")
+        client.post(f"{BASE}/sellers/{created['seller']}/activate", headers=admin)
+        for path in (f"/products/{created['product']}/deactivate",
+                     f"/sellers/{created['seller']}/deactivate",
+                     f"/uoms/{created['uom']}/deactivate",
+                     f"/product-categories/{created['category']}/deactivate",
+                     f"/products/{created['product']}/activate"):
+            resp = client.post(f"{BASE}{path}", headers=staff)
+            check(f"staff POST {path} -> 403", resp.status_code == 403,
+                  f"status={resp.status_code}")
+        check("and after every refusal the product is still active",
+              next(p for p in client.get(f"{BASE}/products", headers=admin).json()["products"]
+                   if p["id"] == created["product"])["is_active"] is True)
+
+        # ------------------------------------------------------------------ V4
+        header("V4: the seller identity fields from SRS 1.6")
+        r = client.post(f"{BASE}/sellers", headers=admin, json={
+            "code": f"IDENT-{RUN}", "name": "ผู้ขายมีบัตร", "grade": "B",
+            "id_number": "1103700123456",
+            "address": "12/34 ถ.สุขุมวิท ต.บางนา อ.เมือง จ.สมุทรปราการ",
+            "vehicle_no": "1กก 9999",
+        })
+        check("POST /sellers accepts id_number, address and vehicle_no -> 201",
+              r.status_code == 201, f"status={r.status_code}")
+        created["seller_ident"] = r.json().get("id", "")
+        body_out = r.json()
+        check("all three come back exactly as sent",
+              body_out.get("id_number") == "1103700123456"
+              and body_out.get("address", "").startswith("12/34")
+              and body_out.get("vehicle_no") == "1กก 9999",
+              str(body_out))
+        check("the seller's vehicle_no is its OWN field, not the bill header's",
+              body_out.get("vehicle_no") == "1กก 9999" and f"MW-{RUN}" != "1กก 9999")
+        r = client.patch(f"{BASE}/sellers/{created['seller_ident']}", headers=admin,
+                         json={"address": None, "vehicle_no": "2ขข 1111"})
+        check("an explicit null CLEARS a nullable identity field, and a value replaces one",
+              r.status_code == 200 and r.json().get("address") is None
+              and r.json().get("vehicle_no") == "2ขข 1111",
+              f"status={r.status_code} body={r.json()}")
+        check("clearing one did not touch the others",
+              r.json().get("id_number") == "1103700123456", str(r.json()))
+        seeded = next(s for s in client.get(f"{BASE}/sellers", headers=staff).json()["sellers"]
+                      if s["code"] == "S001")
+        check("the seeded S001 carries its address through the read endpoint",
+              bool(seeded.get("id_number")) and bool(seeded.get("address")),
+              f"id_number={seeded.get('id_number')!r} address={seeded.get('address')!r}")
+        ragged = client.get(f"{BASE}/sellers", headers=staff).json()["sellers"]
+        check("and a seller with none of them reports null, not an empty string",
+              any(s.get("id_number") is None for s in ragged))
+
         # ------------------------------------------------------------------ D1
         header("D1: there is NO delete route — a bill's references cannot be removed")
         for path in (f"/sellers/{created['seller']}", f"/products/{created['product']}",
@@ -543,8 +752,8 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
             resp = client.request("DELETE", f"{BASE}{path}", headers=admin)
             check(f"DELETE {path} is not routed (405)", resp.status_code == 405,
                   f"status={resp.status_code}")
-        print("    (deactivate is the intended retirement path and needs a migration —"
-              " no is_active column exists. See PROJECT_STATUS.md.)")
+        print("    (retirement is the ONLY route out of a list, and V2 is why:"
+              " the row has to keep answering for the bills that point at it.)")
 
         # ------------------------------------------------------------------ X1
         header("X1: the DATABASE decides the role, not the token — a demotion takes effect at once")
@@ -576,6 +785,11 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
         if demoted:
             await db.execute("UPDATE users SET role = 'admin' WHERE username = $1",
                              ADMIN_USERNAME)
+        # Unconditional, not `if product_a_retired`: if V2 died between the
+        # deactivate and the flag being cleared, the seeded product would stay
+        # retired and every later proof would measure THAT instead of the fixture.
+        await db.execute("UPDATE products SET is_active = true WHERE id = $1", PRODUCT_A_ID)
+        await db.execute("UPDATE sellers SET is_active = true WHERE id = $1", SELLER_A_ID)
         await db.execute(
             "INSERT INTO product_prices (tenant_id, product_id, grade, price)"
             " VALUES ($1, $2, $3, $4)"
@@ -592,11 +806,24 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
             if created.get(key):
                 await db.execute("DELETE FROM product_prices WHERE product_id = $1",
                                  uuid.UUID(created[key]))
+        # Each delete is isolated. A fixture that turns out to be referenced by a
+        # bill must be REPORTED, not allowed to abort the rest of this block —
+        # the restores above already ran, but the ones below have not, and a
+        # traceback here would silently skip them and the verification print.
+        # (This is not hypothetical: an earlier version of V1 wrote an accepted
+        # bill against this run's product and died on fk_items_product.)
         for table, key in (("products", "product"), ("sellers", "seller"),
+                           ("sellers", "seller_ident"),
                            ("product_categories", "category"), ("uoms", "uom"),
                            ("uoms", "uom_pre"), ("uoms", "uom_back")):
             if created.get(key):
-                await db.execute(f"DELETE FROM {table} WHERE id = $1", uuid.UUID(created[key]))
+                try:
+                    await db.execute(
+                        f"DELETE FROM {table} WHERE id = $1", uuid.UUID(created[key])
+                    )
+                except asyncpg.PostgresError as e:
+                    print(f"  CLEANUP FAILED: {table}/{key} — {type(e).__name__}: {e}")
+                    _failures.append(f"could not clean up {table}/{key}")
         if created.get("seller_b"):
             await db.execute("SELECT set_config('app.tenant_id', $1, false)", str(TENANT_B_ID))
             await db.execute("DELETE FROM sellers WHERE id = $1", uuid.UUID(created["seller_b"]))
@@ -609,18 +836,27 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
         restored_role = await db.fetchval(
             "SELECT role FROM users WHERE username = $1", ADMIN_USERNAME
         )
+        restored_active = await db.fetchval(
+            "SELECT is_active FROM products WHERE id = $1", PRODUCT_A_ID
+        )
         leftovers = await db.fetchval(
             "SELECT count(*) FROM products WHERE code LIKE $1", f"%-{RUN}"
         )
+        stray_sellers = await db.fetchval(
+            "SELECT count(*) FROM sellers WHERE code LIKE $1", f"%-{RUN}"
+        )
         print()
         print(f"  restored: FE-STEEL/{SEEDED_GRADE} price={restored_price}"
-              f" admin role={restored_role}; run fixtures left behind={leftovers}")
+              f" active={restored_active} admin role={restored_role};"
+              f" run fixtures left behind: products={leftovers} sellers={stray_sellers}")
         if restored_price != saved_price:
             _failures.append("the borrowed price was not restored")
         if restored_role != "admin":
             _failures.append("the borrowed admin role was not restored")
-        if leftovers:
-            _failures.append("this run's product fixtures were not cleaned up")
+        if restored_active is not True:
+            _failures.append("the borrowed product was left RETIRED")
+        if leftovers or stray_sellers:
+            _failures.append("this run's fixtures were not cleaned up")
 
         client.close()
         await db.close()

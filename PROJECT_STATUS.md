@@ -10,7 +10,8 @@ not been OBSERVED: a proof that ran, an endpoint that answered, a
 screen seen on a device. Implemented is not verified, and a dated
 green in here is only as fresh as its date.
 
-**Last updated: 2026-07-28, at the close of the role + master-write work.**
+**Last updated: 2026-07-28, at the close of the role + master-write work
+(including migration `0004`).**
 
 ## Current phase
 
@@ -37,13 +38,33 @@ and any yard phone could void any bill. Now:
   `WHERE tenant_id`, and INSERTs take tenant_id from the same GUC the policy
   reads.
 
-**NOT built, blocked on a migration that was deliberately not added:**
-deactivation. No `is_active` column exists on `sellers`, `products`, `uoms`
-or `product_categories` (0001–0003, verified against the live DB), and
-`sellers` has no `id_number` / `address` / `vehicle_no`. So there is no
-deactivate endpoint, no seller id-number/address/vehicle fields, and reads
-do not filter inactive rows. There is also **no delete route anywhere**
-(proven: 405), which is the safe direction to be missing.
+**Retirement — complete, migration `0004` applied.** `is_active`
+(NOT NULL DEFAULT true) on `sellers`, `products`, `uoms` and
+`product_categories`; `id_number` / `address` / `vehicle_no` on `sellers`
+(all nullable, SRS 1.6). On top of it:
+
+- `POST /{entity}/{id}/deactivate` and `/activate` for all four, admin only.
+  **`activate` was not asked for** and is here because deactivate without an
+  undo is a trap: there is no delete either, so a mistyped retirement would
+  otherwise strand the row invisible forever.
+- list endpoints exclude retired rows by default; `?include_inactive=true`
+  is how the back office finds one again.
+- **row-level reads never filter.** `GET /bills/{id}` now resolves each
+  item's `product_code` and `product_name` through a LEFT JOIN with no
+  `is_active` predicate — that is what makes "the bill stays intact"
+  observable through the real path rather than only in SQL. LEFT, not
+  INNER, so a product that somehow went missing would blank a name rather
+  than silently drop a money line and leave the header total disagreeing
+  with the lines.
+- a new bill against a retired seller or product is **424 resolvable**
+  (`seller_inactive` / `product_inactive`), not 422. One admin click makes
+  the same bill valid, and the yard has very likely already tipped the
+  load — this is the revisit the old note in `bills.py` asked for if master
+  data ever gained a delete. It gained a retirement instead.
+- filing a NEW product under a retired category/uom is refused 422; existing
+  products are untouched. Nothing cascades.
+
+There is still **no delete route anywhere** (proven: 405).
 
 **Found and fixed on the way, not looked for:** `bills.py`'s
 idempotency-race handler had been dead code since Phase 1c — it read
@@ -76,11 +97,12 @@ CLAUDE.md workflow, this is a boundary: stop for review.
 
 ### `server/` — running API
 
-- **Schema**, migrations `0001`–`0003` in `server/migrations/versions/`:
+- **Schema**, migrations `0001`–`0004` in `server/migrations/versions/`:
   `tenants`, `users` (role `admin`|`staff`), `uoms`,
   `product_categories`, `products`, `product_prices` (grade A–D),
-  `sellers` (grade lives here, per SRS 1.6), `purchase_bills`,
-  `purchase_bill_items`. Row-level security is FORCEd per tenant; the
+  `sellers` (grade, id_number, address, vehicle_no — per SRS 1.6),
+  `purchase_bills`, `purchase_bill_items`. The four master-data tables
+  carry `is_active` (0004). Row-level security is FORCEd per tenant; the
   runtime role `recycle_app` is NOSUPERUSER + NOBYPASSRLS and holds
   DML only.
 - **Endpoints** (`server/app/`). Open to any signed-in user: `GET /health`,
@@ -88,8 +110,9 @@ CLAUDE.md workflow, this is a boundary: stop for review.
   `GET /uoms`, `GET /product-categories`, `POST /bills`, `GET /bills`,
   `GET /bills/{id}`. **Admin only**: `POST /bills/{id}/void`,
   `POST`+`PATCH` on `/uoms`, `/product-categories`, `/products`,
-  `/sellers`, and `PUT /products/{id}/prices/{grade}`. Every request is
-  scoped to its token's tenant with `SET LOCAL` inside the request
+  `/sellers`, `PUT /products/{id}/prices/{grade}`, and
+  `POST /{entity}/{id}/deactivate`+`/activate` on all four. Every request
+  is scoped to its token's tenant with `SET LOCAL` inside the request
   transaction. `code` is immutable after create on every entity — it is
   what a historical bill is read against.
 - **Proofs** — nine scripts in `server/scripts/`, each exercising a
@@ -178,11 +201,11 @@ not a new feature:
   not Expo served from a development machine.
 - **Real per-shop login.** Accounts and credentials the shop owns,
   created for it — not the dev fixture from `seed_dev.py`.
-- **Retiring a master-data row.** The write path now exists (see Current
-  phase), but nothing can take a product or seller OUT of the list: no
-  `is_active` column, so no deactivate endpoint, and delete is forbidden.
-  A shop that mistypes a product code is stuck with it in the picker. This
-  is the migration described above and it is the smallest remaining gap.
+- **A back office to drive any of it.** The whole master-data write path
+  now exists and is proven over HTTP, but the only thing that can call it
+  is `curl`. `desktop/` is still empty, and the yard app is deliberately
+  read-only for master data — so a shop still cannot set up its own
+  products, prices or sellers without someone running requests by hand.
 - **A daily money view.** What was bought and paid out today. The
   bills exist; nothing totals them for the person who has to balance
   the cash.
@@ -267,10 +290,20 @@ Dated, because they decay. Re-run them; do not cite them.
   with valid checksums.
 - 2026-07-28 — `prove_master_write.py` → exit 0 TWICE in a row against
   the live database, no reseed between, no run fixtures left behind.
+- 2026-07-28 — migration `0004` applied to the live database; columns
+  verified from `information_schema` (four `is_active` NOT NULL DEFAULT
+  true, three nullable seller fields).
+- 2026-07-28 — retirement proven end to end: FE-STEEL retired while an
+  existing bill referenced it; the bill answered 200 with
+  `product_code='FE-STEEL'`, `product_name='Steel scrap'`, every money
+  and weight column byte-identical, doc_no and total unmoved. A new bill
+  against it in that state was 424 `product_inactive` and wrote no row;
+  after reactivating, the identical payload was accepted.
 - 2026-07-28 — ALL EIGHT pre-existing server proofs re-run bare and
-  green after the auth/bills/db changes: `prove_auth`, `prove_bills`,
-  `prove_rls`, `prove_master`, `prove_master_data_gate`,
-  `prove_shop_time`, `prove_seller_pricing`, `prove_backup_restore`.
+  green after the auth/bills/db changes AND again after 0004:
+  `prove_auth`, `prove_bills`, `prove_rls`, `prove_master`,
+  `prove_master_data_gate`, `prove_shop_time`, `prove_seller_pricing`,
+  `prove_backup_restore`.
 - 2026-07-28 — the concurrent same-key race observed directly: two
   overlapping submits (37.5 ms of measured overlap) returned
   `[200, 201]` with exactly one bill. Before the fix that path was a
