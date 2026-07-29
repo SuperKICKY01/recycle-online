@@ -10,11 +10,104 @@ not been OBSERVED: a proof that ran, an endpoint that answered, a
 screen seen on a device. Implemented is not verified, and a dated
 green in here is only as fresh as its date.
 
-**Last updated: 2026-07-29 — the client-side 403 work, then the first
-Android pass and the first two-device run. No code changed for the
-latter two: they are observations.**
+**Last updated: 2026-07-29 — the daily money view (server endpoint only),
+proven against a live database.**
 
 ## Current phase
+
+**Daily money view — complete, server only, no UI.** `GET /reports/daily`
+is the number an owner balances the cash box against at closing; until it
+existed there was psql or nothing. Admin only, tenant-scoped through the
+existing `tenant_connection` path with no hand-written `WHERE tenant_id`.
+`server/app/reports.py`, proven by `server/scripts/prove_daily_report.py`
+(63 checks, green twice in a row, no reseed).
+
+Decisions made, each argued in the module docstring rather than assumed:
+
+- **The day is `server_received_at` converted to shop time**, half-open
+  `[00:00+07, next 00:00+07)`. Never `device_created_at`. The response
+  carries the consequence in English AND Thai so the owner is TOLD rather
+  than discovers it: **a bill weighed at 23:50 and synced at 00:05 counts
+  in the next day.**
+- **The server decides "today"**, from `now()` inside the request
+  transaction — the same clock that stamps `server_received_at`. A client
+  MAY name a past day; a FUTURE day is refused 422 `day_in_the_future`,
+  because that is the one wrong-clock case that would otherwise return a
+  believable "the shop took nothing today". Every response labels the day
+  and ships `server_now`, so a client can compute its own skew.
+- **Off-list payments surfaced** — `unit_price <> list_price`, exact
+  NUMERIC, per bill and per line, plus `off_list_variance` (paid minus
+  what the list would have cost, over active bills only).
+- **Admin only.** The day's takings, the void detail and the off-list
+  signal are the owner's numbers, and the asymmetry decides it: opening it
+  later is one role change, closing it after every phone has shown the
+  day's cash is not. NOTE it is defence in depth, not a confidentiality
+  boundary — a staff token can already read `GET /bills` tenant-wide and
+  `GET /bills/{id}` (which returns both prices), so the numbers are
+  derivable today. **Whether `GET /bills` should be tenant-wide for staff
+  is the OWNER's question and is deliberately left open.**
+- **The honest gap is a CONSTANT, not a computed field.**
+  `completeness.understatement_possible` is always `true`: there is no
+  device registry, no heartbeat and no device column, so the server has no
+  evidence with which to ever say otherwise, and a field that computed
+  `false` would be inventing a guarantee. `quiet_for_seconds` is offered
+  as the nearest signal and explicitly labelled NOT a sync check — an idle
+  yard and a disconnected phone are indistinguishable from here.
+- **Size: the money is never paged.** Every total, count and doc_no range
+  is a SQL aggregate over the whole day, computed independently of the
+  line list, so a truncated list cannot produce a short total *by
+  construction*. Lines page at 200 (max 500); the void lists are capped at
+  500 and NOT paged, because truncating the fraud-surveillance list is
+  precisely the wrong thing to truncate.
+- **Two void questions, not one.** `voided` = bills received this day that
+  are now void (the reconciliation set). `voids_applied` = voids performed
+  this day whatever day the bill belongs to (the surveillance set), each
+  flagged `from_earlier_day`. Without the second, a bill from last Tuesday
+  voided today appears in NO day anyone opens — that is the unwatched
+  void, and it is the one that costs money.
+
+**Needs a migration, NOT added (stopped here as instructed):** an index
+`(tenant_id, server_received_at)` on `purchase_bills`. The day predicate
+has none — 0001 gives only `(tenant_id, id)` and `(tenant_id, doc_no)`.
+At one shop's volume this is a sequential scan over a small table and is
+fine; it stops being fine after a year or two of real trade. Nothing else
+in the endpoint needs a schema change.
+
+**Known limit, unfixed:** a malformed `date` (e.g. `2026-13-40`) returns
+FastAPI's own 422 shape, not the `kind`/`code` vocabulary the rest of the
+API uses. No client consumes this endpoint yet; recorded so it is not
+re-discovered.
+
+**OPEN DECISION — a shared proof teardown, not taken.** Proofs create bills
+they can never delete (hard rule 5), and the measurement above shows only
+`prove_backup_restore` leaves nothing live, because it alone voids its own
+fixture. The recommendation, for the owner to accept or refuse:
+
+- **The pattern applies** to `prove_bills`, `prove_master_write`,
+  `prove_seller_pricing`, `prove_master_data_gate` and `prove_shop_time` —
+  every one lands ACTIVE bills on the real current day, where they are now
+  indistinguishable from trade in the daily report.
+- **It does not apply to `prove_daily_report`**, which solves the same
+  problem more strongly: its fixtures are quarantined on a synthetic 2019
+  day, so they are invisible to every real day whether voided or not.
+  Quarantine beats voiding where the proof controls the date.
+- **It should be ONE shared helper**, not five teardowns. The teardown has
+  two non-obvious traps already documented once in
+  `prove_backup_restore.void_marker`: `ck_bills_void_consistency` requires
+  all three void columns to move together, and `voided_by` must be a user
+  in the SAME tenant (composite FK). Re-deriving that four more times is
+  how they drift.
+- **Two carve-outs the helper must not swallow.** A bill a proof
+  deliberately keeps LIVE (`prove_master_write`'s `-keep`, whose whole job
+  is to be an intact historical bill) must be excluded BY KEY, never by
+  "whatever is left over". And voiding stamps `voided_at = now()`, which
+  drops every teardown into TODAY's `voids_applied` — the
+  fraud-surveillance list. Trading bill noise for void noise on the one
+  list built to be watched is arguably worse; the helper should backdate
+  the void to the bill's own `server_received_at`, or the dev day view
+  fills with proof voids.
+
+## Previous phase
 
 **Teaching the client about 403 — complete, device-verified.** The server has
 been refusing staff voids since the role gate landed; the client mapped that 403
@@ -44,7 +137,7 @@ each separately asserted over hundreds of green cells. `proveNotice` N2b now
 asserts the CONCATENATION in draw order.
 See `lessons/403-is-about-what-the-caller-may-do.md`.
 
-## Previous phase
+## Earlier phases
 
 **Role enforcement + master-data writes — complete EXCEPT deactivation**
 (server only; no mobile, no desktop, no UI). `users.role` existed since
@@ -142,15 +235,16 @@ CLAUDE.md workflow, this is a boundary: stop for review.
   `GET /bills/{id}`. **Admin only**: `POST /bills/{id}/void`,
   `POST`+`PATCH` on `/uoms`, `/product-categories`, `/products`,
   `/sellers`, `PUT /products/{id}/prices/{grade}`, and
-  `POST /{entity}/{id}/deactivate`+`/activate` on all four. Every request
+  `POST /{entity}/{id}/deactivate`+`/activate` on all four, and
+  `GET /reports/daily`. Every request
   is scoped to its token's tenant with `SET LOCAL` inside the request
   transaction. `code` is immutable after create on every entity — it is
   what a historical bill is read against.
-- **Proofs** — nine scripts in `server/scripts/`, each exercising a
+- **Proofs** — ten scripts in `server/scripts/`, each exercising a
   real path against a live database: `prove_rls`, `prove_auth`,
   `prove_master`, `prove_bills`, `prove_master_data_gate`,
   `prove_shop_time`, `prove_seller_pricing`, `prove_backup_restore`,
-  `prove_master_write`. Each must pass twice in a row without
+  `prove_master_write`, `prove_daily_report`. Each must pass twice in a row without
   reseeding (`lessons/proof-must-run-twice.md`). `seed_dev.py` loads
   the dev fixture — now an `admin` AND a `staff` user per tenant, since
   a role gate cannot be proven without a token that gets refused.
@@ -240,9 +334,11 @@ not a new feature:
   is `curl`. `desktop/` is still empty, and the yard app is deliberately
   read-only for master data — so a shop still cannot set up its own
   products, prices or sellers without someone running requests by hand.
-- **A daily money view.** What was bought and paid out today. The
-  bills exist; nothing totals them for the person who has to balance
-  the cash.
+- **A daily money view — the SERVER half is now built** (`GET
+  /reports/daily`, see Current phase). What is still missing is anything
+  a shop owner can actually open: there is no UI on either client, so the
+  only caller is still `curl`. It lands with the back-office item above,
+  not before it.
 
 ## Known device gaps
 
@@ -305,6 +401,29 @@ reports it as proven.
   Windows ships no IANA database and `tzdata` is not installed, so
   `app/config.py` uses a named fixed offset. Installing `tzdata` is
   a prerequisite for any future per-tenant timezone work.
+
+## Known scaling limits
+
+Measured or reasoned, not yet hit. Recorded so they are not rediscovered as
+mysteries — and so nobody "optimises" them before they matter.
+
+- **No index for the daily report's day predicate.** `GET /reports/daily`
+  filters `purchase_bills` on `(tenant_id, server_received_at)`. Migration
+  0001 gives that table only `(tenant_id, id)` and a partial
+  `(tenant_id, doc_no)`, so **every daily report is a sequential scan** over
+  the tenant's whole bill history, and it gets one row slower per bill
+  bought — forever. At one shop's current volume (301 bills in the dev
+  tenant) this is not measurable and **must not be fixed yet**: an index is
+  a write cost on the hot path (`POST /bills`) paid to speed up a report
+  nobody has opened, and the endpoint has no UI. It becomes real at roughly
+  a year of trade, or the first time a shop reports the day view feeling
+  slow. **The fix, when wanted, is one migration:**
+  `CREATE INDEX ix_bills_tenant_received ON purchase_bills (tenant_id, server_received_at)`.
+  Deliberately NOT added this phase. Nothing else in `reports.py` needs a
+  schema change.
+- **The void lists are capped, not paged** (500, with a `truncated` flag).
+  A day that reaches the cap is itself the finding; paging the
+  fraud-surveillance list is the wrong thing to page.
 
 ## Known stale references
 
@@ -445,3 +564,91 @@ Dated, because they decay. Re-run them; do not cite them.
   this hardware before. Recorded here so it is not re-discovered as a
   bug: any report that orders bills by `device_created_at` across
   devices is wrong, and must key on `server_received_at`.
+
+- 2026-07-29 — **`prove_daily_report.py` green TWICE in a row** against the
+  live database, no reseed between (63 checks). Its fixtures sit on a
+  synthetic day, 2019-03-14, so no real trading day is disturbed; they are
+  LEFT IN PLACE (hard rule 5) and every assertion is a set-membership or a
+  DELTA, which is why run 2 passes while the day's total doubles.
+- 2026-07-29 — **the day boundary, with the wrong answers measured beside
+  it.** Same fixtures, one list price of 15.00, three aggregation bases:
+
+  | basis | day total | which fixtures it counts |
+  |---|---|---|
+  | `server_received_at` + shop tz (**shipped**) | **3053.00** | edge_first, edge_last, on_list, off_list |
+  | `server_received_at` + UTC day | 3398.00 | drops edge_first, ADDS edge_after + late_sync |
+  | `device_created_at` + shop tz | 3278.00 | drops edge_first, ADDS late_sync |
+
+  A UTC day is off by 345.00 and a device-clock day by 225.00 on nine
+  bills. Both edges hold exactly: `00:00:00.000000+07` is IN,
+  `23:59:59.999999+07` is IN, and the two instants one microsecond outside
+  are OUT (half-open, so midnight is counted once, never twice).
+- 2026-07-29 — also observed through the real endpoint: a voided bill
+  absent from the total and present in the void list with reason/who/when;
+  a void performed against a five-day-old bill appearing ONLY in
+  `voids_applied`, flagged `from_earlier_day`; an off-list bill flagged
+  and an on-list one not, with `off_list_variance` exact to the baht; a
+  staff token 403 `kind: forbidden`; tenant B's day invisible to A and
+  visible to B; every money value an exact 2-dp string with no JSON float
+  anywhere in the body; `limit=1` returning one line and identical totals;
+  a future date refused 422; and `SHOW transaction_isolation` answering
+  `repeatable read` for the report and `read committed` by default.
+- 2026-07-29 — ALL NINE pre-existing server proofs re-run bare and green
+  after the `reports.py` / `db.py` / `main.py` changes.
+- 2026-07-29 — **`prove_master_write.py` went red, and it was the
+  assertion, not the code.** `len(with_inactive) == len(default_list) + 1`
+  assumed this run's product was the tenant's only retired row. A bill
+  from 2026-07-28 (`mw-f0c445f2-inactive`) had been written against that
+  run's OWN seller and product, so hard rule 5 pins both forever and its
+  cleanup could not remove them — two inactive products, and `+ 1` false.
+  Rewritten as a set difference; green twice. **The debris is permanent
+  and is still there** (`PROD-f0c445f2`, `SELL-f0c445f2`, both retired,
+  both pinned by bill `B-2569-194`): it cannot be cleaned without deleting
+  a transaction. Third instance of this assertion shape — see the third
+  amendment to `lessons/proof-must-run-twice.md`. Every other proof script
+  was grepped for the same shape; the rest are distinctness or per-run
+  claims and are sound.
+- 2026-07-29 — note for whoever runs the proofs next: `prove_master.py`
+  defaults to `API_BASE_URL` **8000** while `prove_master_write.py` and
+  `prove_daily_report.py` default to **8099**; `mobile/src/proof/
+  proveForbidden.ts` F6 defaults to **8000** via `RECYCLE_API_BASE`. A bare
+  run against the wrong port fails with `httpx.ConnectError` / a transport
+  error, which looks exactly like a dead server. Set the base URL
+  explicitly.
+- 2026-07-29 — **full sweep of every proof, server and mobile, for
+  assertions that measure the fixture rather than the behaviour.** Five
+  fragile ones found and fixed; the rest judged sound with the reason
+  recorded in-line so the next sweep does not churn them. The fixed ones:
+  two BE-year time bombs (`prove_bills.py` derived the year from
+  `datetime.now(utc).year + 543`, the exact expression
+  `lessons/be-year-comes-after-the-timezone.md` exists for;
+  `prove_master_data_gate.py` hardcoded `2569` in two SQL predicates and a
+  doc_no regex — all four would have gone red on 2027-01-01 over a defect
+  the code does not have); a seed-value literal (`prove_master.py` asserted
+  `'"15.00"' in raw` for a price three other scripts mutate and restore, so
+  its green depended on everyone else's cleanup); an order-dependent index
+  (`sb[0]["id"] != sa[0]["id"]`, which could not fail while the
+  disjointness check above it held, and would IndexError the day a tenant
+  has no sellers — removed, not repaired); and one of my own in
+  `prove_daily_report.py` (`len(cannot_know) >= 3` would have stayed green
+  against three empty strings; it now asserts the substance).
+  **The mobile proofs are sound as a class and were not churned:** they
+  build their world per run in `mkdtempSync` temp dirs or in-memory stores,
+  so a count there measures the fixture the test itself just created, which
+  IS the behaviour under test. Their absolute doc_nos (`proveClock.ts:341`,
+  `B-2569-1,2,3`) come from FAKE servers whose counter resets each run, not
+  from the real one. The single mobile proof that touches the live API
+  (`proveForbidden` F6) captures the server-assigned `doc_no` and compares
+  back rather than asserting a literal.
+- 2026-07-29 — **proof debris measured, tenant A: 301 bills, 248 active, 53
+  voided.** By originating script (idempotency-key prefix): `bill` 92/69
+  active, `mw` 56/46, `selpx` 44/44, `daily` 36/28, `mdgate` 20/20,
+  `shoptime` 14/14, **`backup` 10/0**. Only `prove_backup_restore` leaves
+  nothing live, because it is the only one that voids its own fixture.
+  **37 active proof bills landed on today** — a day `GET /reports/daily`
+  now shows, mixed in with the 4 real device bills. `prove_daily_report`
+  contributes 0 to that: its fixtures are quarantined on 2019-03-14. No
+  master-data debris is created by any current script; the pinned
+  `PROD-f0c445f2` / `SELL-f0c445f2` pair is an artifact of a pre-fix
+  version of `prove_master_write`, which now writes that bill against the
+  SEEDED product and seller.

@@ -113,6 +113,49 @@ sellers one had been fixed — the amendment was applied to the line that failed
 rather than to the class. When you fix an assertion of this shape, grep for its
 siblings in the same file before moving on.
 
+## AMENDED A THIRD TIME (daily report, 2026-07-29): debris is PERMANENT, so a count assertion has a half-life
+
+The previous amendment ended with "grep for its siblings in the same file before
+moving on." That was done for `prove_master.py` and **not** for
+`prove_master_write.py`, which carried this in its own retirement case:
+
+```python
+check("...everything else is still there",
+      len(default_list) > 0 and len(with_inactive) == len(default_list) + 1)
+```
+
+It went red while proving the daily report — on a run that changed nothing in
+that path. The cause was a bill from the day before, `mw-f0c445f2-inactive`,
+written against that run's OWN seller and product: exactly the trap rule 1 above
+names. Hard rule 5 pins the bill, the FKs pin the seller and product, its cleanup
+could not remove them, and they sit in the tenant retired and immortal. So there
+were now TWO inactive products, and `+ 1` was false.
+
+The retirement worked perfectly. The assertion was counting.
+
+**The new part is the time axis.** The earlier amendments ask "would this break
+if a fixture were added?" — a question about the seed, which someone chooses to
+change. This one breaks with no change at all, because on any table that cannot
+be hard-deleted, leftover rows only ever accumulate. A count assertion over such
+a table is not merely fragile; it has a **half-life**. It is not a question of
+whether it goes red, only of which unrelated phase is holding it when it does —
+and the cost is paid by whoever is debugging something else that day.
+
+The fix is the set difference the check was always trying to state, which needs
+the before-set observed:
+
+```python
+offered_before = {p["id"] for p in get("/products")}     # BEFORE the deactivate
+...
+check(offered_before - offered_after == {this_run_product}
+      and offered_after and offered_after < with_inactive_ids)
+```
+
+And the corollary widens: **grep every proof script for this shape, not just the
+file that went red.** `len(x) == n`, `len(a) == len(b) + 1`, and any arithmetic
+between two counts of live data are all the same defect wearing different
+clothes.
+
 ## How to apply
 
 Before trusting any proof script:
