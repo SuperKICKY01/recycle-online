@@ -10,10 +10,40 @@ not been OBSERVED: a proof that ran, an endpoint that answered, a
 screen seen on a device. Implemented is not verified, and a dated
 green in here is only as fresh as its date.
 
-**Last updated: 2026-07-28, at the close of the role + master-write work
-(including migration `0004`).**
+**Last updated: 2026-07-29, at the close of the client-side 403 work
+(mobile only; the server was not touched).**
 
 ## Current phase
+
+**Teaching the client about 403 — complete, device-verified.** The server has
+been refusing staff voids since the role gate landed; the client mapped that 403
+into `unavailable, reachable: true` and so treated a permission as an outage.
+`forbidden` is now a FOURTH failure class on both `SendOutcome` and `VoidOutcome`
+(the three older classes are all about the BILL; `session_expired` is about the
+caller but its whole definition is that one tap fixes it here). Landed:
+
+- a refused VOID is stamped `void_refused_at`/`void_refused_code`, leaves
+  `listVoidsToApply`, and is **never retried** — the old mapping re-POSTed it
+  every 4s forever, since that path has no backoff column at all.
+- a refused SEND clears the poison columns and gates the send loop on an
+  in-memory, device-global `sendForbidden`. Not persisted, deliberately.
+- both are retracted by a SIGN-IN and nothing else — the one event on this device
+  that can change who is asking. Known limit: a role changed mid-session is
+  invisible until the next sign-in (JWT TTL is one hour).
+- the card and strip say the account may not do this and name the shop OWNER —
+  never support, never "sign in again", never `ผิดพลาด`. `ยกเลิกบิลนี้` is hidden
+  from a staff token (read from the token's own `role` claim by a hand-written
+  base64url/UTF-8 reader, since `atob`/`TextDecoder` are unverified under Hermes);
+  the gate FAILS OPEN on an unreadable token and the server stays the authority.
+
+**Found by this phase, in its own working tree:** `voidProgressLine` still
+promised `จะดำเนินการให้อัตโนมัติ` two lines above a notice box saying the system
+had NOT cancelled the bill — two renderers of one card, each internally correct,
+each separately asserted over hundreds of green cells. `proveNotice` N2b now
+asserts the CONCATENATION in draw order.
+See `lessons/403-is-about-what-the-caller-may-do.md`.
+
+## Previous phase
 
 **Role enforcement + master-data writes — complete EXCEPT deactivation**
 (server only; no mobile, no desktop, no UI). `users.role` existed since
@@ -162,9 +192,12 @@ programs — see the boot check in CLAUDE.md.
 - **Screens** (`App.tsx`, `app/`): login, cart entry with numpad,
   per-bill seller picker, master-data strip with freshness state,
   status strip and operator notices, bills panel with the void flow.
-- **Proofs**: eleven headless `npm run prove:*` scripts —
+- **Proofs**: twelve headless `npm run prove:*` scripts —
   `sync`, `sqlite`, `money`, `cart`, `entry`, `seller`, `notice`,
-  `void`, `time`, `cold`, `clock`.
+  `void`, `time`, `cold`, `clock`, `forbidden`. `prove:forbidden` is the
+  first mobile proof that REQUIRES the live API: its F6 logs in as the
+  seeded staff user and reads the server's actual 403 through the real
+  `HttpTransport`. `--offline` skips that case and exits **2**, never 0.
 
 ### `desktop/` — not started
 
@@ -251,22 +284,10 @@ re-discovered as a mystery.
   program is `tsconfig.json` (`npm run typecheck:app`). Comment only;
   no behaviour depends on it.
 
-- **`mobile/src/adapters/httpTransport.ts:18-23` is now WRONG, and this
-  one has behaviour behind it.** It says *"403 stays — the server has no
-  permission model in the MVP, so a 403 here would be a genuine
-  server-side surprise"*. As of this phase the server DOES have a
-  permission model. The transport still maps 403 into
-  `unavailable, reachable: true` (lines 122-128), which means a STAFF
-  phone tapping void gets: retry forever, plus `reachable: true` feeding
-  the poison counter, so the queue-health alarm escalates to red
-  ("call support") over a request that is simply not allowed and will
-  never be allowed. The server's half is done and proven — the 403 is
-  distinguishable from every other class on status AND on `kind`
-  (`prove_master_write` C1) — but the CLIENT has not been taught it yet.
-  Nothing under `mobile/` was touched in this phase, by instruction.
-  This is the first item of the follow-up phase, alongside hiding void
-  behind `role === "admin"` (the role is now in the token and in
-  `/whoami` for exactly that).
+*(The `httpTransport.ts:18-23` entry that stood here — "403 stays, the server
+has no permission model in the MVP" — is CLOSED. The client was taught the 403
+in the phase below, and the comment now records what it cost rather than
+asserting the opposite of the code.)*
 
 ## SRS references
 
@@ -341,6 +362,20 @@ Dated, because they decay. Re-run them; do not cite them.
   overlapping submits (37.5 ms of measured overlap) returned
   `[200, 201]` with exactly one bill. Before the fix that path was a
   500.
-- The MOBILE proofs and both TypeScript programs were NOT re-run for
-  this update — no file under `mobile/` was touched. Their last green
-  is the phase that wrote them.
+- 2026-07-29 — all TWELVE mobile proofs green TWICE in a row, and both
+  TypeScript programs (`typecheck`, `typecheck:app`) exit 0, each run
+  bare. `prove:forbidden` ran against the live API both times with no
+  reseed between (its own bills were `B-2569-218` then `B-2569-219`).
+- 2026-07-29 — **device pass, real iPhone, staff account.** No void
+  button under the staff role. With the button forced on, one tap
+  produced exactly ONE `POST /bills/{id}/void -> 403` in the uvicorn log
+  and NOTHING for the following minute — it is the last line in the log.
+  Postgres on that bill (`B-2569-222`): `voided_at NULL`, `voided_by
+  NULL`, `void_reason NULL` (read as hex, per the codepage-874 footgun),
+  `total_amount 220.00`, still active. The screen: red card, badge
+  `ไม่มีสิทธิ์ยกเลิกบิล`, total NOT struck through, no `ยกเลิกแล้ว`, no
+  `ติดต่อฝ่ายสนับสนุน`, no sign-in prompt. Signing back in as admin
+  retracted the refusal and applied the ORIGINAL void.
+- The two temporary device-test edits (`app/config.ts` DEMO switched to
+  the staff account, `role={null}` on BillsPanel) were reverted before
+  the commit and are NOT in the tree.
