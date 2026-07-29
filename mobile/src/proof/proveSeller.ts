@@ -745,12 +745,12 @@ async function s8RetryWindowLeaksNothing(): Promise<void> {
    */
   /** Everything billNotice would put on the card, as one string. */
   const renderable = (b: NoticeInput): string => {
-    const n = billNotice(b, "active");
+    const n = billNotice(b, "active", "ok");
     return `${n.badge ?? ""} ${n.lines.join(" ")}`;
   };
 
   const assertClean = (label: string, b: NoticeInput): void => {
-    const tone = billNotice(b, "active").tone;
+    const tone = billNotice(b, "active", "ok").tone;
     const text = renderable(b);
     const leaked = BODY_FRAGMENTS.filter(([, needle]) => text.includes(needle)).map(([l]) => l);
     // Calling a resolvable refusal an error is the original defect, so the word
@@ -827,7 +827,7 @@ async function s8RetryWindowLeaksNothing(): Promise<void> {
    * defect — and it must never carry a diagnostic, which assertClean checks
    * byte-wise on the line below.
    */
-  const retryTone = retrying === null ? "?" : billNotice(retrying, "active").tone;
+  const retryTone = retrying === null ? "?" : billNotice(retrying, "active", "ok").tone;
   check(
     "during the retry the card reads as WAITING, never as an error",
     retryTone === "waiting",
@@ -847,7 +847,7 @@ async function s8RetryWindowLeaksNothing(): Promise<void> {
   if (reparked !== null) assertClean("re-parked: nothing leaks", reparked);
   check(
     "re-parking restores the calm parked presentation",
-    reparked !== null && billNotice(reparked, "active").tone === "parked",
+    reparked !== null && billNotice(reparked, "active", "ok").tone === "parked",
   );
 
   // ---- state 5: the office fixed it and the bill syncs
@@ -882,29 +882,31 @@ async function s8RetryWindowLeaksNothing(): Promise<void> {
       master_data_missing_at: "t",
       master_data_code: code,
       void_requested_at: voided ? "t" : null,
+      void_refused_at: null,
+      void_refused_code: null,
     },
   });
   const combos: { label: string; b: NoticeInput }[] = [
     parkedRow("parked", "seller_grade_unset", false),
     parkedRow("parked + unknown code", "future_code", false),
     parkedRow("parked + null code", null, false),
-    { label: "never attempted", b: { sync_state: "pending", attempt_count: 0, master_data_missing_at: null, master_data_code: null, void_requested_at: null } },
-    { label: "terminally failed (422)", b: { sync_state: "failed", attempt_count: 1, master_data_missing_at: null, master_data_code: null, void_requested_at: null } },
+    { label: "never attempted", b: { sync_state: "pending", attempt_count: 0, master_data_missing_at: null, master_data_code: null, void_requested_at: null, void_refused_at: null, void_refused_code: null } },
+    { label: "terminally failed (422)", b: { sync_state: "failed", attempt_count: 1, master_data_missing_at: null, master_data_code: null, void_requested_at: null, void_refused_at: null, void_refused_code: null } },
     parkedRow("voided while parked", "seller_grade_unset", true),
   ];
   for (const { label, b } of combos) {
-    const n = billNotice(b, "active");
+    const n = billNotice(b, "active", "ok");
     console.log(`  ${label.padEnd(28)} tone=${n.tone.padEnd(7)} ${n.lines.join(" / ").slice(0, 52)}`);
   }
   for (const { label, b } of combos) assertClean(`combo ${label}: nothing leaks`, b);
   check(
     "a genuine 422 still surfaces as a red error — parking did not silence real failures",
-    billNotice(combos[4]!.b, "active").tone === "error",
+    billNotice(combos[4]!.b, "active", "ok").tone === "error",
     "the fix must not have made every failure calm",
   );
   check(
     "a bill voided while parked shows no send notice — the void region owns the card",
-    billNotice(combos[5]!.b, "active").tone === "none",
+    billNotice(combos[5]!.b, "active", "ok").tone === "none",
   );
 
   await driver.close();

@@ -447,6 +447,8 @@ async function k3ForwardJumpRaisesNoFalseAlarm(): Promise<void> {
     oldMs >= POISON_ALARM_MS || (snap.head?.server_error_attempts ?? 0) >= POISON_ALARM_ATTEMPTS;
   const oldNotice = statusNotice({
     session: "active",
+    account: "ok",
+    voidsRefused: 0,
     online: true,
     pending: snap.pendingCount,
     failed: 0,
@@ -485,6 +487,8 @@ async function k3ForwardJumpRaisesNoFalseAlarm(): Promise<void> {
 
   const newNotice = statusNotice({
     session: "active",
+    account: "ok",
+    voidsRefused: 0,
     online: true,
     pending: snap.pendingCount,
     failed: 0,

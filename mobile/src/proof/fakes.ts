@@ -184,6 +184,23 @@ export class InMemoryStore implements LocalStore {
     return Promise.resolve();
   }
 
+  /**
+   * Mirrors SqliteLocalStore.markSendForbidden: back to pending, poison columns
+   * cleared, and NO backoff — next_attempt_at is `now`, because there is no
+   * schedule to write for a refusal only a human elsewhere can lift.
+   */
+  markSendForbidden(id: string, reason: string, attempt: number, now: Date): Promise<void> {
+    const row = this.require(id);
+    row.sync_state = "pending";
+    row.attempt_count = attempt;
+    row.last_error = reason;
+    row.next_attempt_at = now.toISOString();
+    row.first_attempt_at = row.first_attempt_at ?? now.toISOString();
+    row.first_server_error_at = null;
+    row.server_error_attempts = 0;
+    return Promise.resolve();
+  }
+
   listMasterDataBlocked(limit: number): Promise<LocalBill[]> {
     const out = [...this.rows.values()]
       .filter((b) => b.sync_state === "pending" && b.master_data_missing_at !== null)
@@ -316,6 +333,10 @@ export class InMemoryStore implements LocalStore {
         (b) =>
           b.void_requested_at !== null &&
           b.voided_at === null &&
+          // Mirrors the SQL: a refused void is not owed work, so it must leave
+          // this queue in BOTH stores or the same proof case would pass on one
+          // and hammer the server on the other.
+          b.void_refused_at === null &&
           b.sync_state === "synced" &&
           b.doc_no !== null,
       )
@@ -330,6 +351,10 @@ export class InMemoryStore implements LocalStore {
     row.voided_at = now.toISOString();
     row.void_attempts = attempt;
     row.void_last_error = null;
+    // Cleared with it, exactly as in SqliteLocalStore: no transition may leave
+    // behind state describing the state it just left.
+    row.void_refused_at = null;
+    row.void_refused_code = null;
     return Promise.resolve();
   }
 
@@ -338,6 +363,33 @@ export class InMemoryStore implements LocalStore {
     row.void_attempts = attempt;
     row.void_last_error = reason;
     return Promise.resolve();
+  }
+
+  markVoidRefused(
+    id: string,
+    code: string,
+    reason: string,
+    attempt: number,
+    now: Date,
+  ): Promise<void> {
+    const row = this.require(id);
+    row.void_refused_at = now.toISOString();
+    row.void_refused_code = code;
+    row.void_attempts = attempt;
+    row.void_last_error = reason;
+    return Promise.resolve();
+  }
+
+  clearVoidRefusals(_now: Date): Promise<number> {
+    let cleared = 0;
+    for (const row of this.rows.values()) {
+      if (row.void_refused_at === null) continue;
+      row.void_refused_at = null;
+      row.void_refused_code = null;
+      row.void_last_error = null;
+      cleared += 1;
+    }
+    return Promise.resolve(cleared);
   }
 
   /** Test-only: force a state, e.g. to simulate a kill mid-send. */
@@ -686,6 +738,106 @@ export class ExpiredSessionTransport implements Transport {
       return Promise.resolve({ kind: "session_expired", reason: "HTTP 401: Not authenticated" });
     }
     return Promise.resolve(toVoidOutcome(this.server.voidBill(bill.id, reason)));
+  }
+}
+
+/**
+ * THE ROLE GATE. The server answers 403 — the caller is authenticated and is
+ * exactly who they say they are, and their role does not permit this.
+ *
+ * Which operations are gated is a constructor argument because the REAL server
+ * gates them asymmetrically and that asymmetry is the whole point: POST /bills is
+ * open to staff, POST /bills/{id}/void is admin-only. So the case a yard actually
+ * meets is `{ sends: false, voids: true }` — a phone that works all day and is
+ * refused the moment someone taps ยกเลิกบิล.
+ *
+ * `grantAdmin()` models the ONE thing that can change the answer: a human
+ * elsewhere changes the role, and someone signs in again.
+ */
+export class ForbiddenTransport implements Transport {
+  sendCalls = 0;
+  voidCalls = 0;
+  private granted = false;
+
+  constructor(
+    private readonly server: FakeServer,
+    private readonly gate: { sends: boolean; voids: boolean },
+  ) {}
+
+  /** The owner fixes the role. Nothing about any bill changes. */
+  grantAdmin(): void {
+    this.granted = true;
+  }
+
+  sendBill(bill: LocalBill): Promise<SendOutcome> {
+    this.sendCalls += 1;
+    if (this.gate.sends && !this.granted) {
+      return Promise.resolve({
+        kind: "forbidden",
+        code: "admin_required",
+        // The shape httpTransport builds: `HTTP 403: ` + the server's detail
+        // object, verbatim. Kept realistic ON PURPOSE — it is what must never
+        // reach the screen, so a proof asserting the screen is clean has to be
+        // running against the real thing rather than a tidy placeholder.
+        reason:
+          'HTTP 403: {"kind":"forbidden","code":"admin_required","message":' +
+          '"ต้องมีสิทธิ์ผู้ดูแลระบบจึงจะทำรายการนี้ได้","required_role":"admin",' +
+          '"actual_role":"staff"}',
+      });
+    }
+    const r = this.server.submit(bill.payload);
+    return Promise.resolve({ kind: r.kind, doc_no: r.bill.doc_no });
+  }
+
+  voidBill(bill: LocalBill, reason: string): Promise<VoidOutcome> {
+    this.voidCalls += 1;
+    if (this.gate.voids && !this.granted) {
+      return Promise.resolve({
+        kind: "forbidden",
+        code: "admin_required",
+        reason:
+          'HTTP 403: {"kind":"forbidden","code":"admin_required","message":' +
+          '"ต้องมีสิทธิ์ผู้ดูแลระบบจึงจะทำรายการนี้ได้","required_role":"admin",' +
+          '"actual_role":"staff"}',
+      });
+    }
+    return Promise.resolve(toVoidOutcome(this.server.voidBill(bill.id, reason)));
+  }
+}
+
+/**
+ * THE PRE-FIX 403, kept so the proof can show what it prevents rather than
+ * merely asserting the new state is fine — the same device as
+ * LegacyUnauthorizedTransport below, one status along.
+ *
+ * Byte-identical reason string to ForbiddenTransport; only the classification
+ * differs. On the SEND path that difference is `reachable: true`, which runs the
+ * poison counter to POISON_ALARM_ATTEMPTS and produces the red
+ * "ติดต่อฝ่ายสนับสนุน" alarm. On the VOID path VoidOutcome has no `reachable` at
+ * all, so the failure is quieter and worse: the void stays owed, there is no
+ * backoff column on that path, and it is re-POSTed on every pass forever.
+ */
+export class LegacyForbiddenTransport implements Transport {
+  sendCalls = 0;
+  voidCalls = 0;
+
+  private static readonly REASON =
+    'HTTP 403: {"kind":"forbidden","code":"admin_required","message":' +
+    '"ต้องมีสิทธิ์ผู้ดูแลระบบจึงจะทำรายการนี้ได้","required_role":"admin",' +
+    '"actual_role":"staff"}';
+
+  sendBill(): Promise<SendOutcome> {
+    this.sendCalls += 1;
+    return Promise.resolve({
+      kind: "unavailable",
+      reason: LegacyForbiddenTransport.REASON,
+      reachable: true,
+    });
+  }
+
+  voidBill(): Promise<VoidOutcome> {
+    this.voidCalls += 1;
+    return Promise.resolve({ kind: "unavailable", reason: LegacyForbiddenTransport.REASON });
   }
 }
 

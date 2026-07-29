@@ -17,7 +17,7 @@
  * operator should do FIRST.
  */
 import { parkedSummary } from "./parkedReason.js";
-import type { SessionState } from "./parkedReason.js";
+import type { AccountState, SessionState } from "./parkedReason.js";
 
 export type StatusTone = "bad" | "warn" | "busy" | "good" | "idle";
 
@@ -40,6 +40,18 @@ export interface StatusNotice {
 export interface StatusInput {
   /** Can this device act as someone at all? Outranks everything below. */
   session: SessionState;
+  /**
+   * What the server has refused this ACCOUNT. Device-global, derived from the
+   * last answer — never stored, never per bill.
+   */
+  account: AccountState;
+  /**
+   * Bills whose VOID the server refused (403). Counted rather than flagged
+   * because each one is a separate purchase the yard believes is cancelled and
+   * the system still holds as live money, and the number is the size of that
+   * disagreement.
+   */
+  voidsRefused: number;
   /** null = nothing has been attempted since launch, so unknown, not assumed good. */
   online: boolean | null;
   /** Bills queued to send (pending + syncing). Excludes parked ones. */
@@ -114,7 +126,64 @@ export function statusNotice(s: StatusInput): StatusNotice {
   }
 
   /*
-   * 3. WAITING ON THE OFFICE. Ranked above `failed` on purpose: this one is
+   * 3. THE SERVER HAS REFUSED THIS ACCOUNT. Below the poison alarm, above
+   * everything that amounts to "wait".
+   *
+   * WHY NOT HIGHER. The alarm above means the queue is dammed and no money is
+   * moving at all; that stays first. And a permission refusal cannot be mistaken
+   * for it, because markSendForbidden clears the poison columns — so if both
+   * were somehow true, the jam is the bigger fact and this one is still on the
+   * card.
+   *
+   * WHY NOT LOWER, and this is the whole argument. Every message below is
+   * something that resolves itself or is already in someone's hands: parked bills
+   * go the moment the office adds a price, an outage ends, a queue drains. This
+   * one resolves NEVER without a person, and unlike them it is not about a set of
+   * bills — it is about what this phone may do, so it will keep producing new
+   * instances every time anyone taps the button. It specifically outranks
+   * `online === false`, which would say "จะส่งให้เองเมื่อเน็ตกลับมา": the network
+   * is fine, waiting is not a strategy, and that sentence would send the yard to
+   * check the signal over a permission.
+   *
+   * Red, and NOT the support alarm. The colour is right — this is a real
+   * disagreement about money, not a waiting state — but the sentence names the
+   * shop owner, because support cannot grant a role and a phone number here would
+   * cost someone a call to the wrong person. There is also no button: the only
+   * action is a conversation, and an action the app cannot perform must never be
+   * dressed as one it can (the ยกเลิก-on-a-failed-bill mistake, one screen up).
+   * Above all it must never invite a sign-in — the same user would come back with
+   * the same role, which is a loop with a person in it.
+   */
+  if (s.account === "submit_refused" || s.voidsRefused > 0) {
+    // Both facts can hold at once; neither may hide the other. The submit
+    // refusal leads because it is still accumulating — every bill weighed from
+    // now on joins it — while the refused voids are a fixed set already recorded.
+    const refusedVoids =
+      s.voidsRefused > 0 ? ` และยกเลิกบิลไม่สำเร็จ ${String(s.voidsRefused)} ใบ` : "";
+    if (s.account === "submit_refused") {
+      const held =
+        s.pending > 0
+          ? ` บิล ${String(s.pending)} ใบอยู่ในเครื่อง ยังไม่ได้ส่ง`
+          : "";
+      return {
+        tone: "bad",
+        message:
+          `บัญชีนี้ไม่มีสิทธิ์ส่งบิลเข้าระบบ${held}${refusedVoids}` +
+          " — ต้องแจ้งเจ้าของร้าน",
+        action: null,
+      };
+    }
+    return {
+      tone: "bad",
+      message:
+        `ยกเลิกบิลไม่สำเร็จ ${String(s.voidsRefused)} ใบ` +
+        " — บัญชีนี้ไม่มีสิทธิ์ยกเลิกบิล บิลยังอยู่ในระบบตามเดิม ต้องแจ้งเจ้าของร้าน",
+      action: null,
+    };
+  }
+
+  /*
+   * 4. WAITING ON THE OFFICE. Ranked above `failed` on purpose: this one is
    * time-sensitive and cheap to fix. Staff are often still at the yard and the
    * office can act in seconds — whereas a bill the server has refused outright
    * needs someone to sit down with it. Say what to do, not what went wrong.
@@ -132,7 +201,7 @@ export function statusNotice(s: StatusInput): StatusNotice {
   }
 
   /*
-   * 4. TERMINALLY FAILED BILLS. This used to read "ส่งไม่สำเร็จ N ใบ — ต้องแก้ไข",
+   * 5. TERMINALLY FAILED BILLS. This used to read "ส่งไม่สำเร็จ N ใบ — ต้องแก้ไข",
    * which names no actor and no action: there is nothing on this device that can
    * "fix" a bill the server has permanently refused, and the card was
    * simultaneously offering to cancel it. What is actually true is that the

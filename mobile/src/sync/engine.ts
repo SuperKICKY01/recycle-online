@@ -66,6 +66,19 @@ export interface SyncRunResult {
    * retryable is exactly how an expired session came to be displayed as ออฟไลน์.
    */
   sessionExpired: number;
+  /**
+   * Sends the server REFUSED on identity grounds (403): this account may not
+   * submit bills.
+   *
+   * Separate from every other counter because the reaction is different from all
+   * of them: `retryable` means wait, `sessionExpired` means sign in, `rejected`
+   * means this bill is broken — and this one means NOTHING ON THIS DEVICE will
+   * change the answer. It is also the signal that stops the send loop; see
+   * sendForbidden below.
+   */
+  forbidden: number;
+  /** Voids the server refused on identity grounds (403). Not owed any more. */
+  voidsForbidden: number;
 }
 
 const emptyResult = (): SyncRunResult => ({
@@ -81,6 +94,8 @@ const emptyResult = (): SyncRunResult => ({
   masterDataBlocked: 0,
   masterDataReleased: 0,
   sessionExpired: 0,
+  forbidden: 0,
+  voidsForbidden: 0,
 });
 
 function describeError(err: unknown): string {
@@ -99,6 +114,31 @@ export class SyncEngine {
 
   /** Fast in-process guard. The durable guard is store.claimForSend. */
   private readonly inFlight = new Set<string>();
+
+  /**
+   * THE SERVER HAS REFUSED THIS ACCOUNT'S BILL SUBMISSIONS (403). While it is
+   * set, the send loop does not run at all.
+   *
+   * DEVICE-GLOBAL AND IN MEMORY, deliberately, and this is where the 401 lesson's
+   * rule 4 applies unchanged: a 403 on POST /bills refuses EVERY bill equally, so
+   * it is a fact about the account and not about any row. Storing it per bill
+   * would leave N copies to be retracted one at a time, each outliving its own
+   * truth the moment the role changed.
+   *
+   * NOT PERSISTED, and that is the honest choice rather than a shortcut: it is a
+   * claim about what the SERVER said last, and a stored one would be a guess
+   * about what it will say next. A restart therefore costs exactly one request —
+   * the first send is tried, refused, and the flag is set again. That single
+   * request is also the only way the app can ever discover the role WAS fixed, so
+   * paying it once per launch is a feature, not a leak. (The other retraction is
+   * resumeAfterSignIn: a sign-in is the one event on this device that can change
+   * who the caller is.)
+   *
+   * It gates only the SEND loop. Voids are refused per bill and settled durably —
+   * blocking them here would strand a synced bill's void behind a submit
+   * permission it has nothing to do with.
+   */
+  private sendForbidden = false;
 
   constructor(opts: SyncEngineOptions) {
     this.store = opts.store;
@@ -149,8 +189,10 @@ export class SyncEngine {
   }
 
   /**
-   * The operator has signed in again after the session ended. Returns how many
-   * bills were freed.
+   * The operator has signed in again. Returns how many records were freed to be
+   * tried again — backoffs cleared PLUS void refusals retracted, because both are
+   * "work that was blocked and no longer is", and the caller's only use of the
+   * number is deciding whether to kick a sync pass now.
    *
    * Every backoff currently on the queue was computed while there was no usable
    * session, which is not a fact about the network at all — so without this the
@@ -161,7 +203,27 @@ export class SyncEngine {
    * weighing order, with the same idempotency keys.
    */
   async resumeAfterSignIn(): Promise<number> {
-    return this.store.clearBackoffForPending(this.clock.now());
+    const now = this.clock.now();
+    /*
+     * A SIGN-IN IS THE ONLY EVENT ON THIS DEVICE THAT CAN CHANGE WHO IS ASKING,
+     * so it is the only thing allowed to retract a 403. Both refusals go: the
+     * device-global submit block, and every per-bill void refusal.
+     *
+     * If the same staff user signs back in, each refused thing is re-asked
+     * exactly once and lands back where it was. That is one request, not a loop,
+     * and it is the price of the app not having to guess when a role changed.
+     *
+     * KNOWN LIMIT, stated rather than hidden: a role changed in the back office
+     * while this session continues is invisible here until the next sign-in. The
+     * token's TTL is one hour and there is no refresh, so in practice a shift
+     * re-asks at least hourly. Nothing else on the device is evidence about a
+     * role, and inventing a poll would be a request that exists to make the app
+     * feel responsive rather than to answer a question anyone asked.
+     */
+    this.sendForbidden = false;
+    const freed = await this.store.clearBackoffForPending(now);
+    const unrefused = await this.store.clearVoidRefusals(now);
+    return freed + unrefused;
   }
 
   /**
@@ -209,7 +271,22 @@ export class SyncEngine {
       false,
     );
 
-    for (let guard = 0; guard < this.batchLimit; guard += 1) {
+    /*
+     * THE SEND LOOP DOES NOT RUN AT ALL WHILE SUBMISSION IS FORBIDDEN.
+     *
+     * This is what "a 403 must never retry" means in code. Everywhere else in
+     * this engine a failed send goes back to pending and is tried again later,
+     * because later can differ: the network returns, the office adds a price, the
+     * operator signs in. A 403 has no later that this device can bring about —
+     * every attempt would be an identical question to a server that has already
+     * answered it definitively, and hammering it produces nothing but load and a
+     * climbing attempt_count on bills that are perfectly fine.
+     *
+     * The bills themselves are untouched and stay queued in weighing order. The
+     * moment the flag is retracted (a sign-in, or a restart) they drain exactly as
+     * they would have.
+     */
+    for (let guard = 0; !this.sendForbidden && guard < this.batchLimit; guard += 1) {
       /*
        * STRICT HEAD-OF-LINE ORDER. The queue is read WITHOUT the backoff
        * filter, and only its head — the oldest unsent bill by weighing time —
@@ -345,6 +422,32 @@ export class SyncEngine {
             result.sessionExpired += 1;
             break;
 
+          case "forbidden":
+            /*
+             * THE SERVER REFUSED THE VOID BECAUSE OF WHO ASKED.
+             *
+             * Not markVoidAttemptFailed. That leaves the void in
+             * listVoidsToApply, which has no backoff and no time gate — so the
+             * refusal was re-POSTed on every pass, forever, while the card
+             * promised "จะดำเนินการให้อัตโนมัติ" about a reversal that was never
+             * going to happen. Both halves of that are the defect.
+             *
+             * What is kept: void_requested_at and the owner's reason. The owner
+             * asked, in their own words, and that must not be erased by a
+             * refusal — the office needs to know a cancellation was attempted on
+             * a bill the system still shows as live. What changes is only the
+             * claim that it is on its way.
+             */
+            await this.store.markVoidRefused(
+              bill.id,
+              outcome.code,
+              outcome.reason,
+              attempt,
+              this.clock.now(),
+            );
+            result.voidsForbidden += 1;
+            break;
+
           case "unavailable":
             await this.store.markVoidAttemptFailed(bill.id, outcome.reason, attempt);
             result.voidsRetryable += 1;
@@ -381,6 +484,17 @@ export class SyncEngine {
       total.masterDataBlocked += r.masterDataBlocked;
       total.masterDataReleased += r.masterDataReleased;
       total.sessionExpired += r.sessionExpired;
+      total.forbidden += r.forbidden;
+      total.voidsForbidden += r.voidsForbidden;
+
+      /*
+       * A REFUSAL ABOUT WHO IS ASKING is not progress this loop can make either,
+       * and for the send half it would not even terminate: the bills stay
+       * pending, so the quiescence test below never clears while the send loop is
+       * gated off. Returning here reports the refusal to the caller in the same
+       * breath as the session case, which is the caller that has a screen.
+       */
+      if (r.forbidden > 0 || r.voidsForbidden > 0) return total;
 
       // A session that has ended is not progress this loop can make. No number
       // of passes conjures a token, so spinning to maxPasses would only inflate
@@ -480,6 +594,33 @@ export class SyncEngine {
         const next = new Date(now.getTime() + this.backoffFor(attempt));
         await this.store.markSessionExpired(bill.id, outcome.reason, attempt, next, now);
         result.sessionExpired += 1;
+        return;
+      }
+
+      case "forbidden": {
+        /*
+         * THIS ACCOUNT MAY NOT SUBMIT BILLS. Not this bill — every bill.
+         *
+         * The bill goes back to pending untouched and the poison counters are
+         * cleared, for the same reason markSessionExpired clears them: a signal
+         * meaning "the reachable server keeps refusing THIS BILL" must not be fed
+         * by a condition that is true of every bill (the 401 lesson's rule 3).
+         * Left as `unavailable, reachable: true` — which is what the transport
+         * used to return for a 403 — this drove server_error_attempts to
+         * POISON_ALARM_ATTEMPTS and sent the yard to ring support about a
+         * permission.
+         *
+         * Then the loop stops, and stays stopped: the flag is what makes "never
+         * retries" true rather than "retries a bit slower".
+         */
+        await this.store.markSendForbidden(
+          bill.id,
+          outcome.reason,
+          attempt,
+          this.clock.now(),
+        );
+        this.sendForbidden = true;
+        result.forbidden += 1;
         return;
       }
 

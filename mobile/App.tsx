@@ -64,14 +64,16 @@ import type { Draft } from "./src/cart/types";
 import { ExpoSqliteDriver } from "./src/device/expoSqliteDriver";
 import { SecureTokenStore } from "./src/device/secureTokenStore";
 import { assessFreshness, defaultUnitPrice, masterNotice } from "./src/master/freshness";
+import { readTokenRole } from "./src/session/deviceRole";
+import type { DeviceRole } from "./src/session/deviceRole";
 import { buildLocalBill } from "./src/sync/createBill";
 import { SyncEngine } from "./src/sync/engine";
-import type { SessionState } from "./src/sync/parkedReason";
+import type { AccountState, SessionState } from "./src/sync/parkedReason";
 import { assessQueue } from "./src/sync/queueHealth";
 import type { QueueHealth } from "./src/sync/queueHealth";
 import { systemClock } from "./src/sync/systemClock";
 import type { LocalBill, SyncState } from "./src/sync/types";
-import { isMasterDataBlocked, isVoided } from "./src/sync/types";
+import { isMasterDataBlocked, isVoided, isVoidRefused } from "./src/sync/types";
 import type { Product, Seller } from "./app/api";
 import { fetchProducts, fetchSellers, isUnauthorized, login } from "./app/api";
 import { BillsPanel } from "./app/BillsPanel";
@@ -254,9 +256,36 @@ export default function App() {
   const session: SessionState =
     token === null ? "signed_out" : sessionEnded ? "expired" : "active";
 
+  /*
+   * WHAT THE SERVER HAS REFUSED THIS ACCOUNT. Set by a 403 on a SEND, cleared by
+   * a sign-in and by any successful send.
+   *
+   * Held exactly like sessionEnded and for the same reason: it is a fact about
+   * the server's last answer, and a stored one would be a guess about its next.
+   * A relaunch re-derives it at the cost of one refused request — which is also
+   * the only way the app can ever learn the owner has fixed the role, so it is
+   * the mechanism, not the leak.
+   */
+  const [submitRefused, setSubmitRefused] = useState(false);
+  const account: AccountState = submitRefused ? "submit_refused" : "ok";
+
+  /*
+   * THE ROLE THIS DEVICE IS SIGNED IN AS, read out of the token's claims.
+   *
+   * Advisory and courtesy-only: it decides whether ยกเลิกบิลนี้ is OFFERED. The
+   * server re-reads the role from the users row on every request and refuses
+   * regardless, so a stale claim here can only cost one refusal — which the 403
+   * path now explains in plain Thai. Null (unreadable, or a token from an older
+   * build) means "unknown", and unknown OFFERS the button; see
+   * src/session/deviceRole.ts on why this one fails open.
+   */
+  const [role, setRole] = useState<DeviceRole>(null);
+
   const [online, setOnline] = useState<boolean | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
+  /** Bills whose void the server refused (403). See refresh(). */
+  const [voidsRefusedCount, setVoidsRefusedCount] = useState(0);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [health, setHealth] = useState<QueueHealth | null>(null);
 
@@ -402,6 +431,11 @@ export default function App() {
         setSellersFetchedAt(cache.sellersFetchedAt);
         tokenRef.current = token;
         setToken(token);
+        // Read off the RESTORED token, before any network call — the whole point
+        // of taking it from the claims rather than asking /whoami is that a cold
+        // start with the server unreachable still knows not to offer a button
+        // that cannot work. Unreadable reads as null, which offers it.
+        setRole(readTokenRole(token));
 
         setDraft(restored);
         setReady(true);
@@ -446,6 +480,13 @@ export default function App() {
       .flatMap((g) => g ?? [])
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
     setBills(all.slice(0, 30));
+    /*
+     * Counted over EVERY bill, not over the 30 shown. This number is the size of
+     * a disagreement about money — purchases the yard believes are cancelled and
+     * the server still holds as live — and a count that quietly stopped at the
+     * end of one screen would understate it on exactly the busy day it matters.
+     */
+    setVoidsRefusedCount(all.filter(isVoidRefused).length);
     // A voided bill is not the "latest bill" — it is a reversal, and showing it
     // as the shop's most recent business would misreport the day.
     setLatest(all.find((b) => !isVoided(b)) ?? null);
@@ -485,6 +526,33 @@ export default function App() {
       setOnline(true);
       return;
     }
+
+    /*
+     * A REFUSAL ABOUT WHO IS ASKING (403). Checked here, beside the session case
+     * and above `attempted === 0`, because a pass that sent no bills can still
+     * have tried a VOID and been refused — which is the path a staff phone
+     * actually takes, since creating bills is open to staff and unwinding one is
+     * not.
+     *
+     * online = true, unconditionally: the server answered, immediately and
+     * definitively. Calling this an outage is the same mistake the 401 path made,
+     * and it would put "จะส่งให้เองเมื่อเน็ตกลับมา" on a screen where waiting
+     * achieves nothing at all.
+     *
+     * Only the SEND refusal sets device-global state. A refused void is recorded
+     * on its own row by the engine and is counted in refresh() — one bill's
+     * cancellation not happening is not a claim about what the phone may do next.
+     */
+    if (r.forbidden > 0) {
+      setSubmitRefused(true);
+      setOnline(true);
+    }
+    if (r.voidsForbidden > 0) setOnline(true);
+    if (r.forbidden > 0 || r.voidsForbidden > 0) {
+      await refresh();
+      return;
+    }
+
     if (r.attempted === 0) return;
     // A rejection means the server ANSWERED — that is a working connection with
     // a bad bill, not an outage. Conflating the two is the mistake the
@@ -497,8 +565,13 @@ export default function App() {
     if (r.synced > 0 || r.rejected > 0 || r.masterDataBlocked > 0) {
       setOnline(true);
       setSessionEnded(false);
+      // A bill that went through is DIRECT evidence this account may submit —
+      // the only evidence there is, and stronger than the flag. It happens after
+      // a sign-in as a different user, or after the owner fixes the role and the
+      // engine's own gate is lifted by that sign-in.
+      setSubmitRefused(false);
     } else if (r.retryable > 0) setOnline(false);
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     if (!ready) return undefined;
@@ -558,6 +631,13 @@ export default function App() {
       const t = await login(DEMO.tenantId, DEMO.username, DEMO.password);
       tokenRef.current = t;
       setToken(t);
+      setRole(readTokenRole(t));
+      // A sign-in is the ONE event on this device that can change who the caller
+      // is, so it is the only thing that retracts a 403. If the same account
+      // signs back in, the retry is refused once and lands straight back here —
+      // one request, not a loop. engine.resumeAfterSignIn does the same for the
+      // per-bill void refusals below.
+      setSubmitRefused(false);
       // Persisted BEFORE anything else is attempted, so a fetch that fails
       // straight afterwards still leaves the next launch able to work offline.
       // A keystore write that fails is swallowed by SecureTokenStore — it costs
@@ -840,6 +920,14 @@ export default function App() {
             at once and nothing can be left saying "sign in" after they have.
           */
           session={session}
+          /*
+            What the server has refused this ACCOUNT, and how many voids it
+            refused. Two separate inputs because they are two different facts:
+            one is about what this phone may do from now on, the other is a fixed
+            set of purchases already in disagreement with the server.
+          */
+          account={account}
+          voidsRefused={voidsRefusedCount}
           online={online}
           pending={pendingCount}
           failed={failedCount}
@@ -1007,6 +1095,10 @@ export default function App() {
           bills={bills}
           busy={busy}
           session={session}
+          account={account}
+          // Courtesy only: it decides whether ยกเลิกบิลนี้ is offered. The server
+          // re-reads the role on every request and refuses regardless.
+          role={role}
           blockerId={health?.blockerId ?? null}
           onClose={() => setBillsOpen(false)}
           onVoid={voidBill}

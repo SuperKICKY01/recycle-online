@@ -91,6 +91,8 @@ export function buildLocalBill(deps: BuildBillDeps, draft: BillDraft): LocalBill
     voided_at: null,
     void_attempts: 0,
     void_last_error: null,
+    void_refused_at: null,
+    void_refused_code: null,
   };
 }
 

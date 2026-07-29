@@ -26,10 +26,16 @@ import {
 } from "react-native";
 
 import { pricingProvenanceLine } from "../src/master/freshness";
-import { billNotice, canRequestVoid, voidProgressLine } from "../src/sync/parkedReason";
-import type { NoticeTone, SessionState } from "../src/sync/parkedReason";
+import type { DeviceRole } from "../src/session/deviceRole";
+import {
+  billNotice,
+  canRequestVoid,
+  voidProgressLine,
+  voidRoleNote,
+} from "../src/sync/parkedReason";
+import type { AccountState, NoticeTone, SessionState } from "../src/sync/parkedReason";
 import type { LocalBill, SyncState } from "../src/sync/types";
-import { isVoided } from "../src/sync/types";
+import { isVoided, isVoidRefused } from "../src/sync/types";
 import { shopDateTime } from "../src/time/shopTime";
 
 const STATE_TH: Record<SyncState, string> = {
@@ -57,7 +63,12 @@ const TONE_BOX: Record<Exclude<NoticeTone, "none">, object> = {
   waiting: { backgroundColor: "#f1f5f9" },
   session: { backgroundColor: "#fef3c7" },
   parked: { backgroundColor: "#fef3c7" },
-  // Red, and the only one: the server has permanently refused this bill.
+  // The two RED ones, and they are red for the same reason: a human must act and
+  // nothing resolves without one. They are separate tones rather than one,
+  // because they name different people — `error` sends the office a purchase the
+  // system never took, `forbidden` tells the shop owner a permission is wrong —
+  // and because a state with no tone of its own cannot be told apart anywhere.
+  forbidden: { backgroundColor: "#fee2e2" },
   error: { backgroundColor: "#fee2e2" },
 };
 
@@ -65,7 +76,23 @@ const TONE_LEAD: Record<Exclude<NoticeTone, "none">, object> = {
   waiting: { color: "#334155" },
   session: { color: "#78350f" },
   parked: { color: "#78350f" },
+  forbidden: { color: "#7f1d1d" },
   error: { color: "#7f1d1d" },
+};
+
+/**
+ * The badge colour per tone. A Record for the same reason as the two above: the
+ * badge used to be hardcoded amber (`badgeParked`) for every replacement badge
+ * there was, which was fine while every one of them meant "waiting". A refused
+ * void does not, and an amber ไม่มีสิทธิ์ยกเลิกบิล beside a struck-through total
+ * would read as one more thing quietly in hand.
+ */
+const TONE_BADGE: Record<Exclude<NoticeTone, "none">, object> = {
+  waiting: { backgroundColor: "#b45309" },
+  session: { backgroundColor: "#b45309" },
+  parked: { backgroundColor: "#b45309" },
+  forbidden: { backgroundColor: "#b91c1c" },
+  error: { backgroundColor: "#b91c1c" },
 };
 
 /**
@@ -114,6 +141,19 @@ interface Props {
    */
   session: SessionState;
   /**
+   * What the server has refused this ACCOUNT. Device-global, same reasoning as
+   * `session` above: it is one fact about the phone, not N facts about rows.
+   */
+  account: AccountState;
+  /**
+   * The role this device is signed in as, or null when it cannot be read.
+   *
+   * Courtesy only — it decides whether the void button is OFFERED and nothing
+   * else. The server re-reads the role on every request and refuses regardless,
+   * which is what makes it safe for this to be a stale claim out of a token.
+   */
+  role: DeviceRole;
+  /**
    * The bill currently jamming the send queue (stuck at the head past the alarm
    * threshold), or null. It is called out here so the operator can find the one
    * bill holding up everything behind it, and act on THAT bill specifically.
@@ -123,7 +163,17 @@ interface Props {
   onVoid: (billId: string, reason: string) => void;
 }
 
-export function BillsPanel({ visible, bills, busy, session, blockerId, onClose, onVoid }: Props) {
+export function BillsPanel({
+  visible,
+  bills,
+  busy,
+  session,
+  account,
+  role,
+  blockerId,
+  onClose,
+  onVoid,
+}: Props) {
   const [voidingId, setVoidingId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
 
@@ -162,7 +212,17 @@ export function BillsPanel({ visible, bills, busy, session, blockerId, onClose, 
           ) : null}
 
           {bills.map((b) => {
-            const voided = isVoided(b);
+            /*
+              TWO PREDICATES, NOT ONE. isVoided means "the owner asked", which is
+              what makes an offline void visible immediately — and it is NOT the
+              same as "the system cancelled it". When the server has REFUSED the
+              void, showing ยกเลิกแล้ว with the total struck through would tell
+              the yard a purchase was reversed while the server still holds it as
+              live money, which is the one outcome this whole state exists to
+              prevent.
+            */
+            const refused = isVoidRefused(b);
+            const voided = isVoided(b) && !refused;
             const isBlocker = b.id === blockerId;
             /*
               PARKED IS NOT FAILED, AND NEITHER IS OFFLINE. A resolvable refusal
@@ -181,9 +241,10 @@ export function BillsPanel({ visible, bills, busy, session, blockerId, onClose, 
               shadowing it silently detached the void TextInput from it. Caught by
               the app typecheck, which is why both programs are run bare.
             */
-            const notice = billNotice(b, session);
+            const notice = billNotice(b, session, account);
             const parked = notice.tone === "parked";
             const voidLine = voidProgressLine(b);
+            const roleNote = voidRoleNote(b, role);
             return (
               <View
                 key={b.id}
@@ -191,6 +252,10 @@ export function BillsPanel({ visible, bills, busy, session, blockerId, onClose, 
                   styles.card,
                   voided && styles.cardVoided,
                   parked && styles.cardParked,
+                  // A refused void gets the red card, like the queue blocker:
+                  // the bill is NOT in the state the owner asked for, and only a
+                  // person can change that.
+                  refused && styles.cardBlocker,
                   isBlocker && styles.cardBlocker,
                 ]}
               >
@@ -200,16 +265,28 @@ export function BillsPanel({ visible, bills, busy, session, blockerId, onClose, 
                   </Text>
                 ) : null}
                 <View style={styles.cardTop}>
-                  {voided ? (
-                    <Text style={[styles.badge, styles.badgeVoid]}>ยกเลิกแล้ว</Text>
-                  ) : notice.badge !== null ? (
+                  {notice.badge !== null && notice.tone !== "none" ? (
                     /*
-                      A parked bill's sync_state is still 'pending', so the plain
-                      badge would read รอส่ง — true but misleading: nothing at
-                      the yard will make it send. The badge names WHO it waits
-                      for instead, in the same amber as รอส่ง.
+                      RANKED FIRST, ahead of ยกเลิกแล้ว, and that order is the
+                      fix. A parked bill's sync_state is still 'pending', so the
+                      plain badge would read รอส่ง — true but misleading; the
+                      badge names WHO it waits for instead. A REFUSED VOID is the
+                      case that had to come before the void badge: it has
+                      void_requested_at set, so the old order would have shown
+                      ยกเลิกแล้ว on a bill the server still holds live.
+
+                      The colour comes from the tone Record, so a badge cannot be
+                      amber "waiting" for a state that is nothing of the kind.
+                      `tone !== "none"` is tested in the condition rather than
+                      asserted with a cast: there is no closure between the test
+                      and the use here, so the compiler grants the narrowing —
+                      and if a "none" ever did arrive carrying a badge, this falls
+                      through to the plain state badge instead of rendering an
+                      unstyled one.
                     */
-                    <Text style={[styles.badge, styles.badgeParked]}>{notice.badge}</Text>
+                    <Text style={[styles.badge, TONE_BADGE[notice.tone]]}>{notice.badge}</Text>
+                  ) : voided ? (
+                    <Text style={[styles.badge, styles.badgeVoid]}>ยกเลิกแล้ว</Text>
                   ) : (
                     <Text style={[styles.badge, { backgroundColor: STATE_COLOR[b.sync_state] }]}>
                       {STATE_TH[b.sync_state]}
@@ -283,7 +360,7 @@ export function BillsPanel({ visible, bills, busy, session, blockerId, onClose, 
                   <NoticeBox tone={notice.tone} lines={notice.lines} />
                 ) : null}
 
-                {canRequestVoid(b) && voidingId !== b.id ? (
+                {canRequestVoid(b, role) && voidingId !== b.id ? (
                   <Pressable
                     style={styles.voidBtn}
                     onPress={() => startVoid(b.id)}
@@ -292,6 +369,15 @@ export function BillsPanel({ visible, bills, busy, session, blockerId, onClose, 
                     <Text style={styles.voidBtnText}>ยกเลิกบิลนี้</Text>
                   </Pressable>
                 ) : null}
+
+                {/*
+                  What stands in for the button when the ROLE is what hid it.
+                  Not silence: a button that was there yesterday and is gone
+                  today reads as a broken app. The sentence comes from
+                  parkedReason, like every other operator-facing string, so it is
+                  reachable by the proofs — app/ is not.
+                */}
+                {roleNote !== null ? <Text style={styles.roleNote}>{roleNote}</Text> : null}
 
                 {voidingId === b.id ? (
                   <View style={styles.reasonBox}>
@@ -394,6 +480,12 @@ const styles = StyleSheet.create({
   noticeLead: { fontSize: 14, fontWeight: "800" },
   noticeCalm: { fontSize: 12, marginTop: 6, fontWeight: "600" },
 
+  // Quiet grey, deliberately unlike every failure style on this card: nothing has
+  // gone wrong, this account simply does not do this job.
+  roleNote: {
+    marginTop: 12, fontSize: 12, color: "#64748b", fontWeight: "700",
+    textAlign: "center",
+  },
   voidBtn: {
     marginTop: 12, minHeight: 48, borderRadius: 10, backgroundColor: "#fee2e2",
     alignItems: "center", justifyContent: "center",

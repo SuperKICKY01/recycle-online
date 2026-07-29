@@ -1225,6 +1225,8 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
    */
   const soloStrip = statusNotice({
     session: "expired",
+    account: "ok",
+    voidsRefused: 0,
     online: true,
     pending: 1,
     failed: 0,
@@ -1235,7 +1237,7 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
     masterDataCodes: [],
   });
   console.log(`  strip: ${soloStrip.message}`);
-  console.log(`  card : ${billNotice(soloRow!, "expired").lines.join(" / ")}`);
+  console.log(`  card : ${billNotice(soloRow!, "expired", "ok").lines.join(" / ")}`);
   check(
     "the strip does NOT say ออฟไลน์ and does NOT send anyone to support",
     !soloStrip.message.includes("ออฟไลน์") && !soloStrip.message.includes("ฝ่ายสนับสนุน"),
@@ -1248,8 +1250,8 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
   );
   check(
     "the bill's own card reads as a session problem, not an error",
-    billNotice(soloRow!, "expired").tone === "session",
-    `tone=${billNotice(soloRow!, "expired").tone}`,
+    billNotice(soloRow!, "expired", "ok").tone === "session",
+    `tone=${billNotice(soloRow!, "expired", "ok").tone}`,
   );
 
   /* ---- 11a-legacy: THE DISPROOF for one bill ---- */
@@ -1265,6 +1267,8 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
   // This is the number App branched on: retryable > 0 -> setOnline(false).
   const legacyStrip = statusNotice({
     session: "active",
+    account: "ok",
+    voidsRefused: 0,
     online: false,
     pending: 1,
     failed: 0,
@@ -1348,6 +1352,8 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
 
   const manyStrip = statusNotice({
     session: "expired",
+    account: "ok",
+    voidsRefused: 0,
     online: true,
     pending: 3,
     failed: 0,
@@ -1393,6 +1399,8 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
   const legacyHealth = assessQueue(legacySnap, legacyMany.clock.now());
   const legacyManyStrip = statusNotice({
     session: "active",
+    account: "ok",
+    voidsRefused: 0,
     online: true,
     pending: 3,
     failed: 0,

@@ -53,6 +53,12 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
      voided_at         TEXT,
      void_attempts     INTEGER NOT NULL DEFAULT 0,
      void_last_error   TEXT,
+     /* Non-null ⟺ the server REFUSED this void on identity grounds (403). The
+        request itself stays on the row; this takes it out of listVoidsToApply so
+        nothing re-asks, and tells the card to stop claiming the bill is
+        cancelled when the server still holds it live. */
+     void_refused_at   TEXT,
+     void_refused_code TEXT,
      /* When the bill first failed to send, for any reason. Set once, on the
         first bounce; never moved. The total-stuck clock. */
      first_attempt_at  TEXT,
@@ -228,6 +234,12 @@ const ADDED_BILL_COLUMNS: readonly { name: string; ddl: string }[] = [
   { name: "master_data_missing_at", ddl: "master_data_missing_at TEXT" },
   { name: "master_data_code", ddl: "master_data_code TEXT" },
   { name: "master_as_of", ddl: "master_as_of TEXT" },
+  // Phase 2c-9: the void the server refused on identity grounds. An upgraded
+  // device must gain these too — listVoidsToApply filters on void_refused_at, so
+  // without them the void queue itself would fail to read on a database that
+  // already holds the shop's bills, including ones with a void owed.
+  { name: "void_refused_at", ddl: "void_refused_at TEXT" },
+  { name: "void_refused_code", ddl: "void_refused_code TEXT" },
 ];
 
 /**

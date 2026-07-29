@@ -8,19 +8,35 @@
  *   400/422 -> validation refusal                           (rejected: terminal)
  *   424     -> master data not set up yet                  (rejected_resolvable)
  *   401     -> the session ended, sign in again            (session_expired)
- *   403/5xx -> server answered but unusable      (unavailable, reachable: true)
+ *   403     -> this ACCOUNT may not do this                (forbidden)
+ *   5xx     -> server answered but unusably      (unavailable, reachable: true)
  *   timeout / network / no token -> no answer    (unavailable, reachable: false)
  *
- * `reachable` is the poison signal: a retry that keeps hitting 403/5xx is a
+ * `reachable` is the poison signal: a retry that keeps hitting a 5xx is a
  * reachable server refusing this bill, which the UI escalates to a loud alarm,
  * unlike a yard that is simply offline. See sync/queueHealth.ts.
  *
- * 401 WAS IN THAT LINE UNTIL PHASE 2c-7 and it did not belong there. An expired
- * token is not an unknown outcome and it is not this bill's fault: it made three
- * queued bills look like a poisoned queue ("call support") and one queued bill
- * look like a dead spot ("ออฟไลน์"), neither of which names the fix. 403 stays —
- * the server has no permission model in the MVP, so a 403 here would be a
- * genuine server-side surprise, not a session that simply ran out.
+ * TWO STATUSES HAVE LEFT THAT LAST LINE, for the same reason and in two phases.
+ *
+ * 401, in 2c-7. An expired token is not an unknown outcome and it is not this
+ * bill's fault: it made three queued bills look like a poisoned queue ("call
+ * support") and one queued bill look like a dead spot ("ออฟไลน์").
+ *
+ * 403, HERE. This comment used to say "403 stays — the server has no permission
+ * model in the MVP, so a 403 here would be a genuine server-side surprise". That
+ * became false the day POST /bills/{id}/void and every master-data write became
+ * admin-only (server/app/auth.py require_admin), and the consequence was not
+ * hypothetical: a STAFF phone tapping ยกเลิกบิล was answered 403, the void stayed
+ * in listVoidsToApply — which has no backoff at all — and the device re-POSTed it
+ * every four seconds, forever, while the card said the cancellation was on its
+ * way. On the SEND path the same mapping ran the poison counter to
+ * POISON_ALARM_ATTEMPTS and produced the red "ติดต่อฝ่ายสนับสนุน" alarm over a
+ * permission no support desk can grant.
+ *
+ * The refusal is read off the STATUS, not the body: 403 is not 401, not 422, not
+ * 424, not 5xx, and that axis survives a body that fails to parse. The body's
+ * `code` is carried for the UI's wording only — nothing here string-matches a
+ * message, which is exactly why the server names its own kind.
  *
  * NOT VERIFIED against the running server in Phase 2a. See the note at the end
  * of the proof output.
@@ -38,6 +54,22 @@ export interface HttpTransportConfig {
 interface BillResponseBody {
   doc_no?: string | null;
   detail?: unknown;
+}
+
+/**
+ * The `code` out of a refusal body, or a safe stand-in.
+ *
+ * Shared by the 403 and 424 paths because they have the same contract and the
+ * same hazard: the code is a machine-readable reason the UI turns into its own
+ * sentence, and NOTHING may fall through to rendering the server's prose or the
+ * body itself (lessons/correct-classification-can-still-render-as-an-error.md).
+ * A body we could not parse yields the fallback, so the classification never
+ * depends on the body at all — only the status does.
+ */
+function refusalCode(detail: unknown, fallback: string): string {
+  return typeof detail === "object" && detail !== null && "code" in detail
+    ? String((detail as { code: unknown }).code)
+    : fallback;
 }
 
 export class HttpTransport implements Transport {
@@ -103,24 +135,30 @@ export class HttpTransport implements Transport {
       // stays queued; only a sign-in unblocks it.
       return { kind: "session_expired", reason: `HTTP 401: ${describe(body.detail)}` };
     }
+    if (response.status === 403) {
+      // FORBIDDEN. The caller is authenticated and is not permitted. Nothing is
+      // wrong with the bill, the network, the server or the session — only with
+      // what this account may do, and only a human elsewhere changes that.
+      return {
+        kind: "forbidden",
+        code: refusalCode(body.detail, "forbidden"),
+        reason: `HTTP 403: ${describe(body.detail)}`,
+      };
+    }
     if (response.status === 424) {
       // RESOLVABLE: well-formed bill, master data not set up yet. The status code
       // carries the classification so it survives a body we cannot parse; the
       // code inside the body is for the UI. Nothing here string-matches a
       // message — that is the whole point of the server naming the kind.
-      const detail = body.detail;
-      const code =
-        typeof detail === "object" && detail !== null && "code" in detail
-          ? String((detail as { code: unknown }).code)
-          : "master_data_missing";
       return {
         kind: "rejected_resolvable",
-        reason: `HTTP 424: ${describe(detail)}`,
-        code,
+        reason: `HTTP 424: ${describe(body.detail)}`,
+        code: refusalCode(body.detail, "master_data_missing"),
       };
     }
-    // A status we could not use (401/403/5xx). The server ANSWERED, so the
-    // network is usable and this is reachable-but-refusing: reachable: true.
+    // A status we could not use (5xx, or anything unforeseen). The server
+    // ANSWERED, so the network is usable and this is reachable-but-refusing:
+    // reachable: true.
     return {
       kind: "unavailable",
       reason: `HTTP ${response.status}: ${describe(body.detail)}`,
@@ -139,6 +177,12 @@ export class HttpTransport implements Transport {
    *   404 -> the server does not have this bill under this tenant. A definite
    *          answer, so terminal, not a retry.
    *   401 -> the session ended. Still owed, retried after a sign-in.
+   *   403 -> THIS ACCOUNT MAY NOT VOID. Since the role gate landed, this is the
+   *          one a yard actually meets: creating bills is open to staff and
+   *          unwinding one is not, so a staff phone works all day and is refused
+   *          the moment it taps ยกเลิกบิล. Not owed, not retried — the void
+   *          stops being pending work and the card says the bill was NOT
+   *          cancelled, because the server still holds it as live money.
    *   anything else / network -> unknown, retry.
    */
   async voidBill(bill: LocalBill, reason: string): Promise<VoidOutcome> {
@@ -180,6 +224,17 @@ export class HttpTransport implements Transport {
     // would meet an expired session with nothing on the screen explaining it.
     if (response.status === 401) {
       return { kind: "session_expired", reason: `HTTP 401: ${describe(body.detail)}` };
+    }
+    // Checked BEFORE 404, mirroring the server: require_admin runs as a dependency,
+    // so a staff caller is refused before void_bill ever looks the bill up. A 403
+    // here therefore says nothing about whether the bill exists — and must not be
+    // read as if it did.
+    if (response.status === 403) {
+      return {
+        kind: "forbidden",
+        code: refusalCode(body.detail, "forbidden"),
+        reason: `HTTP 403: ${describe(body.detail)}`,
+      };
     }
     if (response.status === 404 || response.status === 400 || response.status === 422) {
       return { kind: "rejected", reason: `HTTP ${response.status}: ${describe(body.detail)}` };

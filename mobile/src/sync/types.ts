@@ -160,6 +160,28 @@ export interface LocalBill {
   voided_at: string | null;
   void_attempts: number;
   void_last_error: string | null;
+  /**
+   * Non-null ⟺ THE SERVER REFUSED THE VOID BECAUSE OF WHO ASKED (403), and this
+   * is when. The owner's intent stands — void_requested_at is never cleared —
+   * but the reversal HAS NOT HAPPENED and will not happen by itself.
+   *
+   * It is a per-BILL column even though the refusal is a fact about the ACCOUNT,
+   * which reverses the rule in lessons/401-is-about-the-caller-not-the-bill.md
+   * ("session state is device-global and derived, never stamped on a row") on
+   * purpose. The reason the two differ: an expired session says nothing about any
+   * bill, whereas this row is CLAIMING SOMETHING FALSE about itself. Without a
+   * durable mark the card goes on saying ยกเลิกแล้ว, struck through, for a bill
+   * the server still holds as live money — across restarts, because nothing in
+   * memory survives one. What is stamped here is not "this account lacks a role";
+   * it is "the reversal this row promises did not happen".
+   *
+   * It also has to stop the retry. listVoidsToApply excludes a refused void, so
+   * the void leaves the owed queue instead of being re-POSTed every pass forever
+   * against a role that no device action can change.
+   */
+  void_refused_at: string | null;
+  /** The server's machine-readable reason (admin_required). Null when not refused. */
+  void_refused_code: string | null;
 }
 
 /** Parked waiting on master data the back office has not set up yet. */
@@ -173,6 +195,16 @@ export const isVoided = (bill: LocalBill): boolean => bill.void_requested_at !==
 export const isVoidSettled = (bill: LocalBill): boolean => bill.voided_at !== null;
 
 /**
+ * The server REFUSED to void this bill because of who asked. The owner's intent
+ * stands and is still on the row; the bill is NOT cancelled in the system.
+ *
+ * Every place that renders "ยกเลิกแล้ว" from isVoided must consult this too, or
+ * the screen tells the yard a purchase was reversed while the server still has it
+ * live — the money going quiet, which is the one thing this state exists to stop.
+ */
+export const isVoidRefused = (bill: LocalBill): boolean => bill.void_refused_at !== null;
+
+/**
  * The result of one send attempt.
  *
  * The split between `rejected` and `unavailable` is the whole point of this
@@ -182,19 +214,35 @@ export const isVoidSettled = (bill: LocalBill): boolean => bill.voided_at !== nu
  * it; retrying forever would never help, so it becomes visibly `failed`.
  *
  * Within `unavailable`, `reachable` records whether the SERVER ANSWERED at all:
- * true for an HTTP status we could not use (5xx, 403 — the network works, the
- * server erred or refused), false for a transport-level failure (timeout, DNS,
- * no connection, no token — we never got a word back). Both retry forever; the
- * flag is not about retrying. It is what lets the UI tell an offline yard ("wait
- * it out", amber) apart from a head bill the reachable server keeps failing
- * ("call support", red). See sync/queueHealth.ts.
+ * true for an HTTP status we could not use (a 5xx — the network works, the
+ * server erred), false for a transport-level failure (timeout, DNS, no
+ * connection, no token — we never got a word back). Both retry forever; the flag
+ * is not about retrying. It is what lets the UI tell an offline yard ("wait it
+ * out", amber) apart from a head bill the reachable server keeps failing ("call
+ * support", red). See sync/queueHealth.ts.
  *
- * 401 IS NO LONGER IN `unavailable`. It used to be, as a reachable one, and that
- * was two lies at once: with bills behind it the expired session accumulated
- * server_error_attempts and raised the POISON alarm ("call support"), and with
- * one bill it merely bounced, so the UI called it ออฟไลน์ while the server was
- * answering every request. Neither names the fix, which is to sign in again. It
- * is its own member below.
+ * TWO STATUSES HAVE LEFT `unavailable`, in two phases, and this paragraph is
+ * kept because the list above USED TO NAME BOTH OF THEM as examples of
+ * reachable-but-unusable. It went on naming 403 for a while after the member
+ * below existed — a comment describing the classification it had just stopped
+ * being, eighty lines above the one that replaced it. That is not cosmetic: a
+ * comment that lies is read as a specification, and the reader who trusts it
+ * fixes the code to match. Compare
+ * lessons/a-defaulted-getattr-is-a-silent-dead-branch.md, where an accurate
+ * comment about a dead branch would have ended a defect that lived from 1c.
+ *
+ * 401 (Phase 2c-7). As a reachable `unavailable` it was two lies at once: with
+ * bills behind it the expired session accumulated server_error_attempts and
+ * raised the POISON alarm ("call support"), and with one bill it merely bounced,
+ * so the UI said ออฟไลน์ while the server was answering every request. Neither
+ * names the fix, which is to sign in again.
+ *
+ * 403 (this phase). Same shape, different subject: the server answered
+ * definitively that this ACCOUNT may not do this. Retrying cannot help, and the
+ * poison counter it fed means "the reachable server refuses THIS BILL" — which a
+ * role gate does not, because it refuses every bill equally.
+ *
+ * Both are their own members below.
  */
 export type SendOutcome =
   | { kind: "accepted"; doc_no: string | null }
@@ -239,6 +287,34 @@ export type SendOutcome =
    * can act on it.
    */
   | { kind: "session_expired"; reason: string }
+  /**
+   * FORBIDDEN. The server answered 403: the caller is authenticated, IS exactly
+   * who they say they are, and their ROLE does not permit this operation.
+   *
+   * A FOURTH failure class rather than a fifth spelling of an existing one,
+   * because the question lessons/401-is-about-the-caller-not-the-bill.md tells us
+   * to ask — what is this failure ABOUT — has an answer none of the others carry.
+   * The three classes of unavailable-is-not-rejected are all about the BILL, and
+   * this bill is perfect. session_expired is about the caller, which is closer,
+   * and still wrong on the axis that decides what the app DOES:
+   *
+   *   401  the caller is NOBODY. One tap fixes it, on this device, right now —
+   *        which is why that class is defined by carrying a sign-in button.
+   *   403  the caller is SOMEONE, and that someone may not do this. Signing in
+   *        returns the same user with the same role, so the button is not merely
+   *        useless here, it is a loop. A HUMAN ELSEWHERE has to change the role.
+   *
+   * Folding it into session_expired would also have it cleared by every path that
+   * clears a session — App clears sessionEnded on any server answer at all — so
+   * the refusal would evaporate on the next successful request and come straight
+   * back on the next attempt, forever.
+   *
+   * `code` is the server's machine-readable reason (admin_required), never its
+   * message: the UI derives its own sentence, exactly as it does for a 424.
+   * Nothing here string-matches prose (server/app/auth.py names the kind for
+   * precisely this reason).
+   */
+  | { kind: "forbidden"; code: string; reason: string }
   | { kind: "unavailable"; reason: string; reachable: boolean };
 
 /**
@@ -262,6 +338,17 @@ export type VoidOutcome =
    * leaving the other is how a state comes back through the door nobody watched.
    */
   | { kind: "session_expired"; reason: string }
+  /**
+   * Same meaning as SendOutcome.forbidden, and THE PATH THAT ACTUALLY HAPPENS
+   * TODAY: POST /bills/{id}/void is admin-only, POST /bills is not, so a staff
+   * phone can weigh and save all day and is refused the moment it taps ยกเลิกบิล.
+   *
+   * What this member has to stop is specific and was measured, not assumed: as an
+   * `unavailable` the void stayed in listVoidsToApply, which has NO backoff and no
+   * time gate, so the device re-POSTed the void on every 4-second pass forever
+   * while the card promised it would be handled automatically.
+   */
+  | { kind: "forbidden"; code: string; reason: string }
   | { kind: "unavailable"; reason: string };
 
 export interface Transport {
@@ -397,6 +484,20 @@ export interface LocalStore {
     retryAt: Date,
     now: Date,
   ): Promise<void>;
+  /**
+   * The send bounced on a 403: this ACCOUNT may not submit bills. Back to
+   * pending, poison counters cleared — the same row shape markSessionExpired
+   * produces, and deliberately its own named transition all the same.
+   *
+   * IT TAKES NO retryAt, and that is the difference worth having a second method
+   * for. A 401 is waiting for a sign-in the operator can perform in the next ten
+   * seconds, so a backoff is a real schedule. Nothing on this device will change a
+   * role, so a delay here would be theatre — a number written to make the row look
+   * like it is waiting for something. next_attempt_at is set to `now`; what
+   * actually stops the retry is the engine refusing to send while the refusal
+   * stands, which is device-global and in memory (see SyncEngine.sendForbidden).
+   */
+  markSendForbidden(id: string, reason: string, attempt: number, now: Date): Promise<void>;
   /** Every bill currently parked on master data, for the UI. */
   listMasterDataBlocked(limit: number): Promise<LocalBill[]>;
   /**
@@ -446,4 +547,31 @@ export interface LocalStore {
   listVoidsToApply(limit: number): Promise<LocalBill[]>;
   markVoidApplied(id: string, attempt: number, now: Date): Promise<void>;
   markVoidAttemptFailed(id: string, reason: string, attempt: number): Promise<void>;
+  /**
+   * The server REFUSED the void because of who asked (403). The request stays on
+   * the row — void_requested_at and void_reason are never touched, so the owner's
+   * intent and their words survive — and void_refused_at takes it OUT of
+   * listVoidsToApply so nothing re-asks.
+   *
+   * Not markVoidAttemptFailed with a scary reason: that leaves the void owed, and
+   * "owed" is exactly the claim that is false. The system will not perform this
+   * void, and the card has to say so.
+   */
+  markVoidRefused(
+    id: string,
+    code: string,
+    reason: string,
+    attempt: number,
+    now: Date,
+  ): Promise<void>;
+  /**
+   * Someone signed in, so the caller may now be a DIFFERENT person. Clear every
+   * void refusal and let those voids be owed again; returns how many.
+   *
+   * A sign-in is the only event on this device that can change the answer to "who
+   * is asking", so it is the only thing allowed to retract the refusal. If the
+   * same staff user signs back in, the one retry is refused again and lands right
+   * back here — one request, not a loop.
+   */
+  clearVoidRefusals(now: Date): Promise<number>;
 }

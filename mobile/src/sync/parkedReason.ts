@@ -31,6 +31,8 @@
  * stop". See billNotice below: `last_error` is not a parameter of anything in
  * this file any more.
  */
+import { mayVoid } from "../session/deviceRole.js";
+import type { DeviceRole } from "../session/deviceRole.js";
 import type { SyncState } from "./types.js";
 
 /** The codes the server currently emits. See server/app/bills.py. */
@@ -87,6 +89,68 @@ const isKnown = (code: string): code is MasterDataCode =>
  * and the bill is safe" — which is the actionable part anyway — rather than to a
  * blank card or a stack of punctuation.
  */
+/* ---------------------------------------------- what a 403 says to the yard */
+
+/**
+ * The codes the server currently emits with a 403. See server/app/auth.py.
+ *
+ * There is exactly one today and the list exists anyway, for the same reason
+ * MASTER_DATA_CODES does: the fallback below has to be reached by something, and
+ * a mapping with no unknown case is a blank card the first time the server names
+ * a cause this build has not heard of.
+ */
+export const FORBIDDEN_CODES = ["admin_required"] as const;
+
+export type ForbiddenCode = (typeof FORBIDDEN_CODES)[number];
+
+const isKnownForbidden = (code: string): code is ForbiddenCode =>
+  (FORBIDDEN_CODES as readonly string[]).includes(code);
+
+/**
+ * WHAT THE SERVER REFUSED THIS ACCOUNT, and what has to happen next.
+ *
+ * Written to three rules, all of them things the wrong wording would cost real
+ * money or real trust:
+ *
+ *  1. It never says "error". Nothing is broken. The app, the bill, the network
+ *     and the server are all working exactly as designed — this account simply
+ *     may not do this, which is a decision somebody made on purpose.
+ *  2. It never invites a sign-in. Signing in returns the SAME user with the SAME
+ *     role, so "try signing in again" is a loop with a person in it. This is the
+ *     one thing that separates the wording here from the session wording, and
+ *     getting it wrong would be worse than saying nothing.
+ *  3. It names WHO can fix it, and that person is not support and not the
+ *     office's data — it is the shop owner, because what has to change is a
+ *     permission, not a price.
+ */
+export interface ForbiddenReason {
+  badge: string;
+  /** What was refused and who to tell. One sentence. */
+  what: string;
+  /** True when the code was not recognised. */
+  unknown: boolean;
+}
+
+const ASK_THE_OWNER = "ต้องแจ้งเจ้าของร้าน";
+
+const FORBIDDEN_BY_CODE: Record<ForbiddenCode, { badge: string; what: string }> = {
+  admin_required: {
+    badge: "ไม่มีสิทธิ์ยกเลิกบิล",
+    what: `บัญชีนี้ไม่มีสิทธิ์ยกเลิกบิล ระบบจึงยังไม่ได้ยกเลิกบิลใบนี้ — ${ASK_THE_OWNER}`,
+  },
+};
+
+export function forbiddenReason(code: string | null): ForbiddenReason {
+  if (code !== null && isKnownForbidden(code)) {
+    return { ...FORBIDDEN_BY_CODE[code], unknown: false };
+  }
+  return {
+    badge: "ไม่มีสิทธิ์ทำรายการนี้",
+    what: `บัญชีนี้ไม่มีสิทธิ์ทำรายการนี้ ระบบจึงยังไม่ได้ทำให้ — ${ASK_THE_OWNER}`,
+    unknown: true,
+  };
+}
+
 export function parkedReason(code: string | null): ParkedReason {
   if (code !== null && isKnown(code)) {
     return { ...BY_CODE[code], reassure: REASSURE, unknown: false };
@@ -131,15 +195,23 @@ export function parkedReason(code: string | null): ParkedReason {
  *
  * The tone is derived from STATE, never from the text of a failure:
  *
- *   error   ⟺ sync_state === 'failed'. markFailed is its only writer and only a
- *             PERMANENT rejection (422) reaches it, so this really is the
- *             terminal case — something a human must act on now.
- *   parked  ⟺ master_data_missing_at set. The office owes something.
- *   session ⟺ there is no usable session. Sign in; nothing else will help.
- *   waiting ⟺ pending/syncing and it has actually bounced. Retries forever.
- *   none      nothing worth saying.
+ *   error     ⟺ sync_state === 'failed'. markFailed is its only writer and only
+ *               a PERMANENT rejection (422) reaches it, so this really is the
+ *               terminal case — something a human must act on now.
+ *   parked    ⟺ master_data_missing_at set. The office owes something.
+ *   forbidden ⟺ the server refused THIS ACCOUNT (403). Only the shop owner can
+ *               change it, and no waiting and no signing in will.
+ *   session   ⟺ there is no usable session. Sign in; nothing else will help.
+ *   waiting   ⟺ pending/syncing and it has actually bounced. Retries forever.
+ *   none        nothing worth saying.
+ *
+ * `forbidden` is its own tone and not a shade of `error` or of `session`, for
+ * the same reason it is its own SendOutcome member: a tone is a STATE here, not
+ * a colour, and every one of them names a different owner of the next action.
+ * Rendering two of them alike is a decision the view may make in one place; a
+ * state that has no tone of its own cannot be told apart anywhere.
  */
-export type NoticeTone = "none" | "waiting" | "session" | "parked" | "error";
+export type NoticeTone = "none" | "waiting" | "session" | "parked" | "forbidden" | "error";
 
 /**
  * Whether the device can talk to the server AS SOMEONE at all.
@@ -159,6 +231,25 @@ export type NoticeTone = "none" | "waiting" | "session" | "parked" | "error";
  */
 export type SessionState = "active" | "expired" | "signed_out";
 
+/**
+ * WHAT THE SERVER HAS REFUSED THIS ACCOUNT — device-global, derived, and read
+ * off the server's last answer, exactly like SessionState above.
+ *
+ * "submit_refused" means a 403 came back from POST /bills: this account may not
+ * submit bills at all. It is device-global rather than per-bill because a role
+ * gate refuses EVERY bill identically — the 401 lesson's rule 3 — so N copies on
+ * N rows would be N things to retract, each outliving its own truth the moment
+ * the role changed.
+ *
+ * A REFUSED VOID IS NOT IN HERE, and the asymmetry is deliberate. That one is
+ * stamped on the bill (void_refused_at), because the row is making a false claim
+ * about ITSELF — the card says ยกเลิกแล้ว for a bill the server still holds live
+ * — and that claim has to be corrected on the row, durably, across a restart.
+ * This type is about what the device may do next; that column is about what
+ * already did not happen.
+ */
+export type AccountState = "ok" | "submit_refused";
+
 export interface BillNotice {
   tone: NoticeTone;
   /** Replacement badge text, or null to use the plain sync-state badge. */
@@ -175,6 +266,9 @@ export interface NoticeInput {
   master_data_missing_at: string | null;
   master_data_code: string | null;
   void_requested_at: string | null;
+  /** Set ⟺ the server refused to void this bill because of who asked (403). */
+  void_refused_at: string | null;
+  void_refused_code: string | null;
 }
 
 const NO_NOTICE: BillNotice = { tone: "none", badge: null, lines: [] };
@@ -182,6 +276,20 @@ const NO_NOTICE: BillNotice = { tone: "none", badge: null, lines: [] };
 /** True of parking, of an outage and of an ended session alike. */
 const NOTHING_OWED_BY_YOU =
   "บิลถูกเก็บไว้ในเครื่องครบแล้ว ไม่ต้องชั่งใหม่และไม่ต้องกรอกใหม่";
+
+/**
+ * The second line of a refused void, and the only reason that state is worth
+ * modelling at all: the purchase STANDS. Said plainly, in money terms, because
+ * the operator has just been shown a card they had every reason to read as
+ * cancelled — and because the bill is still countable at the end of the day.
+ */
+const VOID_REFUSED_STILL_LIVE =
+  "บิลใบนี้ยังอยู่ในระบบตามเดิม ยังไม่ถูกยกเลิก";
+
+const SUBMIT_REFUSED = {
+  badge: "ไม่มีสิทธิ์ส่งบิล",
+  what: `บัญชีนี้ไม่มีสิทธิ์ส่งบิลเข้าระบบ — ${ASK_THE_OWNER}ให้เปิดสิทธิ์`,
+};
 
 const SESSION_TEXT: Record<Exclude<SessionState, "active">, { badge: string; what: string }> = {
   expired: {
@@ -215,7 +323,11 @@ const FAILED_LINES: readonly string[] = [
   "จ่ายเงินไปแล้วแต่ระบบไม่มีบิลใบนี้ — ต้องแจ้งสำนักงานให้บันทึกให้ ข้อมูลบิลนี้อยู่ในเครื่องนี้ที่เดียว",
 ];
 
-export function billNotice(bill: NoticeInput, session: SessionState): BillNotice {
+export function billNotice(
+  bill: NoticeInput,
+  session: SessionState,
+  account: AccountState,
+): BillNotice {
   // FIRST, ahead of the void branch. A terminally failed bill needs a human
   // whether or not someone has since pressed ยกเลิก — and if it were ranked
   // below, a void request would HIDE it behind a calm ยกเลิกแล้ว card while the
@@ -223,6 +335,28 @@ export function billNotice(bill: NoticeInput, session: SessionState): BillNotice
   // unsynced bill, then let the send be refused.
   if (bill.sync_state === "failed") {
     return { tone: "error", badge: null, lines: [...FAILED_LINES] };
+  }
+
+  /*
+   * A VOID THE SERVER REFUSED — above the void branch below, and that ordering is
+   * the whole point of this branch existing.
+   *
+   * Every refused void also has void_requested_at set, so ranked the other way it
+   * would fall into "voided, nothing more to say" and the card would go on
+   * showing ยกเลิกแล้ว with the total struck through — for a bill the server
+   * still holds as LIVE MONEY. The yard would believe a purchase was reversed
+   * while the office's totals say it stands, and nothing anywhere would disagree.
+   * That is the money going quiet, and it is the failure this state exists to
+   * make impossible.
+   */
+  if (bill.void_refused_at !== null) {
+    const r = forbiddenReason(bill.void_refused_code);
+    const lines = [r.what, VOID_REFUSED_STILL_LIVE];
+    // An unrecognised code is named ALONE — never the body it arrived in.
+    if (r.unknown && bill.void_refused_code !== null) {
+      lines.push(`รหัส: ${bill.void_refused_code}`);
+    }
+    return { tone: "forbidden", badge: r.badge, lines };
   }
 
   // A voided bill has its own region (the reason the owner gave). Nothing about
@@ -247,6 +381,21 @@ export function billNotice(bill: NoticeInput, session: SessionState): BillNotice
   if (session !== "active") {
     const s = SESSION_TEXT[session];
     return { tone: "session", badge: s.badge, lines: [s.what, NOTHING_OWED_BY_YOU] };
+  }
+
+  /*
+   * THIS ACCOUNT MAY NOT SUBMIT BILLS. Ranked below session (with no session
+   * nothing works at all, so that is the first thing to fix) and ABOVE waiting,
+   * which is the branch it exists to displace: "ระบบจะส่งให้เองเมื่อเชื่อมต่อได้"
+   * is a promise the system cannot keep here, and it would be shown on every card
+   * in the yard while the bills quietly never went anywhere.
+   */
+  if (account === "submit_refused") {
+    return {
+      tone: "forbidden",
+      badge: SUBMIT_REFUSED.badge,
+      lines: [SUBMIT_REFUSED.what, NOTHING_OWED_BY_YOU],
+    };
   }
 
   // It has bounced at least once and is still owed. Whether that was a dead
@@ -274,6 +423,9 @@ export interface VoidProgressInput {
   doc_no: string | null;
   void_requested_at: string | null;
   voided_at: string | null;
+  /** Set ⟺ the server refused this void because of who asked (403). */
+  void_refused_at: string | null;
+  void_refused_code: string | null;
 }
 
 /**
@@ -289,10 +441,33 @@ export interface VoidProgressInput {
  *
  * doc_no was the wrong thing to branch on. "Has it got a number yet" answers a
  * different question from "can it ever get one".
+ *
+ * THE SAME DEFECT, FOUND AGAIN IN THIS PHASE and worth writing down because it
+ * was not found by thinking harder — it was found by reading the two regions of
+ * one card together. billNotice had already been taught the refusal, so the
+ * notice box said "ระบบจึงยังไม่ได้ยกเลิกบิลใบนี้" while this function, two
+ * lines above it on the same card, still said "รอแจ้งระบบ จะดำเนินการให้
+ * อัตโนมัติ". One card, two opposite claims, and the reassuring one is the one an
+ * operator with wet hands and a queue behind them will believe. Teaching one
+ * renderer about a new state and not its neighbour is exactly the shape of
+ * [[correct-classification-can-still-render-as-an-error]]'s 2c-7 amendment.
  */
 export function voidProgressLine(bill: VoidProgressInput): string | null {
   if (bill.void_requested_at === null) return null;
   if (bill.voided_at !== null) return "แจ้งระบบแล้ว";
+  /*
+   * REFUSED, ranked directly under "settled" — above the failed and doc_no
+   * branches, because it is the most recent DEFINITE answer the server has given
+   * about this void and it contradicts everything below it.
+   *
+   * Short on purpose: the notice box carries why and what to do (billNotice's
+   * forbidden branch). What this line owes the operator is the single fact the
+   * rest of the card's shape argues against — it did NOT happen — plus who can
+   * make it happen. No "อัตโนมัติ", ever: nothing on this device or on the server
+   * will perform this void, and a promise nobody can keep is how a cancelled
+   * purchase quietly stays on the books.
+   */
+  if (bill.void_refused_at !== null) return "ระบบไม่ได้ยกเลิกให้ — ต้องแจ้งเจ้าของร้าน";
   if (bill.sync_state === "failed") {
     return "ระบบไม่เคยรับบิลใบนี้ จึงไม่มีอะไรให้ยกเลิกในระบบ — ต้องแจ้งสำนักงาน";
   }
@@ -309,11 +484,43 @@ export function voidProgressLine(bill: VoidProgressInput): string | null {
  * What replaces it is not silence: the card says the bill never reached the
  * system and that the office must be told (FAILED_LINES above).
  *
+ * And no for a device signed in as STAFF, which is the courtesy half of this
+ * phase: the server refuses the void with a 403 (server/app/auth.py
+ * require_admin), so offering the button only produces a refusal the operator
+ * then has to be talked out of. `mayVoid` FAILS OPEN on an unreadable or
+ * unknown token — see src/session/deviceRole.ts for why that is the right
+ * direction here: hiding the button from an admin whose token we merely failed
+ * to parse would remove the only way to correct a wrong bill, while offering it
+ * to a staff user costs one refused request and one plain sentence.
+ *
+ * The SERVER REMAINS THE AUTHORITY in both directions. It re-reads the role from
+ * the users row on every request, so a demoted admin is refused here whatever
+ * their token still claims — which is precisely why the 403 path exists and is
+ * proven, rather than this gate being trusted to prevent anything.
+ *
  * Here rather than in the view so the rule and the sentence explaining it cannot
  * drift apart, and so a proof can hold them together.
  */
-export function canRequestVoid(bill: VoidProgressInput): boolean {
-  return bill.void_requested_at === null && bill.sync_state !== "failed";
+export function canRequestVoid(bill: VoidProgressInput, role: DeviceRole): boolean {
+  return bill.void_requested_at === null && bill.sync_state !== "failed" && mayVoid(role);
+}
+
+/**
+ * The line that REPLACES the button when the role is what hid it, or null.
+ *
+ * Silence would have been cheaper and is the wrong answer: a button that was
+ * there yesterday and is gone today reads as a broken app, and the operator's
+ * next move is to hunt for it or to ring someone about the wrong thing. It says
+ * who can do it instead — and it is deliberately NOT shown for the other reason
+ * the button can be absent (a terminally failed bill), which has three sentences
+ * of its own in FAILED_LINES and does not need a fourth contradicting them.
+ */
+export function voidRoleNote(bill: VoidProgressInput, role: DeviceRole): string | null {
+  if (mayVoid(role)) return null;
+  // Only where the button would otherwise have been offered. On a failed or
+  // already-voided bill nobody is being denied anything.
+  if (bill.void_requested_at !== null || bill.sync_state === "failed") return null;
+  return "ยกเลิกบิลได้เฉพาะบัญชีเจ้าของร้าน";
 }
 
 /**

@@ -19,12 +19,22 @@
  * this proof does not sample: it enumerates the FULL cross product of every
  * input the two rendering functions have, and asserts properties over all of it.
  *
+ * PHASE 2c-9 ADDED THE THREE 403 DIMENSIONS, and doing so found the defect it was
+ * added for: billNotice had been taught that a void can be REFUSED and
+ * voidProgressLine had not, so one card said "ระบบจึงยังไม่ได้ยกเลิกบิลใบนี้" in
+ * its notice box and "รอแจ้งระบบ จะดำเนินการให้อัตโนมัติ" two lines above it. The
+ * matrix could not see it, because nothing here had ever rendered the two regions
+ * of one card TOGETHER. N2b now does.
+ *
  * THE MATRIX
  *   card   sync_state(4) x attempt_count(0,>0) x parked(2) x voided(2)
- *          x session(3)                                          =  96 cells
- *   void   sync_state(4) x doc_no(2) x void_requested(2) x settled(2) = 32 cells
+ *          x session(3) x account(2) x void_refused(2)           = 384 cells
+ *   void   sync_state(4) x doc_no(2) x void_requested(2) x settled(2)
+ *          x refused(2)                                          =  64 cells
+ *   card+void together  void cells x session(3) x account(2)     = 384 cells
  *   strip  session(3) x online(3) x pending(2) x failed(2)
- *          x blocked(2) x master-data(2)                         = 144 cells
+ *          x blocked(2) x master-data(2) x account(2)
+ *          x voids_refused(2)                                    = 576 cells
  *
  * Some cells are unreachable in production (a 'synced' bill that is also parked
  * cannot exist — markSynced clears the parked columns). They are included
@@ -44,12 +54,15 @@ import { NodeSqliteDriver } from "../adapters/sqlite/nodeDriver.js";
 import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
+import type { DeviceRole } from "../session/deviceRole.js";
 import {
   billNotice,
   canRequestVoid,
   voidProgressLine,
+  voidRoleNote,
 } from "../sync/parkedReason.js";
 import type {
+  AccountState,
   NoticeInput,
   NoticeTone,
   SessionState,
@@ -152,7 +165,12 @@ const promises = (text: string): string[] =>
 const STATES: readonly SyncState[] = ["pending", "syncing", "synced", "failed"];
 const ATTEMPTS: readonly number[] = [0, 3];
 const SESSIONS: readonly SessionState[] = ["active", "expired", "signed_out"];
+const ACCOUNTS: readonly AccountState[] = ["ok", "submit_refused"];
 const BOOLS: readonly boolean[] = [false, true];
+
+/** Who must act, per state. The strip and the card have to agree on this. */
+const THE_OWNER = "เจ้าของร้าน";
+const THE_OFFICE = "สำนักงาน";
 
 interface CardCell {
   sync_state: SyncState;
@@ -160,6 +178,8 @@ interface CardCell {
   parked: boolean;
   voided: boolean;
   session: SessionState;
+  account: AccountState;
+  voidRefused: boolean;
 }
 
 const cardInput = (c: CardCell): NoticeInput => ({
@@ -168,18 +188,22 @@ const cardInput = (c: CardCell): NoticeInput => ({
   master_data_missing_at: c.parked ? "2026-07-27T02:00:00.000Z" : null,
   master_data_code: c.parked ? "seller_grade_unset" : null,
   void_requested_at: c.voided ? "2026-07-27T02:05:00.000Z" : null,
+  void_refused_at: c.voidRefused ? "2026-07-27T02:07:00.000Z" : null,
+  void_refused_code: c.voidRefused ? "admin_required" : null,
 });
 
 const cardText = (c: CardCell): string => {
-  const n = billNotice(cardInput(c), c.session);
+  const n = billNotice(cardInput(c), c.session, c.account);
   return `${n.badge ?? ""} ${n.lines.join(" ")}`;
 };
 
-const cardTone = (c: CardCell): NoticeTone => billNotice(cardInput(c), c.session).tone;
+const cardTone = (c: CardCell): NoticeTone =>
+  billNotice(cardInput(c), c.session, c.account).tone;
 
 const describeCard = (c: CardCell): string =>
   `${c.sync_state}/att${String(c.attempts)}/${c.parked ? "parked" : "free"}/` +
-  `${c.voided ? "voided" : "live"}/${c.session}`;
+  `${c.voided ? "voided" : "live"}/${c.session}/${c.account}/` +
+  `${c.voidRefused ? "void-refused" : "void-ok"}`;
 
 /**
  * The precedence, restated independently of the implementation.
@@ -191,16 +215,24 @@ const describeCard = (c: CardCell): string =>
  */
 function expectedTone(c: CardCell): NoticeTone {
   if (c.sync_state === "failed") return "error";
+  // ABOVE `voided`, and that is the ordering the phase turns on: every refused
+  // void also has void_requested_at set, so ranked below it the card would fall
+  // into "voided, nothing more to say" — ยกเลิกแล้ว, struck through — for a bill
+  // the server still holds as live money.
+  if (c.voidRefused) return "forbidden";
   if (c.voided) return "none";
   if (c.parked) return "parked";
   if (c.sync_state !== "pending" && c.sync_state !== "syncing") return "none";
   if (c.session !== "active") return "session";
+  // Below session (with no session nothing works at all) and above waiting, whose
+  // "ระบบจะส่งให้เองเมื่อเชื่อมต่อได้" is the promise this displaces.
+  if (c.account === "submit_refused") return "forbidden";
   if (c.attempts > 0) return "waiting";
   return "none";
 }
 
 function n1CardMatrix(): CardCell[] {
-  header("N1: the bill card, over all 96 states");
+  header("N1: the bill card, over all 384 states");
 
   const cells: CardCell[] = [];
   for (const sync_state of STATES) {
@@ -208,21 +240,32 @@ function n1CardMatrix(): CardCell[] {
       for (const parked of BOOLS) {
         for (const voided of BOOLS) {
           for (const session of SESSIONS) {
-            cells.push({ sync_state, attempts, parked, voided, session });
+            for (const account of ACCOUNTS) {
+              for (const voidRefused of BOOLS) {
+                cells.push({
+                  sync_state, attempts, parked, voided, session, account, voidRefused,
+                });
+              }
+            }
           }
         }
       }
     }
   }
 
-  // 32 rows, each showing the tone under all three session states.
-  console.log("  state    att parked voided | active  expired signed_out");
+  // 32 rows, each showing the tone under all three session states, with the two
+  // 2c-9 dimensions at their neutral values. The SWEEPS below cover all 384; this
+  // table is for reading the ranking, and printing every cell would bury it.
+  console.log("  state    att parked voided | active  expired signed_out   (account=ok, void-ok)");
   for (const sync_state of STATES) {
     for (const attempts of ATTEMPTS) {
       for (const parked of BOOLS) {
         for (const voided of BOOLS) {
           const tones = SESSIONS.map((session) =>
-            cardTone({ sync_state, attempts, parked, voided, session }).padEnd(7),
+            cardTone({
+              sync_state, attempts, parked, voided, session,
+              account: "ok", voidRefused: false,
+            }).padEnd(7),
           ).join(" ");
           console.log(
             `  ${sync_state.padEnd(8)} ${String(attempts).padEnd(3)}` +
@@ -230,6 +273,21 @@ function n1CardMatrix(): CardCell[] {
           );
         }
       }
+    }
+  }
+
+  // And the two new dimensions on their own, at the neutral values of the rest.
+  console.log("\n  the 403 states, on an otherwise ordinary pending bill:");
+  for (const account of ACCOUNTS) {
+    for (const voidRefused of BOOLS) {
+      const cell: CardCell = {
+        sync_state: "pending", attempts: 1, parked: false, voided: voidRefused,
+        session: "active", account, voidRefused,
+      };
+      const n = billNotice(cardInput(cell), cell.session, cell.account);
+      console.log(`  account=${account.padEnd(15)} void_refused=${String(voidRefused).padEnd(5)} tone=${n.tone}`);
+      console.log(`    badge: ${n.badge ?? "(plain state badge)"}`);
+      for (const l of n.lines) console.log(`    ${l}`);
     }
   }
 
@@ -277,7 +335,8 @@ function n1CardMatrix(): CardCell[] {
   );
   check(
     "...and that sweep was not empty",
-    failedCells.length === 24,
+    // 24 before Phase 2c-9; x2 for account and x2 for void_refused.
+    failedCells.length === 96,
     `${String(failedCells.length)} failed cells covered`,
   );
 
@@ -292,7 +351,7 @@ function n1CardMatrix(): CardCell[] {
     "every visible notice has at least one non-empty line, and 'none' has none",
     cells,
     (c) => {
-      const n = billNotice(cardInput(c), c.session);
+      const n = billNotice(cardInput(c), c.session, c.account);
       return n.tone === "none"
         ? n.lines.length === 0 && n.badge === null
         : n.lines.length > 0 && n.lines.every((l) => l.trim().length > 0);
@@ -300,18 +359,80 @@ function n1CardMatrix(): CardCell[] {
     describeCard,
   );
 
-  // A replacement badge exists only for the two states whose sync_state badge
-  // would mislead: a parked bill and a bill with no session both read รอส่ง,
-  // which is true and useless — nothing at the yard will make either send.
+  // A replacement badge exists only for the states whose sync_state badge would
+  // mislead: parked and session-less both read รอส่ง, which is true and useless,
+  // and a REFUSED VOID would otherwise read ยกเลิกแล้ว — the one that is not
+  // merely useless but false, since the server still has the bill.
+  const BADGED: readonly NoticeTone[] = ["parked", "session", "forbidden"];
   checkAll(
-    "a badge is replaced only for parked and session states",
+    "a badge is replaced exactly for parked, session and forbidden states",
     cells,
     (c) => {
-      const badge = billNotice(cardInput(c), c.session).badge;
-      const tone = cardTone(c);
-      return badge === null ? tone !== "parked" && tone !== "session" : tone === "parked" || tone === "session";
+      const badge = billNotice(cardInput(c), c.session, c.account).badge;
+      return (badge !== null) === BADGED.includes(cardTone(c));
     },
     (c) => `${describeCard(c)} tone=${cardTone(c)}`,
+  );
+
+  /* ------------------------------------------------- the 2c-9 properties ---- */
+
+  const forbiddenCells = cells.filter((c) => cardTone(c) === "forbidden");
+
+  /*
+   * THE PROPERTY THAT MAKES THE VIEW SAFE. app/BillsPanel renders notice.badge
+   * ahead of ยกเลิกแล้ว, so a non-null badge is exactly what stops a refused void
+   * from being drawn as a completed one. Asserting it here rather than in the
+   * view is the point: app/ is unreachable from this program, so a rule that
+   * lived there could not be checked at all.
+   */
+  checkAll(
+    "every forbidden cell carries a badge, so the card cannot fall back to ยกเลิกแล้ว",
+    forbiddenCells,
+    (c) => (billNotice(cardInput(c), c.session, c.account).badge ?? "").length > 0,
+    describeCard,
+  );
+  checkAll(
+    "a forbidden card never promises the system will do it anyway",
+    forbiddenCells,
+    (c) => promises(cardText(c)).length === 0,
+    (c) => `${describeCard(c)} promised ${promises(cardText(c)).join(", ")}`,
+  );
+  checkAll(
+    "a forbidden card always names the shop owner — the only person who can lift it",
+    forbiddenCells,
+    (c) => cardText(c).includes(THE_OWNER),
+    (c) => `${describeCard(c)} -> ${cardText(c)}`,
+  );
+  /*
+   * NOT THE OFFICE, and this is not pedantry. The office sets prices and grades;
+   * a role is the owner's. The parked wording already sends people to สำนักงาน,
+   * and lessons/correct-classification-can-still-render-as-an-error.md is
+   * explicit that a wrong instruction is worse than a vague one, because it gets
+   * acted on.
+   */
+  checkAll(
+    "and never sends them to the office instead, which cannot change a role",
+    forbiddenCells,
+    (c) => !cardText(c).includes(THE_OFFICE),
+    (c) => `${describeCard(c)} -> ${cardText(c)}`,
+  );
+  /*
+   * NEVER AN INVITATION TO SIGN IN. The same account would come back with the
+   * same role — a loop with a person in it. This is the one wording rule that
+   * separates a 403 from the 401 it is otherwise closest to.
+   */
+  checkAll(
+    "a forbidden card never tells anyone to sign in again",
+    forbiddenCells,
+    (c) => !cardText(c).includes("เข้าสู่ระบบ"),
+    (c) => `${describeCard(c)} -> ${cardText(c)}`,
+  );
+  check(
+    "...and those sweeps were not empty",
+    // 144 refused-void cells (every non-failed combination) + 4 submit-refused
+    // ones (pending/syncing x attempts, everything else neutral).
+    forbiddenCells.length === 148,
+    `${String(forbiddenCells.length)} of ${String(cells.length)} cells are forbidden`,
   );
 
   return cells;
@@ -324,6 +445,7 @@ interface VoidCell {
   hasDocNo: boolean;
   requested: boolean;
   settled: boolean;
+  refused: boolean;
 }
 
 const voidInput = (c: VoidCell): VoidProgressInput => ({
@@ -331,20 +453,25 @@ const voidInput = (c: VoidCell): VoidProgressInput => ({
   doc_no: c.hasDocNo ? "B-2569-105" : null,
   void_requested_at: c.requested ? "2026-07-27T02:05:00.000Z" : null,
   voided_at: c.settled ? "2026-07-27T02:06:00.000Z" : null,
+  void_refused_at: c.refused ? "2026-07-27T02:07:00.000Z" : null,
+  void_refused_code: c.refused ? "admin_required" : null,
 });
 
 const describeVoid = (c: VoidCell): string =>
-  `${c.sync_state}/${c.hasDocNo ? "doc" : "nodoc"}/${c.requested ? "req" : "-"}/${c.settled ? "settled" : "-"}`;
+  `${c.sync_state}/${c.hasDocNo ? "doc" : "nodoc"}/${c.requested ? "req" : "-"}/` +
+  `${c.settled ? "settled" : "-"}/${c.refused ? "refused" : "-"}`;
 
-function n2VoidMatrix(): void {
-  header("N2: what a void promises, over all 32 states");
+function n2VoidMatrix(): VoidCell[] {
+  header("N2: what a void promises, over all 64 states");
 
   const cells: VoidCell[] = [];
   for (const sync_state of STATES) {
     for (const hasDocNo of BOOLS) {
       for (const requested of BOOLS) {
         for (const settled of BOOLS) {
-          cells.push({ sync_state, hasDocNo, requested, settled });
+          for (const refused of BOOLS) {
+            cells.push({ sync_state, hasDocNo, requested, settled, refused });
+          }
         }
       }
     }
@@ -370,7 +497,16 @@ function n2VoidMatrix(): void {
    * 'synced', and nothing moves a failed bill there, so that could never happen.
    * The cash was paid, the server has no record, and the card said "handled".
    */
-  const failedOwed = cells.filter((c) => c.sync_state === "failed" && c.requested && !c.settled);
+  /*
+   * NOT REFUSED. A refusal is a definite answer the server gave about THIS void,
+   * so it outranks the failed branch — and the wording it produces is asserted
+   * separately below. Widening this sweep to cover refused cells would be
+   * asserting the old sentence about a state that has replaced it, which is how
+   * an assertion comes to describe nothing.
+   */
+  const failedOwed = cells.filter(
+    (c) => c.sync_state === "failed" && c.requested && !c.settled && !c.refused,
+  );
   checkAll(
     "a failed bill's void NEVER claims it will happen automatically",
     failedOwed,
@@ -394,8 +530,11 @@ function n2VoidMatrix(): void {
 
   // The promise is still MADE where it is true: a pending or parked bill really
   // does sync first and then void itself. The fix must not have silenced that.
+  // Same exclusion, same reason: a refused void does not promise anything, and
+  // that is the point of it.
   const pendingOwed = cells.filter(
-    (c) => c.sync_state === "pending" && c.requested && !c.settled && !c.hasDocNo,
+    (c) =>
+      c.sync_state === "pending" && c.requested && !c.settled && !c.hasDocNo && !c.refused,
   );
   checkAll(
     "an unsynced but sendable bill still promises the automatic cancel — it is true there",
@@ -416,14 +555,193 @@ function n2VoidMatrix(): void {
    * drift into offering an action the card has just explained is impossible.
    */
   checkAll(
-    "voiding is offered exactly when the bill is live and the server could have it",
+    "voiding is offered exactly when the bill is live, the server could have it, and the role allows",
     cells,
-    (c) => canRequestVoid(voidInput(c)) === (!c.requested && c.sync_state !== "failed"),
+    (c) =>
+      canRequestVoid(voidInput(c), "admin") === (!c.requested && c.sync_state !== "failed"),
     describeVoid,
   );
   check(
     "a terminally failed bill is never offered a void — there is nothing to void",
-    cells.filter((c) => c.sync_state === "failed").every((c) => !canRequestVoid(voidInput(c))),
+    cells
+      .filter((c) => c.sync_state === "failed")
+      .every((c) => !canRequestVoid(voidInput(c), "admin")),
+  );
+
+  /* ------------------------------------------------- the 2c-9 void states ---- */
+
+  const refusedOwed = cells.filter((c) => c.refused && c.requested && !c.settled);
+  for (const c of refusedOwed.slice(0, 4)) {
+    console.log(`  ${describeVoid(c).padEnd(36)} ${String(voidProgressLine(voidInput(c)))}`);
+  }
+
+  /*
+   * THE DEFECT THIS PHASE FOUND. voidProgressLine went on returning "รอแจ้งระบบ
+   * จะดำเนินการให้อัตโนมัติ" for a void the server had definitively refused —
+   * directly above a notice box saying the system had not cancelled it. The
+   * reassuring line is the one an operator believes.
+   */
+  checkAll(
+    "a REFUSED void never claims it will happen automatically",
+    refusedOwed,
+    (c) => promises(voidProgressLine(voidInput(c)) ?? "").length === 0,
+    (c) => `${describeVoid(c)} -> ${String(voidProgressLine(voidInput(c)))}`,
+  );
+  checkAll(
+    "...it says the system did NOT cancel it, and names the shop owner",
+    refusedOwed,
+    (c) => {
+      const line = voidProgressLine(voidInput(c)) ?? "";
+      return line.includes("ไม่ได้ยกเลิก") && line.includes(THE_OWNER);
+    },
+    (c) => `${describeVoid(c)} -> ${String(voidProgressLine(voidInput(c)))}`,
+  );
+  check(
+    "...and that sweep was not empty",
+    refusedOwed.length === 8,
+    `${String(refusedOwed.length)} cells (4 sync states x doc_no present/absent)`,
+  );
+
+  /*
+   * A void the server CONFIRMED still reads as done even if a refusal is somehow
+   * also stamped. Settled outranks refused because voided_at is only ever written
+   * by the server saying yes — and markVoidApplied clears the refusal columns in
+   * the same statement, so the state is transitional at worst.
+   */
+  checkAll(
+    "a settled void still reads as done, refusal column or not",
+    cells.filter((c) => c.requested && c.settled),
+    (c) => voidProgressLine(voidInput(c)) === "แจ้งระบบแล้ว",
+    (c) => `${describeVoid(c)} -> ${String(voidProgressLine(voidInput(c)))}`,
+  );
+
+  /* The role gate: the button, and the line that replaces it. */
+  const ROLES: readonly DeviceRole[] = ["admin", "staff", null];
+  console.log("");
+  for (const role of ROLES) {
+    const live: VoidCell = {
+      sync_state: "synced", hasDocNo: true, requested: false, settled: false, refused: false,
+    };
+    console.log(
+      `  role=${String(role).padEnd(6)} button=${String(canRequestVoid(voidInput(live), role))}` +
+        ` note=${String(voidRoleNote(voidInput(live), role))}`,
+    );
+  }
+  const liveCells = cells.filter((c) => !c.requested && c.sync_state !== "failed");
+  checkAll(
+    "a STAFF device is never offered the void button",
+    liveCells,
+    (c) => !canRequestVoid(voidInput(c), "staff"),
+    describeVoid,
+  );
+  /*
+   * FAILS OPEN on an unreadable token. Hiding the button from an admin whose
+   * token we merely failed to parse would remove the only way to correct a wrong
+   * bill; offering it to a staff user costs one refused request and one plain
+   * sentence. The enforcement is the server's and is untouched either way.
+   */
+  checkAll(
+    "an UNKNOWN role is still offered it — the client gate fails open",
+    liveCells,
+    (c) => canRequestVoid(voidInput(c), null),
+    describeVoid,
+  );
+  checkAll(
+    "a staff device is told who can do it instead, rather than shown nothing",
+    liveCells,
+    (c) => (voidRoleNote(voidInput(c), "staff") ?? "").includes(THE_OWNER),
+    (c) => `${describeVoid(c)} -> ${String(voidRoleNote(voidInput(c), "staff"))}`,
+  );
+  checkAll(
+    "and an admin is never shown that note",
+    cells,
+    (c) => voidRoleNote(voidInput(c), "admin") === null,
+    describeVoid,
+  );
+  check(
+    "...and those sweeps were not empty",
+    liveCells.length === 24,
+    `${String(liveCells.length)} voidable cells`,
+  );
+
+  return cells;
+}
+
+/* ----------------------------------------------------------------- N2b ---- */
+
+/**
+ * THE TWO REGIONS OF ONE CARD, RENDERED TOGETHER.
+ *
+ * Every sweep above reads ONE renderer at a time, and that is exactly how this
+ * phase shipped a contradiction into the working tree: billNotice knew a void
+ * could be refused, voidProgressLine did not, and each was internally consistent.
+ * The operator does not read one function — they read a card, and the card said
+ * both "ระบบจึงยังไม่ได้ยกเลิกบิลใบนี้" and "จะดำเนินการให้อัตโนมัติ".
+ *
+ * So this sweep concatenates what app/BillsPanel puts on screen, in the order it
+ * puts it there, and asserts over the whole thing.
+ */
+function n2bWholeCard(voidCells: readonly VoidCell[]): void {
+  header("N2b: both regions of one card, together — no card may contradict itself");
+
+  interface WholeCell {
+    v: VoidCell;
+    session: SessionState;
+    account: AccountState;
+  }
+  const cells: WholeCell[] = [];
+  for (const v of voidCells) {
+    for (const session of SESSIONS) {
+      for (const account of ACCOUNTS) cells.push({ v, session, account });
+    }
+  }
+
+  const whole = (c: WholeCell): string => {
+    const n = billNotice(
+      {
+        sync_state: c.v.sync_state,
+        attempt_count: 2,
+        master_data_missing_at: null,
+        master_data_code: null,
+        void_requested_at: c.v.requested ? "2026-07-27T02:05:00.000Z" : null,
+        void_refused_at: c.v.refused ? "2026-07-27T02:07:00.000Z" : null,
+        void_refused_code: c.v.refused ? "admin_required" : null,
+      },
+      c.session,
+      c.account,
+    );
+    // The card's real order: the void region sits ABOVE the notice box.
+    return `${voidProgressLine(voidInput(c.v)) ?? ""} | ${n.badge ?? ""} ${n.lines.join(" ")}`;
+  };
+
+  const describeWhole = (c: WholeCell): string =>
+    `${describeVoid(c.v)}/${c.session}/${c.account}`;
+
+  const refusedCards = cells.filter((c) => c.v.refused && c.v.requested && !c.v.settled);
+  console.log(`  a refused void, whole card:\n    ${whole(refusedCards[0]!)}`);
+
+  checkAll(
+    "NO region of a refused-void card promises the cancel will happen",
+    refusedCards,
+    (c) => promises(whole(c)).length === 0,
+    (c) => `${describeWhole(c)} promised ${promises(whole(c)).join(", ")}`,
+  );
+  checkAll(
+    "the whole card says the cancel did NOT happen and names the owner",
+    refusedCards,
+    (c) => whole(c).includes("ไม่ได้ยกเลิก") && whole(c).includes(THE_OWNER),
+    (c) => `${describeWhole(c)} -> ${whole(c)}`,
+  );
+  checkAll(
+    "no whole card, in any state, leaks a diagnostic",
+    cells,
+    (c) => leaks(whole(c)).length === 0,
+    (c) => `${describeWhole(c)} leaked ${leaks(whole(c)).join(", ")}`,
+  );
+  check(
+    "...and that sweep was not empty",
+    refusedCards.length === 48,
+    `${String(refusedCards.length)} refused-void cards of ${String(cells.length)}`,
   );
 }
 
@@ -436,10 +754,14 @@ interface StripCell {
   failed: number;
   blocked: boolean;
   masterData: number;
+  account: AccountState;
+  voidsRefused: number;
 }
 
 const stripInput = (c: StripCell): StatusInput => ({
   session: c.session,
+  account: c.account,
+  voidsRefused: c.voidsRefused,
   online: c.online,
   pending: c.pending,
   failed: c.failed,
@@ -450,10 +772,11 @@ const stripInput = (c: StripCell): StatusInput => ({
 
 const describeStrip = (c: StripCell): string =>
   `${c.session}/online=${String(c.online)}/pend${String(c.pending)}/fail${String(c.failed)}/` +
-  `${c.blocked ? "blocked" : "-"}/md${String(c.masterData)}`;
+  `${c.blocked ? "blocked" : "-"}/md${String(c.masterData)}/${c.account}/` +
+  `vr${String(c.voidsRefused)}`;
 
 function n3StripMatrix(): void {
-  header("N3: the status strip, over all 144 states");
+  header("N3: the status strip, over all 576 states");
 
   const cells: StripCell[] = [];
   for (const session of SESSIONS) {
@@ -462,7 +785,14 @@ function n3StripMatrix(): void {
         for (const failed of [0, 1]) {
           for (const blocked of BOOLS) {
             for (const masterData of [0, 2]) {
-              cells.push({ session, online, pending, failed, blocked, masterData });
+              for (const account of ACCOUNTS) {
+                for (const voidsRefused of [0, 2]) {
+                  cells.push({
+                    session, online, pending, failed, blocked, masterData,
+                    account, voidsRefused,
+                  });
+                }
+              }
             }
           }
         }
@@ -473,9 +803,31 @@ function n3StripMatrix(): void {
   // One example per session state, with everything else at its worst, so the
   // ranking is visible rather than merely asserted.
   for (const session of SESSIONS) {
-    const worst: StripCell = { session, online: false, pending: 2, failed: 1, blocked: true, masterData: 2 };
+    const worst: StripCell = {
+      session, online: false, pending: 2, failed: 1, blocked: true, masterData: 2,
+      account: "submit_refused", voidsRefused: 2,
+    };
     const n = statusNotice(stripInput(worst));
     console.log(`  ${session.padEnd(11)} tone=${n.tone.padEnd(5)} action=${n.action?.kind ?? "-"}`);
+    console.log(`    ${n.message}`);
+  }
+
+  // And the permission states themselves, at the point where they actually
+  // decide the line: an active session, no poison alarm.
+  console.log("");
+  for (const [label, cell] of [
+    ["submit refused, 2 queued", { account: "submit_refused", voidsRefused: 0, pending: 2 }],
+    ["submit refused, nothing queued", { account: "submit_refused", voidsRefused: 0, pending: 0 }],
+    ["2 voids refused", { account: "ok", voidsRefused: 2, pending: 0 }],
+    ["both at once", { account: "submit_refused", voidsRefused: 2, pending: 2 }],
+  ] as const) {
+    const n = statusNotice(
+      stripInput({
+        session: "active", online: false, failed: 0, blocked: false, masterData: 0,
+        ...cell,
+      }),
+    );
+    console.log(`  ${label.padEnd(32)} tone=${n.tone} action=${n.action?.kind ?? "-"}`);
     console.log(`    ${n.message}`);
   }
 
@@ -513,7 +865,8 @@ function n3StripMatrix(): void {
   );
   check(
     "...and that sweep was not empty",
-    expired.length === 96,
+    // 96 before Phase 2c-9; x2 for account and x2 for voids_refused.
+    expired.length === 384,
     `${String(expired.length)} of ${String(cells.length)} cells have no session`,
   );
 
@@ -544,13 +897,97 @@ function n3StripMatrix(): void {
   // Red is reserved. An ended session is amber: it is a waiting state with a
   // known fix, like an outage and like parking.
   checkAll(
-    "red is only ever a poisoned head or a bill the server refused",
+    "red is only ever a poisoned head, a refused bill, or a refused permission",
     cells,
     (c) => {
       const n = statusNotice(stripInput(c));
-      return n.tone !== "bad" || (c.session === "active" && (c.blocked || c.failed > 0));
+      return (
+        n.tone !== "bad" ||
+        (c.session === "active" &&
+          (c.blocked ||
+            c.failed > 0 ||
+            c.account === "submit_refused" ||
+            c.voidsRefused > 0))
+      );
     },
     describeStrip,
+  );
+
+  /* -------------------------------------------------- the 2c-9 strip rules ---- */
+
+  // Where the permission branch actually decides the line: a live session and no
+  // poison alarm above it.
+  const permission = cells.filter(
+    (c) =>
+      c.session === "active" &&
+      !c.blocked &&
+      (c.account === "submit_refused" || c.voidsRefused > 0),
+  );
+
+  /*
+   * THE RANKING CLAIM, asserted rather than asserted-in-a-comment. It outranks
+   * offline: "จะส่งให้เองเมื่อเน็ตกลับมา" would send the yard to check the signal
+   * over a permission, and waiting achieves nothing at all here.
+   */
+  checkAll(
+    "a permission refusal outranks ออฟไลน์, parked and failed",
+    permission,
+    (c) => {
+      const m = statusNotice(stripInput(c)).message;
+      return (
+        !m.includes("ออฟไลน์") &&
+        !m.includes("รอข้อมูลจากสำนักงาน") &&
+        !m.includes("ระบบไม่รับบิล")
+      );
+    },
+    (c) => `${describeStrip(c)} -> ${statusNotice(stripInput(c)).message}`,
+  );
+  checkAll(
+    "...and never outranks the poison alarm, which means no money is moving at all",
+    cells.filter((c) => c.session === "active" && c.blocked),
+    (c) => statusNotice(stripInput(c)).message.includes("ฝ่ายสนับสนุน"),
+    (c) => `${describeStrip(c)} -> ${statusNotice(stripInput(c)).message}`,
+  );
+  checkAll(
+    "a permission refusal never sends anyone to support",
+    permission,
+    (c) => !statusNotice(stripInput(c)).message.includes("ฝ่ายสนับสนุน"),
+    (c) => `${describeStrip(c)} -> ${statusNotice(stripInput(c)).message}`,
+  );
+  checkAll(
+    "a permission refusal never invites a sign-in, and offers no button",
+    permission,
+    (c) => {
+      const n = statusNotice(stripInput(c));
+      return !n.message.includes("เข้าสู่ระบบ") && n.action === null;
+    },
+    (c) => `${describeStrip(c)} -> ${statusNotice(stripInput(c)).message}`,
+  );
+  checkAll(
+    "a permission refusal always names the shop owner",
+    permission,
+    (c) => statusNotice(stripInput(c)).message.includes(THE_OWNER),
+    (c) => `${describeStrip(c)} -> ${statusNotice(stripInput(c)).message}`,
+  );
+  // Neither fact may hide the other: a phone that cannot submit AND has refused
+  // voids is two different disagreements with the server, and reporting one of
+  // them is how the other goes quiet.
+  checkAll(
+    "when both hold, the strip reports both",
+    permission.filter((c) => c.account === "submit_refused" && c.voidsRefused > 0),
+    (c) => {
+      const m = statusNotice(stripInput(c)).message;
+      return m.includes("ส่งบิลเข้าระบบ") && m.includes(String(c.voidsRefused));
+    },
+    (c) => `${describeStrip(c)} -> ${statusNotice(stripInput(c)).message}`,
+  );
+  check(
+    "...and those sweeps were not empty",
+    // online(3) x pending(2) x failed(2) x masterData(2) x the 3 of 4
+    // account/voids-refused combinations that carry a refusal, with an active
+    // session and no alarm above them.
+    permission.length === 72,
+    `${String(permission.length)} cells where a permission refusal decides the line`,
   );
 }
 
@@ -595,6 +1032,7 @@ function n4Disproof(): void {
   const before = preFixCard(OFFLINE_ERROR, false, false);
   const afterCell: CardCell = {
     sync_state: "pending", attempts: 3, parked: false, voided: false, session: "active",
+    account: "ok", voidRefused: false,
   };
   const after = cardText(afterCell);
   console.log(`  offline bill, BEFORE:\n    ${before}`);
@@ -619,11 +1057,13 @@ function n4Disproof(): void {
   /* ---- DEFECT 2: the strip, both bill counts. */
   const oneBill: StripCell = {
     session: "expired", online: false, pending: 1, failed: 0, blocked: false, masterData: 0,
+    account: "ok", voidsRefused: 0,
   };
   // With several bills the old 401 classification (unavailable, reachable:true)
   // ran the poison clock and the counter, so the alarm fired: blocked = true.
   const threeBills: StripCell = {
     session: "expired", online: true, pending: 3, failed: 0, blocked: true, masterData: 0,
+    account: "ok", voidsRefused: 0,
   };
 
   for (const [label, cell] of [["1 queued bill", oneBill], ["3 queued bills", threeBills]] as const) {
@@ -656,6 +1096,7 @@ function n4Disproof(): void {
   const failedOwed: VoidProgressInput = {
     sync_state: "failed", doc_no: null,
     void_requested_at: "2026-07-27T02:05:00.000Z", voided_at: null,
+    void_refused_at: null, void_refused_code: null,
   };
   const preFixVoidLine =
     failedOwed.doc_no === null
@@ -746,7 +1187,7 @@ async function n5ReachableAndRendered(): Promise<void> {
   );
 
   if (row !== null) {
-    const notice = billNotice(row, "active");
+    const notice = billNotice(row, "active", "ok");
     const line = voidProgressLine(row);
     const text = `${notice.badge ?? ""} ${notice.lines.join(" ")}`;
     console.log(`  card tone: ${notice.tone}`);
@@ -767,7 +1208,8 @@ async function n5ReachableAndRendered(): Promise<void> {
     );
     check(
       "and the void button is withdrawn — the action does not exist for this bill",
-      !canRequestVoid(row),
+      !canRequestVoid(row, "admin"),
+      "asked as an ADMIN, so it is the bill's state withdrawing it and not the role",
     );
   }
 
@@ -791,13 +1233,17 @@ async function main(): Promise<number> {
   console.log(`node ${process.version}`);
 
   const cards = n1CardMatrix();
-  n2VoidMatrix();
+  const voids = n2VoidMatrix();
+  n2bWholeCard(voids);
   n3StripMatrix();
   n4Disproof();
   await n5ReachableAndRendered();
 
   console.log("");
-  console.log(`states enumerated: ${String(cards.length)} card + 32 void + 144 strip`);
+  console.log(
+    `states enumerated: ${String(cards.length)} card + ${String(voids.length)} void` +
+      ` + ${String(voids.length * 6)} whole-card + 576 strip`,
+  );
   console.log(failures === 0 ? "ALL NOTICE CASES PASSED" : `FAILED — ${failures} check(s)`);
   return failures === 0 ? 0 : 1;
 }

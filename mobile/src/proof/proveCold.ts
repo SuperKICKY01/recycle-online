@@ -993,6 +993,8 @@ async function c8ColdStartNoServer(): Promise<void> {
   /* ---- what the two strips say to the operator, right now. */
   const strip = statusNotice({
     session: "active", // a restored token is treated as usable until a 401 says otherwise
+    account: "ok",
+    voidsRefused: 0,
     online: false,
     pending: 1,
     failed: 0,

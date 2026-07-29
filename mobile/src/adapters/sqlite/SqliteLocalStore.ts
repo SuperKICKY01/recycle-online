@@ -45,6 +45,8 @@ interface BillRow {
   voided_at: string | null;
   void_attempts: number;
   void_last_error: string | null;
+  void_refused_at: string | null;
+  void_refused_code: string | null;
   first_attempt_at: string | null;
   first_server_error_at: string | null;
   server_error_attempts: number;
@@ -57,6 +59,7 @@ const COLUMNS =
   "id, idempotency_key, payload_json, sync_state, attempt_count, last_error," +
   " created_at, device_created_at, next_attempt_at, doc_no, synced_at," +
   " void_reason, void_requested_at, voided_at, void_attempts, void_last_error," +
+  " void_refused_at, void_refused_code," +
   " first_attempt_at, first_server_error_at, server_error_attempts," +
   " master_data_missing_at, master_data_code, master_as_of";
 
@@ -115,7 +118,7 @@ function dueParams(now: Date): [string, string] {
  */
 export const BILL_INSERT_SQL =
   `INSERT INTO local_bills (${COLUMNS})` +
-  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 export function billInsertParams(bill: LocalBill): SqlValue[] {
   return [
@@ -135,6 +138,8 @@ export function billInsertParams(bill: LocalBill): SqlValue[] {
     bill.voided_at,
     bill.void_attempts,
     bill.void_last_error,
+    bill.void_refused_at,
+    bill.void_refused_code,
     bill.first_attempt_at,
     bill.first_server_error_at,
     bill.server_error_attempts,
@@ -165,6 +170,8 @@ function toBill(row: BillRow): LocalBill {
     voided_at: row.voided_at,
     void_attempts: row.void_attempts,
     void_last_error: row.void_last_error,
+    void_refused_at: row.void_refused_at,
+    void_refused_code: row.void_refused_code,
     first_attempt_at: row.first_attempt_at,
     first_server_error_at: row.first_server_error_at,
     server_error_attempts: row.server_error_attempts,
@@ -354,6 +361,40 @@ export class SqliteLocalStore implements LocalStore {
            first_server_error_at = NULL, server_error_attempts = 0
        WHERE id = ?`,
       [attempt, reason, retryAt.toISOString(), now.toISOString(), id],
+    );
+  }
+
+  /* --------------------------------------------------------- forbidden -- */
+
+  /**
+   * The send bounced on a 403: this ACCOUNT may not submit bills.
+   *
+   * The row ends up shaped like markSessionExpired's — pending, poison columns
+   * cleared, because a 403 refuses EVERY bill from this account equally and so
+   * carries none of the meaning first_server_error_at exists to carry (the same
+   * argument as the 401 lesson's rule 3, one status along).
+   *
+   * WHAT IS DIFFERENT: next_attempt_at = now, no backoff. There is no schedule to
+   * write. Nothing this device does at any hour makes a staff account an admin,
+   * so a delay would be a number that pretends the row is waiting for time. The
+   * retry is stopped by the engine instead, which is where a device-global fact
+   * belongs.
+   */
+  async markSendForbidden(
+    id: string,
+    reason: string,
+    attempt: number,
+    now: Date,
+  ): Promise<void> {
+    const nowIso = now.toISOString();
+    await this.db.run(
+      `UPDATE local_bills
+       SET sync_state = 'pending', attempt_count = ?, last_error = ?,
+           next_attempt_at = ?,
+           first_attempt_at = COALESCE(first_attempt_at, ?),
+           first_server_error_at = NULL, server_error_attempts = 0
+       WHERE id = ?`,
+      [attempt, reason, nowIso, nowIso, id],
     );
   }
 
@@ -569,8 +610,14 @@ export class SqliteLocalStore implements LocalStore {
    */
   async listVoidsToApply(limit: number): Promise<LocalBill[]> {
     const rows = await this.db.all<BillRow>(
+      // void_refused_at IS NULL: a void the server refused on identity grounds is
+      // NOT owed work. Without this clause it stays here and is re-POSTed on every
+      // pass — and unlike the send queue there is no backoff column on this path
+      // at all, so "retry" means every 4 seconds, forever, against a role no
+      // device action can change.
       `SELECT ${COLUMNS} FROM local_bills
        WHERE void_requested_at IS NOT NULL AND voided_at IS NULL
+         AND void_refused_at IS NULL
          AND sync_state = 'synced' AND doc_no IS NOT NULL
        ORDER BY void_requested_at, id
        LIMIT ?`,
@@ -581,11 +628,59 @@ export class SqliteLocalStore implements LocalStore {
 
   async markVoidApplied(id: string, attempt: number, now: Date): Promise<void> {
     await this.db.run(
+      // The refusal columns are cleared alongside: this transition retires the
+      // refused state, so nothing may be left behind describing it. Reachable
+      // whenever an admin signs in on a phone holding a refused void — the
+      // refusal is retracted, the void applies, and a stale void_refused_code
+      // would keep the card saying it did not. Same rule as
+      // releaseMasterDataBlocked clearing last_error.
       `UPDATE local_bills
-       SET voided_at = ?, void_attempts = ?, void_last_error = NULL
+       SET voided_at = ?, void_attempts = ?, void_last_error = NULL,
+           void_refused_at = NULL, void_refused_code = NULL
        WHERE id = ?`,
       [now.toISOString(), attempt, id],
     );
+  }
+
+  /**
+   * The server refused the void because of WHO ASKED.
+   *
+   * void_requested_at and void_reason are untouched — the owner asked, and that
+   * they asked is a fact that outlives any refusal. What changes is that the void
+   * stops being owed: it leaves listVoidsToApply, so nothing retries, and the
+   * card reads the refusal instead of promising an automatic cancel it will never
+   * perform.
+   */
+  async markVoidRefused(
+    id: string,
+    code: string,
+    reason: string,
+    attempt: number,
+    now: Date,
+  ): Promise<void> {
+    await this.db.run(
+      `UPDATE local_bills
+       SET void_refused_at = ?, void_refused_code = ?,
+           void_attempts = ?, void_last_error = ?
+       WHERE id = ?`,
+      [now.toISOString(), code, attempt, reason, id],
+    );
+  }
+
+  /**
+   * Someone signed in. Retract every void refusal so those voids are owed again.
+   *
+   * void_last_error is cleared with them, for the reason
+   * releaseMasterDataBlocked's comment gives: this statement retires the refused
+   * state, so the text that state produced must not outlive it.
+   */
+  async clearVoidRefusals(_now: Date): Promise<number> {
+    const r = await this.db.run(
+      `UPDATE local_bills
+       SET void_refused_at = NULL, void_refused_code = NULL, void_last_error = NULL
+       WHERE void_refused_at IS NOT NULL`,
+    );
+    return r.changes;
   }
 
   /**
