@@ -25,6 +25,7 @@ doc_no is asserted by shape, so it passes twice in a row against a live database
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import os
 import re
 import sys
@@ -37,6 +38,7 @@ import asyncpg  # noqa: E402
 import httpx  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 
+from app.bills import _be_year  # noqa: E402
 from app.seeddata import (  # noqa: E402
     PRODUCT_A_ID,
     SELLER_A_ID,
@@ -49,6 +51,11 @@ load_dotenv()
 
 BASE = os.environ.get("API_BASE_URL", "http://127.0.0.1:8099")
 RUN = uuid.uuid4().hex[:8]
+# The counter is keyed on (tenant_id, be_year), so the year has to be the SHOP's
+# — derived by the server's own function, never written as a literal. A hardcoded
+# 2569 is a proof with an expiry date on it: correct until 2027-01-01, then red
+# every run for a reason that has nothing to do with the behaviour under test.
+BE_YEAR = _be_year(dt.datetime.now(tz=dt.timezone.utc))
 GRADE = "B"  # seller A's grade, seeded
 
 _failures: list[str] = []
@@ -127,8 +134,8 @@ async def main() -> int:
         body = _bill_body(bill_id, key)
 
         seq_before = await db.fetchval(
-            "SELECT last_seq FROM doc_no_counters WHERE tenant_id = $1 AND be_year = 2569",
-            TENANT_A_ID,
+            "SELECT last_seq FROM doc_no_counters WHERE tenant_id = $1 AND be_year = $2",
+            TENANT_A_ID, BE_YEAR,
         )
 
         r = client.post(f"{BASE}/bills", headers=auth, json=body)
@@ -155,8 +162,8 @@ async def main() -> int:
         header("M2: the refusal cost nothing — no bill, and no doc_no burned")
         exists = await db.fetchval("SELECT count(*) FROM purchase_bills WHERE id = $1", uuid.UUID(bill_id))
         seq_after = await db.fetchval(
-            "SELECT last_seq FROM doc_no_counters WHERE tenant_id = $1 AND be_year = 2569",
-            TENANT_A_ID,
+            "SELECT last_seq FROM doc_no_counters WHERE tenant_id = $1 AND be_year = $2",
+            TENANT_A_ID, BE_YEAR,
         )
         check("no bill row was created", exists == 0, f"rows={exists}")
         check(
@@ -202,7 +209,7 @@ async def main() -> int:
         )
         check(
             "it received a doc_no of the right shape",
-            bool(re.fullmatch(r"B-2569-\d+", got.get("doc_no") or "")),
+            bool(re.fullmatch(rf"B-{BE_YEAR}-\d+", got.get("doc_no") or "")),
             f"doc_no={got.get('doc_no')}",
         )
         check(

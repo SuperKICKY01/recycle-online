@@ -97,8 +97,15 @@ async def main() -> int:
         print(f"  FE-STEEL prices: {json.dumps(steel['prices'], ensure_ascii=False)}")
         check("every price is a JSON string",
               all(isinstance(v, str) for p in pa for v in p["prices"].values()))
-        check('raw JSON contains "15.00" quoted, not 15.0 bare', '"15.00"' in raw,
-              "a float would have serialised as 15.0")
+        # The quoted sample is TAKEN FROM THE RESPONSE, not written as "15.00".
+        # FE-STEEL's grade-B price is mutated and restored by three other proof
+        # scripts, so a literal here asserts that everyone else's cleanup ran —
+        # a green that depends on unrelated scripts, and a red that accuses this
+        # one. What is being proven is the WIRE FORM, which no seed value affects.
+        sample = next(v for p in pa for v in p["prices"].values())
+        check(f'raw JSON contains "{sample}" quoted, not {sample} bare',
+              f'"{sample}"' in raw,
+              f"a float would have serialised as {float(sample)}")
         check("all four grade tiers present", sorted(steel["prices"]) == ["A", "B", "C", "D"],
               str(sorted(steel["prices"])))
         check("uom travels with the product", steel["uom_code"] == "KG", steel["uom_code"])
@@ -126,7 +133,10 @@ async def main() -> int:
         check("at least one seeded seller has NO grade, and the API says null",
               any(s["grade"] is None for s in sa),
               f"grades={sorted(str(s['grade']) for s in sa)}")
-        check("tenant B's seller is a different row", sb[0]["id"] != sa[0]["id"])
+        # REMOVED: `sb[0]["id"] != sa[0]["id"]`. It indexed two lists whose order
+        # the API does not promise, and it could not fail while the disjointness
+        # check above holds — so it added nothing except an IndexError waiting for
+        # the day one tenant has no sellers. Vacuous and order-dependent at once.
 
         print("\n=== P4: no token, no data ===")
         anon = await client.get(f"{BASE}/products")

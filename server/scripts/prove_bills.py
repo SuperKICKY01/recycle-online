@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import httpx  # noqa: E402
 
+from app.bills import _be_year  # noqa: E402
 from app.seeddata import (  # noqa: E402
     ADMIN_USERNAME,
     PRODUCT_A_ID,
@@ -32,7 +33,13 @@ from app.seeddata import (  # noqa: E402
 )
 
 BASE = os.environ.get("API_BASE_URL", "http://127.0.0.1:8099")
-BE_YEAR = datetime.now(tz=timezone.utc).year + 543
+# THE SHOP's Buddhist-era year, from the server's own derivation — not
+# `datetime.now(utc).year + 543`, which is what stood here. That expression is
+# the exact bug lessons/be-year-comes-after-the-timezone.md exists for: between
+# 00:00 and 06:59 Bangkok the UTC date is still yesterday, so for seven hours of
+# every new year's day it answers 2569 while the server stamps 2570 — and this
+# proof would go red over a defect it does not have.
+BE_YEAR = _be_year(datetime.now(tz=timezone.utc))
 
 # Idempotency keys are scoped to THIS run. With fixed keys the script could only
 # ever run once against a database: the second run collides with the first run's

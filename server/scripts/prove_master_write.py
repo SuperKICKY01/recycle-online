@@ -543,6 +543,11 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
 
         # ------------------------------------------------------------------ V1
         header("V1: retiring a row takes it out of the picker, and only that")
+        # The picker BEFORE the retirement. "only that" is a statement about a
+        # SET DIFFERENCE, so the before-set has to be observed to assert it.
+        offered_before = {
+            p["id"] for p in client.get(f"{BASE}/products", headers=staff).json()["products"]
+        }
         r = client.post(f"{BASE}/products/{created['product']}/deactivate", headers=admin)
         check("POST /products/{id}/deactivate -> 200", r.status_code == 200,
               f"status={r.status_code}")
@@ -558,9 +563,22 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
               not any(p["id"] == created["product"] for p in default_list))
         check("but ?include_inactive=true finds it, so the office can undo this",
               any(p["id"] == created["product"] for p in with_inactive))
+        # NOT a count. `len(with_inactive) == len(default_list) + 1` measured the
+        # ENVIRONMENT — it assumed this run's product was the only retired row in
+        # the tenant, and it went red the moment an EARLIER run left one behind
+        # (mw-f0c445f2, 2026-07-28: a bill was written against that run's own
+        # seller and product, so hard rule 5 pins both forever and its cleanup
+        # could not remove them). The retirement worked perfectly; the assertion
+        # was counting. Third time this shape has bitten — see
+        # lessons/proof-must-run-twice.md, which says to assert the SET RELATION.
+        offered_after = {p["id"] for p in default_list}
         check("and the default list is not simply empty — everything else is still there",
-              len(default_list) > 0 and len(with_inactive) == len(default_list) + 1,
-              f"default={len(default_list)} with_inactive={len(with_inactive)}")
+              offered_before - offered_after == {created["product"]}
+              and offered_after and offered_after < {p["id"] for p in with_inactive},
+              f"removed={sorted(offered_before - offered_after)}"
+              f" still_offered={len(offered_after)}")
+        check("every row the picker still offers is active",
+              all(p["is_active"] for p in default_list))
 
         r = client.post(f"{BASE}/products/{created['product']}/activate", headers=admin)
         check("activate -> 200 and is_active true again",
