@@ -70,6 +70,60 @@ That looks like the bug this lesson is about and is not. Deriving the *displayed
 date from `server_received_at` to make them match would relabel which day the
 shop bought a load on — for every offline bill, not just at new year.
 
+## AMENDED (2026-07-29): this lesson was written for production code, and the tests were never swept
+
+Everything above was applied to `app/bills.py` and `shopTime.ts` when the defect
+was found, and it held. Then, eight months later, the SAME expression was found
+alive in three places in two proof scripts:
+
+```python
+prove_bills.py:35            BE_YEAR = datetime.now(tz=timezone.utc).year + 543
+prove_master_data_gate.py    be_year = 2569   (two SQL predicates, one doc_no regex)
+```
+
+Nobody wrote a new bug. **The fix was applied to the site that had failed, and no
+one asked where else the same computation lives.** `prove_backup_restore.py` had
+imported `_be_year` all along with the note *"one BE-year source; never re-derive
++543"* — so one proof had it right and two did not, which is exactly the shape of
+a rule that was communicated by fixing rather than by sweeping.
+
+**What it would have cost.** Nothing, until 2027-01-01. Then, for the seven hours
+between Bangkok midnight and 07:00 UTC, `prove_bills` would compute 2569 while
+the server stamped 2570, and go red — on new year's day, with nobody having
+touched the repository, over a defect the code does not have. A proof that fails
+for a reason unrelated to the behaviour it tests is worse than no proof: it
+teaches the next person that red means "look at the environment", which is the
+belief that lets a real red through.
+
+**The general form, and it is not about dates.** When a lesson fixes a
+computation, the sweep is not done until every OTHER site of that computation has
+been checked — **tests included**. Test code is the easiest place for the old
+expression to survive: it is written to be independent of the implementation,
+which is precisely what makes it re-derive the thing the implementation now owns.
+"Independent reimplementation" is a virtue in an oracle only when the rule it
+encodes is stable; for a rule that was just corrected, it is a copy of the bug
+with a longer fuse.
+
+So the closing step of any fix of this kind is a repo-wide grep for the
+*expression*, not for the symptom — here `+ 543`, `.year`, a hardcoded `2569`, a
+date literal in SQL, any UTC-based date arithmetic — across production code,
+proofs, fakes and fixtures. That sweep was done on 2026-07-29 and the rest of the
+repo is clean; what it found and why each surviving site is sound is recorded in
+PROJECT_STATUS under that date.
+
+Two sound-looking things it deliberately did NOT change, so the next sweep does
+not churn them:
+
+- **Fixed input → fixed expected** pairs (`proveTime.ts`, `proveClock.ts`): an
+  assertion like `shopDate("2027-01-01T00:30:00Z") === "01/01/2570"` is a
+  constant mapping and is correct forever. Only a *derivation from the current
+  clock* is a time bomb.
+- **Fake servers that emit `B-2569-n`** (`fakes.ts`, `fileServer.ts`): the year
+  there is frozen deliberately. Making the fake derive the real year would add a
+  clock dependency to tests that are currently deterministic, and nothing
+  compares the fake's doc_no against a computed year — `doc_no` is an identifier,
+  never a date ([[doc-no-is-arrival-order-not-event-time]]).
+
 ## How to apply
 
 1. Shop timezone first, `+543` second. One year source, ideally typed shut.
@@ -79,6 +133,9 @@ shop bought a load on — for every offline bill, not just at new year.
 4. Assert the UI year against the server's `be_year`, and assert that the wrong
    order would have *disagreed*, or the check does not discriminate.
 5. Never let a rendered BE string be parsed, sorted, compared or stored.
+6. When you fix one of these, grep the WHOLE repo for the expression before
+   closing it out — production, proofs, fakes, fixtures. The fix is not the
+   sweep, and the site that failed is rarely the only one.
 
 **Where proven.** `mobile/src/proof/proveTime.ts` T7–T10: the reported card, the
 order disproof over four instants (including the one where both orders agree),

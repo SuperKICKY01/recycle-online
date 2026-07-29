@@ -640,6 +640,29 @@ Dated, because they decay. Re-run them; do not cite them.
   from the real one. The single mobile proof that touches the live API
   (`proveForbidden` F6) captures the server-assigned `doc_no` and compares
   back rather than asserting a literal.
+- 2026-07-29 — **repo-wide sweep for BE-year / shop-date / day-boundary
+  derivations that bypass the shop-time module** (`+543`, `.year`,
+  hardcoded 2569/2570, SQL date literals, UTC date arithmetic), server and
+  mobile, production and proofs. **No new defects: the only four were the
+  ones fixed in `af11f71`.** The full inventory, so it is not re-derived:
+
+  | site | verdict |
+  |---|---|
+  | `server/app/bills.py:139` `_be_year` | SOUND — the one authority |
+  | `server/app/reports.py:242,269` | SOUND — converts to shop tz first, then `.date()`; label uses `_be_year` |
+  | `server/scripts/prove_backup_restore.py:70,191` | SOUND — already imported `_be_year` with "never re-derive +543". The model the other two should have followed |
+  | `server/scripts/prove_shop_time.py:89,98,194` | SOUND BY INTENT — the UTC expression is the DISPROOF, and :194 is guarded by `if utc_be != expected_be` |
+  | `server/scripts/prove_daily_report.py:339` | SOUND BY INTENT — deliberately the wrong UTC boundary, for the disproof |
+  | `server/scripts/prove_daily_report.py:115,509` | SOUND — builds shop-time instants; converts before `.date()` |
+  | `mobile/src/time/shopTime.ts:127` | SOUND — the one client authority; `getUTCFullYear()` on an already-shifted branded `ShopWallClock` |
+  | `mobile/src/proof/proveTime.ts:134,155,168` | SOUND BY INTENT — UTC slice and `getHours()` shown as the CONTRAST |
+  | `proveTime.ts:125-128,223-226`, `proveClock.ts:624,707` | SOUND — fixed input instant → fixed expected string. A constant mapping is correct forever; only a derivation from the CURRENT clock is a time bomb |
+  | `mobile/src/proof/fakes.ts:452`, `fileServer.ts:59` | SOUND, deliberately frozen — making the fake derive the real year would add a clock dependency to deterministic tests, and nothing compares fake doc_no to a computed year |
+  | `proveClock.ts:341`, `proveSync.ts:169`, `proveForbidden.ts:513`, `proveNotice.ts:453`, `proveSeller.ts:856` | SOUND — literal doc_nos compared against the FAKE's own output; doc_no is an identifier, never a date |
+  | every mobile date shown to a human | SOUND — `freshness.ts`, `BillsPanel.tsx`, `StatusStrip.tsx` all render through `shopTime`; no other file imports it and none formats a date without it |
+  | SQL date literals | NONE anywhere — `server/db/init/00_init_roles.sql` has no date logic, migrations use `timestamptz DEFAULT now()` (instants, not dates) |
+  | `mobile/dist/` | NOT TRACKED by git — the `shopTime.d.ts` copy there is build output, types only, no logic |
+
 - 2026-07-29 — **proof debris measured, tenant A: 301 bills, 248 active, 53
   voided.** By originating script (idempotency-key prefix): `bill` 92/69
   active, `mw` 56/46, `selpx` 44/44, `daily` 36/28, `mdgate` 20/20,
