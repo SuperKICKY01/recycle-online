@@ -58,12 +58,31 @@ def constraint_name_of(exc: BaseException) -> str:
 
 
 @asynccontextmanager
-async def tenant_connection(tenant_id: uuid.UUID | None) -> AsyncIterator[AsyncConnection]:
+async def tenant_connection(
+    tenant_id: uuid.UUID | None, *, isolation_level: str | None = None
+) -> AsyncIterator[AsyncConnection]:
     """Yield a connection whose open transaction has app.tenant_id set LOCAL.
 
     tenant_id is None -> no context is set -> RLS returns nothing (fail closed).
+
+    isolation_level exists for a request whose SEPARATE READS MUST AGREE WITH
+    EACH OTHER. Under the default READ COMMITTED every statement takes a fresh
+    snapshot, so a bill committing between two of them is counted by one and not
+    the other — a daily total that does not equal the sum of the lines printed
+    underneath it. That is a report the owner cannot reconcile, on the one screen
+    whose whole job is reconciling.
+
+    REPEATABLE READ costs nothing here and cannot fail: a READ-ONLY repeatable
+    read transaction never raises a serialization error in Postgres (40001 comes
+    from writes). Do NOT reach for it on a write path without thinking about that.
+
+    It is applied BEFORE begin() because an isolation level can only be chosen at
+    transaction start; SQLAlchemy issues it as part of starting the transaction,
+    ahead of the set_config below.
     """
     async with engine.connect() as conn:
+        if isolation_level is not None:
+            conn = await conn.execution_options(isolation_level=isolation_level)
         async with conn.begin():
             if tenant_id is not None:
                 await conn.execute(

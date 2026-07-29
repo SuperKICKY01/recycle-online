@@ -131,7 +131,10 @@ def _be_year(when: datetime) -> int:
     continued the PREVIOUS year's sequence, so the new year's numbering would not
     start at 1 and two business years would share one counter.
 
-    `when` must be timezone-aware; the only caller passes datetime.now(utc).
+    `when` must be timezone-aware. Callers: create_bill passes
+    datetime.now(utc); reports._be_date_label passes a day's start instant, so a
+    daily report's BE year and the doc_no year on the bills it lists come from
+    ONE derivation and cannot disagree.
     """
     return when.astimezone(SHOP_TIMEZONE).year + _BE_OFFSET
 
