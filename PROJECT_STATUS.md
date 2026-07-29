@@ -10,8 +10,9 @@ not been OBSERVED: a proof that ran, an endpoint that answered, a
 screen seen on a device. Implemented is not verified, and a dated
 green in here is only as fresh as its date.
 
-**Last updated: 2026-07-29, at the close of the client-side 403 work
-(mobile only; the server was not touched).**
+**Last updated: 2026-07-29 — the client-side 403 work, then the first
+Android pass and the first two-device run. No code changed for the
+latter two: they are observations.**
 
 ## Current phase
 
@@ -248,9 +249,31 @@ not a new feature:
 Everything here is unverified, not broken. It is listed so no one
 reports it as proven.
 
-- **Android has never been run.** Every device pass so far has been
-  on a real iPhone. Nothing Android-specific has been observed —
-  treat any claim about it as unverified.
+- **Android: ONE pass, 2026-07-29, on a borrowed handset.** No longer
+  "never run", and nowhere near covered. What was actually exercised:
+  the bundle built and opened; Thai rendered correctly with NO bundled
+  font; the real `expo-sqlite` driver created the schema fresh on a
+  device that had never held the database; a bill was weighed, saved
+  and synced; the numpad kept the OS keyboard off the numeric path;
+  the void-REASON input's keyboard behaved; safe-area insets were
+  correct. Plus, from the multi-device run below: one bill saved
+  offline and synced on reconnect.
+
+  What was NOT run on Android, and must not be reported as working:
+  the rest of the offline behaviour (queue-health amber/red, backoff,
+  parked bills, expired session, the poison alarm), force-quit draft
+  recovery, the stale-cache price gate, the VOID FLOW end to end —
+  including the 403 refusal path this phase built, which has only ever
+  been seen on iOS — and sync while backgrounded. One handset, one
+  OS version, one screen size.
+- **Two devices RACING is still unproven on real hardware.** Two phones
+  writing to one tenant is now observed (below), but they reconnected
+  158 ms apart. That is "near-simultaneous", not "inside the same
+  millisecond", and only the second is a race. The concurrent
+  same-key/same-counter path remains proven only headless, with a start
+  barrier and printed overlap (Phase 1c; see
+  `lessons/concurrency-tests-need-a-barrier.md` — without a barrier the
+  workers ran sequentially and a green result proved nothing).
 - **`src/device/expoSqliteDriver.ts` has no headless proof.** It
   cannot run under node (ESM with extensionless specifiers that only
   Metro resolves, plus `requireNativeModule('ExpoSQLite')`), so it is
@@ -260,6 +283,15 @@ reports it as proven.
   connection, so isolation comes from SQLite's file write-lock plus
   `busy_timeout`, not the JS mutex. That `changes` is reported
   honestly is an assumption the store methods rest on.
+  **The Android pass does not touch this**, and the distinction is the
+  whole point: a bill weighing, saving and SYNCING exercises single
+  statements, which is every method in `SqliteLocalStore`. The multi-
+  statement path is `promoteToBill` (insert the bill and clear the
+  draft, indivisibly), and what is unverified there is its CRASH
+  WINDOW — kill the process mid-transaction and see that exactly one of
+  {draft, bill} survives. That is proven under `node:sqlite` only
+  (`proveCart` C5, both sides of the commit, with a real SIGKILL). A
+  successful save says nothing about it.
 - **`src/device/secureTokenStore.ts`**: that SecureStore honours the
   contract is unverified off-device.
 - **Hermes `Intl` with a `timeZone` option is unverified.** This is
@@ -379,3 +411,37 @@ Dated, because they decay. Re-run them; do not cite them.
 - The two temporary device-test edits (`app/config.ts` DEMO switched to
   the staff account, `role={null}` on BillsPanel) were reverted before
   the commit and are NOT in the tree.
+- 2026-07-29 — **first Android pass ever**, borrowed handset. Scope and
+  the much larger not-scope are in Known device gaps above.
+- 2026-07-29 — **two devices, one tenant, no collision and no gap.**
+  Read out of `purchase_bills`, not off the screens:
+
+  | doc_no | device | total | device_created_at | server_received_at |
+  |---|---|---|---|---|
+  | B-2569-222 | iPhone | 220.00 | 03:24:37.235 | 03:24:37.446 |
+  | B-2569-223 | Android | 11007.50 | 04:04:02.465 | 04:04:03.233 |
+  | B-2569-224 | Android | 210.00 | 04:09:19.017 | 04:09:43.765 |
+  | B-2569-225 | iPhone | 1075.00 | 04:09:18.892 | 04:09:43.923 |
+
+  Contiguous, one bill each, no duplicate and no skipped number. 222 is
+  NOT a fresh tap: it is the same row as the 403 pass above (id
+  `735ed2aa…`, 220.00), 39 minutes earlier — the ordering claim
+  iOS-then-Android holds, the "back to back" impression does not.
+  Devices identified from the uvicorn log by client IP (iPhone
+  `.243` throughout; Android `.250`, then `.248` after rejoining the
+  network — that address made exactly ONE request in its life, a
+  `POST /bills` that returned 201, which it could only do with a token
+  it already held, so it is the same handset on a new DHCP lease).
+
+- 2026-07-29 — **doc_no and weighing order DISAGREE across devices, and
+  that is correct.** In the offline pair above, B-2569-225 carries the
+  EARLIER `device_created_at` (by 125 ms) and the LATER doc_no, because
+  it arrived 158 ms after the other. Nothing is wrong: doc_no is arrival
+  order (`lessons/doc-no-is-arrival-order-not-event-time.md`), the
+  strict weighing-order guarantee is a property of ONE device's send
+  queue, and there is no shared queue across two phones. The 125 ms is
+  also not evidence of anything — it is the difference between two
+  untrusted device clocks, and ~3 s of real skew has been measured on
+  this hardware before. Recorded here so it is not re-discovered as a
+  bug: any report that orders bills by `device_created_at` across
+  devices is wrong, and must key on `server_received_at`.
