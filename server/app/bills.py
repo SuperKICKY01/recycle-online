@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -131,10 +131,19 @@ def _be_year(when: datetime) -> int:
     continued the PREVIOUS year's sequence, so the new year's numbering would not
     start at 1 and two business years would share one counter.
 
-    `when` must be timezone-aware. Callers: create_bill passes
-    datetime.now(utc); reports._be_date_label passes a day's start instant, so a
-    daily report's BE year and the doc_no year on the bills it lists come from
-    ONE derivation and cannot disagree.
+    `when` must be timezone-aware, and WHICH INSTANT IS PASSED IS AS LOAD-BEARING
+    AS THIS FUNCTION. Callers:
+
+    * create_bill passes the row's OWN `server_received_at`, read once from the
+      transaction's `now()` before anything is derived from it. It passed a
+      separate `datetime.now(tz=utc)` until 2026-08-02, which is a different
+      clock read at a different moment and could straddle new year — see the
+      comment at the call site for what that costs.
+    * reports._be_date_label passes a day's start instant.
+
+    So a daily report's BE year, the doc_no year on the bills it lists, and the
+    year keying doc_no_counters all come from ONE derivation applied to instants
+    that are themselves the stored ones, and cannot disagree.
     """
     return when.astimezone(SHOP_TIMEZONE).year + _BE_OFFSET
 
@@ -392,11 +401,32 @@ async def create_bill(
                     )
                 list_prices.append(row["price"])
 
+            # THE ARRIVAL INSTANT IS READ FIRST, ONCE, AND EVERYTHING BELOW IS
+            # DERIVED FROM IT. `now()` is TRANSACTION START in Postgres, so this
+            # is a stable value, not a reading that moves as the transaction runs
+            # — and it is the same value written to server_received_at below.
+            #
+            # THIS ORDERING IS THE WHOLE POINT. It used to be
+            # `_be_year(datetime.now(tz=timezone.utc))`: a second clock, read at a
+            # second moment, a full master-data round-trip after the transaction
+            # began. A submit starting at 23:59:59.9 on 31 December shop time and
+            # reaching this line after midnight took NEXT year's be_year while
+            # server_received_at held LAST year's instant.
+            #
+            # Not a cosmetic mislabel: doc_no_counters is keyed on
+            # (tenant_id, be_year), so such a bill OPENS THE WRONG COUNTER a year
+            # early. The new year's real first bill then finds it at 1 and becomes
+            # B-<year>-2, with no B-<year>-1 in existence — a permanent gap in a
+            # legal document sequence that nothing can go back and repair. Proven
+            # in both directions by scripts/prove_docno_clock.py, which lies to
+            # Python's clock and shows this code is entirely unmoved by it.
+            received_at = (await conn.execute(text("SELECT now()"))).scalar_one()
+            be_year = _be_year(received_at)
+
             # Assign a GAP-FREE doc_no. The counter row is upserted then locked by
             # the UPDATE, in the SAME transaction as the insert: concurrent submits
             # serialize on the row lock (no collision) and a rolled-back submit
             # releases its increment (no gap). A native sequence could not do this.
-            be_year = _be_year(datetime.now(tz=timezone.utc))
             await conn.execute(
                 text(
                     "INSERT INTO doc_no_counters (tenant_id, be_year, last_seq)"
@@ -418,13 +448,23 @@ async def create_bill(
             await conn.execute(
                 text(
                     "INSERT INTO purchase_bills (id, tenant_id, seller_id, doc_no,"
-                    " idempotency_key, total_amount, device_created_at, vehicle_no)"
-                    " VALUES (:id, :t, :s, :dn, :k, :tot, :dca, :vn)"
+                    " idempotency_key, total_amount, device_created_at,"
+                    " server_received_at, vehicle_no)"
+                    " VALUES (:id, :t, :s, :dn, :k, :tot, :dca, :sra, :vn)"
                 ),
                 {
                     "id": body.id, "t": principal.tenant_id, "s": body.seller_id,
                     "dn": doc_no, "k": body.idempotency_key, "tot": server_total,
-                    "dca": body.device_created_at, "vn": body.vehicle_no,
+                    "dca": body.device_created_at,
+                    # EXPLICIT, not the column DEFAULT now(). The default would
+                    # produce the same instant — it is the same transaction_timestamp
+                    # — but "the same because both call now()" is a coupling a reader
+                    # has to know to see. Passing the one value that be_year was
+                    # derived from makes the agreement structural: there is no second
+                    # read left in this path to drift. The DEFAULT stays on the column
+                    # as a floor for any other writer.
+                    "sra": received_at,
+                    "vn": body.vehicle_no,
                 },
             )
             for it, amt, lp in zip(body.items, item_amounts, list_prices):

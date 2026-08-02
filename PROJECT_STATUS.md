@@ -10,9 +10,10 @@ not been OBSERVED: a proof that ran, an endpoint that answered, a
 screen seen on a device. Implemented is not verified, and a dated
 green in here is only as fresh as its date.
 
-**Last updated: 2026-08-02 — RECONCILIATION. The invariants are checked, the
-checker has been broken on purpose 19 ways, and the live database is REPORTED
-RED: 84 violations, all diagnosed as proof debris, none fixed.**
+**Last updated: 2026-08-02 — RECONCILIATION, and the one real defect it found is
+FIXED. The checker has been broken on purpose 19 ways; the live database is
+REPORTED RED (96 violations, all proof debris, none fixed); and doc_no's BE year
+now comes from the same instant as the bill's arrival stamp.**
 
 ## Current phase
 
@@ -139,18 +140,10 @@ Written up as `lessons/a-proof-fixture-must-be-a-row-the-product-could-produce.m
 suppression list: the debris is a symptom of a fixture discipline problem, and
 suppressing it would preserve the problem in amber.**
 
-**Found while writing T7, and NOT fixed — a real latent defect, astronomically
-narrow.** `server_received_at` is Postgres' `now()`, which is TRANSACTION START.
-`doc_no`'s `be_year` is Python's `datetime.now()`, read LATER in that same
-transaction, after the master-data lookups. Two clocks AND two moments. A submit
-beginning at 23:59:59.9 on 31 December shop time and reaching the counter after
-midnight takes NEXT year's `be_year` on LAST year's arrival stamp; host/container
-skew gives the reverse. Not cosmetic: `doc_no_counters` is keyed on `be_year`, so
-the new year's numbering could start against the wrong counter row. It is one
-instant per year wide, it has never been observed, and the fix is a decision
-(derive the year from the same statement that stamps the arrival) rather than an
-edit. Recorded in the checker's own "cannot see" output so it is re-read on every
-run.
+**Found while writing T7. NOW FIXED — see "The two-clock be_year defect" below.**
+It was one instant per year wide and had never been observed, but it corrupted a
+legal document sequence irreparably, so the owner directed the fix immediately
+and in its own commit.
 
 Decisions made, each argued in the module docstring:
 
@@ -203,6 +196,42 @@ isolation on real money data while it ran, and leave it disabled if the harness
 died. `ALTER TABLE … DISABLE ROW LEVEL SECURITY`, one line above it in the same
 list, is database-scoped and safe. The harness scans every injection's SQL for
 `ROLE` statements and refuses them, so the reason cannot decay into a comment.
+
+## The two-clock be_year defect — FIXED 2026-08-02, own commit
+
+Owner-directed, immediately after A2 found it. **The fix is an ORDERING, not a
+tolerance**, which was the explicit instruction and is also the only thing that
+could have worked: a tolerance on "how far apart may the two clocks be" still
+leaves two clocks.
+
+**Before.** `server_received_at` was the column DEFAULT `now()` — Postgres'
+TRANSACTION START. `be_year` was `_be_year(datetime.now(tz=timezone.utc))`, a
+PYTHON read taken later in the same transaction, after the seller lookup and
+every product and price lookup. Two clocks and two moments, a full master-data
+round-trip apart.
+
+**After.** `create_bill` reads the arrival instant ONCE, first, from the
+transaction's own clock — `SELECT now()` — derives `be_year` from THAT value
+through the single `_be_year` authority, and writes THAT SAME VALUE to
+`server_received_at` explicitly rather than leaving it to the DEFAULT. One value,
+used twice. The column default stays as a floor for any other writer.
+
+**Why it mattered more than a wrong label:** `doc_no_counters` is keyed on
+`(tenant_id, be_year)`, so a straddling bill did not merely get a wrong number —
+it OPENED THE WRONG COUNTER a year early. The new year's real first bill would
+then find that counter at 1 and become `B-<year>-2`, with no `B-<year>-1` ever
+existing. A permanent gap in a legal document sequence, of exactly the kind
+reconcile.py's T8 exists to scream about, and one nothing can go back and repair.
+
+**Proven by `server/scripts/prove_docno_clock.py`, in both directions, on the
+real `create_bill`.** It moves Python's clock across the Buddhist new year while
+Postgres keeps the real one, and asserts the code is completely unmoved. It
+**REFUSES to run against the live database** — a clock lie against unfixed code
+mints a bill in a year that has not happened and opens a counter row for it, and
+hard rule 5 means neither can be removed. Scratch copies only.
+
+The before/after is a measurement, not an argument — the same script was run
+against the unfixed code first, and both outputs are in Baseline observations.
 
 ## Previous phase
 
@@ -526,11 +555,15 @@ CLAUDE.md workflow, this is a boundary: stop for review.
   completeness, and whether the database moved while it ran). Exit 0 / 1 /
   2 = clean / violations / could-not-run. Runbook is its own `--help` and
   module docstring.
-- **Proofs** — eleven scripts in `server/scripts/`, each exercising a
+- **Proofs** — twelve scripts in `server/scripts/`, each exercising a
   real path against a live database: `prove_rls`, `prove_auth`,
   `prove_master`, `prove_bills`, `prove_master_data_gate`,
   `prove_shop_time`, `prove_seller_pricing`, `prove_backup_restore`,
-  `prove_master_write`, `prove_daily_report`, `prove_reconcile`.
+  `prove_master_write`, `prove_daily_report`, `prove_reconcile`,
+  `prove_docno_clock`. **Two now require a SCRATCH DATABASE and refuse the live
+  one**: `prove_reconcile` (it breaks invariants on purpose) and
+  `prove_docno_clock` (it lies to the server about the time, which against
+  unfixed code permanently corrupts a doc_no series). Both take `--database`.
   `prove_reconcile` is the odd one out: it restores a COPY (calling
   `restore_db.py` itself, so every run starts from the same dump), breaks
   each invariant on purpose, and asserts the checker fires, NAMES the row,
@@ -1210,6 +1243,39 @@ Dated, because they decay. Re-run them; do not cite them.
   `proveNotice`'s banned-fragment list, copied over, read the legitimate count
   `รวม 500 ใบ` as a leaked 5xx status. Replaced with a regex over the whole class,
   applied only to the screens that carry no counts — which also catches 418.
+- 2026-08-02 — **the two-clock defect, MEASURED before and after the fix.** Same
+  script, same lie (Python's clock inside `app.bills` set to
+  `2027-01-01T00:00:05+07`, BE 2570; Postgres left on the real 2026-08-02, BE
+  2569), same real `create_bill`, a restored scratch copy each time:
+
+  | | doc_no minted | `server_received_at` | `doc_no_counters` |
+  |---|---|---|---|
+  | **before** | `B-2570-1` | 2026-08-02 (BE 2569) | **`{2569: 305, 2570: 1}`** — a counter opened for a year that has not happened |
+  | **after** | `B-2569-306` | 2026-08-02 (BE 2569) | `{2569: 306}` — 2570 `last_seq` before=None after=None |
+
+  Offline, the same `_be_year` over the two instants a straddling transaction
+  really produces: `2026-12-31T23:59:59.900+07` → BE **2569**, and
+  `2027-01-01T00:00:00.050+07` → BE **2570**. **150 ms apart, one Buddhist year
+  apart.** Post-fix the two bills of a run are consecutive in ONE series
+  (`B-2569-306` then `B-2569-307`), which they were not before (`B-2570-1` then
+  `B-2569-306`). `prove_docno_clock.py` green TWICE in a row with no reseed
+  (306/307, then 308/309 — every assertion is a delta).
+- 2026-08-02 — **all NINE pre-existing server proofs re-run bare and green after
+  the `create_bill` change**, against a uvicorn started from the fixed code on
+  8099 (`/health` 200 observed first — the process already on 8000 was NOT
+  assumed to be running the new code): `prove_auth`, `prove_bills`, `prove_rls`,
+  `prove_master`, `prove_master_data_gate`, `prove_shop_time`,
+  `prove_seller_pricing`, `prove_master_write`, `prove_daily_report`,
+  `prove_backup_restore`. `prove_shop_time` is the directly relevant one — it
+  asserts the counter row `(tenant, 2569).last_seq` holds the bill's own seq, and
+  did.
+- 2026-08-02 — **the debris grows with every proof run, measured.** One round of
+  the proofs above took the reconciler from **84 violations over 46 tenants to 96
+  over 48** — `prove_rls` +2 tenants and +2 NULL-doc_no bills, `prove_daily_report`
+  +10 mis-yeared fixtures. No NEW violation class appeared, so the fixed
+  `create_bill` writes clean rows. **This is the evidence behind the
+  recommendation above being "fix the scripts THEN rebuild", in that order: a
+  rebuild alone would have been undone the same day.**
 - 2026-08-02 — **`reconcile.py` against the LIVE database, run bare TWICE.**
   Both runs byte-identical apart from the start stamp and elapsed: 46 tenants,
   **792 checks, 84 violations (T5: 44, T7: 40), exit 1, 0.9s.** The two runs

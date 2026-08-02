@@ -124,6 +124,60 @@ not churn them:
   compares the fake's doc_no against a computed year — `doc_no` is an identifier,
   never a date ([[doc-no-is-arrival-order-not-event-time]]).
 
+## AMENDED AGAIN (2026-08-02): the function was right — the INSTANT passed to it was wrong
+
+Everything above is about the ORDER OF OPERATIONS inside the derivation. This one
+got the derivation perfectly right and still put the wrong year on a legal
+document, because of the ARGUMENT:
+
+```python
+be_year = _be_year(datetime.now(tz=timezone.utc))   # a SECOND clock, a SECOND moment
+...
+INSERT INTO purchase_bills (...)                     # server_received_at DEFAULT now()
+```
+
+`server_received_at` is Postgres' `now()` — **transaction start**. The `be_year`
+came from a PYTHON read taken later in the same transaction, after the seller
+lookup and every product and price lookup. Two clocks *and* two moments, a full
+master-data round-trip apart. A submit beginning at 23:59:59.9 on 31 December
+shop time and reaching that line after midnight took NEXT year's `be_year` on
+LAST year's stamp.
+
+**It was not a mislabel.** `doc_no_counters` is keyed on `(tenant_id, be_year)`,
+so the bill OPENED THE WRONG COUNTER a year early. The new year's real first bill
+then finds it at 1 and becomes `B-<year>-2`, and no `B-<year>-1` will ever exist:
+a permanent gap in a document sequence, unrepairable, in the one table hard rule
+5 forbids editing.
+
+Measured before and after on the real `create_bill`, same lie, scratch copy:
+
+| | doc_no | server_received_at | doc_no_counters |
+|---|---|---|---|
+| before | `B-2570-1` | BE 2569 | `{2569: 305, **2570: 1**}` |
+| after | `B-2569-306` | BE 2569 | `{2569: 306}` |
+
+**The rule this adds:** a value DERIVED from a timestamp must be derived from the
+timestamp that is actually STORED — read once, then used for both. Never from a
+fresh read of "the same kind of thing", however close the two look. `now()` and
+`datetime.now()` are not the same clock, and even one clock read twice is not one
+moment.
+
+**And the fix is an ORDERING, never a tolerance.** The instinct is to allow a few
+seconds of slack between the two reads. That leaves two reads. The instant is now
+read FIRST, `be_year` is derived from it, and the SAME value is written to
+`server_received_at` explicitly instead of leaving it to the column default —
+because "they agree because both call `now()`" is a coupling the next reader has
+to already know in order to see. One value, used twice, no window to be tolerant
+about.
+
+**Where proven.** `server/scripts/prove_docno_clock.py` — C1 puts the two
+instants a straddling transaction really produces through the real `_be_year`
+(150 ms apart, one BE year apart); C2 lies to Python's clock across new year and
+drives the real `create_bill`, asserting the doc_no year, the counter key and the
+stamp all agree and that no counter opened for the lied-about year. It refuses to
+run against the live database, because against unfixed code the lie is itself the
+corruption.
+
 ## How to apply
 
 1. Shop timezone first, `+543` second. One year source, ideally typed shut.

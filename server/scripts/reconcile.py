@@ -1121,16 +1121,15 @@ CANNOT_SEE = [
     " moment you read it. X3 reports whether rows landed during the run; if they"
     " did, a violation could be a bill mid-flight rather than a defect.",
 
-    "T7 AT THE STROKE OF THE BUDDHIST NEW YEAR — and the two clocks behind it."
-    " server_received_at is Postgres' now(), which is TRANSACTION START."
-    " doc_no's be_year is Python's datetime.now(), read LATER in that same"
-    " transaction, after the master-data lookups. So even with the two clocks"
-    " perfectly synchronised, a submit that begins at 23:59:59.99 on 31 December"
-    " shop time and reaches the counter after midnight takes NEXT year's be_year"
-    " on LAST year's arrival stamp; host/container skew can produce the reverse."
-    " A T7 hit at that one instant of the year may therefore be honest. At every"
-    " other moment it cannot be. Worth knowing rather than fixing blind: the same"
-    " be_year keys doc_no_counters, so the disagreement is not cosmetic.",
+    "NOTHING ABOUT T7 ANY MORE — and this entry is kept to say so. Until"
+    " 2026-08-02 there was one honest T7: server_received_at came from Postgres'"
+    " transaction-start now() while doc_no's be_year came from a separate Python"
+    " datetime.now() read later in the same transaction, so a submit straddling"
+    " the Buddhist new year could take next year's number on last year's stamp."
+    " create_bill now reads the arrival instant ONCE and derives both from it"
+    " (scripts/prove_docno_clock.py lies to Python's clock and shows the code"
+    " unmoved). There is no longer any moment at which a T7 hit can be honest:"
+    " every one is either a row this product did not write, or a defect.",
 ]
 
 
