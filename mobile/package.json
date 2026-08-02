@@ -22,7 +22,8 @@
     "prove:time": "npm run build && node dist/proof/proveTime.js",
     "prove:cold": "npm run build && node dist/proof/proveCold.js",
     "prove:clock": "npm run build && node dist/proof/proveClock.js",
-    "prove:forbidden": "npm run build && node dist/proof/proveForbidden.js"
+    "prove:forbidden": "npm run build && node dist/proof/proveForbidden.js",
+    "prove:daily": "npm run build && node dist/proof/proveDaily.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

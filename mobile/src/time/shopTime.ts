@@ -105,14 +105,45 @@ const pad = (n: number): string => String(n).padStart(2, "0");
 type ShopWallClock = Date & { readonly __brand: "shop wall clock" };
 
 /**
+ * MICROSECONDS TRIMMED TO MILLISECONDS, before anything parses the string.
+ *
+ * The ECMAScript Date Time String Format specifies EXACTLY three fractional
+ * digits. More than three is implementation-defined: V8 truncates and is happy,
+ * and Hermes is UNVERIFIED here — the same family as `Intl` with a `timeZone`
+ * option, `atob` and `crypto.randomUUID`, all recorded as unverified in
+ * PROJECT_STATUS. A parser that returned NaN would make every timestamp on the
+ * daily report render as "—" on a device and nowhere else.
+ *
+ * This became reachable with the daily money view, which is the first screen to
+ * render a timestamp the SERVER produced: Postgres timestamptz is microsecond
+ * resolution and `reports._shop_iso` emits all six digits
+ * (`2026-08-01T17:32:11.123456+07:00`). Every instant rendered before it came
+ * from `new Date().toISOString()` on the device, which is always exactly three.
+ *
+ * Truncation, never rounding: sub-millisecond precision has no meaning on a
+ * screen showing HH:MM, and rounding 999999 up would carry into the next second.
+ * A string with three or fewer digits, or none, is returned untouched.
+ */
+function trimSubMilli(iso: string): string {
+  return iso.replace(/(\.\d{3})\d+/, "$1");
+}
+
+/**
  * The shop's wall clock for a UTC instant. STEP ONE, always.
  *
  * Shifting the instant by the offset and then reading its UTC fields gives the
  * shop's wall-clock fields. Reading LOCAL fields here would reintroduce the
  * device dependency this module exists to remove.
+ *
+ * An instant carrying its own offset (`…+07:00`, as the daily report returns) is
+ * handled by the same path and needs no special case: the offset is part of the
+ * instant, so parsing yields the same moment either way and the shift below is
+ * what puts it on the shop's clock. Nothing here reads the string's own offset,
+ * which is exactly why a server that changed its output offset could not move
+ * what this module prints.
  */
 function shopWallClock(iso: string): ShopWallClock | null {
-  const t = new Date(iso).getTime();
+  const t = new Date(trimSubMilli(iso)).getTime();
   if (Number.isNaN(t)) return null;
   return new Date(t + SHOP_UTC_OFFSET_MINUTES * 60_000) as ShopWallClock;
 }

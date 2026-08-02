@@ -133,22 +133,79 @@ export interface ForbiddenReason {
 
 const ASK_THE_OWNER = "ต้องแจ้งเจ้าของร้าน";
 
-const FORBIDDEN_BY_CODE: Record<ForbiddenCode, { badge: string; what: string }> = {
-  admin_required: {
-    badge: "ไม่มีสิทธิ์ยกเลิกบิล",
-    what: `บัญชีนี้ไม่มีสิทธิ์ยกเลิกบิล ระบบจึงยังไม่ได้ยกเลิกบิลใบนี้ — ${ASK_THE_OWNER}`,
+/**
+ * WHAT WAS REFUSED — and why this is a required parameter rather than a default.
+ *
+ * The server answers `admin_required` for EVERY admin-only path (auth.py's one
+ * require_admin), so the code alone does not say what the caller was trying to
+ * do. While voiding was the only admin action a phone could reach, the wording
+ * below could hardcode it and be right. Phase 2d adds the second one — the daily
+ * money view — and the same code now arrives from a screen where "บัญชีนี้ไม่มี
+ * สิทธิ์ยกเลิกบิล ระบบจึงยังไม่ได้ยกเลิกบิลใบนี้" is simply false: nothing was
+ * being cancelled, and the sentence would send an owner looking for a bill that
+ * does not exist.
+ *
+ * lessons/correct-classification-can-still-render-as-an-error.md: a wrong
+ * instruction is worse than a vague one, because it gets acted on. So the ACTION
+ * is a required argument — adding a third admin-only path is a compile error at
+ * this table until someone writes the sentence for it, rather than a silently
+ * inherited one about bills.
+ *
+ * The three rules the wording is written to are unchanged and hold for every
+ * action: never "error", never an invitation to sign in, and always the shop
+ * OWNER (never support, never the office, neither of whom can grant a role).
+ */
+export type ForbiddenAction = "void_bill" | "daily_report";
+
+interface ForbiddenText {
+  badge: string;
+  what: string;
+}
+
+const FORBIDDEN_BY_ACTION: Record<
+  ForbiddenAction,
+  { known: Record<ForbiddenCode, ForbiddenText>; unknown: ForbiddenText }
+> = {
+  void_bill: {
+    known: {
+      admin_required: {
+        badge: "ไม่มีสิทธิ์ยกเลิกบิล",
+        what: `บัญชีนี้ไม่มีสิทธิ์ยกเลิกบิล ระบบจึงยังไม่ได้ยกเลิกบิลใบนี้ — ${ASK_THE_OWNER}`,
+      },
+    },
+    unknown: {
+      badge: "ไม่มีสิทธิ์ทำรายการนี้",
+      what: `บัญชีนี้ไม่มีสิทธิ์ทำรายการนี้ ระบบจึงยังไม่ได้ทำให้ — ${ASK_THE_OWNER}`,
+    },
+  },
+  /*
+   * READING the day's money, not doing anything to it. So the sentence says only
+   * that this account may not see it — there is no bill, no cancellation and no
+   * consequence to report, and inventing one would be the wrong instruction this
+   * whole table exists to prevent. It also does not apologise or suggest the
+   * screen is broken: admin-only is a decision somebody made on purpose
+   * (server/app/reports.py section 4), and the owner is the one who can change it.
+   */
+  daily_report: {
+    known: {
+      admin_required: {
+        badge: "ไม่มีสิทธิ์ดูยอดประจำวัน",
+        what: `บัญชีนี้ดูยอดเงินประจำวันของร้านไม่ได้ — ${ASK_THE_OWNER}`,
+      },
+    },
+    unknown: {
+      badge: "ไม่มีสิทธิ์ดูข้อมูลนี้",
+      what: `บัญชีนี้ดูข้อมูลนี้ไม่ได้ — ${ASK_THE_OWNER}`,
+    },
   },
 };
 
-export function forbiddenReason(code: string | null): ForbiddenReason {
+export function forbiddenReason(code: string | null, action: ForbiddenAction): ForbiddenReason {
+  const texts = FORBIDDEN_BY_ACTION[action];
   if (code !== null && isKnownForbidden(code)) {
-    return { ...FORBIDDEN_BY_CODE[code], unknown: false };
+    return { ...texts.known[code], unknown: false };
   }
-  return {
-    badge: "ไม่มีสิทธิ์ทำรายการนี้",
-    what: `บัญชีนี้ไม่มีสิทธิ์ทำรายการนี้ ระบบจึงยังไม่ได้ทำให้ — ${ASK_THE_OWNER}`,
-    unknown: true,
-  };
+  return { ...texts.unknown, unknown: true };
 }
 
 export function parkedReason(code: string | null): ParkedReason {
@@ -350,7 +407,7 @@ export function billNotice(
    * make impossible.
    */
   if (bill.void_refused_at !== null) {
-    const r = forbiddenReason(bill.void_refused_code);
+    const r = forbiddenReason(bill.void_refused_code, "void_bill");
     const lines = [r.what, VOID_REFUSED_STILL_LIVE];
     // An unrecognised code is named ALONE — never the body it arrived in.
     if (r.unknown && bill.void_refused_code !== null) {

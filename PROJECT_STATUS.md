@@ -10,10 +10,98 @@ not been OBSERVED: a proof that ran, an endpoint that answered, a
 screen seen on a device. Implemented is not verified, and a dated
 green in here is only as fresh as its date.
 
-**Last updated: 2026-07-29 — the daily money view (server endpoint only),
-proven against a live database.**
+**Last updated: 2026-08-02 — the daily money view MOBILE SCREEN, proven headless.
+NOT yet seen on a device.**
 
 ## Current phase
+
+**A1 — daily money view, mobile screen. UI only, no server changes. HEADLESS
+GREEN, DEVICE-UNVERIFIED.** The endpoint has had no caller but `curl` since it
+landed; this is the screen that consumes it, and the first screen in the app built
+for the OWNER rather than the yard.
+
+All rendering is pure functions in `mobile/src/reports/dailyView.ts`, proven by
+`mobile/src/proof/proveDaily.ts` (`npm run prove:daily`, 11 report shapes + 13
+non-report outcomes, green twice). `app/DailyScreen.tsx` is presentation only and
+decides nothing; `app/api.ts`'s `fetchDailyReport` is transport only and attaches
+no meaning. Same split, same reason, as `billNotice` / `statusNotice`: files under
+`app/` are unreachable by the proofs.
+
+Decisions made, each argued in the module docstring:
+
+- **Money is the server's STRING, byte for byte** — no parse, no `toFixed`, no
+  grouping, no currency formatter anywhere on the path. `readMoney` REFUSES a JSON
+  number outright rather than rendering whatever a double rounded to. Proven with
+  values a double cannot hold. **NO THOUSANDS SEPARATORS**, deliberately: grouping
+  means splitting the string, which is one edit from splitting it into numbers.
+  `128400.00` is genuinely harder to read than `128,400.00` and **that is the
+  owner's call to make** — it can be added later in ONE place as a pure string
+  regroup with a proof that the digits are unchanged.
+- **The understatement warning is UNCONDITIONAL**, inside the headline card, in
+  informational blue — not amber, not red. It is true on every trading day, and a
+  caveat dressed as a fault is one nobody reads by Friday. It does NOT read
+  `completeness.understatement_possible`: that field is a constant `true` by
+  construction today, and a client that went silent the day a future server
+  computed it would be trusting a guarantee it cannot check.
+- **The day-boundary consequence is on the screen**, with the concrete times
+  (23:50 weighed / 00:05 synced → tomorrow), permanently, next to the number.
+- **The client owns the sentences; the server owns the facts.** `basis.
+  consequence_th` and `understatement_reason_th` are deliberately NOT echoed. The
+  client keys on `basis.aggregated_on` instead and FLAGS a basis it does not
+  recognise — echoing prose would print a confident sentence about a total
+  computed some other way.
+- **An unreachable server cannot render as a zero day.** The message screens have
+  no money field at all, so the leak is unrepresentable rather than guarded.
+- **`forbiddenReason` now takes a REQUIRED action** (`"void_bill"` /
+  `"daily_report"`). The server answers `admin_required` for every admin path, so
+  the old wording would have told a staff account opening the takings that a bill
+  had not been cancelled. See the 2d amendment to
+  `lessons/correct-classification-can-still-render-as-an-error.md`.
+- **`shopWallClock` now trims sub-millisecond digits before parsing.** Postgres
+  gives six fractional digits, the ECMAScript date format specifies three, and
+  Hermes is unverified. This is the first screen ever to render a SERVER-produced
+  instant. See the 2d amendment to
+  `lessons/render-in-shop-time-not-device-time.md`.
+- **Past days: ‹ ก่อนหน้า / ถัดไป › steppers, no calendar.** Stepping is cheap —
+  one subtraction from an instant the server already sent — and is bounded FORWARD
+  by the server's own `shop_today`, never by this handset's clock. A full date
+  picker is NOT built: there is no date-picker dependency in this app, and adding
+  one is not "cheap" in the sense the phase asked for.
+
+**DEVICE PASS 2026-08-02, real iPhone, admin account — four of five steps
+correct, and the fifth could not be run at all.** What was exercised:
+
+- the phone reached the API and the screen opened;
+- **the day rendered as admin** — the total, the understatement caveat, the
+  voids, off-list and the bill list. This settles the microsecond question:
+  timestamps rendered as clock times, NOT as the `—` an unparseable instant
+  produces, so `shopWallClock`'s trim works under Hermes on a real handset;
+- **day stepping** — back to an earlier day, and ถัดไป absent on today;
+- **the offline path** — the network killed mid-screen said it could not reach
+  the server and showed no number.
+
+**STILL UNVERIFIED ON DEVICE: the 403 rendering on this screen.** It could not be
+exercised, and the reason is itself a finding rather than a missed step:
+`expo-secure-store` keeps the token in the iOS **Keychain**, which survives
+deleting Expo Go — so the app went on using the ADMIN token and never attempted a
+staff session at all. Note what this means: `app/config.ts` DEMO **was** switched
+to the staff account and it changed nothing, because those credentials are only
+read by `signIn()`, and a device holding a restored token never calls it.
+Confirmed from the uvicorn log rather than from the screen:
+every request from the phone (`.249`) returned **200**, while `curl` with a real
+staff token from the box (`.238`) returned **403** `kind=forbidden`
+`code=admin_required` `actual_role=staff`.
+
+So **the server gate holds and is observed**; what remains unproven is only what
+this screen DRAWS when it meets that refusal. That path is proven headless
+(`prove:daily` D5) and proven end-to-end against the live API for the VOID path
+(`prove:forbidden` F6), but not for this screen on a device.
+
+The token that could not be discarded is now recorded as a blocker in its own
+right — see **no sign-out** under "Blocking one real shop". It is a security item,
+not a testing inconvenience.
+
+## Previous phase
 
 **Daily money view — complete, server only, no UI.** `GET /reports/daily`
 is the number an owner balances the cash box against at closing; until it
@@ -107,7 +195,7 @@ fixture. The recommendation, for the owner to accept or refuse:
   the void to the bill's own `server_received_at`, or the dev day view
   fills with proof voids.
 
-## Previous phase
+## Earlier phases
 
 **Teaching the client about 403 — complete, device-verified.** The server has
 been refusing staff voids since the role gate landed; the client mapped that 403
@@ -136,8 +224,6 @@ had NOT cancelled the bill — two renderers of one card, each internally correc
 each separately asserted over hundreds of green cells. `proveNotice` N2b now
 asserts the CONCATENATION in draw order.
 See `lessons/403-is-about-what-the-caller-may-do.md`.
-
-## Earlier phases
 
 **Role enforcement + master-data writes — complete EXCEPT deactivation**
 (server only; no mobile, no desktop, no UI). `users.role` existed since
@@ -287,9 +373,13 @@ programs — see the boot check in CLAUDE.md.
 - **Screens** (`App.tsx`, `app/`): login, cart entry with numpad,
   per-bill seller picker, master-data strip with freshness state,
   status strip and operator notices, bills panel with the void flow.
-- **Proofs**: twelve headless `npm run prove:*` scripts —
+- **The owner's screen** (`app/DailyScreen.tsx`, `src/reports/dailyView.ts`):
+  the day's total, the permanent understatement caveat, voided bills, voids
+  applied today against older bills, off-list payments, and the bill list. Read
+  only; needs the server; renders calmly when it cannot have one.
+- **Proofs**: THIRTEEN headless `npm run prove:*` scripts —
   `sync`, `sqlite`, `money`, `cart`, `entry`, `seller`, `notice`,
-  `void`, `time`, `cold`, `clock`, `forbidden`. `prove:forbidden` is the
+  `void`, `time`, `cold`, `clock`, `daily`, `forbidden`. `prove:forbidden` is the
   first mobile proof that REQUIRES the live API: its F6 logs in as the
   seeded staff user and reads the server's actual 403 through the real
   `HttpTransport`. `--offline` skips that case and exits **2**, never 0.
@@ -334,11 +424,11 @@ not a new feature:
   is `curl`. `desktop/` is still empty, and the yard app is deliberately
   read-only for master data — so a shop still cannot set up its own
   products, prices or sellers without someone running requests by hand.
-- **A daily money view — the SERVER half is now built** (`GET
-  /reports/daily`, see Current phase). What is still missing is anything
-  a shop owner can actually open: there is no UI on either client, so the
-  only caller is still `curl`. It lands with the back-office item above,
-  not before it.
+- **A daily money view — the server half AND a mobile screen now exist**
+  (`GET /reports/daily`; `app/DailyScreen.tsx`, see Current phase). An owner can
+  open it on a phone. It is **device-unverified**, and the desktop back office
+  still has no version of it — a shop owner who works from a PC still cannot see
+  the day's takings there.
 
 ## Known device gaps
 
@@ -390,6 +480,28 @@ reports it as proven.
   successful save says nothing about it.
 - **`src/device/secureTokenStore.ts`**: that SecureStore honours the
   contract is unverified off-device.
+- **The daily money screen: ONE pass, 2026-08-02, real iPhone, ADMIN only.**
+  Rendering, day stepping and the offline path are observed (see Current phase).
+  What that pass settled, worth naming because each was listed as a risk before
+  it: `new Date()` on a SIX-DIGIT fractional-second ISO string with a `+07:00`
+  offset parses under Hermes (times rendered, not `—`), and the 44pt
+  `adjustsFontSizeToFit` amount is readable at a real width.
+
+  What it did NOT touch, and must not be reported as working:
+  - **the 403 rendering** — never drawn on a device, because the Keychain token
+    could not be discarded. See Current phase and the sign-out blocker.
+  - **the 20s `AbortController` timeout.** The offline test killed the network,
+    which throws immediately; a server that ACCEPTS the connection and then never
+    answers is the case the timeout exists for, and it has not been staged. The
+    sync engine already relies on the same mechanism (`httpTransport`), so this is
+    not new to the app — but it has never been the thing standing between an owner
+    and an endless spinner.
+  - **a truncated day** — `bills_truncated`, the capped void list, and the
+    off-list "count outruns the page" note are proven headless only. Reaching them
+    needs a day of >200 bills.
+  - **a past day with real trade in it**, and **the 422 `day_in_the_future` path**,
+    which day stepping is deliberately bounded to avoid.
+  - **Android.** The whole screen is iOS-only so far.
 - **Hermes `Intl` with a `timeZone` option is unverified.** This is
   why shop time is a fixed UTC+7 offset on both sides rather than a
   named zone: a silently-ignored `timeZone` would print UTC again.
@@ -663,6 +775,32 @@ Dated, because they decay. Re-run them; do not cite them.
   | SQL date literals | NONE anywhere — `server/db/init/00_init_roles.sql` has no date logic, migrations use `timestamptz DEFAULT now()` (instants, not dates) |
   | `mobile/dist/` | NOT TRACKED by git — the `shopTime.d.ts` copy there is build output, types only, no logic |
 
+- 2026-08-02 — **all THIRTEEN headless mobile proofs green TWICE in a row**, each
+  run bare, and both TypeScript programs (`typecheck`, `typecheck:app`) exit 0,
+  each run bare. `prove:daily` is new: 11 report shapes and 13 non-report
+  outcomes, including the four disproofs (a `toFixed` round trip changing
+  `99999999999999999.99`; a flag-gated understatement line going silent; the void
+  wording that `admin_required` used to carry; a screen with a total field showing
+  `0.00` during an outage).
+- 2026-08-02 — **`prove:forbidden` green TWICE in a row** against the live API, no
+  reseed between (`recycle_pg` up and `(healthy)` on `5544->5432`; uvicorn
+  answering `/health` 200 on 8000, which is F6's default port). Its F6 created
+  `B-2569-303`, was refused the void as staff, read `code=admin_required` off the
+  real body, confirmed the server still held the bill ACTIVE with its money
+  unchanged, and then voided the SAME bill as admin. Earlier in the day this
+  script could not be run at all — Docker was down — and that is why it is a
+  separate line rather than folded into the thirteen above.
+- 2026-08-02 — **device pass, real iPhone, daily money screen, ADMIN account.**
+  Four steps correct (render, timestamps, day stepping, offline); the staff 403
+  step could not be exercised because the Keychain token survives deleting Expo
+  Go. Read out of the uvicorn log, not off the screen: every request from the
+  phone (`.249`) → **200**; `curl` from the box (`.238`) with a real staff token
+  → **403** `kind=forbidden` `code=admin_required` `actual_role=staff`. The
+  server gate is observed; the screen's rendering of it is not.
+- 2026-08-02 — one FALSE POSITIVE found and fixed in the new proof itself:
+  `proveNotice`'s banned-fragment list, copied over, read the legitimate count
+  `รวม 500 ใบ` as a leaked 5xx status. Replaced with a regex over the whole class,
+  applied only to the screens that carry no counts — which also catches 418.
 - 2026-07-29 — **proof debris measured, tenant A: 301 bills, 248 active, 53
   voided.** By originating script (idempotency-key prefix): `bill` 92/69
   active, `mw` 56/46, `selpx` 44/44, `daily` 36/28, `mdgate` 20/20,

@@ -5,6 +5,7 @@
  * Every price arrives as a decimal STRING and stays one. Nothing in this file
  * parses money into a number.
  */
+import type { DailyFetch } from "../src/reports/dailyView";
 import { API_BASE_URL } from "./config";
 
 export interface Product {
@@ -80,6 +81,76 @@ export const fetchProducts = (token: string): Promise<Product[]> =>
 
 export const fetchSellers = (token: string): Promise<Seller[]> =>
   getJson<{ sellers: Seller[] }>("/sellers", token).then((b) => b.sellers);
+
+/* ------------------------------------------------- the daily money view ---- */
+
+/**
+ * GET /reports/daily — TRANSPORT ONLY. No meaning is attached here.
+ *
+ * It returns a DailyFetch and nothing else: a status, a machine-readable code, or
+ * "no answer". Every decision about what any of that MEANS — which are calm, which
+ * offer a sign-in, which may show a number — lives in src/reports/dailyView.ts,
+ * where a headless proof can enumerate it. This file cannot be reached by the
+ * proofs (it imports expo-constants through ./config), and that is exactly why
+ * nothing that decides anything may live in it.
+ *
+ * It does NOT throw and it does not use getJson above. A thrown error would have
+ * to be classified by the caller, and `instanceof` plus a status number is how a
+ * screen ends up branching on transport internals. Every outcome, including a
+ * body that will not parse, comes back as a value.
+ *
+ * THE CODE COMES FROM THE BODY AND THE CLASSIFICATION DOES NOT. FastAPI nests its
+ * HTTPException detail under `detail`, so the server's `code` is read from there
+ * for the UI's WORDING only — the class is decided on the status, which survives a
+ * body that fails to parse entirely. Same rule as httpTransport's 403/424 path.
+ */
+export async function fetchDailyReport(
+  token: string,
+  date: string | null,
+): Promise<DailyFetch> {
+  const query = date === null ? "" : `?date=${encodeURIComponent(date)}`;
+  /*
+   * A TIMEOUT, unlike the master-data reads above. This is a screen someone is
+   * standing in front of at closing time: a fetch that hangs leaves a spinner
+   * with no end and no explanation, whereas an abort lands in the calm
+   * "cannot reach the server" branch with a retry button. The endpoint is a
+   * sequential scan over the tenant's bill history (no index on the day
+   * predicate — a recorded, deliberate limit), so the budget is generous.
+   */
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}/reports/daily${query}`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    });
+  } catch {
+    // Timeout, DNS, no route, aeroplane mode — we never reached the server.
+    return { kind: "unreachable" };
+  } finally {
+    clearTimeout(timer);
+  }
+
+  let body: unknown = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+
+  if (res.ok) return { kind: "ok", body };
+
+  let code: string | null = null;
+  if (typeof body === "object" && body !== null && "detail" in body) {
+    const detail = (body as { detail: unknown }).detail;
+    if (typeof detail === "object" && detail !== null && "code" in detail) {
+      const raw = (detail as { code: unknown }).code;
+      if (typeof raw === "string") code = raw;
+    }
+  }
+  return { kind: "http", status: res.status, code };
+}
 
 /*
  * listPriceFor USED TO LIVE HERE. It is now gradePrice in src/cart/sellers.ts,

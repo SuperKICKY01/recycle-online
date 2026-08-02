@@ -255,6 +255,64 @@ re-asserts by hand exactly what the compiler just refused to grant. Caught only
 by `npm run typecheck:app`, which is the second time the separately-typechecked
 Expo program has been the one to find something — see the footnote below.
 
+## Amendment (2d): one server code, two actions — the wording assumed the action
+
+Point 3 above says a message that names an action must be derived from the cause.
+This phase found the case where **the cause does not determine the action**, and
+the wording had quietly assumed it did.
+
+`server/app/auth.py` has ONE `require_admin`, so it answers **`admin_required`**
+for every admin-only path there is. When voiding was the only such path a phone
+could reach, `forbiddenReason("admin_required")` could hardcode:
+
+```
+บัญชีนี้ไม่มีสิทธิ์ยกเลิกบิล ระบบจึงยังไม่ได้ยกเลิกบิลใบนี้ — ต้องแจ้งเจ้าของร้าน
+```
+
+That is right, and it stayed right for exactly as long as there was one caller.
+The daily money view is the second admin-only path a client can hit, and it
+returns the same code — so a staff account opening the takings would have been
+told, on a read-only report, that a bill they never touched had not been
+cancelled. **Every layer was correct again**: the server's status, the client's
+403 classification, the tone, the no-sign-in rule, the "name the owner" rule. Only
+the sentence was about something that never happened.
+
+The distinction to carry:
+
+> A server's `code` names the **rule that refused**, not the **action that was
+> refused**. If one code serves N call sites, the wording is a function of
+> (code, call site) — and the call site is the part the code cannot tell you.
+
+The fix is a REQUIRED `action` argument (`forbiddenReason(code, "void_bill")`),
+not an optional one with a default. A default would have kept the void sentence as
+the fallback for every future path, which is the same bug wearing a parameter. A
+required argument makes the third admin-only screen a compile error at the wording
+table until someone writes its sentence — the same "make the wrong thing not
+compile" move as the branded `ShopWallClock` and the `Exclude<NoticeTone, "none">`
+prop above.
+
+**How to spot it before it ships:** for every constant in a wording table, ask
+*how many things can produce this key*. One-to-one is safe; many-to-one is a
+sentence waiting to be wrong somewhere the author was not looking. Grep the
+server for the code — `admin_required` appears once, in a dependency used by
+sixteen routes, and that count is the whole warning.
+
+### Rider: a banned-substring list is context-dependent too
+
+Point 4 says to assert negatively, and this phase copied `proveNotice`'s list of
+forbidden fragments onto the money screen — where it immediately went red on
+`รวม 500 ใบ`, a legitimate count of voided bills read as a leaked 5xx status. The
+list was not wrong before and was not wrong after; **it was wrong once moved**,
+because on a bill card no bare number is legitimate and on a money report almost
+every number is.
+
+The repair is worth more than the report: the enumerated statuses became
+`/\b[45]\d\d\b/` applied only to the screens that carry no counts at all. That is
+strictly stronger than the list it replaced — it catches `418`, and every other
+status nobody thought to enumerate. Enumerating the statuses to ban is the same
+shape as enumerating the states to gate, and this lesson already says what to do
+about that: fix the class, not the instance.
+
 ## Footnote: the fix nearly broke the void path
 
 Naming the local `const reason = parkedReason(...)` inside the bill `.map()`

@@ -114,3 +114,46 @@ printed slip exists yet, but CLAUDE.md requires พ.ศ. there too and a slip is
 the seller keeps. It is the next consumer of this module and must port the module,
 not re-implement the formatting — a second `+543` in Electron is a second
 behaviour, and the two would drift at exactly the boundary neither author tested.
+
+## Amendment (2d): the wire's precision is not the language's parse contract
+
+Everything above is about WHICH clock. This is about whether the string parses at
+all, and it was found the first time a SERVER-produced instant reached a screen.
+
+`GET /reports/daily` returns Postgres `timestamptz`, so `reports._shop_iso` emits
+**six** fractional digits: `2026-08-01T17:32:11.123456+07:00`. The ECMAScript Date
+Time String Format specifies **exactly three**. More than three is
+implementation-defined — V8 truncates and is happy; **Hermes is unverified**, in
+the same family as `Intl` with a `timeZone` option, `atob` and
+`crypto.randomUUID` (PROJECT_STATUS "Known device gaps").
+
+Nothing had met this before because every instant the app had ever rendered came
+from `new Date().toISOString()` **on the device**, which is always exactly three
+digits. The client's own output had been silently defining the input contract.
+
+If Hermes returns `NaN` there, `shopWallClock` returns null and every timestamp on
+the report renders as `—`. That fails visibly rather than wrongly, which is the
+good direction — but it fails on the device only, on a screen the owner opens at
+closing time, and it would look like the endpoint was broken.
+
+So `shopWallClock` now trims sub-millisecond digits before parsing. Truncation,
+never rounding: rounding `.999999` up carries into the next second, and
+sub-millisecond precision means nothing on a screen showing `HH:MM`.
+
+**Two rules out of it, and the second is the general one:**
+
+1. An instant carrying its own offset (`…+07:00`) needs no special case here —
+   the offset is part of the instant, so the parse yields the same moment and the
+   shift still puts it on the shop's clock. Nothing in the module reads the
+   string's offset, which is exactly why a server changing its output offset
+   cannot move what this prints.
+2. **Never let one side's output define the other side's input contract.** Both
+   ends were "ISO-8601" and both were telling the truth; the format is a family,
+   and the members differ in precision, offset form and separator. When a new
+   producer starts feeding an existing parser, check the parser's actual spec —
+   not the fact that it has been working.
+
+This matters most for the consumer that does not exist yet. The desktop thermal
+slip must PORT this module, and the trim will look like a line worth deleting.
+It is not: the slip is the artifact the seller keeps, and `—` where the time
+should be is printed on paper.

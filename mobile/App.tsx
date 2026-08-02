@@ -64,6 +64,8 @@ import type { Draft } from "./src/cart/types";
 import { ExpoSqliteDriver } from "./src/device/expoSqliteDriver";
 import { SecureTokenStore } from "./src/device/secureTokenStore";
 import { assessFreshness, defaultUnitPrice, masterNotice } from "./src/master/freshness";
+import { dailyScreen } from "./src/reports/dailyView";
+import type { DailyScreen as DailyScreenModel } from "./src/reports/dailyView";
 import { readTokenRole } from "./src/session/deviceRole";
 import type { DeviceRole } from "./src/session/deviceRole";
 import { buildLocalBill } from "./src/sync/createBill";
@@ -75,9 +77,10 @@ import { systemClock } from "./src/sync/systemClock";
 import type { LocalBill, SyncState } from "./src/sync/types";
 import { isMasterDataBlocked, isVoided, isVoidRefused } from "./src/sync/types";
 import type { Product, Seller } from "./app/api";
-import { fetchProducts, fetchSellers, isUnauthorized, login } from "./app/api";
+import { fetchDailyReport, fetchProducts, fetchSellers, isUnauthorized, login } from "./app/api";
 import { BillsPanel } from "./app/BillsPanel";
 import { CartScreen } from "./app/CartScreen";
+import { DailyScreen } from "./app/DailyScreen";
 import { ConfirmSaveDialog } from "./app/ConfirmSaveDialog";
 import { ConfirmSellerChangeDialog } from "./app/ConfirmSellerChangeDialog";
 import { API_BASE_URL, DEMO } from "./app/config";
@@ -146,6 +149,26 @@ export default function App() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [billsOpen, setBillsOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  /*
+   * THE DAY'S MONEY. Three pieces of state and no more.
+   *
+   * `dailyDate` is the WIRE date being asked for, and null means "whatever the
+   * server calls today" — the normal case, and the one where the client never
+   * computes a date at all. That is deliberate: the server decides the day from
+   * `now()` inside the request transaction, the same clock that stamps
+   * server_received_at, so omitting the parameter is the only way to ask that
+   * cannot be wrong. Stepping to another day sets it from a value the SERVER
+   * sent, never from this handset's clock.
+   *
+   * `daily` is the rendered screen, or null while a request is in flight — so a
+   * spinner is a state rather than the absence of one. It is NOT cached across
+   * openings: a stale total on a money screen is the same class of mistake as a
+   * stale price, and this one has no marker to show its age.
+   */
+  const [dailyOpen, setDailyOpen] = useState(false);
+  const [dailyDate, setDailyDate] = useState<string | null>(null);
+  const [daily, setDaily] = useState<DailyScreenModel | null>(null);
   /** A seller change the operator has been warned about but not yet confirmed. */
   const [pendingChange, setPendingChange] = useState<
     { to: Seller; impact: SellerChangeImpact } | null
@@ -579,6 +602,65 @@ export default function App() {
     return () => clearInterval(t);
   }, [ready, syncOnce]);
 
+  /* ------------------------------------------------------- daily money -- */
+
+  /**
+   * Read the day's money from the server and render it.
+   *
+   * NO TOKEN IS A CASE, NOT A GUARD. A signed-out device gets the screen that
+   * says so and carries a sign-in button, rather than a spinner that never ends
+   * or a silently empty modal — the classification lives in dailyView, so this
+   * function only has to hand it the right outcome.
+   *
+   * A 401 here ALSO ends the device session, exactly like a 401 on a send or on a
+   * master-data refresh: it is one fact about the caller, and three screens
+   * telling three different stories about it is what the 401 lesson is for.
+   * `online` is set true on any answer at all — the server replied, so calling it
+   * an outage was never anything but wrong.
+   *
+   * WHAT IT DELIBERATELY DOES NOT DO is touch `submitRefused`. A 403 here says
+   * this account may not READ the day's money; it says nothing about whether it
+   * may submit bills, and staff submitting bills is the normal arrangement. The
+   * two are different permissions and conflating them would gate the yard's whole
+   * send loop on the owner opening a report.
+   */
+  const loadDaily = useCallback(
+    async (date: string | null): Promise<void> => {
+      const t = tokenRef.current;
+      if (t === null) {
+        setDaily(dailyScreen({ kind: "no_token" }));
+        return;
+      }
+      setDaily(null);
+      const result = await fetchDailyReport(t, date);
+      setDaily(dailyScreen(result));
+      if (result.kind === "unreachable") {
+        setOnline(false);
+        return;
+      }
+      setOnline(true);
+      if (result.kind === "http" && result.status === 401) setSessionEnded(true);
+      else if (result.kind === "ok") setSessionEnded(false);
+    },
+    [],
+  );
+
+  const openDaily = useCallback(() => {
+    setDailyOpen(true);
+    // Always the server's own today when the screen is opened. A day the owner
+    // stepped to twenty minutes ago is not what they mean by "open the takings".
+    setDailyDate(null);
+    void loadDaily(null);
+  }, [loadDaily]);
+
+  const pickDay = useCallback(
+    (wireDate: string | null) => {
+      setDailyDate(wireDate);
+      void loadDaily(wireDate);
+    },
+    [loadDaily],
+  );
+
   /**
    * The office has added the missing price; release every parked bill at once
    * rather than waiting out the slow cadence. Nothing is re-created here — the
@@ -906,7 +988,28 @@ export default function App() {
       <SafeAreaView style={styles.screen} edges={["top", "bottom"]}>
         <StatusBar style="dark" />
         <View style={styles.header}>
-          <Text style={styles.h1}>รับซื้อของเก่า</Text>
+          <View style={styles.headerRow}>
+            <Text style={styles.h1}>รับซื้อของเก่า</Text>
+            {/*
+              OFFERED TO EVERY ACCOUNT, unlike ยกเลิกบิลนี้ — and the difference
+              is worth stating because the two look like the same decision.
+
+              The void button is hidden from a staff token because pressing it
+              performs an ACTION that will be refused, leaving a bill claiming a
+              cancellation that never happened. Opening a read-only report costs
+              one refused GET and produces one plain sentence.
+
+              And the token's role is ADVISORY and up to an hour stale, while the
+              server re-reads it from the users row on every request — so a staff
+              user promoted this morning is admin to the server and still `staff`
+              in their token. Gating this on the claim would lock the owner out of
+              their own takings until the token expired. The server is the
+              authority; the 403 path is proven; the button stays.
+            */}
+            <Pressable style={styles.dailyBtn} onPress={openDaily}>
+              <Text style={styles.dailyBtnText}>ยอดวันนี้ ›</Text>
+            </Pressable>
+          </View>
           <Text style={styles.status} numberOfLines={1}>
             {status}
           </Text>
@@ -1090,6 +1193,22 @@ export default function App() {
           onConfirm={doSaveBill}
         />
 
+        <DailyScreen
+          visible={dailyOpen}
+          screen={daily}
+          onClose={() => setDailyOpen(false)}
+          /* Retry means the SAME day again — not "go back to today", which would
+             quietly change which number the owner is looking at. */
+          onRetry={() => void loadDaily(dailyDate)}
+          onSignIn={() => {
+            void (async () => {
+              await signIn();
+              await loadDaily(dailyDate);
+            })();
+          }}
+          onPickDay={pickDay}
+        />
+
         <BillsPanel
           visible={billsOpen}
           bills={bills}
@@ -1117,8 +1236,16 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: "center", paddingHorizontal: 24 },
   spinner: { marginTop: 40 },
   header: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 6 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   h1: { fontSize: 20, fontWeight: "900", color: "#0f172a" },
   status: { fontSize: 10, color: "#94a3b8" },
+  // A quiet teal chip, not a primary action: the yard's job is weighing, and this
+  // is the owner's screen sitting where they can reach it without hunting.
+  dailyBtn: {
+    minHeight: 36, paddingHorizontal: 12, borderRadius: 8, justifyContent: "center",
+    backgroundColor: "#ccfbf1",
+  },
+  dailyBtnText: { fontSize: 13, fontWeight: "800", color: "#0f766e" },
 
   latest: {
     flexDirection: "row", alignItems: "center", gap: 8,
