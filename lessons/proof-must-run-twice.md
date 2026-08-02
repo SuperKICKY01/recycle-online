@@ -156,6 +156,48 @@ file that went red.** `len(x) == n`, `len(a) == len(b) + 1`, and any arithmetic
 between two counts of live data are all the same defect wearing different
 clothes.
 
+## AMENDED A FOURTH TIME (reconciliation, 2026-08-02): a proof that NORMALISES its own fixture measures its last run
+
+`prove_reconcile.py` breaks each money invariant on purpose in a restored copy.
+The live database is not clean — it carries 84 violations, all proof debris — so
+the harness first UNDOES the two known causes in the copy, and asserts the copy
+then runs green. That assertion is the whole proof of the diagnosis: if those two
+causes did not account for all 84, something else does and must be found.
+
+Run 1 was honest. **Run 2 printed this:**
+
+```
+  the copy as restored : exit 0, 0 violations {}
+  cause 1, prove_rls direct inserts : DELETE 0, DELETE 0
+  cause 2, prove_daily_report fixture day : UPDATE 0
+  [OK  ] the two known causes account for ALL of the live violations
+```
+
+Zero rows deleted, zero updated, and a green tick under it. The copy was still
+normalised **from the previous run**, so "before" was already clean and the check
+confirmed nothing. Every earlier amendment here is about a proof whose second run
+FAILS; this is the other half — a proof whose second run PASSES, for a reason
+that has nothing to do with the claim.
+
+The distinguishing feature is that this script mutates its own fixture as a
+*setup step* rather than as the thing under test. A per-run UUID cannot help: the
+fixture is the whole database.
+
+Two rules:
+
+1. **A proof that mutates its fixture must CREATE that fixture**, not find it.
+   `prove_reconcile.py` now runs `restore_db.py` itself, so every run starts from
+   the same dump and the "before" state is a fact rather than a hope.
+2. **Where a claim needs a precondition, ASSERT the precondition, and SKIP rather
+   than pass when it is absent.** The diagnosis check now requires that the copy
+   arrived dirty; given a clean one it prints `[SKIP]` and says a fresh restore is
+   needed. A check that cannot be made must never be reported as a check that
+   passed — the same distinction the checker itself draws between exit 1 (the
+   money is wrong) and exit 2 (nobody looked).
+
+See [[a-checker-must-not-share-the-code-it-checks]] for the injection discipline
+this sits inside: fires / names the row / **clears again when undone**.
+
 ## How to apply
 
 Before trusting any proof script:

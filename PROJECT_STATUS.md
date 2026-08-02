@@ -10,10 +10,201 @@ not been OBSERVED: a proof that ran, an endpoint that answered, a
 screen seen on a device. Implemented is not verified, and a dated
 green in here is only as fresh as its date.
 
-**Last updated: 2026-08-02 — the daily money view MOBILE SCREEN, proven headless.
-NOT yet seen on a device.**
+**Last updated: 2026-08-02 — RECONCILIATION. The invariants are checked, the
+checker has been broken on purpose 19 ways, and the live database is REPORTED
+RED: 84 violations, all diagnosed as proof debris, none fixed.**
 
 ## Current phase
+
+**A2 — reconciliation. Server only, one script, no endpoint and no schedule.
+COMPLETE, and the live database FAILS it.** Until now the money was correct
+because the code was correct; nothing checked it, and nothing would have said
+the day that stopped being true.
+
+`server/scripts/reconcile.py` — 17 checks per tenant plus 10 global, **792
+checks over 46 tenants in 0.9s**. `server/scripts/prove_reconcile.py` breaks it
+on purpose, 19 injections, green twice in a row.
+
+**THE LIVE DATABASE REPORTS 84 VIOLATIONS. Nothing was fixed — reporting them
+is the deliverable.** Both causes are PROOF DEBRIS, not product defects, and
+both were read out of the scripts rather than inferred:
+
+- **T5 — 44 bills with a NULL `doc_no`**, one in each of 44 tenants.
+  `prove_rls.py:96` INSERTs a whole tenant graph directly under tenant context
+  to exercise the RLS `WITH CHECK`, and never calls `create_bill`, so no
+  doc_no is ever assigned. One per run, never cleaned up (hard rule 5). **The
+  API cannot produce such a row**; the column is nullable only for hard rule 3's
+  offline state, which never reaches the server.
+- **T7 — 40 bills whose doc_no BE year disagrees with the year they arrived
+  in** (36 in tenant A, 4 in tenant B). `prove_daily_report.py` creates bills
+  over HTTP — so doc_no comes from the real path, in the current BE year 2569 —
+  and then moves `server_received_at` onto its synthetic 2019 fixture day by
+  direct UPDATE (its own docstring, line 40). doc_no says 2569; arrival says
+  2562. All 40 are exactly seven Gregorian years adrift.
+
+**The diagnosis is PROVEN, not asserted.** `prove_reconcile.py` restores a copy,
+undoes those two causes and nothing else, and the copy then runs green — so
+those two account for all 84. If they had not, the run stops there and says so.
+
+**Both are permanent.** Hard rule 5 forbids deleting a transaction, so neither
+set can be cleaned out of the dev database. **The consequence is the real
+finding: this checker is permanently red on dev, and a red that is always red is
+one nobody reads by Friday.** Three ways out:
+
+1. accept it, and read the 84 as a known floor;
+2. change the two scripts so future runs stop adding to it. Neither retires the
+   existing debris;
+3. a suppression baseline pinning the known rows by id. **Deliberately not
+   built** — the mechanism that lets a checker ignore a row is the mechanism
+   that lets it ignore the row that matters.
+
+### RECOMMENDATION — awaiting the owner's approval, NOT acted on
+
+**Take 2, then rebuild the dev database from migrations + seed. In that order.
+Reject 1 as an end state and 3 outright.**
+
+The reasoning, because the order is the whole of it:
+
+- **2 alone leaves it red at 84 forever.** The bleeding stops; the corpse stays.
+  A checker that can never be green cannot be read as a signal, only as a
+  document — and nobody reads a document daily.
+- **A rebuild alone is green until the next proof run**, which is the same day.
+  `prove_rls` adds one impossible bill per run and `prove_daily_report` adds
+  four to nine mis-yeared ones. Rebuilding without fixing the source is
+  scrubbing a floor with the tap running.
+- **Together they give a checker whose green means something**, which is the
+  only version worth having. And nothing is lost: `backup_db.py` already exists
+  and is proven, so the rebuild is preceded by a dated dump — the 353 bills
+  become a file rather than a deletion. That also re-exercises the restore path,
+  which is the one thing in this system that must never be first tried in an
+  emergency.
+- **1 is the correct INTERIM state and is what is in force today.** The 84 are
+  diagnosed, named, frozen and printed on every run. That is strictly better
+  than suppression because it stays visible; it is not acceptable as a
+  destination.
+- **3 stays rejected even if the owner picks neither of the others.** A
+  suppression list is maintained by exactly the person who would otherwise fix
+  the cause, and it converts "I have not dealt with this" into a green tick.
+
+**What 2 actually requires is NOT what the earlier draft of this section said.**
+Two corrections found on closer reading, both of which change the work:
+
+- **`prove_rls.py` must NOT "route through `create_bill`".** Its whole purpose
+  is to INSERT directly, so that the RLS `WITH CHECK` on INSERT is exercised;
+  going through the API would delete the thing being proven. The right fix is
+  narrower and better: it invents a THROWAWAY TENANT per run, so it should
+  **delete that tenant's graph when it finishes**. Hard rule 5 protects a shop's
+  ledger from a hard delete; it was never about a synthetic tenant a proof
+  created eight seconds earlier. That single change also stops the tenant count
+  climbing (46 tenants today, 44 of them one-bill husks).
+- **`prove_daily_report.py`'s fixture day should move to the CURRENT BE year**,
+  not away from 2019 arbitrarily. Its quarantine argument — a day far from real
+  trade — is sound and must survive; the fix is a day in the current shop year
+  that is not today (its own `DAY_BEFORE`/`DAY_AFTER` neighbours must move with
+  it). What must NOT be done is to keep the 2019 day and teach the checker to
+  tolerate it.
+
+### FINDING — our proofs can write rows the product cannot
+
+Recorded on the owner's instruction, not acted on. **Both debris causes are the
+same defect wearing two faces, and it is not "the proofs are untidy".**
+
+`prove_rls` writes a bill with a NULL `doc_no`. `prove_daily_report` writes a
+bill whose `doc_no` year disagrees with its arrival year. **`POST /bills` cannot
+produce either row.** There is no input, no ordering, no failure and no race
+that gets the product to that state — the first is assigned in the same
+transaction as the insert, and the second is now structurally impossible (see
+the be_year fix below).
+
+So:
+
+> **A proof that writes a row the product cannot produce has proved something
+> about a database, not about the system.**
+
+It bites in three directions, and only the first is obvious:
+
+1. **it pollutes.** 84 permanent violations, and the reconciler's first ever run
+   was red for reasons that have nothing to do with the product.
+2. **it can pass while the real path is broken.** An assertion made over a
+   hand-built row exercises the row, not the code that would have built it.
+   `prove_rls`'s bill has never once been through `create_bill`'s doc_no
+   assignment, its idempotency check, or its master-data gate.
+3. **it teaches the wrong lesson to whoever meets the debris next.** The natural
+   reading of a red T5 is "the invariant is too strict" — and relaxing it is one
+   edit away, at which point the checker stops being able to see a bill that
+   really did lose its number.
+
+Written up as `lessons/a-proof-fixture-must-be-a-row-the-product-could-produce.md`.
+**This is why the recommendation above is 2-then-rebuild rather than a
+suppression list: the debris is a symptom of a fixture discipline problem, and
+suppressing it would preserve the problem in amber.**
+
+**Found while writing T7, and NOT fixed — a real latent defect, astronomically
+narrow.** `server_received_at` is Postgres' `now()`, which is TRANSACTION START.
+`doc_no`'s `be_year` is Python's `datetime.now()`, read LATER in that same
+transaction, after the master-data lookups. Two clocks AND two moments. A submit
+beginning at 23:59:59.9 on 31 December shop time and reaching the counter after
+midnight takes NEXT year's `be_year` on LAST year's arrival stamp; host/container
+skew gives the reverse. Not cosmetic: `doc_no_counters` is keyed on `be_year`, so
+the new year's numbering could start against the wrong counter row. It is one
+instant per year wide, it has never been observed, and the fix is a decision
+(derive the year from the same statement that stamps the arrival) rather than an
+edit. Recorded in the checker's own "cannot see" output so it is re-read on every
+run.
+
+Decisions made, each argued in the module docstring:
+
+- **THREE LENSES, deliberately.** Per-tenant checks read through
+  `app.db.tenant_connection` — the same `SET LOCAL` primitive the API uses, with
+  not one hand-written `WHERE tenant_id` in the file (hard rule 2), so they see
+  what a report served to that shop would see. A superuser connection is used for
+  exactly two things, listing tenants and counting rows globally, because RLS
+  hides `tenants` without a context and both project roles are NOBYPASSRLS by
+  design. And a third lens with NO context at all, which must see nothing.
+- **X2 is what makes the greens mean anything.** The per-tenant row counts must
+  SUM to the global count. Without it every check could pass over rows RLS hid
+  from all 46 contexts, and the report would be a confident green about data
+  nobody read.
+- **ONE REPEATABLE READ SNAPSHOT for the whole sweep**, context re-set per
+  tenant inside it. Under READ COMMITTED a bill committing mid-sweep is counted
+  by one check and not the next — a violation that is not a violation, in a
+  window too narrow to reproduce. Same reasoning as `reports.py`; a reconciler is
+  the last thing that should cry wolf. T0 then asserts per tenant that the
+  context actually moved, since a missed `set_config` would otherwise print 46
+  greens for one tenant read 46 times.
+- **Exit 1 and exit 2 are different news.** "The money is wrong" and "nobody
+  looked" must never share a code; a checker that returns 1 for an unreachable
+  database will one day be believed. Both are proven by injection.
+- **DUPLICATE ARITHMETIC, NEVER DUPLICATE A CONVENTION.** T2 recomputes
+  `round(net × price, 2)` in Postgres NUMERIC — an implementation independent of
+  the `Decimal.quantize` in `_line_amount`, so it can disagree with a bug there.
+  T7 IMPORTS `_be_year`. A second `+543` would be a copy of a choice, not a
+  second computation of a fact, and copies drift at the boundary neither author
+  tested. See `lessons/a-checker-must-not-share-the-code-it-checks.md`.
+- **No names are printed, only ids, codes and doc_nos.** Tenant, seller and
+  product names are Thai and this box's console is codepage 874. A report whose
+  reader cannot tell a rendering artefact from corrupt data is worse than one
+  with a column missing.
+- **"What this checker CANNOT see" is PRINTED on every run**, not filed in a
+  document. Eight items, including bills still on a phone, anything the schema
+  would have rejected anyway, any value that was wrong when written, and the
+  fact that doc_no order legitimately does NOT match arrival order (the counter
+  is taken under a row lock, later than transaction-start `now()`).
+
+**Deliberately NOT built:** no endpoint, no scheduling, no UI, no `--json`, no
+suppression list, no auto-repair. The checker refuses to fix anything and says
+so in its own failure line.
+
+**One check is UNPROVEN BY EXECUTION and labelled as such.** S4 asserts
+`recycle_app` is NOSUPERUSER + NOBYPASSRLS. The only way to make it fire is
+`ALTER ROLE recycle_app BYPASSRLS`, and **roles are CLUSTER-WIDE** — the live
+database shares the cluster with the copy, so the injection would disable tenant
+isolation on real money data while it ran, and leave it disabled if the harness
+died. `ALTER TABLE … DISABLE ROW LEVEL SECURITY`, one line above it in the same
+list, is database-scoped and safe. The harness scans every injection's SQL for
+`ROLE` statements and refuses them, so the reason cannot decay into a comment.
+
+## Previous phase
 
 **A1 — daily money view, mobile screen. UI only, no server changes. HEADLESS
 GREEN, DEVICE-UNVERIFIED.** The endpoint has had no caller but `curl` since it
@@ -101,7 +292,7 @@ The token that could not be discarded is now recorded as a blocker in its own
 right — see **no sign-out** under "Blocking one real shop". It is a security item,
 not a testing inconvenience.
 
-## Previous phase
+## Earlier phases
 
 **Daily money view — complete, server only, no UI.** `GET /reports/daily`
 is the number an owner balances the cash box against at closing; until it
@@ -194,8 +385,6 @@ fixture. The recommendation, for the owner to accept or refuse:
   list built to be watched is arguably worse; the helper should backdate
   the void to the bill's own `server_received_at`, or the dev day view
   fills with proof voids.
-
-## Earlier phases
 
 **Teaching the client about 403 — complete, device-verified.** The server has
 been refusing staff voids since the role gate landed; the client mapped that 403
@@ -326,11 +515,26 @@ CLAUDE.md workflow, this is a boundary: stop for review.
   is scoped to its token's tenant with `SET LOCAL` inside the request
   transaction. `code` is immutable after create on every entity — it is
   what a historical bill is read against.
-- **Proofs** — ten scripts in `server/scripts/`, each exercising a
+- **Reconciliation** — `reconcile.py`, the one instrument that checks the
+  money against itself rather than exercising a path. Not a proof: it makes
+  no fixtures, writes nothing, and is meant to be run against a REAL
+  database, including a restored copy (`--database`). 17 checks per tenant
+  (totals, line arithmetic, weights, the doc_no series and its counter,
+  reference resolution, the void columns, idempotency keys, line numbering)
+  plus 10 global (schema shape, RLS enabled/forced/policy, role attributes,
+  named constraints, two blind reads, cross-tenant references, sweep
+  completeness, and whether the database moved while it ran). Exit 0 / 1 /
+  2 = clean / violations / could-not-run. Runbook is its own `--help` and
+  module docstring.
+- **Proofs** — eleven scripts in `server/scripts/`, each exercising a
   real path against a live database: `prove_rls`, `prove_auth`,
   `prove_master`, `prove_bills`, `prove_master_data_gate`,
   `prove_shop_time`, `prove_seller_pricing`, `prove_backup_restore`,
-  `prove_master_write`, `prove_daily_report`. Each must pass twice in a row without
+  `prove_master_write`, `prove_daily_report`, `prove_reconcile`.
+  `prove_reconcile` is the odd one out: it restores a COPY (calling
+  `restore_db.py` itself, so every run starts from the same dump), breaks
+  each invariant on purpose, and asserts the checker fires, NAMES the row,
+  and clears again when the injection is undone. Each must pass twice in a row without
   reseeding (`lessons/proof-must-run-twice.md`). `seed_dev.py` loads
   the dev fixture — now an `admin` AND a `staff` user per tenant, since
   a role gate cannot be proven without a token that gets refused.
@@ -567,6 +771,16 @@ mysteries — and so nobody "optimises" them before they matter.
   `CREATE INDEX ix_bills_tenant_received ON purchase_bills (tenant_id, server_received_at)`.
   Deliberately NOT added this phase. Nothing else in `reports.py` needs a
   schema change.
+- **`reconcile.py` holds one tenant's numbered bills in memory at a time.**
+  T7/T8/T9 need every `doc_no` for the tenant, because the BE year must come
+  from `bills._be_year` per row rather than from a second `+543` written in SQL
+  (that is the point, not an oversight — see the lesson). Bounded by ONE shop's
+  history, not by the whole database, and 305 bills cost 0.9s for the entire
+  46-tenant sweep. At the size where this stops being sensible the fix is
+  recorded in the function's own docstring: make them per-`be_year` aggregates
+  and apply `_be_year` to the year boundaries instead of to each row. Note the
+  sweep also holds one REPEATABLE READ snapshot open for its duration — a
+  vacuum consideration on a large database, never a correctness one.
 - **The void lists are capped, not paged** (500, with a `truncated` flag).
   A day that reaches the cap is itself the finding; paging the
   fraud-surveillance list is the wrong thing to page.
@@ -996,6 +1210,41 @@ Dated, because they decay. Re-run them; do not cite them.
   `proveNotice`'s banned-fragment list, copied over, read the legitimate count
   `รวม 500 ใบ` as a leaked 5xx status. Replaced with a regex over the whole class,
   applied only to the screens that carry no counts — which also catches 418.
+- 2026-08-02 — **`reconcile.py` against the LIVE database, run bare TWICE.**
+  Both runs byte-identical apart from the start stamp and elapsed: 46 tenants,
+  **792 checks, 84 violations (T5: 44, T7: 40), exit 1, 0.9s.** The two runs
+  were taken before and after the whole injection exercise, so they are also
+  the observation that the live database was never touched by it.
+- 2026-08-02 — **`prove_reconcile.py` green TWICE in a row**, no reseed between
+  (it restores the copy itself each time). **118 assertions, 0 failures, 19
+  injections.** Read out of the run rather than asserted:
+  - the copy arrives carrying the live database's `84 violations {T5: 44,
+    T7: 40}`; the two normalisation statements report `DELETE 44, DELETE 44`
+    and `UPDATE 40`; the copy then runs `exit 0, 0 violations`. That is the
+    proof that those two causes account for all 84.
+  - every injection produced EXACTLY the predicted check ids and counts, named
+    the row, and cleared on undo. Samples: `T1` → `doc_no=B-2569-2
+    difference=0.01`; `T2` → `stored_amount=5.01 expected_amount=5.00` with T1
+    silent (the total was moved with it, so only the arithmetic check can see
+    it); `T3` → `{S5: 1, T3: 1}`, the CHECK had to be dropped first and S5 saw
+    that too; `T8` → `MISSING seq=[2] highest=306` plus `counter_last_seq=305
+    highest_doc_no=306 difference=-1`; `T10` → `{S5: 1, T10: 1, X1: 1}`, one
+    cross-tenant seller seen by three lenses at once; `T16` → `{S5: 1, T16: 1,
+    T8: 2}` (a gap AND a duplicate).
+  - **RLS off on `tenants`** → `{S3: 1, B1: 1, B2: 1, T0: 91}` — the sweep's own
+    context self-check screams before any money check does.
+  - **RLS off on `purchase_bills`** → `{B1: 1, B2: 1, S3: 1, X2: 1, T1: 13905,
+    T4: 13905, T10: 16470, T16: 184, T8: 184, T9: 45}` = **44 697 violations**.
+    Every tenant sees every bill and only its own items.
+  - a row landing mid-run is reported by X3 (`rows_at_start=46 rows_at_end=47`),
+    not absorbed; a refused admin connection exits **2**, and so does a
+    database that does not exist.
+- 2026-08-02 — one wrong PREDICTION found by the harness, in the harness:
+  renumbering the TOP bill to `B-2569-99999` was expected to report
+  `MISSING seq=[305]`. The checker instead reported 99 694 missing numbers,
+  which is correct — if the highest issued number is 99999 then 1..99998 must
+  all exist. The injection was changed to a realistic hand-renumber (one past
+  the top); the checker was not changed.
 - 2026-07-29 — **proof debris measured, tenant A: 301 bills, 248 active, 53
   voided.** By originating script (idempotency-key prefix): `bill` 92/69
   active, `mw` 56/46, `selpx` 44/44, `daily` 36/28, `mdgate` 20/20,

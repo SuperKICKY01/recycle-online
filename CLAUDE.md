@@ -90,6 +90,19 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   → `lessons/correct-classification-can-still-render-as-an-error.md`
     (footnote: the shadowed `reason` this hid)
 
+- **A child process's output arrives CRLF, and `$` under `re.MULTILINE`
+  does not match before `\r`.** A Python script reading another script's
+  stdout through a pipe on this box gets `RECONCILE_EXIT=1\r\n`, so
+  `re.compile(r"^RECONCILE_EXIT=(\d+)$", re.M)` matches NOTHING. It lies
+  because the accusation lands on the child: `prove_reconcile.py` failed
+  with "reconcile.py printed no RECONCILE_EXIT line" while that exact
+  line was sitting in the captured output, which sends you to debug a
+  working program's exit path. Every anchored pattern over subprocess
+  output is affected at once, so the symptom is "all my regexes broke".
+  Instead: normalise on decode — `raw.decode("utf-8").replace("\r\n",
+  "\n")` — the way `restore_db.py:87` already does for psql. Never parse
+  subprocess bytes with anchored patterns before that.
+
 - **Multi-line text passed as a shell argument is mangled here.**
   Two DIFFERENT failures, and which one you get depends on the
   command:
