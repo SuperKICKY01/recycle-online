@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from decimal import Decimal
 
 from dotenv import load_dotenv
@@ -36,6 +36,13 @@ APP_URL = os.environ["APP_DATABASE_URL"]
 ALL_TABLES = [
     "tenants", "users", "uoms", "product_categories", "products",
     "product_prices", "sellers", "purchase_bills", "purchase_bill_items",
+]
+
+
+# Teardown order: children before parents, so no composite FK is ever violated.
+_TEARDOWN_ORDER = [
+    "purchase_bill_items", "purchase_bills", "product_prices", "products",
+    "sellers", "product_categories", "uoms", "users", "tenants",
 ]
 
 
@@ -110,6 +117,67 @@ async def seed_tenant(conn, tid, label: str) -> dict:
     return ids
 
 
+async def drop_tenant(conn, tid) -> tuple[int, list[str]]:
+    """Delete one THROWAWAY tenant's entire graph. Returns (rows, errors).
+
+    WHY DELETING IS RIGHT HERE, AND ONLY HERE. Hard rule 5 forbids hard-deleting
+    a transaction because a bill is a receipt for real money that must stay
+    readable for years. It was never about a tenant this script invented with
+    uuid4() eight seconds earlier, whose bills are decoration for an isolation
+    test. Leaving them behind cost 44 undeletable NULL-doc_no bills across 44
+    husk tenants, found by the first run of scripts/reconcile.py — a permanent
+    red on a checker, over rows the product cannot produce. See
+    lessons/a-proof-fixture-must-be-a-row-the-product-could-produce.md.
+
+    NOTE THERE IS NO `WHERE tenant_id` ANYWHERE. Each DELETE runs inside this
+    tenant's own context, so RLS scopes it — the same policy the rest of this
+    script exists to prove. That is what makes an unqualified DELETE safe: with
+    no context the predicate matches nothing and it removes ZERO rows (fails
+    closed), and under a context it cannot reach past that tenant even in
+    principle. A hand-written predicate would be the version that can be wrong.
+
+    Each statement gets its OWN transaction so a failure on one table cannot
+    skip the tables after it (lessons/proof-must-run-twice.md, third amendment).
+    """
+    removed, errors = 0, []
+    for table in _TEARDOWN_ORDER:
+        try:
+            async with tenant_tx(conn, tid):
+                removed += (await conn.execute(text(f"DELETE FROM {table}"))).rowcount
+        except Exception as e:  # noqa: BLE001 - report every one, skip none
+            errors.append(f"{table}: {type(e).__name__}: {str(e).splitlines()[0]}")
+    return removed, errors
+
+
+async def teardown(conn, tenant_a, tenant_b, failures: list[str]) -> None:
+    """Remove both throwaway tenants, and ASSERT that nothing was left behind.
+
+    "It passed" and "it cleaned up" are separate claims and this makes the second
+    one an assertion rather than a hope — otherwise the day the teardown silently
+    stops working is the day the debris starts accumulating again, invisibly.
+    """
+    banner("TEARDOWN - remove the two throwaway tenants this run invented")
+    for label, tid in (("A", tenant_a), ("B", tenant_b)):
+        removed, errors = await drop_tenant(conn, tid)
+        print(f"  tenant {label} {tid}: {removed} rows removed")
+        for e in errors:
+            print(f"    !!! {e}")
+            failures.append(f"teardown of tenant {label} failed on {e}")
+
+    # Read back through the SAME RLS path: with the tenant gone, its context sees
+    # nothing. A non-empty answer here means rows survived.
+    for label, tid in (("A", tenant_a), ("B", tenant_b)):
+        async with tenant_tx(conn, tid):
+            left = {t: (await conn.execute(text(f"SELECT count(*) FROM {t}"))).scalar_one()
+                    for t in ALL_TABLES}
+        stragglers = {t: n for t, n in left.items() if n}
+        if stragglers:
+            print(f"  !!! tenant {label} still holds rows: {stragglers}")
+            failures.append(f"teardown left rows behind for tenant {label}: {stragglers}")
+        else:
+            print(f"  tenant {label}: nothing left in any of the {len(ALL_TABLES)} tables")
+
+
 async def count_all(conn) -> dict:
     out = {}
     for t in ALL_TABLES:
@@ -124,7 +192,14 @@ async def main() -> int:
 
     # ONE connection for the whole run. Step 6 reuses it deliberately, to prove
     # the LOCAL tenant context did not leak out of its transaction.
-    async with engine.connect() as conn:
+    async with AsyncExitStack() as stack:
+        conn = await stack.enter_async_context(engine.connect())
+        # Teardown is registered HERE, before a single fixture row exists, so it
+        # runs on EVERY exit path — including an unexpected exception halfway
+        # through a step. Callbacks unwind LIFO, so it fires while the connection
+        # is still open and before it is returned to the pool.
+        stack.push_async_callback(teardown, conn, tenant_a, tenant_b, failures)
+
         banner("ROLE / PRIVILEGE PROOF  (this is who the queries run as)")
         async with conn.begin():
             row = (await conn.execute(text(

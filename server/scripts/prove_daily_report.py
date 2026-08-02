@@ -34,11 +34,31 @@ WHAT IS PROVEN
   R   the report really does run under REPEATABLE READ (the snapshot claim), and
       the default really is READ COMMITTED — so the parameter is doing something.
 
-FIXTURE DAY. Everything is placed on a fixed day in 2019, far from any real
-trade, so this script never perturbs a day an owner might read. Bills are created
-over HTTP (so doc_no and list_price come from the real path) and then their
-server_received_at is moved onto the fixture day by direct UPDATE — that column
-is DEFAULT now() and there is no other way to place a bill in the past.
+FIXTURE DAY — 6 JANUARY OF THE CURRENT BUDDHIST-ERA YEAR, and the year is the
+part that matters. Bills are created over HTTP (so doc_no and list_price come
+from the real path) and then their server_received_at is moved onto the fixture
+day by direct UPDATE — that column is DEFAULT now() and there is no other way to
+place a bill in the past.
+
+IT USED TO BE A DAY IN 2019, for quarantine: far from any real trade, so no day
+an owner might read is ever perturbed. That reasoning still holds and is kept.
+What it missed is that doc_no is assigned from the REAL clock at creation, so
+backdating the arrival across a year boundary left 40 bills whose doc_no said
+2569 and whose arrival said 2562 — rows `POST /bills` cannot produce, and now
+a permanent T7 violation in scripts/reconcile.py that nobody could clear
+(lessons/a-proof-fixture-must-be-a-row-the-product-could-produce.md).
+
+So quarantine is now "one fixed, documented day per year that this database does
+not trade on" rather than "a different decade". 6 January is the earliest date
+that satisfies every fixture at once: `old_bill` sits at DAY-5 and `edge_after`
+at DAY+1, so the whole span DAY-5 .. DAY+1 must fall inside one BE year.
+
+CONSEQUENCE, stated because it is a real limit: for the first five days of a
+shop year there are not yet six settled days in that year, and this script
+REFUSES TO RUN (exit 2) rather than build a fixture it would then have to
+apologise for. That refusal is new, and it is the be_year fix showing through —
+backdating a bill across a year boundary is now detectably wrong, which is
+exactly what it should be.
 
 RUNS TWICE (lessons/proof-must-run-twice.md). The fixture bills are LEFT IN
 PLACE: hard rule 5 forbids deleting a transaction, and this script does not make
@@ -92,8 +112,23 @@ BASE = os.environ.get("API_BASE_URL", "http://127.0.0.1:8099")
 RUN = uuid.uuid4().hex[:8]
 
 # A day in the settled past. Never a day any shop is reading.
-DAY = dt.date(2019, 3, 14)
-DAY_BE_LABEL = "14/03/2562"  # 2019 + 543, rendered DD/MM/BBBB
+SHOP_TODAY = dt.datetime.now(dt.timezone.utc).astimezone(SHOP_TIMEZONE).date()
+
+# 6 January of the CURRENT shop year: the earliest day for which the whole
+# fixture span (old_bill at DAY-5 ... edge_after at DAY+1) stays inside one BE
+# year. See the module docstring for why the year is what matters.
+DAY = dt.date(SHOP_TODAY.year, 1, 6)
+
+# DD/MM/BBBB. The +543 is duplicated here DELIBERATELY and it is safe here, which
+# is not true everywhere — lessons/be-year-comes-after-the-timezone.md exists
+# because of exactly this expression. What made the earlier proof sites bombs was
+# deriving the year from a UTC instant, so the shop year and the derived year
+# disagreed either side of Bangkok midnight. DAY is ALREADY a shop-time date, so
+# no timezone step is being re-derived — only the documented constant is, and
+# duplicating it is what makes this assertion a cross-check of the server's label
+# instead of a tautology. Importing reports._be_date_label here would assert that
+# the code equals itself (lessons/a-checker-must-not-share-the-code-it-checks.md).
+DAY_BE_LABEL = f"{DAY.day:02d}/{DAY.month:02d}/{DAY.year + 543}"
 
 MONEY_RE = re.compile(r"^-?\d+\.\d{2}$")
 
@@ -162,6 +197,19 @@ def floats_in(node, path="body", allow=("quiet_for_seconds",)) -> list[str]:
 
 
 async def main() -> int:
+    # The fixture span must fall inside ONE Buddhist-era year, and it must be in
+    # the past — a future day is refused 422 day_in_the_future by the endpoint
+    # itself. In the first five days of a shop year neither is possible. EXIT 2,
+    # not 0: "could not run" is not a pass.
+    if DAY > SHOP_TODAY:
+        print(f"CANNOT RUN: the fixture day {DAY.isoformat()} is not yet past"
+              f" (shop today is {SHOP_TODAY.isoformat()}).\n"
+              "  This script needs six settled days inside the CURRENT BE year, because"
+              "\n  old_bill sits at DAY-5 and doc_no takes its year from the real clock at"
+              "\n  creation. Backdating across a year boundary would write a bill this"
+              "\n  product cannot produce. Re-run after 6 January, shop time.")
+        return 2
+
     url = os.environ["APP_DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
     db = await asyncpg.connect(url)
     await db.execute("SELECT set_config('app.tenant_id', $1, false)", str(TENANT_A_ID))
