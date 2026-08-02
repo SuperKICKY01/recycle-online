@@ -571,6 +571,118 @@ mysteries — and so nobody "optimises" them before they matter.
   A day that reaches the cap is itself the finding; paging the
   fraud-surveillance list is the wrong thing to page.
 
+## Tuned constants — trial ledger
+
+**THE RULE. Once a real shop is using this, any change to a value in this table
+is a TRIAL and gets a row — old value, new value, date, and what was observed
+that prompted it. The COUNT matters, not just the final value.** A threshold
+nudged until the complaints stop is a threshold fitted to noise: each nudge looks
+like a fix because the thing being measured is somebody's patience, and after
+four rounds nobody can say whether the number is right or merely quiet. A value
+on its first trial is a guess and should be read as one; a value on its fifth
+without a written reason each time is worse than the guess, because it has
+acquired authority it never earned.
+
+Every row below is at **trial 1 — chosen once, by judgement, never re-tuned.**
+Verified with `git log -S` per constant rather than asserted: each appears in
+exactly one commit (`}, 4000)` shows two, and the second is a refactor that moved
+the line without changing the number).
+
+These are the values chosen by JUDGEMENT. Values DERIVED from something else are
+excluded and listed at the foot, so the next sweep does not re-add them.
+
+### Sync engine and queue health
+
+| constant | value | file | reasoning recorded at the time | trials |
+|---|---|---|---|---|
+| `backoffBaseMs` | **2 s** (engine default 1 s) | `App.tsx:428` | none recorded at the call site | 1 |
+| `backoffMaxMs` | **30 s** (engine default 5 min) | `App.tsx:429` | none recorded at the call site; the 30 s is what `MAX_ATTEMPT_CYCLE_MS` is derived from | 1 |
+| `masterDataRetryMs` | **5 min** (default, not overridden) | `engine.ts:150` | "deliberately SLOW and deliberately not a backoff: retrying sooner cannot make the office add a price faster, and the operator has an explicit retry for the moment they have added it" | 1 |
+| `batchLimit` | **100** | `engine.ts:149` | "bills examined per pass. Bounds the work of one run; not a retry cap" | 1 |
+| `POISON_ALARM_MS` | **90 s** | `queueHealth.ts:51` | explicitly labelled a GUESS. "Long enough to ride out a brief server hiccup or deploy blip; short enough that a genuinely poisoned bill surfaces before a real backlog piles up." The offline/amber state deliberately has NO timer | 1 |
+| `POISON_ALARM_ATTEMPTS` | **5** | `queueHealth.ts:77` | a second trigger for the same alarm, because a clock alone assumes a poisoned bill takes time to become obvious — only true while the backoff is short. Carries a READ THIS BEFORE CHANGING IT note: the count may only ESCALATE an already-poisoned head, never classify one | 1 |
+| `STAMP_TOLERANCE_MS` | **5 s** | `queueHealth.ts:114` | slack on "a stamp cannot be in the future". Written and read by the same device clock, so jitter is nil; wide enough that a rounded `now` cannot trip it, far narrower than the coarsest timezone step (15 min) | 1 |
+| sync tick | **4 s** | `App.tsx:601` | **none recorded** | 1 |
+| UI refresh tick | **400 ms** | `App.tsx:532` | **none for the 400 itself.** The adjacent comment explains why `nowMinute` is minute-rounded off this tick, not why the tick is 400 ms | 1 |
+
+### Master-data freshness
+
+| constant | value | file | reasoning recorded at the time | trials |
+|---|---|---|---|---|
+| `PRICE_DEFAULT_MAX_AGE_MS` | **12 h** | `freshness.ts:91` | the most argued number in the codebase — five reasons against a cutoff and four for, written out before choosing. "12 hours is the shortest window a normal working day cannot cross on its own… six would trip during a long afternoon with poor signal; twenty-four would sail straight through the overnight case that is the entire reason for the rule." Ends: "this number is a judgement, not a measurement" | 1 |
+| `FRESH_MAX_AGE_MS` | **5 min** | `freshness.ts:101` | "not zero because a refresh that completed ninety seconds ago is not something an operator needs a banner about, and a banner that is always on screen is a banner nobody reads" | 1 |
+
+**NOTE — the phase brief named `FRESH_MAX_AGE_MS` as the 12 h value. It is not.**
+`FRESH_MAX_AGE_MS` is 5 minutes (the "just fetched, say nothing" window); the
+12-hour price cutoff is `PRICE_DEFAULT_MAX_AGE_MS`. Two thresholds in one file,
+one of them the money-critical one — recorded here because confusing them is a
+live hazard: raising the wrong one would silence the freshness banner while
+leaving the price gate untouched, or move the price gate while thinking it was
+cosmetic.
+
+### Clock sanity
+
+| constant | value | file | reasoning recorded at the time | trials |
+|---|---|---|---|---|
+| `SEND_SCHEDULE_HORIZON_MS` | **15 min** | `clockSanity.ts:86` | 3× the true maximum any writer can produce today (5 min), "which leaves room for a knob to be raised without silently turning real schedules into 'clock moved'", and comfortably below the coarsest timezone step. `SyncEngine`'s constructor THROWS if `backoffMaxMs` or `masterDataRetryMs` ever exceeds it, so the two cannot drift in silence. Explicitly "a judgement, like POISON_ALARM_MS" | 1 |
+
+### Transport timeouts
+
+| constant | value | file | reasoning recorded at the time | trials |
+|---|---|---|---|---|
+| `HttpTransport.timeoutMs` | **20 s** | `httpTransport.ts:84` | none recorded | 1 |
+| daily-report abort | **20 s** | `api.ts:121` | matched to the above deliberately; the endpoint is a sequential scan over the tenant's whole bill history (see Known scaling limits), so the budget is generous on purpose | 1 |
+
+### UI timing and touch targets
+
+| constant | value | file | reasoning recorded at the time | trials |
+|---|---|---|---|---|
+| `FORM_DEBOUNCE_MS` | **400 ms** | `App.tsx:109` | "form keystrokes are written through on this delay; lines are written at once" — says what it does, not why 400 | 1 |
+| `UNDO_MS` | **8 s** | `CartScreen.tsx:71` | **none recorded** | 1 |
+| `TAP_MIN` | **56** | `CartScreen.tsx:70` **and** `SellerPicker.tsx:37` | **none recorded, and it is DUPLICATED** — two copies of one number in two files, free to drift. Not fixed here (this section is bookkeeping); flagged because a touch target that changes in one screen and not the other is invisible until someone with big hands uses the yard phone | 1 |
+
+### Server
+
+| constant | value | file | reasoning recorded at the time | trials |
+|---|---|---|---|---|
+| `JWT_TTL_SECONDS` | **3600** (env-overridable) | `config.py:59` | no argument at the constant. It is leaned on elsewhere — `tokenStore.ts` uses "a stolen token is worthless within the hour" to justify persisting the token at all, and the sign-out blocker bounds its exposure with it. **A value two other decisions rest on, with no recorded reasoning of its own** | 1 |
+| `GET /bills` limit | **50 default, 200 max** | `bills.py:490` | none recorded | 1 |
+| `_DEFAULT_LINE_LIMIT` / `_MAX_LINE_LIMIT` | **200 / 500** | `reports.py:205-206` | the money is never paged — every total is a SQL aggregate over the whole day, computed independently of the line list, so a truncated list cannot produce a short total by construction. Only the LINES page | 1 |
+| `_VOID_CAP` | **500** | `reports.py:210` | not paging, deliberately: "truncating the fraud-surveillance list is exactly the wrong thing to truncate, and voids are rare by nature". A hard cap purely so the response cannot grow unbounded; "a day that hits it is itself the finding" | 1 |
+
+### Derived, NOT judgement — excluded on purpose
+
+Listed so the next sweep does not add them to the table above. Changing any of
+these means the thing it is derived FROM changed; they are not knobs.
+
+- `MAX_ATTEMPT_CYCLE_MS` = **60 s** (`queueHealth.ts:106`) — the closest call in
+  this list. It is *derived*: `HttpTransport`'s 20 s timeout plus `backoffMaxMs`
+  (30 s in App.tsx), rounded up. But its own comment calls it "a guess like the
+  two above", and the two inputs are themselves judgements — so **if either
+  input is ever re-tuned this becomes a trial too**, and it is the one row most
+  likely to be wrong without anyone noticing.
+- `WEIGHT_MAX_INT_DIGITS` 11 / `MONEY_MAX_INT_DIGITS` 12 (`money.ts:45-46`) —
+  read off `NUMERIC(14,3)` and `NUMERIC(14,2)`.
+- `decimal.js` precision **50** (`money.ts:31`) — the domain needs ~28
+  significant digits and the library defaults to 20, which would round mid-
+  multiply (`lessons/decimal-precision-for-domain-scale.md`). The *margin*
+  above 28 is a judgement; the floor is not.
+- `WEIGHT_DP` 3 / `MONEY_DP` 2 — the column scales.
+- `BE_YEAR_OFFSET` 543, `SHOP_UTC_OFFSET_MINUTES` 420 — facts, not choices.
+  The offset becomes a per-tenant setting eventually; that is a schema change,
+  not a tuning.
+- `_VOID_CAP`-adjacent SQL limits, `DAY_MS` — arithmetic.
+
+### What the sweep found beyond the named list
+
+Seven values with **no recorded reasoning at all**: the sync tick (4 s), the UI
+refresh tick (400 ms), `HttpTransport.timeoutMs` (20 s), `UNDO_MS` (8 s),
+`TAP_MIN` (56, twice), `GET /bills` limit (50/200), and both `backoff` knobs at
+their App.tsx call site. Plus `JWT_TTL_SECONDS`, which has no reasoning of its own
+and is load-bearing for two other decisions. **None of these is wrong; all of
+them are unaccountable**, which is a different problem and the one this ledger
+exists to stop compounding.
+
 ## Known stale references
 
 Documentation drift found and not yet fixed. Recorded so it is not
