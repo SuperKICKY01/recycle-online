@@ -84,21 +84,59 @@ import { shopDateTime } from "../time/shopTime.js";
 
 /* ------------------------------------------------------------ thresholds -- */
 
-/**
- * Past this, the app stops defaulting a price into the money field. See the
- * whole argument above; this is the number it lands on.
+/*
+ * ===========================================================================
+ * TWO THRESHOLDS, AND THEY ARE NOT THE SAME KIND OF THING.
+ * ===========================================================================
+ * They used to be called `PRICE_DEFAULT_MAX_AGE_MS` and `FRESH_MAX_AGE_MS` — a
+ * shared `_MAX_AGE_MS` suffix on two numbers three orders of magnitude apart,
+ * one cosmetic and one money-critical. They were mixed up repeatedly, including
+ * in a phase brief, and the failure mode is SILENT IN THE DANGEROUS DIRECTION:
+ * reach for "the freshness constant", change the wrong one, and the staleness
+ * banner goes quiet while the price gate stays exactly where it was. Nothing
+ * fails, no proof goes red, and the yard keeps being handed a number the app
+ * cannot stand behind.
+ *
+ * So neither is "the freshness constant" any more. One names the MONEY, the
+ * other names the moment it describes.
  */
-export const PRICE_DEFAULT_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * ⚠ MONEY-CRITICAL. Past this age, the app STOPS VOLUNTEERING A PRICE into the
+ * money field — the operator types the agreed number instead.
+ *
+ * See the whole argument above; this is the number it lands on. Twelve hours is
+ * the shortest window a normal working day cannot cross on its own.
+ *
+ * NOT [[JUST_FETCHED_WINDOW_MS]], which is five minutes and decides only whether
+ * a BANNER is drawn. CHANGING THIS ONE DOES NOT change when the operator is told
+ * the data is old; it changes when cash stops being paid against a cached price.
+ * Raising it means a staler price may be auto-filled and banked. Lowering it
+ * means more hand-typed prices, which is safe but costs taps.
+ */
+export const PRICE_DEFAULT_CUTOFF_MS = 12 * 60 * 60 * 1000;
 
 /**
  * Under this, the data counts as JUST fetched and nothing is said about it.
+ * Presentation only — it decides whether a BANNER appears, nothing else.
  *
  * It is not zero because a refresh that completed ninety seconds ago is not
  * something an operator needs a banner about, and a banner that is always on
  * screen is a banner nobody reads. It is small enough that a cache from the
  * previous shift can never fall inside it.
+ *
+ * NOT [[PRICE_DEFAULT_CUTOFF_MS]], which is twelve hours and gates the money.
+ * CHANGING THIS ONE DOES NOT change whether a price is auto-filled, and it
+ * cannot make the app pay out on staler data. The worst it can do is make the
+ * yard louder or quieter about an age it is already being shown.
+ *
+ * SECOND, BORROWED USE: it is also passed to `pastStampSuspect` as the tolerance
+ * on "a stored stamp cannot be in the future". That is a genuine reuse of the
+ * value and not of the meaning — see the call site, which says why the number
+ * happens to suit both. If this is ever tuned for banner reasons, check that
+ * call site before assuming nothing else moved.
  */
-export const FRESH_MAX_AGE_MS = 5 * 60 * 1000;
+export const JUST_FETCHED_WINDOW_MS = 5 * 60 * 1000;
 
 /* ------------------------------------------------------------- the state -- */
 
@@ -200,8 +238,22 @@ export function assessFreshness(input: FreshnessInput): Freshness {
    * the send queue needs the same rule against a different bound, and one rule
    * written twice is two behaviours waiting to drift. What stays HERE is the
    * REACTION, which is the opposite of the queue's: this fails CLOSED.
+   *
+   * THE TOLERANCE IS BORROWED, AND THIS IS THE ONE PLACE THAT MATTERS.
+   * JUST_FETCHED_WINDOW_MS is a BANNER threshold everywhere else; here its VALUE
+   * is reused as the slack on "a stored stamp cannot be in the future". Five
+   * minutes suits both by coincidence of scale rather than by meaning: it is far
+   * wider than any jitter between writing and reading a stamp with one device
+   * clock, and far narrower than the smallest clock move worth reacting to (the
+   * coarsest timezone step is 15 minutes).
+   *
+   * So if that constant is ever retuned FOR BANNER REASONS, this line moves with
+   * it. Widening it to quieten the strip would also widen how far into the future
+   * a stamp may sit before the app stops trusting its own ages — and that is the
+   * direction that defaults a stale price. Give it its own constant before
+   * tuning, rather than accepting the coupling silently.
    */
-  const clockSuspect = pastStampSuspect(Math.max(p, s), now, FRESH_MAX_AGE_MS);
+  const clockSuspect = pastStampSuspect(Math.max(p, s), now, JUST_FETCHED_WINDOW_MS);
 
   if (clockSuspect) {
     return {
@@ -214,7 +266,7 @@ export function assessFreshness(input: FreshnessInput): Freshness {
       clockSuspect: true,
     };
   }
-  if (ageMs > PRICE_DEFAULT_MAX_AGE_MS) {
+  if (ageMs > PRICE_DEFAULT_CUTOFF_MS) {
     return {
       state: "stale",
       asOf,
@@ -226,7 +278,7 @@ export function assessFreshness(input: FreshnessInput): Freshness {
     };
   }
   return {
-    state: ageMs <= FRESH_MAX_AGE_MS ? "fresh" : "aging",
+    state: ageMs <= JUST_FETCHED_WINDOW_MS ? "fresh" : "aging",
     asOf,
     ageMs,
     mayDefaultPrice: true,
@@ -420,7 +472,7 @@ export function pricingProvenanceLine(bill: PricingProvenance): string | null {
    * these two stamps are strictly ordered rather than concurrent.
    *
    * The old code computed `age = made - asOf` and returned null for anything
-   * `<= FRESH_MAX_AGE_MS`. A backwards clock jump between opening the cart and
+   * `<= JUST_FETCHED_WINDOW_MS`. A backwards clock jump between opening the cart and
    * saving makes that difference NEGATIVE, which sails through the same test —
    * so the marker vanished on exactly the bill most likely to have been priced
    * from a cache of unknowable age. A false negative on a money marker, which
@@ -440,7 +492,14 @@ export function pricingProvenanceLine(bill: PricingProvenance): string | null {
   }
 
   const age = made - asOf;
-  if (age <= FRESH_MAX_AGE_MS) return null;
+  // Banner threshold again, not the money one: this decides whether the bill
+  // card mentions its pricing provenance AFTER THE FACT. Whether the price was
+  // auto-filled in the first place was decided at entry time by
+  // PRICE_DEFAULT_CUTOFF_MS, twelve hours out — so a bill priced from data 30
+  // minutes old is labelled here and was still auto-filled, correctly. Changing
+  // this constant does not change what was paid; it changes what the card says
+  // about it.
+  if (age <= JUST_FETCHED_WINDOW_MS) return null;
   return (
     `ตอนบันทึกบิลนี้ ใช้ข้อมูลราคาที่เก็บไว้ในเครื่องเมื่อ ${shopDateTime(bill.master_as_of)}` +
     ` (ตามเวลาในเครื่อง เก่า ${thaiAge(age)} ณ ตอนบันทึก)`

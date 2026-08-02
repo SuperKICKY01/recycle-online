@@ -595,30 +595,42 @@ excluded and listed at the foot, so the next sweep does not re-add them.
 
 | constant | value | file | reasoning recorded at the time | trials |
 |---|---|---|---|---|
-| `backoffBaseMs` | **2 s** (engine default 1 s) | `App.tsx:428` | none recorded at the call site | 1 |
-| `backoffMaxMs` | **30 s** (engine default 5 min) | `App.tsx:429` | none recorded at the call site; the 30 s is what `MAX_ATTEMPT_CYCLE_MS` is derived from | 1 |
+| `backoffBaseMs` | **2 s** (engine default 1 s) | `App.tsx:428` | **unrecorded — chosen without a written reason.** Reconstructible: it is an OVERRIDE of the engine default, so deviating was deliberate even though the target was not written down | 1 |
+| `backoffMaxMs` | **30 s** (engine default 5 min) | `App.tsx:429` | **unrecorded — chosen without a written reason.** Reconstructible, and it is load-bearing twice over: `clockSanity.ts:74` cites it by name, and `MAX_ATTEMPT_CYCLE_MS` is derived from it. At 30 s a stuck head retries ≥3× inside `POISON_ALARM_MS` (90 s), so the clock trigger can fire before the count trigger — raising it past 90 s would silently make the count the only live trigger | 1 |
 | `masterDataRetryMs` | **5 min** (default, not overridden) | `engine.ts:150` | "deliberately SLOW and deliberately not a backoff: retrying sooner cannot make the office add a price faster, and the operator has an explicit retry for the moment they have added it" | 1 |
 | `batchLimit` | **100** | `engine.ts:149` | "bills examined per pass. Bounds the work of one run; not a retry cap" | 1 |
 | `POISON_ALARM_MS` | **90 s** | `queueHealth.ts:51` | explicitly labelled a GUESS. "Long enough to ride out a brief server hiccup or deploy blip; short enough that a genuinely poisoned bill surfaces before a real backlog piles up." The offline/amber state deliberately has NO timer | 1 |
 | `POISON_ALARM_ATTEMPTS` | **5** | `queueHealth.ts:77` | a second trigger for the same alarm, because a clock alone assumes a poisoned bill takes time to become obvious — only true while the backoff is short. Carries a READ THIS BEFORE CHANGING IT note: the count may only ESCALATE an already-poisoned head, never classify one | 1 |
 | `STAMP_TOLERANCE_MS` | **5 s** | `queueHealth.ts:114` | slack on "a stamp cannot be in the future". Written and read by the same device clock, so jitter is nil; wide enough that a rounded `now` cannot trip it, far narrower than the coarsest timezone step (15 min) | 1 |
-| sync tick | **4 s** | `App.tsx:601` | **none recorded** | 1 |
-| UI refresh tick | **400 ms** | `App.tsx:532` | **none for the 400 itself.** The adjacent comment explains why `nowMinute` is minute-rounded off this tick, not why the tick is 400 ms | 1 |
+| sync tick | **4 s** | `App.tsx:601` | **unrecorded — chosen without a written reason.** Reconstructible: it is the real floor on retry cadence, since a bill whose backoff expires waits for the next tick — so the effective first retry is 2–4 s, not `backoffBaseMs`. It is also exactly 10× the UI refresh tick, which may be intent or may be coincidence; nothing says | 1 |
+| UI refresh tick | **400 ms** | `App.tsx:532` | **unrecorded — chosen without a written reason.** Reconstructible: the adjacent comment's "150 times" is derived FROM this value (60 000 / 400), so the comment reasons downstream of the tick rather than justifying it. Equal to `FORM_DEBOUNCE_MS`, with nothing linking them | 1 |
 
 ### Master-data freshness
 
 | constant | value | file | reasoning recorded at the time | trials |
 |---|---|---|---|---|
-| `PRICE_DEFAULT_MAX_AGE_MS` | **12 h** | `freshness.ts:91` | the most argued number in the codebase — five reasons against a cutoff and four for, written out before choosing. "12 hours is the shortest window a normal working day cannot cross on its own… six would trip during a long afternoon with poor signal; twenty-four would sail straight through the overnight case that is the entire reason for the rule." Ends: "this number is a judgement, not a measurement" | 1 |
-| `FRESH_MAX_AGE_MS` | **5 min** | `freshness.ts:101` | "not zero because a refresh that completed ninety seconds ago is not something an operator needs a banner about, and a banner that is always on screen is a banner nobody reads" | 1 |
+| `PRICE_DEFAULT_CUTOFF_MS` ⚠ money | **12 h** | `freshness.ts:117` | the most argued number in the codebase — five reasons against a cutoff and four for, written out before choosing. "12 hours is the shortest window a normal working day cannot cross on its own… six would trip during a long afternoon with poor signal; twenty-four would sail straight through the overnight case that is the entire reason for the rule." Ends: "this number is a judgement, not a measurement" | 1 |
+| `JUST_FETCHED_WINDOW_MS` | **5 min** | `freshness.ts:139` | "not zero because a refresh that completed ninety seconds ago is not something an operator needs a banner about, and a banner that is always on screen is a banner nobody reads" | 1 |
 
-**NOTE — the phase brief named `FRESH_MAX_AGE_MS` as the 12 h value. It is not.**
-`FRESH_MAX_AGE_MS` is 5 minutes (the "just fetched, say nothing" window); the
-12-hour price cutoff is `PRICE_DEFAULT_MAX_AGE_MS`. Two thresholds in one file,
-one of them the money-critical one — recorded here because confusing them is a
-live hazard: raising the wrong one would silence the freshness banner while
-leaving the price gate untouched, or move the price gate while thinking it was
-cosmetic.
+**RENAMED 2026-08-02, no value changed.** They were `PRICE_DEFAULT_MAX_AGE_MS`
+and `FRESH_MAX_AGE_MS` — a shared `_MAX_AGE_MS` suffix on two numbers three
+orders of magnitude apart, one cosmetic and one money-critical. They were mixed
+up repeatedly, including in a phase brief, and **the failure mode is silent in
+the dangerous direction**: reach for "the freshness constant", change the wrong
+one, and the staleness banner goes quiet while the price gate stays exactly where
+it was. Nothing fails and no proof goes red. Neither name is now readable as "the
+freshness constant"; each doc comment names the other and states what changing it
+does NOT do.
+
+**One coupling found while renaming, and left in place:** `JUST_FETCHED_WINDOW_MS`
+is also passed to `pastStampSuspect` as the tolerance on "a stored stamp cannot be
+in the future" (`freshness.ts:242`). That is a reuse of the VALUE, not of the
+meaning — 5 minutes suits both by coincidence of scale. So **tuning it for banner
+reasons would also widen how far into the future a stamp may sit before the app
+stops trusting its own ages**, which is the direction that defaults a stale price.
+The call site now says so and says to give it its own constant before tuning.
+Not split now: this section is bookkeeping, and splitting it is a behaviour change
+however carefully done.
 
 ### Clock sanity
 
@@ -630,23 +642,23 @@ cosmetic.
 
 | constant | value | file | reasoning recorded at the time | trials |
 |---|---|---|---|---|
-| `HttpTransport.timeoutMs` | **20 s** | `httpTransport.ts:84` | none recorded | 1 |
+| `HttpTransport.timeoutMs` | **20 s** | `httpTransport.ts:84` | **unrecorded — chosen without a written reason.** Reconstructible: it is load-bearing for `MAX_ATTEMPT_CYCLE_MS`, whose comment names it as "the request itself (HttpTransport's 20s timeout)". Changing it silently changes the cap on a reported poison duration | 1 |
 | daily-report abort | **20 s** | `api.ts:121` | matched to the above deliberately; the endpoint is a sequential scan over the tenant's whole bill history (see Known scaling limits), so the budget is generous on purpose | 1 |
 
 ### UI timing and touch targets
 
 | constant | value | file | reasoning recorded at the time | trials |
 |---|---|---|---|---|
-| `FORM_DEBOUNCE_MS` | **400 ms** | `App.tsx:109` | "form keystrokes are written through on this delay; lines are written at once" — says what it does, not why 400 | 1 |
-| `UNDO_MS` | **8 s** | `CartScreen.tsx:71` | **none recorded** | 1 |
-| `TAP_MIN` | **56** | `CartScreen.tsx:70` **and** `SellerPicker.tsx:37` | **none recorded, and it is DUPLICATED** — two copies of one number in two files, free to drift. Not fixed here (this section is bookkeeping); flagged because a touch target that changes in one screen and not the other is invisible until someone with big hands uses the yard phone | 1 |
+| `FORM_DEBOUNCE_MS` | **400 ms** | `App.tsx:109` | **unrecorded for the 400 itself.** The comment — "form keystrokes are written through on this delay; lines are written at once" — records the SPLIT (form debounced, lines immediate), which is the safety-relevant half: a money line is never left un-persisted waiting on a timer | 1 |
+| `UNDO_MS` | **8 s** | `CartScreen.tsx:71` | **unrecorded — chosen without a written reason.** Reconstructible only that it bounds an undo of a deleted cart line, i.e. it is recoverable-by-retyping and not money already committed | 1 |
+| `TAP_MIN` | **56** | `CartScreen.tsx:70` **and** `SellerPicker.tsx:37` | **unrecorded — chosen without a written reason.** What IS recorded is the RULE it serves (`CartScreen.tsx:6`, "every tappable thing is at least TAP_MIN tall"). Facts about the number, not reasons for it: 56 exceeds both platform minimums (iOS 44 pt, Android 48 dp). **Two findings beyond the value** — it is DUPLICATED in two files, free to drift; and the rest of the UI does not use it at all, with raw `minHeight` literals of 48 (×6), 44 (×4), 60 (×3), 36 (×2) and 72 — so **the stated standard is honoured in two screens and undercut in others** | 1 |
 
 ### Server
 
 | constant | value | file | reasoning recorded at the time | trials |
 |---|---|---|---|---|
-| `JWT_TTL_SECONDS` | **3600** (env-overridable) | `config.py:59` | no argument at the constant. It is leaned on elsewhere — `tokenStore.ts` uses "a stolen token is worthless within the hour" to justify persisting the token at all, and the sign-out blocker bounds its exposure with it. **A value two other decisions rest on, with no recorded reasoning of its own** | 1 |
-| `GET /bills` limit | **50 default, 200 max** | `bills.py:490` | none recorded | 1 |
+| `JWT_TTL_SECONDS` | **3600** (env-overridable) | `config.py:59` | **unrecorded — chosen without a written reason**, and its introducing commit says nothing about it either. It is nonetheless leaned on TWICE: `tokenStore.ts` uses "a stolen token is worthless within the hour" to justify persisting the token at all, and the sign-out blocker bounds its exposure with it. **A value two other decisions rest on, with no reasoning of its own** — if it were ever changed for an unrelated reason, both arguments would move without anyone revisiting them | 1 |
+| `GET /bills` limit | **50 default, 200 max** | `bills.py:490` | **unrecorded — chosen without a written reason.** Note it is a different pair from the daily report's 200/500 in `reports.py`, with nothing recorded about why the two listing endpoints differ | 1 |
 | `_DEFAULT_LINE_LIMIT` / `_MAX_LINE_LIMIT` | **200 / 500** | `reports.py:205-206` | the money is never paged — every total is a SQL aggregate over the whole day, computed independently of the line list, so a truncated list cannot produce a short total by construction. Only the LINES page | 1 |
 | `_VOID_CAP` | **500** | `reports.py:210` | not paging, deliberately: "truncating the fraud-surveillance list is exactly the wrong thing to truncate, and voids are rare by nature". A hard cap purely so the response cannot grow unbounded; "a day that hits it is itself the finding" | 1 |
 
@@ -673,15 +685,45 @@ these means the thing it is derived FROM changed; they are not knobs.
   not a tuning.
 - `_VOID_CAP`-adjacent SQL limits, `DAY_MS` — arithmetic.
 
-### What the sweep found beyond the named list
+### The unrecorded values, and what could and could not be reconstructed
 
-Seven values with **no recorded reasoning at all**: the sync tick (4 s), the UI
-refresh tick (400 ms), `HttpTransport.timeoutMs` (20 s), `UNDO_MS` (8 s),
-`TAP_MIN` (56, twice), `GET /bills` limit (50/200), and both `backoff` knobs at
-their App.tsx call site. Plus `JWT_TTL_SECONDS`, which has no reasoning of its own
-and is load-bearing for two other decisions. **None of these is wrong; all of
-them are unaccountable**, which is a different problem and the one this ledger
-exists to stop compounding.
+Nine values were chosen with **no written reason**, in the code or in their
+introducing commit: the sync tick (4 s), the UI refresh tick (400 ms),
+`HttpTransport.timeoutMs` (20 s), `UNDO_MS` (8 s), `TAP_MIN` (56),
+`GET /bills` limit (50/200), both `backoff` knobs at their call site, and
+`JWT_TTL_SECONDS`.
+
+**Where the reasoning is genuinely unknown, the row says "unrecorded — chosen
+without a written reason" and stops there.** Nothing has been back-filled with a
+plausible-sounding justification. An invented reason is worse than a blank,
+because a blank makes the next person ask and a plausible sentence makes them
+stop — and it would be indistinguishable, a year from now, from a reason someone
+actually had.
+
+What IS in those rows is **reconstruction, clearly separated from justification**:
+verifiable relationships between one value and another, found by reading the code
+rather than guessed at. Those are worth having because they are what makes a
+future re-tune dangerous:
+
+- **the 4 s sync tick is the real retry floor.** A bill whose backoff has expired
+  still waits for the next tick, so the effective first retry is 2–4 s, not
+  `backoffBaseMs`. Anyone tuning the backoff and measuring no change would be
+  looking at the wrong knob.
+- **`backoffMaxMs` (30 s) sits inside `POISON_ALARM_MS` (90 s) about three
+  times.** Raise it past 90 s and the clock trigger can no longer fire first —
+  the count trigger becomes the only live one, with nothing announcing that.
+- **`HttpTransport.timeoutMs` (20 s) and `backoffMaxMs` (30 s) are the two inputs
+  to `MAX_ATTEMPT_CYCLE_MS` (60 s).** Neither has a recorded reason; a value with
+  one is derived from two without.
+- **the 400 ms refresh tick is upstream of the "150 times" in its own comment**
+  (60 000 / 400). The comment reasons from the value; it does not justify it.
+- **`TAP_MIN` (56) is a stated standard honoured in two screens and undercut
+  elsewhere** — raw `minHeight` literals of 36 and 44 exist, both below it.
+
+None of these values is wrong. All of them are **unaccountable**, which is a
+different problem: an unaccountable value cannot be defended, cannot be safely
+changed, and cannot be told apart from one that was measured. That is what this
+ledger exists to stop compounding.
 
 ## Known stale references
 
@@ -943,6 +985,13 @@ Dated, because they decay. Re-run them; do not cite them.
   phone (`.249`) → **200**; `curl` from the box (`.238`) with a real staff token
   → **403** `kind=forbidden` `code=admin_required` `actual_role=staff`. The
   server gate is observed; the screen's rendering of it is not.
+- 2026-08-02 — **the two freshness thresholds renamed, values byte-identical.**
+  `PRICE_DEFAULT_MAX_AGE_MS` → `PRICE_DEFAULT_CUTOFF_MS`, `FRESH_MAX_AGE_MS` →
+  `JUST_FETCHED_WINDOW_MS`. Verified from the diff that only the identifiers moved
+  (`12 * 60 * 60 * 1000` and `5 * 60 * 1000` unchanged on both sides). ALL
+  THIRTEEN proofs green afterwards — including `prove:cold`, which asserts on both
+  thresholds directly and prints them — and both TypeScript programs exit 0, each
+  run bare.
 - 2026-08-02 — one FALSE POSITIVE found and fixed in the new proof itself:
   `proveNotice`'s banned-fragment list, copied over, read the legitimate count
   `รวม 500 ใบ` as a leaked 5xx status. Replaced with a regex over the whole class,

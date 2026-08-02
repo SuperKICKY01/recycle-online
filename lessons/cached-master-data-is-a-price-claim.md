@@ -59,7 +59,7 @@ assessment carried on. One list's clock damage condemns **both** ages, so:
 
 ```ts
 const asOfMs      = Math.min(p, s);            // what we report, and gate on
-const clockSuspect = now - Math.max(p, s) < -FRESH_MAX_AGE_MS;  // NOT min
+const clockSuspect = now - Math.max(p, s) < -JUST_FETCHED_WINDOW_MS;  // NOT min
 ```
 
 Two different questions over the same pair. Using one answer for both is the

@@ -43,7 +43,7 @@ import {
   assessFreshness,
   masterNotice,
   pricingProvenanceLine,
-  FRESH_MAX_AGE_MS,
+  JUST_FETCHED_WINDOW_MS,
 } from "../master/freshness.js";
 import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
@@ -589,7 +589,7 @@ function k4ProvenanceSurvivesABackwardsJump(): void {
 
   /*
    * The cart is opened at 09:00 against master data fetched at 20:00 the
-   * previous evening — 13h old, comfortably past FRESH_MAX_AGE_MS, so the
+   * previous evening — 13h old, comfortably past JUST_FETCHED_WINDOW_MS, so the
    * marker is owed. Then the clock is corrected BACKWARDS by 14h before the
    * bill is saved.
    */
@@ -606,11 +606,11 @@ function k4ProvenanceSurvivesABackwardsJump(): void {
     `made - asOf = ${String(Math.round(ageAsComputed / HOUR))}h`,
   );
 
-  const oldLine = ageAsComputed <= FRESH_MAX_AGE_MS ? null : "would have shown";
+  const oldLine = ageAsComputed <= JUST_FETCHED_WINDOW_MS ? null : "would have shown";
   disproof(
     "the money marker was SUPPRESSED — a negative age passed the freshness test",
     oldLine === null,
-    `old: age (${String(Math.round(ageAsComputed / HOUR))}h) <= FRESH_MAX_AGE_MS -> return null, no line at all`,
+    `old: age (${String(Math.round(ageAsComputed / HOUR))}h) <= JUST_FETCHED_WINDOW_MS -> return null, no line at all`,
   );
 
   const line = pricingProvenanceLine(bill);

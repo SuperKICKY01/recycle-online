@@ -1177,8 +1177,10 @@ export default function App() {
             NOT nowMinute. That value is rounded DOWN to the minute for the
             freshness strip (see nowMinuteIso), so it sits up to 59 seconds
             behind the truth — which UNDERSTATES the age by up to a minute and,
-            within a minute of the FRESH_MAX_AGE_MS boundary, suppresses this
-            line entirely. Understating is the direction that hides things on a
+            within a minute of the JUST_FETCHED_WINDOW_MS boundary (5 min, the
+            BANNER threshold — not PRICE_DEFAULT_CUTOFF_MS, which is 12 h and
+            gates the money), suppresses this line entirely. Understating is the
+            direction that hides things on a
             money marker (lessons/cached-master-data-is-a-price-claim.md Rule 4),
             and this is the screen where it matters most. The honest value is the
             real instant the operator is deciding at, which is also what the

@@ -141,7 +141,7 @@ what the artifact may claim.
 ## A negative age is not a fresh bill
 
 `pricingProvenanceLine` computed `age = device_created_at - master_as_of` and
-returned null for `age <= FRESH_MAX_AGE_MS`. A backwards jump between opening the
+returned null for `age <= JUST_FETCHED_WINDOW_MS` (then `FRESH_MAX_AGE_MS`). A backwards jump between opening the
 cart and saving makes that difference **negative**, which sails through the same
 test — so the stale-pricing marker **vanished on exactly the bill most likely to
 have been priced from a cache of unknowable age**. A false negative on a money

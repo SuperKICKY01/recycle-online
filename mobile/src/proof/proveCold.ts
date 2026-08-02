@@ -47,9 +47,9 @@ import type { Draft } from "../cart/types.js";
 import {
   assessFreshness,
   defaultUnitPrice,
-  FRESH_MAX_AGE_MS,
+  JUST_FETCHED_WINDOW_MS,
   masterNotice,
-  PRICE_DEFAULT_MAX_AGE_MS,
+  PRICE_DEFAULT_CUTOFF_MS,
   pricingProvenanceLine,
   stalePriceHint,
   thaiAge,
@@ -203,11 +203,11 @@ function c1FreshnessMatrix(): void {
     null,
     -2 * HOUR, // dated in the future — the clock moved
     0,
-    FRESH_MAX_AGE_MS - 60_000,
-    FRESH_MAX_AGE_MS + 60_000,
+    JUST_FETCHED_WINDOW_MS - 60_000,
+    JUST_FETCHED_WINDOW_MS + 60_000,
     3 * HOUR,
-    PRICE_DEFAULT_MAX_AGE_MS - 60_000,
-    PRICE_DEFAULT_MAX_AGE_MS + 60_000,
+    PRICE_DEFAULT_CUTOFF_MS - 60_000,
+    PRICE_DEFAULT_CUTOFF_MS + 60_000,
     14 * HOUR,
     5 * 24 * HOUR,
   ];
@@ -236,12 +236,12 @@ function c1FreshnessMatrix(): void {
     (c) => {
       const r = f(c);
       const worst = Math.max(c.productsAge ?? Infinity, c.sellersAge ?? Infinity);
-      const inFuture = Math.min(c.productsAge ?? 0, c.sellersAge ?? 0) < -FRESH_MAX_AGE_MS;
+      const inFuture = Math.min(c.productsAge ?? 0, c.sellersAge ?? 0) < -JUST_FETCHED_WINDOW_MS;
       const expected =
         c.productsAge !== null &&
         c.sellersAge !== null &&
         !inFuture &&
-        worst <= PRICE_DEFAULT_MAX_AGE_MS;
+        worst <= PRICE_DEFAULT_CUTOFF_MS;
       return r.mayDefaultPrice === expected;
     },
     describeCell,
@@ -254,8 +254,8 @@ function c1FreshnessMatrix(): void {
    */
   const mixed = cells.filter(
     (c) =>
-      (c.productsAge === 0 && c.sellersAge !== null && c.sellersAge > PRICE_DEFAULT_MAX_AGE_MS) ||
-      (c.sellersAge === 0 && c.productsAge !== null && c.productsAge > PRICE_DEFAULT_MAX_AGE_MS),
+      (c.productsAge === 0 && c.sellersAge !== null && c.sellersAge > PRICE_DEFAULT_CUTOFF_MS) ||
+      (c.sellersAge === 0 && c.productsAge !== null && c.productsAge > PRICE_DEFAULT_CUTOFF_MS),
   );
   checkAll(
     "one list being seconds old does NOT rescue the other — the older half bounds it",
@@ -266,7 +266,7 @@ function c1FreshnessMatrix(): void {
   check("...and that sweep was not empty", mixed.length === 6, `${String(mixed.length)} mixed cells`);
 
   const future = cells.filter(
-    (c) => (c.productsAge ?? 0) < -FRESH_MAX_AGE_MS || (c.sellersAge ?? 0) < -FRESH_MAX_AGE_MS,
+    (c) => (c.productsAge ?? 0) < -JUST_FETCHED_WINDOW_MS || (c.sellersAge ?? 0) < -JUST_FETCHED_WINDOW_MS,
   );
   checkAll(
     "a fetch dated in the FUTURE fails closed — an unknowable age never defaults a price",
@@ -1156,8 +1156,8 @@ async function main(): Promise<number> {
   console.log("Phase 2c-8 — cold start, the master-data cache, and what a price may claim");
   console.log(`node ${process.version}`);
   console.log(
-    `thresholds: fresh <= ${thaiAge(FRESH_MAX_AGE_MS)},` +
-      ` price default withdrawn past ${thaiAge(PRICE_DEFAULT_MAX_AGE_MS)}`,
+    `thresholds: fresh <= ${thaiAge(JUST_FETCHED_WINDOW_MS)},` +
+      ` price default withdrawn past ${thaiAge(PRICE_DEFAULT_CUTOFF_MS)}`,
   );
 
   c1FreshnessMatrix();
