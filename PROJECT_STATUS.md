@@ -419,6 +419,40 @@ not a new feature:
   not Expo served from a development machine.
 - **Real per-shop login.** Accounts and credentials the shop owns,
   created for it — not the dev fixture from `seed_dev.py`.
+- **NO SIGN-OUT. A shop cannot change who the phone is logged in as.**
+  **A SECURITY item, not a convenience one — it belongs in A3.**
+
+  Read out of the files rather than assumed: `TokenStore.clear()` EXISTS and
+  `SecureTokenStore` implements it (`SecureStore.deleteItemAsync`). **Nothing
+  calls it.** `App.tsx` calls `load()` at boot (line 449) and `save()` on sign-in
+  (line 727) and that is all — there is no sign-out button, no menu, no path of
+  any kind. `expo-secure-store` puts the token in the iOS **Keychain**, which
+  survives deleting Expo Go, so reinstalling the app does not clear it either.
+
+  Bound it honestly, because the exposure is not unlimited: `JWT_TTL_SECONDS`
+  defaults to 3600 and there is no refresh token, so an issued token stops being
+  accepted within the hour. What is missing is any way to end a session
+  **deliberately, at the moment someone leaves** — and any way to end it from the
+  server side at all. Between the handover and the expiry, bills written on that
+  phone are attributed in `purchase_bills` to the person who left. On a system
+  whose entire subject is real money, that is the audit trail naming the wrong
+  person.
+
+  **The client half is nearly free and the server half is not**, which is exactly
+  why it must not be done by halves: a sign-out button is one existing method
+  wired to one button, and it would make the problem look dealt with while an
+  already-minted token stayed valid for up to an hour with nothing able to refuse
+  it. The server side needs a way to reject an issued token before its expiry —
+  e.g. a token version on `users`, bumped on password change or deactivation and
+  checked in `get_principal`, which already re-reads the role on every request.
+
+  Found by the A1 device pass, where it presented as a testing obstacle: the app
+  would not take a staff session no matter what `app/config.ts` said, because
+  those credentials are only read by `signIn()` and a device holding a restored
+  token never calls it. That is the same mechanism wearing a friendlier face, and
+  it is why A1's 403 rendering is still unverified on device.
+
+  Deliberately NOT fixed in A1, which was UI-only on an existing endpoint.
 - **A back office to drive any of it.** The whole master-data write path
   now exists and is proven over HTTP, but the only thing that can call it
   is `curl`. `desktop/` is still empty, and the yard app is deliberately
