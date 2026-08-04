@@ -10,25 +10,103 @@ not been OBSERVED: a proof that ran, an endpoint that answered, a
 screen seen on a device. Implemented is not verified, and a dated
 green in here is only as fresh as its date.
 
-**Last updated: 2026-08-02 — RECONCILIATION, and the one real defect it found is
-FIXED. The checker has been broken on purpose 19 ways; the live database is
-REPORTED RED (96 violations, all proof debris, none fixed); and doc_no's BE year
-now comes from the same instant as the bill's arrival stamp.**
+**Last updated: 2026-08-03 — RECONCILIATION COMPLETE AND THE DEV DATABASE IS
+GREEN. 0 violations over 44 checks, twice, on a database rebuilt from migrations
++ seed and then filled by the real path. The one real defect the checker found
+(doc_no's BE year) is fixed; both debris sources are fixed at source.**
 
 ## Current phase
 
 **A2 — reconciliation. Server only, one script, no endpoint and no schedule.
-COMPLETE, and the live database FAILS it.** Until now the money was correct
-because the code was correct; nothing checked it, and nothing would have said
-the day that stopped being true.
+COMPLETE. The checker is GREEN and its green means something.**
 
-`server/scripts/reconcile.py` — 17 checks per tenant plus 10 global, **792
-checks over 46 tenants in 0.9s**. `server/scripts/prove_reconcile.py` breaks it
-on purpose, 19 injections, green twice in a row.
+Until now the money was correct because the code was correct; nothing checked
+it, and nothing would have said the day that stopped being true.
 
-**THE LIVE DATABASE REPORTS 84 VIOLATIONS. Nothing was fixed — reporting them
-is the deliverable.** Both causes are PROOF DEBRIS, not product defects, and
-both were read out of the scripts rather than inferred:
+`server/scripts/reconcile.py` — 17 checks per tenant plus 10 global.
+`server/scripts/prove_reconcile.py` breaks it on purpose, 19 injections, green
+twice in a row.
+
+### Where it ended up (2026-08-03, after the approved clean-up)
+
+**`RECONCILE OK: every invariant held, on every tenant.` 44 checks, 2 tenants,
+0 violations, 0.2s, run bare twice.**
+
+**The green is not vacuous, and that distinction is the whole phase.** The
+database was rebuilt empty, then FILLED BY THE REAL PATH: all nine server proofs
+were run against it first, so the checker swept **27 bills, 28 items, 24 prices,
+7 sellers and 2 doc_no counter rows** that `POST /bills` actually created —
+including voided bills, off-list payments and backdated fixtures. A green over
+an empty database would have proved nothing; this one sweeps rows the product
+wrote.
+
+**The owner's condition was met without exception: NO transaction row was
+deleted to reach green, and no violation survived that was not proof debris.**
+The rebuild replaced the whole volume rather than pruning rows out of it, so
+nothing was selectively cleared, and there was nothing left to stop and report.
+
+### How it got there — three steps, in the approved order
+
+1. **Both debris sources fixed at source** (commit `5fb07bd`), so the bleeding
+   stops before anything is rebuilt. Measured: the same two scripts that had
+   taken the checker from 84 to 96 violations in one round now add **zero**.
+2. **A backup, verified by restoring it BEFORE the source was destroyed** —
+   `a-backup-is-a-claim-until-it-is-restored.md` — see "what the rebuild cost"
+   below.
+3. **The rebuild**: `docker compose down -v`, `up`, `alembic upgrade head`
+   (0001→0004), `seed_dev.py`, then the nine proofs, then the checker.
+
+### What the rebuild cost — stated, not glossed
+
+Backup `recycle_20260802T234603Z_pre-rebuild`, **1207 rows**, restored into
+`recycle_prerebuild_verify` and row-count-verified against its own manifest
+BEFORE `docker compose down -v` ran. The dump files sit on the host outside the
+docker volume, so they survived the volume's destruction; sha256 re-verified
+afterwards, all three files OK.
+
+Gone from the live dev database (recoverable only from that dump):
+
+| | before | after |
+|---|---|---|
+| tenants | 48 | 2 |
+| bills | 402 (66 voided) | 27 |
+| bill items | 428 | 28 |
+| users | 50 | 4 |
+| sellers / products | 55 / 53 | 7 / 6 |
+| live bill money | 151,985.70 | (fresh) |
+| earliest arrival | 2019-03-09 | current shop year |
+
+**The four REAL DEVICE BILLS are among what was dropped** — `B-2569-222`
+(220.00, iPhone), `B-2569-223` (11,007.50, Android), `B-2569-224` (210.00),
+`B-2569-225` (1075.00), the multi-device evidence from 2026-07-29. They remain
+in the dump and in the Baseline observations table below, but **the device pass
+they came from can no longer be re-queried live.** That is the real cost of this
+rebuild and it is not zero.
+
+**Also gone: every user id.** `seed_dev.py` lets `users.id` default to
+`gen_random_uuid()`, so the admin and staff rows have NEW ids. Tenant, seller
+and product ids are fixed constants and did NOT move, so a bill queued on a
+phone still resolves its references. **The phone must sign in again** — its
+Keychain token names a user id that no longer exists, which the client already
+handles as the 401 `session_expired` path. Worth noting this is the first time
+that path has been triggered by something other than expiry.
+
+### The recommendation this executed
+
+Recorded before the owner approved it, and it was **option 2 then rebuild, in
+that order** — fix the scripts first, because a rebuild alone would have been
+undone by the next proof run the same day. The measurement above (+12 per round
+before, 0 after) is what made the order load-bearing rather than tidy.
+
+**Option 3, a suppression baseline, stays rejected and was never built.** The
+mechanism that lets a checker ignore a row is the mechanism that lets it ignore
+the row that matters.
+
+### The 96 violations that were there, and what they were
+
+Kept because the diagnosis is the record, and because the rebuild is only
+defensible if the diagnosis was right. Both causes were PROOF DEBRIS, not
+product defects, and both were read out of the scripts rather than inferred:
 
 - **T5 — 44 bills with a NULL `doc_no`**, one in each of 44 tenants.
   `prove_rls.py:96` INSERTs a whole tenant graph directly under tenant context
@@ -43,71 +121,52 @@ both were read out of the scripts rather than inferred:
   direct UPDATE (its own docstring, line 40). doc_no says 2569; arrival says
   2562. All 40 are exactly seven Gregorian years adrift.
 
-**The diagnosis is PROVEN, not asserted.** `prove_reconcile.py` restores a copy,
+**The diagnosis was PROVEN, not asserted.** `prove_reconcile.py` restores a copy,
 undoes those two causes and nothing else, and the copy then runs green — so
-those two account for all 84. If they had not, the run stops there and says so.
+those two accounted for all of them. Had they not, the run stops there and says
+so. That proof is what made the rebuild defensible rather than a shrug.
 
-**Both are permanent.** Hard rule 5 forbids deleting a transaction, so neither
-set can be cleaned out of the dev database. **The consequence is the real
-finding: this checker is permanently red on dev, and a red that is always red is
-one nobody reads by Friday.** Three ways out:
+### The two fixes, and why each is narrower than it first looked
 
-1. accept it, and read the 84 as a known floor;
-2. change the two scripts so future runs stop adding to it. Neither retires the
-   existing debris;
-3. a suppression baseline pinning the known rows by id. **Deliberately not
-   built** — the mechanism that lets a checker ignore a row is the mechanism
-   that lets it ignore the row that matters.
+Both landed in `5fb07bd`. In both cases the obvious fix was the wrong one:
 
-### RECOMMENDATION — awaiting the owner's approval, NOT acted on
+- **`prove_rls.py` must NOT "route through `create_bill`"** — the first thing
+  proposed, and wrong. Its whole purpose is to INSERT DIRECTLY so the RLS
+  `WITH CHECK` on INSERT is exercised; going through the API would delete the
+  thing being proven. The real fix is narrower: it invents THROWAWAY TENANTS
+  with `uuid4()`, so it now **deletes both tenant graphs on the way out**. Hard
+  rule 5 protects a shop's ledger; it was never about a tenant a proof created
+  eight seconds earlier.
 
-**Take 2, then rebuild the dev database from migrations + seed. In that order.
-Reject 1 as an end state and 3 outright.**
+  The teardown carries **no `WHERE tenant_id` at all** — each DELETE runs inside
+  that tenant's own context and RLS scopes it, which is the same policy the
+  script exists to prove. With no context the predicate matches nothing and it
+  removes zero rows, so it fails closed; a hand-written predicate would be the
+  version that can be wrong. It is registered with
+  `AsyncExitStack.push_async_callback` before the first fixture row exists, and
+  **that it survives a mid-proof exception was verified by injecting one**:
+  teardown ran, 9 rows per tenant, nothing left, before the traceback
+  propagated. "Nothing was left behind" is read back through RLS as its own
+  assertion rather than assumed.
 
-The reasoning, because the order is the whole of it:
+- **`prove_daily_report.py`'s fixture day moved INTO the current BE year**, not
+  away from 2019 arbitrarily. Its quarantine argument — a day far from real
+  trade — was sound and is kept; what it missed is that doc_no takes its year
+  from the real clock at creation, so backdating across a year boundary is what
+  produced the mismatch. The day is now **6 January of the current shop year**:
+  the earliest date for which the whole fixture span (`old_bill` at DAY−5 …
+  `edge_after` at DAY+1) stays inside one BE year.
 
-- **2 alone leaves it red at 84 forever.** The bleeding stops; the corpse stays.
-  A checker that can never be green cannot be read as a signal, only as a
-  document — and nobody reads a document daily.
-- **A rebuild alone is green until the next proof run**, which is the same day.
-  `prove_rls` adds one impossible bill per run and `prove_daily_report` adds
-  four to nine mis-yeared ones. Rebuilding without fixing the source is
-  scrubbing a floor with the tap running.
-- **Together they give a checker whose green means something**, which is the
-  only version worth having. And nothing is lost: `backup_db.py` already exists
-  and is proven, so the rebuild is preceded by a dated dump — the 353 bills
-  become a file rather than a deletion. That also re-exercises the restore path,
-  which is the one thing in this system that must never be first tried in an
-  emergency.
-- **1 is the correct INTERIM state and is what is in force today.** The 84 are
-  diagnosed, named, frozen and printed on every run. That is strictly better
-  than suppression because it stays visible; it is not acceptable as a
-  destination.
-- **3 stays rejected even if the owner picks neither of the others.** A
-  suppression list is maintained by exactly the person who would otherwise fix
-  the cause, and it converts "I have not dealt with this" into a green tick.
-
-**What 2 actually requires is NOT what the earlier draft of this section said.**
-Two corrections found on closer reading, both of which change the work:
-
-- **`prove_rls.py` must NOT "route through `create_bill`".** Its whole purpose
-  is to INSERT directly, so that the RLS `WITH CHECK` on INSERT is exercised;
-  going through the API would delete the thing being proven. The right fix is
-  narrower and better: it invents a THROWAWAY TENANT per run, so it should
-  **delete that tenant's graph when it finishes**. Hard rule 5 protects a shop's
-  ledger from a hard delete; it was never about a synthetic tenant a proof
-  created eight seconds earlier. That single change also stops the tenant count
-  climbing (46 tenants today, 44 of them one-bill husks).
-- **`prove_daily_report.py`'s fixture day should move to the CURRENT BE year**,
-  not away from 2019 arbitrarily. Its quarantine argument — a day far from real
-  trade — is sound and must survive; the fix is a day in the current shop year
-  that is not today (its own `DAY_BEFORE`/`DAY_AFTER` neighbours must move with
-  it). What must NOT be done is to keep the 2019 day and teach the checker to
-  tolerate it.
+  **New consequence, deliberate:** in the first five days of a shop year that
+  span does not exist yet, and the script now **refuses with exit 2** rather
+  than build a fixture it would have to apologise for. That refusal is the
+  be_year fix showing through — backdating across a year boundary is now
+  detectably wrong, which is exactly what it should be.
 
 ### FINDING — our proofs can write rows the product cannot
 
-Recorded on the owner's instruction, not acted on. **Both debris causes are the
+Recorded on the owner's instruction. The two fixes above close it for these two
+scripts; the finding itself is general and stands. **Both debris causes are the
 same defect wearing two faces, and it is not "the proofs are untidy".**
 
 `prove_rls` writes a bill with a NULL `doc_no`. `prove_daily_report` writes a
@@ -1080,7 +1139,10 @@ Dated, because they decay. Re-run them; do not cite them.
 - 2026-07-29 — **first Android pass ever**, borrowed handset. Scope and
   the much larger not-scope are in Known device gaps above.
 - 2026-07-29 — **two devices, one tenant, no collision and no gap.**
-  Read out of `purchase_bills`, not off the screens:
+  Read out of `purchase_bills`, not off the screens. **THESE FOUR ROWS NO LONGER
+  EXIST IN THE DEV DATABASE** — they were dropped by the 2026-08-03 rebuild and
+  survive only in the `pre-rebuild` dump. The observation stands as recorded;
+  it can no longer be re-queried live:
 
   | doc_no | device | total | device_created_at | server_received_at |
   |---|---|---|---|---|
@@ -1243,6 +1305,35 @@ Dated, because they decay. Re-run them; do not cite them.
   `proveNotice`'s banned-fragment list, copied over, read the legitimate count
   `รวม 500 ใบ` as a leaked 5xx status. Replaced with a regex over the whole class,
   applied only to the screens that carry no counts — which also catches 418.
+- 2026-08-03 — **THE DEV DATABASE WAS REBUILT, and the checker is green.**
+  Sequence, each step observed before the next began: both proof scripts fixed
+  and green twice → `backup_db.py --label pre-rebuild` (1207 rows) →
+  **restored into `recycle_prerebuild_verify` and row-count-verified BEFORE
+  anything was destroyed** → `docker compose down -v` → `up` → `recycle_pg`
+  `(healthy)` on `5544->5432` → `alembic upgrade head` (0001→0004) →
+  `seed_dev.py` → uvicorn → **all nine server proofs green** → `reconcile.py`
+  **exit 0, 44 checks, 2 tenants, 0 violations, 0.2s, run bare TWICE.**
+  No transaction row was deleted to reach green: the volume was replaced whole,
+  not pruned. No violation survived that was not proof debris.
+  Before/after: 48→2 tenants, 402→27 bills, 428→28 items, 50→4 users.
+  The pre-rebuild dump's three files re-verified by sha256 afterwards, all OK.
+- 2026-08-03 — **the two fixed proof scripts add ZERO violations.** The same two
+  that took the checker 84→96 in one round were re-run against the old database
+  before the rebuild: it stayed at 96. That measurement is why the order was
+  fix-then-rebuild and not the reverse.
+- 2026-08-03 — **`prove_rls.py`'s teardown proven to survive a failure**, by
+  injecting a `RuntimeError` mid-proof and observing the teardown banner, 9 rows
+  removed per tenant and "nothing left in any of the 9 tables" printed BEFORE
+  the traceback. The injection was reverted and its absence verified by grep.
+- 2026-08-03 — **the server on 8000 was restarted from the current tree and
+  confirmed FROM A RESPONSE**, not from the process list: the old PID was killed
+  and `/health` observed refusing (`000`), then the new process started and
+  `/health` answered **200 on `127.0.0.1:8000` AND on `192.168.1.238:8000`** —
+  the exact `apiBaseUrl` in `mobile/app.json` — plus `POST /auth/login` 200.
+  **The phone will nonetheless have to sign in again**: `seed_dev.py` lets
+  `users.id` default to `gen_random_uuid()`, so the rebuilt admin/staff rows
+  have new ids and the Keychain token names a user that no longer exists.
+  Tenant, seller and product ids are fixed constants and did not move.
 - 2026-08-02 — **the two-clock defect, MEASURED before and after the fix.** Same
   script, same lie (Python's clock inside `app.bills` set to
   `2027-01-01T00:00:05+07`, BE 2570; Postgres left on the real 2026-08-02, BE
@@ -1323,3 +1414,11 @@ Dated, because they decay. Re-run them; do not cite them.
   `PROD-f0c445f2` / `SELL-f0c445f2` pair is an artifact of a pre-fix
   version of `prove_master_write`, which now writes that bill against the
   SEEDED product and seller.
+
+  **SUPERSEDED by the 2026-08-03 rebuild** — every row counted here is gone,
+  including the pinned `PROD-f0c445f2` / `SELL-f0c445f2` pair that was described
+  as permanent and uncleanable. It was, by any means short of replacing the
+  volume. The **shape** of the finding still holds and is why the OPEN DECISION
+  on a shared proof teardown below is still open: proof bills that land on the
+  real current day are still indistinguishable from trade in the daily report,
+  and the counts will climb again from zero.
