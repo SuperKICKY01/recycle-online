@@ -746,10 +746,26 @@ not a new feature:
   defaults to 3600 and there is no refresh token, so an issued token stops being
   accepted within the hour. What is missing is any way to end a session
   **deliberately, at the moment someone leaves** — and any way to end it from the
-  server side at all. Between the handover and the expiry, bills written on that
-  phone are attributed in `purchase_bills` to the person who left. On a system
-  whose entire subject is real money, that is the audit trail naming the wrong
-  person.
+  server side at all. A handset that is lost, sold, or kept by a departing
+  employee holds a working credential for that shop until the hour is up, and
+  nothing on the phone or on the server can take it back.
+
+  **CORRECTED 2026-08-05.** This paragraph used to end by saying that bills
+  written on a handed-over phone are "attributed in `purchase_bills` to the person
+  who left", and that this was the audit trail naming the wrong person. **That was
+  false, and it had never been read out of the schema.** `purchase_bills` has NO
+  AUTHOR COLUMN: `grep -rn "created_by" server/` returns nothing, and the INSERT at
+  `server/app/bills.py:450-453` writes id, tenant_id, seller_id, doc_no,
+  idempotency_key, total_amount, device_created_at, server_received_at and
+  vehicle_no — no user of any kind. The only user recorded on a bill is
+  `voided_by`, written from the requesting token when a bill is VOIDED
+  (`bills.py:602`). So the audit trail does not name the wrong person; **there is
+  no name on it to read at all.** A bill cannot be traced to the staff member who
+  weighed the load and handed over the cash, and that is **not repairable
+  backwards** — every bill already written stays authorless forever, whatever is
+  added later. It is tracked as its own item in `OPEN_ITEMS.md`, as a SCHEMA and
+  audit question; it is **not** part of R1 and adding the column would not make one
+  existing bill traceable.
 
   **The client half is nearly free and the server half is not**, which is exactly
   why it must not be done by halves: a sign-out button is one existing method

@@ -52,9 +52,13 @@ idea — only that it is unresolved.
 - **No sign-out, and no server-side token revocation — `R1`, the first
   step** — a shop cannot change who the phone is signed in as, and an
   issued token cannot be refused before it expires. **This is a
-  security item, not a
-  convenience one:** between a handover and the expiry, bills are
-  attributed in the database to the person who left. *Not done:*
+  security item, not a convenience one:** a handset that is lost, sold
+  or kept by a departing employee holds a working credential for that
+  shop until the hour is up, and nothing on the phone or the server can
+  take it back. *(Corrected 2026-08-05: this line used to say bills are
+  attributed in the database to the person who left. They are not —
+  `purchase_bills` records no author at all. See the next item and the
+  note under Documentation.)* *Not done:*
   deliberately deferred, and deliberately NOT done by halves — the
   client half is one existing method wired to one button, and shipping
   only that would make the problem look handled while a minted token
@@ -63,6 +67,23 @@ idea — only that it is unresolved.
   change or deactivation, checked where the role is already re-read on
   every request). Exposure is bounded — tokens expire in an hour and
   there is no refresh token — but bounded is not closed.
+- **No author on a purchase bill — a SCHEMA and audit question, and NOT
+  part of `R1`** — `purchase_bills` has no `created_by` column, so
+  nobody can say which staff member bought a load. The only user
+  recorded on a bill is `voided_by`, and only on the void. **It is not
+  repairable retroactively:** every row written without the column is
+  authorless permanently, so the decision wants making BEFORE a real
+  shop's data accumulates under the current shape — the same argument
+  that applies to the second-hand goods act question below, and for the
+  same reason. *Not done:* never designed; it surfaced on 2026-08-05
+  when three documents were found asserting an attribution that does not
+  exist. *Unblocks:* deciding WHICH user a bill should name. The likely
+  shape is the token of the syncing request, exactly as `voided_by`
+  works today — but a bill is CREATED on the phone, offline, possibly by
+  a different user than the one whose session later syncs it, and **that
+  divergence is the actual open question, not the column.** Keep it out
+  of `R1`: R1 is about refusing a live token, and no column added there
+  would make a single already-written bill traceable.
 - **Scheduled and off-site backup — `R3`, same step as the server** —
   the dump/restore scripts exist and the round trip is proven, but
   **nothing schedules them** and the copies sit on the same box. *Not
@@ -236,6 +257,20 @@ or from a plausible-sounding summary.
   it did; it was written from this list plus `PROJECT_STATUS.md` and now
   holds the order and the dependencies. Kept here as a closed line
   because the queue is where the absence was recorded.
+- **The bill-attribution claim — CORRECTED 2026-08-05.**
+  `PROJECT_STATUS.md`, `ROADMAP.md` and this file all stated, in
+  slightly different words, that bills written on a handed-over phone
+  are attributed in `purchase_bills` to the person who left.
+  `purchase_bills` has no author column and never has had one. **How it
+  happened is the part worth keeping:** `voided_by` exists and does
+  record a real user, and phase 2c-6 put `seller_id` and `vehicle_no` on
+  the bill header, so a bill visibly "has people" on it. A sentence
+  written from that impression was then copied between documents as each
+  was drafted from the last, until three files agreed. **Three files,
+  one unverified source, and the schema never opened.** Agreement
+  between documents is not corroboration when none of them read the
+  code; only `grep` and the INSERT statement settle it. Found while
+  reading `bills.py` for R1a, not by looking for it.
 - **The phase-numbering collision — SETTLED 2026-08-05.** A-numbers are
   a closed log in `PROJECT_STATUS.md` (they are cited in commit bodies
   and so cannot be renamed); forward steps are R-numbers in

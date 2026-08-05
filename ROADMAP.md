@@ -64,10 +64,24 @@ proof** (`mobile/src/proof/proveCold.ts:1142`). Nothing in the app calls it.
 Three separate things are waiting on this, which is why it is first despite being
 neither the largest nor the most visible:
 
-1. **It is a live defect, not a gap.** With real staff and real handovers, bills
-   written on a handed-over phone are attributed in `purchase_bills` to the person
-   who left. On a system whose entire subject is real money, that is the audit trail
-   naming the wrong person. It stops being theoretical the moment R5 lands.
+1. **It is a live defect, not a gap — and a smaller one than this file used to
+   claim.** What stood here was that bills written on a handed-over phone are
+   attributed in `purchase_bills` to the person who left, i.e. the audit trail
+   naming the wrong person. **That was false and is corrected as of 2026-08-05:
+   `purchase_bills` records no author at all** (see `OPEN_ITEMS.md`, both the new
+   item and the note under Documentation). Nothing on a bill names anyone, so
+   nothing on a bill names the wrong person — and R1 would put no name there if it
+   landed tomorrow.
+
+   What remains is real and is enough on its own: **an issued token cannot be
+   refused.** A handset that is lost, sold, or kept by a departing employee holds a
+   working credential for that shop, and there is no way to end that session from
+   either side — no button on the phone, no switch on the server. The exposure is
+   bounded by `JWT_TTL_SECONDS` (3600, no refresh token) and by the token acting
+   only within its own tenant; it is not bounded by anything the shop controls,
+   which is the part that makes it a defect rather than a limit. It is an exposure,
+   not a corrupted record — and it stops being theoretical the moment R5 puts the
+   app on staff-owned phones.
 2. **It is the only thing standing between the daily money screen and a complete
    device verification.** The token lives in the iOS Keychain and survives deleting
    the app, so no staff session can be established on a device that already holds an
