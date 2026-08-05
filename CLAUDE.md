@@ -187,6 +187,12 @@ false pass and a red run into a confidently wrong cause.
   only from an observed response.
 - If something doesn't work, say so plainly. Negative results are
   valuable.
+- A RED-TEAM pass is defined in `RED_TEAM.md`: a session that reads
+  BRIEFING/CLAUDE/lessons and the diff — and **NOT** the conversation
+  that produced the code — whose job is to make the change fail. It
+  hunts three shapes first: a proof green without measuring anything, a
+  screen contradicting the state behind it, a constant tuned until it
+  looked right. Never hand it the phase brief; that is the whole point.
 - At the start of every session, read `lessons/README.md` (and any
   lesson file relevant to the task at hand).
 - Before finishing a phase, if a real mistake was made and fixed, or

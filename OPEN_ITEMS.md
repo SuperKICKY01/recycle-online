@@ -49,9 +49,10 @@ idea — only that it is unresolved.
   this was called "A2" in conversation, `PROJECT_STATUS.md` spends A2 on
   the completed reconciliation phase, and A-numbers are now a closed log;
   forward steps are R-numbers.
-- **No sign-out, and no server-side token revocation — `R1`, first** — a shop cannot
-  change who the phone is signed in as, and an issued token cannot be
-  refused before it expires. **This is a security item, not a
+- **No sign-out, and no server-side token revocation — `R1`, the first
+  step** — a shop cannot change who the phone is signed in as, and an
+  issued token cannot be refused before it expires. **This is a
+  security item, not a
   convenience one:** between a handover and the expiry, bills are
   attributed in the database to the person who left. *Not done:*
   deliberately deferred, and deliberately NOT done by halves — the
@@ -161,11 +162,18 @@ idea — only that it is unresolved.
 
 ## Decisions open — the owner's, not the code's
 
-- **The red-team trial** — proposed in conversation and never scoped or
-  scheduled; **nothing in this repository defines what it is.** *Not
-  done:* no agreed scope, no target, no rules of engagement. *Unblocks:*
-  the owner restating what should be attacked and what a finding would
-  license — as written, it cannot be run, only re-discussed.
+- **The red-team trial — DEFINED 2026-08-05, never yet run.**
+  `RED_TEAM.md` now says what the pass is: inputs (BRIEFING, CLAUDE,
+  lessons index, the diff — and NOT the conversation that produced the
+  code), the job (make the change fail, not assess quality), the three
+  shapes hunted first, finding vs nitpick, the report format, and the
+  four prohibitions. *Not done:* no diff has been put through it.
+  *Unblocks:* a change worth reviewing — the natural first candidate is
+  `R1` (sign-out), since it touches auth on both client and server.
+  **What remains genuinely open is the TRIAL, not the definition:**
+  whether a session held to these rules actually finds anything, and
+  whether an empty report from it can be trusted. That is only
+  answerable by running it a few times.
 - **A shared proof teardown** — recommended and NOT taken. Proof scripts
   create bills they can never delete, so they land ACTIVE bills on the
   real current day, indistinguishable from trade in the daily report.
