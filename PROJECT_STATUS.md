@@ -14,6 +14,15 @@ green in here is only as fresh as its date.
 lesson shapes). It deliberately holds NO status — update it when
 architecture or a hard rule changes, not at every phase boundary.
 `OPEN_ITEMS.md` holds everything outstanding, one line each.
+`ROADMAP.md` holds the ORDER of what is not done, and why that order.
+
+**PHASE NUMBERING, settled 2026-08-05.** The **A-numbers in this file
+are a CLOSED LOG** — A1 (daily money view, mobile screen) and A2
+(reconciliation), both complete. They stay as written because commit
+bodies point at them (`27a0453`: "the A1 device pass", "a SECURITY item
+for A3"), and renaming them would orphan the history. **No new A-number
+will be issued.** Forward work is numbered R1, R2 … in `ROADMAP.md`.
+A3 was never opened; the sign-out work it named is **R1**.
 
 **Last updated: 2026-08-03 — RECONCILIATION COMPLETE AND THE DEV DATABASE IS
 GREEN. 0 violations over 44 checks, twice, on a database rebuilt from migrations
@@ -721,7 +730,10 @@ not a new feature:
 - **Real per-shop login.** Accounts and credentials the shop owns,
   created for it — not the dev fixture from `seed_dev.py`.
 - **NO SIGN-OUT. A shop cannot change who the phone is logged in as.**
-  **A SECURITY item, not a convenience one — it belongs in A3.**
+  **A SECURITY item, not a convenience one.** Written here as "A3" before
+  the numbering was settled; A3 was never opened and this work is now
+  **R1 in `ROADMAP.md`** — the first step, because it is blocked by
+  nothing and two other steps wait on it.
 
   Read out of the files rather than assumed: `TokenStore.clear()` EXISTS and
   `SecureTokenStore` implements it (`SecureStore.deleteItemAsync`). **Nothing

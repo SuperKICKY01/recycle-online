@@ -58,7 +58,11 @@ invariants in plain language, and the lessons compressed to their
 recurring shapes. Update it when ARCHITECTURE or a HARD RULE changes;
 NOT at every phase. It carries no progress claims by design — status
 stays in `PROJECT_STATUS.md`, the outstanding queue in
-`OPEN_ITEMS.md`.
+`OPEN_ITEMS.md`, and the ORDER of that queue in `ROADMAP.md`.
+
+Phase numbering: **A-numbers are a closed log** in `PROJECT_STATUS.md`
+and no new one is issued. Forward steps are **R-numbers**, defined in
+`ROADMAP.md` and nowhere else.
 
 ## Machine footguns (this Windows box)
 

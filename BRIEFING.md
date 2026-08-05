@@ -206,20 +206,21 @@ a legal document sequence.
 **Status lives in `PROJECT_STATUS.md`** — current phase, what landed, what is
 verified and when. Deliberately not summarised here.
 
-**There is no `ROADMAP.md` in this repository** (checked 2026-08-04, git history
-included — it has never existed). The forward queue is **`OPEN_ITEMS.md`**, a list
-rather than a plan: it exists so closing a chat does not lose the queue. If a
-roadmap is wanted, someone has to write one; do not assume one is being followed.
+**`ROADMAP.md` holds the order and the dependencies** — what must be true before
+what, and why — and answers "what next, and why that" on its own. **`OPEN_ITEMS.md`**
+holds everything outstanding, one line each, unranked: an item absent from the
+roadmap is not off the list, it is off the critical path. Steps are numbered R1, R2 …
+there; the A-numbers in `PROJECT_STATUS.md` are a closed log of finished phases and
+no new one will be issued.
 
-**The decision an advisor is most likely to meet**, as of 2026-08-04: work stops
-at every phase boundary for review, and the project sits at one. The two
-directions are not the same kind of work — **deepen correctness** on a system that
-has never had a paying user (more proofs, closing the unverified device paths), or
-**reach one real shop** (hosting, an installable build, real accounts, a back
-office to drive the master-data write path that today only `curl` has ever
-called). The honest tension: the first is where this project is strong and
-comfortable; the second is where the remaining unknowns actually are.
-`OPEN_ITEMS.md` carries both queues unranked — the ranking is the owner's.
+**The tension an advisor should hold on to**, as of 2026-08-05: work stops at every
+phase boundary for review, and the project sits at one. Two directions, not the same
+kind of work — **deepen correctness** on a system that has never had a paying user,
+or **reach one real shop**. The first is where this project is strong and
+comfortable; the second is where the remaining unknowns actually are. `ROADMAP.md`
+takes the second, argues the order, and records where it disagrees with the framing
+it was given — read its "Where I disagree with the spine" section before advising on
+sequence.
 
 ## 7. What is deliberately NOT built, and what changes it
 

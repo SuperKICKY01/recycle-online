@@ -3,41 +3,53 @@
 Everything outstanding, one line each: **what it is — why it isn't done
 — what unblocks it.**
 
-This is a LIST, not a tracker. There are no priorities, no owners and no
-dates here; ranking is the owner's call. It exists for one reason: so
-that closing a chat session does not lose the queue. Several of these
-have lived only in conversation until now.
+This is a LIST, not a tracker. There are no priorities and no dates here.
+It exists for one reason: so that closing a chat session does not lose
+the queue. Several of these have lived only in conversation until now.
 
-Status of anything already DONE is in `PROJECT_STATUS.md`. Architecture
-and invariants are in `BRIEFING.md`. Nothing on this list is a claim
-that the item is a good idea — only that it is unresolved.
+**`ROADMAP.md` ranks the subset of this list that is on the critical
+path to a shop, and argues the order.** An item here that is absent
+there is not off the list — it is off that path. Where an item has a
+roadmap step it is named (R1, R2 …). Status of anything already DONE is
+in `PROJECT_STATUS.md`; architecture and invariants are in
+`BRIEFING.md`. Nothing on this list is a claim that the item is a good
+idea — only that it is unresolved.
 
 ---
 
 ## Blocking one real paying shop
 
-- **A reachable server** — the API runs on a development box and the app
-  points at a LAN address. *Not done:* no hosting has been chosen or
-  paid for. *Unblocks:* a decision on where it runs, then a deploy.
-- **An installable build** — staff need the app on their own phone, not
-  Expo served from a development machine. *Not done:* never attempted.
-  *Unblocks:* an Expo build/distribution route, and the reachable server
-  above (the LAN address is baked into app config).
-- **Real per-shop accounts** — the only credentials that exist are the
-  dev fixture from the seed script. *Not done:* no account-provisioning
-  path exists at all. *Unblocks:* deciding who creates a shop's first
-  admin, and how.
-- **Master-data screens ("A2" in conversation)** — the whole master-data
-  WRITE path exists and is proven over HTTP, and the only thing that can
-  call it is `curl`. A shop cannot set up its own products, prices or
-  sellers. *Not done:* `desktop/` is empty, and the yard app is
-  deliberately read-only for master data. *Unblocks:* deciding WHERE the
-  screens live (Electron back office vs. an admin section in the mobile
-  app) — that is the actual open question, not the screens themselves.
-  **Note the label collision:** `PROJECT_STATUS.md` already uses "A2"
-  for the reconciliation phase, which is complete. The phase letter for
-  this work needs settling before it is used in writing again.
-- **No sign-out, and no server-side token revocation** — a shop cannot
+- **A reachable server — `R3`** — the API runs on a development box and
+  the app points at a LAN address. *Not done:* no hosting has been chosen
+  or paid for. *Unblocks:* a decision on where it runs, then a deploy.
+  **The one item with external lead time, so start the decision early.**
+  **HTTPS is part of this** — `mobile/app.json` currently holds a plain
+  `http://` address, which on the public internet hands over the bearer
+  token and every money value to anyone on the path.
+- **An installable build — `R5`** — staff need the app on their own
+  phone, not Expo served from a development machine. *Not done:* never
+  attempted. *Unblocks:* an Expo build/distribution route, plus `R3`
+  (the API address is baked in — but it is one string in `app.json` with
+  a single reader, so the coupling is shallow).
+- **Real per-shop accounts — `R5`** — the only credentials that exist
+  are the dev fixture from the seed script. *Not done:* no
+  account-provisioning path exists at all. *Unblocks:* deciding who
+  creates a shop's first admin, and how.
+- **Master-data screens — `R4`, and the biggest fork on the path** — the
+  whole master-data WRITE path exists and is proven over HTTP, and the
+  only thing that can call it is `curl`. A shop cannot set up its own
+  products, prices or sellers. *Not done:* `desktop/` is empty, and the
+  yard app is deliberately read-only for master data. *Unblocks:*
+  deciding WHERE the screens live (Electron back office vs. an admin
+  section in the mobile app) — that is the actual open question, not the
+  screens themselves. **`ROADMAP.md` R4 argues splitting this by change
+  frequency**: prices move with the metal market and must be
+  self-service, while products/sellers/uoms are set up once and can be
+  operator-run for the first shop. **The label collision is settled** —
+  this was called "A2" in conversation, `PROJECT_STATUS.md` spends A2 on
+  the completed reconciliation phase, and A-numbers are now a closed log;
+  forward steps are R-numbers.
+- **No sign-out, and no server-side token revocation — `R1`, first** — a shop cannot
   change who the phone is signed in as, and an issued token cannot be
   refused before it expires. **This is a security item, not a
   convenience one:** between a handover and the expiry, bills are
@@ -50,24 +62,27 @@ that the item is a good idea — only that it is unresolved.
   change or deactivation, checked where the role is already re-read on
   every request). Exposure is bounded — tokens expire in an hour and
   there is no refresh token — but bounded is not closed.
-- **Scheduled and off-site backup** — the dump/restore scripts exist and
-  the round trip is proven, but **nothing schedules them** and the
-  copies sit on the same box. *Not done:* out of scope of the phase that
-  built the scripts. *Unblocks:* somewhere off-site to put them, and a
-  scheduler; then retention and encryption at rest become real questions
-  rather than deferred ones.
-- **A day view on the desktop** — the daily money screen exists on the
-  phone only, so an owner who works from a PC cannot see the day's
-  takings there. *Not done:* `desktop/` is empty. *Unblocks:* same
-  decision as the master-data screens.
+- **Scheduled and off-site backup — `R3`, same step as the server** —
+  the dump/restore scripts exist and the round trip is proven, but
+  **nothing schedules them** and the copies sit on the same box. *Not
+  done:* out of scope of the phase that built the scripts. *Unblocks:*
+  somewhere off-site to put them, and a scheduler; then retention and
+  encryption at rest become real questions rather than deferred ones.
+  **Not separable from the hosting step:** the moment the server holds
+  one real bill, an unscheduled backup is a single copy.
+- **A day view on the desktop — `R7`, after a shop is running** — the
+  daily money screen exists on the phone only, so an owner who works
+  from a PC cannot see the day's takings there. *Not done:* `desktop/`
+  is empty. *Unblocks:* same decision as the master-data screens.
 
 ## Verification gaps — built, not proven
 
 - **The 403 rendering on the daily money screen has never been drawn on
-  a device.** *Not done:* the phone could not be made to hold a staff
-  session — the token lives in the iOS Keychain and survives deleting
-  the app. *Unblocks:* the sign-out item above. This is the same
-  mechanism wearing a friendlier face.
+  a device — `R2`.** *Not done:* the phone could not be made to hold a
+  staff session — the token lives in the iOS Keychain and survives
+  deleting the app. *Unblocks:* the sign-out item above (`R1`). This is
+  the same mechanism wearing a friendlier face, and it is half the
+  reason sign-out is the first step rather than a later one.
 - **Android coverage** — one pass, one borrowed handset, one OS version.
   The void flow, the offline behaviours, draft recovery, the stale-cache
   price gate and background sync have never run there. *Not done:* no
@@ -79,7 +94,7 @@ that the item is a good idea — only that it is unresolved.
   driver cannot run outside a device. *Unblocks:* a scripted device
   test that kills the process mid-transaction, or accepting the risk in
   writing.
-- **The 20-second request timeout has never been exercised.** The
+- **The 20-second request timeout has never been exercised — `R2`.** The
   offline test killed the network, which throws immediately; the case
   the timeout exists for is a server that ACCEPTS the connection and
   then never answers. *Not done:* never staged. *Unblocks:* a stalling
@@ -208,8 +223,19 @@ or from a plausible-sounding summary.
 
 ## Documentation
 
-- **There is no `ROADMAP.md`** — it has never existed in this repository
-  (checked 2026-08-04, git history included), though it has been
-  referred to as if it did. *Not done:* nobody has written one.
-  *Unblocks:* deciding whether the queue above is enough. A roadmap
-  orders work; this list deliberately does not.
+- **~~There is no `ROADMAP.md`~~ — CLOSED 2026-08-05.** It genuinely did
+  not exist (checked against git history) and had been referred to as if
+  it did; it was written from this list plus `PROJECT_STATUS.md` and now
+  holds the order and the dependencies. Kept here as a closed line
+  because the queue is where the absence was recorded.
+- **The phase-numbering collision — SETTLED 2026-08-05.** A-numbers are
+  a closed log in `PROJECT_STATUS.md` (they are cited in commit bodies
+  and so cannot be renamed); forward steps are R-numbers in
+  `ROADMAP.md`; no new A-number will be issued.
+- **Four open questions carried by `ROADMAP.md` rather than this list**,
+  because each one moves a step rather than adding an item: does the
+  pilot shop need a printed slip on day one (if yes, printing and the
+  desktop scaffold move onto the critical path and the whole order
+  changes); where master-data screens live; who creates a shop's first
+  admin; and whether the second-hand goods act's answer needs to arrive
+  before real data accumulates under the current schema.
