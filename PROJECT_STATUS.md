@@ -10,6 +10,11 @@ not been OBSERVED: a proof that ran, an endpoint that answered, a
 screen seen on a device. Implemented is not verified, and a dated
 green in here is only as fresh as its date.
 
+`BRIEFING.md` is the fresh-session handoff (architecture, invariants,
+lesson shapes). It deliberately holds NO status — update it when
+architecture or a hard rule changes, not at every phase boundary.
+`OPEN_ITEMS.md` holds everything outstanding, one line each.
+
 **Last updated: 2026-08-03 — RECONCILIATION COMPLETE AND THE DEV DATABASE IS
 GREEN. 0 violations over 44 checks, twice, on a database rebuilt from migrations
 + seed and then filled by the real path. The one real defect the checker found

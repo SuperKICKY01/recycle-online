@@ -52,6 +52,14 @@ session, before deciding anything is in or out of scope, and update
 it at every phase boundary. Do not restate any of it here: two
 copies drift, and a new session believes whichever it reads first.
 
+`BRIEFING.md` is the handoff for a session that will NOT read the
+codebase — what this is, the architecture with its reasons, the
+invariants in plain language, and the lessons compressed to their
+recurring shapes. Update it when ARCHITECTURE or a HARD RULE changes;
+NOT at every phase. It carries no progress claims by design — status
+stays in `PROJECT_STATUS.md`, the outstanding queue in
+`OPEN_ITEMS.md`.
+
 ## Machine footguns (this Windows box)
 
 Traps specific to this machine. Each one has already produced a
