@@ -16,6 +16,20 @@ architecture or a hard rule changes, not at every phase boundary.
 `OPEN_ITEMS.md` holds everything outstanding, one line each.
 `ROADMAP.md` holds the ORDER of what is not done, and why that order.
 
+**THIS FILE IS NOT SPLIT, and the trigger for reconsidering that is written
+here so it does not live only in a conversation. Revisit at 2000 lines.**
+Splitting "Earlier phases" and "Baseline observations" into a `HISTORY.md` was
+considered on 2026-08-06 and REJECTED. The reason is the rule three lines
+above: Baseline observations is not an appendix, it is the evidence layer every
+claim in this file rests on. Move the dated greens out and what remains is a
+file of assertions whose freshness is invisible from where the assertions are
+written — and a fresh session reads this file first, because CLAUDE.md names
+it and would not name the other. The measured saving did not justify that:
+the two sections were 543 of 1457 lines, and removing them would still have
+left a file too large to read in one call. **Compress in place instead** —
+superseded entries reduce to their finding plus a pointer, which is what was
+done to two of them on 2026-08-06.
+
 **PHASE NUMBERING, settled 2026-08-05.** The **A-numbers in this file
 are a CLOSED LOG** — A1 (daily money view, mobile screen) and A2
 (reconciliation), both complete. They stay as written because commit
@@ -24,12 +38,93 @@ for A3"), and renaming them would orphan the history. **No new A-number
 will be issued.** Forward work is numbered R1, R2 … in `ROADMAP.md`.
 A3 was never opened; the sign-out work it named is **R1**.
 
-**Last updated: 2026-08-03 — RECONCILIATION COMPLETE AND THE DEV DATABASE IS
-GREEN. 0 violations over 44 checks, twice, on a database rebuilt from migrations
-+ seed and then filled by the real path. The one real defect the checker found
-(doc_no's BE year) is fixed; both debris sources are fixed at source.**
+**Last updated: 2026-08-06 — R1 AND R2 BOTH CLOSED. A phone can end its session
+deliberately, and the server can refuse a token it already issued
+(`users.token_version`, migration 0005) — both halves observed on a real
+handset. The daily money screen's last two device gaps are closed, the 403
+rendering on strong evidence and the hung socket on weaker evidence that is
+labelled as such. NO PHASE IS OPEN. One finding from the pass is UNDIAGNOSED
+and deadlocks a handset whenever a token expires mid-shift; see Current
+phase.**
 
 ## Current phase
+
+**NO PHASE IS OPEN. R1 and R2 are both CLOSED, on 2026-08-06.**
+
+Read that as a positive statement, not as silence. "Closed" here means a
+done-condition written in `ROADMAP.md` before the work started was met and the
+meeting of it was OBSERVED, with the observation dated in Baseline observations
+below. A phase that had merely stopped would say so; a phase nobody had
+recorded would leave this section holding its predecessor, which is exactly the
+failure this file has had before.
+
+**R1 — sign-out, and the server's ability to refuse a token it already issued.
+Both halves, and the halves were the point.**
+
+- **Server, `19a6b63`.** `users.token_version` (migration `0005`), minted into
+  every token and re-read from the user row on every request — on the same
+  query `get_principal` already runs to resolve the role, so it costs no extra
+  round trip. DEFAULT 1 and never 0, so a token carrying no version claim
+  matches no row and is refused rather than read as a confident zero. Bumped
+  through `POST /users/{user_id}/revoke-sessions`, admin only, which its own
+  docstring labels a STOPGAP because there is nothing else in the system to
+  hang the bump on. Proven by `server/scripts/prove_revocation.py`.
+- **Client, `7484645`.** Nine files, 1974 insertions: `app/SignOutSheet.tsx`,
+  `src/session/signOut.ts`, `src/session/signOutNotice.ts`, the token stores,
+  `App.tsx`, `src/sync/engine.ts`, and `src/proof/proveSignOut.ts`. The sheet
+  **can refuse** — it will not end a session while bills are still queued
+  unsent — and it can fail without claiming success.
+
+**R2 — the daily money screen's device gaps. Closed, but the two halves are
+NOT equally strong and this file will not pretend otherwise.**
+
+- **The 403 rendering: strong.** Drawn on a handset under a staff account for
+  the first time. The screen carried no money field at all, which is A1's
+  design holding on real hardware — the leak is unrepresentable rather than
+  guarded. The log tie is by source address and uniqueness, not by clock.
+- **The hung socket: weak, and labelled weak.** What is established is that a
+  socket which accepts and then never answers ends in the no-number outage
+  screen instead of a `0.00` day. That it ended at the 20 s ceiling
+  specifically is NOT established — it was watched on a stopwatch, and a
+  refused connection would draw the same screen. See Known device gaps.
+
+**WHAT R1 DID NOT FIX — one finding, undiagnosed, and it is worse than it
+looks.** During the R1b device pass the sync strip read
+`ออฟไลน์ — เก็บไว้ในเครื่อง 1 ใบ จะส่งให้เองเมื่อเน็ตกลับมา` while the network was
+up at full strength and the server was answering 401 to every request. In the
+same minute, on the same device, the daily money screen classified the SAME
+refusal correctly — a `ต้องเข้าสู่ระบบใหม่` card with a sign-in button that
+resolved it. Two renderers of one app drew one cause two ways, and the sync
+strip's wording is FALSE while it is on screen.
+
+It compounds into a deadlock, which is why it is recorded here and not only in
+`OPEN_ITEMS.md`: sign-out REFUSES while a bill is queued, the queue cannot
+drain while the token is refused, and the strip tells the operator to wait for
+a network that already works. The phone can then neither send nor sign out.
+**Revocation is not required to reach this state** — it is what every device
+draws when `JWT_TTL_SECONDS` expires mid-shift, which is to say every hour of
+every shift, on every handset.
+
+**No cause is named here, deliberately, because none has been measured.** Two
+candidates with different fixes are recorded in `OPEN_ITEMS.md`; nobody has yet
+read `engine.ts` or `queueHealth.ts` against this reproduction. Naming one
+would be `lessons/diagnosis-must-precede-the-fix.md` exactly.
+
+**The next step is `ROADMAP.md`'s to choose, and as of 2026-08-06 the two files
+agree.** `ROADMAP.md` described R1 and R2 as forthcoming until the same task that
+wrote this section updated it; both are marked CLOSED there now, on the same
+evidence and with the same asymmetry recorded for R2. **The head of the queue is
+`R2b`** — the undiagnosed sync-strip and sign-out defect described above — with
+R3's hosting clock startable in parallel, because procurement has lead time and
+code does not. **`ROADMAP.md` remains the authority on ORDER**, and that is a
+permanent division of responsibility rather than a temporary state: this file
+records what has been OBSERVED, that one records what comes NEXT and why. Where
+they ever disagree again, the disagreement itself is the finding — a session
+reading both would otherwise believe whichever it read first.
+
+Per the CLAUDE.md workflow this is a phase boundary: stop for review.
+
+## Previous phase
 
 **A2 — reconciliation. Server only, one script, no endpoint and no schedule.
 COMPLETE. The checker is GREEN and its green means something.**
@@ -270,46 +365,15 @@ died. `ALTER TABLE … DISABLE ROW LEVEL SECURITY`, one line above it in the sam
 list, is database-scoped and safe. The harness scans every injection's SQL for
 `ROLE` statements and refuses them, so the reason cannot decay into a comment.
 
-## The two-clock be_year defect — FIXED 2026-08-02, own commit
-
-Owner-directed, immediately after A2 found it. **The fix is an ORDERING, not a
-tolerance**, which was the explicit instruction and is also the only thing that
-could have worked: a tolerance on "how far apart may the two clocks be" still
-leaves two clocks.
-
-**Before.** `server_received_at` was the column DEFAULT `now()` — Postgres'
-TRANSACTION START. `be_year` was `_be_year(datetime.now(tz=timezone.utc))`, a
-PYTHON read taken later in the same transaction, after the seller lookup and
-every product and price lookup. Two clocks and two moments, a full master-data
-round-trip apart.
-
-**After.** `create_bill` reads the arrival instant ONCE, first, from the
-transaction's own clock — `SELECT now()` — derives `be_year` from THAT value
-through the single `_be_year` authority, and writes THAT SAME VALUE to
-`server_received_at` explicitly rather than leaving it to the DEFAULT. One value,
-used twice. The column default stays as a floor for any other writer.
-
-**Why it mattered more than a wrong label:** `doc_no_counters` is keyed on
-`(tenant_id, be_year)`, so a straddling bill did not merely get a wrong number —
-it OPENED THE WRONG COUNTER a year early. The new year's real first bill would
-then find that counter at 1 and become `B-<year>-2`, with no `B-<year>-1` ever
-existing. A permanent gap in a legal document sequence, of exactly the kind
-reconcile.py's T8 exists to scream about, and one nothing can go back and repair.
-
-**Proven by `server/scripts/prove_docno_clock.py`, in both directions, on the
-real `create_bill`.** It moves Python's clock across the Buddhist new year while
-Postgres keeps the real one, and asserts the code is completely unmoved. It
-**REFUSES to run against the live database** — a clock lie against unfixed code
-mints a bill in a year that has not happened and opens a counter row for it, and
-hard rule 5 means neither can be removed. Scratch copies only.
-
-The before/after is a measurement, not an argument — the same script was run
-against the unfixed code first, and both outputs are in Baseline observations.
-
-## Previous phase
+## Earlier phases
 
 **A1 — daily money view, mobile screen. UI only, no server changes. HEADLESS
-GREEN, DEVICE-UNVERIFIED.** The endpoint has had no caller but `curl` since it
+GREEN, DEVICE-UNVERIFIED.** *(That headline was true when A1 closed and is kept
+as the phase's own record. It expired on 2026-08-06: R2 drew the 403 rendering
+on a handset and staged the hung socket, so this screen is no longer
+device-unverified. Every "STILL UNVERIFIED ON DEVICE" claim below is scoped to
+A1's own closing state — see Current phase for what is true now.)* The endpoint
+has had no caller but `curl` since it
 landed; this is the screen that consumes it, and the first screen in the app built
 for the OWNER rather than the yard.
 
@@ -393,8 +457,6 @@ this screen DRAWS when it meets that refusal. That path is proven headless
 The token that could not be discarded is now recorded as a blocker in its own
 right — see **no sign-out** under "Blocking one real shop". It is a security item,
 not a testing inconvenience.
-
-## Earlier phases
 
 **Daily money view — complete, server only, no UI.** `GET /reports/daily`
 is the number an owner balances the cash box against at closing; until it
@@ -591,29 +653,77 @@ whole head-of-line queue on a stored future `next_attempt_at` — fixed
 in `436b3e9` and recorded in
 `lessons/a-stored-future-instant-is-a-promise-about-a-clock.md`.
 
-No phase is in progress and the next one has not been chosen. Per the
-CLAUDE.md workflow, this is a boundary: stop for review.
+## The two-clock be_year defect — FIXED 2026-08-02, own commit
+
+Owner-directed, immediately after A2 found it. **The fix is an ORDERING, not a
+tolerance**, which was the explicit instruction and is also the only thing that
+could have worked: a tolerance on "how far apart may the two clocks be" still
+leaves two clocks.
+
+**Before.** `server_received_at` was the column DEFAULT `now()` — Postgres'
+TRANSACTION START. `be_year` was `_be_year(datetime.now(tz=timezone.utc))`, a
+PYTHON read taken later in the same transaction, after the seller lookup and
+every product and price lookup. Two clocks and two moments, a full master-data
+round-trip apart.
+
+**After.** `create_bill` reads the arrival instant ONCE, first, from the
+transaction's own clock — `SELECT now()` — derives `be_year` from THAT value
+through the single `_be_year` authority, and writes THAT SAME VALUE to
+`server_received_at` explicitly rather than leaving it to the DEFAULT. One value,
+used twice. The column default stays as a floor for any other writer.
+
+**Why it mattered more than a wrong label:** `doc_no_counters` is keyed on
+`(tenant_id, be_year)`, so a straddling bill did not merely get a wrong number —
+it OPENED THE WRONG COUNTER a year early. The new year's real first bill would
+then find that counter at 1 and become `B-<year>-2`, with no `B-<year>-1` ever
+existing. A permanent gap in a legal document sequence, of exactly the kind
+reconcile.py's T8 exists to scream about, and one nothing can go back and repair.
+
+**Proven by `server/scripts/prove_docno_clock.py`, in both directions, on the
+real `create_bill`.** It moves Python's clock across the Buddhist new year while
+Postgres keeps the real one, and asserts the code is completely unmoved. It
+**REFUSES to run against the live database** — a clock lie against unfixed code
+mints a bill in a year that has not happened and opens a counter row for it, and
+hard rule 5 means neither can be removed. Scratch copies only.
+
+The before/after is a measurement, not an argument — the same script was run
+against the unfixed code first, and both outputs are in Baseline observations.
 
 ## What is built
 
 ### `server/` — running API
 
-- **Schema**, migrations `0001`–`0004` in `server/migrations/versions/`:
+- **Schema**, migrations `0001`–`0005` in `server/migrations/versions/`:
   `tenants`, `users` (role `admin`|`staff`), `uoms`,
   `product_categories`, `products`, `product_prices` (grade A–D),
   `sellers` (grade, id_number, address, vehicle_no — per SRS 1.6),
   `purchase_bills`, `purchase_bill_items`. The four master-data tables
-  carry `is_active` (0004). Row-level security is FORCEd per tenant; the
+  carry `is_active` (0004). `users.token_version` (0005) is minted into
+  every token and re-read from the user row on every request — on the same
+  query `get_principal` already runs to resolve the role, so it costs no
+  extra round trip. **DEFAULT 1, never 0**, so a token carrying no version
+  claim matches no user row: an absent claim is refused rather than read as
+  a confident zero. Row-level security is FORCEd per tenant; the
   runtime role `recycle_app` is NOSUPERUSER + NOBYPASSRLS and holds
   DML only.
-- **Endpoints** (`server/app/`). Open to any signed-in user: `GET /health`,
-  `POST /auth/login`, `GET /whoami`, `GET /products`, `GET /sellers`,
-  `GET /uoms`, `GET /product-categories`, `POST /bills`, `GET /bills`,
-  `GET /bills/{id}`. **Admin only**: `POST /bills/{id}/void`,
+- **Endpoints** (`server/app/`), in THREE categories, not two. **No
+  authentication at all**: `GET /health` (`main.py:53`), `POST /auth/login`
+  (`main.py:58`) — read off the handlers, neither of which takes a
+  principal. This file used to file both under "open to any signed-in
+  user", which was wrong in the direction that matters: it described an
+  unauthenticated surface as an authenticated one. **Any signed-in user**
+  (`Depends(get_principal)`): `GET /whoami`, `GET /products`,
+  `GET /sellers`, `GET /uoms`, `GET /product-categories`, `POST /bills`,
+  `GET /bills`, `GET /bills/{id}`. **Admin only** (`Depends(require_admin)`):
+  `POST /bills/{id}/void`,
   `POST`+`PATCH` on `/uoms`, `/product-categories`, `/products`,
   `/sellers`, `PUT /products/{id}/prices/{grade}`, and
-  `POST /{entity}/{id}/deactivate`+`/activate` on all four, and
-  `GET /reports/daily`. Every request
+  `POST /{entity}/{id}/deactivate`+`/activate` on all four,
+  `GET /reports/daily`, and `POST /users/{user_id}/revoke-sessions`
+  (`users.py:56`) — which its own docstring labels a STOPGAP: it ends live
+  SESSIONS and does NOT lock the account, because `users` has no
+  `is_active` column, so the user can sign in again the same second and
+  receive a fresh token carrying the new version. Every request
   is scoped to its token's tenant with `SET LOCAL` inside the request
   transaction. `code` is immutable after create on every entity — it is
   what a historical bill is read against.
@@ -628,12 +738,12 @@ CLAUDE.md workflow, this is a boundary: stop for review.
   completeness, and whether the database moved while it ran). Exit 0 / 1 /
   2 = clean / violations / could-not-run. Runbook is its own `--help` and
   module docstring.
-- **Proofs** — twelve scripts in `server/scripts/`, each exercising a
+- **Proofs** — THIRTEEN scripts in `server/scripts/`, each exercising a
   real path against a live database: `prove_rls`, `prove_auth`,
   `prove_master`, `prove_bills`, `prove_master_data_gate`,
   `prove_shop_time`, `prove_seller_pricing`, `prove_backup_restore`,
   `prove_master_write`, `prove_daily_report`, `prove_reconcile`,
-  `prove_docno_clock`. **Two now require a SCRATCH DATABASE and refuse the live
+  `prove_docno_clock`, `prove_revocation`. **Two now require a SCRATCH DATABASE and refuse the live
   one**: `prove_reconcile` (it breaks invariants on purpose) and
   `prove_docno_clock` (it lies to the server about the time, which against
   unfixed code permanently corrupts a doc_no series). Both take `--database`.
@@ -682,14 +792,19 @@ programs — see the boot check in CLAUDE.md.
   stored stamps.
 - **Screens** (`App.tsx`, `app/`): login, cart entry with numpad,
   per-bill seller picker, master-data strip with freshness state,
-  status strip and operator notices, bills panel with the void flow.
+  status strip and operator notices, bills panel with the void flow,
+  and the sign-out sheet (`app/SignOutSheet.tsx`), which can REFUSE —
+  it will not end a session while bills are still queued unsent.
 - **The owner's screen** (`app/DailyScreen.tsx`, `src/reports/dailyView.ts`):
   the day's total, the permanent understatement caveat, voided bills, voids
   applied today against older bills, off-list payments, and the bill list. Read
   only; needs the server; renders calmly when it cannot have one.
-- **Proofs**: THIRTEEN headless `npm run prove:*` scripts —
+- **Proofs**: FOURTEEN headless `npm run prove:*` scripts —
   `sync`, `sqlite`, `money`, `cart`, `entry`, `seller`, `notice`,
-  `void`, `time`, `cold`, `clock`, `daily`, `forbidden`. `prove:forbidden` is the
+  `void`, `time`, `cold`, `clock`, `daily`, `forbidden`, `signout`.
+  `prove:signout` (`src/proof/proveSignOut.ts`) covers the refusal path,
+  the cleared-session list and the draft that must SURVIVE a sign-out.
+  `prove:forbidden` is the
   first mobile proof that REQUIRES the live API: its F6 logs in as the
   seeded staff user and reads the server's actual 403 through the real
   `HttpTransport`. `--offline` skips that case and exits **2**, never 0.
@@ -729,26 +844,47 @@ not a new feature:
   not Expo served from a development machine.
 - **Real per-shop login.** Accounts and credentials the shop owns,
   created for it — not the dev fixture from `seed_dev.py`.
-- **NO SIGN-OUT. A shop cannot change who the phone is logged in as.**
-  **A SECURITY item, not a convenience one.** Written here as "A3" before
-  the numbering was settled; A3 was never opened and this work is now
-  **R1 in `ROADMAP.md`** — the first step, because it is blocked by
-  nothing and two other steps wait on it.
+- **SIGN-OUT — CLOSED by R1, 2026-08-06** (`19a6b63` server half, `7484645`
+  client half). This item read **"NO SIGN-OUT. A shop cannot change who the
+  phone is logged in as."** — **a SECURITY item, not a convenience one.**
+  Written here as "A3" before the numbering was settled; A3 was never opened
+  and the work became **R1 in `ROADMAP.md`** — the first step, because it was
+  blocked by nothing and two other steps waited on it.
 
-  Read out of the files rather than assumed: `TokenStore.clear()` EXISTS and
-  `SecureTokenStore` implements it (`SecureStore.deleteItemAsync`). **Nothing
-  calls it.** `App.tsx` calls `load()` at boot (line 449) and `save()` on sign-in
-  (line 727) and that is all — there is no sign-out button, no menu, no path of
+  **What now exists.** A phone can end its session deliberately
+  (`app/SignOutSheet.tsx`, `src/session/signOut.ts`), and the server can refuse
+  a token it already issued: `users.token_version` (migration 0005) is minted
+  into every token and re-read from the user row on every request, so bumping
+  it through `POST /users/{user_id}/revoke-sessions` stops every token issued
+  before the bump at that token's next request. Both halves have been observed
+  on a real handset — see Current phase and the 2026-08-06 device pass in
+  Baseline observations.
+
+  **The diagnosis that made it first, kept as the record.** Read out of the
+  files rather than assumed, at the time: `TokenStore.clear()` EXISTED and
+  `SecureTokenStore` implemented it (`SecureStore.deleteItemAsync`), and
+  **nothing called it** — `App.tsx` called `load()` at boot and `save()` on
+  sign-in and that was all; there was no sign-out button, no menu, no path of
   any kind. `expo-secure-store` puts the token in the iOS **Keychain**, which
-  survives deleting Expo Go, so reinstalling the app does not clear it either.
+  survives deleting Expo Go, so reinstalling the app did not clear it either.
+  **That last fact is unchanged by R1** and is still why a handset holds what
+  it holds; what changed is that something now calls `clear()`, and that the
+  server no longer has to take the token's word for it.
 
-  Bound it honestly, because the exposure is not unlimited: `JWT_TTL_SECONDS`
-  defaults to 3600 and there is no refresh token, so an issued token stops being
-  accepted within the hour. What is missing is any way to end a session
-  **deliberately, at the moment someone leaves** — and any way to end it from the
-  server side at all. A handset that is lost, sold, or kept by a departing
-  employee holds a working credential for that shop until the hour is up, and
-  nothing on the phone or on the server can take it back.
+  The exposure was bounded, and the bound is kept here because it is what made
+  this a defect rather than a catastrophe: `JWT_TTL_SECONDS` defaults to 3600
+  and there is no refresh token, so an issued token stopped being accepted
+  within the hour anyway. What was missing was any way to end a session
+  **deliberately, at the moment someone leaves** — and any way to end it from
+  the server side at all. **Both of those now exist.**
+
+  **What R1 did NOT fix**, written so that "closed" is not read as more than it
+  is: `users` still has no `is_active` column, so a revocation ends live
+  SESSIONS without locking the ACCOUNT — the user can sign in again the same
+  second and receive a fresh token carrying the new version. That is right for
+  a handover and wrong for a dismissal, and there is currently no way to
+  express the second. The revocation endpoint says so in its own docstring and
+  calls itself a stopgap.
 
   **CORRECTED 2026-08-05.** This paragraph used to end by saying that bills
   written on a handed-over phone are "attributed in `purchase_bills` to the person
@@ -767,6 +903,15 @@ not a new feature:
   audit question; it is **not** part of R1 and adding the column would not make one
   existing bill traceable.
 
+  **THIS PREDICTION WAS RIGHT, AND R1 DID BOTH HALVES** — `19a6b63` (server:
+  `token_version`, migration 0005, `prove_revocation.py`) and `7484645`
+  (client: the sheet, the cleared-session list, `proveSignOut.ts`). The
+  text below is kept UNEDITED because a correct prediction is evidence
+  that the ordering decision was sound, and because deleting it would leave
+  the decision looking arbitrary in hindsight. It argued that a client-only
+  sign-out would be a false fix and that the server half was the hard half;
+  both held.
+
   **The client half is nearly free and the server half is not**, which is exactly
   why it must not be done by halves: a sign-out button is one existing method
   wired to one button, and it would make the problem look dealt with while an
@@ -782,16 +927,26 @@ not a new feature:
   it is why A1's 403 rendering is still unverified on device.
 
   Deliberately NOT fixed in A1, which was UI-only on an existing endpoint.
+
+  **One sentence in the text above has since expired, and is marked rather than
+  edited:** "it is why A1's 403 rendering is still unverified on device" was
+  true when written and stopped being true on **2026-08-06**, when R1 made a
+  staff session possible on that handset and the 403 rendering was drawn under
+  it. That is R2 item 1; see Baseline observations. The mechanism the sentence
+  describes is still correctly described — it is the CONSEQUENCE that lifted.
 - **A back office to drive any of it.** The whole master-data write path
   now exists and is proven over HTTP, but the only thing that can call it
   is `curl`. `desktop/` is still empty, and the yard app is deliberately
   read-only for master data — so a shop still cannot set up its own
   products, prices or sellers without someone running requests by hand.
 - **A daily money view — the server half AND a mobile screen now exist**
-  (`GET /reports/daily`; `app/DailyScreen.tsx`, see Current phase). An owner can
-  open it on a phone. It is **device-unverified**, and the desktop back office
-  still has no version of it — a shop owner who works from a PC still cannot see
-  the day's takings there.
+  (`GET /reports/daily`; `app/DailyScreen.tsx`). An owner can open it on a
+  phone. **No longer device-unverified: R2 closed it on 2026-08-06**, admin
+  rendering having been observed on 2026-08-02 and the two remaining paths —
+  the 403 refusal and a hung socket — on 2026-08-06. The two are not equally
+  strong evidence and Known device gaps says which is which. What remains is
+  that the desktop back office still has no version of it — a shop owner who
+  works from a PC still cannot see the day's takings there.
 
 ## Known device gaps
 
@@ -842,23 +997,44 @@ reports it as proven.
   (`proveCart` C5, both sides of the commit, with a real SIGKILL). A
   successful save says nothing about it.
 - **`src/device/secureTokenStore.ts`**: that SecureStore honours the
-  contract is unverified off-device.
-- **The daily money screen: ONE pass, 2026-08-02, real iPhone, ADMIN only.**
-  Rendering, day stepping and the offline path are observed (see Current phase).
-  What that pass settled, worth naming because each was listed as a risk before
+  contract is unverified off-device. **NARROWED, not closed, 2026-08-06.**
+  The R1b pass exercised `clear()` on a real handset and the Keychain really
+  did clear — after signing out the screen read `ยังไม่ได้เข้าสู่ระบบ`, which
+  is different wording from `หมดเวลาเข้าใช้งาน`, so the two states are
+  distinguishable ON THE DEVICE and not only in the proof. What that settles
+  is `save`/`load`/`clear` on the happy path of one iOS version. It says
+  nothing about the store's behaviour when the Keychain itself refuses — a
+  locked device, a restore from backup, or a `deleteItemAsync` that throws —
+  and those remain unverified off-device.
+- **The daily money screen: TWO passes — 2026-08-02 (real iPhone, ADMIN) and
+  2026-08-06 (real iPhone, STAFF; R2).** Rendering, day stepping and the
+  offline path were observed on the first (see Previous phase). What that pass
+  settled, worth naming because each was listed as a risk before
   it: `new Date()` on a SIX-DIGIT fractional-second ISO string with a `+07:00`
   offset parses under Hermes (times rendered, not `—`), and the 44pt
   `adjustsFontSizeToFit` amount is readable at a real width.
 
-  What it did NOT touch, and must not be reported as working:
-  - **the 403 rendering** — never drawn on a device, because the Keychain token
-    could not be discarded. See Current phase and the sign-out blocker.
-  - **the 20s `AbortController` timeout.** The offline test killed the network,
-    which throws immediately; a server that ACCEPTS the connection and then never
-    answers is the case the timeout exists for, and it has not been staged. The
-    sync engine already relies on the same mechanism (`httpTransport`), so this is
-    not new to the app — but it has never been the thing standing between an owner
-    and an endless spinner.
+  **R2 item 1 — the 403 rendering. CLOSED on strong evidence.** Drawn on a
+  device for the first time, under a staff account: `GET /reports/daily` from
+  the handset was answered 403, and the screen showed a red card with **no
+  money field anywhere on it** — not a zero, not a dash. **The tie between the
+  log line and the screenshot is by SOURCE ADDRESS AND UNIQUENESS, not by
+  clock** — it is the only 403 in the log and it came from the phone's address
+  rather than from curl on the box; the uvicorn lines carry no timestamps.
+  Full record in Baseline observations.
+
+  **R2 item 2 — a hung socket. CLOSED on the roadmap's wording ("has been
+  staged"), and WEAKER than the item's name suggests.** Read this one
+  carefully. **What IS established:** a socket that completes the TCP accept
+  and then never answers ends in the no-number outage screen rather than a
+  `0.00` day. **What is NOT established:** that it ended at the 20 s ceiling
+  specifically, rather than at some other transport failure. The duration was
+  WATCHED on an operator's stopwatch, not measured, and this is the same
+  screen a REFUSED connection would produce. The staged socket is not uvicorn,
+  so the log contains no line for it; that absence is expected and is evidence
+  of nothing. Treat the ceiling itself as unverified.
+
+  What the two passes did NOT touch, and must not be reported as working:
   - **a truncated day** — `bills_truncated`, the capped void list, and the
     off-list "count outruns the page" note are proven headless only. Reaching them
     needs a day of >200 bills.
@@ -1172,27 +1348,21 @@ Dated, because they decay. Re-run them; do not cite them.
 - 2026-07-29 — **first Android pass ever**, borrowed handset. Scope and
   the much larger not-scope are in Known device gaps above.
 - 2026-07-29 — **two devices, one tenant, no collision and no gap.**
-  Read out of `purchase_bills`, not off the screens. **THESE FOUR ROWS NO LONGER
-  EXIST IN THE DEV DATABASE** — they were dropped by the 2026-08-03 rebuild and
-  survive only in the `pre-rebuild` dump. The observation stands as recorded;
-  it can no longer be re-queried live:
+  Read out of `purchase_bills`, not off the screens: `B-2569-222` (iPhone,
+  220.00), `B-2569-223` (Android, 11007.50), `B-2569-224` (Android, 210.00),
+  `B-2569-225` (iPhone, 1075.00) — contiguous, one bill each, no duplicate and
+  no skipped number. Devices identified from the uvicorn log by client IP.
+  222 is NOT a fresh tap: it is the same row as the 403 pass above, 39 minutes
+  earlier, so the ordering claim iOS-then-Android holds and the "back to back"
+  impression does not.
 
-  | doc_no | device | total | device_created_at | server_received_at |
-  |---|---|---|---|---|
-  | B-2569-222 | iPhone | 220.00 | 03:24:37.235 | 03:24:37.446 |
-  | B-2569-223 | Android | 11007.50 | 04:04:02.465 | 04:04:03.233 |
-  | B-2569-224 | Android | 210.00 | 04:09:19.017 | 04:09:43.765 |
-  | B-2569-225 | iPhone | 1075.00 | 04:09:18.892 | 04:09:43.923 |
-
-  Contiguous, one bill each, no duplicate and no skipped number. 222 is
-  NOT a fresh tap: it is the same row as the 403 pass above (id
-  `735ed2aa…`, 220.00), 39 minutes earlier — the ordering claim
-  iOS-then-Android holds, the "back to back" impression does not.
-  Devices identified from the uvicorn log by client IP (iPhone
-  `.243` throughout; Android `.250`, then `.248` after rejoining the
-  network — that address made exactly ONE request in its life, a
-  `POST /bills` that returned 201, which it could only do with a token
-  it already held, so it is the same handset on a new DHCP lease).
+  **COMPRESSED 2026-08-06** — the per-device `device_created_at` /
+  `server_received_at` table and the DHCP-lease reasoning are removed. Kept
+  because the entry below cites it: `B-2569-225` carries the earlier
+  `device_created_at` by 125 ms and arrived 158 ms later. **These four rows no
+  longer exist in the dev database** — dropped by the 2026-08-03 rebuild and
+  surviving only in the `pre-rebuild` dump, so the removed detail could not be
+  re-queried either way. The observation stands as recorded.
 
 - 2026-07-29 — **doc_no and weighing order DISAGREE across devices, and
   that is correct.** In the offline pair above, B-2569-225 carries the
@@ -1429,6 +1599,25 @@ Dated, because they decay. Re-run them; do not cite them.
   - a row landing mid-run is reported by X3 (`rows_at_start=46 rows_at_end=47`),
     not absorbed; a refused admin connection exits **2**, and so does a
     database that does not exist.
+
+  **DECAYED — this green has not held since 2026-08-03, and the cause is not
+  R1.** The 118 assertions above were written against the pre-rebuild
+  46-tenant database. The 2026-08-03 rebuild took it to 2 tenants, and three of
+  them are absolute counts of a database that no longer exists:
+  `prove_reconcile.py:634` `{"T0": 91}`, `:636`
+  `rows_visible_with_no_tenant_context=46`, and `:718` `rows_at_start=46
+  rows_at_end=47`. **Measured either side of migration 0005, not inferred:** it
+  fails from a pre-0005 dump (48 tenants, `T0` got 95), from a second pre-0005
+  dump (3 tenants, `T0` got 3), and identically from a post-0005 dump — the
+  same four failures throughout, so `token_version` is not involved. **What
+  still stands: every injection that is about MONEY still passes.** Only the
+  two tenant-count assertions and the X3 timing probe fail, so what decayed is
+  the proof's expectations about its own fixture, not the checker's ability to
+  see a money defect. Tracked in `OPEN_ITEMS.md`; fixing it means deciding what
+  those numbers should be derived FROM, which is a change to a destructive
+  proof and not one to make in passing. Fifth bite of
+  `lessons/proof-must-run-twice.md`, in the very file its fourth amendment was
+  written about.
 - 2026-08-02 — one wrong PREDICTION found by the harness, in the harness:
   renumbering the TOP bill to `B-2569-99999` was expected to report
   `MISSING seq=[305]`. The checker instead reported 99 694 missing numbers,
@@ -1436,22 +1625,103 @@ Dated, because they decay. Re-run them; do not cite them.
   all exist. The injection was changed to a realistic hand-renumber (one past
   the top); the checker was not changed.
 - 2026-07-29 — **proof debris measured, tenant A: 301 bills, 248 active, 53
-  voided.** By originating script (idempotency-key prefix): `bill` 92/69
-  active, `mw` 56/46, `selpx` 44/44, `daily` 36/28, `mdgate` 20/20,
-  `shoptime` 14/14, **`backup` 10/0**. Only `prove_backup_restore` leaves
-  nothing live, because it is the only one that voids its own fixture.
-  **37 active proof bills landed on today** — a day `GET /reports/daily`
-  now shows, mixed in with the 4 real device bills. `prove_daily_report`
-  contributes 0 to that: its fixtures are quarantined on 2019-03-14. No
-  master-data debris is created by any current script; the pinned
-  `PROD-f0c445f2` / `SELL-f0c445f2` pair is an artifact of a pre-fix
-  version of `prove_master_write`, which now writes that bill against the
-  SEEDED product and seller.
+  voided**, by originating script. Only `prove_backup_restore` left nothing
+  live, because it is the only one that voids its own fixture. **37 active
+  proof bills had landed on the real current day**, mixed in with the 4 real
+  device bills on a day `GET /reports/daily` shows.
 
-  **SUPERSEDED by the 2026-08-03 rebuild** — every row counted here is gone,
-  including the pinned `PROD-f0c445f2` / `SELL-f0c445f2` pair that was described
-  as permanent and uncleanable. It was, by any means short of replacing the
-  volume. The **shape** of the finding still holds and is why the OPEN DECISION
-  on a shared proof teardown below is still open: proof bills that land on the
-  real current day are still indistinguishable from trade in the daily report,
-  and the counts will climb again from zero.
+  **SUPERSEDED by the 2026-08-03 rebuild, and COMPRESSED 2026-08-06** — the
+  per-script breakdown and the pinned `PROD-f0c445f2` / `SELL-f0c445f2` pair
+  are removed. Every row counted here is gone, including that pair, which was
+  described at the time as permanent and uncleanable: it was, by any means
+  short of replacing the volume. **The SHAPE of the finding still holds** and
+  is why the OPEN DECISION on a shared proof teardown is still open — proof
+  bills that land on the real current day are still indistinguishable from
+  trade in the daily report, and the counts will climb again from zero.
+
+### 2026-08-06 — device pass, real iPhone (R1b and R2)
+
+Transcribed from the operator's record, which existed in no file in this
+repository before this entry — verified by grep for `403` and `16:0` across the
+repo, which returned only the 403 *class* as discussed in `lessons/` and code,
+one DIFFERENT 403 observation from 2026-07-29
+(`lessons/403-is-about-what-the-caller-may-do.md:150`, a void on iPhone `.243`),
+and two unrelated ISO timestamps. Every line below was read from a uvicorn log
+or from Postgres **except where it says it was read off the screen.**
+
+DEVICE PASS 2026-08-06, real iPhone, R1b and R2.
+
+R1b — sign-out, all cases passed on the handset.
+- Booting with an OLD token in the Keychain carrying no version claim:
+  GET /products and GET /sellers both 401. The app drew "หมดเวลาเข้าใช้งาน
+  — ต้องเข้าสู่ระบบใหม่ บันทึกบิลได้ตามปกติ". It did NOT default to
+  letting the session through.
+- The pending gate works both ways: an empty queue drew "บิลทั้งหมด
+  ส่งขึ้นระบบครบแล้ว" and released; one queued bill drew "ยังออกจาก
+  ระบบไม่ได้ / มีบิลรอส่งขึ้นระบบ 1 ใบ" and refused.
+- A draft survived the sign-out: a 4-line cart totalling 4384.20 was
+  left in the basket before signing out and was still whole after
+  signing back in. Off the screen at 16:07, bill B-2569-68 carries
+  4 รายการ / 4384.20 — the operator confirms this is that same cart,
+  saved and synced after the sign-out.
+- The Keychain really cleared: after signing out the screen read
+  "ยังไม่ได้เข้าสู่ระบบ", different wording from "หมดเวลาเข้าใช้งาน",
+  so the two states are distinguishable on the device and not only in
+  the proof.
+- Hard rule 3 on the screen: a bill that has not reached the server
+  showed "ยังไม่มีเลขที่" rather than a fabricated number.
+- The 12-hour price gate fired on real hardware for the first time:
+  a 3-day-old cache drew the amber band and the system did not fill
+  the price in — the operator typed it.
+
+R2 item 1 — the 403 rendering, drawn on a device for the first time.
+- GET /reports/daily from the handset (192.168.1.249:64623) -> 403
+  Forbidden, after that same socket's own POST /auth/login 200 and
+  GET /products, GET /sellers 200. It is the ONLY 403 in the log, and
+  it came from the phone's address, not from curl on the box.
+- Off the screen (16:06): a red card, badge "ไม่มีสิทธิ์ดูยอดประจำวัน",
+  body "บัญชีนี้ดูยอดเงินประจำวันของร้านไม่ได้ — ต้องแจ้งเจ้าของร้าน".
+  NO money field appears anywhere on that screen — not a zero, not a
+  dash: total, void list and off-list line are all absent. That is
+  A1's design holding on a real handset: the leak is unrepresentable
+  rather than guarded.
+- Off the screen (16:07): the bill list under the same staff session
+  replaced the void control on all three bills with "ยกเลิกบิลได้
+  เฉพาะบัญชีเจ้าของร้าน". No void request was attempted and none
+  appears in the log — the client refused before the wire. This
+  observation therefore says NOTHING about the server's void gate,
+  which is proven separately (prove:forbidden F6).
+- Limit of this observation: the uvicorn lines carry no timestamps.
+  The 403 is tied to the screenshot by being the only one in the log
+  and by its source address, not by clock.
+
+R2 item 2 — the 20 s transport timeout, staged for the first time.
+WEAKER EVIDENCE THAN THE ABOVE, and recorded as such.
+- Staged as a socket that completes the TCP accept and then never
+  answers. It is not uvicorn, so the uvicorn log contains NO line for
+  it. That absence is expected and is not evidence of anything.
+- Off the screen (16:09): badge "ยังติดต่อระบบไม่ได้", body "หน้ายอด
+  ประจำวันต้องอ่านตัวเลขจากระบบ ... ยังไม่ได้ตัวเลขจากระบบ จึงยังไม่
+  แสดงยอด — ไม่ได้แปลว่าวันนี้ไม่มีการซื้อขาย บิลที่บันทึกไว้ยังอยู่
+  ครบทุกใบ", plus a "ลองอีกครั้ง" button. No money field. The day did
+  not render as 0.00.
+- WHAT THIS DOES NOT ESTABLISH: the ~20 s was watched by the operator,
+  not measured, and this is the same screen a REFUSED connection would
+  produce. What is proven is that a hung socket ends in the no-number
+  outage screen instead of a zero. That it ended at the 20 s ceiling
+  specifically, rather than at some other transport failure, rests on
+  the operator's stopwatch and nothing else.
+
+- 2026-08-06 — **proof and typecheck runs, READ OUT OF THE TWO COMMIT BODIES,
+  not re-run in this documentation phase.** From `7484645`: `prove:signout`
+  green TWICE bare with no reseed between the runs, and **both TypeScript
+  programs — the node program and the Expo app program — exit 0**. The other
+  THIRTEEN mobile proofs were green twice each *earlier in that session*,
+  **against a tree differing from the committed one only in
+  `proveSignOut.ts`**. That hedge is the commit's own and is kept deliberately:
+  it is NOT the same claim as all fourteen green twice on the committed tree,
+  and the difference is exactly the kind a later session would round off.
+  From `19a6b63`: nine server proofs green plus `prove_backup_restore`, and
+  `reconcile.py` against the dev database **exit 0, 44 checks, 0 violations,
+  unchanged**. `prove_reconcile.py` was already RED for reasons predating that
+  change — see the decay note above.

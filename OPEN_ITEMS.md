@@ -84,6 +84,20 @@ idea — only that it is unresolved.
   divergence is the actual open question, not the column.** Keep it out
   of `R1`: R1 is about refusing a live token, and no column added there
   would make a single already-written bill traceable.
+- **A half-finished cart surviving a change of USER — `R5`'s question,
+  not `R1b`'s** — sign-out deliberately LEAVES the open draft in SQLite
+  (`local_draft`), and R1b proves it is still there afterwards rather
+  than assuming it. That is right today: a draft is one un-promoted
+  weighing, nothing is money until `promoteToBill` runs, and clearing it
+  would be the single place sign-out destroys work. *Not done:* the
+  question only becomes real when a DIFFERENT person can sign in, and
+  today they cannot — `signIn()` uses the hardcoded DEMO credentials in
+  `mobile/app/config.ts`, so signing out and back in returns the same
+  account. *Unblocks:* `R5` (real per-shop accounts) deciding whether a
+  cart left open by the departing shift should be offered to the next
+  one, discarded, or shown with its author named — which is also the
+  point at which "who wrote this" becomes answerable at all (see the
+  `created_by` item above).
 - **Scheduled and off-site backup — `R3`, same step as the server** —
   the dump/restore scripts exist and the round trip is proven, but
   **nothing schedules them** and the copies sit on the same box. *Not
@@ -99,12 +113,69 @@ idea — only that it is unresolved.
 
 ## Verification gaps — built, not proven
 
-- **The 403 rendering on the daily money screen has never been drawn on
-  a device — `R2`.** *Not done:* the phone could not be made to hold a
-  staff session — the token lives in the iOS Keychain and survives
-  deleting the app. *Unblocks:* the sign-out item above (`R1`). This is
-  the same mechanism wearing a friendlier face, and it is half the
-  reason sign-out is the first step rather than a later one.
+- **~~The 403 rendering on the daily money screen has never been drawn
+  on a device — `R2`~~ — CLOSED 2026-08-06.** It was drawn, under a staff
+  session on a real iPhone — which R1 made possible for the first time,
+  because the Keychain token could finally be discarded. **The record is
+  the dated entry in `PROJECT_STATUS.md`'s Baseline observations
+  (2026-08-06 device pass, R2 item 1), and is deliberately NOT restated
+  here:** two copies drift, and a new session believes whichever it reads
+  first. **The limit the observation states about itself travels with
+  it** — the uvicorn lines carry no timestamps, so the 403 is tied to the
+  screenshot by SOURCE ADDRESS and by being the only 403 in the log, not
+  by clock. *Why it was blocked, kept because it is the reason for the
+  ordering:* the phone could not be made to hold a staff session, the
+  token living in the iOS Keychain and surviving deletion of the app —
+  the same mechanism wearing a friendlier face, and half the reason
+  sign-out was the first step rather than a later one.
+- **The sync strip says the phone is OFFLINE while the server is
+  refusing its token — observed on a device, and NOT diagnosed.
+  `R2b` in `ROADMAP.md`** — its own step, inserted after R2; R3 onward
+  keep the numbers they already had. **The diagnosis is being done in a
+  separate read-only session and is not finished, so no cause is accepted
+  and none is written below.**
+  Device pass 2026-08-06, real iPhone, Shop A admin account, `R1b`
+  build (sign-out written, not yet committed); each step observed
+  before the next. Airplane mode on, one bill weighed and saved
+  (88.00, one line), sitting in the send queue as `รอส่ง` with no
+  doc_no. From the PC, `POST /users/35d09981-…/revoke-sessions`
+  returned 200 and `users.token_version` for that user moved 1 → 2,
+  read back out of Postgres. Airplane mode off, Wi-Fi at full strength
+  for the rest of the pass. Over the next ~3 minutes the queued bill
+  cycled `รอส่ง` → `กำลังส่ง` → `รอส่ง` and never sent. The sync strip
+  read, verbatim:
+  `ออฟไลน์ — เก็บไว้ในเครื่อง 1 ใบ จะส่งให้เองเมื่อเน็ตกลับมา`
+  Sign-out was refused with a dialog reading, verbatim:
+  `ยังออกจากระบบไม่ได้ / มีบิลรอส่งขึ้นระบบ 1 ใบ / รอให้ส่งครบก่อน แล้วจึงออกจากระบบได้`
+  **The daily money screen, opened in the same minute, classified the
+  SAME refusal correctly:** a `ต้องเข้าสู่ระบบใหม่` card, no money field
+  anywhere on it, and a sign-in button that resolved the session when
+  tapped. Read out of the uvicorn log, not off the screen:
+  `GET /products`, `GET /sellers`, `POST /bills` and
+  `GET /reports/daily` all returned 401, then `POST /auth/login` 200
+  and the queued bill posted 201.
+  **Why it matters:** two renderers of one app drew one cause two ways
+  in one minute, and the sync-strip wording is FALSE while it is on
+  screen — the network was up. The sign-out dialog names a condition
+  that never arrives if the token cannot be renewed, which in the
+  revocation case it cannot. **Revocation is not required to reach
+  this:** it is what every device draws when `JWT_TTL_SECONDS` expires
+  mid-shift. This is `lessons/unavailable-is-not-rejected.md` and
+  `lessons/401-is-about-the-caller-not-the-bill.md` landing together in
+  shape **(c)** of `BRIEFING.md` §5 — a correct backend is not a
+  correct product until the screen agrees. *Not done:* **the cause has
+  not been diagnosed, and this entry deliberately does not name one.**
+  Two candidates with different fixes: the sync engine may classify 401
+  as `unavailable` on this path, or it may classify per record
+  correctly while `queueHealth` reads "records pending + nothing
+  sending" as an offline backlog. Nobody has read `engine.ts` or
+  `queueHealth.ts` for this. Found during the `R1b` device pass and
+  deliberately NOT fixed inside it — a fix without a diagnosis is what
+  `lessons/diagnosis-must-precede-the-fix.md` exists for, and an entry
+  naming a cause nobody measured is worse than one that says the cause
+  is unknown. *Unblocks:* reading those two files against this
+  reproduction, which is cheap to stage — revoke a session, or just let
+  a token expire while a bill is queued.
 - **`prove_reconcile.py` is RED, and has been since the 2026-08-03
   rebuild — NOT caused by anything in R1a.** Three of its expectations
   are absolute counts of a database that no longer exists:
@@ -127,6 +198,40 @@ idea — only that it is unresolved.
   in the very file its fourth amendment was written about** — a count
   assertion over data that can change has a half-life, and this one
   expired the day the database was rebuilt.
+- **A 400 ms unconditional `refresh()` runs on a screen that has signed
+  out** — `App.tsx:560-569` re-reads the local bill store every 400 ms
+  while `ready`, with no gate on the session at all, so it keeps running
+  after a sign-out. *Harmless today,* and that is the whole of why it is
+  a recorded line rather than a fix: everything `refresh()` currently
+  reads is SHOP data that legitimately survives a change of operator —
+  bill counts, the bill list, queue health, the last sync time. **What
+  is not guaranteed is that it stays that way.** Nothing prevents a
+  session-derived value being added to `refresh()` later, at which point
+  a signed-out screen starts re-populating it every 400 ms and
+  `CLEARED_SESSION` cannot hold. *Not done:* not `R1b`'s to fix, and
+  gating it is not free either — see the note on `lastSyncedAt` and
+  `health` in `src/session/signOut.ts`, which become load-bearing the
+  moment this ticker IS gated. *Unblocks:* deciding what `refresh()` is
+  for — shop data only, in which case say so and keep it ungated, or
+  session-aware, in which case it needs the gate and the two values
+  above stop being redundant on the same day.
+- **`App.tsx` holds its session as ten independent `useState` atoms, so
+  no proof can see one being ADDED** — `R1b` put the list of
+  session-derived values in `src/session/signOut.ts` (`ClearedSession`)
+  and made `App.tsx` apply it through a mapped setter type, so a value
+  added to THE LIST is a compile error until the app supplies a setter.
+  The opposite direction is still open: a new `useState` added to
+  `App.tsx` and never added to the list is invisible to the compiler and
+  to `proveSignOut` alike, and the cost is the departed user's role,
+  permission refusal or takings left on screen under the next user's
+  session. *Not done:* closing it means `App.tsx` holding ONE session
+  state value instead of ten — measured at **45 setter sites and ~88
+  read sites**, plus a change to React's re-render granularity, which is
+  not a refactor to run inside a security phase on an app whose only
+  verification is a device pass. *Unblocks:* a deliberate state refactor,
+  best done when something else already requires touching those call
+  sites. Until then the limit is labelled in `proveSignOut.ts` S2 rather
+  than implied.
 - **Android coverage** — one pass, one borrowed handset, one OS version.
   The void flow, the offline behaviours, draft recovery, the stale-cache
   price gate and background sync have never run there. *Not done:* no
@@ -138,11 +243,27 @@ idea — only that it is unresolved.
   driver cannot run outside a device. *Unblocks:* a scripted device
   test that kills the process mid-transaction, or accepting the risk in
   writing.
-- **The 20-second request timeout has never been exercised — `R2`.** The
-  offline test killed the network, which throws immediately; the case
-  the timeout exists for is a server that ACCEPTS the connection and
-  then never answers. *Not done:* never staged. *Unblocks:* a stalling
-  proxy or a deliberately hung endpoint.
+- **The 20-second request timeout — STAGED 2026-08-06, and STILL OPEN on
+  what the staging could not establish.** A hung socket — one that
+  completes the TCP accept and then never answers — was put in front of
+  the daily money screen for the first time, which is the case the
+  timeout exists for and which the old offline test (network killed,
+  throws immediately) never reached. **ESTABLISHED:** it ends in the
+  no-number outage screen — badge, retry button, no money field — rather
+  than rendering the day as `0.00`. **NOT ESTABLISHED:** that it ended at
+  the 20 s ceiling specifically rather than at some other transport
+  failure. The duration was WATCHED on an operator's stopwatch, not
+  measured, and a REFUSED connection draws the same screen, so the
+  observation cannot separate the two. The staged socket is not uvicorn,
+  so the log holds no line for it; that absence is expected and is
+  evidence of nothing. Record: `PROJECT_STATUS.md` Baseline observations,
+  2026-08-06 device pass, R2 item 2 — not restated here. *Not done:*
+  nothing has yet timed the wait against the constant, so the entry is
+  neither closed nor untouched — the failure mode is proven safe, the
+  ceiling is not proven to be the thing that produced it. *Unblocks:* a
+  staging that MEASURES the elapsed time — a hung endpoint plus a clock,
+  or an instrumented `AbortController` — which is what would turn "a hung
+  socket fails safely" into a statement about the 20 s value itself.
 - **Two devices racing inside the same millisecond** — two phones on one
   shop is observed, but they reconnected 158 ms apart, which is
   "near-simultaneous", not a race. *Not done:* hard to stage by hand.
@@ -158,9 +279,49 @@ idea — only that it is unresolved.
   while it ran. *Not done:* deliberately, and the harness refuses such
   injections by scanning for them. *Unblocks:* a genuinely separate
   cluster. Low value; recorded so nobody "fixes" the label.
+- **The sign-out guard on an IN-FLIGHT send sits where no proof can
+  reach it.** `mobile/App.tsx:611` re-checks
+  `maySync({ paused: syncPausedRef.current, token: tokenRef.current })`
+  AFTER `await engine.runOnce()` (line 581), so a sign-out landing
+  mid-pass cannot write session state onto a screen that already says
+  signed out. The guard is correct and its boundary — what is dropped
+  (session claims) versus kept (everything already written to SQLite) —
+  is argued at `App.tsx:583-610`. **What is unproven is its PLACEMENT,
+  not its logic.** `maySync` itself
+  (`mobile/src/session/signOut.ts:79`) is asserted as a predicate by
+  `proveSignOut` S4b, but that `App.tsx` calls it a SECOND time, after
+  the await, is asserted nowhere: **delete line 611 and `prove:signout`
+  stays green AND `npm run typecheck:app` still exits 0** — removing a
+  call is valid TypeScript, and `maySync` stays used at line 579 so no
+  unused-import error fires either. *Not done:* `App.tsx` is outside the
+  node proof program entirely (`tsconfig.node.json` sets
+  `rootDir: "src"`), so no proof can see that line; closing it means
+  moving the decision down into `src/` where a proof can drive the
+  ordering. *Unblocks:* a proof that owns the ORDER of a sync pass rather
+  than only the predicate it consults — which would also cover any future
+  guard added to `syncOnce`.
 
 ## Code debt found and left in place
 
+- **A red build still overwrites `dist/`, and the only thing between that
+  and RUNNING it is the `&&` in an npm script.**
+  `mobile/tsconfig.node.json` does not set `noEmitOnError` (read
+  field-by-field: it is absent), and `tsc` emits by default even when
+  type checking fails — so a compile with errors writes JavaScript into
+  `dist/` and exits non-zero. What holds today is the shell, not the
+  compiler: `"build": "tsc -p tsconfig.node.json && node
+  tools/finish-build.mjs"` and every `"prove:*": "npm run build && node
+  dist/proof/….js"` (`mobile/package.json:11-27`), where the `&&` refuses
+  to run the proof after a failed compile. **The gap is the direct
+  invocation.** Anyone running `node dist/proof/proveSignOut.js` by hand
+  after a red build executes emitted output that does NOT correspond to
+  `src/`, and nothing on screen says so — the proof prints its own greens
+  from stale code. *Not done:* it has never bitten, and the npm scripts
+  are the documented path, so this is a latent trap rather than an
+  observed failure. *Unblocks:* `"noEmitOnError": true` in
+  `tsconfig.node.json`, which makes the guarantee a property of the
+  compiler instead of a property of which command someone happened to
+  type.
 - **`TAP_MIN` is a stated standard honoured in two screens and undercut
   everywhere else.** It is `56`, DUPLICATED as a local constant in
   `mobile/app/CartScreen.tsx` and `mobile/app/SellerPicker.tsx` (free to
@@ -323,6 +484,33 @@ or from a plausible-sounding summary.
   a closed log in `PROJECT_STATUS.md` (they are cited in commit bodies
   and so cannot be renamed); forward steps are R-numbers in
   `ROADMAP.md`; no new A-number will be issued.
+- **An amendment is OWED to
+  `lessons/a-checker-must-not-share-the-code-it-checks.md` — the same
+  shape as the original, but with a CONSTANT where that one had an
+  arithmetic helper.** Found 2026-08-06 while writing `proveSignOut`.
+  The lesson's existing bounds are "duplicate arithmetic, never duplicate
+  a convention"; this is a third face of the same rule. S2 originally
+  compared what `applyClearedSession` wrote against `CLEARED_SESSION` —
+  **the object under test.** The applier reads that same object, so the
+  two agree BY CONSTRUCTION: ten cells were structurally in agreement and
+  **eight of them could never go red**, whatever the constant was changed
+  to. Only `token` and `online` carried an assertion capable of failing.
+  **Measured rather than reasoned:** all eight were then mutated in
+  `CLEARED_SESSION`, one field per run, to wrong-but-plausible values —
+  and every one was a TS2322 at the declaration site, so the build
+  stopped and the proof never ran. **Not one of the eight literals
+  fired.** The residue is what makes it worth a lesson rather than a
+  fix: tsc holds those eight, so the proof's real contribution is the one
+  case the compiler cannot see — the interface literal and the constant
+  widened TOGETHER — plus an `Omit<>` that makes an ELEVENTH field a
+  compile error until its expected value is written down. Full working is
+  already recorded at `mobile/src/proof/proveSignOut.ts:273-304`; what is
+  missing is the generalisation in `lessons/`. *Not done:* nothing under
+  `lessons/` was edited by the documentation phase that found it, by
+  instruction. *Unblocks:* writing the amendment — and with it the
+  general form, that "the proof reads its expected value out of the thing
+  under test" has now bitten with a HELPER and with a CONSTANT, so the
+  test is the relationship, not the kind of thing shared.
 - **Four open questions carried by `ROADMAP.md` rather than this list**,
   because each one moves a step rather than adding an item: does the
   pilot shop need a printed slip on day one (if yes, printing and the
@@ -330,3 +518,4 @@ or from a plausible-sounding summary.
   changes); where master-data screens live; who creates a shop's first
   admin; and whether the second-hand goods act's answer needs to arrive
   before real data accumulates under the current schema.
+  

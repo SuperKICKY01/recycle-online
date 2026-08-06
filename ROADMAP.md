@@ -16,16 +16,27 @@ them (`27a0453`: "the A1 device pass", "a SECURITY item for A3"), so they cannot
 renamed without orphaning the history. **No new A-number will be issued.** A3 was
 never opened — the sign-out work it named is now **R1** below.
 
+**A step discovered mid-flight gets a LETTER, not a renumber** — hence `R2b`, added
+2026-08-06 for a defect the R1b device pass surfaced. R3 through R10 keep the numbers
+they already had. The rule is the same one that retired the A-numbers: other files
+and commit bodies already point at these labels, and shifting them to keep the
+sequence tidy buys nothing and orphans every reference.
+
 ## What next, and why that
 
-**R1 — sign-out, both halves.** It is blocked by nothing, it is the only item on the
-path to a shop that is a *defect* rather than missing infrastructure, and it is the
-smallest of the three things it unblocks.
+**R1 and R2 are CLOSED as of 2026-08-06.** R1 landed in two commits — `19a6b63`
+(server) and `7484645` (client) — and R2's two device observations were made the
+same day. **R2b is new and is now the head of the queue:** a defect the R1b device
+pass surfaced, undiagnosed, described below. After it, **R3 — the hosting decision**
+is the next step, and its clock can start immediately and independently.
 
-**In parallel, make the hosting decision (R3).** Not the work — the decision. It is
-the only step with external lead time: a host has to be chosen, paid for and pointed
-at a name. Code has no lead time; procurement does. Starting that clock while R1 is
-being written costs nothing and is the one place where working in parallel is free.
+**R3's clock runs on procurement, not on code.** A host has to be chosen, paid for
+and pointed at a name; that is the only step in this file with external lead time.
+Nothing about starting it depends on R2b or on any other software step finishing
+first, so it should be started in parallel rather than queued behind anything.
+
+**R2b before R3 in attention, not in exclusivity.** R2b is a live defect on the one
+path a shop uses every day; R3 is a purchase. They do not compete for the same hours.
 
 ## The two paths, and the gate between them
 
@@ -48,18 +59,38 @@ accordingly. That is a consequence of the R4 decision, not an exception to the g
 
 ## Path A
 
-### R1 — Sign-out, and the server's ability to refuse a live token
+### R1 — Sign-out, and the server's ability to refuse a live token — **CLOSED 2026-08-06**
 
 **Depends on:** nothing. **Unblocks:** R2, and makes R5 safe.
 **Done when:** a phone can end its session deliberately, AND a token already minted
 can be refused by the server before its hour is up — proven by an actual request
 that gets refused, not by the button existing.
 
+**CLOSED, both halves, and the done-condition was met on its own terms.**
+`19a6b63` — the server half: `users.token_version` (migration `0005`) minted into
+every token and re-read from the user row on every request, bumped through
+`POST /users/{user_id}/revoke-sessions`; a token issued before the bump is refused
+at its next request, proven by `server/scripts/prove_revocation.py` with the guard
+line removed and the proof observed RED before it was restored. `7484645` — the
+client half: a sign-out sheet that can REFUSE (it will not end a session while bills
+are still queued unsent) and can fail without claiming success. Both halves were
+observed on a real handset on 2026-08-06; the record is in `PROJECT_STATUS.md`'s
+Baseline observations and is not restated here.
+
+**What it did NOT do**, so "closed" is not read as more than it is: `users` has no
+`is_active` column, so a revocation ends live SESSIONS without locking the ACCOUNT.
+The revoke endpoint labels itself a stopgap for exactly this reason.
+
 Read out of the files rather than assumed: `TokenStore.clear()` exists on the
 interface (`mobile/src/session/tokenStore.ts:50`), on the in-memory store (`:76`) and
 on the device store (`mobile/src/device/secureTokenStore.ts:59`, calling
 `SecureStore.deleteItemAsync`). **Its only caller in the entire repository is a
 proof** (`mobile/src/proof/proveCold.ts:1142`). Nothing in the app calls it.
+
+**The rest of this section is the argument that put R1 first, kept in its original
+present tense as the record of a decision that turned out to be right. Read it as
+written BEFORE the work — every "is waiting" and "has never" below was true on
+2026-08-05 and is not a claim about today.**
 
 Three separate things are waiting on this, which is why it is first despite being
 neither the largest nor the most visible:
@@ -93,12 +124,34 @@ neither the largest nor the most visible:
    change or deactivation, checked where the role is already re-read on every request
    — that path exists and runs per request today.
 
-### R2 — Close the daily money screen's device gaps
+### R2 — Close the daily money screen's device gaps — **CLOSED 2026-08-06**
 
 **Depends on:** R1. **Unblocks:** nothing — it is verification, not capability.
 **Done when:** the 403 rendering has been SEEN on a handset under a staff account,
 and a server that accepts the connection then never answers has been staged against
 the 20 s timeout.
+
+**CLOSED — both done-conditions met, on evidence of UNEQUAL strength. The
+asymmetry is recorded because closing the step does not make the two the same.**
+
+- **Item 1, the 403 rendering — STRONG.** Seen on a handset under a staff account,
+  which R1 made possible for the first time. The screen carried no money field at
+  all. Stated limit, carried with the observation: the uvicorn lines have no
+  timestamps, so the 403 is tied to the screenshot by source address and by being
+  the only 403 in the log, not by clock.
+- **Item 2, the hung socket — CLOSED ON THIS FILE'S OWN WORDING ("has been
+  staged"), and the residue is still open.** What was established is that a socket
+  which accepts and then never answers ends in the no-number outage screen rather
+  than a `0.00` day. What was NOT established is that it ended at the 20 s ceiling
+  specifically — the duration was watched on a stopwatch, not measured, and a
+  refused connection draws the same screen. **That residue is now tracked as its
+  own line in `OPEN_ITEMS.md` and this step must not be read as proving the
+  timeout value.** The done-condition asked for a staging and got one; it did not
+  ask for a measurement, which is the gap that remains.
+
+**The argument that scheduled this step, kept in its original tense** — written
+before the work, so "nobody can make yet" and "has never happened" below describe
+2026-08-05 and are not claims about today:
 
 This step exists because the screen is already built and its remaining gaps are
 observations nobody can make yet. It is cheap, it becomes possible the moment R1
@@ -107,14 +160,55 @@ starts depending on it rather than after. The 403 path is proven headless and pr
 end-to-end for the void flow; what has never happened is this screen drawing that
 refusal on a device.
 
-Also unstaged and belonging here: a truncated day, and a past day with real trade in
-it. Both need volume that does not exist yet — carry them to R6 rather than
-manufacturing it.
+**Still open, and NOT part of what closed here:** a truncated day, and a past day
+with real trade in it. Both need volume that does not exist yet — carry them to R6
+rather than manufacturing it. Neither was in R2's done-condition, so R2's closure
+says nothing about them.
+
+### R2b — The sync strip contradicts the server, and a queue that cannot drain
+
+**Depends on:** nothing — it is diagnosable and fixable today. **Unblocks:** trusting
+any offline indicator on the yard floor.
+**Done when:** a device whose token the server is refusing STOPS reporting itself as
+offline, and a sign-out is no longer gated behind a queue that cannot drain — with
+the behaviour observed on a handset, not only in a proof.
+
+**NEW, and it is a defect rather than missing infrastructure — which is what R1 was,
+and is why it takes R1's old place at the head of the queue.** Found by the R1b
+device pass on 2026-08-06 and deliberately not fixed inside it.
+
+**Written from the observation only.** The symptom, as seen: with the network up at
+full strength and the server answering 401 to every request, the sync strip read
+`ออฟไลน์` — offline — while one bill sat in the queue and never sent. Sign-out was
+refused, correctly by its own rule, because a bill was still queued. **The two
+compose into a deadlock:** the queue cannot drain behind a token the server will not
+accept, the sheet instructs the operator to wait for a completion that cannot
+arrive, and the strip tells them the network is at fault when it is not. In the same
+minute, on the same device, the daily money screen classified the SAME refusal
+correctly and offered a sign-in that resolved it — so one app drew one cause two
+ways.
+
+**Revocation is not required to reach this.** It is what a handset draws whenever
+`JWT_TTL_SECONDS` expires mid-shift, which is every hour of every shift.
+
+**NO REPAIR SITE IS NAMED HERE, deliberately.** The diagnosis is being carried out in
+a separate read-only session and no cause has been accepted. The candidates and the
+reproduction are in `OPEN_ITEMS.md`; a step that names a fix before a cause is
+measured is `lessons/diagnosis-must-precede-the-fix.md` written into the plan.
+Staging it is cheap — revoke a session, or simply let a token expire with a bill
+queued.
 
 ### R3 — A server a shop can reach, with backups that run themselves
 
 **Depends on:** nothing technical; it is a spend decision, and it is the one item
 with external lead time. **Unblocks:** R4, R5.
+**Number unchanged.** R2b was inserted as a letter precisely so that R3, R4, R5 and
+R6 keep the numbers they already had — commit bodies and `OPEN_ITEMS.md` lines point
+at them, and renumbering would orphan those references for no gain.
+**Its clock starts independently of every software step**, including R2b: a host has
+to be chosen, paid for and pointed at a name, and none of that waits on a diagnosis
+or a fix. Procurement has lead time; code does not. Start it now and run it in
+parallel — this is the one place in the file where parallelism is free.
 **Done when:** the phone reaches the API over the public internet **on HTTPS**, and a
 backup has run unattended, landed off this box, and been RESTORED from there.
 
@@ -251,6 +345,12 @@ detail written before the only useful evidence arrives.
 ## Where I disagree with the spine
 
 Recorded because the ordering was handed over to be argued with, not accepted.
+
+**Items 1 and 2 were SETTLED BY EVENTS on 2026-08-06 — both were right, and both are
+now closed steps.** They are kept in their original tense because a disagreement that
+turned out to be correct is the evidence that arguing the spine was worth doing; read
+"is first" and "is blocked by sign-out" as of 2026-08-05. Items 3, 4 and 5 are still
+live.
 
 1. **Sign-out was missing from it entirely, and it is first.** Not an oversight worth
    a footnote — it is the item that unblocks two others and the only one that is a
