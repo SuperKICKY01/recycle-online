@@ -63,6 +63,11 @@ import { cleanVehicleNo, gradePrice, indexPlates } from "./src/cart/sellers";
 import type { Draft } from "./src/cart/types";
 import { ExpoSqliteDriver } from "./src/device/expoSqliteDriver";
 import { SecureTokenStore } from "./src/device/secureTokenStore";
+import { applyClearedSession, maySync, sessionStateOf, signOut } from "./src/session/signOut";
+import type { SignOutFailure } from "./src/session/signOut";
+import { signOutCard } from "./src/session/signOutNotice";
+import type { SignOutAction } from "./src/session/signOutNotice";
+import { SignOutSheet } from "./app/SignOutSheet";
 import { assessFreshness, defaultUnitPrice, masterNotice } from "./src/master/freshness";
 import { dailyScreen } from "./src/reports/dailyView";
 import type { DailyScreen as DailyScreenModel } from "./src/reports/dailyView";
@@ -276,8 +281,10 @@ export default function App() {
    * — but they mean the same thing for every bill: it stays queued, intact, and
    * goes the moment someone signs in.
    */
-  const session: SessionState =
-    token === null ? "signed_out" : sessionEnded ? "expired" : "active";
+  // The expression moved to src/session/signOut.ts so the proof runs THIS code
+  // rather than a copy: "a sign-out renders signed_out, never expired" is one of
+  // R1b's claims, and it cannot be proven against a re-derivation in a test.
+  const session: SessionState = sessionStateOf({ token, sessionEnded });
 
   /*
    * WHAT THE SERVER HAS REFUSED THIS ACCOUNT. Set by a 403 on a SEND, cleared by
@@ -304,6 +311,18 @@ export default function App() {
    */
   const [role, setRole] = useState<DeviceRole>(null);
 
+  /*
+   * SIGN-OUT (R1b). The sheet's open flag, and the failure of the LAST attempt.
+   *
+   * `signOutFailure` is state rather than a local because it must survive the
+   * await inside the handler and be on screen afterwards: a sign-out that could
+   * not clear the keystore leaves the operator SIGNED IN, and that is the one
+   * thing they must not have to guess about while handing over a phone. Cleared
+   * when the sheet is opened afresh and on a sign-in.
+   */
+  const [signOutOpen, setSignOutOpen] = useState(false);
+  const [signOutFailure, setSignOutFailure] = useState<SignOutFailure | null>(null);
+
   const [online, setOnline] = useState<boolean | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
@@ -329,6 +348,22 @@ export default function App() {
    * tables and could leave the older answer on disk under the newer timestamp.
    */
   const refreshingRef = useRef(false);
+  /*
+   * THE SYNC TICK IS PAUSED. Set true BEFORE sign-out touches the keystore, so
+   * no pass can be in flight with a token that is about to be forgotten, and
+   * left true afterwards.
+   *
+   * A ref, not state: syncOnce reads it inside a 4-second interval closure, and
+   * a state value would be captured at the moment the interval was created. The
+   * same reason tokenRef exists beside `token`.
+   *
+   * It is the SECOND of two guards after a successful sign-out — tokenRef.current
+   * is null by then, which already makes syncOnce return. Two guards, because
+   * "no request may be issued with no session" is a security claim and not a
+   * performance one, and because the pause has to exist for its own sake in the
+   * window before the keystore answers.
+   */
+  const syncPausedRef = useRef(false);
 
   const pendingDraft = useRef<Draft | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -537,8 +572,43 @@ export default function App() {
   /** One sync pass, recording what it tells us about the connection. */
   const syncOnce = useCallback(async () => {
     const engine = engineRef.current;
-    if (!engine || !tokenRef.current) return;
+    // Paused checked FIRST: during a sign-out the token may still be present
+    // (the keystore has not answered yet) and no request may go out under a
+    // session that is being ended. After a successful sign-out tokenRef is null
+    // as well, so both guards hold.
+    if (!maySync({ paused: syncPausedRef.current, token: tokenRef.current })) return;
+    if (!engine) return;
     const r = await engine.runOnce();
+
+    /*
+     * THE SESSION MAY HAVE ENDED WHILE THIS PASS WAS IN FLIGHT.
+     *
+     * The guard above gates the ENTRY of a tick; it cannot reach a pass already
+     * past it. So a sign-out that lands mid-flight leaves this continuation
+     * running with a result belonging to a session that no longer exists, and
+     * without this second check it would write that result onto a screen that
+     * says signed out. Proven in proveSignOut S4b, which stages exactly this
+     * ordering rather than arguing it from the code.
+     *
+     * WHAT IS DROPPED AND WHAT IS NOT — the boundary is the whole point:
+     *
+     *   KEPT. Everything engine.runOnce() already wrote to SQLite. The bill was
+     *   marked synced INSIDE that call, and that write stays, because it is a
+     *   fact about the SHOP'S DATA: the bill really did reach the server, it
+     *   really does have a doc_no, and a sign-out cannot un-happen it. Throwing
+     *   it away would re-send a bill the server has already accepted.
+     *
+     *   DROPPED. Only what is about the SESSION — setOnline, setSessionEnded,
+     *   setSubmitRefused below. Those are claims about a caller that has left,
+     *   and re-derived within seconds of the next sign-in by the next pass.
+     *
+     * refresh() is not called here for a different reason: it is not owned by
+     * this function at all. A 400 ms interval (see below) re-reads the bill
+     * store unconditionally, so pendingCount, failedCount, lastSyncedAt, health
+     * and the bill list are never more than 400 ms stale regardless of what
+     * this pass does.
+     */
+    if (!maySync({ paused: syncPausedRef.current, token: tokenRef.current })) return;
 
     // THE SESSION ENDED — checked FIRST and above `attempted === 0`, because a
     // pass that sent no bills can still have tried to push a void and been told
@@ -714,6 +784,11 @@ export default function App() {
       tokenRef.current = t;
       setToken(t);
       setRole(readTokenRole(t));
+      // A sign-out (successful or not) may have left the tick paused and a
+      // failure notice on the sheet. Both are facts about the session that has
+      // just been replaced.
+      syncPausedRef.current = false;
+      setSignOutFailure(null);
       // A sign-in is the ONE event on this device that can change who the caller
       // is, so it is the only thing that retracts a 403. If the same account
       // signs back in, the retry is refused once and lands straight back here —
@@ -747,6 +822,71 @@ export default function App() {
       setBusy(false);
     }
   }, [refreshMaster, syncOnce]);
+
+  /**
+   * END THE SESSION ON THIS DEVICE (R1b).
+   *
+   * The DECISION and the ORDER live in src/session/signOut.ts, which is pure and
+   * proven; this handler is the wiring. It does exactly three things with the
+   * outcome, and the split matters:
+   *
+   *   refused_pending -> nothing happened. The sheet re-renders from the counts
+   *                      and says why, and the session is untouched.
+   *   failed          -> STILL SIGNED IN. Record the failure so the sheet says
+   *                      so. Do NOT clear anything: the keystore still holds a
+   *                      working token, and rendering the login screen over it
+   *                      would state a fact the device contradicts — the next
+   *                      cold start would sign the departed user back in.
+   *   signed_out      -> apply CLEARED_SESSION, every value at once.
+   *
+   * The master-data cache, the products and sellers lists and the open draft are
+   * deliberately NOT cleared. That is shop data, and dropping it would strand
+   * the next offline morning with nothing to weigh against — the same argument
+   * this file already makes for keeping an expired token rather than deleting it.
+   */
+  const onSignOut = useCallback(async () => {
+    setBusy(true);
+    try {
+      const outcome = await signOut({
+        pending: pendingCount,
+        failed: failedCount,
+        setSyncPaused: (paused) => {
+          syncPausedRef.current = paused;
+        },
+        tokens: tokenStoreRef.current,
+        engine: engineRef.current,
+      });
+
+      if (outcome.kind === "refused_pending") return;
+      if (outcome.kind === "failed") {
+        setSignOutFailure(outcome.failure);
+        return;
+      }
+
+      // EVERY session-derived value, applied from the one list in src/. Adding a
+      // value to ClearedSession makes this call a compile error until a setter
+      // is supplied for it — which is the point of passing setters rather than
+      // writing ten assignments here where one can quietly go missing.
+      tokenRef.current = null;
+      applyClearedSession({
+        token: setToken,
+        role: setRole,
+        sessionEnded: setSessionEnded,
+        submitRefused: setSubmitRefused,
+        online: setOnline,
+        lastSyncedAt: setLastSyncedAt,
+        health: setHealth,
+        daily: setDaily,
+        dailyDate: setDailyDate,
+        dailyOpen: setDailyOpen,
+      });
+      setSignOutFailure(null);
+      setSignOutOpen(false);
+      setStatus(`${API_BASE_URL} · ออกจากระบบแล้ว`);
+    } finally {
+      setBusy(false);
+    }
+  }, [failedCount, pendingCount]);
 
   /**
    * Open the seller picker, and re-read master data while it is open.
@@ -1009,6 +1149,28 @@ export default function App() {
             <Pressable style={styles.dailyBtn} onPress={openDaily}>
               <Text style={styles.dailyBtnText}>ยอดวันนี้ ›</Text>
             </Pressable>
+            {/*
+              SIGN OUT (R1b). Offered only while there IS a session — with no
+              token the login button is already the whole screen, and a sign-out
+              button beside it would be an action with nothing to act on.
+
+              It opens a sheet rather than signing out on the tap. The sheet is
+              where the queue gate is explained and where the operator is told,
+              BEFORE committing, that signing back in needs a connection —
+              which is the one consequence they cannot discover by trying, since
+              discovering it means already being signed out.
+            */}
+            {token !== null ? (
+              <Pressable
+                style={styles.dailyBtn}
+                onPress={() => {
+                  setSignOutFailure(null);
+                  setSignOutOpen(true);
+                }}
+              >
+                <Text style={styles.dailyBtnText}>ออกจากระบบ</Text>
+              </Pressable>
+            ) : null}
           </View>
           <Text style={styles.status} numberOfLines={1}>
             {status}
@@ -1134,6 +1296,31 @@ export default function App() {
             onSubmit={() => setConfirmOpen(true)}
           />
         )}
+
+        {/*
+          The sheet is rendered from the CURRENT counts every time, not from a
+          value captured when it opened: a queue that drains while it is on
+          screen turns the refusal into the confirmation by itself, with no tap.
+        */}
+        <SignOutSheet
+          visible={signOutOpen}
+          busy={busy}
+          card={signOutCard({
+            pending: pendingCount,
+            failed: failedCount,
+            failure: signOutFailure,
+          })}
+          onAction={(action: SignOutAction) => {
+            if (action.kind === "dismiss") {
+              setSignOutOpen(false);
+              setSignOutFailure(null);
+              return;
+            }
+            // confirm_sign_out and retry_sign_out are the same act; they differ
+            // only in the label, because the second one follows a failure.
+            void onSignOut();
+          }}
+        />
 
         <SellerPicker
           visible={pickerOpen}

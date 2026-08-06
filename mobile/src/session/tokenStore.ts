@@ -43,11 +43,42 @@
  * the only difference is when the operator is asked to sign in again.
  */
 
+/**
+ * The result of trying to forget the token. R1b.
+ *
+ * WHY clear() REPORTS AND load()/save() DO NOT. Their failures are survivable
+ * and self-correcting: a load that fails costs one sign-in, a save that fails
+ * costs one sign-in tomorrow. A CLEAR that fails is different in kind — the app
+ * would render "signed out" while the keystore still holds a working token, and
+ * the next cold start's load() would silently sign the DEPARTED user back in.
+ * The screen would be stating a fact the device contradicts.
+ *
+ * That is not hypothetical carelessness: until R1b this file's device
+ * implementation swallowed a failed delete under the comment "nothing depends on
+ * it having happened", which was TRUE while nothing called it and became false
+ * the moment sign-out did.
+ *
+ * So the outcome is a value, not an exception — the same discipline as load():
+ * nothing in this module throws outward, because a session action must never
+ * crash a yard phone. `reason` is a DIAGNOSTIC for logs, never for a screen; the
+ * operator wording is derived from the outcome by session/signOut.ts.
+ */
+export type ClearOutcome =
+  | { kind: "cleared" }
+  | { kind: "failed"; reason: string };
+
 export interface TokenStore {
   /** The stored token, or null. MUST NOT throw — a boot cannot fail on this. */
   load(): Promise<string | null>;
   save(token: string): Promise<void>;
-  clear(): Promise<void>;
+  /**
+   * Forget the token. MUST NOT throw; report failure in the outcome instead.
+   *
+   * A `cleared` result is a CLAIM THE CALLER WILL ACT ON — it is what lets the
+   * app render the login screen. Return it only when the token is genuinely
+   * gone. Deleting a key that was never there is success, not failure.
+   */
+  clear(): Promise<ClearOutcome>;
 }
 
 /**
@@ -73,8 +104,8 @@ export class MemoryTokenStore implements TokenStore {
     return Promise.resolve();
   }
 
-  clear(): Promise<void> {
+  clear(): Promise<ClearOutcome> {
     this.token = null;
-    return Promise.resolve();
+    return Promise.resolve({ kind: "cleared" });
   }
 }

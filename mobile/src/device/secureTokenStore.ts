@@ -29,7 +29,7 @@
  */
 import * as SecureStore from "expo-secure-store";
 
-import type { TokenStore } from "../session/tokenStore.js";
+import type { ClearOutcome, TokenStore } from "../session/tokenStore.js";
 
 /** Namespaced so a future second value cannot collide with this one. */
 const KEY = "recycle.session.token";
@@ -56,11 +56,35 @@ export class SecureTokenStore implements TokenStore {
     }
   }
 
-  async clear(): Promise<void> {
+  /**
+   * THIS COMMENT USED TO SAY "nothing depends on it having happened". R1b made
+   * that false, so the swallow is gone.
+   *
+   * Sign-out acts on this answer: a `cleared` result is what lets the app render
+   * the login screen. If the delete throws we must assume THE TOKEN IS STILL
+   * THERE — a failure here and a partial success are indistinguishable from
+   * outside, and the safe reading is the pessimistic one. Reporting `cleared`
+   * anyway would put the yard in front of a login screen while the next cold
+   * start silently restores the departed user's session.
+   *
+   * Deleting a key that is absent is NOT an error in expo-secure-store; it
+   * resolves. So `cleared` genuinely means "no token remains", not merely "a
+   * delete was attempted".
+   *
+   * STILL UNVERIFIED OFF-DEVICE, like everything in this directory: nothing here
+   * runs under node, so the headless proof exercises this CONTRACT through
+   * MemoryTokenStore and a throwing fake. That the Keychain delete itself works
+   * is a DEVICE observation and nothing else can stand in for it.
+   */
+  async clear(): Promise<ClearOutcome> {
     try {
       await SecureStore.deleteItemAsync(KEY, OPTIONS);
-    } catch {
-      // Nothing to do about it, and nothing depends on it having happened.
+      return { kind: "cleared" };
+    } catch (err) {
+      return {
+        kind: "failed",
+        reason: err instanceof Error ? err.message : String(err),
+      };
     }
   }
 }

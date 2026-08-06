@@ -227,6 +227,27 @@ export class SyncEngine {
   }
 
   /**
+   * A SIGN-OUT happened on this device (R1b). Drop the device-global send gate.
+   *
+   * `sendForbidden` means "the server refused THIS ACCOUNT's submits", and the
+   * account has just left. Carrying it across a sign-out would gate the next
+   * user's send loop on a refusal that was never about them — the same class of
+   * mistake as leaving the previous user's role on screen.
+   *
+   * SYNCHRONOUS AND STORE-FREE, deliberately, which is why it is not a sibling
+   * of resumeAfterSignIn. That method also clears backoff and per-bill void
+   * refusals; NEITHER belongs here. A backoff is a fact about the network and
+   * survives a change of operator, and a refused void is recorded on its own row
+   * as money the yard believes is cancelled and the server still holds live —
+   * wiping that on sign-out would erase a disagreement about money because
+   * somebody's shift ended. Both are retracted on the next SIGN-IN, which is the
+   * event that can actually change the answer.
+   */
+  resetAfterSignOut(): void {
+    this.sendForbidden = false;
+  }
+
+  /**
    * Call once at startup, BEFORE any sync run.
    *
    * A bill in `syncing` means a send was in progress when the process died. We
