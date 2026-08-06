@@ -35,6 +35,10 @@ Not in the boot path. Open when the task reaches them:
   opens the code; you are not that reader (see §2).
 - **`RED_TEAM.md`** — the definition of a red-team pass. Read it only when
   running one. (`CLAUDE.md § Workflow` "A RED-TEAM pass is defined")
+- **`.claude/`** — nine Claude skills and a permission file. Their
+  descriptions enter every session on this box; their contents are NOT
+  reviewed, and git cannot see them.
+  (`OPEN_ITEMS.md § Decisions open` "holds nine skills")
 - **`server/README.md`** — local server setup and the DB role table.
 - **`server/scripts/BACKUP.md`** — the backup/restore runbook.
 

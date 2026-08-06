@@ -1798,3 +1798,24 @@ WEAKER EVIDENCE THAN THE ABOVE, and recorded as such.
   in `CLAUDE.md` is OWED and is NOT written** — this is the codepage-874 trap in
   SOURCE rather than in data, a form the existing entry does not cover, and
   `CLAUDE.md` was out of scope for this commit.
+- 2026-08-07 — **the section-and-handle citation form survived a REAL insert for
+  the first time, and the shift it survived was 22 lines, not one.** The staged
+  disproof recorded above moved a blank line and put it back; this was a
+  committed edit that added a 22-line machine-footgun entry to `CLAUDE.md`.
+  **The shift was not uniform, and it split a cited section down the middle.**
+  `Scope and status` stayed at 51 and the `Machine footguns` heading stayed at
+  70 — both sit at or above the insert point — while `Boot check` moved 165→187
+  and `Workflow` 197→219, and the two handles INSIDE `Machine footguns` moved
+  90→112 and 98→120 with them. A line citation into that one section would have
+  been right for the heading and 22 lines wrong for its own handles, in the same
+  breath. **All 25 citations into `CLAUDE.md` still resolved**, inside a run of
+  37 (36 before, plus the one this commit adds to `START_HERE.md`): 0 broken,
+  exit 0, control 34 sectioned present and 34 parsed, run bare. The prior this
+  is measured against — a three-line insert that once invalidated all twenty
+  pointers at once — is recorded at `tools/verify_citations.ps1` lines 5-7 and
+  is NOT re-measured here; what is new is only that the form has now held
+  through an edit somebody actually made, an order of magnitude larger than the
+  staged one. Same commit, and stated so the two are not read as one claim: the
+  machine-footgun entry the note above records as OWED is now written, and
+  `START_HERE.md` and `OPEN_ITEMS.md` name `.claude/`, which nothing in this
+  repository did before.

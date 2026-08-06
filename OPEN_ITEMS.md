@@ -433,6 +433,57 @@ idea — only that it is unresolved.
   (unverified on the phone). *Unblocks:* installing that database, a
   device verification, and a schema change. Only matters for a tenant in
   a zone that observes daylight saving.
+- **`.claude/` holds nine skills and a permission file, and nothing in
+  this repository can see it — SURVEYED 2026-08-07, nothing inside it
+  touched.** 15 authored files, 97,940 bytes: nine `SKILL.md` skill
+  definitions (`async-python-engineering`, `buddhist-method`,
+  `crash-safety`, `debug-mantra`, `defensive-coding`,
+  `delivery-workflow`, `long-running-jobs`, `scrutinize`,
+  `verification-discipline`) plus `settings.local.json`, which carries
+  **51 pre-approved command patterns** — among them `git add`,
+  `git commit` and `PowerShell(git *)`, so the prompt that would have
+  put a commit in front of the owner is gone, while the instruction not
+  to commit until they confirm still governs. `buddhist-method` is a
+  third-party MIT clone pinned at `745caa74`, cloned 2026-05-11 and
+  never fetched since; the other eight are authored.
+  **The invisibility is the finding, not the content.** `.gitignore:30`
+  is `.claude/`, so the directory sits in no commit: `git status
+  --porcelain` reads clean with 143,689 bytes present, `git log` and
+  `git blame` cannot reach it, it can never appear in a diff, it is in
+  none of the four inputs `RED_TEAM.md` permits a red-team pass, and
+  `START_HERE.md`'s reading order did not name it until the line added
+  alongside this entry. Every reviewing role this project defines —
+  owner, advising chat, red team, boot order — was structurally unable
+  to see it. **What enters a session is the nine `description:` lines
+  (4,989 bytes), not the bodies (69,370 bytes)**, and those descriptions
+  carry standing imperatives: one orders a verbatim recital at the start
+  of any debugging session, one says to trigger even when the user does
+  not name it, and one fires on the word "audit".
+  **Eleven disagreements with this repository's own rules were found,
+  labelled A-K, and are named here by WHERE each one sits and
+  deliberately NOT restated** — a second copy of the argument is the
+  drift `CLAUDE.md`'s Scope and status forbids. **A** `delivery-workflow`
+  rule 3 vs CLAUDE.md's lesson-writing rules; **B** `long-running-jobs`
+  rule 1 vs the codepage-874 footgun; **C** and **D** `scrutinize` vs the
+  LOCKED architecture with `RED_TEAM.md`, and vs `START_HERE.md`'s role
+  split; **E** `debug-mantra`'s recital vs CLAUDE.md's Workflow, and vs
+  itself; **F** and **G** `settings.local.json` vs the pipe footgun and
+  the multi-line-argument footgun; **H** `async-python-engineering`
+  rule 2 vs hard rule 8 with `lessons/queue-jam-must-be-visible.md`;
+  **I** `delivery-workflow` rule 13 vs the LOCKED architecture; **J**
+  `delivery-workflow` rule 6, which contradicts nothing and is endorsed
+  by nothing; **K** `verification-discipline` rule 22 vs the trial
+  ledger in `PROJECT_STATUS.md`. **To re-derive the survey**, read all
+  15 authored files under `.claude/` against `CLAUDE.md`,
+  `START_HERE.md`, `lessons/README.md` and `RED_TEAM.md`. The survey
+  itself is not in this repository and is not going to be: it would be a
+  second home for all eleven. Three dead grants inside
+  `settings.local.json` were measured the same way and are recoverable
+  the same way.
+  *Not done:* nobody has decided what to keep. The directory has never
+  been read by the owner, and this entry proposes nothing.
+  *Unblocks:* an owner decision PER SKILL — keep, amend or delete — and
+  a separate one on `settings.local.json`.
 
 ## Business questions — unanswered, and not answerable from the code
 

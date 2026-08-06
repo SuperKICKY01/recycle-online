@@ -87,6 +87,28 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   text by eye out of a console or an unpinned pipe.
   → `lessons/console-is-not-the-observation.md`
 
+- **A non-ASCII character in `.ps1` SOURCE breaks the program before
+  it runs, and the 874 entry above does NOT cover this.** That one is
+  about DATA — Thai read through a console or an unpinned pipe. This
+  is the program text itself: Windows PowerShell 5.1 decodes a
+  BOM-less `.ps1` with the ANSI codepage, 874 here, so a section mark
+  typed literally into the source is no longer U+00A7 by the time the
+  regex is built from it, and every pattern carrying that character
+  matches NOTHING. It lies more quietly than anything else in this
+  section, because there is no error to read and no red to chase: on
+  its first run from its committed home `tools/verify_citations.ps1`
+  printed `CITATIONS=3` where 36 were present — the 3 being exactly
+  the citations that carry no section mark — and **exited 0**. A
+  checker that had parsed 3 of 36 reported success.
+  `Get-Content -Encoding UTF8` cannot save it: that pins how the
+  CHECKED file is decoded, and the damage is already in the checker.
+  Instead: keep `.ps1` source ASCII-only and build the character from
+  its codepoint (`[char]0x00A7`), or save the file WITH a BOM. And
+  give any parser that can quietly stop matching a COUNT it must
+  meet — otherwise it fails by finding LESS, which is
+  indistinguishable from a pass.
+  → `lessons/a-check-that-never-went-red-was-never-observed.md`
+
 - **An exit code that is not the command's.** A cygwin/Git-Bash
   `fork` can fail (`fork: Resource temporarily unavailable`); the
   shell then reports a status the program never produced. It lies
