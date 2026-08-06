@@ -139,6 +139,26 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   file. `git commit -F <file>`, and a `.py` script file rather than
   `python -c`.
 
+- **`core.autocrlf` is `true` here, and it does NOT decide the line
+  endings.** `.gitattributes` line 1 is `* text=auto eol=lf`, and
+  `eol=lf` beats `core.autocrlf` at checkout. The working tree is LF
+  and the committed blob is LF. It lies in BOTH directions, and they
+  are different mistakes. Reading `core.autocrlf=true` and concluding
+  the files were committed with CRLF is wrong — that is the config
+  that lost. And counting CR bytes on disk, finding zero, and calling
+  the BLOB clean is also wrong: the working tree and the blob are two
+  different objects, and a checkout filter sits between them. Measure
+  the one you actually mean. Working tree: read the file's bytes.
+  Blob: `git show HEAD:<path>` or `git cat-file -p`, and count there.
+  Never let one stand as evidence for the other.
+
+  Related, and load-bearing: **`lessons/README.md` is the one file in
+  `lessons/` that carries CRLF (39 of 39 lines) AND a UTF-8 BOM.**
+  Excluding it from `all-lessons.md` is therefore not only because it
+  is the index rather than a lesson — it is also the only source that
+  would drag a BOM and CRLF into the generated file. Both reasons are
+  real; do not remove the exclusion on the strength of refuting one.
+
 ### Boot check — name the observable, don't assume the environment
 
 Before judging any result, name the observation that proves the

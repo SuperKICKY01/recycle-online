@@ -1,0 +1,3778 @@
+# All lessons (generated)
+
+<!-- GENERATED FILE -- DO NOT HAND-EDIT. Your changes will be overwritten. -->
+
+This file is `lessons/*.md` concatenated. Every edit belongs in the source
+lesson file; anything written here is destroyed by the next run.
+
+    regenerate   server/.venv/Scripts/python.exe server/scripts/build_all_lessons.py --write
+    check        server/.venv/Scripts/python.exe server/scripts/build_all_lessons.py --check
+
+`--check` rebuilds the document in memory and compares it against this file
+byte for byte, with line endings normalised to LF on both sides first. It exits
+1 on any difference. That is how a lesson edited without regenerating is caught.
+
+**Sources:** 34 lesson files, `lessons/*.md`, ASCII filename order.
+
+**Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
+
+**Amendments:** 12 across 6 files, counted from the source headings and
+shown per entry in the table of contents below.
+
+**No date field, deliberately.** No lesson file carries one and it cannot be
+recovered from inside them. In this repo a date on a document means "this
+decayed, re-run it before citing it" -- and a lesson is not a measurement, so it
+does not decay that way. What travels here instead is the source filename and
+the amendment count: information already present in the files.
+
+**Heading levels are reproduced unchanged.** Amendment sections sit at `##`, the
+same level as ordinary sections, so demoting `#` to `##` would push them to
+`###` where they would be indistinguishable from `### Rider` and `### What
+actually fixes it`. Entries are separated by a `---` rule and a `**SOURCE:**`
+line instead of by heading depth.
+
+## Table of contents
+
+- `401-is-about-the-caller-not-the-bill.md` -- A 401 is neither unavailable nor rejected: the request was fine, the CALLER is no longer anyone
+- `403-is-about-what-the-caller-may-do.md` -- A 403 is the fourth class: the caller is SOMEONE, and may not do this
+- `a-backup-is-a-claim-until-it-is-restored.md` -- A backup is a claim until it has been restored
+- `a-check-that-never-went-red-was-never-observed.md` -- A check that has never gone red has not been observed
+- `a-checker-must-not-share-the-code-it-checks.md` *(1 amendment)* -- A checker must not share the code it checks — and must not reach past it
+- `a-defaulted-getattr-is-a-silent-dead-branch.md` -- A defaulted `getattr` is a silent dead branch
+- `a-proof-fixture-must-be-a-row-the-product-could-produce.md` -- A proof fixture must be a row the product could have produced
+- `a-report-is-many-reads-that-must-agree.md` -- A report is many reads; under READ COMMITTED they are many moments
+- `a-stored-future-instant-is-a-promise-about-a-clock.md` -- A stored future instant is a promise about a clock you do not control
+- `be-year-comes-after-the-timezone.md` *(2 amendments)* -- The BE year comes AFTER the timezone conversion — and an ISO-shaped BE date is a trap
+- `cached-master-data-is-a-price-claim.md` -- A cached price is a claim about today, and a backwards clock makes it look fresh
+- `concurrency-tests-need-a-barrier.md` -- A concurrency test without a start barrier proves nothing
+- `config-defaults-must-fail-closed.md` -- A default for a security secret is a default IDENTITY
+- `console-is-not-the-observation.md` -- The console is not the observation — verify text at the source, in bytes
+- `correct-classification-can-still-render-as-an-error.md` *(2 amendments)* -- A correct classification is not correct behaviour until the screen agrees
+- `decimal-precision-for-domain-scale.md` -- Decimal precision must be set for the domain's scale, not left at the default
+- `diagnosis-must-precede-the-fix.md` -- Diagnose before you fix: read the real error and the real files first
+- `doc-no-is-arrival-order-not-event-time.md` -- doc_no is arrival order; device clocks are wrong. Report on server time.
+- `edge-must-reject-what-the-column-rounds.md` -- Postgres ROUNDS to the column scale — so the edge must reject, or you ship a queue jam
+- `fallback-default-is-a-wrong-number.md` -- A fallback default the server will refuse is a wrong number, not a convenience
+- `login-resolves-under-tenant.md` -- Login resolves the user INSIDE tenant context
+- `metro-file-map-nesting.md` -- When a resolver says a file is missing, ask the resolver — not the OS
+- `proof-must-run-twice.md` *(5 amendments)* -- A proof that passes only once proves the environment, not the code
+- `queue-jam-must-be-visible.md` *(1 amendment)* -- A strict ordered queue CAN deadlock. Don't skip the head — make the jam visible.
+- `render-in-shop-time-not-device-time.md` *(1 amendment)* -- Store UTC, render in the SHOP's timezone — and never slice an ISO string
+- `revoke-in-migration.md` -- Privilege changes live in the migration, not in a live one-off
+- `schema-audit.md` -- Audit a migration field-by-field against the agreed schema before commit
+- `set-local-per-request.md` -- Tenant context = SET LOCAL, per request, fail closed
+- `sqlite-busy-timeout-first.md` -- PRAGMA busy_timeout must be the FIRST statement on a SQLite connection
+- `sqlite-money-is-text.md` -- In SQLite, money columns are TEXT — and STRICT will not save you
+- `sync-state-needs-startup-recovery.md` -- An in-progress state that nothing polls strands records forever
+- `two-green-proofs-do-not-cover-the-seam.md` -- Two green proofs do not cover the seam between them
+- `unavailable-is-not-rejected.md` -- A failure to reach a verdict is not a negative verdict — and not every verdict is final
+- `wait-for-the-event-not-the-ticks.md` -- A fixed number of ticks is not a synchronisation primitive
+
+---
+
+**SOURCE:** `401-is-about-the-caller-not-the-bill.md`
+
+# A 401 is neither unavailable nor rejected: the request was fine, the CALLER is no longer anyone
+
+Applies to every authenticated sync path. The send was well-formed, the server
+answered promptly and definitively, and nothing about the payload is wrong —
+but the token that identified us has run out. Classify that as either of the
+existing failure classes and the app will tell the operator something false, in
+one of two directions, decided by nothing more meaningful than how many bills
+happened to be in the queue.
+
+## What happened
+
+`JWT_TTL_SECONDS` is 3600 and there is no refresh token, so on a long shift the
+session simply ends. `httpTransport` mapped 401 into the catch-all with 5xx and
+403: `{ kind: "unavailable", reachable: true }`. Every layer below then did
+exactly what it was built to do, and produced two different lies:
+
+| queued bills | what the machinery concluded | what the yard was told |
+|---|---|---|
+| 1 | `retryable > 0`, so App set `online = false` | **ออฟไลน์ — จะส่งให้เองเมื่อเน็ตกลับมา** |
+| 3 | `reachable: true` ran `first_server_error_at` and `server_error_attempts` to `POISON_ALARM_ATTEMPTS` | **ติดต่อฝ่ายสนับสนุน** (red) |
+
+The first says wait for signal. The network was fine — the server answered every
+single request, which is precisely how we knew the token was dead. The second
+sends someone to ring support about a jam nobody but the operator can clear.
+**Neither names the fix, and the fix is one button.** Worse, the button did not
+exist: the login screen renders on `token === null`, which is exactly false when
+a token has expired rather than been absent.
+
+## Why it fell through the existing classification
+
+[[unavailable-is-not-rejected]] asks one question of every failed send:
+
+> Can anything make this bill valid later — and does the failure name what?
+
+That question has three answers there (unavailable / permanent / resolvable) and
+it is the right question — for all three, because **all three are about the
+bill.** A 401 is not about the bill. The bill is perfect; it goes through
+untouched the moment someone signs in, which CASE 11d proves by sending the
+byte-identical payload with the same idempotency key. The failure is about **the
+caller**: we are no longer anyone the server will act for.
+
+So the split was not too coarse this time, the way the two-way split had been.
+It was measuring the wrong object. Ask the bill-question of a caller-problem and
+every available answer is wrong:
+
+- "nothing can make it valid" → terminal, and a perfectly good purchase is
+  abandoned;
+- "the outcome is unknown" → **false**. The outcome is known exactly;
+- "master data is missing" → nothing the office can add will help.
+
+**Rule.** Before choosing a failure class, ask *what the failure is about*: the
+payload, the network, the server's state, or **the identity of the caller**. A
+class that answers a question the failure is not an instance of will be wrong in
+a way no amount of tuning fixes.
+
+## The two properties that make this its own class
+
+1. **It must not feed the poison alarm.** `first_server_error_at` and
+   `server_error_attempts` exist to mean "the reachable server keeps refusing
+   THIS BILL" ([[queue-jam-must-be-visible]]). A 401 refuses every bill equally,
+   so it satisfies the letter of "reachable and refusing" while carrying none of
+   the meaning. `markSessionExpired` clears both — a named store transition, not
+   `markPendingAgain(reachable: false)`, because that parameter is documented as
+   "did the server ANSWER" and for a 401 it did. Overloading it would have made
+   the column lie about itself for the next person reading a metric off it.
+2. **The message must carry its own action.** "Sign in again" is useless where
+   there is no way to sign in, and the app's own login path was unreachable in
+   exactly this state. The status strip now renders the button beside the
+   sentence, and `StatusAction` pairs the label with the handler kind so the view
+   cannot wire "ส่งอีกครั้ง" to the sign-in.
+
+Do **not** solve this with refresh tokens. Re-login is the recovery for now, and
+that is a decision, not an omission — but then the app owes the operator a
+prompt and a button, which is the whole of this lesson's cost.
+
+## Where it must NOT be applied
+
+403. The MVP has no permission model, so a 403 from this server would be a
+genuine surprise rather than a session that ran out; it stays `unavailable,
+reachable: true`. And the transport's "no token at all" branch stays
+transport-level — never having signed in is not the same event as being signed
+out, even though the UI ends up saying much the same thing.
+
+## Why every proof was green, again
+
+For the same reason as [[correct-classification-can-still-render-as-an-error]]:
+the wording lived in `app/StatusStrip.tsx`, and `app/` is unreachable from the
+node program (`tsconfig.node.json` has `rootDir: "src"`). **Nothing that could
+have failed existed.** The strip's ordered branch is now `src/sync/statusNotice.ts`,
+which is the second time a rendering decision has had to move out of `app/`
+before it could be trusted. Treat any operator-facing sentence still living
+under `app/` as unproven by construction.
+
+CASE 11 asserts the new behaviour AND runs the old classification alongside it
+(`LegacyUnauthorizedTransport`, identical but for the union member it returns),
+so the ledger shows `serverErrorAttempts=8, alarm=true, "ติดต่อฝ่ายสนับสนุน"`
+next to `serverErrorAttempts=0, alarm=false, "ต้องเข้าสู่ระบบใหม่"` on the same
+three bills. A green result is only evidence if you can see what would have made
+it red.
+
+## How to apply
+
+1. Classify a failure by **what it is about** — payload, network, server state,
+   caller identity — before deciding what to do with it. Add the class; do not
+   stretch an existing one to fit.
+2. Make the missed case a compile error: a new `SendOutcome` member breaks every
+   `switch`, which is how the engine, both stores and the fakes were all found in
+   one pass.
+3. A signal that means "this bill is bad" must not be fed by a condition that is
+   true of every bill. If a counter would fire identically for all of them, it is
+   measuring something else.
+4. Session state is **device-global and derived**, never stamped on a row. The
+   token lives in memory, so a stored per-bill "session expired" flag outlives
+   its own truth the moment someone signs in.
+5. Clear the queue's backoff on sign-in. Every delay on it was computed while
+   there was no session, which was never a fact about the network — without that,
+   signing in appears to do nothing for up to 30 seconds.
+6. Bills stay queued, intact, in weighing order, with the same idempotency keys.
+   An expiry must cost the yard nothing but a tap.
+
+---
+
+**SOURCE:** `403-is-about-what-the-caller-may-do.md`
+
+# A 403 is the fourth class: the caller is SOMEONE, and may not do this
+
+Applies to every authenticated path, and to every screen assembled from more than
+one renderer. Sibling of [[401-is-about-the-caller-not-the-bill]] — same question,
+different answer, and the difference decides what the app does.
+
+## The rule that produced it
+
+[[401-is-about-the-caller-not-the-bill]] says: before choosing a failure class,
+ask what the failure is ABOUT — the payload, the network, the server's state, or
+the identity of the caller. A 403 is about the caller, like a 401. That is where
+the resemblance stops, and the axis they differ on is the ACTION:
+
+| | 401 | 403 |
+|---|---|---|
+| who is the caller | **nobody** — the token is dead | **someone**, definitely |
+| what fixes it | one tap, on this device, now | a **different person**, elsewhere |
+| does signing in help | yes — that IS the class | **no**: same user, same role |
+| does it clear on sign-in | always | only if the identity really changed |
+
+So `forbidden` is its own `SendOutcome`/`VoidOutcome` member, not a variant of
+`session_expired`. Three reasons, in order of how expensive getting them wrong is:
+
+1. **The session class is DEFINED by carrying its own action.** That lesson's
+   second property is "the message must carry its own action", and the action is
+   the sign-in button. For a 403 that button is a loop with a person in it: the
+   same account comes back with the same role. Either the button lies, or the
+   class stops always having one — and then it no longer means anything.
+2. **It would evaporate every pass.** `App.syncOnce` clears `sessionEnded` on ANY
+   server answer at all (`r.synced > 0 || r.rejected > 0 || r.masterDataBlocked > 0`),
+   because for a session that is correct — an answered request proves the token
+   works. Fold a role refusal in there and it is retracted by the next successful
+   send and re-raised by the next tap, forever, flickering.
+3. A new union member is a compile error in every `switch`, both stores, the fakes
+   and the view. That is how the engine, the store, `billNotice`, the two style
+   Records and 19 proof call sites were all found in one pass.
+
+**The wording follows from the same distinction.** Never "sign in again" — that is
+the 401's fix and here it is a loop. Never "call support" — support cannot grant a
+role. It names the shop owner (`เจ้าของร้าน`), and specifically NOT the office
+(`สำนักงาน`), which is who the parked-bill wording names: the office sets prices
+and grades, a role is the owner's. A wrong instruction is worse than a vague one
+because it gets acted on ([[correct-classification-can-still-render-as-an-error]]).
+
+## The defect this actually shipped: one card, two renderers
+
+The refusal reached the client correctly. `billNotice` was taught it, the tone was
+right, the store stopped retrying, the strip said the true thing. And the card
+still contradicted itself, because `voidProgressLine` — drawn TWO LINES ABOVE the
+notice box, on the same card, by the same component — had not been taught it and
+went on returning:
+
+> รอแจ้งระบบ จะดำเนินการให้อัตโนมัติ   *(waiting to tell the system; it will be done automatically)*
+
+directly above
+
+> บัญชีนี้ไม่มีสิทธิ์ยกเลิกบิล ระบบจึงยังไม่ได้ยกเลิกบิลใบนี้
+> *(this account may not cancel bills, so the system has not cancelled this one)*
+
+Both renderers were internally correct and separately asserted. Every sweep in
+`proveNotice` read ONE of them at a time — 384 card cells, 64 void cells, all
+green — and not one of them could see the contradiction, because **the operator
+does not read a function, they read a card.** The reassuring half is the one
+someone with wet hands and a queue behind them will believe.
+
+**The fix that matters is not the branch, it is N2b:** a sweep that concatenates
+what the view actually draws, in draw order, and asserts over the whole string —
+no region may promise what another region denies, no region may leak a
+diagnostic. 384 whole-card states.
+
+> **A screen assembled from independently-correct parts is not an asserted
+> screen.** If two functions render into one view, the assertion belongs on the
+> concatenation. Correctness of the parts is not a property of the whole, and the
+> gap between them is invisible to every test that respects the seam.
+
+This is the third time this family has bitten (raw 424 body, then the offline
+card and the false void promise, now this), and each time the previous fix was
+correct and covered one renderer fewer than the screen has.
+
+The same rule forced two view changes that no unit assertion would have caught:
+`isVoided` (the owner ASKED) is not `the system cancelled it`, so the card
+computes `voided = isVoided(b) && !isVoidRefused(b)` — otherwise ยกเลิกแล้ว with
+the total struck through, over a bill the server still holds as live money. And
+`notice.badge` now outranks the void badge, which is what makes that structural
+rather than remembered.
+
+## The mechanism was NOT symmetric, and assuming it was is the error
+
+The brief for this work said the 403 "retries forever, feeds the poison counter,
+and ends at a red ติดต่อฝ่ายสนับสนุน". Half right, and the half that was wrong
+would have sent the fix to the wrong place. Measured, not argued (`proveForbidden`
+F5, which runs the OLD mapping):
+
+- **VOID path.** `VoidOutcome` has no `reachable` field, `markVoidAttemptFailed`
+  touches neither poison column, and `assessQueue` reads only the SEND queue. So
+  the poison counter never moved and no alarm ever fired. What happened instead
+  was quieter and worse: `listVoidsToApply` has no backoff column and no time
+  gate, so the void was re-POSTed on **every pass — 20 calls in 20 passes, every
+  4 seconds, forever** — behind a card promising it was in hand.
+- **SEND path.** Here the brief was exactly right: `reachable: true` drove
+  `server_error_attempts` to 8 and raised the red "ติดต่อฝ่ายสนับสนุน" alarm over
+  a permission no support desk can grant. This path is not reachable on today's
+  server (`POST /bills` is open to staff) and was fixed anyway, because the
+  transport maps 403 on both endpoints and fixing the instance instead of the
+  class is what produced the 2c-7 amendment.
+
+**Two paths that look symmetric can fail differently, and the difference is
+whichever safety machinery each one happens to be wired into.** The void path had
+no backoff at all — the very absence that made "retry forever" literal there and
+harmless-looking on the send path. Check what each path is actually connected to
+before assuming a shared cause; and when a brief names a mechanism, reproduce the
+mechanism, not the conclusion.
+
+## What "never retries" had to mean in code
+
+Not a longer backoff. A backoff is a claim that time will help, and no amount of
+time on this device changes a role:
+
+- **VOID** — `void_refused_at` on the row takes it out of `listVoidsToApply`. Per
+  bill, and that reverses the 401 lesson's "device-global, never stamped on a
+  row" ON PURPOSE: an expired session says nothing about any bill, but this row is
+  claiming something false about ITSELF, and a claim on a row must be corrected on
+  the row, durably, across a restart.
+- **SEND** — an in-memory `sendForbidden` flag on the engine gates the send loop.
+  Device-global, not persisted: it is a claim about what the server said LAST, and
+  a stored one would be a guess about next. A relaunch costs exactly one refused
+  request, which is also the only way the app can ever learn the role was fixed.
+- **Retraction** — a sign-in is the one event on this device that can change who
+  is asking, so it is the only thing that lifts either. Same user signing back in
+  costs one refused request, not a loop. **Known limit:** a role changed in the
+  back office mid-session is invisible until the next sign-in; the token's TTL is
+  one hour, so a shift re-asks at least hourly, and nothing else on the device is
+  evidence about a role.
+
+The client-side role gate (hide ยกเลิกบิลนี้ from staff, read from the token's own
+`role` claim) **fails OPEN** on an unreadable token, which is the opposite of
+[[config-defaults-must-fail-closed]] and belongs on the other side of the wire:
+that lesson is about a SERVER accepting an identity it never verified. Here the
+server re-reads the role from the users row on every request regardless, so the
+gate prevents nothing — hiding the button from an admin whose token we merely
+failed to parse would remove the only way to correct a wrong bill, while offering
+it to a staff user costs one refused request and one plain sentence.
+
+## Observed, on a real iPhone with a staff account
+
+The device pass is what makes the rest of this more than a claim. One tap, then a
+full minute untouched:
+
+```
+INFO:  192.168.1.243:54315 - "POST /bills/735ed2aa-.../void HTTP/1.1" 403 Forbidden
+```
+
+**One line. The last line in the log** — nothing else arrived for the rest of the
+minute. Postgres, on that bill: `voided_at NULL`, `voided_by NULL`, `void_reason
+NULL` (read as hex, per the codepage-874 footgun), `total_amount 220.00`, still
+active as `B-2569-222`. The screen: red card, badge ไม่มีสิทธิ์ยกเลิกบิล, total NOT
+struck through, no ยกเลิกแล้ว, no ติดต่อฝ่ายสนับสนุน, no sign-in prompt. Signing
+back in as admin retracted the refusal and applied the ORIGINAL void with the
+reason the owner had typed.
+
+Note the asymmetry that is the design working: the server has no `void_reason`
+because `require_admin` runs as a dependency and refuses before `void_bill` reads
+the row. The reason lives on the PHONE, kept deliberately — the office needs to
+know a cancellation was attempted on a bill the system still shows as live.
+
+---
+
+**SOURCE:** `a-backup-is-a-claim-until-it-is-restored.md`
+
+# A backup is a claim until it has been restored
+
+Applies to every dump, restore and verification path — and to anything else
+whose success is reported by an exit code rather than by inspecting what was
+produced.
+
+`backup_db.py` exiting 0 says a process ran. It does not say rows are in the
+file, that the file will land where you point it, or that what comes back is
+still tenant-isolated. Each of those failed differently while this was built,
+and every one of them fails GREEN.
+
+## 1. The tenant model is also the way a backup captures nothing
+
+Every business table is `ENABLE` + `FORCE ROW LEVEL SECURITY` and the policy
+reads `app.tenant_id`, which no backup ever sets. Unset means no rows — the
+system fails closed, which is exactly right for the API and exactly fatal for a
+dump. A dump taken by `recycle_owner` or `recycle_app` fails loudly:
+
+    pg_dump: error: query failed: ERROR: query would be affected by
+    row-level security policy for table "sellers"
+
+The trap is the obvious fix. `--enable-row-security` makes that error go away
+by letting the policy apply — so pg_dump succeeds, exits 0, and writes a
+schema-shaped file with **zero rows in it**. Never add that flag. Dump as a
+role that can see every tenant, and prove it: count the rows **in the dump
+file** and fail if a table has rows in the database and none in the file.
+
+A count taken from the database is not evidence about the file. Parse the
+`COPY ... FROM stdin;` blocks. That number is the only one that survives if
+both the source and the restore target are wrong.
+
+## 2. `--create` writes the target database name INTO the body
+
+`pg_dump --create` is the natural choice for "reconstruct from nothing" — it
+emits `CREATE DATABASE recycle` and then `\connect recycle`. That `\connect` is
+a psql meta-command inside the file, and it wins over `-d`. Feed such a file to
+`psql -d recycle_restore_scratch` and psql switches to the LIVE database
+partway through and restores into it. A verification step silently becomes an
+overwrite of production.
+
+Take the body WITHOUT `--create` so it is retargetable, generate the
+database-level DDL (owner, encoding, locale, ACL) from the catalog separately,
+and have the restore re-check that the body contains no `\connect` before it
+runs. The checksum gate does not cover this: a dump taken the wrong way has a
+perfectly valid checksum.
+
+## 3. An exit code that is guaranteed to be non-zero is not a verdict
+
+`pg_dumpall --globals-only` always emits `CREATE ROLE postgres;`. On any
+cluster you were able to connect to, that role exists — you are connected as
+it. With `ON_ERROR_STOP=1` the roles step therefore aborts disaster recovery on
+an error that means nothing. The following `ALTER ROLE` still applies the
+attributes and the password.
+
+So that one step must not be judged by its exit code. Judge the END STATE:
+every role the backup recorded exists, with the recorded `rolsuper` and
+`rolbypassrls`. That check is not bookkeeping — a `recycle_app` restored with
+`BYPASSRLS` reads every tenant's rows while the policies sit there looking
+correct, and nothing in the application would notice.
+
+## 4. "Restored matches source" is vacuous unless the source has moved
+
+Restore into a scratch database, compare against the source, all green — and a
+restore that did absolutely nothing passes, because the verification queries
+could be reading the live database and no one would know.
+
+Make the two databases disagree on purpose. Mutate the source AFTER the dump,
+then assert the restored copy shows the DUMP's moment and not the source's:
+
+* a marker bill written after the dump is present in the source and **absent**
+  from the restore;
+* the `doc_no` counter reads one lower in the restore than in the source.
+
+Those two invert or collapse the moment a check reads the wrong database, so
+they are the first thing to look at when this proof goes green after a change.
+
+Compare money and weight as TEXT, digit for digit — a float comparison can
+agree while the digits differ. Compare Thai as UTF-8 hex, never by eye
+(see [[console-is-not-the-observation]]).
+
+## 5. What a restore cannot restore
+
+The moment. `pg_dump` reads one repeatable-read snapshot at its start, so the
+file is internally consistent and frozen there. With no WAL archiving there is
+no point-in-time recovery, and everything written between two backups is gone
+with the disk. Say the window out loud — "up to a day" — rather than letting
+"we have backups" imply otherwise.
+
+---
+
+**SOURCE:** `a-check-that-never-went-red-was-never-observed.md`
+
+# A check that has never gone red has not been observed
+
+**Applies to** every assertion, guard, detector and proof cell — and especially
+to the instrument you are about to cite as evidence for something else.
+
+**The rule:** every negative assertion needs a POSITIVE CONTROL — a known-true
+case, run in the same pass, that makes it fire. A check nobody has watched go red
+is a claim about the code, not a measurement of it.
+
+Sibling of [[a-checker-must-not-share-the-code-it-checks]] — that one is about
+where the expected value comes FROM; this one is about whether the assertion
+could have failed AT ALL, and three of the four cases below share no code with
+what they check.
+
+## Four instances, four mechanisms, one symptom
+
+**1. The needle was empty — in the instrument itself.** A verifier written to
+confirm `lessons/all-lessons.md` carries no UTF-8 BOM contained:
+
+```python
+print(f"starts with UTF-8 BOM : {raw.startswith(b'.'.replace(b'.', b''))}")
+```
+
+`b'.'.replace(b'.', b'')` is `b''`, and `startswith(b'')` is **True for every
+input that has ever existed**. It printed a confident `True` about a file that
+in fact had no BOM — right answer, no measurement, in the one script whose whole
+job was to be believed. The sibling line had the same defect: it counted an
+escape sequence that the file-writing tool had already converted, so it searched
+for text that could not occur.
+
+The fix is the rule, and it is three lines:
+
+```python
+BOM_BYTES = bytes([0xEF, 0xBB, 0xBF])   # built numerically: no escape to mangle
+assert len(BOM_BYTES) == 3, BOM_BYTES   # the check that the check is real
+print(f"contains U+FEFF : {raw.count(BOM_BYTES)}")
+print(f"  (control: same count in README.md, known to carry one: "
+      f"{(LESSONS / 'README.md').read_bytes().count(BOM_BYTES)})")
+```
+
+The control prints **1** for `README.md` and **0** for the generated file. Only
+the first number makes the second one mean anything. Without it, `0` is
+indistinguishable from a detector that cannot detect.
+
+**2. The needle was empty, in a language with no types to save you.** A
+CR-counting check ran `grep -c $'\r'` inside a `for` loop. `$'\r'` reached grep
+as an EMPTY pattern; an empty pattern matches every line; the count came back
+equal to each file's line count and was read as a CR count. Every file "had CRs".
+*(Observed at this terminal and not recorded anywhere in this repo — there is no
+`.sh` file and `git log -S "grep -c"` finds nothing. It is written down here
+because this is now the only place it exists.)*
+
+**3. The failing case was never reachable, because the input was a literal.**
+`mobile/src/proof/proveSignOut.ts:137-152` proves the send queue blocks a
+sign-out:
+
+```ts
+const outcome = await signOut({
+  pending: 3, failed: 0, setSyncPaused: (p) => { paused = p; },
+  tokens, engine: null,
+});
+check("the sign-out is refused", outcome.kind === "refused_pending", outcome.kind);
+```
+
+`pending: 3` is a number handed in, and `engine: null` means there is nothing
+present that could ever drain it. The cell is true and it proves the gate refuses
+**a number** — never that the number is unclearable, which is the only state in
+which the refusal is a trap rather than a wait. A green here is silent about the
+case where waiting cannot work.
+
+**And this file already knows the rule, twelve lines further down**, applied to
+its neighbour and not to this cell:
+
+> The count must come FROM the input. `includes("3")` passed on any sentence
+> holding that digit; a sentence with the count baked into it would still
+> satisfy the check above. A second, different count cannot be hardcoded.
+
+— followed by a second call with `pending: 7` asserting `7 ใบ`. That is a textbook
+positive control, written deliberately, three lines from a cell that has none.
+**A control on one assertion says nothing about the one beside it.**
+
+**4. The mutation never reached the assertion.** Eight expected values in
+`proveSignOut.ts` were substituted in `CLEARED_SESSION`, one per run, to
+wrong-but-plausible values, to find out which cells could fire. Every single one
+was a COMPILE error — `TS2322` at `signOut.ts`, *"Type 'true' is not assignable
+to type 'false'"*. The build stopped; the proof never ran; not one of the eight
+cells was observed doing anything. The literal types are a real guarantee and a
+valuable one — but they are a DIFFERENT guarantee, and the mutation test
+returned no information about the runtime checks at all. **A disproof that is
+intercepted upstream has not been performed.**
+
+## What the four have in common
+
+| | why it could not go red |
+|---|---|
+| 1, 2 | the assertion is vacuously true — no input exists that fails it |
+| 3 | the failing state is unreachable from the inputs the test supplies |
+| 4 | the deliberate break was stopped before the assertion ran |
+
+Different mechanisms, one consequence: **a green cell that carries no
+information, sitting in a report read as though it did.** That is worse than a
+missing test, because a missing test is visible in the count and this is not.
+
+## How to apply
+
+1. **Before citing any check as evidence, make it fail once on purpose.** Keep
+   the red output. If you cannot make it fail, you have not found a bug in your
+   mutation — you have found that the check is not a check.
+2. **Every detector gets a positive control in the same run**, over a case known
+   to be true. Print both numbers side by side. `0 violations` means nothing;
+   `0 here, 1 in the known-bad case` means something.
+3. **Build needles numerically, not from escapes** — `bytes([0xEF,0xBB,0xBF])`,
+   `chr(0xFEFF)` — and assert their length. Every layer between you and the file
+   (shell, editor, tool) is entitled to rewrite an escape, and a mangled needle
+   fails silently toward green.
+4. **When you mutate to test, verify the mutation REACHED the assertion.** A
+   compile error, a build step, a validation layer or a type can all consume it
+   first. The observable is the check running and printing red, not the run
+   failing somehow.
+5. **Never generalise a control across neighbours.** Instance 3 is the whole
+   argument: the author who wrote the control knew the principle, and the cell
+   above it still cannot fail.
+
+This is the passing-result twin of
+[[a-defaulted-getattr-is-a-silent-dead-branch]] — there, a production branch no
+test was ever seen to ENTER; here, an assertion no run was ever seen to REDDEN.
+Same question in both: *what would have made this different?* And it sits beside
+[[proof-must-run-twice]] and [[concurrency-tests-need-a-barrier]], which are the
+same family: **a passing result is evidence only if you know what would have made
+it fail.**
+
+---
+
+**SOURCE:** `a-checker-must-not-share-the-code-it-checks.md`
+
+# A checker must not share the code it checks — and must not reach past it
+
+**Applies to** any reconciler, invariant check, audit script or assertion that
+re-computes a value the production code already computes; and to any test that
+breaks something on purpose in order to prove a check catches it.
+
+One subject, three bounds. The first two pull in OPPOSITE directions; the third
+arrived later and is amended in at the end. Get any of them backwards and the
+result is a checker that is silently useless — the worst kind, because it prints
+a green.
+
+---
+
+## Bound 1 — duplicate ARITHMETIC, never duplicate a CONVENTION
+
+`server/scripts/reconcile.py` has to answer two questions that look identical
+and are not:
+
+* does `item.amount` equal `net_weight × unit_price`?
+* does the Buddhist-era year inside `doc_no` match the year the bill arrived in?
+
+**The arithmetic is duplicated on purpose.** The checker evaluates
+`round(net_weight * unit_price, 2)` in Postgres NUMERIC. `bills._line_amount`
+evaluates `Decimal.quantize(ROUND_HALF_UP)` in Python. Two implementations, two
+engines, one specified answer — both round ties away from zero, and every value
+is non-negative by CHECK, so they MUST agree. **A checker that imported
+`_line_amount` would agree with a bug in `_line_amount`.** It would confirm that
+the code equals itself, which is true of every program ever written.
+
+**The convention is NOT duplicated.** `_be_year` is imported from `bills.py` —
+the same function `doc_no` itself is built from. Writing
+`extract(year from x AT TIME ZONE '+07') + 543` in the checker's SQL would have
+been a second derivation of a choice, not a second computation of a fact. There
+is no independent authority on which timezone a shop day belongs to; there is
+only the decision, recorded in one place. A copy of it is correct-by-luck for
+most of the day and wrong across Bangkok midnight — which is the whole of
+[[be-year-comes-after-the-timezone]], **and whose amendment is precisely this
+failure**: the rule was applied to production and the code that CHECKS it was
+never swept.
+
+The test that separates them:
+
+> **Could a second competent author, given only the specification, arrive at the
+> same answer?** For arithmetic, yes — so duplicate it, and let the two disagree
+> when one is wrong. For a convention, no — they would arrive at *an* answer,
+> and it would differ at the boundary neither author tested. Import it.
+
+Getting it backwards fails in both directions, and both are silent:
+
+| mistake | what you get |
+|---|---|
+| checker imports the arithmetic | agrees with the bug. Green forever. |
+| checker re-derives the convention | red every new year over a defect that does not exist — or green over one that does, because the copy and the original are wrong the same way |
+
+The second row is the dangerous one. A checker that cries wolf annually gets
+switched off, and a checker that is switched off is worth less than none,
+because someone believes it is watching.
+
+## Bound 2 — a destructive proof must not be able to reach past its copy
+
+`prove_reconcile.py` breaks each invariant on purpose in a RESTORED COPY and
+asserts the checker catches it by name. One check could not be proven this way,
+and the reason is the lesson:
+
+**S5 asserts `recycle_app` is NOSUPERUSER + NOBYPASSRLS. The only way to make it
+fire is `ALTER ROLE recycle_app BYPASSRLS`. ROLES ARE CLUSTER-WIDE.** The live
+database shares the cluster with the copy, so that one statement would disable
+tenant isolation on real money data for as long as the injection ran — and leave
+it disabled if the script died in between. `ALTER TABLE ... DISABLE ROW LEVEL
+SECURITY` is database-scoped and safe; `ALTER ROLE` is not. They sit one line
+apart in any injection list and look equally harmless.
+
+So: **know which of your objects are scoped to the database and which to the
+cluster, before writing anything that breaks them on purpose.** Roles,
+tablespaces and cluster settings are shared. A "restore into a scratch database"
+does not sandbox any of them.
+
+The check was left UNPROVEN BY EXECUTION and labelled as such in the output,
+rather than proven dangerously or dropped quietly. And the reason is enforced
+mechanically — the harness scans every injection's SQL for `ROLE` statements and
+refuses them — because a reason that lives only in a comment decays into a
+comment nobody reads.
+
+---
+
+## The corollary that made both bounds visible
+
+An injection test only means something if the invariant is **clean before and
+clean again after**. Assert three things per injection, never one:
+
+1. the check fires, with the expected count;
+2. the report NAMES the actual row (assert against the human report, not a
+   machine format — "it must scream" is a claim about what a person reads);
+3. **undoing the injection returns the database to a clean run.**
+
+Without (3) a checker whose red never clears, or whose green is sticky, passes
+the whole suite. Nineteen injections here each carry all three, and (3) is what
+turns them from nineteen assertions into nineteen *measurements*.
+
+See also [[proof-must-run-twice]] — a proof that MUTATES its own fixture must
+restore that fixture itself, or its second run measures its first run.
+
+## Amendment (sign-out proof, R1): Bound 3 — the expected value must not come from the subject
+
+Bounds 1 and 2 are about the checker's CODE. This one is about its VALUE, and it
+survives every fix the other two ask for: a checker can share no code at all with
+what it checks and still be worth nothing, because the number it compares against
+was fetched from the thing on trial. Three instances, three languages, one shape.
+
+**1. `mobile/src/proof/proveSignOut.ts:273-304` states it in its own words**, in
+the comment left standing where the defect was:
+
+> This used to compare what the applier wrote against CLEARED_SESSION itself,
+> which proves PASS-THROUGH and nothing more: the applier reads that same
+> object, so the two agree by construction and every cell stays green whatever
+> the constant is changed to. Eight of the ten values were unpinned in exactly
+> that way — only token (through sessionStateOf, below) and online (=== null)
+> had an assertion that could fail.
+
+Ten values, eight of them unfalsifiable. No line of the assertion was wrong. The
+expected side simply came from the subject, so `S2` was a real test of "the
+applier writes every key exactly once" and simultaneously no test at all of WHAT
+it writes. The fix is the boring one: the expected values are now literals in the
+proof file, each carrying where in `src/` the specification says that value.
+
+**And the mutation test did not fire — for a reason that is its own trap.** All
+eight were substituted in `CLEARED_SESSION`, one field per run, to a
+wrong-but-plausible value. Every one was a COMPILE error — `TS2322` at
+`signOut.ts`, *"Type 'true' is not assignable to type 'false'"* — so the build
+stopped and the proof never ran. **A mutation the compiler catches first has not
+tested the runtime check.** The literal types are a real guarantee, and a
+different one; what the proof adds is the single case `tsc` cannot see, the
+interface literal and the constant widened TOGETHER.
+
+**2. The definition can come from the subject too, not just the value.**
+`proveSync.ts:603`, `:666` and `:888` each assert `queueHealth`'s `.offline`, and
+each is correct for the input it sends. The function is still wrong on an input
+none of them sends. `queueHealth.ts:302`:
+
+```ts
+const offline = blocking && !serverRefusing;
+```
+
+`serverRefusing` is `head.first_server_error_at !== null` (`:300`), and
+`markSessionExpired` (`SqliteLocalStore.ts:361`) sets `first_server_error_at =
+NULL, server_error_attempts = 0`. So a queue jammed by a dead token has
+`blocking` true and `serverRefusing` false, and reads as OFFLINE — "waiting for
+the network", on a device whose network is fine.
+
+The proof shares no code with `queueHealth`; it imports it and calls it, which is
+what a proof should do. What it inherited is the SUBJECT'S DEFINITION of the
+property. Proof and function were written together from one idea of what
+"offline" means, so they agree about the three cases that idea covers. A second
+author given only the specification — *offline means the device cannot reach the
+server* — would have asked what happens when the server answers 401, which is
+Bound 1's test pointed at a definition instead of at a formula. **A green here is
+a claim about coverage, and nothing in the output says so.** It reaches no screen
+today; that is why it is latent, and not why it is acceptable.
+
+**3. Same shape outside any language with types.** A CR-counting check at this
+terminal ran `grep -c $'\r'` inside a `for` loop. `$'\r'` reached grep as an
+EMPTY pattern, an empty pattern matches every line, and the count came back equal
+to each file's line count. It was read as a CR count. The number was real, it was
+just a property of the subject echoed back — a measurement that returns its own
+input. (Not recorded in this repo: no `.sh` file and nothing in `git log`. It
+happened in a session, and is written down here because that is the only place it
+now exists.)
+
+The test, and it is not the same question as Bound 1's:
+
+> **Where did the expected value come from — and could a wrong subject have
+> produced it?** Write it down by hand from the specification, never from the
+> object, the constant, or the function under test. Then break the subject and
+> watch the cell turn red. If it stays green, or if something upstream — a
+> compiler, a literal type, a build step — stops the break from ever reaching the
+> assertion, then the cell has not been observed.
+
+That last clause is the general rule and it has its own file:
+[[a-check-that-never-went-red-was-never-observed]] — Bound 3 is the case where
+the un-fireable assertion got its value from the subject; that lesson covers the
+ones where it had no value to get. Its sibling on the production side is
+[[a-defaulted-getattr-is-a-silent-dead-branch]]: a branch nothing was ever seen
+to enter, for the same reason a cell nothing was ever seen to redden.
+
+---
+
+**SOURCE:** `a-defaulted-getattr-is-a-silent-dead-branch.md`
+
+# A defaulted `getattr` is a silent dead branch
+
+**Applies to:** every place code asks an exception, a driver object, or any
+foreign object for an attribute it did not define itself — and to every "safety"
+branch that no test has ever been observed entering.
+
+## What happened
+
+`bills.py` handled the idempotency race like this, from Phase 1c:
+
+```python
+constraint = getattr(getattr(e, "orig", None), "constraint_name", "") or ""
+if "idem" in constraint:
+    ...return the winner's bill (200)
+```
+
+`constraint_name` **is not on `e.orig`**. SQLAlchemy's asyncpg dialect does not
+hand back the asyncpg exception: it builds its OWN DBAPI-shaped `IntegrityError`,
+copies only `sqlstate` onto it, and chains the real one as `__cause__`
+(`dialects/postgresql/asyncpg.py::_handle_exception`). Observed here, asyncpg
+0.30 / SQLAlchemy 2.0.51:
+
+```
+exc.orig                           -> sqlalchemy...asyncpg.IntegrityError
+exc.orig.constraint_name           -> ABSENT
+exc.orig.sqlstate                  -> '23505'
+exc.orig.__cause__                 -> asyncpg.exceptions.UniqueViolationError
+exc.orig.__cause__.constraint_name -> 'uq_sellers_tenant_code'
+```
+
+So `constraint` was `""` on every violation that has ever occurred, `"idem" in
+""` was always False, and **the branch had never executed once**. The loser of a
+concurrent same-key submit got a 500 instead of the winner's bill — a 500 is
+`unavailable` to the sync engine, never `rejected`, so that bill retried forever
+and dammed every bill behind it on that device. Hard rule 4 held sequentially and
+failed under concurrency, on the money path, for four phases.
+
+It surfaced by accident: the same idiom, copied into the new master-data writes,
+turned a duplicate seller code into a 500 instead of a 409.
+
+## Why it hid for so long
+
+Three separate things had to line up, and all three are the normal case:
+
+1. **The default made "I don't know" indistinguishable from "no".** `getattr`
+   with a default cannot fail. An absent attribute and a genuinely empty
+   constraint name produce the identical `""`, and only one of those is a fact.
+2. **The happy path covered the visible case.** `create_bill` pre-checks the key
+   with a SELECT, so a *sequential* replay returns 200 without ever raising.
+   `prove_bills` CASE 2 tests exactly that and passes — it never reaches the
+   handler. CASE 5 does race two submits, but with *different* keys, so it never
+   collides.
+3. **Nothing asserted the branch had run.** Every proof was green. A branch that
+   is never entered cannot fail a test that never enters it.
+
+## The rules
+
+- **Never `getattr(foreign_object, name, default)` on a contract you have not
+  observed.** Print the actual object, its type, and its `__cause__` chain once,
+  from a real failure, and pin what you saw in a comment with the library
+  versions. A wrapped exception is a different object from the one that was
+  raised.
+- **A missing attribute must not read as a negative answer.** Resolve to `""`
+  only if every caller treats `""` as *"I do not know"* — never as *"there was no
+  constraint"*. Encode that in the helper, not in each caller's head.
+- **Prefer asking the authority over recognising the symptom.** The fix in
+  `bills.py` was not to read the constraint name correctly — it was to stop
+  needing it: on any `IntegrityError`, re-SELECT the idempotency key and return
+  the bill if it now resolves. That is also *more* correct, because the bill's
+  primary key is client-generated too, so a device retrying the same bill
+  collides on `purchase_bills_pkey` OR on `uq_bills_tenant_idem` depending on
+  which index Postgres checked first — not something a handler can predict.
+  Where the name genuinely matters (`master.py` must know *which* entity's code
+  was duplicated, and products carry two unique constraints), read it through one
+  helper that documents the chain: `db.constraint_name_of`.
+- **A safety branch with no proof that ENTERS it is not a safety branch.** If a
+  handler exists for a race, the proof must actually run the race, with a start
+  barrier and printed overlap evidence
+  (`concurrency-tests-need-a-barrier.md`) — `prove_master_write` I1 prints
+  `windows overlapped by 37.5 ms` and asserts the overlap is positive, because a
+  green result from two sequential requests would prove nothing. Assert on the
+  *outcome the branch produces* (statuses `[200, 201]`, exactly one bill), not on
+  the absence of a crash.
+
+## The generalisable shape
+
+This is the sibling of `diagnosis-must-precede-the-fix.md`. That one is a
+**failing** result pinned on the wrong cause. This one is a **passing** result
+that proves nothing, because the code under test was unreachable. Both come from
+the same move: believing a story about the system instead of observing it. When a
+conditional guards something expensive to get wrong, the question is not "is the
+condition right?" but **"have I ever seen this branch execute?"**
+
+---
+
+**SOURCE:** `a-proof-fixture-must-be-a-row-the-product-could-produce.md`
+
+# A proof fixture must be a row the product could have produced
+
+**Applies to** every proof, seed or test that writes business rows directly —
+by SQL, by driver, by ORM — instead of through the code path a real client uses.
+
+**The rule:** if `POST /bills` could not have produced the row, the row is not a
+fixture. It is a hypothesis about a database.
+
+## What happened
+
+The first ever run of `server/scripts/reconcile.py` against the live dev
+database reported **84 violations**. None of them were product defects. Both
+causes were proof scripts writing rows the API cannot create:
+
+| check | rows | written by | what makes it impossible |
+|---|---|---|---|
+| T5 — every persisted bill has a `doc_no` | 44 | `prove_rls.py:96` INSERTs a whole tenant graph directly, to exercise the RLS `WITH CHECK` on INSERT, and never calls `create_bill` | `create_bill` assigns `doc_no` in the SAME transaction as the insert. The column is nullable only for hard rule 3's offline state, which by definition never reaches the server |
+| T7 — `doc_no`'s BE year is the year the bill arrived | 40 | `prove_daily_report.py` creates bills over HTTP, then backdates `server_received_at` onto a synthetic 2019 fixture day by direct UPDATE | the year and the stamp are now taken from ONE instant (see [[be-year-comes-after-the-timezone]]); nothing in the product can separate them |
+
+Both scripts are otherwise good, and both had a real reason to write directly.
+That is the point: **the mistake is not laziness, it is a reason that stopped at
+the write and never asked what the row would look like afterwards.**
+
+## Why this is worse than untidy test data
+
+The pollution is the least of it.
+
+1. **It pollutes, permanently.** Hard rule 5 forbids deleting a transaction, so
+   these rows cannot be cleaned up. A checker that is red on its first run, for
+   reasons unrelated to the product, is a checker with a short life —
+   see [[queue-jam-must-be-visible]] for the general shape: a signal nobody can
+   act on is a signal that gets switched off.
+
+2. **A proof over an impossible row can be green while the real path is broken.**
+   `prove_rls`'s bill has never once been through `create_bill` — not its doc_no
+   assignment, not its idempotency check, not its master-data gate. Every
+   assertion made about that bill is an assertion about seven INSERT statements
+   the proof itself wrote. It proves RLS, which is what it set out to do; it
+   proves nothing whatever about bills, and its ROW is nonetheless indistinguishable
+   in the database from one that lost its number.
+
+3. **It teaches the next reader the wrong lesson, in the dangerous direction.**
+   The natural reading of a red T5 is "the invariant is too strict — bills are
+   allowed a NULL doc_no, look, the column is nullable." Relaxing the check is
+   one edit away, and after it the checker can no longer see a bill that really
+   did lose its number. **Debris does not just add noise; it argues for its own
+   legitimacy**, and the argument is persuasive because the rows are right there.
+
+## The test to apply before writing a fixture directly
+
+> Could the product, given some sequence of legitimate requests, have arrived at
+> this exact row? Not "is it valid" — the schema will tell you that, and both of
+> these rows are schema-valid. **Could the code have made it?**
+
+If no, you have three honest ways out, in order of preference:
+
+1. **Go through the real path** and then adjust only what the path cannot set.
+   `prove_daily_report` already does the first half correctly — it creates over
+   HTTP so `doc_no` and `list_price` come from the real code — and then breaks
+   the second half by moving `server_received_at` somewhere the product could
+   never have put it *relative to the doc_no it had already been given*.
+2. **Write directly, but write the whole row**, including the columns the
+   product would have filled. `prove_rls` needs a direct INSERT to exercise the
+   RLS `WITH CHECK`; that requirement is about the INSERT, not about leaving
+   `doc_no` empty. It could supply a `doc_no` and the matching `doc_no_counters`
+   row and lose nothing.
+3. **Make the fixture disposable and dispose of it.** `prove_rls` invents a
+   THROWAWAY TENANT per run. Hard rule 5 protects a shop's ledger from a hard
+   delete; it was never about a synthetic tenant a proof created eight seconds
+   earlier. Deleting that tenant's whole graph on the way out costs nothing and
+   leaves nothing. (46 tenants exist today, 44 of them one-bill husks.)
+
+What is NOT on the list: teaching the checker to tolerate the row. That is
+[[a-checker-must-not-share-the-code-it-checks]] in reverse — instead of the
+checker borrowing the product's bug, the product's checker borrows the test's
+bug.
+
+## The general form
+
+This is the write-side twin of [[proof-must-run-twice]]. That lesson asks
+whether a proof's GREEN means anything. This one asks whether its FIXTURE does.
+Both have the same root: **a proof is only evidence about the system to the
+extent that what it touches is something the system could have touched.**
+
+And the two compound. A fixture that is impossible AND undeletable is a
+permanent false statement about the product, sitting in the one place — the
+database — that every future instrument will read as ground truth.
+
+---
+
+**SOURCE:** `a-report-is-many-reads-that-must-agree.md`
+
+# A report is many reads; under READ COMMITTED they are many moments
+
+**Rule.** When one response is assembled from more than one SELECT and the
+reader will COMPARE those parts against each other, the whole response must come
+from one snapshot: `tenant_connection(tid, isolation_level="REPEATABLE READ")`.
+The default is READ COMMITTED, where **every statement takes a fresh snapshot**.
+
+## The bug this prevents
+
+`GET /reports/daily` runs five queries: a summary aggregate, an off-list
+aggregate, the per-bill lines, and two void lists. Under READ COMMITTED a bill
+that commits between statement 1 and statement 3 is counted by the total and
+absent from the list printed underneath it.
+
+The owner is holding cash. The screen says 47 bills, 128,400 baht, and lists 46
+bills that add to 126,100. Nothing is corrupt, no query is wrong, and there is
+no way to tell from the response which number to trust. On the one screen whose
+entire job is reconciling, an unreconcilable answer is worse than an error.
+
+It is also the least reproducible class of bug there is: it needs a write to land
+inside a window a few milliseconds wide, so it will never appear in a proof and
+will appear in a busy yard at closing time.
+
+## Why REPEATABLE READ is free HERE, and the trap in generalising it
+
+A **read-only** REPEATABLE READ transaction in Postgres cannot fail with a
+serialization error. 40001 comes from writes detecting a concurrent update, and
+this transaction performs none. So the snapshot costs nothing and adds no retry
+path.
+
+**Do not carry that sentence to a write path, and do not carry it to
+SERIALIZABLE.** They are different guarantees:
+
+| | read-only | with writes |
+|---|---|---|
+| REPEATABLE READ | cannot get 40001 | CAN get 40001 |
+| SERIALIZABLE | **CAN get 40001** | CAN get 40001 |
+
+SERIALIZABLE will abort a purely read-only transaction to protect someone else's
+serializable write. Reaching for "the strongest isolation" on a report would
+therefore introduce a failure mode that REPEATABLE READ does not have — and a
+500 on a report path is `unavailable` to a client, with everything
+[[unavailable-is-not-rejected]] says that costs.
+
+## The mechanical part that is easy to get wrong
+
+The isolation level can only be chosen **at transaction start**. It is applied
+before `begin()`, not inside it:
+
+```python
+async with engine.connect() as conn:
+    if isolation_level is not None:
+        conn = await conn.execution_options(isolation_level=isolation_level)
+    async with conn.begin():
+        ...  # SET LOCAL app.tenant_id goes here, INSIDE the transaction
+```
+
+Setting it after the transaction has begun is silently ignored by some drivers —
+the code reads as if it asked for a snapshot and does not have one. **Assert the
+level rather than believing the parameter**: `SHOW transaction_isolation` must
+answer `repeatable read`, and the SAME check against a default connection must
+answer `read committed`. Without the second half the first proves only that a
+string was returned, not that the option did anything.
+
+## How to apply
+
+1. More than one SELECT in one response, and the parts get compared? One
+   snapshot. Ask whether a reader would notice the parts disagreeing — if yes,
+   it is this rule.
+2. Read-only: REPEATABLE READ. Never SERIALIZABLE for a report.
+3. Prove the level is really in effect, in both directions.
+4. This is orthogonal to WHICH rows the report selects. The day boundary is
+   [[doc-no-is-arrival-order-not-event-time]] and
+   [[render-in-shop-time-not-device-time]]; this lesson is only about the
+   parts agreeing with each other.
+
+**Where proven.** `server/scripts/prove_daily_report.py` section R asserts both
+levels through the real `tenant_connection`. Section P is the reason it matters:
+`limit=1` returns one line and the identical totals, because the money is
+aggregated in SQL over the whole day and never derived from the returned page —
+a truncated list can never produce a short total.
+
+---
+
+**SOURCE:** `a-stored-future-instant-is-a-promise-about-a-clock.md`
+
+# A stored future instant is a promise about a clock you do not control
+
+**Rule.** A stored instant is a claim made by a clock we do not own. When it
+falls **outside the window the code that wrote it could possibly have
+produced**, it is not information about the data — it is evidence that the
+clock moved between the write and the read. Believe the bound, not the stamp.
+
+Applies to anything that schedules future work from a device clock, and to
+every elapsed duration derived from a stored device timestamp.
+
+## What happened
+
+A bill bounced while the phone's clock was ~14h fast, so `markPendingAgain`
+stamped `next_attempt_at` ~14h in the future. Legitimate at the moment it was
+written. Then the clock was corrected **backwards**, and that stamp became a
+schedule 14 hours out.
+
+The send queue is strict head-of-line — only the oldest pending bill may go,
+nothing may overtake — so `runOnce()` hit this at the head and stopped:
+
+```ts
+if (new Date(bill.next_attempt_at).getTime() > this.clock.now().getTime()) break;
+```
+
+One row held the entire queue shut for fourteen hours while the server was
+reachable and answering every request. Moving the clock forward again released
+it and it synced green.
+
+And the screen said **ยังส่งเข้าระบบไม่ได้ตอนนี้ ระบบจะส่งให้เองเมื่อเชื่อมต่อได้** — the
+same class of lie as [[401-is-about-the-caller-not-the-bill]], through a door
+nobody was watching. The mechanism is worth writing down because it is not
+obvious: a pass that attempts nothing returns at `r.attempted === 0` before
+anything touches `online`, so the strip keeps whatever it last said. **A state
+that is never recomputed is not "unknown", it is stale — and it reads as a
+confident claim.**
+
+## Two windows, one rule
+
+The audit found the same rule needed against two different bounds, and they
+look like opposite tests until you state the bound:
+
+| | what it stamps | largest gap the writer can produce | suspect when |
+|---|---|---|---|
+| `master_cache.fetched_at` | something that ALREADY happened | **zero** (+ tolerance) | stamp is in the future |
+| `next_attempt_at` | something SCHEDULED | `max(backoffMaxMs, masterDataRetryMs)` | stamp is beyond the horizon |
+
+Both catch the *same backwards move*, from opposite sides. That is why they are
+one module (`mobile/src/time/clockSanity.ts`) and not two ideas — a rule written
+twice is two behaviours waiting to drift, the same reasoning as one formatter in
+[[render-in-shop-time-not-device-time]].
+
+**The horizon is what makes detection possible at all.** Backoff has a maximum,
+so a `next_attempt_at` further out than that maximum cannot be a schedule. On the
+device the stamp was 14h out against a 5-minute maximum — 168×. Not a judgement
+call.
+
+## The reaction is NOT shared, and must not be
+
+This is the part that would be wrong if it were tidied up later:
+
+- **`master/freshness.ts` fails CLOSED.** A suspect clock withdraws the price
+  default, because a price defaulted from data of unknowable age is paid out in
+  cash ([[cached-master-data-is-a-price-claim]]).
+- **The send queue fails OPEN.** A suspect schedule is treated as **due now**,
+  because the harm there is a bill that never leaves the device — real money
+  already paid, on one phone, with no server record. An early send costs nothing:
+  same `idempotency_key`, so the server answers a repeat with the existing bill
+  (hard rule 4).
+
+Same rule, opposite responses. Folding them into one *decision* would be the
+mistake; folding the *question* into one module is what stops them drifting.
+
+## Read time, never write time
+
+The stamp was **correct when written**. It only became evidence when the clock
+moved afterwards. A write-time clamp cannot see that and would have fixed
+nothing — this is the whole reason the check lives in the reader.
+
+## Capping the number does not disarm the trigger
+
+Found by the proof before it shipped, and it is the sharpest thing here.
+
+`poisonedForMs = now - first_server_error_at` gates the red "ติดต่อฝ่ายสนับสนุน"
+alarm. A **forward** jump made it 14h, so one bounce produced:
+
+```
+บิล 1 ใบส่งไม่ผ่าน 1 ครั้งติด นาน 840 นาที ทั้งที่เชื่อมต่อเซิร์ฟเวอร์ได้ — ... ต้องติดต่อฝ่ายสนับสนุน
+```
+
+A forward jump is **not detectable from one stamp** — "stored 14h ago" and
+"genuinely 14h old" are the same past instant. What bounds it is not a clock but
+the **work that must have happened during it**: N consecutive refusals can only
+account for N attempt cycles. Beyond that the device was not watching (clock
+jump, or the app was simply closed overnight), and the extra time is not
+evidence.
+
+The first fix capped the reported duration at `attempts × MAX_ATTEMPT_CYCLE_MS`.
+That stops the absurd number and **does not stop the alarm**: at a 60s cycle,
+merely *two* refusals account for 120s, which clears the 90s threshold on its
+own — so the red alarm would still have fired at two refusals instead of five,
+undercutting `POISON_ALARM_ATTEMPTS` by exactly the cry-wolf failure
+[[queue-jam-must-be-visible]] exists to prevent. A quieter wolf is still a wolf.
+
+**Two questions, two answers, off the same pair:**
+
+```ts
+poisonedForMs   // what the operator is TOLD.     Capped, so never absurd.
+poisonObserved  // whether it is EVIDENCE.        False once the raw span
+                // exceeds what the refusals account for. Only this may arm
+                // the clock trigger.
+```
+
+A "worst case" and a "sanity check" computed off one expression is the identical
+shape to the `Math.min`/`Math.max` bug in [[cached-master-data-is-a-price-claim]].
+It will keep reappearing; it is worth recognising on sight.
+
+Note what carried the alarm through all of this: **the COUNT trigger, which does
+not read a clock at all.** That is why a genuinely poisoned bill still goes red
+when the clock is unreliable, and it is the strongest argument for having had two
+triggers in the first place.
+
+## A refusal can be right while the sentence is absurd
+
+The freshness gate withdrawing the price default under a forward jump is
+**correct** — it fails closed. But it then told the operator that data fetched
+two minutes ago was *"เก่าเกิน 12 ชั่วโมง"*.
+
+Since the jump is undetectable, the fix is not to the decision but to the
+**claim**. Separate the halves and say which is which:
+
+- `asOf` is a **stored stamp** — true whatever the clock has done since. It leads.
+- the age is **derived** from the device clock — so it is attributed
+  (`ตามเวลาในเครื่อง`), never asserted as a fact about the data.
+
+A banner that is occasionally absurd is a banner staff stop reading, and the
+fetch time printed beside the age is what lets someone see for themselves that
+the age is nonsense. Same family as never rendering a diagnostic
+([[correct-classification-can-still-render-as-an-error]]): the audience decides
+what the artifact may claim.
+
+## A negative age is not a fresh bill
+
+`pricingProvenanceLine` computed `age = device_created_at - master_as_of` and
+returned null for `age <= JUST_FETCHED_WINDOW_MS` (then `FRESH_MAX_AGE_MS`). A backwards jump between opening the
+cart and saving makes that difference **negative**, which sails through the same
+test — so the stale-pricing marker **vanished on exactly the bill most likely to
+have been priced from a cache of unknowable age**. A false negative on a money
+marker, which is the direction that hides things (Rule 4,
+[[cached-master-data-is-a-price-claim]]).
+
+`master_as_of <= device_created_at` holds by construction, so the largest gap in
+the other direction is zero. It fails closed: the line is shown and states the
+fetch time instead of an age it cannot compute.
+
+Also fixed alongside it, and wrong independently of any clock: `App.tsx` passed
+the **minute-rounded** UI ticker as the bill's `device_created_at` on the confirm
+dialog. Rounding *down* understates the age by up to 59s and, near the threshold,
+suppresses the line entirely — on the last screen before cash leaves the drawer.
+**A value rounded for display is not a timestamp.**
+
+## What this deliberately does NOT solve
+
+- **A forward jump collapses backoff.** Every stored `next_attempt_at` becomes
+  due, and nothing can distinguish that from time genuinely passing without a
+  monotonic reference that survives a restart — there is none (`performance.now()`
+  resets; `Date.now()` is the thing under suspicion). The proof therefore claims
+  only that backoff holds **with the clock stable**, and enumerates 904
+  (schedule, instant) pairs showing the old and new gates agree inside the
+  horizon. Retrying early is the safe direction anyway.
+- **The deferred alternative, named and not built:** store `backoff_ms` beside
+  the stamp and anchor it to a **server-supplied instant** (`server_received_at`
+  is already returned), making the schedule a duration from a clock we do control
+  rather than an instant from one we do not. That is a schema change plus a wire
+  change. Owner's call; it was weighed and declined for this phase.
+- **`ORDER BY device_created_at`** — a backwards jump makes a later-weighed bill
+  sort earlier and take the lower `doc_no`. **No horizon reaches this**: every
+  value is a plausible past instant. Already covered by
+  [[doc-no-is-arrival-order-not-event-time]] (reports key on
+  `server_received_at`); explicitly out of scope, on the record.
+- `blockedForMs` has **no upper bound** and that is stated at the call site
+  rather than skipped: an offline device legitimately accumulates days of elapsed
+  time with no attempts to account for it, so capping it by attempts would
+  understate a genuine outage. It is amber context and triggers nothing.
+
+## How to apply
+
+1. Every stored instant read against `now` gets a bound: **what is the largest
+   gap the writer could have produced?** If the answer is "there isn't one", write
+   that down at the call site (`Number.POSITIVE_INFINITY` is an explicit
+   parameter in `credibleElapsedMs` for exactly this reason — the question must be
+   answered, not skipped).
+2. Check at **read** time. A write-time clamp cannot see a jump that happens
+   afterwards.
+3. Decide the **reaction** per call site — closed where money is paid, open where
+   work would be stranded — and never let one helper decide it for both.
+4. For a duration, ask what **work** accounts for it, and keep "what we report"
+   apart from "what we treat as evidence". Capping a number does not disarm a
+   trigger that reads it.
+5. Put the rule where **every** reader sees it. `listReadyToSend` is dead in
+   production but live in five proof cases; a rule that landed only in the engine
+   would have left the suite green while asserting the pre-fix semantics. Both
+   stores — real and fake — or the suite proves two different behaviours.
+6. Return `null`, not `0`, for an unknowable duration. A clamped `0` is a number,
+   and a caller will compare it to a threshold without noticing.
+
+**Where proven.** `mobile/src/proof/proveClock.ts` — K1 clock stable (backoff
+intact, 904 pairs), K2 back 14h (head sendable, whole queue drains in weighing
+order), K3 forward 14h (no false alarm, no absurd count, plus the two-refusal
+hole the proof itself found), K4 backwards mid-cart (marker survives), K5 the
+banner's wording. **Every case carries its disproof**: the same inputs through
+the pre-fix expression, asserted to produce the bad outcome — so green means
+something failed before and does not now ([[proof-must-run-twice]]).
+
+A guard in `SyncEngine`'s constructor **throws** if `backoffMaxMs` or
+`masterDataRetryMs` ever exceeds `SEND_SCHEDULE_HORIZON_MS`, so the engine can
+never write schedules its own reader would discard as clock damage. A comment
+would have been forgotten; a throw fires on every path that builds an engine,
+proofs included.
+
+---
+
+**SOURCE:** `be-year-comes-after-the-timezone.md`
+
+# The BE year comes AFTER the timezone conversion — and an ISO-shaped BE date is a trap
+
+**Rule.** `+543` is applied to a year that has *already* been converted to the
+shop's timezone. Never to the year the instant happens to carry. And a Buddhist-era
+date is rendered `DD/MM/BBBB`, never in ISO shape.
+
+## Why the order cannot be a matter of taste
+
+Once 543 has been added the value is no longer an instant, so there is no
+"convert afterwards" — the operation does not exist. That means "+543 first"
+always collapses to "never convert", which is right for most of the day and
+wrong for every Bangkok morning before 07:00:
+
+```
+stored 2026-12-31T17:30Z  =  2027-01-01 00:30 Bangkok
+  convert then +543  ->  01/01/2570     correct
+  +543 then convert  ->  31/12/2569     wrong DAY and wrong YEAR
+```
+
+2569 there is not cosmetic. The server stamps `be_year 2570` on that bill's
+`doc_no` and keys `doc_no_counters` on it, so the screen would name a different
+business year than the legal document number does. Both numbers were verified
+from real runs: `_be_year` returned 2570 and the mobile formatter returned 2570;
+the wrong order returned 2569 on both sides.
+
+**This is why the wrong order is dangerous rather than merely wrong: it is
+invisible.** For an ordinary evening — 2026-07-26 22:09 Bangkok — both orders
+print `26/07/2569`. Identical. So no spot-check, screenshot or afternoon of
+manual testing can find it. It has to be proven *at the boundary*, and the proof
+has to show the wrong order's output next to the right one or the case is
+vacuous.
+
+## Enforced by the compiler, not by a comment
+
+`shopWallClock()` returns a *branded* `ShopWallClock`, and the private `beYear()`
+takes only that type. Handing it a raw `new Date(iso)` does not compile:
+
+```
+error TS2345: Argument of type 'Date' is not assignable to parameter of
+type 'ShopWallClock'. Property '__brand' is missing in type 'Date'.
+```
+
+A comment saying "convert first" is a note to whoever reads it. This is a rule
+the build enforces on whoever doesn't — the same reasoning as
+[[unavailable-is-not-rejected]]: put it in the type or the module boundary, not
+in someone's memory. There is exactly ONE `+ BE_YEAR_OFFSET` on the client.
+
+## Why DD/MM/BBBB and not ISO-style 2569-07-26
+
+ISO shape looks like the safer, sortable choice. It is the more dangerous one:
+`2569-07-26` is byte-for-byte the shape of a Gregorian ISO date, so it invites
+the exact operation [[render-in-shop-time-not-device-time]] exists to kill — a
+later `slice(0, 4)` or `new Date(s)` — and would then yield a year wrong by 543
+with no visible symptom. `26/07/2569` cannot be mistaken for a machine-readable
+instant by a human or by code.
+
+The sortability argument was checked rather than assumed and does not apply: the
+one sort in the app orders raw `created_at`, never rendered output. Never
+abbreviate to `69`.
+
+## The agreement has a real BOUND — don't "fix" it
+
+The card's date and its `doc_no` year agree only when a bill is **received in the
+shop year it was weighed in**. `created_at` is the weighing instant;
+`be_year` derives from `server_received_at`, because doc_no is arrival order
+([[doc-no-is-arrival-order-not-event-time]]). So a bill weighed 23:59 on 31 Dec
+and synced after midnight legitimately shows `31/12/2569` beside `B-2570-n`.
+
+That looks like the bug this lesson is about and is not. Deriving the *displayed*
+date from `server_received_at` to make them match would relabel which day the
+shop bought a load on — for every offline bill, not just at new year.
+
+## AMENDED (2026-07-29): this lesson was written for production code, and the tests were never swept
+
+Everything above was applied to `app/bills.py` and `shopTime.ts` when the defect
+was found, and it held. Then, eight months later, the SAME expression was found
+alive in three places in two proof scripts:
+
+```python
+prove_bills.py:35            BE_YEAR = datetime.now(tz=timezone.utc).year + 543
+prove_master_data_gate.py    be_year = 2569   (two SQL predicates, one doc_no regex)
+```
+
+Nobody wrote a new bug. **The fix was applied to the site that had failed, and no
+one asked where else the same computation lives.** `prove_backup_restore.py` had
+imported `_be_year` all along with the note *"one BE-year source; never re-derive
++543"* — so one proof had it right and two did not, which is exactly the shape of
+a rule that was communicated by fixing rather than by sweeping.
+
+**What it would have cost.** Nothing, until 2027-01-01. Then, for the seven hours
+between Bangkok midnight and 07:00 UTC, `prove_bills` would compute 2569 while
+the server stamped 2570, and go red — on new year's day, with nobody having
+touched the repository, over a defect the code does not have. A proof that fails
+for a reason unrelated to the behaviour it tests is worse than no proof: it
+teaches the next person that red means "look at the environment", which is the
+belief that lets a real red through.
+
+**The general form, and it is not about dates.** When a lesson fixes a
+computation, the sweep is not done until every OTHER site of that computation has
+been checked — **tests included**. Test code is the easiest place for the old
+expression to survive: it is written to be independent of the implementation,
+which is precisely what makes it re-derive the thing the implementation now owns.
+"Independent reimplementation" is a virtue in an oracle only when the rule it
+encodes is stable; for a rule that was just corrected, it is a copy of the bug
+with a longer fuse.
+
+So the closing step of any fix of this kind is a repo-wide grep for the
+*expression*, not for the symptom — here `+ 543`, `.year`, a hardcoded `2569`, a
+date literal in SQL, any UTC-based date arithmetic — across production code,
+proofs, fakes and fixtures. That sweep was done on 2026-07-29 and the rest of the
+repo is clean; what it found and why each surviving site is sound is recorded in
+PROJECT_STATUS under that date.
+
+Two sound-looking things it deliberately did NOT change, so the next sweep does
+not churn them:
+
+- **Fixed input → fixed expected** pairs (`proveTime.ts`, `proveClock.ts`): an
+  assertion like `shopDate("2027-01-01T00:30:00Z") === "01/01/2570"` is a
+  constant mapping and is correct forever. Only a *derivation from the current
+  clock* is a time bomb.
+- **Fake servers that emit `B-2569-n`** (`fakes.ts`, `fileServer.ts`): the year
+  there is frozen deliberately. Making the fake derive the real year would add a
+  clock dependency to tests that are currently deterministic, and nothing
+  compares the fake's doc_no against a computed year — `doc_no` is an identifier,
+  never a date ([[doc-no-is-arrival-order-not-event-time]]).
+
+## AMENDED AGAIN (2026-08-02): the function was right — the INSTANT passed to it was wrong
+
+Everything above is about the ORDER OF OPERATIONS inside the derivation. This one
+got the derivation perfectly right and still put the wrong year on a legal
+document, because of the ARGUMENT:
+
+```python
+be_year = _be_year(datetime.now(tz=timezone.utc))   # a SECOND clock, a SECOND moment
+...
+INSERT INTO purchase_bills (...)                     # server_received_at DEFAULT now()
+```
+
+`server_received_at` is Postgres' `now()` — **transaction start**. The `be_year`
+came from a PYTHON read taken later in the same transaction, after the seller
+lookup and every product and price lookup. Two clocks *and* two moments, a full
+master-data round-trip apart. A submit beginning at 23:59:59.9 on 31 December
+shop time and reaching that line after midnight took NEXT year's `be_year` on
+LAST year's stamp.
+
+**It was not a mislabel.** `doc_no_counters` is keyed on `(tenant_id, be_year)`,
+so the bill OPENED THE WRONG COUNTER a year early. The new year's real first bill
+then finds it at 1 and becomes `B-<year>-2`, and no `B-<year>-1` will ever exist:
+a permanent gap in a document sequence, unrepairable, in the one table hard rule
+5 forbids editing.
+
+Measured before and after on the real `create_bill`, same lie, scratch copy:
+
+| | doc_no | server_received_at | doc_no_counters |
+|---|---|---|---|
+| before | `B-2570-1` | BE 2569 | `{2569: 305, **2570: 1**}` |
+| after | `B-2569-306` | BE 2569 | `{2569: 306}` |
+
+**The rule this adds:** a value DERIVED from a timestamp must be derived from the
+timestamp that is actually STORED — read once, then used for both. Never from a
+fresh read of "the same kind of thing", however close the two look. `now()` and
+`datetime.now()` are not the same clock, and even one clock read twice is not one
+moment.
+
+**And the fix is an ORDERING, never a tolerance.** The instinct is to allow a few
+seconds of slack between the two reads. That leaves two reads. The instant is now
+read FIRST, `be_year` is derived from it, and the SAME value is written to
+`server_received_at` explicitly instead of leaving it to the column default —
+because "they agree because both call `now()`" is a coupling the next reader has
+to already know in order to see. One value, used twice, no window to be tolerant
+about.
+
+**Where proven.** `server/scripts/prove_docno_clock.py` — C1 puts the two
+instants a straddling transaction really produces through the real `_be_year`
+(150 ms apart, one BE year apart); C2 lies to Python's clock across new year and
+drives the real `create_bill`, asserting the doc_no year, the counter key and the
+stamp all agree and that no counter opened for the lied-about year. It refuses to
+run against the live database, because against unfixed code the lie is itself the
+corruption.
+
+## How to apply
+
+1. Shop timezone first, `+543` second. One year source, ideally typed shut.
+2. BE dates are `DD/MM/BBBB`, display-only. Storage and the wire stay UTC ISO.
+3. Prove it at the boundary AND show the wrong order's output. A green afternoon
+   case proves nothing here — the two orders agree there.
+4. Assert the UI year against the server's `be_year`, and assert that the wrong
+   order would have *disagreed*, or the check does not discriminate.
+5. Never let a rendered BE string be parsed, sorted, compared or stored.
+6. When you fix one of these, grep the WHOLE repo for the expression before
+   closing it out — production, proofs, fakes, fixtures. The fix is not the
+   sweep, and the site that failed is rarely the only one.
+
+**Where proven.** `mobile/src/proof/proveTime.ts` T7–T10: the reported card, the
+order disproof over four instants (including the one where both orders agree),
+UI↔`doc_no` agreement plus its wrong-order disproof, and negative assertions that
+no `19xx/20xx` year survives into rendered output. Run twice under
+`TZ=Asia/Bangkok` and `TZ=UTC` with identical rendered values. Server side,
+`server/scripts/prove_shop_time.py` S1/S2 for `_be_year`, S3 for the wiring into
+`doc_no` and the counter key.
+
+---
+
+**SOURCE:** `cached-master-data-is-a-price-claim.md`
+
+# A cached price is a claim about today, and a backwards clock makes it look fresh
+
+Applies to any value DEFAULTED from data the device cached earlier — prices,
+tiers, rates — and to every age computed from a stored timestamp.
+
+## The setup
+
+Phase 2c-8 put products and sellers in SQLite so the yard can work with the
+server down. That is required by hard rule 8. It also means the price the app
+fills in is no longer a fact, it is a memory.
+
+The server stamps `list_price` from the **current** list at sync time
+(`server/app/bills.py`) and discards whatever the client sent. So a bill priced
+from a stale cache arrives with `unit_price != list_price` — **byte-identical in
+shape to a deliberate staff override**. The overpayment is real, banked, and
+disguised as a decision somebody made.
+
+## Rule 1 — a default from cached data needs an age, and an age needs a cutoff
+
+This is NOT the same case as [[fallback-default-is-a-wrong-number]], and saying
+it is would be sloppy: there the invented value could never make the operation
+succeed, so it had no upside at all. A stale price CAN succeed — the server
+accepts any `unit_price`. It has to be argued on its own, and it was, at length,
+in `mobile/src/master/freshness.ts`.
+
+The decision: past **12 hours**, do not default. Show the cached number beside
+the empty box, labelled old, and let the operator type what was agreed.
+
+Three things make that survivable, and without them the cutoff would be a bad
+idea:
+
+- it blocks **nothing** — seller, weighing, saving, queueing and syncing all
+  work exactly as before;
+- the cached number is still **shown**, so the operator is informed rather than
+  blinded. Next to an empty box it is evidence; inside the box it is an
+  assertion;
+- 12 hours is the shortest window a working day cannot cross on its own, so it
+  only ever fires when the device was out of contact while the yard was **shut
+  and the office was open** — precisely when prices change.
+
+## Rule 2 — the age is bounded by the OLDER half, and the clock check reads the NEWER
+
+A price default needs two things: the product's tier list, and the seller's
+grade to pick a tier with. They are fetched separately and can fail separately,
+so a fresh product list does **not** rescue a week-old grade. `asOf` is the
+minimum of the two.
+
+**The bug this file exists for.** The clock-sanity check was written against
+that same `asOf`, and it was wrong in the dangerous direction. Found by the C1
+sweep in `proveCold`, not by reading:
+
+> A stored timestamp in the FUTURE can only mean the device clock has moved
+> **backwards** since it was written. A backwards clock makes `now - stored`
+> smaller, so **every age is understated and old data looks fresh**.
+
+Checking the *oldest* timestamp missed it whenever only one of the two lists was
+affected: `Math.min` silently picked the other, still-plausible timestamp and the
+assessment carried on. One list's clock damage condemns **both** ages, so:
+
+```ts
+const asOfMs      = Math.min(p, s);            // what we report, and gate on
+const clockSuspect = now - Math.max(p, s) < -JUST_FETCHED_WINDOW_MS;  // NOT min
+```
+
+Two different questions over the same pair. Using one answer for both is the
+shape of the mistake, and it will reappear anywhere a "worst case" and a
+"sanity check" are computed off the same collection.
+
+## Rule 3 — a delete-all refresh must be one transaction, timestamp included
+
+A refresh **replaces** a list, so a seller the office deleted stops existing.
+That is delete-all + insert-all + stamp. Outside a transaction, a failure in the
+middle leaves half a list wearing a **fresh** timestamp — strictly worse than no
+cache at all, because the operator is then told it is current. Proven with a real
+constraint violation, not a stubbed throw (`proveCold` C3).
+
+The same replacement creates a second hazard, which fails closed only if you make
+it: a form holding `product_id` for a product the refresh has just removed. The
+screen resolved the id for its *label* but passed the **raw form value** into
+`buildLine`, which only checks that it is non-empty — so the line committed with
+a blank product code, at a real price, and the server refused the whole bill
+after the cash was paid. Pass the **resolved** row's id, so a row that has gone
+away becomes "no product chosen".
+
+## Rule 4 — stamp the provenance at the START of the bill, never at the save
+
+The bill carries `master_as_of` — device-only; there is nowhere on the wire for
+it. It is stamped when the draft is created, **not** when it is saved, because
+the cache can only get newer while a cart is open. Stamping at save time reports
+a refresh that arrived *after* the prices were typed: a false negative on a money
+marker, which is the direction that hides things. The start time can overstate
+staleness; a false positive costs someone a glance.
+
+## What this does NOT solve — the part that needs a server field
+
+`master_as_of` lives on the device. The device can always answer "was this bill
+priced from old data". **The office cannot** — on the server the only symptom is
+`unit_price != list_price`, which is the exact confusion above. Closing it needs
+`purchase_bill_items.client_list_price` (the device's belief, which the client
+already sends and `bills.py` deliberately discards) and
+`purchase_bills.device_master_as_of`. Named at the foot of `freshness.ts` and
+**not added** — owner's call.
+
+## Related
+
+[[fallback-default-is-a-wrong-number]] — the case where the default could never
+succeed; this is its harder sibling, where it usually can.
+[[sqlite-money-is-text]] — why the tier map is a TEXT column of JSON.
+[[401-is-about-the-caller-not-the-bill]] — a persisted token can be expired on
+restore, and offline that is unknowable; the 401 path is what resolves it, so
+nothing here tries to guess.
+[[render-in-shop-time-not-device-time]] — every timestamp in these messages goes
+through the one formatter.
+
+---
+
+**SOURCE:** `concurrency-tests-need-a-barrier.md`
+
+# A concurrency test without a start barrier proves nothing
+
+**Context.** Phase 2b had to prove that `claimForSend` is atomic: two overlapping
+sync passes must never both claim the same bill. The test spawns N worker
+threads, each with its own connection to one SQLite file, all racing to claim
+the same rows.
+
+**Rule.** Any test claiming to prove behaviour *under concurrency* must (a) hold
+every worker at an explicit barrier until all of them are ready, and (b) print
+evidence that their working windows actually overlapped — e.g. the latest start
+timestamp against the earliest finish. Without both, the test has not
+demonstrated concurrency and must not be described as if it had.
+
+**Why (the failure it prevents).** Spawning a thread costs far more than doing a
+few hundred small writes. The first version of this test reported
+`wins = 200 + 0 + 0 + 0`: worker 1 finished every claim before worker 2 finished
+opening its connection. The run was green. It asserted "each row claimed exactly
+once" and that assertion passed — on a workload that never had two claimers
+alive at the same time. A broken, non-atomic claim would have passed it just as
+happily. The danger is not the failing test, it is the **passing** one:
+false proof of the single guarantee standing between the customer and duplicate
+real-money bills.
+
+With a `SharedArrayBuffer` + `Atomics.wait` barrier the same test reported
+`0 + 0 + 84 + 216` wins with 900 lost races, and the overlap line showed all
+four threads claiming simultaneously — that is a race.
+
+**Generalises to.** Anything where "at the same time" is the property under
+test: parallel API calls, DB row locks, file locks, queue consumers. Green means
+nothing until you can show the workers overlapped.
+
+**Where proven.** `mobile/src/proof/claimWorker.ts` (barrier) and
+`mobile/src/proof/sqliteProof.ts` S3, which asserts the overlap itself as a
+check rather than assuming it. Related: [[sync-state-needs-startup-recovery]].
+
+---
+
+**SOURCE:** `config-defaults-must-fail-closed.md`
+
+# A default for a security secret is a default IDENTITY
+
+**Rule.** Config that decides WHO SOMEONE IS gets no default value. Read it with
+`os.environ["X"]`, never `os.environ.get("X", <fallback>)`, and treat an empty
+string as absent. The process must refuse to start.
+
+## What happened
+
+`config.py` had:
+
+```python
+JWT_SECRET: str = os.environ.get("JWT_SECRET", "dev-only-insecure-secret-do-not-use-in-prod")
+```
+
+and that exact string was committed in `.env.example`. Two lines above it,
+`APP_DATABASE_URL` used `os.environ[...]` and failed closed. The security-
+critical one failed OPEN.
+
+This is not theoretical. Verified against the running server: a token signed with
+the published default, for a tenant we had no password for, carrying a `sub` that
+matched no user, was accepted — returning that tenant's sellers and full price
+list.
+
+```
+GET /sellers as forged tenant-B principal -> 200
+  {"sellers":[{"name":"Seller of Shop B","grade":"A"}]}
+```
+
+The whole isolation stack — RLS, `SET LOCAL`, composite tenant FKs, a
+`NOBYPASSRLS` role — worked perfectly and was irrelevant. It faithfully served
+whatever tenant the forged token claimed. **Isolation enforces the identity it is
+given; it cannot question where that identity came from.**
+
+## Why a default is worse than a missing value
+
+A missing value fails loudly on the first boot, in front of whoever is deploying.
+A default fails silently, forever, and looks healthy: the service starts, serves
+traffic, logs nothing unusual. Nothing about a running system reveals that its
+signing key is the one in the public repo. The failure surfaces only as a breach.
+
+The empty case is the same bug wearing a disguise: `.env.example` now ships
+`JWT_SECRET=` with no value, and copying it yields `""` — which `os.environ[...]`
+returns happily. Hence the explicit emptiness check.
+
+## Testing note that cost a run
+
+`load_dotenv()` does NOT resolve `.env` relative to the current directory. With
+no arguments it walks up from the **calling file's** directory, so
+`server/app/config.py` finds `server/.env` no matter where the process was
+started. An attempt to prove fail-closed by running `uvicorn` from a scratch
+directory therefore booted normally and hung, "disproving" a fix that was
+correct.
+
+To test config isolation, set the variable explicitly in the environment
+(`load_dotenv` defaults to `override=False`, so a real env var wins), or use
+`python -c`, where the caller frame is `<string>` and dotenv falls back to cwd.
+Verify the guard fires; do not infer it from a process that failed to start for
+some other reason ([[diagnosis-must-precede-the-fix]]).
+
+## How to apply
+
+1. Any secret, key, or credential: no default, ever. Empty counts as missing.
+2. Grep for `environ.get(` with a second argument in config modules. Each hit is
+   a question: what happens if this is wrong in production?
+3. A committed example file must ship the KEY with no VALUE, plus the command to
+   generate one. Never a working placeholder — placeholders get deployed.
+4. When a config guard is added, prove it by real process startup, and know how
+   your dotenv loader resolves paths before believing the result.
+
+**Where proven.** `server/app/config.py`. Fail-closed shown two ways: absent →
+`KeyError` at import, empty → `RuntimeError` killing a real `uvicorn` boot with
+exit 1. The forged token that returned 200 before now returns 401, verified side
+by side against both servers.
+
+---
+
+**SOURCE:** `console-is-not-the-observation.md`
+
+# The console is not the observation — verify text at the source, in bytes
+
+**Rule: never diagnose a text or encoding problem from terminal output, or from
+anything piped through a tool whose default encoding follows the console
+codepage. Check at the source: codepoints from the file, hex from the database,
+`.decode('utf-8')` pinned explicitly on the wire.**
+
+This dev machine runs `Active code page: 874` (Thai). Any UTF-8 that passes
+through the console, or through a Python process reading stdin with default
+encoding, is silently re-decoded as CP874 and comes out as plausible-looking
+garbage.
+
+## What happened
+
+Checking the master-data endpoint before the Phase 2c-3 device test, the product
+names came back looking corrupted:
+
+```
+"name": "เธญเธฅเธน..."
+```
+
+`เธ` is `เธ` — the textbook signature of UTF-8 bytes re-decoded as
+TIS-620/CP874. It was `\uXXXX`-escaped output, which the console cannot alter,
+so it looked like hard evidence that the seeded data was double-encoded. It was
+not. The escaping happened *after* `python -m json.tool` had already mis-decoded
+the pipe.
+
+A second check "confirmed" it: reading the seed file printed `?????????????`.
+That was `errors='replace'` plus the console again.
+
+What the source actually says:
+
+```
+file codepoints : 0xe2d 0xe25 0xe39 0xe21 0xe34 ...   = อลูมิเนียมกระป๋อง
+postgres hex    : e0b8ad e0b8a5 e0b8b9 e0b8a1 e0b8b4 ... (byte-identical)
+API, pinned     : json.load(f, encoding='utf-8') -> clean Thai
+chcp            : 874
+```
+
+Nothing was wrong anywhere. Three layers agreed; only the rendering disagreed.
+
+## Why this one is dangerous
+
+Most false positives waste time. This one is destructive. The "fix" for phantom
+mojibake is to rewrite the strings — which would have taken correct UTF-8 and
+replaced it with something derived from a broken reading, in seed data that
+populates every new customer's database. The bug would have been *created* by
+the investigation, and the next person to look would have found real corruption
+with a commit that says it fixed corruption.
+
+It also fails the honesty test in the worst way: it looks like evidence.
+`\uXXXX` escapes feel authoritative precisely because they are ASCII and cannot
+be mangled in transit — but they are computed from a string that was already
+wrong.
+
+## How to apply
+
+- **Postgres:** `SELECT encode(convert_to(col,'UTF8'),'hex')`. Hex is
+  codepage-proof. Compare against the source file's bytes.
+- **Files:** read binary and print `[hex(ord(c)) for c in raw.decode('utf-8')]`.
+  Never `print()` the string and judge by eye.
+- **HTTP:** write the body to a file, then `open(path, encoding='utf-8')`. Never
+  pipe a UTF-8 body into a tool that decodes stdin with the locale default.
+- **Rule of thumb:** if the conclusion is "the data is corrupt", first prove the
+  *reader* is correct. Corrupt-looking output has two candidate causes and the
+  rendering path is by far the more common one.
+
+## The general form
+
+Kalāma says never assert what the server did from memory — only from an observed
+response. This is the same discipline one layer deeper: **a rendering of a
+response is not the response.** The console is a second system with its own
+lossy transformation, exactly like Metro's file map in
+[[metro-file-map-nesting]], where `fs.existsSync` said `true` and the bundler's
+own index said `false`. Ask the layer that actually holds the truth, in a form
+it cannot reformat: bytes.
+
+**Where found.** Phase 2c-3, verifying `/products` before the on-device cart
+test. No code changed as a result — the correct outcome was a retraction.
+
+---
+
+**SOURCE:** `correct-classification-can-still-render-as-an-error.md`
+
+# A correct classification is not correct behaviour until the screen agrees
+
+Applies to every state a user can see that the system distinguishes internally:
+retryable vs terminal, parked vs failed, degraded vs down, pending vs stuck. The
+classification is only half the feature. **The other half is on the screen, and
+it can be wrong while everything behind it is right.**
+
+## What happened
+
+Phase 2c-6, first device pass. A bill for a seller with no grade rendered as:
+
+```
+ผิดพลาด: HTTP 424: {"kind":"master_data_missing","code":"seller_grade_unset",
+"message":"ผู้ขายรายนี้ยังไม่ได้กำหนดเกรด จึงยังไม่มีราคาตั้งต้น",
+"seller_id":"aaaa0000-0000-0000-0000-0000000000aa"}
+```
+
+In red. On a phone. In a yard.
+
+Now the uncomfortable part — **every layer underneath was correct**:
+
+| layer | did the right thing |
+|---|---|
+| server | returned `424` + a machine-readable `code`, not `422` |
+| transport | classified it `rejected_resolvable`, carried the code through |
+| engine | called `markMasterDataMissing`, not `markFailed` |
+| SQLite | `sync_state='pending'`, `master_data_missing_at` set, still owed |
+| queue | excluded from `QUEUED`, so it blocked nothing |
+| proofs | `proveSync` CASE 10 green: parked, not failed, non-blocking |
+
+Nothing was broken. The three-way classification of
+[[unavailable-is-not-rejected]] worked end to end. And the product still told the
+operator their bill had failed — the exact conclusion the whole classification
+exists to prevent them from reaching.
+
+The render was one line, gated on the wrong thing:
+
+```tsx
+{b.last_error !== null && !voided ? (
+  <Text style={styles.err}>ผิดพลาด: {b.last_error}</Text>
+) : null}
+```
+
+`last_error` is non-null for a parked bill — correctly, it is the diagnostic. The
+UI had no concept of "parked" at all, so every non-success collapsed into one red
+sentence. A yard sees red and re-weighs a load, or calls the office about a bill
+that needed no call.
+
+## A developer diagnostic and an operator message are different artifacts
+
+`last_error` holding `HTTP 424: {…json…}` is **right**. It is the breadcrumb that
+pairs with the server's `BILL_POISON_CANDIDATE` log line, and it is how a jam
+gets diagnosed after the fact. Keep it.
+
+What is wrong is *rendering* it. These two artifacts have different audiences,
+different lifetimes and different content rules:
+
+|  | developer diagnostic | operator message |
+|---|---|---|
+| audience | someone reading a bug report | someone with wet hands and a queue |
+| content | status, codes, ids, raw body | one instruction, in Thai |
+| built by | the transport, once | the UI, from a code |
+| may contain a UUID | yes | never |
+
+**A string is not promoted to a user message by being displayed.** If a field was
+built for diagnosis, no amount of putting it in a `<Text>` makes it an
+explanation. The two must be produced by different code paths, or the diagnostic
+will leak the moment someone adds a state the UI has not been taught.
+
+## The second defect, same family: the wrong instruction
+
+`StatusStrip` already had a dedicated amber message for parked bills — someone
+had thought about this — but it hardcoded one cause:
+
+```
+N ใบรอราคาสินค้า — ยังไม่ได้ตั้งราคาสำหรับเกรดของผู้ขายรายนี้
+```
+
+For `product_price_unset` that is right. For `seller_grade_unset` it is a
+**confidently wrong instruction**: the office goes and sets a product price, and
+the bill does not move, because what it is waiting for is the seller's grade.
+
+This is worse than a vague message, and the reason is specific: **a vague message
+makes someone investigate; a wrong one makes someone act.** The office does the
+work, nothing is released, and now the system has also spent its credibility —
+next time the amber strip appears it gets ignored. A message that names an action
+must be derived from the cause, never from the most common cause.
+
+## Why the mapper is pure and takes only the code
+
+`src/sync/parkedReason.ts` takes `code: string | null`. That is the entire
+signature, and it is chosen so the leak is **unrepresentable**, not merely
+avoided:
+
+- there is no `bill`, no `response`, no `detail`, no `last_error` parameter, so no
+  caller can pass a body in even by accident;
+- it returns finished Thai sentences, not a key the caller must look up — a
+  mapping that hands back an identifier is a mapping that can be bypassed by a
+  caller in a hurry;
+- being pure and in `src/`, it is reachable by a headless proof, which `app/`
+  files are not (`tsconfig.node.json` has `rootDir: "src"`).
+
+An unknown code degrades to a generic sentence plus the code **alone**, so the
+next cause the server invents is readable on an un-updated device instead of
+blank or raw.
+
+## The first fix was a gate, and the gate had a hole
+
+The first attempt kept the raw-error line and added a condition:
+
+```tsx
+{b.last_error !== null && !voided && !parked ? … }
+```
+
+That is correct for every state anyone thought of. The second device pass found
+the one nobody did. While **ส่งอีกครั้ง** retries a parked bill,
+`releaseMasterDataBlocked` had cleared `master_data_missing_at` and
+`master_data_code` but **left `last_error`** — so for the length of the request
+the row simultaneously said *not parked* and *here is why it was parked*, `parked`
+computed false, and the exact red JSON came back. It self-corrected when the
+server answered, which is worse, not better: a defect that repairs itself in a
+second is one no bug report ever captures.
+
+Two things were wrong and both are worth separating:
+
+**The cause was a half-update, not a rendering bug.** Compare the transitions:
+`markSynced` had always cleared `last_error` alongside the columns that justified
+it; `releaseMasterDataBlocked` cleared the state and kept the text. **No
+transition may leave behind an error describing a state it has just left.** Grep
+every `UPDATE`/mutation that retires a state for whether it also retires that
+state's explanation. (Both stores needed it — `SqliteLocalStore` *and* the
+in-memory fake, or the suite would run the same case against two different
+behaviours and one of them would be a lie.)
+
+**The gate was the wrong shape.** Enumerating states in a view condition is a
+standing invitation to miss one, and the miss is invisible until someone happens
+to look during a 300ms window. So the view stopped seeing `last_error` at all:
+`billNotice(bill)` is now the single pure function that decides what a bill says,
+the proof enumerates states over *that* rather than over a screen, and the
+remaining guarantee is an invariant instead of a condition — **`last_error` can
+hold a 424 body only while the bill is parked**, because
+`markMasterDataMissing` is its only writer and every other transition overwrites
+or clears it.
+
+> A gate you have to remember is a bug you have not found yet. Prefer a shape
+> where the leak is unrepresentable.
+
+## Why every proof was green
+
+This is the sharpest part. Nothing lied. The proofs asserted the *state*:
+`sync_state`, `master_data_code`, `masterDataBlockedCount`, `behind === 0`,
+doc_no ordering. All true. **Not one of them asserted anything about what the
+operator reads.** The screen was outside the proven surface entirely, so the
+suite could not have caught this — it was not a weak test, it was an absent one.
+
+That puts this in the family with [[proof-must-run-twice]],
+[[concurrency-tests-need-a-barrier]], [[schema-audit]] and
+[[metro-file-map-nesting]]: **a passing result is only evidence if you know what
+would have made it fail.** Here the answer was "nothing" — no assertion existed
+that a red error message could have broken.
+
+`proveSeller` S7 now asserts on the rendered text, and it asserts *negatively*:
+the operator-facing string must not contain JSON punctuation, `kind`,
+`master_data_missing`, `_unset`, `424` or a UUID — checked against the byte-exact
+diagnostic the transport builds. S8 does the same for the **in-flight** states,
+against the real `SqliteLocalStore` and the real release path, because that
+defect lived in a SQL `UPDATE` and a fake would have proven the fake.
+
+Both checks were confirmed non-vacuous by running them on the pre-fix state,
+where all six body fragments fire.
+
+One refinement worth recording, because the proof got it wrong first: **ผิดพลาด
+is not unconditionally forbidden.** S8 initially banned the word in every state
+and failed on a genuine 422 — which *is* an error and must say so, loudly. The
+rule is narrower than "never say error": never call a RESOLVABLE refusal one. So
+body fragments are banned in all states; the error word is banned in every tone
+except `error`. An over-broad assertion is its own kind of wrong, and it would
+have pushed the fix toward silencing real failures.
+
+## How to apply
+
+1. For every internal state, ask **what does the screen say** — not "is the state
+   correct". Read the actual render path. The state being right is the setup, not
+   the outcome.
+2. Never render a field built for diagnosis. Grep the UI for the diagnostic field
+   names (`last_error`, `detail`, `stack`, `raw`); each hit is a leak or needs a
+   comment saying why it is not. Better: make the view unable to see them.
+3. Any message that tells someone what to do must be **derived from the cause**.
+   Hardcoding the common case ships a wrong instruction for the rest.
+4. Put the mapping where a proof can reach it, take only the classification as
+   input, and assert **negatively** on the output — what must never appear. The
+   positive wording will drift; "no UUID on screen" will not.
+5. Enumerate the **transitional** states too, not just the settled ones. Ask what
+   the screen says *while* a retry is in flight. Those windows are short, they
+   self-correct, and they are therefore the ones that reach production.
+6. When retiring a state, retire its explanation in the same write — and apply it
+   to every store implementation, not just the real one.
+7. A resolvable refusal is amber and says who will fix it. Red is for
+   [[queue-jam-must-be-visible]] — something that needs a human now.
+
+## Amendment (2c-7): the fix covered the state that bit, and left its neighbours
+
+Everything above was applied to the PARKED case, because that is the one that
+appeared on a phone. Three states next to it were left exactly as they were, and
+two of them were the same defect verbatim:
+
+- **an OFFLINE bill.** `billNotice` still rendered `ผิดพลาด: ${last_error}` for
+  any non-null `last_error` that was not parked — so every offline card in the
+  yard read `ผิดพลาด: network: Network request failed`, in red, while the status
+  strip two centimetres above it said ออฟไลน์. The invariant recorded above
+  ("`last_error` can only hold a 424 body while parked, so tone: error can never
+  carry one") was true, and beside the point: it proved the *424* could not leak
+  while every *other* diagnostic still did.
+- **an expired session**, which had no representation at all. See
+  [[401-is-about-the-caller-not-the-bill]].
+- **a terminally failed bill**, which offered a ยกเลิก button and promised
+  "รอส่งบิลเข้าระบบก่อน แล้วจะยกเลิกให้อัตโนมัติ". `listVoidsToApply` requires
+  `sync_state='synced'` and nothing moves a failed bill there, so that promise
+  could never come true — on a bill for which cash had been paid and the server
+  holds no record whatsoever.
+
+**Fixing the instance instead of the class is what produced all three.** The
+2c-6 fix asked "what does the screen say for a PARKED bill". The question that
+would have caught these is "what does the screen say for EVERY state", and it is
+answered by enumeration, not by inspection — `proveNotice` now sweeps the full
+cross product (96 card cells, 32 void, 144 strip) and asserts properties over all
+of it, rather than sampling the states someone thought of.
+
+Three refinements worth separating out:
+
+**A parameter you do not have cannot leak.** Point 4 above said to take only the
+classification as input. `billNotice` had kept `last_error` "for the error case",
+which is how the error case kept printing it. It now takes `sync_state` and
+`attempt_count`; the tone is derived from state (`error` ⟺ `sync_state ===
+"failed"`, and `markFailed` is its only writer) and there is no longer any value
+the function could render a diagnostic from. That is strictly stronger than an
+invariant about who writes the column, because it survives someone adding a
+writer.
+
+**Never promise what the system cannot perform.** A message can be free of
+jargon, calm, correctly classified — and still be a lie about the future. The
+void line branched on `doc_no`, which answers "has it got a number yet" when the
+question is "can it ever get one". Where the answer is never, the card must say
+so and the button must go: an offered action the system cannot carry out is worse
+than no action, because someone stops looking for the real one. What replaces it
+names the office and keeps the row, because on a bill the server never received,
+that row is the only evidence the purchase happened (hard rule 5).
+
+**Narrowing does not cross a closure.** `notice.tone !== "none"` narrows at the
+element and silently evaporates inside the `.map` callback — TypeScript cannot
+know the property is unchanged by the time the closure runs. The honest fix is to
+pass the narrowed value across a typed boundary (`tone: Exclude<NoticeTone,
+"none">` as a prop) so the compiler carries the guarantee; a cast or a `!` there
+re-asserts by hand exactly what the compiler just refused to grant. Caught only
+by `npm run typecheck:app`, which is the second time the separately-typechecked
+Expo program has been the one to find something — see the footnote below.
+
+## Amendment (2d): one server code, two actions — the wording assumed the action
+
+Point 3 above says a message that names an action must be derived from the cause.
+This phase found the case where **the cause does not determine the action**, and
+the wording had quietly assumed it did.
+
+`server/app/auth.py` has ONE `require_admin`, so it answers **`admin_required`**
+for every admin-only path there is. When voiding was the only such path a phone
+could reach, `forbiddenReason("admin_required")` could hardcode:
+
+```
+บัญชีนี้ไม่มีสิทธิ์ยกเลิกบิล ระบบจึงยังไม่ได้ยกเลิกบิลใบนี้ — ต้องแจ้งเจ้าของร้าน
+```
+
+That is right, and it stayed right for exactly as long as there was one caller.
+The daily money view is the second admin-only path a client can hit, and it
+returns the same code — so a staff account opening the takings would have been
+told, on a read-only report, that a bill they never touched had not been
+cancelled. **Every layer was correct again**: the server's status, the client's
+403 classification, the tone, the no-sign-in rule, the "name the owner" rule. Only
+the sentence was about something that never happened.
+
+The distinction to carry:
+
+> A server's `code` names the **rule that refused**, not the **action that was
+> refused**. If one code serves N call sites, the wording is a function of
+> (code, call site) — and the call site is the part the code cannot tell you.
+
+The fix is a REQUIRED `action` argument (`forbiddenReason(code, "void_bill")`),
+not an optional one with a default. A default would have kept the void sentence as
+the fallback for every future path, which is the same bug wearing a parameter. A
+required argument makes the third admin-only screen a compile error at the wording
+table until someone writes its sentence — the same "make the wrong thing not
+compile" move as the branded `ShopWallClock` and the `Exclude<NoticeTone, "none">`
+prop above.
+
+**How to spot it before it ships:** for every constant in a wording table, ask
+*how many things can produce this key*. One-to-one is safe; many-to-one is a
+sentence waiting to be wrong somewhere the author was not looking. Grep the
+server for the code — `admin_required` appears once, in a dependency used by
+sixteen routes, and that count is the whole warning.
+
+### Rider: a banned-substring list is context-dependent too
+
+Point 4 says to assert negatively, and this phase copied `proveNotice`'s list of
+forbidden fragments onto the money screen — where it immediately went red on
+`รวม 500 ใบ`, a legitimate count of voided bills read as a leaked 5xx status. The
+list was not wrong before and was not wrong after; **it was wrong once moved**,
+because on a bill card no bare number is legitimate and on a money report almost
+every number is.
+
+The repair is worth more than the report: the enumerated statuses became
+`/\b[45]\d\d\b/` applied only to the screens that carry no counts at all. That is
+strictly stronger than the list it replaced — it catches `418`, and every other
+status nobody thought to enumerate. Enumerating the statuses to ban is the same
+shape as enumerating the states to gate, and this lesson already says what to do
+about that: fix the class, not the instance.
+
+## Footnote: the fix nearly broke the void path
+
+Naming the local `const reason = parkedReason(...)` inside the bill `.map()`
+shadowed `BillsPanel`'s `const [reason, setReason] = useState("")` — the void
+reason, proven in 2c-5. It would have silently detached the TextInput from its
+state. Caught only because the Expo program is typechecked **separately**
+(`npm run typecheck:app`), and nearly missed again because that command had been
+chained as `npm run typecheck:app 2>&1 | tail -3 && echo CLEAN` — `tail` exits 0,
+so the failure was reported as clean. Run each typecheck bare, with its exit code
+visible. Never let a pipe decide whether a check passed.
+
+---
+
+**SOURCE:** `decimal-precision-for-domain-scale.md`
+
+# Decimal precision must be set for the domain's scale, not left at the default
+
+**Rule: a decimal library's `precision` setting is a correctness parameter and
+must be verified against the declared scale of the columns it computes over —
+`NUMERIC(14,3) × NUMERIC(14,2)` here — not left at the library default, and not
+sized to the values you expect to see.**
+
+This is written down as a lesson rather than only as a comment beside the
+setting, because a lone `precision: 50` in a config block reads as arbitrary
+and invites a future tidy-up back to the default. The reason has to outlive the
+line.
+
+## The trap
+
+decimal.js defaults to `precision: 20`. That is not a display setting. It is
+applied to the result of **every arithmetic operation** — the intermediate
+product is rounded to 20 significant digits before anything else happens, so
+the digits are gone long before the final `quantize`/`toFixed(2)`.
+
+Our declared scales permit more than that:
+
+| operand | max value | digits |
+|---|---|---|
+| `net_weight` `NUMERIC(14,3)` | `99999999999.999` | 14 |
+| `unit_price` `NUMERIC(14,2)` | `999999999999.99` | 14 |
+| product | `99999999999998000000000.00001` | **28** |
+
+Twenty-eight significant digits, against a default of twenty.
+
+## Observed
+
+Two operands, each legal for its column — `12345678901.234` fits
+`NUMERIC(14,3)`, `98765432109.87` fits `NUMERIC(14,2)`:
+
+```
+prec20 -> 1219326311370081084000.00
+prec50 -> 1219326311370081083966.58     <- exact
+```
+
+Wrong by **33.42**. Not a half-satang rounding tie — the low digits are
+replaced with zeros. The database would have accepted the value, and the
+server's own Python `Decimal` (which has no such default cap) would have
+computed the correct one, so the bill would have been rejected on total
+mismatch with no indication that the *client's* precision was the cause.
+
+## Why it would have survived review
+
+At any weight and price a scrap yard actually sees, precision 20 is correct.
+The loss only begins once the product needs more than 20 significant digits —
+around 10^15 baht on one line. Every realistic test case passes. Every code
+review sees plausible arithmetic. The bug is reachable only through the range
+the *schema* permits, which is why the schema's declared scale is the right
+bound to size against and "the numbers are never that big" is not an argument
+([[schema-audit]] — the declared field is the contract, regardless of what the
+data happens to contain today).
+
+## How to apply
+
+1. Take the declared precision/scale of every column that feeds the
+   computation. Add the digit counts across a multiply; that is the worst case.
+2. Set the library's precision comfortably above it (we use 50 against a
+   worst case of 28) and say in the code *which* column scales produced the
+   number.
+3. Assert it. A proof case at the top of the permitted range fails loudly if
+   someone restores the default; a proof case at realistic magnitudes does not
+   ([[proof-must-run-twice]] — know what would have made it fail).
+4. Re-derive it whenever a migration widens a money or weight column. The
+   precision setting is downstream of the schema and does not update itself.
+
+The same question applies to any decimal library, not just decimal.js: find its
+default, find whether it applies per-operation or only at output, and check it
+against the domain. Python's `decimal` defaults to 28 significant digits — also
+finite, also per-operation, and also worth checking rather than assuming the
+server side is automatically safe.
+
+Related: [[sqlite-money-is-text]] — the other place where a money value silently
+loses exactness on the client, there through SQLite's type affinity rather than
+through a library default.
+
+---
+
+**SOURCE:** `diagnosis-must-precede-the-fix.md`
+
+# Diagnose before you fix: read the real error and the real files first
+
+A failing result is evidence that something is wrong. It is NOT evidence of WHAT
+is wrong. Naming the cause is a separate act — and it is the one most easily
+skipped, because a plausible story is usually already waiting.
+
+## What happened
+
+A login started returning HTTP 500. A ready-made story was at hand: a column,
+`first_server_error_at`, had just been added in a mobile migration, and it *felt*
+like exactly the kind of thing that leaks into the server schema and breaks an
+INSERT. The cause was named straight from that story — "a server migration (0005)
+leaked a mobile-local column into Postgres" — and a fix was designed to match: a
+new migration to drop the column. Both the human and the assistant carried this.
+
+Two things were true that no one had checked before naming the cause:
+
+1. **There was no migration 0005 and no such column on the server.** The server
+   had only migrations `0001`–`0003`; `grep` for the column across `server/`
+   returned nothing; the live Postgres schema (`information_schema`,
+   `alembic_version`) held no such column on any table, including `users`. The
+   file the fix would have edited did not exist — both parties were about to
+   "fix" it anyway.
+2. **The real cause was mundane:** the database container (`recycle_pg`) was
+   simply DOWN when login ran, so the connection failed and surfaced as a 500 —
+   on every request, independent of any column.
+
+The story was wrong, and wrong in the most convincing way: it fit a fear already
+held (schema leakage — see [[schema-audit]]) and pattern-matched a lesson already
+written. An explanation that fits a fear you already hold is the easiest to
+believe and the least checked.
+
+## The rule
+
+Before naming a cause:
+
+- **Reproduce it and read the ACTUAL error** — the real traceback, response body,
+  or log line, not a remembered or imagined one. "A 500 on login" is a symptom;
+  the stack trace is what says whether it was a dropped DB connection, a bad
+  query, or a column.
+- **Read the ACTUAL files the story implicates.** If the theory is "migration
+  0005 did it," `ls` the migrations and open 0005 *before* proposing to edit it.
+  A cause that names a file, column, or migration is checkable in seconds — so
+  check it. A fix to a file that does not exist is the tell that no one looked.
+- **Only then name the cause, and run its disproof first.** The cheapest question
+  is "what single observation would prove this wrong?" — here, `ls versions/` and
+  one `information_schema` query, either of which ended the theory instantly.
+
+Confidence — the human's or the assistant's — is not a substitute for looking. An
+explanation that arrives before the evidence is a hypothesis wearing a
+conclusion's clothes.
+
+## Family
+
+This is the INVERSE of the "a passing result is not evidence" lessons
+([[proof-must-run-twice]], [[console-is-not-the-observation]],
+[[concurrency-tests-need-a-barrier]]). There, a GREEN result was trusted without
+checking what it actually measured. Here, a RED result was trusted to mean what
+the story said it meant. Both skip the same step — observing the real thing that
+produced the result — in opposite directions. A result, pass or fail, only means
+something once you have read what actually produced it.
+
+---
+
+**SOURCE:** `doc-no-is-arrival-order-not-event-time.md`
+
+# doc_no is arrival order; device clocks are wrong. Report on server time.
+
+Two facts observed on a real iPhone against the real server, one hour apart.
+They point at the same rule and it is easy to get wrong in opposite directions.
+
+## 1. doc_no reflects when the bill ARRIVED, not when the load was weighed
+
+`doc_no` is assigned by the server, from a locked counter, at the moment the
+bill lands. On an offline-first client that is emphatically not the order the
+loads were bought:
+
+| doc_no | weighed (device) | arrived (server) |
+|---|---|---|
+| B-2569-34 | 22:53:38 | 22:55:11 |
+| B-2569-33 | **22:54:51** | 22:54:59 |
+
+The load weighed FIRST got the HIGHER number. The mechanism was not a bad sort:
+bill 34's first send failed, so its retry backoff pushed `next_attempt_at` about
+30 seconds out, and the send queue was filtered by `next_attempt_at <= now`.
+Bill 34 was therefore **not in the candidate set at all**, while bill 33 —
+weighed 73 seconds later — was immediately sendable and went first.
+
+**A sort cannot order a row the query does not return.** This is the trap: the
+obvious fix ("order the queue by weighing time") is correct, necessary, and on
+its own would not have changed this outcome by a single number.
+
+### What actually fixes it
+
+Strict head-of-line order over ALL pending bills, backoff included:
+
+- read the pending queue **without** the backoff filter, ordered by
+  `device_created_at`;
+- only the head may be sent. If the head is in backoff, in flight, or already
+  attempted this pass and still pending, the pass **stops** — nothing behind it
+  may overtake.
+
+The cost is deliberate and must be understood before copying this: one
+unsendable bill holds up every bill behind it. That is the right trade when the
+numbers are legal documents. But it CAN practically deadlock — a bill that fails
+deterministically retries forever and dams the queue on that device, silently.
+Do not "solve" that by skipping the head; the fix is to make the jam visible.
+See [[queue-jam-must-be-visible]], which is the sharp edge of this rule.
+
+A successful send additionally clears the stale backoff on every other pending
+bill: that send is direct evidence the server is reachable, so the delays behind
+it were computed against a world that no longer exists.
+
+### What this still does NOT buy you
+
+Ordering is bounded by the backlog, not by history. A bill held offline
+overnight still arrives after today's bills and still takes a later number.
+`doc_no` is a gap-free arrival sequence and nothing more. **Never present it as
+chronological, sort a report by it, or infer "which came first" from it.**
+
+### The exemption, and its bound
+
+There is exactly ONE deliberate exception to head-of-line ordering, added when
+resolvable rejections were split out (see [[unavailable-is-not-rejected]]):
+
+> **Ordering holds within the SENDABLE queue. A bill parked on missing master
+> data is exempt from it.**
+
+A bill the server refuses with 424 (no price tier for the seller's grade) leaves
+the sendable queue entirely. Bills weighed after it are then sent first, so when
+the office adds the price and the parked bill finally syncs, it receives a HIGHER
+`doc_no` than loads weighed later.
+
+That is a real weakening and it is accepted, for a reason that has to be stated
+rather than assumed: the alternative is keeping it at the head, where one
+un-priced product stops the ENTIRE yard from syncing until the office acts. The
+exemption trades one bill's number for the whole shop's ability to record sales.
+
+It is not the silent auto-skip [[queue-jam-must-be-visible]] forbids. That
+lesson's objection is *"and nobody is told"* — here the bill sits in a named,
+operator-visible state carrying the server's own reason code, with an explicit
+retry. Visible reordering and silent reordering are different things.
+
+**Hold the bound.** The exemption covers parked bills and nothing else; every
+bill that stays in the sendable queue keeps weighing order. If a future change
+makes some other bill skippable, that is a new exception needing its own
+argument — do not let this one generalise into "ordering is best-effort".
+
+**Where the exemption is proven.** `proveSync.ts` CASE 10b, on both stores,
+asserts BOTH halves: the parked bill weighed first takes the highest `doc_no`
+(A=3), and the two bills that never left the queue keep their order (B=1 < C=2).
+The second assertion is what makes it a bounded exception rather than a general
+loss — without it the case would pass just as happily if parking had scrambled
+everything.
+
+## 2. The device clock is measurably wrong
+
+Same device, four bills, `server_received_at - device_created_at`:
+
+```
+B-2569-27  -3.352s      B-2569-28  -3.109s
+B-2569-32  -2.843s      B-2569-35  -2.824s
+```
+
+Consistently ~3 seconds AHEAD of the server — and negative, meaning the phone
+reports a bill as created *after* the server had already received it. Nothing
+was misconfigured; this is an ordinary phone on network time. Skew is not an
+edge case to defend against, it is the normal condition.
+
+Hence project hard rule 7 keeping both timestamps, and the rule that follows
+from it:
+
+**Every report, every total, every "today's takings", every ordering, and every
+date filter keys on `server_received_at`. `device_created_at` is evidence of
+what the device believed, useful for ordering our own outbound queue and for
+disputes — never an authority on when something happened.**
+
+The failure this prevents is quiet and expensive: a bill weighed at 23:59:58 by
+a phone running three seconds fast lands in yesterday's takings on the device
+and today's on the server. Two reports, both "correct", that do not reconcile —
+and the shop counts a day's cash twice or not at all.
+
+## How to apply
+
+1. Ordering a queue that decides document numbers? Order by the event time AND
+   make sure the query returns every candidate. Prove it with a case where the
+   older row is deliberately gated — a test where everything is eligible passes
+   whether or not the bug is fixed ([[wait-for-the-event-not-the-ticks]],
+   [[concurrency-tests-need-a-barrier]]).
+2. Any aggregate over time: `server_received_at`. No exceptions.
+3. Treat `doc_no` as an identifier, never as a timestamp.
+
+**Where proven.** `mobile/src/proof/proveSync.ts` CASE 8 (a five-bill backlog
+weighed out of order drains in weighing order) and CASE 8b, which reproduces the
+device sequence exactly and first asserts that the backoff-filtered queue *would*
+have offered the newer bill — so the case cannot pass vacuously. The queue lives
+in `SqliteLocalStore.listPendingOldestFirst`; the head-of-line rule is in
+`SyncEngine.runOnce`.
+
+---
+
+**SOURCE:** `edge-must-reject-what-the-column-rounds.md`
+
+# Postgres ROUNDS to the column scale — so the edge must reject, or you ship a queue jam
+
+**Rule.** Every money/weight field on a request model declares `max_digits` and
+`decimal_places` matching its column exactly, plus `ge=0` where the column has a
+CHECK. NUMERIC does not reject an over-scale value; it silently rounds it.
+
+## The trap
+
+`NUMERIC(14,2)` does not refuse `1.005`. It stores `1.01`. Verified against the
+live database:
+
+```
+1.005   -> numeric(14,2) = 1.01
+1.0005  -> numeric(14,3) = 1.001     (gross)
+0.0004  -> numeric(14,3) = 0.000     (tare)
+1.0001  -> numeric(14,3) = 1.000     (net)
+```
+
+Each column rounds INDEPENDENTLY. The server's own Python check
+`net == gross - tare` passed on those three values — they are exactly consistent
+as `Decimal` — and then `ck_items_net` failed on what actually landed, because
+`1.000 != 1.001 - 0.000`. Consistency verified before the write does not survive
+the write.
+
+## Why this is a queue bug, not a validation bug
+
+The constraint violation surfaced as an **unhandled 500**. And a 500 is
+`unavailable` to the client, never `rejected` ([[unavailable-is-not-rejected]]) —
+correctly, since the client cannot know whether the server committed. Under
+strict head-of-line order that means:
+
+**one malformed line jams that device's entire send queue, permanently, while
+staff keep weighing loads into a backlog that will never drain**
+([[queue-jam-must-be-visible]]).
+
+So the severity of "we forgot a scale constraint" is not a 500 in a log. It is a
+yard that silently stops recording sales. Four payloads did it — a 4dp weight, a
+negative weight, a negative price, and a price overflowing the column — and all
+four are things a rooted device can send deliberately or a UI change can produce
+by accident.
+
+Rejecting at the edge converts each one into a 422: `rejected`, terminal, visible
+on the device, and incapable of blocking anything behind it. **The fix is not
+"handle the exception" — it is "make it a rejection instead of an unknown".**
+
+## The residue, stated plainly
+
+Declaring scale removes the four KNOWN causes. It does not remove the class: any
+future unhandled server error still returns 500 and still jams the head. That is
+why the server logs such cases distinctly (`BILL_POISON_CANDIDATE`, with tenant,
+bill id and idempotency key) and the device escalates after N consecutive
+server-answered refusals. Together they make the jam findable from both ends. A
+genuinely poisoned bill still requires a human.
+
+## How to apply
+
+1. For every decimal field on the wire: copy the column's precision and scale
+   onto the model. Do not size it to values you expect
+   ([[decimal-precision-for-domain-scale]] — the declared column is the bound).
+2. Mirror every CHECK you can express (`ge=0`) at the edge too.
+3. After adding constraints, re-send the exact payloads that produced 500s and
+   assert 422. A 422 is a different OUTCOME CLASS for the client, not a nicer
+   status code.
+4. Whenever a migration widens a money column, re-derive both this and the
+   client's decimal precision.
+
+**Where proven.** `server/app/bills.py` `BillItemIn`/`BillCreate`. All four
+payloads returned 500 before and 422 after, each naming the exact field. The
+rounding behaviour above was read from the live database, not assumed.
+
+---
+
+**SOURCE:** `fallback-default-is-a-wrong-number.md`
+
+# A fallback default the server will refuse is a wrong number, not a convenience
+
+Applies to every field that DEFAULTS from reference data — prices, tiers, rates,
+tax codes, anything the user acts on before the server has agreed.
+
+## What was there
+
+`listPriceFor(product, sellerGrade)` in `mobile/app/api.ts` defaulted the unit
+price from the seller's grade tier, and when the seller had **no grade** it fell
+back to the first tier present:
+
+```ts
+for (const g of ["A", "B", "C", "D"]) {   // "so the field is never blank"
+  const p = product.prices[g];
+  if (p !== undefined) return p;
+}
+```
+
+The comment said the point was that the field is never blank. It reads as
+defensive. It is the opposite.
+
+## Why it is a money bug
+
+Three facts have to be held at once:
+
+1. **A is the HIGHEST tier.** The fallback always lands on the most expensive
+   price the shop offers, for exactly the customers nobody has graded.
+2. **The server refuses that bill anyway** — `424 seller_grade_unset`. The
+   fallback cannot make the bill valid. It has no upside at all.
+3. **The yard pays cash against the number on the screen.** The money leaves the
+   till before anyone learns the bill was refused.
+
+So the failure is not "a wrong default gets corrected later". The bill parks,
+the office sets the seller's grade to D, the bill then goes through **at the
+unit_price already paid**, and the row looks like a deliberate override rather
+than a defaulting bug. The overpayment is real, banked, and disguised.
+
+## The rule
+
+> If a default cannot make the operation succeed, it must not be shown as a
+> value. Fail BLANK and say why.
+
+`gradePrice()` in `mobile/src/cart/sellers.ts` returns `null` for an unknown
+grade or a missing tier, the field stays empty, and the picker marks grade-less
+sellers in red before any weight is typed.
+
+Blank is not a worse user experience than wrong — it is the only state that
+makes the operator make the decision the system cannot make for them.
+
+## How to spot the next one
+
+Ask of any default: **can the value I am about to invent make this operation
+succeed?** If the answer is no — the server will reject it whatever we put there
+— then the default is decoration over a failure, and the user will act on it.
+
+This is the client-side twin of [[config-defaults-must-fail-closed]]: there, a
+default secret was a default IDENTITY; here, a default price is a default AMOUNT
+OF MONEY. Both were introduced to avoid an empty value, and both turned "we do
+not know" into a confident wrong answer. See also
+[[unavailable-is-not-rejected]] for why the refusal here is 424 (parks, still
+owed) and not 422 (terminal) — that classification is what makes fail-blank
+survivable instead of stranding a load already tipped onto the pile.
+
+---
+
+**SOURCE:** `login-resolves-under-tenant.md`
+
+# Login resolves the user INSIDE tenant context
+
+**Context.** Usernames are unique only per tenant (`UNIQUE (tenant_id,
+username)`); the same username (e.g. `admin`) exists in many tenants. Login
+takes a tenant identifier + username + password.
+
+**Rule.** Set tenant context from the submitted tenant id FIRST, then look the
+user up under that context, so RLS makes users of other tenants invisible to the
+query. A foreign-tenant username simply is not found. Return ONE generic error
+("invalid credentials") for both unknown-user and wrong-password, and verify
+against a dummy hash when the user is missing so timing does not reveal
+existence.
+
+**Why (the failure it prevents).** Looking a user up by username across all
+tenants (no context) lets someone authenticate against, or enumerate, another
+tenant's account — a cross-tenant login. Distinct error messages or unequal
+timing for "no such user" vs "wrong password" leak which usernames exist.
+
+**Where proven.** Phase 1b `server/app/main.py` `login()` and
+`server/scripts/prove_auth.py` case 8 (username exists in A; login with B's
+tenant id + A's password is rejected) and case 7 (wrong password, same generic
+error).
+
+---
+
+**SOURCE:** `metro-file-map-nesting.md`
+
+# When a resolver says a file is missing, ask the resolver — not the OS
+
+**Context.** Phase 2c-1 put the Expo app in `mobile/device/`, its own npm
+package nested inside the engine package at `mobile/`, with Metro reaching the
+engine through `watchFolders`. Every `../src/...` import failed to resolve. The
+files were plainly there.
+
+## The diagnostic that mattered
+
+The instinct is to check the path — retype it, `ls` the directory, adjust
+`watchFolders`. That burned two runs and moved nothing. What broke it open was
+instrumenting Metro's own resolver and asking **both** layers the same question
+about the same absolute path:
+
+```
+fs.existsSync(abs)          = true
+context.doesFileExist(abs)  = false      <- the answer that mattered
+blockList hits              = false,false
+```
+
+That single line reclassifies the whole problem. It is not a wrong path, not a
+typo, not an exclusion rule — the file was never **indexed into Metro's file
+map**. Bundlers, module resolvers, watchers and test runners all resolve against
+their own index, not the filesystem. So when one claims a file does not exist,
+the useful question is never "is it on disk"; it is "is it in your index, and
+why not".
+
+## The ledger, and the wrong cause it saved us from
+
+Four runs, one knob at a time:
+
+| run | watchFolders | node_modules guards | parasitic Expo tree | `../src` |
+|-----|--------------|---------------------|---------------------|----------|
+| R1  | `../src`     | on                  | present             | FAIL     |
+| R2  | `..`         | on                  | present             | FAIL     |
+| R3  | `../src`     | on                  | removed             | resolved |
+| R4  | `../src`     | **off**             | removed             | FAIL     |
+
+After R3 the conclusion looked obvious and was announced with confidence: a
+stray Expo install in the parent's `node_modules` (left by an earlier
+`npm install expo-sqlite` used only for typechecking) had been shadowing the
+app's dependency tree, and removing it fixed the resolution.
+
+R4 killed that. With the parasite still gone, merely turning off
+`disableHierarchicalLookup` + explicit `nodeModulesPaths` broke resolution
+again. The differentiator was the node_modules guards; the parasite removal was
+a coincidence sitting next to the real variable. **One run would have pinned the
+wrong cause**, and the "fix" — deleting a directory — would have appeared to
+work while the actual mechanism sat untouched, ready to return.
+
+Nor were the guards a fix: they made `../src` resolve but broke every nested
+dependency (`expo-asset` lives at `node_modules/expo/node_modules/expo-asset`).
+Neither configuration was viable, which is what forced the real conclusion.
+
+**Rule (method).** Keep a ledger of every run — what changed, what happened —
+and require a candidate cause to explain *every* row, not the most recent one.
+Change one knob per run. A green run immediately after a change is correlation;
+the disproof is what makes it a cause. Same discipline as
+[[concurrency-tests-need-a-barrier]] and [[schema-audit]]: a passing result is
+not evidence that your explanation is right.
+
+**Rule (structure).** Do not nest one npm package inside another. `mobile/` is
+ONE package that *is* the Expo app, with `src/` inside Metro's project root. No
+`watchFolders`, no resolver guards, nothing to get subtly wrong. Nesting is what
+put the file outside the index in the first place.
+
+## The structural consequence: TS ESM specifiers vs Metro
+
+Collapsing to one package means one `src/` compiled two ways — by `tsc` into
+`dist/` for the headless node proofs, and by Metro into the app bundle. Those
+two disagree about import specifiers:
+
+- Node's ESM loader **requires** a file extension at runtime, so the source must
+  write `import { X } from "./schema.js"` even though the file is `schema.ts`.
+  `tsc` understands that convention.
+- Metro does not. It fails with `None of these files exist: schema.js(.ts|.tsx|…)`
+  while `schema.ts` sits right beside it.
+
+Dropping the extensions is not an option — it breaks `node dist/...`. So
+`metro.config.js` retries relative `.js` specifiers without the extension and
+lets Metro's normal platform-aware resolution find the `.ts`. Ten lines, and the
+comment explains why, because the obvious "cleanup" of deleting it would break
+the proofs and not the app — a change that looks safe and passes the app build.
+
+Related: the root `package.json` cannot declare `"type": "module"` (Expo's
+`metro.config.js` and `babel.config.js` are CommonJS), so `dist/` gets its own
+`package.json` saying `{"type":"module"}` instead.
+
+**Where proven.** Phase 2c-1. `mobile/metro.config.js` carries the shim and the
+nesting warning; `mobile/tsconfig.json` and `mobile/tsconfig.node.json` are the
+two programs sharing `src/`; `mobile/tools/finish-build.mjs` marks `dist/` as
+ESM. Verified by `npx expo export --platform ios` bundling clean and both node
+proofs still passing, then by the slice running on a real iPhone.
+
+---
+
+**SOURCE:** `proof-must-run-twice.md`
+
+# A proof that passes only once proves the environment, not the code
+
+**Rule: every proof script must be runnable twice in a row against a live
+database and still pass.** No truncate between runs, no reseed, no dropped
+volume. If it needs a fresh database to be green, it is not testing the code —
+it is testing that you remembered to wipe the database.
+
+## What happened
+
+`prove_bills.py` was written in Phase 1c and passed. It was run again in Phase
+2c-2, untouched, against the same database it had passed on before. It failed.
+
+The observed response was the giveaway:
+
+```
+status=200  doc_no=B-2569-1  status_field=voided
+```
+
+A `201` was expected. The server had done nothing wrong — it did exactly what
+Phase 1c asked it to do. The script hardcoded its idempotency keys
+(`bill-A-0001`, `bill-A-conc-1`, ...) and asserted absolute document numbers
+(`doc_no == "B-2569-1"`, then `"B-2569-2"`). On the second run those keys
+already existed, so the idempotency guarantee correctly returned the *first
+run's* bills — which CASE 4 had since voided. Every later assertion then failed
+downstream of that, pointing at the wrong thing.
+
+It had passed in Phase 1c for one reason: the tables had just been truncated.
+
+## Why this is worse than a failing test
+
+A test that fails is honest. This one was green while asserting nothing about
+the code — its green depended on a manual step outside the script that nobody
+recorded and nobody would repeat. Phase 1c shipped believing bills were proven
+idempotent under repeat submission. That property *is* true, but the script had
+not demonstrated it: it only ever exercised the fresh-key path.
+
+The failure also arrived disguised. The first instinct was that the new Phase
+2c-2 seed data had broken it. `git` showed the file unmodified and the seed
+untouched by this path; the `200 / voided` response identified the real cause.
+Never diagnose from the *newest* change — diagnose from the observed response
+([[metro-file-map-nesting]]).
+
+## The fix
+
+Scope every idempotency key to a per-run UUID, and assert `doc_no` **relative**
+to wherever the counter currently sits rather than to a fixed number:
+
+```python
+RUN = uuid.uuid4().hex[:8]                       # once, at module level
+... f"bill-A-{RUN}-0001" ...                     # keys unique per run
+check(re.fullmatch(rf"B-{BE_YEAR}-\d+", doc1))   # shape, not value
+check(doc_new == f"B-{BE_YEAR}-{seq_of(doc1) + 1}")  # next, not "2"
+```
+
+The invariants being proven — gap-free, never reused, monotonic under
+concurrency — are all *relative* properties. Asserting them with absolute
+numbers was never testing the invariant, only the starting state.
+
+## AMENDED (Phase 2c-6): the seed's SIZE is an environment fact too
+
+The same mistake has a second shape, and a per-run UUID does not catch it.
+`prove_master.py` asserted tenant isolation like this:
+
+```python
+check("tenant A sees exactly its own seller", len(sa) == 1 and sa[0]["id"] == ...)
+```
+
+It was green for a year. Adding four sellers to the dev seed — a change that
+touches no isolation logic whatsoever — turned it red. The count was never the
+property: **isolation is a set relation**, not a cardinality. The rewrite says
+what was actually meant, and is immune to the seed growing again:
+
+```python
+check("no seller is visible to BOTH tenants", ids_a.isdisjoint(ids_b))
+```
+
+An assertion that breaks when a fixture is *added* was measuring the fixture. Ask
+of every count in a proof: if this number changed, would the property I am
+claiming actually be false? If not, assert the property.
+
+## AMENDED AGAIN (migration 0004): a fixture a BILL points at can never be cleaned up
+
+The per-run UUID makes fixtures unique. It does not make them *removable*, and
+those are different problems.
+
+`prove_master_write.py` creates a product, seller, uom and category per run and
+deletes them in its `finally`. One case then wrote an accepted bill against the
+run's own product, to show that reactivating it let the bill through. That bill
+can never be deleted — hard rule 5 — so `fk_items_product` pinned the product
+forever. Three things went wrong at once:
+
+- the `DELETE` raised inside `finally`, so **every restore after it was
+  skipped** — including putting a borrowed seeded row back;
+- the traceback replaced the summary that would have said so;
+- and the run left a live product in the dev picker, which then turned
+  `prove_master.py` red for a completely unrelated-looking reason.
+
+Two rules come out of it:
+
+1. **A proof may write a bill against a SEEDED row, or against a row it can
+   delete — never both in one fixture.** If a case needs "a bill already
+   references this", borrow a seeded row and restore it, the way
+   `prove_master_data_gate.py` borrows a price. Retirement (`is_active`) is not
+   an escape either: the row still exists and still accumulates.
+2. **Every statement in a `finally` must be isolated.** Wrap each cleanup in its
+   own `try/except`, record the failure as a named check, and let the rest run.
+   A cleanup block that aborts halfway is worse than one that never ran, because
+   it leaves the fixture in a state nobody chose and no output explaining it.
+
+The corollary for the count rule above: it bites in **both** directions. The
+products assertion in `prove_master.py` was still `len(pa) == 3` after the
+sellers one had been fixed — the amendment was applied to the line that failed
+rather than to the class. When you fix an assertion of this shape, grep for its
+siblings in the same file before moving on.
+
+## AMENDED A THIRD TIME (daily report, 2026-07-29): debris is PERMANENT, so a count assertion has a half-life
+
+The previous amendment ended with "grep for its siblings in the same file before
+moving on." That was done for `prove_master.py` and **not** for
+`prove_master_write.py`, which carried this in its own retirement case:
+
+```python
+check("...everything else is still there",
+      len(default_list) > 0 and len(with_inactive) == len(default_list) + 1)
+```
+
+It went red while proving the daily report — on a run that changed nothing in
+that path. The cause was a bill from the day before, `mw-f0c445f2-inactive`,
+written against that run's OWN seller and product: exactly the trap rule 1 above
+names. Hard rule 5 pins the bill, the FKs pin the seller and product, its cleanup
+could not remove them, and they sit in the tenant retired and immortal. So there
+were now TWO inactive products, and `+ 1` was false.
+
+The retirement worked perfectly. The assertion was counting.
+
+**The new part is the time axis.** The earlier amendments ask "would this break
+if a fixture were added?" — a question about the seed, which someone chooses to
+change. This one breaks with no change at all, because on any table that cannot
+be hard-deleted, leftover rows only ever accumulate. A count assertion over such
+a table is not merely fragile; it has a **half-life**. It is not a question of
+whether it goes red, only of which unrelated phase is holding it when it does —
+and the cost is paid by whoever is debugging something else that day.
+
+The fix is the set difference the check was always trying to state, which needs
+the before-set observed:
+
+```python
+offered_before = {p["id"] for p in get("/products")}     # BEFORE the deactivate
+...
+check(offered_before - offered_after == {this_run_product}
+      and offered_after and offered_after < with_inactive_ids)
+```
+
+And the corollary widens: **grep every proof script for this shape, not just the
+file that went red.** `len(x) == n`, `len(a) == len(b) + 1`, and any arithmetic
+between two counts of live data are all the same defect wearing different
+clothes.
+
+## AMENDED A FOURTH TIME (reconciliation, 2026-08-02): a proof that NORMALISES its own fixture measures its last run
+
+`prove_reconcile.py` breaks each money invariant on purpose in a restored copy.
+The live database is not clean — it carries 84 violations, all proof debris — so
+the harness first UNDOES the two known causes in the copy, and asserts the copy
+then runs green. That assertion is the whole proof of the diagnosis: if those two
+causes did not account for all 84, something else does and must be found.
+
+Run 1 was honest. **Run 2 printed this:**
+
+```
+  the copy as restored : exit 0, 0 violations {}
+  cause 1, prove_rls direct inserts : DELETE 0, DELETE 0
+  cause 2, prove_daily_report fixture day : UPDATE 0
+  [OK  ] the two known causes account for ALL of the live violations
+```
+
+Zero rows deleted, zero updated, and a green tick under it. The copy was still
+normalised **from the previous run**, so "before" was already clean and the check
+confirmed nothing. Every earlier amendment here is about a proof whose second run
+FAILS; this is the other half — a proof whose second run PASSES, for a reason
+that has nothing to do with the claim.
+
+The distinguishing feature is that this script mutates its own fixture as a
+*setup step* rather than as the thing under test. A per-run UUID cannot help: the
+fixture is the whole database.
+
+Two rules:
+
+1. **A proof that mutates its fixture must CREATE that fixture**, not find it.
+   `prove_reconcile.py` now runs `restore_db.py` itself, so every run starts from
+   the same dump and the "before" state is a fact rather than a hope.
+2. **Where a claim needs a precondition, ASSERT the precondition, and SKIP rather
+   than pass when it is absent.** The diagnosis check now requires that the copy
+   arrived dirty; given a clean one it prints `[SKIP]` and says a fresh restore is
+   needed. A check that cannot be made must never be reported as a check that
+   passed — the same distinction the checker itself draws between exit 1 (the
+   money is wrong) and exit 2 (nobody looked).
+
+See [[a-checker-must-not-share-the-code-it-checks]] for the injection discipline
+this sits inside: fires / names the row / **clears again when undone**.
+
+## AMENDED A FIFTH TIME (the rebuild, 2026-08-03): a count the ENVIRONMENT owns expires when the environment is rebuilt
+
+The fourth amendment above was written on 2026-08-02, about `prove_reconcile.py`.
+The next day the database was rebuilt and that same file went red. It has been
+red ever since, and nothing in R1 or R2 touched it.
+
+Three of its expectations are absolute counts of a database that no longer
+exists:
+
+```python
+prove_reconcile.py:634   expect={"S3": 1, "B1": 1, "B2": 1, "T0": 91}
+prove_reconcile.py:636   "table=tenants  rows_visible_with_no_tenant_context=46"
+prove_reconcile.py:718   "table=tenants  rows_at_start=46  rows_at_end=47"
+```
+
+They were written against a 46-tenant database. The rebuild took it to 2.
+
+**Measured either side of migration 0005, not inferred** — it fails from a
+pre-0005 dump (48 tenants, `T0` got 95), from a second pre-0005 dump (3 tenants,
+`T0` got 3), and identically from a post-0005 dump. The same four failures
+throughout, so `token_version` is not involved. **Every injection that is about
+MONEY still passes.** Only the two tenant-count assertions and the X3 timing
+probe fail: what decayed is the proof's expectations about its own fixture, not
+the checker's ability to see a money defect.
+
+**The new axis is WHO OWNS the number.** The third amendment's half-life is about
+accumulation — debris piles up, so the count drifts on its own with nobody
+touching anything. This one does not drift. It was correct on 2026-08-02 and
+wrong on 2026-08-03, because somebody legitimately rebuilt the world. Restoring a
+dump, reseeding, standing up a fresh tenant, migrating a customer: none of these
+are things a proof gets to forbid, and all of them expire a count of rows the
+proof did not create. **If the proof did not put the row there, it may not assert
+how many there are.** Derive the number from the restored copy at runtime, or
+assert a relation the count cannot carry.
+
+**The part worth staring at: this is the fifth bite, in the very file the fourth
+amendment was written about.** The second amendment already said "grep for its
+siblings in the same file before moving on"; the third widened it to "grep every
+proof script for this shape, not just the file that went red." Both were
+addressed to exactly this. On 2026-08-02 the sweep would have found `:634`,
+`:636` and `:718` while the file was still green — one day before the rebuild
+expired them. The rule was written INTO this file and not applied TO it, by the
+session that wrote it.
+
+So the sweep is not a step in fixing the assertion that went red. It is a step in
+fixing the assertion that went red, run against every file you touched that day,
+INCLUDING the one you were editing. A lesson applied only to the case that
+prompted it is the defect the lesson describes, one level up.
+
+Recorded in `OPEN_ITEMS.md:179-200` and in `PROJECT_STATUS.md:1603-1620`, which
+carries the fuller measurement. Not fixed there or here: deciding what those
+numbers derive FROM is a change to a destructive proof, and not one to make in
+passing.
+
+## How to apply
+
+Before trusting any proof script:
+
+1. Run it twice in a row without touching the database. If run 2 fails, the
+   script is wrong, not the run.
+2. Grep it for hardcoded unique keys and absolute expected values. Any
+   idempotency key, external reference, or generated number must be per-run.
+3. Assert the shape and the *delta*, not the value, for anything the server
+   assigns.
+4. Grep it for `len(...) == <n>` on seeded data. Rewrite as a membership or
+   disjointness claim unless the exact count really is the invariant — and fix
+   every one you find, not only the one that went red.
+5. Check what the script leaves behind, by querying for its run tag after it
+   exits. "It passed" and "it cleaned up" are separate claims, and the second
+   one needs its own assertion in the script.
+6. Ask of every count that survives step 4: did this script CREATE the rows it
+   counts? If not, the number belongs to the environment, and a restore, a
+   reseed or a new tenant expires it. Derive it from the fixture at runtime, or
+   assert a relation that does not carry a count.
+
+This sits alongside the other lessons about a green result that proves nothing:
+[[concurrency-tests-need-a-barrier]] (workers that never overlapped),
+[[schema-audit]] (proofs pass while the schema is wrong), and
+[[metro-file-map-nesting]] (one green run pinned the wrong cause). The common
+shape: **a passing result is only evidence if you know what would have made it
+fail.** Here, nothing would have — on a fresh database it could not fail, and
+on a used one it could not pass.
+
+---
+
+**SOURCE:** `queue-jam-must-be-visible.md`
+
+# A strict ordered queue CAN deadlock. Don't skip the head — make the jam visible.
+
+Phase 2c-3/5.1 built a strict head-of-line send queue: only the oldest pending
+bill is ever sent, nothing behind it may overtake, so document numbers follow
+weighing order (see [[doc-no-is-arrival-order-not-event-time]]). While building
+it I wrote, in a code comment AND in a lesson, that this "cannot deadlock." That
+was wrong, and it was the confident-wrong kind that hides a real bug.
+
+## The failure
+
+A bill can make the server fail **deterministically** — a 5xx on that specific
+payload every time. Per [[unavailable-is-not-rejected]] a 5xx is `unavailable`,
+not `rejected`: the client cannot know the server will never accept it, so it
+retries **forever** under a capped backoff. That is correct in isolation. Under
+strict head-of-line order it is a trap: the poisoned bill sits at the head and
+**dams every bill behind it, forever, on that one device, silently** — while
+staff keep weighing loads and saving bills into the growing backlog, seeing
+nothing wrong. A practical deadlock, even though no lock is held.
+
+"It retries forever so it can't deadlock" reasons about the ONE bill. The
+deadlock is about **everything behind it**.
+
+## The fix that is NOT the fix
+
+Auto-skipping the stuck head so the queue drains. It trades a visible problem
+for a silent one: the document numbers now come out in the wrong order and
+nobody is told. For legal-document numbering that is **worse** than the jam. The
+ordering guarantee is the whole point; do not quietly break it to relieve a
+symptom.
+
+## The fix
+
+Keep the ordering. Make the jam **loud** — but only the RIGHT jam.
+
+- Record when the head **first** failed (`first_attempt_at`, stamped once with
+  `COALESCE`, never moved — a `next_attempt_at` that slides forward each backoff
+  cannot measure "how long has this been stuck"). This is the total-stuck clock.
+- Assess the queue with a pure function (`sync/queueHealth.ts`): the head is
+  blocking when it has actually bounced (`attempts > 0`) **and** bills wait
+  behind it.
+- **Distinguish an offline backlog from a poisoned head — they are not the same
+  alarm.** A yard that has simply lost signal piles up a backlog too, and it must
+  stay CALM AMBER however long that lasts, or the alarm cries wolf on every dead
+  spot and the operator learns to ignore the strip. Only a bill the REACHABLE
+  server keeps refusing is a fault to escalate (red, "call support").
+- Surface it where it cannot be missed: the always-visible status strip says, in
+  plain Thai, that one bill is stuck and is holding up N behind it; the bill list
+  marks which bill is the blocker. Visible without opening anything.
+
+The signal that separates offline from poisoned is **not** time and **not**
+attempt count — a long outage and a poison pill both bounce many times over many
+minutes, so any threshold on elapsed time *alone* flags the honest outage too.
+The reliable signal is whether the **server answered**: a bounce carrying an HTTP
+status (a 5xx) proves the network is usable and the server still refused
+(poison); a transport-level bounce (timeout, no route, no token) proves nothing
+got through (offline). Capture it at the source — `SendOutcome.reachable`, set by
+the transport where the truth is known, never by string-matching an error message
+later — and carry it as `first_server_error_at`: stamped while the reachable
+server is refusing, RESET to null the moment a bounce is transport-level. Non-null
+then means exactly "the reachable server has been refusing this bill continuously
+since this instant", which is both the poison fact and its duration in one field.
+
+So there are TWO knobs, both guesses to tune against a real yard's network: the
+reachability signal above, and `POISON_ALARM_MS` — how long the reachable refusal
+must persist before red, measured from `first_server_error_at` so time merely
+spent offline never counts toward it. The offline/amber state has no timer at all;
+it is honest for as long as the network is down.
+
+## Amendment: a COUNT may escalate, but must never classify
+
+Read this before concluding the code contradicts the paragraph above.
+
+`assessQueue` now raises the red alarm on EITHER of two triggers: the refusal has
+persisted past `POISON_ALARM_MS`, **or** the reachable server has refused the head
+`POISON_ALARM_ATTEMPTS` times in a row. That is not a reversal of "not attempt
+count", because the two statements are about different questions:
+
+- **Classifying** a jam as offline vs poisoned — still decided SOLELY by whether
+  the server answered. Unchanged, and it is what the paragraph above is about.
+- **Escalating** a head that is ALREADY classified poisoned — may use a count.
+
+The clock alone assumed a poisoned bill takes time to become obvious. That holds
+only while the backoff is short: a fast-answering server, a device retrying since
+before a restart, or a backoff already at its cap can burn through many refusals
+inside one threshold window. Each of those refusals is direct evidence the bill
+will not go, so waiting out a timer while holding five of them is simply a later
+alarm.
+
+**The property that makes the count safe is that it RESETS.**
+`server_error_attempts` is incremented only on a server-answered bounce and set
+back to 0 by any transport-level one, exactly like `first_server_error_at`. An
+offline yard therefore cannot accumulate it, however long it is down. Using
+`attempt_count` instead would reintroduce precisely the cry-wolf failure this
+lesson warns about: it counts every attempt of any kind and never resets, so a
+device that spent a night offline would arrive at morning with a large count, no
+server error at all, and a red alarm.
+
+If you ever move this counter, keep the reset. The reset is the lesson.
+
+**Where the amendment is proven.** `proveSync.ts` CASE 9d, on both stores: the
+alarm fires at 30s elapsed against a 90s clock threshold (so it was the count, not
+the clock), the head is still never skipped, and — the disproof — an OFFLINE head
+bounced 10 times with `serverErrorAttempts` still 0 and stayed calm amber.
+
+## How to apply
+
+1. Any strict in-order queue with no-give-up retry can deadlock behind a
+   deterministically failing item. Assume it will, and design the *visibility*,
+   not just the retry.
+2. Never relieve a head-of-line jam by reordering or dropping the head unless
+   losing order is acceptable — here it is not.
+3. "Retries forever" is a property of one item; a queue's health is about what
+   is stuck behind it. Measure and show that.
+4. A stalled retry queue can be OFFLINE or POISONED, and staff respond to them
+   differently (wait it out vs call support), so the UI must tell them apart. Do
+   it on whether the server ANSWERED — an HTTP status came back — captured at the
+   transport, never on elapsed time or attempt count, which cannot separate a
+   long outage from a poison pill.
+
+**Where proven.** `mobile/src/proof/proveSync.ts` CASE 9, in three parts on both
+stores. 9a: an OFFLINE backlog driven PAST the threshold stays amber — stuck for
+longer than `POISON_ALARM_MS`, yet `alarm=false` and `poisonedForMs=0`. 9b: a
+POISONED head (a reachable 5xx every time) with three bills behind it goes red
+once it persists, reporting blocker id, count behind and elapsed, and the alarm
+is held off below the threshold so the case is not vacuous. 9c: the two are
+asserted DISTINGUISHABLE, and that it is the reachable-server signal, not the
+clock, that separates them — both waited past the threshold, only the
+reachable-refusal one went red. Then the server recovers and the backlog drains
+in weighing order, proving the poisoned queue was jammed, not dead.
+
+---
+
+**SOURCE:** `render-in-shop-time-not-device-time.md`
+
+# Store UTC, render in the SHOP's timezone — and never slice an ISO string
+
+**Rule.** Timestamps are stored as UTC instants. Exactly ONE module per side
+turns an instant into something a human reads, and it converts to the SHOP's
+timezone. Nothing else may format a timestamp — no `getHours()`, no
+`toLocaleString()`, and above all no slicing the ISO string.
+
+## What happened
+
+The bill list showed a load weighed 15:16 in Bangkok as **08:16**. Exactly seven
+hours — the UTC offset.
+
+```tsx
+{b.created_at.slice(0, 10)} {b.created_at.slice(11, 16)}   // BillsPanel
+```
+
+`created_at` is `toISOString()` output, so characters 11–15 are the **UTC** clock.
+The slice never parses a date and never converts anything; it prints UTC verbatim.
+
+Storage was innocent, and checking that first is what kept the fix in the right
+layer: Postgres held `timestamptz` with `tzinfo=UTC`, SQLite held
+`"2026-07-26T11:00:18.672Z"` (TEXT, explicit `Z`) written on a device whose local
+clock read 18:00. Both correct.
+
+## The rival explanation, and how it was killed
+
+"The phone's timezone is set to UTC" fits the symptom just as neatly, and would
+have sent the fix to the wrong place entirely. The disproof was one experiment —
+run the formatter under two process timezones:
+
+| device TZ | bill list (slice) | status strip (`getHours`) |
+|---|---|---|
+| `Asia/Bangkok` | **11:00** | 18:00 ✓ |
+| `UTC` | **11:00** | 11:00 |
+
+The bill list prints the same value under both, because a string slice cannot
+consult a timezone. Device configuration could not have caused it and could not
+have fixed it. The status strip is the control: it *was* correct on a properly
+set phone, which is why only one screen was reported.
+
+## Why the SHOP's zone and not the device's
+
+A business day belongs to the shop, not to whichever handset is in someone's
+pocket. Device-local formatting means a phone on the wrong timezone, or carried
+across a border, silently relabels which day a load was bought on — and SRS 3.3
+daily totals then differ depending on who opens the screen. `getHours()` is not
+"the safe option"; it is a different wrong answer that merely happens to be right
+while the phone is configured correctly.
+
+## The same bug bites dates, not just clocks
+
+A UTC-derived DATE is wrong for a whole slice of every day. In Bangkok
+(UTC+7) anything between **00:00 and 06:59** local is still yesterday in UTC:
+
+```
+weighed 2026-07-27 00:30 Bangkok -> stored 2026-07-26T17:30Z -> displayed 2026-07-26
+```
+
+Server-side this reached `doc_no`. `be_year` came from
+`datetime.now(tz=timezone.utc).year`, so a bill arriving 2027-01-01 00:30 in
+Bangkok took **be_year 2569 instead of 2570** — and because `doc_no_counters` is
+keyed on `(tenant_id, be_year)`, it would also have continued the previous year's
+sequence, so the new year would not restart at 1 and two business years would
+share a counter. On legal document numbering.
+
+## Two constraints found while fixing it — verify, don't assume
+
+- **Python `zoneinfo` cannot resolve `Asia/Bangkok` on Windows.** No IANA
+  database ships with Windows and `tzdata` was not installed:
+  `ZoneInfoNotFoundError`. A named fixed offset
+  (`timezone(timedelta(hours=7), "Asia/Bangkok")`) avoids the dependency.
+- **Hermes `Intl` with a `timeZone` option is UNVERIFIED on a device.** If it were
+  silently ignored, the display would fall straight back to UTC — the exact bug
+  being fixed, reintroduced invisibly. Same reasoning as
+  `ids.ts` choosing `expo-crypto` over an unchecked global.
+
+Both are why the shop zone is a fixed offset today. That is only sound because
+**Thailand has observed UTC+7 with no daylight saving since 1920**. A per-tenant
+timezone WILL include zones with DST, and a fixed offset cannot express those —
+that migration must move to real IANA handling and be verified on a device.
+
+## How to apply
+
+1. Store instants (UTC). Never store or compare a formatted local string.
+2. One formatter per side, one timezone constant per side, and a comment
+   forbidding every other path. Two formatters is two behaviours
+   ([[unavailable-is-not-rejected]] is the same shape: make the type system or
+   the module boundary carry the rule, not someone's memory).
+3. Any DATE derived for business meaning — report boundaries, document-number
+   years, "today's takings" — converts to shop time FIRST. Aggregates still key
+   on `server_received_at` ([[doc-no-is-arrival-order-not-event-time]]); this is
+   about which day that instant falls in.
+4. When a display looks time-shifted, check STORAGE before blaming the renderer,
+   and check whether the suspect path can even see a timezone before blaming
+   configuration ([[diagnosis-must-precede-the-fix]]).
+
+**Where proven.** `mobile/src/proof/proveTime.ts` — the three reported instants,
+the 00:30 / 06:59 / 07:00 / 23:59 boundary, the new-year case, and a placeholder
+for unparseable input. It is run TWICE, under `TZ=Asia/Bangkok` and `TZ=UTC`, and
+must produce identical output; a device-dependent helper passes one and fails the
+other. Server side, `server/scripts/prove_shop_time.py` proves `_be_year` across
+the new-year window INCLUDING the disproof that the old UTC expression really
+answered 2569, then proves over real HTTP that the value reaches both `doc_no`
+and the `doc_no_counters` key.
+
+**DONE since:** `shopDate()` now returns พ.ศ. (`26/07/2569`) — see
+[[be-year-comes-after-the-timezone]]. Splitting it out was the right call: the
+`+543` has to land *after* the conversion this lesson is about, and separating
+the two passes is what made the ordering provable instead of entangled. A wrong
+year and a wrong offset still look identical in a screenshot.
+
+**Still outstanding:** the desktop thermal slip. `desktop/` is empty, so no
+printed slip exists yet, but CLAUDE.md requires พ.ศ. there too and a slip is what
+the seller keeps. It is the next consumer of this module and must port the module,
+not re-implement the formatting — a second `+543` in Electron is a second
+behaviour, and the two would drift at exactly the boundary neither author tested.
+
+## Amendment (2d): the wire's precision is not the language's parse contract
+
+Everything above is about WHICH clock. This is about whether the string parses at
+all, and it was found the first time a SERVER-produced instant reached a screen.
+
+`GET /reports/daily` returns Postgres `timestamptz`, so `reports._shop_iso` emits
+**six** fractional digits: `2026-08-01T17:32:11.123456+07:00`. The ECMAScript Date
+Time String Format specifies **exactly three**. More than three is
+implementation-defined — V8 truncates and is happy; **Hermes is unverified**, in
+the same family as `Intl` with a `timeZone` option, `atob` and
+`crypto.randomUUID` (PROJECT_STATUS "Known device gaps").
+
+Nothing had met this before because every instant the app had ever rendered came
+from `new Date().toISOString()` **on the device**, which is always exactly three
+digits. The client's own output had been silently defining the input contract.
+
+If Hermes returns `NaN` there, `shopWallClock` returns null and every timestamp on
+the report renders as `—`. That fails visibly rather than wrongly, which is the
+good direction — but it fails on the device only, on a screen the owner opens at
+closing time, and it would look like the endpoint was broken.
+
+So `shopWallClock` now trims sub-millisecond digits before parsing. Truncation,
+never rounding: rounding `.999999` up carries into the next second, and
+sub-millisecond precision means nothing on a screen showing `HH:MM`.
+
+**Two rules out of it, and the second is the general one:**
+
+1. An instant carrying its own offset (`…+07:00`) needs no special case here —
+   the offset is part of the instant, so the parse yields the same moment and the
+   shift still puts it on the shop's clock. Nothing in the module reads the
+   string's offset, which is exactly why a server changing its output offset
+   cannot move what this prints.
+2. **Never let one side's output define the other side's input contract.** Both
+   ends were "ISO-8601" and both were telling the truth; the format is a family,
+   and the members differ in precision, offset form and separator. When a new
+   producer starts feeding an existing parser, check the parser's actual spec —
+   not the fact that it has been working.
+
+This matters most for the consumer that does not exist yet. The desktop thermal
+slip must PORT this module, and the trim will look like a line worth deleting.
+It is not: the slip is the artifact the seller keeps, and `—` where the time
+should be is printed on paper.
+
+---
+
+**SOURCE:** `revoke-in-migration.md`
+
+# Privilege changes live in the migration, not in a live one-off
+
+**Context.** During Phase 1a a blanket `GRANT ... ON ALL TABLES` accidentally
+also granted the app role access to Alembic's `alembic_version` table; it had
+to be taken back with a `REVOKE`.
+
+**Rule.** Any GRANT/REVOKE or permission change must be written INTO the
+migration, so every database — including a brand-new customer's — reaches the
+same privilege state by replaying migrations. Never fix privileges by running a
+statement against one live database once.
+
+**Why (the failure it prevents).** A REVOKE (or GRANT) applied only to the
+current dev DB is invisible to `alembic upgrade`. The next fresh database
+provisioned for a new customer silently skips it and reopens the exact hole you
+thought you closed — with no diff to notice, because the migration files never
+changed.
+
+**Where proven.** Phase 1a migration `0001_initial_schema.py` (the
+`REVOKE ALL ON alembic_version FROM recycle_app` lives in the migration; the DB
+was rebuilt from scratch with `docker compose down -v` + `alembic upgrade head`
+to prove the revoke is produced by replay, not by a live patch).
+
+---
+
+**SOURCE:** `schema-audit.md`
+
+# Audit a migration field-by-field against the agreed schema before commit
+
+**Context.** Migration 0001 quietly added several columns that were never in the
+agreed schema. Most were harmless (`created_at`, `full_name`, `phone`), but one —
+`grade` — landed on the WRONG table (`purchase_bill_items`). Line items do not
+carry a grade; per SRS 1.6 the seller does. Every proof still passed the whole
+time, because the extra column simply sat there unused.
+
+**Rule.** Before committing any migration, read it column-by-column, constraint-
+by-constraint, table-by-table against the agreed schema (the spec / SRS / the
+fields explicitly listed for the phase). Every addition must trace to a
+requirement or an agreed rule. Anything that doesn't is either removed or
+explicitly justified out loud. Passing proofs is NOT sufficient evidence that
+the schema is correct.
+
+**Why (the failure it prevents).** Green tests only show that what the code
+exercises works; they say nothing about columns nothing reads yet. An unused
+column on the wrong table becomes load-bearing the moment later code trusts it,
+and by then it is in production data and expensive to move. Schema drift is
+silent precisely because it doesn't break anything — until it does.
+
+**Where proven.** Phase 1c review: the human audit (not the test suite) caught
+`grade` on `purchase_bill_items`; migration `0003_move_grade_to_sellers.py` drops
+it there and adds it to `sellers`. All proofs had been green with the column
+misplaced.
+
+---
+
+**SOURCE:** `set-local-per-request.md`
+
+# Tenant context = SET LOCAL, per request, fail closed
+
+**Context.** Multi-tenant isolation is enforced by Postgres RLS keyed on the
+GUC `app.tenant_id`. Something has to set that GUC for each unit of work.
+
+**Rule.** Set it with `SET LOCAL app.tenant_id = <tenant>` (i.e.
+`set_config('app.tenant_id', tid, true)`) INSIDE the transaction that does the
+work. Never a session-level `SET`. If a request has no valid tenant, run with
+NO context set — the RLS policy reads
+`NULLIF(current_setting('app.tenant_id', true), '')::uuid`, so unset matches
+nothing and the request sees zero rows. There is no "unset means all tenants"
+path, ever.
+
+**Why (the failure it prevents).** A session-level SET survives on the pooled
+connection after the request ends; the next request — possibly another tenant —
+inherits the stale context and reads/writes the wrong tenant's data. In a
+real-money system that is a cross-tenant breach. A "default to all if unset"
+fallback is the same breach by omission.
+
+**Where proven.** Phase 1a `server/scripts/prove_rls.py` (step 6 first FAILED
+with a session-level SET leaking across the pool, then passed once switched to
+SET LOCAL). Phase 1b `server/app/db.py` `tenant_connection()` and
+`server/scripts/prove_auth.py` (whoami reads back `current_setting` per request).
+
+---
+
+**SOURCE:** `sqlite-busy-timeout-first.md`
+
+# PRAGMA busy_timeout must be the FIRST statement on a SQLite connection
+
+**Context.** Opening a SQLite connection normally means running a few setup
+pragmas — `journal_mode = WAL`, `foreign_keys = ON`, `busy_timeout`. The order
+looks like a matter of taste. It is not.
+
+**Rule.** `PRAGMA busy_timeout` goes first, before every other statement,
+including `journal_mode`. Only then does the connection have permission to wait
+for a lock.
+
+**Why (the failure it prevents).** A connection's default busy timeout is 0: it
+does not wait at all, it fails immediately with SQLITE_BUSY. Every statement
+after opening can need a lock — and the `journal_mode = WAL` switch itself needs
+one, because it may have to recover the WAL left by another connection. With
+`busy_timeout` set *after* it, that switch runs with zero patience and throws
+"database is locked" (errcode 261, SQLITE_BUSY_RECOVERY) whenever another
+connection is active. It is intermittent, which is worse: on a device it looks
+like a random unexplained crash on app start, most likely when a previous run
+did not shut down cleanly — exactly when the user's unsynced bills are at stake.
+
+**Where proven.** Phase 2b, empirically: with `journal_mode` before
+`busy_timeout`, a 4-thread claim probe threw "database is locked" on 2 of 3
+runs; with the order corrected, 5 of 5 runs passed and no run has failed since.
+The shipped order lives in `mobile/src/adapters/sqlite/schema.ts`
+(`CONNECTION_PRAGMAS`).
+
+---
+
+**SOURCE:** `sqlite-money-is-text.md`
+
+# In SQLite, money columns are TEXT — and STRICT will not save you
+
+**Context.** Postgres has NUMERIC; SQLite does not. It has column *affinity*,
+which converts values silently on the way in. The mobile local store holds the
+same money and weight values the server stores as NUMERIC.
+
+**Rule.** Every amount and weight is stored as a decimal STRING in a column with
+TEXT (or BLOB) affinity — in this project, inside `payload_json TEXT`. Never
+declare a money or weight column NUMERIC, DECIMAL, or REAL in SQLite, however
+much it looks like the Postgres schema it mirrors.
+
+**Why (the failure it prevents).** Verified, not assumed:
+
+- Binding the string `"10.500"` to a **NUMERIC** column stores the float `10.5`,
+  with `typeof()` reporting `real`. The trailing digit is gone and the value is
+  now IEEE-754. `SELECT 0.1 + 0.2` in the same SQLite returns
+  `0.30000000000000004`.
+- A **STRICT** table does *not* protect against this. STRICT rejects text in an
+  INTEGER column, but a TEXT column silently **accepts** a bound number and
+  stringifies it: `0.3` is stored as `"0.3"` and the integer `5` is stored as
+  `"5.0"`. A JS float reaching that bind would be written as its full decimal
+  expansion, with no error anywhere.
+
+So the database will not catch this class of bug. The guarantee has to live
+upstream: `BillPayload` declares every amount and weight as `string`, the client
+performs no arithmetic on them, and the store only ever binds the output of
+`JSON.stringify`. TypeScript is the enforcement; SQLite is not.
+
+**Where proven.** `mobile/src/proof/sqliteProof.ts` S1 (affinity conversion,
+float drift, and the STRICT behaviour, all asserted against real SQLite 3.50.4)
+and S2 (`"0.3" "0.1" "0.2" "0.10" "10.500" "0.30"` round-trip byte-identical
+through a real file). Project hard rule 1.
+
+---
+
+**SOURCE:** `sync-state-needs-startup-recovery.md`
+
+# An in-progress state that nothing polls strands records forever
+
+**Context.** The mobile sync engine moves a bill `pending -> syncing -> synced`.
+The sender only ever looks for `pending` rows — that is what makes the in-flight
+guard work, because a claimed bill disappears from every other runner's queue.
+The consequence is that `syncing` is a state NO query returns. If the process
+dies between the claim and the outcome, the bill sits in `syncing` and is never
+looked at again: not by the next sync run, not by the next app launch, never.
+The bill is saved locally, the user believes it is safe, and it silently never
+reaches the server.
+
+**Rule.** Any state that means "work in progress" must have an explicit startup
+sweep that resolves it before the first work pass runs. Reset it to the
+retryable state and record why. Never rely on the normal work loop to notice —
+by construction, the normal loop cannot see it. Assert this in the proof by
+checking that the stranded record is invisible to the sender BEFORE recovery
+runs, not only that recovery works.
+
+**Why (the failure it prevents).** Silent permanent loss of a real-money bill,
+with the local record cheerfully claiming everything is fine. It is invisible in
+testing because the strand requires a crash inside a narrow window, and it is
+invisible in production because nothing ever queries the state that holds it.
+
+**Corollary that made recovery cheap.** Recovery does not need to ask the server
+whether the bill landed. Re-sending carries the same, never-regenerated
+`idempotency_key`, so the server resolves the ambiguity itself — a repeated key
+returns the existing bill instead of creating a second one (proven server-side
+in Phase 1c, see [[login-resolves-under-tenant]] for the same
+"let the lower layer enforce it" pattern). That turns distributed reconciliation
+into a plain local state reset. It only works because the key is generated ONCE
+at bill creation; regenerate it on retry and every recovery becomes a duplicate.
+
+**Where proven.** `mobile/src/proof/proveSync.ts` CASE 4: the bill is forced to
+`syncing`, the store is re-created to model a restart, and the proof asserts
+`listReadyToSend` returns nothing — the bill really is unreachable — before
+`recoverInterrupted()` returns it to `pending` and it syncs. CASE 3 proves the
+same-key retry after a lost response yields exactly one bill on the server.
+
+---
+
+**SOURCE:** `two-green-proofs-do-not-cover-the-seam.md`
+
+# Two green proofs do not cover the seam between them
+
+**Applies to** any behaviour a user meets that passes through more than one
+proven component — and to every claim of the shape "X is proven, and Y is
+proven."
+
+**The rule:** two components proven separately are not a proven composition. The
+next defect is at the seam, because the seam is the one place no proof file
+owns. Find it by asking which proof drives BOTH sides — and when the answer is
+"none", that is the finding, not a gap to note and move past.
+
+## The strongest instance this repo has
+
+Two proofs, both green, both correct:
+
+- **`mobile/src/proof/proveSync.ts:1184`**, `case11SessionExpired` — the session
+  expires with bills queued. It covers a 401 arriving mid-queue on both stores,
+  including a deliberate disproof (11a-legacy, 11c) driven by
+  `LegacyUnauthorizedTransport` to show the old classification told the operator
+  one of two false things.
+- **`mobile/src/proof/proveSignOut.ts`**, S1 — a non-empty send queue refuses the
+  sign-out and names the count.
+
+Neither is wrong. Neither is weak. And they cannot see each other:
+
+```
+grep -n "signOut" proveSync.ts      ->  0 matches
+grep -n "401"     proveSignOut.ts   ->  0 matches
+```
+
+Run both ways, both zero. `proveSync` knows everything about a dead token and
+has never heard of sign-out. `proveSignOut` knows everything about the sign-out
+gate and has never heard of a 401. **The composition of the two is driven by
+nothing.**
+
+## What lives in the gap
+
+Observed on a real iPhone, 2026-08-06, recorded in `OPEN_ITEMS.md` under the
+entry opening **"The sync strip says the phone is OFFLINE while the server is
+refusing its token"** — cited by its first sentence rather than by a line range,
+because that file grows and a range goes stale silently. A bill queued, the
+session revoked from the PC, Wi-Fi at full strength. Over three
+minutes the bill cycled `รอส่ง` → `กำลังส่ง` → `รอส่ง` and never sent. Two
+sentences were on the screen at once, both false:
+
+```
+sync strip : ออฟไลน์ — เก็บไว้ในเครื่อง 1 ใบ จะส่งให้เองเมื่อเน็ตกลับมา
+             ("offline — will send by itself when the network comes back")
+sign-out   : ยังออกจากระบบไม่ได้ / มีบิลรอส่งขึ้นระบบ 1 ใบ /
+             รอให้ส่งครบก่อน แล้วจึงออกจากระบบได้
+             ("wait until they are all sent, then you can sign out")
+```
+
+The network was up. The queue could not drain, because the token was dead. So
+the strip promised a recovery that was not coming, and the sheet instructed the
+operator to wait for a condition that could never arrive — on the one device
+holding an unsent bill, with the one action that would fix it (sign in again)
+refused by the gate. **A third renderer on the same build, in the same minute,
+got it right**: the daily money screen drew `ต้องเข้าสู่ระบบใหม่` with a working
+sign-in button.
+
+Each half is defensible alone. The queue really is blocked; bills really are
+pending. The trap only exists once both are true at the same time, and no proof
+puts them there together.
+
+**The cause is NOT settled and this lesson does not settle it.** `OPEN_ITEMS.md`
+names two candidates with different fixes and deliberately accepts neither; the
+diagnosis is running in its own read-only session. What is established here needs
+no cause at all: the two greps above are the whole argument, and they were true
+before anyone opened `engine.ts`.
+
+## Why "both are proven" is the seduction
+
+The seam is invisible from every position that could report it:
+
+- **Each proof file's coverage looks complete from inside itself.** `proveSync`'s
+  case 11 has a disproof arm; that is a proof written by someone being careful,
+  and care applied within a boundary does not cross it.
+- **No file is missing.** There is no empty test to notice, no `TODO`, no
+  skipped case in a summary. The count of green cells goes UP as each component
+  is proven harder, and the seam does not appear in that count.
+- **The failure needs two subsystems in one state,** which is exactly the state a
+  unit proof is designed to avoid constructing.
+
+This is the wider form of what
+[[correct-classification-can-still-render-as-an-error]] already carries: there,
+one card drawn by two renderers, 448 green cells, and the defect in the
+CONCATENATION. The difference is the boundary. There the composition sat inside
+one screen that one proof could reach; here it spans two subsystems whose proof
+files do not share a single identifier. The remedy there — *assert the
+concatenation in draw order* — presumes you know where to look. This lesson is
+about finding that place first.
+
+## How to test for it
+
+1. **Name the components a user-visible behaviour passes through.** For this one:
+   transport classification → store transition → queue health → sync strip →
+   sign-out gate → sheet wording. Six, across two proof files.
+2. **Grep each proof for the other's vocabulary, both directions.** Zero matches
+   both ways is an unproven seam, and it is a two-second measurement. Do it for
+   every adjacent pair, not just the pair you suspect.
+3. **Write one case that drives both sides in a SINGLE run** and asserts what the
+   operator ends up looking at — the rendered text, in draw order, from a state
+   reached by real transitions rather than assembled by hand
+   ([[a-proof-fixture-must-be-a-row-the-product-could-produce]]).
+4. **Assert NEGATIVELY on the composition.** "The strip does not promise a
+   network recovery while the session is dead" is the claim. Both components pass
+   every positive assertion already; only a negative one over the pair can fail.
+5. **Give the seam test a home.** It belongs to neither component's file, so it
+   will not be written unless something owns compositions explicitly. A test that
+   has no obvious file is the test most likely never to exist —
+   [[a-check-that-never-went-red-was-never-observed]] is about cells that cannot
+   fire; this is about the case that was never written, which is the same blind
+   spot one step earlier.
+
+## The general form
+
+**Ask of any two components: what does the user see when both are in their
+unhappy path at once?** Proof coverage is measured per file and defects are not.
+Every subsystem boundary in this project — transport/store, store/health,
+health/screen, gate/sheet — is a place where two correct halves can compose into
+a screen that lies, and no amount of proving either half harder will reach it.
+
+---
+
+**SOURCE:** `unavailable-is-not-rejected.md`
+
+# A failure to reach a verdict is not a negative verdict — and not every verdict is final
+
+**Context.** Every sync path has failure shapes that look identical from the call
+site — all of them are "the send didn't work" — and must be handled in opposite
+ways. There are THREE, not two.
+
+- **UNAVAILABLE** — no network, timeout, socket closed, 5xx, expired token, or a
+  response that was lost after the server may already have committed. The
+  outcome is UNKNOWN. We do not know whether the bill exists on the server.
+- **REJECTED, PERMANENT** — the server received the bill, understood it, and
+  refused it on the payload's own merits (422: malformed money, net ≠ gross −
+  tare, cross-tenant reference). The outcome is KNOWN and it is bad, and nothing
+  anyone does will make THIS payload valid.
+- **REJECTED, RESOLVABLE** — the server received the bill, understood it, and
+  refused it because MASTER DATA it depends on is not set up (424: no price tier
+  for the seller's grade, seller has no grade). The outcome is KNOWN and it is
+  bad *today*. It becomes valid the moment the back office adds the price —
+  without the bill changing at all.
+
+## The question that separates them
+
+The useful question is **not** "did it fail". It is:
+
+> **Can anything make this bill valid later — and does the failure name what?**
+
+- No, nothing can → PERMANENT. Terminal, surfaced for correction.
+- Yes, and the server named it → RESOLVABLE. Park it, retry when that thing is
+  fixed.
+- We do not even know whether it failed → UNAVAILABLE. Retry forever.
+
+"Does the failure name what" is load-bearing, not decoration. A refusal the
+client can only recognise by string-matching an error message is not a
+classification, it is a guess that breaks the first time someone rewords a
+message or translates it. The server must state the kind in a form the client
+reads structurally — here a distinct status code (424), with a machine-readable
+`code` in the body for the UI. If the server cannot name it, treat it as
+PERMANENT: better one bill visibly needing attention than a silent retry loop.
+
+**Rule.** Classify every send outcome into one of these three before deciding
+anything else, and make the type system carry the distinction rather than a
+boolean or an exception. Then:
+
+- UNAVAILABLE -> back to `pending`, `attempt_count++`, `last_error` recorded,
+  retry with the SAME idempotency key, with backoff, **forever**. No attempt cap:
+  a yard can be offline for days, and a bill marked `failed` for being offline is
+  a lie about real money.
+- REJECTED, PERMANENT -> `failed`, terminal, with the server's reason kept and
+  shown. Never silently retried.
+- REJECTED, RESOLVABLE -> PARKED: still `pending` and still owed, but removed
+  from the sendable queue so it cannot dam the bills behind it, held in a named
+  operator-visible state carrying the server's code, and retried on a slow
+  cadence or when the operator says the data is fixed. Same idempotency key, so
+  the eventual retry cannot duplicate. Retry backoff is the WRONG cadence here:
+  retrying sooner cannot make a human add a price faster.
+- A transport that **throws** is UNAVAILABLE, never REJECTED. A throw carries no
+  information about whether the server committed.
+
+**Why (the failure it prevents).** Conflating them breaks in both directions:
+
+- Marking UNKNOWN as `failed` **loses bills**. Nothing retries a failed record,
+  so a bill that merely hit a dead spot is abandoned. If the server had in fact
+  committed it, local and server now disagree permanently; if it hadn't, the sale
+  is simply gone. Either way the loss is silent — the record says "failed" as if
+  someone decided that.
+- Marking REJECTED as retryable **hides the bill instead of surfacing it**. It
+  loops in `pending` forever, burning battery and data, and never reaches the
+  operator as something needing correction. Staff see a bill that "hasn't synced
+  yet," re-key it by hand, and now one load has produced two bills — one broken
+  and hidden, one manual. That is the duplicate.
+- Marking RESOLVABLE as PERMANENT **strands a load that has already been
+  tipped**. The bill is terminally failed for a reason that stops being true five
+  minutes later when the office adds the price — but nothing retries a `failed`
+  record, so the only recovery is to re-weigh scrap that no longer exists as a
+  separate load. The shop either loses the purchase or invents a weight. This is
+  the failure that forced the third class: the two-way split was not wrong, it
+  was too coarse.
+
+There is a second-order trap: if this split is wrong, your sync metrics measure
+network uptime instead of data quality. "Failed bills" becomes a graph of dead
+spots, and the genuinely malformed bills are invisible inside it.
+
+**Scope.** This governs every sync path built from here — bill sync, master-data
+pull, any future upload queue — not only the purchase-bill engine. The retry
+side only stays safe because the idempotency key is generated once and never
+regenerated; see [[sync-state-needs-startup-recovery]].
+
+**Where proven.** `mobile/src/sync/types.ts` models it as the `SendOutcome`
+union (`accepted | duplicate | rejected | rejected_resolvable | unavailable`) so
+a missed case is a compile error, and `mobile/src/sync/engine.ts` catches any
+thrown send into `unavailable`. In `mobile/src/proof/proveSync.ts`: CASE 2 and
+CASE 3 prove unavailable stays retryable (including after the server already
+committed); CASE 7 proves a 422 lands in `failed`, keeps its reason, and is never
+picked up again by `listReadyToSend`; CASE 10 proves the three-way split — 10a a
+424 parks WITHOUT jamming the queue, 10b the SAME bill and SAME idempotency key
+sync once the price exists (no re-weighing, no duplicate), 10c the slow cadence
+releases it with no operator at all, 10d a malformed bill is still terminal and
+is not touched by the release path. Server side,
+`server/scripts/prove_master_data_gate.py` proves it over real HTTP: 424 carrying
+`kind` and `code`, no bill row created and no `doc_no` burned, malformed input
+still 422, then the byte-identical payload accepted once the price is added.
+Generalised from defensive-coding rule #1.
+
+**The ordering price.** Parking takes a bill out of the sendable queue, so it
+receives a higher `doc_no` than loads weighed after it. That exemption and its
+bound are recorded in [[doc-no-is-arrival-order-not-event-time]]; read it before
+introducing any further "skippable" state.
+
+---
+
+**SOURCE:** `wait-for-the-event-not-the-ticks.md`
+
+# A fixed number of ticks is not a synchronisation primitive
+
+**Rule: a test must never wait a fixed number of microtasks (or `setTimeout`
+delays) to reach the state it wants to observe. Wait for the observable EVENT,
+with a bound, and print how long it took.** If there is no observable event,
+add one — that is cheaper than a test whose meaning drifts.
+
+## What happened
+
+`proveSync.ts` CASE 6 proves the in-flight guard: while a send is hanging, the
+bill must be `syncing`, and a competing claim must be refused. It set the scene
+like this:
+
+```ts
+const first = engine.runOnce();
+const second = engine.runOnce();
+await Promise.resolve();   // "let both runs get as far as they can"
+await Promise.resolve();
+await Promise.resolve();
+const midFlight = await r.store.getBill(bill.id);
+```
+
+Phase 2c-3 added a `Mutex` to the SQLite driver (the cart's draft -> bill
+promotion needs a real transaction). Each store operation now costs extra
+microtask hops. The three ticks stopped being enough to reach the claim, and
+the case went red:
+
+```
+[FAIL] bill is claimed (syncing) while in flight — state=pending
+```
+
+Nothing was broken. The engine was fine — every other check in the same case
+passed, including "a competing claim on an in-flight bill is refused", which
+could only pass if the claim HAD happened by then. The test was simply looking
+at the wrong moment.
+
+The fix waits for the thing itself:
+
+```ts
+const yields = await waitFor(() => gated.started.length === 1);
+```
+
+which then reported `send entered after 1 yield(s)` — one **macrotask**, a point
+three microtasks could never have reached.
+
+## Why this is worse than the red run
+
+Red is the lucky outcome. A tick count encodes the current shape of the
+scheduler into the test, and the same drift can move the observation the other
+way — past the window, into the state AFTER the interesting one. Then the
+assertion still runs, still passes, and is measuring nothing. The in-flight
+guard is the single thing standing between the customer and a double-sent bill;
+a version of CASE 6 that observes after the send completed would assert
+`syncing` against a settled row and be green forever.
+
+So the failure mode is not "the test breaks when I change the storage layer".
+It is "the test silently stops testing what its name says, at some unknown
+future change, with no signal". Same shape as
+[[concurrency-tests-need-a-barrier]]: there, workers that never overlapped; here,
+an observation that never landed in the window. In both, **green is not
+evidence until you can show the measurement happened when it claims to.**
+
+## How to apply
+
+1. Never `await Promise.resolve()` N times to "let things settle". Ask what
+   event you are actually waiting for.
+2. Wait on that event with a bound and a failure value (`waitFor` returns `-1`
+   rather than hanging), so a genuine hang is a visible failure, not a timeout.
+3. Print the cost (`after N yield(s)`). It makes a drift visible as a changing
+   number long before it becomes a wrong result.
+4. Suspect this whenever a timing-shaped test changes colour after a change to a
+   layer BELOW it that has no business affecting correctness.
+
+**Where proven.** `mobile/src/proof/proveSync.ts` — `waitFor()` and CASE 6, which
+now passes identically on the in-memory store and the real SQLite store. The
+mutex that exposed it is `mobile/src/adapters/sqlite/mutex.ts`.

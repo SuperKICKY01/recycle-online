@@ -198,6 +198,60 @@ Two rules:
 See [[a-checker-must-not-share-the-code-it-checks]] for the injection discipline
 this sits inside: fires / names the row / **clears again when undone**.
 
+## AMENDED A FIFTH TIME (the rebuild, 2026-08-03): a count the ENVIRONMENT owns expires when the environment is rebuilt
+
+The fourth amendment above was written on 2026-08-02, about `prove_reconcile.py`.
+The next day the database was rebuilt and that same file went red. It has been
+red ever since, and nothing in R1 or R2 touched it.
+
+Three of its expectations are absolute counts of a database that no longer
+exists:
+
+```python
+prove_reconcile.py:634   expect={"S3": 1, "B1": 1, "B2": 1, "T0": 91}
+prove_reconcile.py:636   "table=tenants  rows_visible_with_no_tenant_context=46"
+prove_reconcile.py:718   "table=tenants  rows_at_start=46  rows_at_end=47"
+```
+
+They were written against a 46-tenant database. The rebuild took it to 2.
+
+**Measured either side of migration 0005, not inferred** — it fails from a
+pre-0005 dump (48 tenants, `T0` got 95), from a second pre-0005 dump (3 tenants,
+`T0` got 3), and identically from a post-0005 dump. The same four failures
+throughout, so `token_version` is not involved. **Every injection that is about
+MONEY still passes.** Only the two tenant-count assertions and the X3 timing
+probe fail: what decayed is the proof's expectations about its own fixture, not
+the checker's ability to see a money defect.
+
+**The new axis is WHO OWNS the number.** The third amendment's half-life is about
+accumulation — debris piles up, so the count drifts on its own with nobody
+touching anything. This one does not drift. It was correct on 2026-08-02 and
+wrong on 2026-08-03, because somebody legitimately rebuilt the world. Restoring a
+dump, reseeding, standing up a fresh tenant, migrating a customer: none of these
+are things a proof gets to forbid, and all of them expire a count of rows the
+proof did not create. **If the proof did not put the row there, it may not assert
+how many there are.** Derive the number from the restored copy at runtime, or
+assert a relation the count cannot carry.
+
+**The part worth staring at: this is the fifth bite, in the very file the fourth
+amendment was written about.** The second amendment already said "grep for its
+siblings in the same file before moving on"; the third widened it to "grep every
+proof script for this shape, not just the file that went red." Both were
+addressed to exactly this. On 2026-08-02 the sweep would have found `:634`,
+`:636` and `:718` while the file was still green — one day before the rebuild
+expired them. The rule was written INTO this file and not applied TO it, by the
+session that wrote it.
+
+So the sweep is not a step in fixing the assertion that went red. It is a step in
+fixing the assertion that went red, run against every file you touched that day,
+INCLUDING the one you were editing. A lesson applied only to the case that
+prompted it is the defect the lesson describes, one level up.
+
+Recorded in `OPEN_ITEMS.md:179-200` and in `PROJECT_STATUS.md:1603-1620`, which
+carries the fuller measurement. Not fixed there or here: deciding what those
+numbers derive FROM is a change to a destructive proof, and not one to make in
+passing.
+
 ## How to apply
 
 Before trusting any proof script:
@@ -214,6 +268,10 @@ Before trusting any proof script:
 5. Check what the script leaves behind, by querying for its run tag after it
    exits. "It passed" and "it cleaned up" are separate claims, and the second
    one needs its own assertion in the script.
+6. Ask of every count that survives step 4: did this script CREATE the rows it
+   counts? If not, the number belongs to the environment, and a restore, a
+   reseed or a new tenant expires it. Derive it from the fixture at runtime, or
+   assert a relation that does not carry a count.
 
 This sits alongside the other lessons about a green result that proves nothing:
 [[concurrency-tests-need-a-barrier]] (workers that never overlapped),

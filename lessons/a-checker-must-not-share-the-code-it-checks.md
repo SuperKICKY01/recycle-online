@@ -4,9 +4,10 @@
 re-computes a value the production code already computes; and to any test that
 breaks something on purpose in order to prove a check catches it.
 
-One subject, two bounds, and they pull in OPPOSITE directions. Get either
-backwards and the result is a checker that is silently useless — the worst kind,
-because it prints a green.
+One subject, three bounds. The first two pull in OPPOSITE directions; the third
+arrived later and is amended in at the end. Get any of them backwards and the
+result is a checker that is silently useless — the worst kind, because it prints
+a green.
 
 ---
 
@@ -98,3 +99,85 @@ turns them from nineteen assertions into nineteen *measurements*.
 
 See also [[proof-must-run-twice]] — a proof that MUTATES its own fixture must
 restore that fixture itself, or its second run measures its first run.
+
+## Amendment (sign-out proof, R1): Bound 3 — the expected value must not come from the subject
+
+Bounds 1 and 2 are about the checker's CODE. This one is about its VALUE, and it
+survives every fix the other two ask for: a checker can share no code at all with
+what it checks and still be worth nothing, because the number it compares against
+was fetched from the thing on trial. Three instances, three languages, one shape.
+
+**1. `mobile/src/proof/proveSignOut.ts:273-304` states it in its own words**, in
+the comment left standing where the defect was:
+
+> This used to compare what the applier wrote against CLEARED_SESSION itself,
+> which proves PASS-THROUGH and nothing more: the applier reads that same
+> object, so the two agree by construction and every cell stays green whatever
+> the constant is changed to. Eight of the ten values were unpinned in exactly
+> that way — only token (through sessionStateOf, below) and online (=== null)
+> had an assertion that could fail.
+
+Ten values, eight of them unfalsifiable. No line of the assertion was wrong. The
+expected side simply came from the subject, so `S2` was a real test of "the
+applier writes every key exactly once" and simultaneously no test at all of WHAT
+it writes. The fix is the boring one: the expected values are now literals in the
+proof file, each carrying where in `src/` the specification says that value.
+
+**And the mutation test did not fire — for a reason that is its own trap.** All
+eight were substituted in `CLEARED_SESSION`, one field per run, to a
+wrong-but-plausible value. Every one was a COMPILE error — `TS2322` at
+`signOut.ts`, *"Type 'true' is not assignable to type 'false'"* — so the build
+stopped and the proof never ran. **A mutation the compiler catches first has not
+tested the runtime check.** The literal types are a real guarantee, and a
+different one; what the proof adds is the single case `tsc` cannot see, the
+interface literal and the constant widened TOGETHER.
+
+**2. The definition can come from the subject too, not just the value.**
+`proveSync.ts:603`, `:666` and `:888` each assert `queueHealth`'s `.offline`, and
+each is correct for the input it sends. The function is still wrong on an input
+none of them sends. `queueHealth.ts:302`:
+
+```ts
+const offline = blocking && !serverRefusing;
+```
+
+`serverRefusing` is `head.first_server_error_at !== null` (`:300`), and
+`markSessionExpired` (`SqliteLocalStore.ts:361`) sets `first_server_error_at =
+NULL, server_error_attempts = 0`. So a queue jammed by a dead token has
+`blocking` true and `serverRefusing` false, and reads as OFFLINE — "waiting for
+the network", on a device whose network is fine.
+
+The proof shares no code with `queueHealth`; it imports it and calls it, which is
+what a proof should do. What it inherited is the SUBJECT'S DEFINITION of the
+property. Proof and function were written together from one idea of what
+"offline" means, so they agree about the three cases that idea covers. A second
+author given only the specification — *offline means the device cannot reach the
+server* — would have asked what happens when the server answers 401, which is
+Bound 1's test pointed at a definition instead of at a formula. **A green here is
+a claim about coverage, and nothing in the output says so.** It reaches no screen
+today; that is why it is latent, and not why it is acceptable.
+
+**3. Same shape outside any language with types.** A CR-counting check at this
+terminal ran `grep -c $'\r'` inside a `for` loop. `$'\r'` reached grep as an
+EMPTY pattern, an empty pattern matches every line, and the count came back equal
+to each file's line count. It was read as a CR count. The number was real, it was
+just a property of the subject echoed back — a measurement that returns its own
+input. (Not recorded in this repo: no `.sh` file and nothing in `git log`. It
+happened in a session, and is written down here because that is the only place it
+now exists.)
+
+The test, and it is not the same question as Bound 1's:
+
+> **Where did the expected value come from — and could a wrong subject have
+> produced it?** Write it down by hand from the specification, never from the
+> object, the constant, or the function under test. Then break the subject and
+> watch the cell turn red. If it stays green, or if something upstream — a
+> compiler, a literal type, a build step — stops the break from ever reaching the
+> assertion, then the cell has not been observed.
+
+That last clause is the general rule and it has its own file:
+[[a-check-that-never-went-red-was-never-observed]] — Bound 3 is the case where
+the un-fireable assertion got its value from the subject; that lesson covers the
+ones where it had no value to get. Its sibling on the production side is
+[[a-defaulted-getattr-is-a-silent-dead-branch]]: a branch nothing was ever seen
+to enter, for the same reason a cell nothing was ever seen to redden.
