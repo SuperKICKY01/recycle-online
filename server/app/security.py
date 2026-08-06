@@ -45,7 +45,12 @@ async def verify_password(hash_: str, password: str) -> bool:
 
 
 def create_access_token(
-    *, user_id: uuid.UUID, tenant_id: uuid.UUID, username: str, role: str
+    *,
+    user_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    username: str,
+    role: str,
+    token_version: int,
 ) -> str:
     """Sign a token. Identity is keyed on the STABLE ids (user_id, tenant_id);
     username travels along only for display, it is not the identity.
@@ -55,6 +60,15 @@ def create_access_token(
     NOT what the server authorises on — get_principal re-reads the role from the
     database under tenant context on every request, so a token minted before a
     demotion cannot outlive it. See the note there.
+
+    `token_version` is NOT advisory, and it is the one claim here the server
+    compares against the database rather than merely carrying: a mismatch is a
+    401 (auth.py::_require_live_session). It is a REQUIRED keyword argument so
+    that a second mint site added later is an immediate TypeError at the call
+    site rather than a token that is born unusable — the same "make the next
+    caller a hard error, never an optional argument with a plausible default"
+    move as the required `action` on the client's forbiddenReason (2d amendment
+    to lessons/correct-classification-can-still-render-as-an-error.md).
     """
     now = dt.datetime.now(tz=dt.timezone.utc)
     payload = {
@@ -62,6 +76,7 @@ def create_access_token(
         "tenant_id": str(tenant_id),
         "username": username,
         "role": role,
+        "token_version": token_version,
         "iat": int(now.timestamp()),
         "exp": int((now + dt.timedelta(seconds=JWT_TTL_SECONDS)).timestamp()),
     }

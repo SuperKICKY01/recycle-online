@@ -105,6 +105,28 @@ idea — only that it is unresolved.
   deleting the app. *Unblocks:* the sign-out item above (`R1`). This is
   the same mechanism wearing a friendlier face, and it is half the
   reason sign-out is the first step rather than a later one.
+- **`prove_reconcile.py` is RED, and has been since the 2026-08-03
+  rebuild — NOT caused by anything in R1a.** Three of its expectations
+  are absolute counts of a database that no longer exists:
+  `prove_reconcile.py:634` `{"T0": 91}`, `:636`
+  `rows_visible_with_no_tenant_context=46`, and `:718`
+  `rows_at_start=46  rows_at_end=47`. They were written against the
+  pre-rebuild 46-tenant database; the rebuild took it to 2 tenants, and
+  nothing has run the script since it was last green on 2026-08-02.
+  **Measured, not inferred:** it fails from a pre-0005 dump (48 tenants,
+  `T0` got 95), from a different pre-0005 dump (3 tenants, `T0` got 3),
+  and identically from a POST-0005 dump — the same four failures either
+  side of the migration, so the new column is not involved. Every
+  injection that is about MONEY still passes; only the two tenant-count
+  assertions and the X3 timing probe fail. *Not done:* found while
+  running the proof set for R1a, and fixing it means deciding what those
+  numbers should be derived FROM — a change to a destructive proof, which
+  is not a thing to do in passing. *Unblocks:* deriving the expected
+  counts from the restored copy at runtime instead of hardcoding them.
+  **This is `lessons/proof-must-run-twice.md` biting for the fifth time,
+  in the very file its fourth amendment was written about** — a count
+  assertion over data that can change has a half-life, and this one
+  expired the day the database was rebuilt.
 - **Android coverage** — one pass, one borrowed handset, one OS version.
   The void flow, the offline behaviours, draft recovery, the stale-cache
   price gate and background sync have never run there. *Not done:* no
@@ -171,6 +193,32 @@ idea — only that it is unresolved.
   hazard. The trial ledger in `PROJECT_STATUS.md` exists to stop it
   compounding: any change to one of these values is a TRIAL and gets a
   row.
+- **`ck_users_token_version` is deliberately NOT in `reconcile.py`'s
+  `REQUIRED_CONSTRAINTS`.** Migration 0005 adds the constraint, and S5
+  exists precisely to catch a guarantee silently dropped — so on the face
+  of it, it belongs there. *Not done:* `prove_reconcile.py` restores a
+  COPY from a dump, and **a dump taken before 0005 has neither the column
+  nor the constraint**, so S5 would go red on every such copy for a
+  reason that has nothing to do with money. "The money is wrong" and "the
+  fixture predates the schema" must never share an exit code. *Unblocks:*
+  a dump taken AFTER 0005 becoming the oldest one anyone restores from —
+  then add the line. Until then the constraint is enforced by Postgres on
+  the live database regardless; what is missing is only the checker's
+  assertion that it is still there.
+- **The refusal vocabulary wants its own module.** `kind`/`code`/`message`
+  builders are now spread across three files — `auth.forbidden` and
+  `auth.unauthenticated`, `master._not_found`/`_invalid`/`_conflict`, and
+  `bills._master_data_missing` — and `app/users.py` imports the private
+  `master._not_found` across module boundaries to avoid restating a
+  convention (`lessons/a-checker-must-not-share-the-code-it-checks.md`:
+  duplicate arithmetic, never duplicate a convention). Importing is the
+  right call and the import is the wrong shape. *Not done:* deliberately
+  not refactored during R1a — moving every refusal builder touches every
+  handler in the API, which is not a change to make inside a security
+  phase. *Unblocks:* one `app/refusals.py` holding all of them, and the
+  four call-site modules importing from it. No behaviour change; the
+  bodies on the wire must come out byte-identical, which is what makes it
+  safe to do in its own commit.
 - **A stale comment cites a TypeScript config that no longer exists**
   (`mobile/src/device/expoSqliteDriver.ts`). *Not done:* comment only,
   nothing depends on it. *Unblocks:* one edit, whenever that file is

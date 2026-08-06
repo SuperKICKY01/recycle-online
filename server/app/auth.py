@@ -21,10 +21,54 @@ from .security import decode_access_token
 # raise our own 401 (rather than FastAPI's 403).
 _bearer = HTTPBearer(auto_error=False)
 
-_UNAUTHENTICATED = HTTPException(
-    status_code=status.HTTP_401_UNAUTHORIZED,
-    detail="Not authenticated",
-    headers={"WWW-Authenticate": "Bearer"},
+
+def unauthenticated(code: str, message: str) -> HTTPException:
+    """A refusal about WHO IS ASKING — and the answer is "nobody".
+
+    Same kind/code envelope as forbidden() below, master._not_found/_invalid and
+    bills._master_data_missing: ONE refusal vocabulary across the API.
+
+    THE MESSAGE IS ENGLISH AND IS FOR LOGS AND DIAGNOSIS ONLY. It is not UI
+    text and no client may print it. A1 settled this for the daily report and it
+    holds here: the client owns the sentences, the server owns the facts. A
+    client that echoes a server's prose states something it cannot verify, and
+    the yard-facing Thai wording for an ended session is R1b's decision, made on
+    the client where the screen is.
+
+    A CLIENT MUST BRANCH ON THE STATUS, NEVER ON THIS BODY. 401 is not 403, not
+    422, not 424, not 5xx, and that axis survives a body that fails to parse at
+    all — the same argument the 403 note below makes. All three codes here mean
+    exactly one thing to a device: you are nobody, the queued bills are fine,
+    sign in again. The codes exist so a human reading a log can tell a token
+    that ran out from one that was deliberately ended, and so R1b can differ in
+    WORDING if it chooses. Nothing may string-match the message.
+    """
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={"kind": "unauthenticated", "code": code, "message": message},
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+# Bad signature, expired, malformed, a missing claim, or a `sub` naming no user.
+# Deliberately one code for all of them: which one it was is not the caller's
+# business and the reaction is identical.
+_UNAUTHENTICATED = unauthenticated(
+    "token_invalid", "token missing, malformed, expired, or naming no user"
+)
+
+# The token carries NO token_version claim at all: every token minted before
+# migration 0005. REFUSED — never read as 0, never waved through. See the note
+# in get_principal.
+_UNVERSIONED = unauthenticated(
+    "token_unversioned", "token predates session revocation and cannot be checked"
+)
+
+# The claim is present and STALE: this session was ended deliberately, by a
+# revoke-sessions call on that user. The user is not locked out — signing in
+# again mints a token carrying the current version.
+_REVOKED = unauthenticated(
+    "token_revoked", "session was revoked; sign in again for a current token"
 )
 
 
@@ -47,6 +91,33 @@ class Principal:
 async def get_principal(
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> Principal:
+    """Resolve the caller, and refuse a token the database no longer honours.
+
+    THE ONE-REQUEST WINDOW, STATED RATHER THAN CLOSED
+    -------------------------------------------------
+    This function opens its own short read transaction, and the handler opens a
+    SECOND one afterwards (main.get_authed_conn). A revocation that commits
+    between the two is not seen by this request: the version check has already
+    passed, and the handler proceeds. So a bump can let exactly ONE in-flight
+    request through, and if that request is POST /bills it writes a bill.
+
+    How wide: the gap between this transaction committing and the handler's
+    transaction starting — sub-millisecond on this stack, and it can only be
+    entered by a request that was already in flight when the bump landed. It
+    cannot be entered by a request that starts afterwards.
+
+    It FAILS CLOSED ON THE NEXT REQUEST. The window admits one request, never a
+    session: the token is dead from the following call onwards, with no
+    dependence on the clock, on the client noticing, or on anything retrying.
+
+    NOT FIXED, deliberately. Closing it means resolving the principal inside the
+    handler's own transaction, which restructures every route's dependency
+    graph to buy a sub-millisecond boundary on an operation (revoking a session)
+    that is not racing anything — nobody bumps a version at the same instant as
+    the very request they are trying to stop. Any issue-then-check scheme has
+    this window somewhere; moving it is not removing it. Recorded here so the
+    next reader knows it was measured and accepted rather than missed.
+    """
     if creds is None or not creds.credentials:
         raise _UNAUTHENTICATED
     try:
@@ -66,6 +137,27 @@ async def get_principal(
     except (jwt.PyJWTError, KeyError, ValueError):
         # Tampered signature, expired, malformed, or missing claims -> all 401.
         raise _UNAUTHENTICATED
+
+    # FAIL CLOSED ON A TOKEN WITH NO VERSION AT ALL.
+    #
+    # Every token minted before migration 0005 carries no token_version claim.
+    # Such a token is REFUSED — not read as version 0, not read as valid, not
+    # given the benefit of any doubt. `claims["token_version"]` (never .get with
+    # a default) is what makes that structural rather than remembered: an absent
+    # claim RAISES instead of resolving to a confident answer, which is
+    # lessons/a-defaulted-getattr-is-a-silent-dead-branch.md, and a default
+    # version would be a default IDENTITY, which is
+    # lessons/config-defaults-must-fail-closed.md.
+    #
+    # A claim that is present but unusable (null, a string, a float) lands here
+    # too, and is refused with the same code. It is not literally "unversioned",
+    # but nothing legitimate produces it — only a correctly-SIGNED forgery
+    # could, at which point the secret has leaked and this is not the problem —
+    # the reaction is identical, and refusing is the only safe answer either way.
+    try:
+        token_version = int(claims["token_version"])
+    except (KeyError, TypeError, ValueError):
+        raise _UNVERSIONED
 
     # A VALID SIGNATURE IS NOT PROOF THE USER EXISTS.
     #
@@ -91,12 +183,22 @@ async def get_principal(
     async with tenant_connection(claimed.tenant_id) as conn:
         row = (
             await conn.execute(
-                text("SELECT role FROM users WHERE id = :uid"),
+                # token_version rides along on the query that was ALREADY here.
+                # No second read per request: that is a design constraint of this
+                # work, not an optimisation. The lookup that proves the user
+                # exists is on this path regardless, and it now returns two
+                # columns instead of one.
+                text("SELECT role, token_version FROM users WHERE id = :uid"),
                 {"uid": claimed.user_id},
             )
         ).mappings().first()
     if row is None:
         raise _UNAUTHENTICATED
+
+    # THE REVOCATION CHECK. Deleting this ONE line leaves valid, running code in
+    # which a revoked token is accepted until it expires — which is exactly the
+    # disproof scripts/prove_revocation.py performs (CASE 7).
+    _require_live_session(token_version, row["token_version"])
 
     # THE DATABASE IS THE AUTHORITY ON ROLE, NOT THE CLAIM.
     #
@@ -110,6 +212,26 @@ async def get_principal(
     # This costs nothing: the lookup that proves the user still exists is already
     # on this path, and it now returns a column instead of a constant.
     return replace(claimed, role=row["role"])
+
+
+def _require_live_session(claimed_version: int, current_version: int) -> None:
+    """Refuse a token minted before this user's sessions were last revoked.
+
+    A helper rather than two inline lines ON PURPOSE. It gives the disproof a
+    single deletable line: remove the call in get_principal and the code still
+    parses, the server still starts, and exactly one behaviour changes. Deleting
+    `raise _REVOKED` out of an inline `if` would instead leave an empty block,
+    the server would refuse to start, and prove_revocation would go red for the
+    wrong reason — "the check is gone" and "nobody could run the check" must
+    never share an outcome, which is the same distinction reconcile.py draws
+    between exit 1 and exit 2.
+
+    Equality, not `<`. A version that is somehow AHEAD of the row is not a
+    fresher session, it is a token this server did not mint from this row, and
+    treating it as acceptable would make the ordering the security property.
+    """
+    if claimed_version != current_version:
+        raise _REVOKED
 
 
 # ---------------------------------------------------------------------------

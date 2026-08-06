@@ -19,6 +19,7 @@ from .db import engine, tenant_connection
 from .master import router as master_router
 from .reports import router as reports_router
 from .security import DUMMY_HASH, create_access_token, verify_password
+from .users import router as users_router
 
 
 class LoginRequest(BaseModel):
@@ -42,6 +43,7 @@ app = FastAPI(title="Recycle Online API (Phase 2c-2)", lifespan=lifespan)
 app.include_router(bills_router)
 app.include_router(master_router)
 app.include_router(reports_router)
+app.include_router(users_router)
 
 _INVALID_LOGIN = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials"
@@ -63,8 +65,8 @@ async def login(body: LoginRequest) -> LoginResponse:
         row = (
             await conn.execute(
                 text(
-                    "SELECT id, tenant_id, username, role, password_hash"
-                    " FROM users WHERE username = :u"
+                    "SELECT id, tenant_id, username, role, token_version,"
+                    " password_hash FROM users WHERE username = :u"
                 ),
                 {"u": body.username},
             )
@@ -82,6 +84,16 @@ async def login(body: LoginRequest) -> LoginResponse:
         tenant_id=row["tenant_id"],
         username=row["username"],
         role=row["role"],
+        # Read in the SAME statement as the password hash, so the version minted
+        # is the version that existed at the moment the credentials were checked
+        # — one read, one snapshot, no second lookup to drift.
+        #
+        # A bump landing after that statement and before this token is first
+        # used makes the new token stale on its first request; the caller signs
+        # in again and the second token is current. Unavoidable in any
+        # issue-then-check scheme, and it fails CLOSED, which is the direction
+        # that matters. See the window note in auth.get_principal.
+        token_version=row["token_version"],
     )
     return LoginResponse(access_token=token)
 
