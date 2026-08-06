@@ -47,6 +47,14 @@ labelled as such. NO PHASE IS OPEN. One finding from the pass is UNDIAGNOSED
 and deadlocks a handset whenever a token expires mid-shift; see Current
 phase.**
 
+**Also 2026-08-06, DOCUMENTATION ONLY: three further commits landed —
+`b955697` (the lessons generator), `b74396e` (`START_HERE.md`, and two workflow
+rules that existed nowhere in the repo before that day), and the citation change
+below. NONE OF THEM TOUCHED CODE, so no proof and no typecheck was run for any of
+them. Every dated green in Baseline observations keeps its own date and none is
+refreshed by this work — a reader seeing three commits after the last green must
+not read the green as re-run.**
+
 ## Current phase
 
 **NO PHASE IS OPEN. R1 and R2 are both CLOSED, on 2026-08-06.**
@@ -121,6 +129,33 @@ permanent division of responsibility rather than a temporary state: this file
 records what has been OBSERVED, that one records what comes NEXT and why. Where
 they ever disagree again, the disagreement itself is the finding — a session
 reading both would otherwise believe whichever it read first.
+
+### Documentation since R1/R2 — three commits, no code touched
+
+Recorded because each was a phase boundary and this file is updated at phase
+boundaries, not because any of them changed behaviour.
+
+- **`b955697` — the lessons generator.** `server/scripts/build_all_lessons.py`
+  and the generated `lessons/all-lessons.md`. Counted today rather than taken
+  from the commit body: **34 lesson files, and 34 index lines in
+  `lessons/README.md`** — directory and index agree — with `all-lessons.md` at
+  3778 lines. `lessons/README.md` is excluded from the generated file for TWO
+  independent reasons; see the CRLF/BOM footgun in `CLAUDE.md` before removing
+  that exclusion on the strength of refuting one.
+- **`b74396e` — `START_HERE.md`, and two workflow rules.** The file owns the
+  reading order, the role split, the phase-brief shape, and the done-checklist
+  as observables; it points for everything else. `CLAUDE.md`'s Workflow section
+  gained "every phase brief carries an explicit `Prove:` block" and "do not
+  commit until the owner confirms" — **both were surveyed for first and found
+  NOWHERE in the repository.** `CLAUDE.md`'s header and `README.md` now name
+  `START_HERE.md`; nothing had named it, so it was unreachable from the repo's
+  own entry point.
+- **This commit — citations by section, not by line.** A three-line insert into
+  `CLAUDE.md` had invalidated all twenty of `START_HERE.md`'s pointers at once,
+  and the shift was not uniform (+3, +5, +6 by position). Citations are now
+  `file § Section` plus a quoted handle, checked by
+  `tools/verify_citations.ps1`. See Baseline observations for what the checker
+  caught, including its own false green.
 
 Per the CLAUDE.md workflow this is a phase boundary: stop for review.
 
@@ -1249,6 +1284,10 @@ re-discovered as a mystery.
   `tsconfig.device.json`, which no longer exists — the Expo app
   program is `tsconfig.json` (`npm run typecheck:app`). Comment only;
   no behaviour depends on it.
+- `BRIEFING.md` says **"32 lesson files"**; there are **34**, and
+  `lessons/README.md` indexes 34. Counted 2026-08-06. Prose only — but
+  `BRIEFING.md` is the handoff for a reader who will NOT open the codebase, so
+  it is the one file whose counts its own reader cannot check.
 
 *(The `httpTransport.ts:18-23` entry that stood here — "403 stays, the server
 has no permission model in the MVP" — is CLOSED. The client was taught the 403
@@ -1725,3 +1764,37 @@ WEAKER EVIDENCE THAN THE ABOVE, and recorded as such.
   `reconcile.py` against the dev database **exit 0, 44 checks, 0 violations,
   unchanged**. `prove_reconcile.py` was already RED for reasons predating that
   change — see the decay note above.
+- 2026-08-06 — **`START_HERE.md`'s citations moved from line numbers to
+  section-plus-handle, and the move was DISPROVEN rather than reviewed.**
+  `tools/verify_citations.ps1` parses the citations out of `START_HERE.md`
+  itself — it carries no list of its own — and asserts each resolves to exactly
+  one place: **36 citations, 0 broken, exit 0**, run bare from its committed
+  location. Three things it caught, all before the commit:
+  - **Three handles were line-WRAPPED** inside `START_HERE.md`, making them
+    strings that exist on no single line of the file they point at. First run:
+    `BROKEN=3`. The one-line rule now in `START_HERE.md`'s header was found by
+    RUNNING the check, not by reasoning about it.
+  - **The shift disproof.** A blank line inserted near the top of `CLAUDE.md`
+    (above Scope and status) moved every section — 51→52, 70→71, 165→166,
+    197→198 — and every handle with them; all 36 still resolved. Repeated on
+    `PROJECT_STATUS.md` (Current phase 50→51, What is built 692→693, Baseline
+    observations 1291→1292): all 36 still resolved. Both files then restored and
+    verified byte-identical by sha256. Line citations would have failed both.
+  - **A negative control.** One handle altered to a string absent from its
+    target: that citation alone reported `hits=0`, `BROKEN=1`, exit 1. Restored,
+    back to exit 0. The green has been observed going red.
+- 2026-08-06 — **the checker's FIRST run from `tools/` was a FALSE GREEN, and the
+  cause is this box rather than the citations.** It printed `CITATIONS=3
+  BROKEN=0` and **exited 0** when there are 36. The section mark had been written
+  as a literal character in the `.ps1`; **Windows PowerShell 5.1 reads a BOM-less
+  script as the ANSI codepage, which is 874 here**, so the regex silently stopped
+  matching every citation carrying a section and the run reported success over
+  the 3 that remained. It was caught only by comparing 3 against a count already
+  known to be 36 — nothing in the output said anything was wrong. Fixed twice
+  over: the source is ASCII-only with the mark built from its codepoint, and the
+  run now asserts that sectioned citations parsed equals sectioned citations
+  present. That control has itself been seen firing (35 vs 33, while its own
+  count regex was still too loose) and then corrected. **A machine-footgun entry
+  in `CLAUDE.md` is OWED and is NOT written** — this is the codepage-874 trap in
+  SOURCE rather than in data, a form the existing entry does not cover, and
+  `CLAUDE.md` was out of scope for this commit.
