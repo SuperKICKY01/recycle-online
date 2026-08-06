@@ -7,4 +7,5 @@ Records real-money purchase transactions — data integrity is paramount.
 - `mobile/`  — React Native + Expo (yard floor, offline-first purchase bills)
 - `desktop/` — Electron + React + TypeScript (back office, thermal slip printing)
 
+New sessions start with START_HERE.md.
 See CLAUDE.md for the full rules, architecture, and scope.

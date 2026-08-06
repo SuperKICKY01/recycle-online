@@ -9,6 +9,9 @@ machine traps, workflow, conventions. It must not say where the work
 has got to. Current phase, what is built, what is deliberately not
 built, and the known device gaps live in `PROJECT_STATUS.md`.
 
+New session: `START_HERE.md` holds the reading order, the role split,
+the phase-brief shape, and the done-checklist as observables.
+
 ## Architecture (LOCKED — do not propose alternatives)
 
 - `server/`  — FastAPI + PostgreSQL, cloud, single source of truth.
@@ -195,7 +198,10 @@ false pass and a red run into a confidently wrong cause.
 
 - Work in phases. Stop at each phase boundary for review. Never
   continue past a phase on your own.
+- Every phase brief carries an explicit `Prove:` block naming the
+  observable, not the intention.
 - Show a diff before editing any existing file.
+- Do not commit until the owner confirms.
 - applied ≠ verified: a change is done only when the real path has
   been run (server: actual HTTP request; not "it should work").
 - Read actual files before stating numbers or facts. Never guess.
