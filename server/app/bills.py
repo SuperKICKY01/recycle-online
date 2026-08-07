@@ -207,7 +207,8 @@ async def _read_bill(conn: AsyncConnection, bill_id) -> dict | None:
         await conn.execute(
             text(
                 "SELECT id, doc_no, seller_id, vehicle_no, idempotency_key, total_amount,"
-                " device_created_at, server_received_at, voided_at, voided_by, void_reason"
+                " device_created_at, server_received_at, created_by,"
+                " voided_at, voided_by, void_reason"
                 " FROM purchase_bills WHERE id = :id"
             ),
             {"id": bill_id},
@@ -250,6 +251,9 @@ async def _read_bill(conn: AsyncConnection, bill_id) -> dict | None:
         "total_amount": str(h["total_amount"]),
         "device_created_at": h["device_created_at"].isoformat(),
         "server_received_at": h["server_received_at"].isoformat(),
+        # Who SYNCED the bill, not necessarily who weighed the load. The bound
+        # is the column's own COMMENT (migration 0006), not this line.
+        "created_by": str(h["created_by"]) if h["created_by"] else None,
         "status": "voided" if h["voided_at"] is not None else "active",
         "voided_at": h["voided_at"].isoformat() if h["voided_at"] else None,
         "voided_by": str(h["voided_by"]) if h["voided_by"] else None,
@@ -449,8 +453,8 @@ async def create_bill(
                 text(
                     "INSERT INTO purchase_bills (id, tenant_id, seller_id, doc_no,"
                     " idempotency_key, total_amount, device_created_at,"
-                    " server_received_at, vehicle_no)"
-                    " VALUES (:id, :t, :s, :dn, :k, :tot, :dca, :sra, :vn)"
+                    " server_received_at, vehicle_no, created_by)"
+                    " VALUES (:id, :t, :s, :dn, :k, :tot, :dca, :sra, :vn, :cb)"
                 ),
                 {
                     "id": body.id, "t": principal.tenant_id, "s": body.seller_id,
@@ -465,6 +469,17 @@ async def create_bill(
                     # as a floor for any other writer.
                     "sra": received_at,
                     "vn": body.vehicle_no,
+                    # THE SESSION THAT SUBMITTED THIS BILL, and never a field
+                    # from the body. BillCreate carries no user of any kind and
+                    # must not: a client-supplied author is an author the client
+                    # chooses. principal.user_id has already been proven to name
+                    # a live user IN THIS TENANT by get_principal, which re-reads
+                    # the users row under tenant context — so the composite
+                    # (tenant_id, created_by) FK cannot fail here. That matters
+                    # on this path specifically: an unhandled 500 is
+                    # `unavailable` to the client, so the bill would retry
+                    # forever and dam every bill behind it on that device.
+                    "cb": principal.user_id,
                 },
             )
             for it, amt, lp in zip(body.items, item_amounts, list_prices):

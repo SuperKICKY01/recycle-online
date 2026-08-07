@@ -26,8 +26,10 @@ from app.seeddata import (  # noqa: E402
     PRODUCT_B_ID,
     SELLER_A_ID,
     SELLER_B_ID,
+    STAFF_USERNAME,
     TENANT_A_ID,
     TENANT_A_PASSWORD,
+    TENANT_A_STAFF_PASSWORD,
     TENANT_B_ID,
     TENANT_B_PASSWORD,
 )
@@ -62,10 +64,11 @@ def check(cond: bool, label: str) -> None:
         print(f"    [FAIL] {label}")
 
 
-def login(client: httpx.Client, tenant_id, password: str) -> str:
+def login(client: httpx.Client, tenant_id, password: str,
+          username: str = ADMIN_USERNAME) -> str:
     r = client.post(
         f"{BASE}/auth/login",
-        json={"tenant_id": str(tenant_id), "username": ADMIN_USERNAME, "password": password},
+        json={"tenant_id": str(tenant_id), "username": username, "password": password},
     )
     r.raise_for_status()
     return r.json()["access_token"]
@@ -73,6 +76,24 @@ def login(client: httpx.Client, tenant_id, password: str) -> str:
 
 def auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
+
+
+def whoami(client: httpx.Client, token: str) -> str:
+    """The caller's OWN user id, read back over HTTP.
+
+    DERIVED, never a literal from seeddata. seed_dev.py lets users.id default to
+    gen_random_uuid(), so every seeded id changed at the 2026-08-03 rebuild and
+    will change at the next one; a hardcoded uuid here would measure the fixture
+    and expire (lessons/proof-must-run-twice.md).
+
+    It is also the OTHER SIDE of the created_by assertion, and it must come from
+    a DIFFERENT REQUEST than the bill does. Comparing a bill's created_by
+    against anything the same handler produced would be true by construction —
+    lessons/a-differential-control-is-only-as-good-as-its-weaker-side.md.
+    """
+    r = client.get(f"{BASE}/whoami", headers=auth(token))
+    r.raise_for_status()
+    return r.json()["user_id"]
 
 
 def item(product_id, line_no, net, unit="1.00", gross=None, tare="0.000") -> dict:
@@ -138,6 +159,23 @@ def main() -> int:
         r = client.get(f"{BASE}/bills", headers=auth(token_a))
         docs = [b["doc_no"] for b in r.json().get("bills", [])]
         check(doc1 in docs, "case1: bill missing from active list")
+
+        # ---- the AUTHOR: created_by is the session that submitted the bill ---
+        # Both sides derived, from two different requests: the bill comes from
+        # POST /bills, the expected id from GET /whoami. A literal from seeddata
+        # would measure the fixture (see whoami's docstring).
+        admin_user_id = whoami(client, token_a)
+        print(f"  created_by={b1.get('created_by')}  whoami={admin_user_id}")
+        check(b1.get("created_by") == admin_user_id,
+              f"case1: created_by is not the submitting user"
+              f" (bill says {b1.get('created_by')}, whoami says {admin_user_id})")
+
+        # The STAFF half of this property is CASE 7, not here. It has to create
+        # a bill, and cases 4 and 5 both assert doc_no ADJACENCY against case 1's
+        # bill (seq_of(doc1) + 1, then prev_max + 1/+2) — so a bill minted
+        # anywhere between them breaks assertions that are about the counter and
+        # have nothing to do with authorship. Measured, not predicted: putting it
+        # here turned case 4 red on the first run.
 
         # ---------------------------------------------------------------- CASE 2
         banner("CASE 2 - duplicate idempotency_key -> ONE bill, same bill returned")
@@ -234,6 +272,35 @@ def main() -> int:
                                        [item(PRODUCT_A_ID, 1, "1.000")], total="999.99"))
         print(f"  status={r.status_code}  detail={r.json().get('detail')}")
         check(r.status_code == 422, "case6: mismatched client total not rejected")
+
+        # ---------------------------------------------------------------- CASE 7
+        banner("CASE 7 - created_by names the SUBMITTING session, staff included")
+        # A SECOND LOGIN, on purpose. Every other case here runs as admin. Bill
+        # creation is Depends(get_principal), NOT require_admin, so staff create
+        # bills too — and created_by is the only column that can ever record it.
+        # voided_by structurally cannot: voiding is admin-only, so a staff user
+        # can never appear in it. Asserting the admin side alone would leave the
+        # column's whole reason unexercised.
+        #
+        # LAST, because it mints a bill and cases 4 and 5 assert doc_no adjacency.
+        staff_token_a = login(client, TENANT_A_ID, TENANT_A_STAFF_PASSWORD,
+                              username=STAFF_USERNAME)
+        staff_user_id = whoami(client, staff_token_a)
+        # A CONTROL on the differential: if both logins resolved to the same
+        # principal, the admin and staff assertions would agree for a reason
+        # that has nothing to do with this column.
+        check(staff_user_id != admin_user_id,
+              "case7: staff and admin resolved to the SAME user id")
+        r = client.post(f"{BASE}/bills", headers=auth(staff_token_a),
+                        json=bill_body(SELLER_A_ID, f"bill-A-{RUN}-staff",
+                                       [item(PRODUCT_A_ID, 1, "2.000")]))
+        bs = r.json() if r.status_code in (200, 201) else {}
+        print(f"  staff create: status={r.status_code}"
+              f"  created_by={bs.get('created_by')}  staff={staff_user_id}")
+        check(r.status_code == 201, "case7: staff could not create a bill")
+        check(bs.get("created_by") == staff_user_id,
+              f"case7: staff bill's created_by is not the staff user"
+              f" (bill says {bs.get('created_by')})")
 
     banner("RESULT")
     if failures:

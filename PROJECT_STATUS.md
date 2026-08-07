@@ -57,6 +57,17 @@ not read the green as re-run.**
 
 ## Current phase
 
+**`created_by` ON `purchase_bills` — LANDED 2026-08-07, migration 0006. Not an
+R-number: it is the schema/audit question `OPEN_ITEMS.md` has carried since
+2026-08-05, settled by the owner and built in four phases.** Bills written from
+now on record the user whose session SUBMITTED them. **Every bill written before
+it stays authorless permanently** — the column repairs nothing backwards, which
+`ARCHITECTURE.md § 11` already stated as a fact rather than a gap. The bound
+lives in the SCHEMA as a `COMMENT ON COLUMN`: it names who SYNCED the bill,
+which is not necessarily who weighed the load. Nothing displays it. Observations,
+with what they do NOT establish, are the dated entry at the end of Baseline
+observations.
+
 **NO PHASE IS OPEN. R1 and R2 closed 2026-08-06; R2b closed 2026-08-07.**
 
 **R2b — the sign-out sheet could not say why the queue was stuck. CLOSED on a
@@ -1372,6 +1383,36 @@ re-discovered as a mystery.
   `lessons/README.md` indexes 34. Counted 2026-08-06. Prose only — but
   `BRIEFING.md` is the handoff for a reader who will NOT open the codebase, so
   it is the one file whose counts its own reader cannot check.
+- **Re-counted 2026-08-07: there are now 36 lesson files and 36 index lines**
+  (directory and index agree). The `BRIEFING.md` line above is therefore stale
+  by four, not two. Counted with `ls lessons/*.md` excluding `README` and
+  `all-lessons`, and `grep -c '^- ' lessons/README.md`.
+- **A `CLAUDE.md` MACHINE FOOTGUN IS CONTRADICTED BY MEASUREMENT, and it is the
+  one that was already written as a correction of a wrong correction.** The
+  CRLF/BOM entry states, of `lessons/README.md`: "blob at `62cee25` CRLF 41/41,
+  working tree at `62cee25` CRLF 41/41, blob at `9f929ad` CRLF 42/42, working
+  tree CRLF 42/42". **The WORKING-TREE half is confirmed; the BLOB half is
+  wrong.** Measured 2026-08-07 with `git cat-file -p` on the raw objects — the
+  form that applies no filter, and the one that entry itself offers as the
+  alternative to `git show`:
+
+  | commit | blob sha | size | CR | LF |
+  |---|---|---|---|---|
+  | `62cee25` | `03224812…` | 24531 | **0** | 41 |
+  | `9f929ad` | `dd4634ad…` | 25619 | **0** | 42 |
+  | `3e2c996` | `dc12bbb7…` | 26222 | **0** | 42 |
+
+  The working tree at `3e2c996` really is CRLF (`CR=42 LF=42`) with BOM
+  `efbbbf`, and the blobs really do carry the BOM — so the BOM half of the
+  exclusion argument stands untouched, and the CRLF half stands **for the
+  working tree**, which is what `build_all_lessons.py` actually reads. **The
+  exclusion of `lessons/README.md` from `all-lessons.md` is therefore
+  unaffected**; what is wrong is only the claim about what is stored in the
+  object database. **NOT CORRECTED — `CLAUDE.md` was out of scope for this
+  work, and a footgun edited in passing is how the last two wrong versions of
+  this one got written.** The irony is the point: that entry's own rule is
+  "the working tree and the blob are two different objects… Measure the one you
+  actually mean", and its numbers conflate exactly those two.
 
 *(The `httpTransport.ts:18-23` entry that stood here — "403 stays, the server
 has no permission model in the MVP" — is CLOSED. The client was taught the 403
@@ -2051,3 +2092,116 @@ is the difference between that shipping green and six red cells. Written up as
 - **The product's behaviour is unchanged**, which is the point rather than a
   caveat: both `App.tsx` call sites are bit-identical in effect to the literals
   they replaced.
+
+### 2026-08-07 — `purchase_bills.created_by`, migration 0006 (server + proof)
+
+**NO DEVICE.** Everything below is a migration, an HTTP proof or a catalogue
+read on this box. No screen was opened; the 12:08 device pass above is not
+refreshed by any of it.
+
+**The column.** `created_by uuid`, NULLABLE, no default, plus
+`fk_bills_created_by FOREIGN KEY (tenant_id, created_by) REFERENCES users
+(tenant_id, id)` and a `COMMENT ON COLUMN` — the first `COMMENT ON` in this
+repository, a deliberate new convention. Read back out of the CATALOGUE, not the
+file: `information_schema` gives `created_by | uuid | YES |` with no default,
+identical in shape to `voided_by`; `pg_constraint` gives the FK definition
+byte-for-byte the same shape as `fk_bills_voided_by`. The comment is ASCII by
+design so it never needs hex to be trusted on a codepage-874 box, and that was
+MEASURED rather than intended: `length 382 = octet_length 382`, no
+non-printables.
+
+**The inverse was EXECUTED, not asserted.** `alembic downgrade 0005` → exit 0,
+then read back `column_rows 0, fk_rows 0, alembic_version 0005`. Then `upgrade
+head` → exit 0, read back `column_rows 1, fk_rows 1, comment_bytes 382,
+alembic_version 0006`. Gone, then back byte-identical.
+
+**The write, read out of Postgres rather than reasoned about.** After the proof
+set ran: **79 authorless, 32 authored, 111 total.** `created_by` resolves to a
+real username with `same_tenant = t` on every row. Cross-checked two ways that
+agree: 32 authored rows in Postgres, 32 `POST /bills` 201s in the uvicorn log,
+**0 five-hundreds and 0 `BILL_POISON_CANDIDATE` lines**. Both `admin` AND
+`staff` appear — bill creation is `Depends(get_principal)`, not
+`require_admin`, so this column records something `voided_by` structurally
+never can.
+
+**A pre-migration bill read through `GET /bills/{id}` returns
+`"created_by": null` explicitly** rather than omitting the key: the authorless
+case is now stated by the API instead of being invisible.
+
+**The proof, and the two mutations that make its green mean something.**
+`prove_bills.py` CASE 1 asserts `created_by` against `GET /whoami` — both sides
+DERIVED, from two different requests, never a literal from `seeddata` (the
+2026-08-03 rebuild gave every seeded user a new id). CASE 7 does the staff half
+and needs a second login. Green twice bare, no reseed.
+
+| mutation | exit | cells fired |
+|---|---|---|
+| column, placeholder and `"cb"` param removed from the INSERT | **1** | `case1: … (bill says None, whoami says 35d09981-…)`; `case7: … (bill says None)` |
+| seeded staff id hardcoded in place of `principal.user_id` | **1** | `case1: … (bill says bef92d61-…, whoami says 35d09981-…)` — **one cell only** |
+
+**The second mutation is the one that carries the information.** A non-null,
+valid, same-tenant, REAL user id was written and case 1 still went red, so the
+assertion is not a disguised `is not None`. Case 7 stayed GREEN under it — the
+hardcoded id IS the staff user, so that bill's author was accidentally correct.
+One assertion can be fooled by a wrong constant; the pair cannot. Each mutation
+required killing and restarting uvicorn (no `--reload`); `bill says None` is
+what proves the restart took rather than a stale process answering. Reverted and
+proven byte-exact by TWO hashes — `git hash-object`
+`0d9ee40855924bae70a3f422790267484cd3fa11` and sha256 `30c0b6f1…0006d596`.
+
+**WHAT THE MUTATIONS COST, and it is not zero.** They wrote **TEN permanent
+rows the correct product could not have produced** — run `e903453d` five
+authorless, run `e63a1c76` five naming the wrong user. They came through the
+REAL path, so they are schema-valid, pass every `reconcile.py` check, and are
+indistinguishable by inspection from genuine staff-created bills. Hard rule 5
+means none can be removed. Written up as
+`lessons/a-mutation-on-a-protected-write-path-needs-a-scratch-database.md`;
+recorded as debris in `OPEN_ITEMS.md`.
+
+**A PROOF THAT PERTURBS A SEQUENCE HAS BROKEN THE TEST, NOT FOUND A BUG.** The
+staff assertion was first written into CASE 1 and turned `case4` RED: cases 4
+and 5 assert doc_no ADJACENCY against case 1's bill (`seq_of(doc1) + 1`, then
+`prev_max + 1/+2`), so a bill minted between them breaks assertions about the
+counter that have nothing to do with authorship. Case 4 was NOT relaxed; the
+staff creation moved to CASE 7, at the end, and the reason is recorded at the
+site. Measured, not predicted.
+
+**`prove_reconcile.py` — exit 1, 113 `[OK]` / 4 `[FAIL]`, and the four are the
+four already recorded.** Verbatim: `S3/T0 … wrong or absent: {'T0': 91}`,
+`S3/T0 … rows_visible_with_no_tenant_context=46`, `X3 … got {}`, `X3 … names
+the table and both counts`. Every money injection passed across 23 injections.
+Nothing in this work touched it.
+
+**A LINE-ENDING FINDING, AND THE MECHANISM IS UNDETERMINED — no cause is named
+here because none was measured.** After editing, `server/scripts/prove_bills.py`
+was CRLF in the WORKING TREE (`CR=316 LF=316`) while its blob at HEAD was LF
+(`CR=0 LF=249`). Six untouched files were sampled and are all `CR=0`, so it is
+not a repository pattern; `server/app/bills.py` is `CR=0` after six edits by the
+same editor, so the editor is not uniformly the cause. **`git status` is
+structurally BLIND to this** — `.gitattributes`' `text=auto eol=lf` normalises
+on comparison, so a CRLF working copy compares EQUAL to an LF blob and nothing
+is reported. `git diff` showed 69/2 lines rather than 316, i.e. a commit would
+have produced a correct LF blob regardless. The working copy was rewritten to LF
+and the diff re-checked byte-identical.
+
+**AND A `CLAUDE.md` FOOTGUN IS CONTRADICTED BY MEASUREMENT — see the note under
+Known stale references.** Not corrected here; `CLAUDE.md` was out of scope.
+
+**WHAT THIS DOES NOT ESTABLISH.**
+
+- **Nothing ran on a handset.** No screen was drawn. Whether the mobile client
+  behaves any differently is untested and expected to be nil — its
+  `BillResponseBody` declares two optional fields and reads only `doc_no`, so a
+  new key is inert, which was CONFIRMED by reading the file rather than assumed.
+- **No client displays an author anywhere.** `GET /bills` (list), the daily
+  report and `reconcile.py` are all untouched and read nothing. The column is
+  written and readable through `GET /bills/{id}`; it is on no screen.
+- **The distinction the column names is unmeasurable today.** Mobile has ONE
+  account (`app/config.ts` DEMO credentials; `App.tsx` has no `TextInput` —
+  grep, 0 occurrences), so weigher and syncer are the same principal by
+  construction until real per-shop accounts exist.
+- **One process on this box was running pre-edit code throughout** — a uvicorn
+  on port 8000, three hours old, never restarted. Every proof above was pointed
+  explicitly at 8099 and 8099 was established as the current tree BY A RESPONSE
+  (`created_by` present in a `GET /bills/{id}` body) rather than by a process
+  list. 8000 against the migrated schema writes bills with a NULL author.

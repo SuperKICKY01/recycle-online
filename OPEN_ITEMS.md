@@ -398,6 +398,37 @@ idea — only that it is unresolved.
   then add the line. Until then the constraint is enforced by Postgres on
   the live database regardless; what is missing is only the checker's
   assertion that it is still there.
+- **`fk_bills_created_by` is deliberately NOT in `REQUIRED_CONSTRAINTS`
+  either — same argument as the line above, and filed beside it on purpose
+  because both wake on the same condition one migration apart.** Migration
+  0006 adds the constraint and S5 exists to catch a guarantee silently
+  dropped, so on the face of it it belongs there. *Not done:*
+  `prove_reconcile.py` restores a COPY from a dump, and a dump taken before
+  0006 has neither the column nor the constraint, so S5 would go red on
+  every such copy for a reason that has nothing to do with money. **"The
+  money is wrong" and "the fixture predates the schema" must never share an
+  outcome.** *Unblocks:* a dump taken AFTER 0006 becoming the oldest one
+  anyone restores from — then add both lines together. Postgres enforces
+  the FK on the live database meanwhile; what is missing is only the
+  checker's assertion that it is still there.
+- **Ten bills in the dev database carry an authorship the product would
+  never have written, and hard rule 5 means they cannot be removed.**
+  Written 2026-08-07 by the two mutations that disproved `prove_bills.py`'s
+  new `created_by` assertions: run `e903453d` left five bills with a NULL
+  author (the column removed from the INSERT), run `e63a1c76` left five
+  naming the seeded staff user on bills an ADMIN submitted (a hardcoded id
+  in place of `principal.user_id`). Both runs are identifiable only by the
+  token in their `idempotency_key`. **They came through `POST /bills`, so
+  they are schema-valid, satisfy the composite FK, pass every
+  `reconcile.py` check — which does not read `created_by` — and are
+  indistinguishable by inspection from genuine staff-created bills, which
+  is precisely the harm the column was added to prevent.** *Not done:*
+  nothing removes them short of replacing the volume, which is what the
+  2026-08-03 rebuild did and what it cost. *Unblocks:* nothing — this is a
+  permanent record, not a task. The rule it produced is
+  `lessons/a-mutation-on-a-protected-write-path-needs-a-scratch-database.md`:
+  a mutation on a protected write path runs against a restored scratch
+  copy, and DEV IS NOT SCRATCH.
 - **The refusal vocabulary wants its own module.** `kind`/`code`/`message`
   builders are now spread across three files — `auth.forbidden` and
   `auth.unauthenticated`, `master._not_found`/`_invalid`/`_conflict`, and
@@ -436,6 +467,25 @@ idea — only that it is unresolved.
   whether a session held to these rules actually finds anything, and
   whether an empty report from it can be trusted. That is only
   answerable by running it a few times.
+- **A `reconcile.py` check that `created_by` is never NULL on an
+  API-written bill — PROPOSED, not decided, and the cost is why.** After
+  migration 0006 `POST /bills` cannot write a NULL (`create_bill` is
+  `Depends(get_principal)`, which raises 401 before the handler body runs),
+  so among rows the API wrote, a NULL is a regression. It would need **no
+  date literal and no constant**, which is what would let it survive a
+  rebuild where `prove_reconcile.py:634`'s `{"T0": 91}` did not. **The
+  cost, stated because it is the whole reason this is a proposal:** direct
+  INSERTs into `purchase_bills` are legitimate and exist —
+  `prove_rls.py:104` and `:311` (inside throwaway tenants it tears down)
+  and `prove_backup_restore.py:208` (its marker is VOIDED, never deleted,
+  so one permanent authorless row per run). A naive "NULLs form a prefix
+  in arrival order" check therefore goes red on every backup-proof run,
+  and a failed `prove_rls` teardown would turn it red for a reason
+  unrelated to money — the same objection that keeps two constraints out
+  of `REQUIRED_CONSTRAINTS` above. *Not done:* awaiting the owner's
+  accept/refuse. *Unblocks:* that answer — and first, deciding how such a
+  checker would tell an API-written row from a directly-inserted one,
+  which **nothing in the schema currently records.**
 - **A shared proof teardown** — recommended and NOT taken. Proof scripts
   create bills they can never delete, so they land ACTIVE bills on the
   real current day, indistinguishable from trade in the daily report.
