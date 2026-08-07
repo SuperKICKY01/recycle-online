@@ -24,19 +24,18 @@ sequence tidy buys nothing and orphans every reference.
 
 ## What next, and why that
 
-**R1 and R2 are CLOSED as of 2026-08-06.** R1 landed in two commits — `19a6b63`
-(server) and `7484645` (client) — and R2's two device observations were made the
-same day. **R2b is new and is now the head of the queue:** a defect the R1b device
-pass surfaced, undiagnosed, described below. After it, **R3 — the hosting decision**
-is the next step, and its clock can start immediately and independently.
+**R1, R2 and R2b are all CLOSED.** R1 landed in two commits — `19a6b63` (server) and
+`7484645` (client) — and R2's two device observations were made the same day,
+2026-08-06. **R2b closed 2026-08-07** on a device pass that met its done-condition
+clause by clause.
+
+**R3 — the hosting decision — is now the head of the queue**, and it was always the
+one that should have been started in parallel rather than queued.
 
 **R3's clock runs on procurement, not on code.** A host has to be chosen, paid for
 and pointed at a name; that is the only step in this file with external lead time.
-Nothing about starting it depends on R2b or on any other software step finishing
-first, so it should be started in parallel rather than queued behind anything.
-
-**R2b before R3 in attention, not in exclusivity.** R2b is a live defect on the one
-path a shop uses every day; R3 is a purchase. They do not compete for the same hours.
+Nothing about starting it ever depended on R2b or on any other software step
+finishing first. That is still true of whatever comes after it.
 
 ## The two paths, and the gate between them
 
@@ -165,9 +164,16 @@ with real trade in it. Both need volume that does not exist yet — carry them t
 rather than manufacturing it. Neither was in R2's done-condition, so R2's closure
 says nothing about them.
 
-### R2b — The sync strip contradicts the server, and a queue that cannot drain
+### R2b — The sign-out sheet could not say why the queue was stuck — **CLOSED 2026-08-07**
 
-**Depends on:** nothing — it is diagnosable and fixable today. **Unblocks:** trusting
+**The title changed when the diagnosis landed, and the old one is recorded rather
+than quietly dropped:** it read *"The sync strip contradicts the server, and a queue
+that cannot drain"*. The strip never contradicted anything. Keeping a heading that
+names a defect which did not exist would have sent the next reader to
+`statusNotice.ts`, which is what already cost two days. The R-number is unchanged
+and is what every other file points at.
+
+**Depends on:** nothing — it was diagnosable and fixable today. **Unblocks:** trusting
 what the sign-out sheet says on the yard floor.
 
 **Done when:** on a HANDSET, with a bill queued and the server refusing the token,
@@ -184,9 +190,13 @@ of the original condition was therefore satisfiable by changing nothing, which i
 condition that cannot fail — see `PROJECT_STATUS.md § Baseline observations`, the
 2026-08-07 device pass, and the correction under Current phase.
 
-**Where it stands:** the client change is written and proven in node
-(`proveSignOut.ts` S9, green twice bare and observed going red in ten cells), and
-**the device pass above has not been run.** That pass is the whole of what is left.
+**MET 2026-08-07 12:08, on a real iPhone, and the done-condition above was met
+CLAUSE BY CLAUSE** — the sheet named the expiry, instructed no wait, and its own
+sign-in button signed in and posted the bill (`B-2569-76`), with the bundle
+established beforehand. Read off the screen and recorded verbatim in
+`PROJECT_STATUS.md § Baseline observations`, together with what one pass does NOT
+establish. The client change it closes is `f768a18`; the node proof behind it is
+`proveSignOut.ts` S9, green twice bare and observed going red in ten cells.
 
 **NEW, and it is a defect rather than missing infrastructure — which is what R1 was,
 and is why it takes R1's old place at the head of the queue.** Found by the R1b

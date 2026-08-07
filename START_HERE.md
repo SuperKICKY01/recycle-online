@@ -20,7 +20,7 @@ In this order. Each line says what that file OWNS.
    an individual lesson only when its index line touches the task.
    (`CLAUDE.md § Workflow` "At the start of every session")
 3. **`PROJECT_STATUS.md`** — where the work has got to, and the dated
-   observation behind every claim of it. **1903 lines: budget two reads.**
+   observation behind every claim of it. **1940 lines: budget two reads.**
    Start at `PROJECT_STATUS.md § Current phase`.
    (`CLAUDE.md § Scope and status` "Both live in")
 4. **`ROADMAP.md`** — the ORDER of what is not done, and the argument for

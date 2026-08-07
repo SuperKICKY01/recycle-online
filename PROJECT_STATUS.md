@@ -57,16 +57,23 @@ not read the green as re-run.**
 
 ## Current phase
 
-**R2b IS OPEN AND IS NOT DONE.** Its client change is written and proven in a
-node process; **the handset has not read the new sheet.** That device pass is the
-remaining done-condition and it is stated as one in `ROADMAP.md`, not as a note.
-What exists today: `signOutCard` now takes the session, the dead-session wording
-and its sign-in button are written, `App.tsx`'s sheet handler is an exhaustive
-switch, and `proveSignOut.ts` S9 drives the real `SyncEngine` against a 401 and
-against an outage and asserts the two sheets differ from an identical measured
-queue count — green twice bare, and observed going RED in ten cells when the
-branch is put back to its shipped form. **None of that is the yard.** S9 is fakes
-in node; `SecureTokenStore`, Metro, the Modal and the operator are all outside it.
+**NO PHASE IS OPEN. R1 and R2 closed 2026-08-06; R2b closed 2026-08-07.**
+
+**R2b — the sign-out sheet could not say why the queue was stuck. CLOSED on a
+device pass that met its done-condition clause by clause.** With one bill queued
+and the token refused, the sheet named the expiry, instructed no wait, and its
+own `เข้าสู่ระบบ` button signed in, closed the sheet and posted the bill
+(`B-2569-76`). Read off the screen at 12:08, bundle established beforehand,
+recorded verbatim in Baseline observations below along with what one pass does
+NOT establish. The client change is `f768a18`; behind it, `proveSignOut.ts` S9
+drives the real `SyncEngine` against a 401 and against an outage and asserts the
+two sheets differ from an identical measured queue count — green twice bare, and
+observed going RED in ten cells when the branch is put back to its shipped form.
+
+**Read the closure at its actual width.** What is established is that path, once,
+on one handset, under an admin account, with one queued bill, reached by
+revocation rather than by a token expiring naturally. The bounds are in the
+observation itself and are not repeated here as reassurance.
 
 **R1 and R2 are both CLOSED, on 2026-08-06.**
 
@@ -153,13 +160,14 @@ The gate in `signOut.ts` is correct and is untouched — the queue carries no
 identity, so releasing it would let one operator's bill drain under whoever signs
 in next.
 
-**The next step is `ROADMAP.md`'s to choose, and as of 2026-08-06 the two files
+**The next step is `ROADMAP.md`'s to choose, and as of 2026-08-07 the two files
 agree.** `ROADMAP.md` described R1 and R2 as forthcoming until the same task that
 wrote this section updated it; both are marked CLOSED there now, on the same
-evidence and with the same asymmetry recorded for R2. **The head of the queue is
-`R2b`** — the undiagnosed sync-strip and sign-out defect described above — with
-R3's hosting clock startable in parallel, because procurement has lead time and
-code does not. **`ROADMAP.md` remains the authority on ORDER**, and that is a
+evidence and with the same asymmetry recorded for R2. R2b is marked CLOSED there
+too, on the device pass below. **The head of the queue is now `R3`** — the
+hosting decision — which was startable in parallel throughout, because
+procurement has lead time and code does not. **`ROADMAP.md` remains the authority
+on ORDER**, and that is a
 permanent division of responsibility rather than a temporary state: this file
 records what has been OBSERVED, that one records what comes NEXT and why. Where
 they ever disagree again, the disagreement itself is the finding — a session
@@ -1901,3 +1909,32 @@ Read off the screen, 11:16 through 11:21, with no other interaction:
   restored and verified byte-identical by `git hash-object`
   (`dc6c1a9146cd8b1fc17cb8b8238bae456a5def87` before and after), and the proof
   re-run bare to exit 0. **NOT covered by any of that: the handset.**
+
+### 2026-08-07 12:08 — device pass, real iPhone (R2b closing pass)
+
+Recorded verbatim from what was observed, and nothing else.
+
+Bundle established with `npx expo start -c` plus a full reload BEFORE staging,
+per `CLAUDE.md § Boot check`. Wi-Fi up throughout; airplane mode was not used.
+`token_version` bumped by `revoke-sessions` from the PC.
+
+Read off the screen, verbatim:
+
+- The sheet, with one bill queued and the token refused:
+  `ยังออกจากระบบไม่ได้` /
+  `มีบิลรอส่งขึ้นระบบ 1 ใบ` /
+  `หมดเวลาเข้าใช้งาน — บิลยังอยู่ครบ แต่จะไม่ถูกส่ง` /
+  `ต้องเข้าสู่ระบบใหม่ด้วยบัญชีเดิม บิลจึงจะถูกส่ง`
+  with a `เข้าสู่ระบบ` button and a `ปิด` button.
+- The strip behind it read `หมดเวลาเข้าใช้งาน` with its own `เข้าสู่ระบบ` button.
+- The bill row read `รอส่ง` / `บิลล่าสุด ยังไม่มีเลขที่` / `44.00 (1)`.
+- The sheet's `เข้าสู่ระบบ` button was pressed. The sheet closed itself. The
+  header then read `เข้าสู่ระบบแล้ว`, the strip `ส่งครบแล้ว / ส่งล่าสุด 12:08`,
+  and the bill that had no number carried `B-2569-76` with the `ส่งแล้ว` badge.
+
+**WHAT THIS DOES NOT ESTABLISH.** One pass. An admin account — no staff account
+took this path. One queued bill, so nothing here says anything about ordering or
+about a queue deep enough to expose one. And the dead session was reached by
+`revoke-sessions`, NOT by a token expiring naturally, which is the case every
+handset actually meets every hour of every shift; the two are believed to reach
+the same client state and that belief is not what was measured here.
