@@ -185,20 +185,34 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   would drag a BOM and CRLF into the generated file. Both reasons are
   real; do not remove the exclusion on the strength of refuting one.
 
-  **CORRECTED 2026-08-07, BY THE COMMIT THAT CARRIES THIS LINE.** The
-  wording above named no OBJECT, and until now it did not have to: the
-  working tree carried CRLF 41 of 41 AND so did the blob at `62cee25`
-  (measured separately, `git show HEAD:lessons/README.md`). Appending one
-  index line took the working tree to 42 of 42; `eol=lf` normalised on
-  write, so **the blob committed here is LF and the CRLF half is now false
-  of the blob.** `git diff` reported ONE added line, because it normalises
-  both sides — the conversion is invisible in a diff and nobody meets it by
-  reading one. NOT OBSERVED, and stated as such: the same `eol=lf` should
-  put LF in the working tree at the next checkout, ending the CRLF
-  entirely; nothing has checked it out yet. **The BOM survives — `efbbbf`,
-  measured after the append — so the exclusion does not move.** This is
-  exactly the case the sentence above was written for: one of its two
-  reasons has been refuted and the exclusion stands on the other.
+  **A CORRECTION WAS APPENDED HERE IN `9f929ad` AND WAS ITSELF WRONG.** It
+  claimed the blob committed by that commit would be LF, so the paragraph
+  above had gone half-false. **It did not, and the paragraph above is
+  correct and always was:** the blob at `9f929ad` is CRLF, 42 of 42. The
+  false version is not preserved — a wrong footgun misleads every session
+  that reads it — but what produced it is, because it is a new trap and a
+  sharp one.
+
+  **`git add` PRINTS a normalisation warning that it does not act on.**
+  Appending one index line raised `warning: in the working copy of
+  'lessons/README.md', CRLF will be replaced by LF the next time Git touches
+  it`, and that was read as a statement about what the commit was doing.
+  It is not one. **`text=auto` does NOT renormalise a path already committed
+  with CRLF** — that needs an explicit `git add --renormalize` — so git
+  warns, converts nothing, and the blob keeps every CR it had. It lies in
+  the worst available direction for this section, because the reader is
+  already thinking about line endings and the warning arrives looking like
+  the answer to the question they are holding. Note also that the warning
+  says *working copy*, not blob: it is about a future CHECKOUT, which
+  `eol=lf` would indeed write as LF, and which nothing here has run.
+
+  Measured at four points, all agreeing with the paragraph above: blob at
+  `62cee25` CRLF 41/41, working tree at `62cee25` CRLF 41/41, blob at
+  `9f929ad` CRLF 42/42, working tree CRLF 42/42 — BOM `efbbbf` on all four.
+  Both reasons for the exclusion therefore still stand, unrefuted. **Never
+  let git's warning be the observation.** `git show HEAD:<path>` AFTER the
+  commit, and count — which is the rule the paragraph above already gave,
+  disregarded by the person who appended to it.
 
 ### Boot check — name the observable, don't assume the environment
 
