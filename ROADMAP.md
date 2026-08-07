@@ -895,9 +895,9 @@ path; all are on a clock.
 
 ## Corrections owed elsewhere
 
-Found while writing this file. **Pointers, not fixes** — each lives in a file this
-phase was told not to edit, and a reader should know they are known rather than
-undiscovered.
+Found while writing this file, and one of them while proving it. **Pointers, not
+fixes** — each lives in a file this phase was told not to edit, and a reader should
+know they are known rather than undiscovered.
 
 - **`CLAUDE.md § Architecture` describes the yard app as deliberately read-only for
   master data. S6 makes that false**, for sellers and for prices. The correction is
@@ -907,8 +907,20 @@ undiscovered.
   already records this as a tension between two files; S1 turns it into a statement
   `CLAUDE.md` is now wrong about, because the provider service is no longer merely
   decided — it is in the handover. D12's second half.
-- **Both are edits to a LOCKED section and neither is made here.** Amending it is its
-  own phase and needs the owner's confirmation:
+- **`CLAUDE.md § Machine footguns` records `lessons/README.md`'s BLOB as CRLF, at
+  "41/41" and "42/42", and it is not.** Measured with `git cat-file -p` against a
+  synthetic CRLF positive control, every one of those blobs holds **zero** CR bytes;
+  the figures are LINE counts. The measurement, its commits and its control live at
+  `PROJECT_STATUS.md § Baseline observations`
+  "A THIRD, INCIDENTAL MEASUREMENT, AND IT CONTRADICTS A MACHINE FOOTGUN."
+  and are deliberately not restated here. **The working-tree half of that entry is
+  correct and unchallenged**, and its operational advice — measure the blob, and
+  never let git's warning be the observation — is exactly what produced the correct
+  measurement. It is wrong in one number and right in its method, which is why it is
+  a correction rather than a removal.
+- **THREE corrections are now owed to a LOCKED section, and NOT ONE of them is made
+  here.** Two are D12's; the third is the entry above. Each needs the owner's
+  confirmation in a phase of its own:
   `ARCHITECTURE.md § 2.3 A tension, recorded and not resolved` "amending it is a separate phase".
 - **`START_HERE.md § 1. Reading order` does not name `ARCHITECTURE.md`**, so a
   session following the reading order will not reach it.
