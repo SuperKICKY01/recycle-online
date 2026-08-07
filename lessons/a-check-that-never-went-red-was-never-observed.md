@@ -128,3 +128,79 @@ Same question in both: *what would have made this different?* And it sits beside
 [[proof-must-run-twice]] and [[concurrency-tests-need-a-barrier]], which are the
 same family: **a passing result is evidence only if you know what would have made
 it fail.**
+
+## AMENDED (2026-08-07): a fifth mechanism — the instrument never read the artifact
+
+The four above share one shape: a check that **could not fail given its inputs**.
+This one is different, and it is worse, because the check is real, it can fail,
+and it has been watched failing. **It was pointed at a different file.**
+
+`tools/verify_citations.ps1` resolves every citation in a document and exits 1 if
+any is broken. It works — it has a positive control, it has been observed going
+red, and its own header records the false green it was hardened against. But its
+subject was one hardcoded line:
+
+```powershell
+$src = Join-Path $root 'START_HERE.md'   # the only file it would ever open
+```
+
+`ARCHITECTURE.md` was then written, carrying **37 citations in exactly the form
+this script exists to verify**, and the phase brief named "`verify_citations.ps1`
+bare, exit 0" as the observable FOR THOSE CITATIONS. It exited 0. **It had not
+opened the file.**
+
+**Why this is the sharpest instance in the file: the green was structurally
+incapable of ever turning red.** Mechanisms 1–4 each describe a check that some
+input could still move. Here none can. Every citation in `ARCHITECTURE.md` could
+be broken, the file could be deleted, and `CITATIONS=37 BROKEN=0` would print
+unchanged, because the number was about a different document. **No control inside
+the run can catch this**: the sections control asserts the parser saw every
+sectioned citation *in the file it read*, and it was correct and green throughout.
+
+**Measured, not reasoned.** The same rules ported to a second instrument and
+pointed at `ARCHITECTURE.md` returned **BROKEN=8** at the same moment, on the same
+tree, that the committed one returned **BROKEN=0**. Seven were real: six citations
+line-wrapped by the writing — a handle split across two source lines is a string
+that exists on no line of its target — and one whose TARGET's own prose wraps, so
+no handle spanning it could ever resolve. All seven would have shipped under the
+green.
+
+*(The eighth was the second instrument's own defect, and it is mechanism 1 again:
+it read `lessons/README.md` as plain UTF-8, leaving the BOM in front of the
+`# Lessons` heading so the `^#` anchor missed and a VALID citation reported
+BROKEN. A second instrument built to check the first needs its own controls.)*
+
+**The disproof that finds this mechanism is one question, and it is not "does it
+pass".** Everything in this file passes. It is: **break the artifact on purpose
+and watch whether the number moves.** If deliberately breaking the thing you
+believe is under test cannot change the output, the output was never about it.
+Two minutes, and it is the only test that separates a checker which agrees with
+you from a checker which is looking somewhere else.
+
+### Two more, appended to How to apply
+
+6. **An instrument's SCOPE is part of its result, and only its source list states
+   it.** A checker's NAME says what it is for; the paths it OPENS say what it
+   actually covers, and only the second is true. Read them before quoting an exit
+   code — hardest when the artifact is NEW, because a checker written before your
+   file existed cannot know about it and will not say so.
+7. **Prefer a checker that takes its subject as an argument** over one that
+   hardcodes it, and **assert a NON-ZERO count per subject**. A hardcoded source
+   silently excludes every file added after it; an argument makes the omission
+   something a person has to type. Without the non-zero assertion, "nothing was
+   checked" and "nothing is wrong" print the same line.
+
+**And the trap this sets for a reviewer, which is why it belongs here and not in
+a note about tooling:** the brief ORDERED the green, the green was produced, and
+**it was true**. That exit code really was 0 and really did mean `START_HERE.md`'s
+citations resolve. Nothing was faked and nobody was careless; the report would
+have been accurate in every word it contained. **A true statement about the wrong
+object is the hardest false assurance to see**, because there is no error to
+notice and the number is real.
+
+Sibling of [[a-checker-must-not-share-the-code-it-checks]] one step further out:
+that one asks where the expected value came FROM, this one asks what the INPUT
+was. And it is [[two-green-proofs-do-not-cover-the-seam]] pointed at instruments
+rather than components — there, no proof file owned the seam; here, no checker
+owned the new file, and in both cases the thing nobody owns is the thing nobody
+measures.
