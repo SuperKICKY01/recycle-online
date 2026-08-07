@@ -313,6 +313,83 @@ status nobody thought to enumerate. Enumerating the statuses to ban is the same
 shape as enumerating the states to gate, and this lesson already says what to do
 about that: fix the class, not the instance.
 
+## Amendment (R2b): a wait is a promise too, and the exit was on the same screen
+
+Point 3 says a message naming an action must be derived from the cause. The 2d
+amendment sharpened that: wording is a function of (code, call site), and the
+call site is the part the code cannot tell you. This is the third form, and the
+missing input is not a server code at all — it is a **device-global state the
+renderer was never given**.
+
+`signOutCard` took `pending`, `failed` and `failure`. `pending > 0` is a fact
+about the queue and it was never wrong. What it cannot carry is *why* the queue
+is not moving, and there are two whys with opposite instructions:
+
+| why the queue will not drain | what is actually true |
+|---|---|
+| the phone is offline | the network returning drains it — waiting IS the fix |
+| the token is dead | nothing drains it; only a sign-in does |
+
+Having one input for two causes, the sheet said the offline sentences for both.
+Read off a real iPhone on 2026-08-07, at full signal, with the server answering
+401 to every request:
+
+```
+ยังออกจากระบบไม่ได้ / มีบิลรอส่งขึ้นระบบ 1 ใบ /
+การเข้าสู่ระบบครั้งต่อไปต้องใช้อินเทอร์เน็ตอยู่แล้ว และเมื่อเชื่อมต่อได้ บิลจะส่งเองภายในไม่กี่วินาที /
+รอให้ส่งครบก่อน แล้วจึงออกจากระบบได้
+```
+
+Two of those sentences were false. The bills would not go when the connection
+came back — it was already back. And *wait until they are all sent* names a
+condition that could not arrive.
+
+**A WAIT IS A PROMISE ABOUT THE FUTURE, exactly as much as an action is.** The
+2c-7 rule above — *never promise what the system cannot perform* — was written
+about an offered button (`จะดำเนินการให้อัตโนมัติ` on a bill that could never
+sync) and was read ever since as being about buttons. It covers "we will do this
+for you" and "wait and it will finish" identically. The second form is harder to
+see precisely because it offers nothing: there is no control to audit, only a
+sentence, and a sentence that asks for patience reads as the humble option.
+
+**And the part that generalises is worse than a false sentence: the exit existed,
+on the same screen, two centimetres up.** The status strip was drawing
+`หมดเวลาเข้าใช้งาน — ต้องเข้าสู่ระบบใหม่` with a working sign-in button, and
+pressing it posted the queued bill immediately. So this was never a deadlock —
+it was a renderer that could not see an exit it was standing beside, because it
+had no input for why the state held. Ask of any refusal screen: **is the thing
+that resolves this already visible somewhere else in the app?** If it is, the
+refusal is not merely under-informative, it is contradicted by its own neighbour.
+
+The fix is 2d's move one level down: `session: SessionState` added to
+`SignOutCardInput` as a **required** field, never optional with `"active"` as a
+default — a default would have left every existing call site rendering the
+offline sentence while compiling clean, which is the same bug wearing a
+parameter. Making it required turned eight call sites into compile errors, which
+is how the sweep was known to be complete rather than remembered. The sheet's
+`onAction` became an exhaustive `switch` with a `never` arm in the same change,
+because adding `sign_in` to the action union compiled clean against the old
+`if (dismiss) … else signOut()` and would have routed the new button into the
+sign-out path — where the gate refuses it. **A green button that does nothing is
+a worse defect than the one being fixed**, and nothing but exhaustiveness was
+going to say so.
+
+**The proof is the PAIRING, not the assertion.** `proveSignOut.ts` S9 drives the
+real `SyncEngine` against a 401 transport and against an offline one, reads
+`pending` off the real store in both, and asserts the two rendered sheets DIFFER
+from an identical measured count. Either half alone is worthless: without the
+offline half, hardcoding the new sentences into both branches passes; without the
+dead half there is nothing to distinguish. Breaking the branch back to its
+shipped form turned ten cells red and left the offline half green — see
+[[a-check-that-never-went-red-was-never-observed]] for why that split is the
+evidence and not the ten.
+
+One correction this amendment carries, because the instance was mis-recorded
+while it was undiagnosed: **the status strip was never defective.** It classified
+the 401 correctly the whole time. See
+[[two-green-proofs-do-not-cover-the-seam]], whose account of this same defect is
+corrected in the same commit.
+
 ## Footnote: the fix nearly broke the void path
 
 Naming the local `const reason = parkedReason(...)` inside the bill `.map()`

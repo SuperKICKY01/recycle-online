@@ -57,7 +57,18 @@ not read the green as re-run.**
 
 ## Current phase
 
-**NO PHASE IS OPEN. R1 and R2 are both CLOSED, on 2026-08-06.**
+**R2b IS OPEN AND IS NOT DONE.** Its client change is written and proven in a
+node process; **the handset has not read the new sheet.** That device pass is the
+remaining done-condition and it is stated as one in `ROADMAP.md`, not as a note.
+What exists today: `signOutCard` now takes the session, the dead-session wording
+and its sign-in button are written, `App.tsx`'s sheet handler is an exhaustive
+switch, and `proveSignOut.ts` S9 drives the real `SyncEngine` against a 401 and
+against an outage and asserts the two sheets differ from an identical measured
+queue count — green twice bare, and observed going RED in ten cells when the
+branch is put back to its shipped form. **None of that is the yard.** S9 is fakes
+in node; `SecureTokenStore`, Metro, the Modal and the operator are all outside it.
+
+**R1 and R2 are both CLOSED, on 2026-08-06.**
 
 Read that as a positive statement, not as silence. "Closed" here means a
 done-condition written in `ROADMAP.md` before the work started was met and the
@@ -117,6 +128,30 @@ every shift, on every handset.
 candidates with different fixes are recorded in `OPEN_ITEMS.md`; nobody has yet
 read `engine.ts` or `queueHealth.ts` against this reproduction. Naming one
 would be `lessons/diagnosis-must-precede-the-fix.md` exactly.
+
+**CORRECTION, 2026-08-07 — THE STRIP HALF OF THE FINDING ABOVE IS WITHDRAWN. The
+paragraphs above are left standing on purpose** (a dated observation is not
+edited in place; it is superseded, and the supersession is the record). Restaged
+the same day on the same iPhone, after `npx expo start -c` and a full reload so
+that the bundle was known to be `5e5a756`, the strip drew
+`หมดเวลาเข้าใช้งาน — ต้องเข้าสู่ระบบใหม่ บิล 1 ใบยังอยู่ครบ จะส่งให้เองหลังเข้าสู่ระบบ`
+with a working sign-in button and held it for five minutes. **`statusNotice.ts`
+classified the 401 correctly the whole time**, and it is not a repair site. The
+`ออฟไลน์` reading of 2026-08-06 is not a property of any committed code; it came
+from a stale Metro bundle, which is now a machine footgun in `CLAUDE.md` and cost
+roughly two days of diagnosis aimed at three files that were all correct.
+
+**What survives the correction is narrower and sharper: the SHEET alone, and
+there was never a deadlock.** The sign-out sheet had no session input, so it
+could not tell "queued because the phone is offline" from "queued because the
+caller is nobody" and said the offline sentences for both — promising bills would
+send on connection while the phone was connected, and instructing a wait for a
+condition that could not arrive. The exit existed the entire time, two
+centimetres up the same screen: the strip's sign-in button, which when pressed
+posted the queued bill immediately. That is R2b's real defect and what R2b fixes.
+The gate in `signOut.ts` is correct and is untouched — the queue carries no
+identity, so releasing it would let one operator's bill drain under whoever signs
+in next.
 
 **The next step is `ROADMAP.md`'s to choose, and as of 2026-08-06 the two files
 agree.** `ROADMAP.md` described R1 and R2 as forthcoming until the same task that
@@ -1819,3 +1854,50 @@ WEAKER EVIDENCE THAN THE ABOVE, and recorded as such.
   machine-footgun entry the note above records as OWED is now written, and
   `START_HERE.md` and `OPEN_ITEMS.md` name `.claude/`, which nothing in this
   repository did before.
+
+### 2026-08-07 — device pass, real iPhone (R2b staging), bundle `5e5a756`
+
+Recorded verbatim from what was observed, and nothing else. The interpretation is
+in Current phase, above, and is deliberately not repeated here.
+
+Metro was restarted with `npx expo start -c` and the handset fully reloaded
+BEFORE the staging, so the running bundle is `5e5a756`. Admin account. Wi-Fi at
+full strength throughout; airplane mode was not used at any point.
+
+Staging: signed in; bill `B-2569-73` saved and synced normally (201). Then
+`POST /users/35d09981-.../revoke-sessions` -> 200, `token_version` 3 -> 4, read
+back from Postgres. Then one new bill saved on the handset, 880.00, one line.
+
+Read from the uvicorn log: `GET /products` and `GET /sellers` 401 three times
+each on `:57637`, then `POST /bills` 401 ten times on `:57638` through `:57647`.
+The device received every one of them.
+
+Read off the screen, 11:16 through 11:21, with no other interaction:
+
+- The sync strip was CORRECT the whole time. It drew, verbatim:
+  `หมดเวลาเข้าใช้งาน — ต้องเข้าสู่ระบบใหม่ บิล 1 ใบยังอยู่ครบ จะส่งให้เองหลังเข้าสู่ระบบ`
+  with a green `เข้าสู่ระบบ` button beside it. It held that for five minutes
+  without the daily screen ever being opened.
+- The bill row read: `รอส่ง` / `บิลล่าสุด ยังไม่มีเลขที่` / `880.00 (1)`.
+  Hard rule 3 holding — no fabricated number.
+- NO LogBox warning appeared. No unhandled rejection, on the handset or in the
+  Metro console.
+- Then `ออกจากระบบ` was pressed. The sheet drew, verbatim:
+  `ยังออกจากระบบไม่ได้` / `มีบิลรอส่งขึ้นระบบ 1 ใบ` /
+  `การเข้าสู่ระบบครั้งต่อไปต้องใช้อินเทอร์เน็ตอยู่แล้ว และเมื่อเชื่อมต่อได้ บิลจะส่งเองภายในไม่กี่วินาที` /
+  `รอให้ส่งครบก่อน แล้วจึงออกจากระบบได้`
+  with one `ปิด` button and nothing else.
+- Then the strip's `เข้าสู่ระบบ` button was pressed. The bill posted immediately.
+
+- 2026-08-07 — **R2b client change: `prove:signout` green TWICE bare with no
+  reseed between (148 cells each run), and both TypeScript programs exit 0, each
+  run bare.** The proof was also **observed going RED**: reverting
+  `signOutNotice.ts`'s session branch to its shipped form (`noSession` forced
+  false, which reproduces a sheet with no session input) gave exit 1 and 10
+  failed cells — the two expired cells in S6's per-cell expiry check, the two
+  signed-out head checks, five in S9's dead half, and the control asserting the
+  two sheets differ. **The offline half stayed green throughout the break**, which
+  is the result that makes the ten mean anything. `signOutNotice.ts` was then
+  restored and verified byte-identical by `git hash-object`
+  (`dc6c1a9146cd8b1fc17cb8b8238bae456a5def87` before and after), and the proof
+  re-run bare to exit 0. **NOT covered by any of that: the handset.**

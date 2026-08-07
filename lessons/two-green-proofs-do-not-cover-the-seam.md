@@ -59,6 +59,27 @@ refused by the gate. **A third renderer on the same build, in the same minute,
 got it right**: the daily money screen drew `ต้องเข้าสู่ระบบใหม่` with a working
 sign-in button.
 
+> **CORRECTION, 2026-08-07 — HALF OF THE INSTANCE ABOVE DID NOT HAPPEN, and the
+> half that did is worse for it.** The strip line is struck. Restaged on the same
+> handset with the transform cache cleared and the bundle reloaded, the strip drew
+> `หมดเวลาเข้าใช้งาน — ต้องเข้าสู่ระบบใหม่ บิล 1 ใบยังอยู่ครบ จะส่งให้เองหลังเข้าสู่ระบบ`
+> with a working sign-in button, and held it for five minutes. **`statusNotice.ts`
+> classified the 401 correctly the whole time**; the `ออฟไลน์` reading came from a
+> stale bundle and is not a property of any committed code — see `CLAUDE.md §
+> Machine footguns`, the Metro transform-cache entry. What remained was the sheet
+> alone, and that is the sharper finding: there was never a deadlock. The exit
+> existed, two centimetres up the same screen, working, and pressing it posted the
+> bill immediately. The sheet could not see it because it had no input for WHY the
+> queue was stuck. Fixed and proven in R2b; the rule it produced is the R2b
+> amendment to [[correct-classification-can-still-render-as-an-error]].
+>
+> **What this lesson claims is unharmed, and was confirmed by being acted on.** The
+> two greps below were the whole argument and neither depended on the strip. The
+> seam test prescribed in *How to test for it* was then written —
+> `proveSignOut.ts` S9, driving both sides in one run and asserting negatively on
+> the rendered composition — and it found a real defect that both green proofs had
+> been unable to see. A lesson whose remedy was executed and paid out.
+
 Each half is defensible alone. The queue really is blocked; bills really are
 pending. The trap only exists once both are true at the same time, and no proof
 puts them there together.

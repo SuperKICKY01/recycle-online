@@ -178,7 +178,8 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   Never let one stand as evidence for the other.
 
   Related, and load-bearing: **`lessons/README.md` is the one file in
-  `lessons/` that carries CRLF (39 of 39 lines) AND a UTF-8 BOM.**
+  `lessons/` that carries CRLF (41 of 41 lines, re-measured 2026-08-07;
+  it said 39 of 39 and the file had grown) AND a UTF-8 BOM.**
   Excluding it from `all-lessons.md` is therefore not only because it
   is the index rather than a lesson — it is also the only source that
   would drag a BOM and CRLF into the generated file. Both reasons are
@@ -211,6 +212,25 @@ false pass and a red run into a confidently wrong cause.
   uvicorn is not bound on `0.0.0.0`, the device reports a transport
   error indistinguishable from being offline. Observable: the PHONE
   (not the box) gets a response from `/health` at that exact URL.
+- **WHICH BUNDLE THE HANDSET IS RUNNING — establish it before any
+  device observation is believed.** Under Expo the JS is fetched from
+  Metro at every cold start, so force-quitting the app, relaunching it,
+  or rebooting the phone proves NOTHING about the code being executed:
+  they all re-fetch from the same Metro, and the exposure is Metro's
+  TRANSFORM CACHE, which survives all three. It lies in the most
+  expensive direction available — the screen becomes evidence about
+  source that is not running, so the diagnosis is aimed at correct code
+  and every reading of it comes back innocent. It has already cost two
+  days here: a sync-strip defect was hunted through `engine.ts`,
+  `queueHealth.ts` and `statusNotice.ts`, all three correct, and the
+  `ออฟไลน์` that started it did not reproduce once the bundle was
+  current. Worse, the phantom was written down as an observation in a
+  lessons file and in `PROJECT_STATUS.md` before anyone doubted it.
+  Observable: `npx expo start -c` (`-c` clears the transform cache) AND
+  a full reload on the handset, both done BEFORE the staging that
+  produces the reading — not afterwards to check, because by then the
+  reading is already in the notes. State the bundle in the observation
+  itself, the way a proof states its commit.
 - **`JWT_SECRET` is set in `server/.env`.** It has no default by
   design and the API refuses to start without one; a default value
   would be a default IDENTITY.

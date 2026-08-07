@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 12 across 6 files, counted from the source headings and
+**Amendments:** 13 across 6 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -47,7 +47,7 @@ line instead of by heading depth.
 - `concurrency-tests-need-a-barrier.md` -- A concurrency test without a start barrier proves nothing
 - `config-defaults-must-fail-closed.md` -- A default for a security secret is a default IDENTITY
 - `console-is-not-the-observation.md` -- The console is not the observation — verify text at the source, in bytes
-- `correct-classification-can-still-render-as-an-error.md` *(2 amendments)* -- A correct classification is not correct behaviour until the screen agrees
+- `correct-classification-can-still-render-as-an-error.md` *(3 amendments)* -- A correct classification is not correct behaviour until the screen agrees
 - `decimal-precision-for-domain-scale.md` -- Decimal precision must be set for the domain's scale, not left at the default
 - `diagnosis-must-precede-the-fix.md` -- Diagnose before you fix: read the real error and the real files first
 - `doc-no-is-arrival-order-not-event-time.md` -- doc_no is arrival order; device clocks are wrong. Report on server time.
@@ -2117,6 +2117,83 @@ status nobody thought to enumerate. Enumerating the statuses to ban is the same
 shape as enumerating the states to gate, and this lesson already says what to do
 about that: fix the class, not the instance.
 
+## Amendment (R2b): a wait is a promise too, and the exit was on the same screen
+
+Point 3 says a message naming an action must be derived from the cause. The 2d
+amendment sharpened that: wording is a function of (code, call site), and the
+call site is the part the code cannot tell you. This is the third form, and the
+missing input is not a server code at all — it is a **device-global state the
+renderer was never given**.
+
+`signOutCard` took `pending`, `failed` and `failure`. `pending > 0` is a fact
+about the queue and it was never wrong. What it cannot carry is *why* the queue
+is not moving, and there are two whys with opposite instructions:
+
+| why the queue will not drain | what is actually true |
+|---|---|
+| the phone is offline | the network returning drains it — waiting IS the fix |
+| the token is dead | nothing drains it; only a sign-in does |
+
+Having one input for two causes, the sheet said the offline sentences for both.
+Read off a real iPhone on 2026-08-07, at full signal, with the server answering
+401 to every request:
+
+```
+ยังออกจากระบบไม่ได้ / มีบิลรอส่งขึ้นระบบ 1 ใบ /
+การเข้าสู่ระบบครั้งต่อไปต้องใช้อินเทอร์เน็ตอยู่แล้ว และเมื่อเชื่อมต่อได้ บิลจะส่งเองภายในไม่กี่วินาที /
+รอให้ส่งครบก่อน แล้วจึงออกจากระบบได้
+```
+
+Two of those sentences were false. The bills would not go when the connection
+came back — it was already back. And *wait until they are all sent* names a
+condition that could not arrive.
+
+**A WAIT IS A PROMISE ABOUT THE FUTURE, exactly as much as an action is.** The
+2c-7 rule above — *never promise what the system cannot perform* — was written
+about an offered button (`จะดำเนินการให้อัตโนมัติ` on a bill that could never
+sync) and was read ever since as being about buttons. It covers "we will do this
+for you" and "wait and it will finish" identically. The second form is harder to
+see precisely because it offers nothing: there is no control to audit, only a
+sentence, and a sentence that asks for patience reads as the humble option.
+
+**And the part that generalises is worse than a false sentence: the exit existed,
+on the same screen, two centimetres up.** The status strip was drawing
+`หมดเวลาเข้าใช้งาน — ต้องเข้าสู่ระบบใหม่` with a working sign-in button, and
+pressing it posted the queued bill immediately. So this was never a deadlock —
+it was a renderer that could not see an exit it was standing beside, because it
+had no input for why the state held. Ask of any refusal screen: **is the thing
+that resolves this already visible somewhere else in the app?** If it is, the
+refusal is not merely under-informative, it is contradicted by its own neighbour.
+
+The fix is 2d's move one level down: `session: SessionState` added to
+`SignOutCardInput` as a **required** field, never optional with `"active"` as a
+default — a default would have left every existing call site rendering the
+offline sentence while compiling clean, which is the same bug wearing a
+parameter. Making it required turned eight call sites into compile errors, which
+is how the sweep was known to be complete rather than remembered. The sheet's
+`onAction` became an exhaustive `switch` with a `never` arm in the same change,
+because adding `sign_in` to the action union compiled clean against the old
+`if (dismiss) … else signOut()` and would have routed the new button into the
+sign-out path — where the gate refuses it. **A green button that does nothing is
+a worse defect than the one being fixed**, and nothing but exhaustiveness was
+going to say so.
+
+**The proof is the PAIRING, not the assertion.** `proveSignOut.ts` S9 drives the
+real `SyncEngine` against a 401 transport and against an offline one, reads
+`pending` off the real store in both, and asserts the two rendered sheets DIFFER
+from an identical measured count. Either half alone is worthless: without the
+offline half, hardcoding the new sentences into both branches passes; without the
+dead half there is nothing to distinguish. Breaking the branch back to its
+shipped form turned ten cells red and left the offline half green — see
+[[a-check-that-never-went-red-was-never-observed]] for why that split is the
+evidence and not the ten.
+
+One correction this amendment carries, because the instance was mis-recorded
+while it was undiagnosed: **the status strip was never defective.** It classified
+the 401 correctly the whole time. See
+[[two-green-proofs-do-not-cover-the-seam]], whose account of this same defect is
+corrected in the same commit.
+
 ## Footnote: the fix nearly broke the void path
 
 Naming the local `const reason = parkedReason(...)` inside the bill `.map()`
@@ -3522,6 +3599,27 @@ holding an unsent bill, with the one action that would fix it (sign in again)
 refused by the gate. **A third renderer on the same build, in the same minute,
 got it right**: the daily money screen drew `ต้องเข้าสู่ระบบใหม่` with a working
 sign-in button.
+
+> **CORRECTION, 2026-08-07 — HALF OF THE INSTANCE ABOVE DID NOT HAPPEN, and the
+> half that did is worse for it.** The strip line is struck. Restaged on the same
+> handset with the transform cache cleared and the bundle reloaded, the strip drew
+> `หมดเวลาเข้าใช้งาน — ต้องเข้าสู่ระบบใหม่ บิล 1 ใบยังอยู่ครบ จะส่งให้เองหลังเข้าสู่ระบบ`
+> with a working sign-in button, and held it for five minutes. **`statusNotice.ts`
+> classified the 401 correctly the whole time**; the `ออฟไลน์` reading came from a
+> stale bundle and is not a property of any committed code — see `CLAUDE.md §
+> Machine footguns`, the Metro transform-cache entry. What remained was the sheet
+> alone, and that is the sharper finding: there was never a deadlock. The exit
+> existed, two centimetres up the same screen, working, and pressing it posted the
+> bill immediately. The sheet could not see it because it had no input for WHY the
+> queue was stuck. Fixed and proven in R2b; the rule it produced is the R2b
+> amendment to [[correct-classification-can-still-render-as-an-error]].
+>
+> **What this lesson claims is unharmed, and was confirmed by being acted on.** The
+> two greps below were the whole argument and neither depended on the strip. The
+> seam test prescribed in *How to test for it* was then written —
+> `proveSignOut.ts` S9, driving both sides in one run and asserting negatively on
+> the rendered composition — and it found a real defect that both green proofs had
+> been unable to see. A lesson whose remedy was executed and paid out.
 
 Each half is defensible alone. The queue really is blocked; bills really are
 pending. The trap only exists once both are true at the same time, and no proof

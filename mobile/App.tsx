@@ -1309,16 +1309,56 @@ export default function App() {
             pending: pendingCount,
             failed: failedCount,
             failure: signOutFailure,
+            /*
+              R2b: WHY the queue is stuck, not merely that it is. Already derived
+              at the top of this component and already handed to StatusStrip and
+              BillsPanel, so the three renderers of one fact read one value.
+            */
+            session,
           })}
           onAction={(action: SignOutAction) => {
-            if (action.kind === "dismiss") {
-              setSignOutOpen(false);
-              setSignOutFailure(null);
-              return;
+            switch (action.kind) {
+              case "dismiss":
+                setSignOutOpen(false);
+                setSignOutFailure(null);
+                return;
+
+              /*
+                R2b. THE SAME FUNCTION THE STRIP'S BUTTON REACHES. `signIn` is the
+                one act on this device that ends an expired session, and it
+                already clears the sync pause, the failure notice and the 403,
+                then resumes the queue and kicks a pass. A second sign-in path
+                written here would be a copy of that, free to drift from it.
+
+                The sheet closes first: the operator pressed sign in, not sign
+                out, and leaving a refusal on screen over a session that is about
+                to work would be the same class of defect as the sentence this
+                phase is removing.
+              */
+              case "sign_in":
+                setSignOutOpen(false);
+                void signIn();
+                return;
+
+              // confirm_sign_out and retry_sign_out are the same act; they differ
+              // only in the label, because the second one follows a failure.
+              case "confirm_sign_out":
+              case "retry_sign_out":
+                void onSignOut();
+                return;
+
+              /*
+                A FIFTH MEMBER IS A COMPILE ERROR HERE, and that is the whole
+                reason this is a switch. It was `if (dismiss) ... else
+                onSignOut()`, which would have taken `sign_in` silently down the
+                sign-out path — where the gate refuses it — producing a green
+                button that does nothing. Worse than the defect being fixed.
+              */
+              default: {
+                const never: never = action;
+                throw new Error(`unhandled sign-out action: ${JSON.stringify(never)}`);
+              }
             }
-            // confirm_sign_out and retry_sign_out are the same act; they differ
-            // only in the label, because the second one follows a failure.
-            void onSignOut();
           }}
         />
 

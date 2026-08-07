@@ -168,10 +168,25 @@ says nothing about them.
 ### R2b — The sync strip contradicts the server, and a queue that cannot drain
 
 **Depends on:** nothing — it is diagnosable and fixable today. **Unblocks:** trusting
-any offline indicator on the yard floor.
-**Done when:** a device whose token the server is refusing STOPS reporting itself as
-offline, and a sign-out is no longer gated behind a queue that cannot drain — with
-the behaviour observed on a handset, not only in a proof.
+what the sign-out sheet says on the yard floor.
+
+**Done when:** on a HANDSET, with a bill queued and the server refusing the token,
+the sign-out sheet says the session has expired, does NOT instruct the operator to
+wait, and carries a sign-in button that — pressed from the sheet — signs in and the
+bill posts. Read off the screen, with the bundle established beforehand
+(`CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING").
+
+**The old done-condition named a repair that is not needed, and is replaced rather
+than extended.** It required that a device whose token is refused "STOPS reporting
+itself as offline". It never did: `statusNotice.ts` classified the 401 correctly all
+along, and the `ออฟไลน์` reading of 2026-08-06 came from a stale Metro bundle. Half
+of the original condition was therefore satisfiable by changing nothing, which is a
+condition that cannot fail — see `PROJECT_STATUS.md § Baseline observations`, the
+2026-08-07 device pass, and the correction under Current phase.
+
+**Where it stands:** the client change is written and proven in node
+(`proveSignOut.ts` S9, green twice bare and observed going red in ten cells), and
+**the device pass above has not been run.** That pass is the whole of what is left.
 
 **NEW, and it is a defect rather than missing infrastructure — which is what R1 was,
 and is why it takes R1's old place at the head of the queue.** Found by the R1b
@@ -197,6 +212,20 @@ reproduction are in `OPEN_ITEMS.md`; a step that names a fix before a cause is
 measured is `lessons/diagnosis-must-precede-the-fix.md` written into the plan.
 Staging it is cheap — revoke a session, or simply let a token expire with a bill
 queued.
+
+**SUPERSEDED 2026-08-07, and the three paragraphs above are kept as written.** The
+diagnosis they were waiting for has been run. Two of their claims are withdrawn and
+one is sharpened:
+
+- **The strip was never defective.** `statusNotice.ts` classified the 401 correctly
+  the whole time; the `ออฟไลน์` reading came from a stale Metro bundle rather than
+  from any committed code. "One app drew one cause two ways" is withdrawn with it.
+- **It is not a deadlock.** The exit existed throughout, two centimetres up the same
+  screen — the strip's own sign-in button, which posts the queued bill immediately.
+- **What is real is the SHEET**, which had no session input and so could not tell a
+  queue stuck on a dead network from one stuck on a dead token, and said the offline
+  sentences for both. The repair site is `src/session/signOutNotice.ts`, and the gate
+  in `signOut.ts` is correct and untouched.
 
 ### R3 — A server a shop can reach, with backups that run themselves
 

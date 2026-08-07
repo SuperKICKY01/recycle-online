@@ -21,6 +21,7 @@
  * NO SERVER PROSE. Every sentence here is the client's. The server sends kind
  * and code; what the yard is told is decided here, in Thai, where the screen is.
  */
+import type { SessionState } from "../sync/parkedReason.js";
 import type { SignOutFailure } from "./signOut.js";
 
 export type SignOutTone = "ask" | "warn" | "bad";
@@ -30,6 +31,7 @@ export type SignOutTone = "ask" | "warn" | "bad";
 export type SignOutAction =
   | { kind: "confirm_sign_out"; label: string }
   | { kind: "retry_sign_out"; label: string }
+  | { kind: "sign_in"; label: string }
   | { kind: "dismiss"; label: string };
 
 export interface SignOutCard {
@@ -48,6 +50,18 @@ export interface SignOutCardInput {
   failed: number;
   /** Set once an attempt has failed to clear the keystore. */
   failure: SignOutFailure | null;
+  /**
+   * CAN THIS DEVICE ACT AS ANYONE RIGHT NOW. R2b.
+   *
+   * `pending` says the queue is not empty; it cannot say WHY, and the two whys
+   * have opposite instructions. REQUIRED, never optional with "active" as a
+   * default: an optional field would leave every existing call site rendering
+   * the offline sentence while compiling clean, which is
+   * lessons/correct-classification-can-still-render-as-an-error.md's third
+   * amendment exactly — the next screen must be a compile error, not a silent
+   * inheritance of the wording that was written for the only caller there was.
+   */
+  session: SessionState;
 }
 
 /**
@@ -108,22 +122,78 @@ export function signOutCard(input: SignOutCardInput): SignOutCard {
   }
 
   /*
-   * 2. THE QUEUE IS NOT EMPTY. Refused, with the count, and with the reason the
-   * wait is short — an operator told only "no" starts looking for a way round.
+   * 2. THE QUEUE IS NOT EMPTY. Refused either way — the RULING is the same and
+   * so is the title — but the reason is not, and until R2b this said the offline
+   * reason in both cases.
+   *
+   * WHAT THE OPERATOR READ, 2026-08-07, on a handset at full signal whose token
+   * the server was refusing on every request: "และเมื่อเชื่อมต่อได้ บิลจะส่งเอง
+   * ภายในไม่กี่วินาที / รอให้ส่งครบก่อน แล้วจึงออกจากระบบได้". Both false. The phone
+   * was already connected, so the condition the first sentence waits on had
+   * already arrived and changed nothing; and the second names a wait that ends
+   * only when someone signs in — which this sheet neither said nor offered,
+   * while the strip two centimetres above it said both.
+   *
+   * The predicate is `session !== "active"`, character for character the one
+   * statusNotice.ts uses, because the strip and this sheet are two renderers of
+   * one fact and a second predicate is how they come to disagree. "signed_out"
+   * is not reachable with this sheet open — App.tsx renders the sign-out button
+   * only while `token !== null` — but a union with three members gets three,
+   * rather than a branch that is correct only while a distant condition holds.
    */
   if (input.pending > 0) {
+    const noSession = input.session !== "active";
+    /*
+     * THE SAME HEAD SPLIT statusNotice.ts MAKES, and for the same reason: one
+     * has never worked yet, the other stopped working, and they read differently
+     * to an operator mid-shift. A device that has NOT signed in this launch has
+     * not "run out of time", so it must not be told it has — which is what the
+     * first draft of this branch said, on the unreachability argued above.
+     */
+    const head = input.session === "expired" ? "หมดเวลาเข้าใช้งาน" : "ยังไม่ได้เข้าสู่ระบบ";
     return {
+      // Amber in both, for the reason statusNotice gives the session case: a
+      // waiting state with a known fix is not a fault.
       tone: "warn",
+      // The gate refuses either way, so the ruling must read the same. Only the
+      // reason and the way out differ.
       title: "ยังออกจากระบบไม่ได้",
       lines: [
         `มีบิลรอส่งขึ้นระบบ ${String(input.pending)} ใบ`,
-        // The ruling's reason, in the yard's terms: you need the network to sign
-        // back in anyway, and the moment you have it these go by themselves.
-        `${NEEDS_NETWORK}อยู่แล้ว และเมื่อเชื่อมต่อได้ บิลจะส่งเองภายในไม่กี่วินาที`,
-        "รอให้ส่งครบก่อน แล้วจึงออกจากระบบได้",
+        ...(noSession
+          ? [
+              // The head is statusNotice.ts's, word for word, and ยังอยู่ครบ is
+              // the strip's too: one fact must not carry two words on one
+              // screen. ยังอยู่ครบ is needed HERE rather than left to the strip
+              // because this sheet is a modal that COVERS the strip while it is
+              // open — told only that the bills will not be sent, an operator
+              // can read that as "the bills are gone".
+              `${head} — บิลยังอยู่ครบ แต่จะไม่ถูกส่ง`,
+              // The ACCOUNT is named because the queue carries no identity of
+              // its own (see THE GATE in signOut.ts): these bills drain under
+              // whoever is signed in when they go.
+              "ต้องเข้าสู่ระบบใหม่ด้วยบัญชีเดิม บิลจึงจะถูกส่ง",
+            ]
+          : [
+              // Unchanged, and true HERE: the session works, so the network
+              // coming back really is the whole of the wait.
+              `${NEEDS_NETWORK}อยู่แล้ว และเมื่อเชื่อมต่อได้ บิลจะส่งเองภายในไม่กี่วินาที`,
+              "รอให้ส่งครบก่อน แล้วจึงออกจากระบบได้",
+            ]),
         ...failedLine(input.failed),
       ],
-      actions: [{ kind: "dismiss", label: "ปิด" }],
+      // A message naming an exit the operator cannot take from where they are
+      // standing is half a message. That is statusNotice.ts's argument for
+      // putting the button ON the strip, and it applies with more force to a
+      // modal that covers the strip, not less.
+      actions: noSession
+        ? [
+            // The SAME label the strip and the daily screen use for the same
+            // act. Three renderers, one word.
+            { kind: "sign_in", label: "เข้าสู่ระบบ" },
+            { kind: "dismiss", label: "ปิด" },
+          ]
+        : [{ kind: "dismiss", label: "ปิด" }],
     };
   }
 

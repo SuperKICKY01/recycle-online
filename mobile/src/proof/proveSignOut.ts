@@ -30,6 +30,8 @@
  *   S4b a pass ALREADY IN FLIGHT at the tap — what actually happens, not a fix
  *   S5  the draft AND the shop's master cache are still in SQLite — read back out
  *   S6  the whole sheet as ONE string in draw order (the N2b discipline)
+ *   S9  R2b — a queue that CANNOT drain behind a 401, and the sheet that says
+ *       why: the count is MEASURED off the store, and both sessions are driven
  *   S7  the disproof: which branch, removed, turns this red
  *
  * ON THE OUTPUT. Mostly Thai. Mojibake in the console is the console — this box
@@ -57,12 +59,19 @@ import type {
   SignOutOutcome,
 } from "../session/signOut.js";
 import { signOutCard, signOutCardText } from "../session/signOutNotice.js";
+import type { SignOutCardInput } from "../session/signOutNotice.js";
 import { MemoryTokenStore } from "../session/tokenStore.js";
 import type { ClearOutcome, TokenStore } from "../session/tokenStore.js";
 import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
 import type { Draft } from "../cart/types.js";
-import { FakeClock, SeqIds } from "./fakes.js";
+import {
+  ExpiredSessionTransport,
+  FakeClock,
+  FakeServer,
+  OfflineTransport,
+  SeqIds,
+} from "./fakes.js";
 import type { LocalBill, SendOutcome, Transport, VoidOutcome } from "../sync/types.js";
 
 let failures = 0;
@@ -156,7 +165,9 @@ async function s1RefusedWhilePending(): Promise<void> {
   );
   check("the sync tick was never paused", paused === false, `paused=${String(paused)}`);
 
-  const text = signOutCardText(signOutCard({ pending: 3, failed: 0, failure: null }));
+  const text = signOutCardText(
+    signOutCard({ pending: 3, failed: 0, failure: null, session: "active" }),
+  );
   console.log(`  sheet: ${text}`);
   check(
     "the rendered sheet names the COUNT, inside the sentence that carries it",
@@ -168,7 +179,9 @@ async function s1RefusedWhilePending(): Promise<void> {
   // satisfy the check above. A second, different count cannot be hardcoded.
   check(
     "...and the count is the input's, not a digit fixed in the wording",
-    signOutCardText(signOutCard({ pending: 7, failed: 0, failure: null })).includes(
+    signOutCardText(
+      signOutCard({ pending: 7, failed: 0, failure: null, session: "active" }),
+    ).includes(
       "มีบิลรอส่งขึ้นระบบ 7 ใบ",
     ),
   );
@@ -193,7 +206,7 @@ async function s1RefusedWhilePending(): Promise<void> {
     withFailed.kind,
   );
   const failedText = signOutCardText(
-    signOutCard({ pending: 0, failed: 2, failure: null }),
+    signOutCard({ pending: 0, failed: 2, failure: null, session: "active" }),
   );
   console.log(`  sheet: ${failedText}`);
   check(
@@ -203,7 +216,9 @@ async function s1RefusedWhilePending(): Promise<void> {
   );
   check(
     "...and that count is the input's too",
-    signOutCardText(signOutCard({ pending: 0, failed: 5, failure: null })).includes(
+    signOutCardText(
+      signOutCard({ pending: 0, failed: 5, failure: null, session: "active" }),
+    ).includes(
       "มีบิลที่ระบบไม่รับ 5 ใบค้างอยู่",
     ),
   );
@@ -433,7 +448,9 @@ async function s3ClearFails(): Promise<void> {
     return;
   }
   const failure: SignOutFailure = outcome.failure;
-  const text = signOutCardText(signOutCard({ pending: 0, failed: 0, failure }));
+  const text = signOutCardText(
+    signOutCard({ pending: 0, failed: 0, failure, session: "active" }),
+  );
   console.log(`  sheet: ${text}`);
   check(
     "the sheet says the device is STILL SIGNED IN",
@@ -979,18 +996,55 @@ async function s5DraftSurvives(): Promise<void> {
 function s6WholeSheet(): void {
   header("S6: the whole sheet as ONE string, in draw order");
 
-  const cells = [
-    { name: "confirm, clean queue", input: { pending: 0, failed: 0, failure: null } },
-    { name: "confirm, failed bills", input: { pending: 0, failed: 2, failure: null } },
-    { name: "refused, pending", input: { pending: 3, failed: 0, failure: null } },
-    { name: "refused, pending+failed", input: { pending: 3, failed: 2, failure: null } },
+  // Annotated with the REAL input type rather than inferred: a field added to
+  // SignOutCardInput is then a compile error in this list too, instead of these
+  // cells quietly measuring a card built from fewer inputs than the screen's.
+  const cells: readonly {
+    name: string;
+    input: SignOutCardInput;
+    /**
+     * DOES THIS CELL'S SHEET SAY THE SESSION RAN OUT? Stated per cell, in both
+     * directions, rather than re-derived from the branch conditions here — a
+     * checker that recomputes the rule it is checking can only prove the code
+     * equals itself (lessons/a-checker-must-not-share-the-code-it-checks.md).
+     *
+     * It is THREE-WAY and not "expired or not": หมดเวลา is true of an expired
+     * session, false of a device that has never signed in this launch (that one
+     * says ยังไม่ได้เข้าสู่ระบบ), and false of a working one. It is also false
+     * whenever a higher-ranked branch owns the card — a failed clear outranks
+     * everything, and an empty queue is the confirmation.
+     */
+    saysExpired: boolean;
+  }[] = [
+    {
+      name: "confirm, clean queue",
+      input: { pending: 0, failed: 0, failure: null, session: "active" },
+      saysExpired: false,
+    },
+    {
+      name: "confirm, failed bills",
+      input: { pending: 0, failed: 2, failure: null, session: "active" },
+      saysExpired: false,
+    },
+    {
+      name: "refused, pending",
+      input: { pending: 3, failed: 0, failure: null, session: "active" },
+      saysExpired: false,
+    },
+    {
+      name: "refused, pending+failed",
+      input: { pending: 3, failed: 2, failure: null, session: "active" },
+      saysExpired: false,
+    },
     {
       name: "clear failed",
       input: {
         pending: 0,
         failed: 0,
         failure: { kind: "clear_failed", reason: "errSecIO" } as SignOutFailure,
+        session: "active",
       },
+      saysExpired: false,
     },
     {
       name: "clear failed, with a queue that grew meanwhile",
@@ -998,7 +1052,48 @@ function s6WholeSheet(): void {
         pending: 3,
         failed: 1,
         failure: { kind: "clear_failed", reason: "errSecIO" } as SignOutFailure,
+        session: "active",
       },
+      saysExpired: false,
+    },
+    /* ---- R2b. The session is now an input, so the matrix has a second axis. -- */
+    {
+      name: "refused, pending, session EXPIRED",
+      input: { pending: 3, failed: 0, failure: null, session: "expired" },
+      saysExpired: true,
+    },
+    {
+      name: "refused, pending+failed, session EXPIRED",
+      input: { pending: 3, failed: 2, failure: null, session: "expired" },
+      saysExpired: true,
+    },
+    {
+      // NOT reachable with this sheet open (App.tsx offers the button only while
+      // `token !== null`) and written anyway, because the wording differs: a
+      // device that never signed in has not run out of time.
+      name: "refused, pending, session SIGNED OUT",
+      input: { pending: 3, failed: 0, failure: null, session: "signed_out" },
+      saysExpired: false,
+    },
+    {
+      // The RANKING under a dead session: a failed clear still outranks it, so
+      // this card must say nothing about an expiry at all.
+      name: "clear failed WHILE the session is expired",
+      input: {
+        pending: 3,
+        failed: 0,
+        failure: { kind: "clear_failed", reason: "errSecIO" } as SignOutFailure,
+        session: "expired",
+      },
+      saysExpired: false,
+    },
+    {
+      // An expired session with an EMPTY queue is the confirmation branch: there
+      // is nothing owed, so signing out is allowed and the expiry is not the
+      // operator's problem on this screen.
+      name: "confirm, clean queue, session EXPIRED",
+      input: { pending: 0, failed: 0, failure: null, session: "expired" },
+      saysExpired: false,
     },
   ];
 
@@ -1017,10 +1112,19 @@ function s6WholeSheet(): void {
       !/errSecIO|keychain|HTTP|undefined|null|\{|\}/.test(text),
       text,
     );
+    /*
+     * SCOPED PER CELL, NEVER DELETED. This was `!text.includes("หมดเวลา")` on
+     * every cell, and it was right while the sheet had no session input: the
+     * card could not know about an expiry, so claiming one was always false.
+     * Now that it CAN know, the check must not be dropped — it is the only
+     * thing stopping the ACTIVE branch from claiming an expiry that has not
+     * happened, which is the defect this phase removes pointed the other way.
+     * So it asserts the cell's own expectation, in both directions.
+     */
     check(
-      `${c.name}: never says the session expired`,
-      !text.includes("หมดเวลา"),
-      text,
+      `${c.name}: says the session ran out exactly when this cell's did`,
+      text.includes("หมดเวลา") === c.saysExpired,
+      `expected=${String(c.saysExpired)} text=${text}`,
     );
     check(
       `${c.name}: never sends anyone to a support desk`,
@@ -1032,7 +1136,9 @@ function s6WholeSheet(): void {
 
   // The one sentence that must be on the sheet BEFORE the tap, on every path
   // where a sign-out can actually be started from.
-  const confirm = signOutCardText(signOutCard({ pending: 0, failed: 0, failure: null }));
+  const confirm = signOutCardText(
+    signOutCard({ pending: 0, failed: 0, failure: null, session: "active" }),
+  );
   check(
     "the CONFIRMATION warns that signing back in needs a connection, before the tap",
     confirm.includes("ต้องใช้อินเทอร์เน็ต"),
@@ -1047,12 +1153,301 @@ function s6WholeSheet(): void {
     pending: 3,
     failed: 0,
     failure: { kind: "clear_failed", reason: "x" },
+    session: "active",
   });
   check(
     "a failed attempt outranks a queue count on the same sheet",
     both.title === "ออกจากระบบไม่สำเร็จ",
     both.title,
   );
+
+  /*
+   * THE THIRD WAY, asserted positively rather than left as the absence checked
+   * above. "never signed in" and "signed in, then it ran out" are different
+   * facts to an operator mid-shift, and statusNotice.ts already draws them with
+   * different words; a sheet that said neither, or said the same one for both,
+   * would pass a check that only bans the wrong word.
+   */
+  const neverSignedIn = signOutCardText(
+    signOutCard({ pending: 3, failed: 0, failure: null, session: "signed_out" }),
+  );
+  check(
+    "a device that never signed in is told THAT, not that its time ran out",
+    neverSignedIn.includes("ยังไม่ได้เข้าสู่ระบบ") && !neverSignedIn.includes("หมดเวลา"),
+    neverSignedIn,
+  );
+  check(
+    "...and it is still told the bills are intact and what releases them",
+    neverSignedIn.includes("บิลยังอยู่ครบ") && neverSignedIn.includes("ด้วยบัญชีเดิม"),
+    neverSignedIn,
+  );
+}
+
+/* ------------------------------------------------------------------ S9 ------ */
+
+/**
+ * R2b: THE SHEET READS THE SESSION, AND THE COUNT IS MEASURED RATHER THAN PASSED.
+ *
+ * WHY THIS IS NOT MORE ASSERTIONS INSIDE S1. S1 hands signOut() `pending: 3`
+ * with `engine: null`. That proves the gate refuses a NUMBER; it cannot prove
+ * the number is UNCLEARABLE, because nothing in S1 can make it move — which is
+ * what lessons/a-check-that-never-went-red-was-never-observed.md records against
+ * this file by name. And the defect exists only in a COMPOSITION no proof owned:
+ * proveSync case 11 drives a real 401 and never mentions sign-out, S1 drives
+ * sign-out and never mentions 401, so the queue-that-cannot-drain under a sheet
+ * telling the operator to wait was invisible to both while both were green
+ * (lessons/two-green-proofs-do-not-cover-the-seam.md). It is driven here in ONE
+ * run, against the real SyncEngine and a real SqliteLocalStore.
+ *
+ * BOTH DIRECTIONS, FROM THE SAME MEASURED COUNT, and that pairing is the whole
+ * design. A dead session and a plain outage leave the identical `pending`, so
+ * the count cannot be what selects the wording. Hardcoding the new sentences
+ * into both branches turns the active half red; deleting the active half would
+ * make the dead half unfalsifiable.
+ *
+ * WHAT THIS STILL DOES NOT COVER: HttpTransport's own 401 -> session_expired
+ * mapping (proveSync owns it), and the handset. Green here is not the device.
+ */
+async function s9SessionDrivesTheSheet(): Promise<void> {
+  header("S9: a queue that CANNOT drain, and the sheet that says why (R2b)");
+
+  const deadDir = mkdtempSync(join(tmpdir(), "prove-signout-s9d-"));
+  const liveDir = mkdtempSync(join(tmpdir(), "prove-signout-s9a-"));
+  const deadDriver = await NodeSqliteDriver.open(join(deadDir, "recycle.db"));
+  const liveDriver = await NodeSqliteDriver.open(join(liveDir, "recycle.db"));
+
+  try {
+    /* ---- THE DEAD HALF: the server answers, and refuses the caller ---- */
+
+    const store = await SqliteLocalStore.open(deadDriver);
+    const server = new FakeServer();
+    const transport = new ExpiredSessionTransport(server);
+    const clock = new FakeClock("2026-08-07T04:16:00.000Z");
+    const engine = new SyncEngine({ store, transport, clock });
+
+    const ids = new SeqIds("s9d");
+    const queued: string[] = [];
+    for (let i = 0; i < 2; i += 1) {
+      const bill = await createLocalBill(
+        { clock, ids, store },
+        {
+          seller_id: "seller-1",
+          vehicle_no: null,
+          items: [],
+          total_amount: "880.00",
+          master_as_of: null,
+        },
+      );
+      queued.push(bill.id);
+    }
+
+    const run = await engine.runOnce();
+    const snap = await store.pendingQueueSnapshot();
+    console.log(
+      `  401 pass -> sessionExpired=${String(run.sessionExpired)} synced=${String(run.synced)}` +
+        ` onServer=${String(server.billCount)} pendingCount=${String(snap.pendingCount)}`,
+    );
+
+    check(
+      "the pass reports a SESSION problem — not an outage, not a rejection",
+      run.sessionExpired >= 1 && run.synced === 0 && run.rejected === 0,
+      `run=${JSON.stringify(run)}`,
+    );
+    check(
+      "NOTHING reached the server — the queue is demonstrably undrainable, not assumed so",
+      server.billCount === 0,
+      `onServer=${String(server.billCount)}`,
+    );
+    check(
+      "both bills are still queued, and the count is READ from the store",
+      snap.pendingCount === 2,
+      `pendingCount=${String(snap.pendingCount)}`,
+    );
+
+    /*
+     * THE MEASURED COUNT. Every assertion below is driven by this value and
+     * never by a literal — that difference from S1 is the point of the case.
+     */
+    const pending = snap.pendingCount;
+
+    const tokens = new MemoryTokenStore("a-token");
+    let paused = false;
+    const refused = await signOut({
+      pending,
+      failed: 0,
+      setSyncPaused: (p) => {
+        paused = p;
+      },
+      tokens,
+      engine,
+    });
+    check(
+      "the gate refuses the sign-out on the MEASURED count",
+      refused.kind === "refused_pending",
+      refused.kind,
+    );
+    check(
+      "...and a refusal still changes nothing: token held, tick never paused",
+      (await tokens.load()) === "a-token" && paused === false,
+      `paused=${String(paused)}`,
+    );
+
+    const deadCard = signOutCard({
+      pending,
+      failed: 0,
+      failure: null,
+      session: "expired",
+    });
+    const deadText = signOutCardText(deadCard);
+    console.log(`  sheet (expired): ${deadText}`);
+
+    check(
+      "the sheet does NOT tell the operator to wait for the queue to finish",
+      !deadText.includes("รอให้ส่งครบก่อน"),
+      deadText,
+    );
+    check(
+      "...and does NOT promise the bills go by themselves in seconds",
+      !deadText.includes("ไม่กี่วินาที"),
+      deadText,
+    );
+    check("...it names the expiry, in statusNotice's word", deadText.includes("หมดเวลา"), deadText);
+    check(
+      "...and names the account that releases them",
+      deadText.includes("ด้วยบัญชีเดิม"),
+      deadText,
+    );
+    check(
+      "...and carries the sign-in button, which is the only exit that exists",
+      deadCard.actions.some((a) => a.kind === "sign_in"),
+      deadCard.actions.map((a) => a.kind).join(","),
+    );
+    check(
+      "...and the count it prints is the one the STORE reported, not a literal",
+      deadText.includes(`มีบิลรอส่งขึ้นระบบ ${String(pending)} ใบ`),
+      deadText,
+    );
+
+    /* ---- THE SHEET'S CLAIM, MEASURED rather than asserted about itself ---- */
+
+    transport.signIn();
+    // The real path: App.tsx's signIn() calls resumeAfterSignIn before the next
+    // pass, because every backoff on this queue was computed while there was no
+    // usable session. Advancing the clock instead would prove something else.
+    const freed = await engine.resumeAfterSignIn();
+    const drained = await engine.runUntilQuiescent();
+    const after = await Promise.all(queued.map((id) => store.getBill(id)));
+    const snapAfter = await store.pendingQueueSnapshot();
+    console.log(
+      `  after sign-in -> freed=${String(freed)} synced=${String(drained.synced)}` +
+        ` onServer=${String(server.billCount)} pendingCount=${String(snapAfter.pendingCount)}`,
+    );
+
+    check("signing in freed the backoff the 401 had set", freed >= 1, `freed=${String(freed)}`);
+    check(
+      "THE SAME bills then drain — so the sentence the sheet prints is true",
+      after.every((b) => b?.sync_state === "synced") &&
+        server.billCount === 2 &&
+        snapAfter.pendingCount === 0,
+      `states=${JSON.stringify(after.map((b) => b?.sync_state ?? "gone"))} onServer=${String(server.billCount)}`,
+    );
+    check(
+      "...and every bill the server holds is one this device queued BEFORE the sign-in",
+      queued.every((id) => server.hasBillId(id)),
+      queued.join(","),
+    );
+    const nowAllowed = await signOut({
+      pending: snapAfter.pendingCount,
+      failed: 0,
+      setSyncPaused: () => undefined,
+      tokens: new MemoryTokenStore("a-token"),
+      engine,
+    });
+    check(
+      "and the sign-out the sheet refused is now permitted — the loop it describes closes",
+      nowAllowed.kind === "signed_out",
+      nowAllowed.kind,
+    );
+
+    /* ---- THE ACTIVE HALF: same rig, a phone that is merely offline ---- */
+
+    const liveStore = await SqliteLocalStore.open(liveDriver);
+    const liveClock = new FakeClock("2026-08-07T04:16:00.000Z");
+    const liveEngine = new SyncEngine({
+      store: liveStore,
+      transport: new OfflineTransport(),
+      clock: liveClock,
+    });
+    const liveIds = new SeqIds("s9a");
+    for (let i = 0; i < 2; i += 1) {
+      await createLocalBill(
+        { clock: liveClock, ids: liveIds, store: liveStore },
+        {
+          seller_id: "seller-1",
+          vehicle_no: null,
+          items: [],
+          total_amount: "880.00",
+          master_as_of: null,
+        },
+      );
+    }
+
+    const liveRun = await liveEngine.runOnce();
+    const liveSnap = await liveStore.pendingQueueSnapshot();
+    console.log(
+      `  offline pass -> retryable=${String(liveRun.retryable)}` +
+        ` sessionExpired=${String(liveRun.sessionExpired)} pendingCount=${String(liveSnap.pendingCount)}`,
+    );
+
+    check(
+      "this pass is an OUTAGE, not a session problem — the halves differ in the ENGINE, not only in what is passed to the card",
+      liveRun.retryable >= 1 && liveRun.sessionExpired === 0,
+      `run=${JSON.stringify(liveRun)}`,
+    );
+    check(
+      "...and it leaves the SAME measured count the dead half left",
+      liveSnap.pendingCount === pending,
+      `offline=${String(liveSnap.pendingCount)} dead=${String(pending)}`,
+    );
+
+    const liveCard = signOutCard({
+      pending: liveSnap.pendingCount,
+      failed: 0,
+      failure: null,
+      session: "active",
+    });
+    const liveText = signOutCardText(liveCard);
+    console.log(`  sheet (active) : ${liveText}`);
+
+    check(
+      "with a WORKING session the wait sentence is correct, and stays",
+      liveText.includes("รอให้ส่งครบก่อน"),
+      liveText,
+    );
+    check("...with the reason the wait is short", liveText.includes("ไม่กี่วินาที"), liveText);
+    check("...it does NOT claim the session expired", !liveText.includes("หมดเวลา"), liveText);
+    check(
+      "...and offers NO sign-in: signing in fixes nothing here, and the button would be a wrong instruction",
+      !liveCard.actions.some((a) => a.kind === "sign_in"),
+      liveCard.actions.map((a) => a.kind).join(","),
+    );
+
+    /*
+     * THE CONTROL THAT MAKES BOTH HALVES MEAN SOMETHING. Identical measured
+     * count, opposite sheets. A sentence hardcoded into both branches — the way
+     * the offline sentence WAS in both until R2b — cannot survive this line.
+     */
+    check(
+      "the two sheets DIFFER although the measured count is identical, so the count is not what chose the wording",
+      deadText !== liveText,
+      `pending=${String(pending)} on both`,
+    );
+  } finally {
+    await deadDriver.close();
+    await liveDriver.close();
+    rmSync(deadDir, { recursive: true, force: true });
+    rmSync(liveDir, { recursive: true, force: true });
+  }
 }
 
 /* ------------------------------------------------------------------ S7 ------ */
@@ -1128,6 +1523,7 @@ async function main(): Promise<number> {
   await s8SendForbiddenCleared();
   await s5DraftSurvives();
   s6WholeSheet();
+  await s9SessionDrivesTheSheet();
   s7Disproof();
 
   header("RESULT");
