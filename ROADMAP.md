@@ -653,6 +653,47 @@ doc_no and a Buddhist-era date, photographed; AND the desktop, asked to print a 
 that has not synced, refuses and says so on screen — S6's "says so plainly", and the
 half that proves no workaround was invented.
 
+### `GET /users` — landed 2026-08-07, and it is NOT a step in this file
+
+Recorded rather than numbered. **GET /users is not a step in this file**, nothing
+is renumbered for it, and the reason it gets a subsection anyway is that a reader
+looking for where it fits would otherwise conclude the file had missed it.
+
+**What it is.** The roster: `GET /users`, admin-only, tenant-scoped by RLS.
+
+**Why it is not a P-number.** Every P-number here is a step toward a bar — a
+pilot shop trading, or a product sold to a stranger. This is neither. It is a
+capability that was ALREADY BUILT and ALREADY PROVEN becoming reachable:
+`POST /users/{id}/deactivate`, `/activate` and `/revoke-sessions` all take a uuid
+in the path, and no response in this API produced another user's uuid except as a
+bare id on a bill header. Three proven capabilities had no caller who could name
+their argument. **That is not a step in a plan; it is a plan that had a step
+missing**, and the honest record is a note, not a number inserted into a
+sequence twelve other files cite.
+
+**It does not advance any stage, and does not shorten one.** Nothing in STAGE 1
+depended on it — no step above names it, and P1.4 shipped the lock without it.
+The step that will consume it is **P3.7** in stage 3, which owns the screen.
+*(Named by number and not cited: a `file § Section` citation into THIS file
+would quote its own target heading, and the checker counts two hits and calls
+it ambiguous — measured, not guessed.)* That step is unchanged: a roster over
+HTTP is not a screen, and P3.7's
+DONE WHEN still requires a shop admin adding a user, changing a password and
+locking an account **from a screen** — none of which this endpoint provides.
+
+**What it changes for P3.7, stated so the step is not re-scoped by accident:**
+P3.7 no longer has to invent a way to enumerate a shop's people, and it inherits
+an auth-tier decision rather than making one — recorded at
+`OPEN_ITEMS.md § Decisions open` "Whether `GET /users` should stay ADMIN-ONLY".
+If the owner reopens that tier, P3.7's screen changes with it.
+
+**The shape worth carrying forward, because this file is where ordering
+arguments live.** A capability with no path to it is indistinguishable from an
+unbuilt one from outside, and the proof that covers it can hide the gap: this
+one passed for months because it obtains other users' ids by logging in AS them,
+which is a route the product's actual user does not have. **When a step's DONE
+WHEN is met by a proof, ask what the proof had that the shop will not.**
+
 ---
 
 # STAGE 2 — what the pilot teaches, and what gets fixed because of it

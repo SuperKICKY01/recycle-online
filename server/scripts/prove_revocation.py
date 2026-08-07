@@ -18,6 +18,7 @@ to test. This script asserts the mechanism EXISTS and BITES:
   CASE 4  a pre-0005 token is refused              -> 401 token_unversioned
   CASE 5  a bump is scoped to ONE user             -> A's peers and tenant B live
   CASE 6  the bump endpoint is admin-only and RLS-scoped -> 403 / 404
+  CASE 6b GET /users NAMES a colleague             -> admin only, tenant-scoped
   CASE 7  a LOCKED account cannot sign in AT ALL   -> 401, and no token in the body
   CASE 8  unlocking restores it                    -> and the refused bill was never written
   CASE 9  the disproof: which lines, deleted, make this go red
@@ -26,6 +27,30 @@ CASE 3 AND CASE 7 ARE EACH OTHER'S NEGATION, which is why they belong in one
 file. "A revoked user can sign in again the same second" and "a locked user
 cannot sign in at all" are the two halves of one distinction, and split across
 two scripts neither run would ever hold both.
+
+THE SEAM CASE 6b OWNS, AND WHY IT IS IN THIS FILE
+--------------------------------------------------
+Every route in this module takes a user_id in the path. Until GET /users
+existed, no response in this API produced another user's uuid at all - except
+as a bare id on a bill header (purchase_bills.created_by / voided_by, only for
+bills that have one, with no name attached and no route anywhere from a uuid to
+a username). So all three capabilities were built, proven, and invokable only
+by someone holding a database connection.
+
+THIS SCRIPT COULD ONLY EVER TEST THEM BECAUSE IT LOGS IN AS EACH USER AND ASKS
+/whoami. That is not a shortcut the product happens to lack: it is
+structurally unavailable to the product's actual user, because a shop owner
+dismissing an employee does not hold that employee's password. The proof had a
+route to an id that the yard does not.
+
+So what CASE 6b tests is not "a list comes back". It is that AN ADMIN CAN NAME
+A COLLEAGUE, which is GET /users composed with POST /users/{id}/deactivate, and
+neither half establishes it alone
+(lessons/two-green-proofs-do-not-cover-the-seam.md). CASE 7 therefore locks the
+account with the id THE ROSTER GAVE, never the one /whoami gave. That is what
+makes the roster load-bearing rather than decorative: a list returning a
+plausible but WRONG id does not fail as a shape here, it fails as a lock
+landing on the wrong person.
 
 EVERY CHECK IS PHRASED AS THE CLAIM THAT MUST HOLD, never as the failure it
 would be. A line reading `[OK] a revoked token was not refused` is a sentence
@@ -199,6 +224,19 @@ def set_active(
     """
     verb = "activate" if active else "deactivate"
     return client.post(f"{BASE}/users/{user_id}/{verb}", headers=auth(admin_token))
+
+
+def list_users(
+    client: httpx.Client, token: str, include_inactive: bool = False
+) -> httpx.Response:
+    """The roster. THE WHOLE RESPONSE, because CASE 6b asserts on the bytes.
+
+    Same reason login_raw exists rather than only login(): two of the claims are
+    about what is NOT in the body, and a helper returning parsed JSON would have
+    thrown the evidence away before any assertion could look at it.
+    """
+    query = "?include_inactive=true" if include_inactive else ""
+    return client.get(f"{BASE}/users{query}", headers=auth(token))
 
 
 def bill_payload(tag: str) -> dict:
@@ -440,6 +478,106 @@ def main() -> int:  # noqa: C901
         check(r.status_code == 404, "case6: an unknown user id is a 404")
 
         # ------------------------------------------------------------------
+        banner("CASE 6b - GET /users: the roster that makes the three routes reachable")
+        # See THE SEAM CASE 6b OWNS in the module docstring. The id this case
+        # produces is the id CASE 7 locks with.
+        r_roster = list_users(client, admin_token)
+        roster = body_of(r_roster).get("users", [])
+        print(f"  GET /users as tenant A ADMIN  status={r_roster.status_code}"
+              f"  entries={len(roster)}")
+        for u in roster:
+            # ensure_ascii=True: a real shop's names are Thai, and this box is
+            # codepage 874. Escapes keep the log readable wherever it is opened.
+            print(f"    {json.dumps(u, ensure_ascii=True, sort_keys=True)}")
+        check(r_roster.status_code == 200,
+              "case6b: an admin can list the shop's users (200)")
+
+        # THE LOOKUP IS GUARDED BY ITS OWN CELL, BEFORE THE ID IS USED ANYWHERE.
+        # next(..., None) rather than next(), and then a check on the result: a
+        # miss must RECORD a failure and let the run continue. Letting
+        # StopIteration escape would kill the script inside CASE 7, between the
+        # lock and the unlock, and leave the staff account LOCKED - the hazard
+        # this module's docstring records under WHAT IT LEAVES BEHIND ONLY IF IT
+        # DIES, arriving through a new door.
+        listed = next(
+            (u for u in roster if u.get("username") == STAFF_USERNAME), None
+        )
+        check(listed is not None,
+              "case6b: the roster carries an entry for the staff username")
+        listed_staff_id = listed.get("user_id") if listed is not None else None
+
+        # BOTH SIDES DERIVED, NEITHER A LITERAL. listed_staff_id came from the
+        # ADMIN's GET /users; staff_id came from the STAFF session's own /whoami
+        # at SETUP - a different request, on a different token, minted from a
+        # different login. Neither is a constant out of seeddata: the 2026-08-03
+        # rebuild gave every seeded user a new id, so a literal here would be
+        # measuring the fixture. This is the cell that can come out the other
+        # way (lessons/a-differential-control-is-only-as-good-as-its-weaker-
+        # side.md), which is the whole reason both halves are read off responses.
+        print(f"  roster says   staff user_id = {listed_staff_id}")
+        print(f"  /whoami said  staff user_id = {staff_id}")
+        check(listed_staff_id == staff_id,
+              "case6b: the id on the roster IS the id /whoami gave that session")
+
+        # THE TIER. GET /users is require_admin, which BREAKS the convention
+        # every other list route in this API follows - uoms, product-categories,
+        # products, sellers and bills are all get_principal. Nothing else in
+        # this file makes a call with a staff token after CASE 6, so without
+        # these three cells the tier would be held by review rather than by
+        # measurement, and widening it would be invisible to every other cell.
+        r_staff_roster = list_users(client, staff_token3)
+        print(f"  GET /users as tenant A STAFF  status={r_staff_roster.status_code}"
+              f"  kind={detail_of(r_staff_roster).get('kind')!r}"
+              f"  code={detail_of(r_staff_roster).get('code')!r}")
+        check(r_staff_roster.status_code == 403,
+              "case6b: a STAFF caller is refused the roster with 403")
+        check(detail_of(r_staff_roster).get("kind") == "forbidden",
+              "case6b: the staff roster refusal carries kind=forbidden")
+        check(detail_of(r_staff_roster).get("code") == "admin_required",
+              "case6b: the staff roster refusal carries code=admin_required")
+
+        # THE TENANT CONTROL, and its peer is the sharpest one available for the
+        # same reason CASE 7's login control is: tenant B holds a user with the
+        # SAME username, since uq_users_tenant_username makes usernames unique
+        # only per tenant. A roster resolved by username rather than by tenant
+        # context would hand back B's staff here, and this is what catches it.
+        #
+        # b_again, NOT b_admin_token. CASE 5 had tenant B's admin revoke ITSELF
+        # to prove self-revocation ends the caller's own session, so that token
+        # is deliberately dead by now and CASE 6 minted a fresh one. Written
+        # down because the first run of this case used the dead token and the
+        # POSITIVE CONTROL below is what caught it: the "absent from B's roster"
+        # cell passed VACUOUSLY against a 401 and an empty list, which is the
+        # exact failure that control exists for.
+        r_b_roster = list_users(client, b_again)
+        b_roster = body_of(r_b_roster).get("users", [])
+        b_ids = {u.get("user_id") for u in b_roster}
+        print(f"  GET /users as tenant B ADMIN  status={r_b_roster.status_code}"
+              f"  entries={len(b_roster)}"
+              f"  usernames={sorted(str(u.get('username')) for u in b_roster)}")
+        check(r_b_roster.status_code == 200,
+              "case6b: tenant B's admin gets a roster of its own (200)")
+        check(listed_staff_id is not None and listed_staff_id not in b_ids,
+              "case6b: tenant A's staff is ABSENT from tenant B's roster")
+        # THE POSITIVE CONTROL. Without it, "absent from B's roster" is
+        # satisfied by an endpoint returning an empty list to everybody, and
+        # every cell above would still hold.
+        check(b_admin_id in b_ids,
+              "case6b: tenant B's roster carries tenant B's OWN admin")
+
+        # ON THE RAW BYTES. Not on parsed keys - a key absent from a dict says
+        # nothing about the same string sitting elsewhere in the body - and not
+        # on decoded text, because this box is codepage 874 and anything decoded
+        # through the locale default is a rendering artefact rather than an
+        # observation (lessons/console-is-not-the-observation.md). Bytes need no
+        # codec to be believed.
+        for label, resp in (("tenant A", r_roster), ("tenant B", r_b_roster)):
+            check(b"password_hash" not in resp.content,
+                  f"case6b: the {label} roster body carries no password_hash anywhere")
+            check(b"token_version" not in resp.content,
+                  f"case6b: the {label} roster body carries no token_version anywhere")
+
+        # ------------------------------------------------------------------
         banner("CASE 7 - a LOCKED account cannot sign in at all (migration 0007)")
         # The account under test is tenant A's staff user, and CASE 8 unlocks it.
         # See WHAT IT LEAVES BEHIND ONLY IF IT DIES in the module docstring.
@@ -450,7 +588,12 @@ def main() -> int:  # noqa: C901
         # that already exists, rather than only refusing a new one.
         pre_lock_token = staff_token3
 
-        r = set_active(client, admin_token, staff_id, False)
+        # THE ROSTER'S ID, NOT /whoami's, AND THAT IS THE SEAM. If GET /users
+        # hands back a plausible but wrong uuid, this lock lands on the wrong
+        # row - or on nothing - and CASE 7's own cells go red without one of
+        # them being about a list. That is what makes the roster load-bearing
+        # here rather than a shape asserted once and then set aside.
+        r = set_active(client, admin_token, listed_staff_id, False)
         locked_body = body_of(r)
         v_lock = locked_body.get("token_version")
         print(f"  POST /users/{{id}}/deactivate  status={r.status_code}  body={locked_body}")
@@ -549,7 +692,9 @@ def main() -> int:  # noqa: C901
 
         # ------------------------------------------------------------------
         banner("CASE 8 - unlocking restores the account, and the refused bill was never written")
-        r = set_active(client, admin_token, staff_id, True)
+        # The SAME id the lock used, necessarily: unlocking a different row
+        # would leave whatever CASE 7 actually locked still locked.
+        r = set_active(client, admin_token, listed_staff_id, True)
         unlocked_body = body_of(r)
         print(f"  POST /users/{{id}}/activate  status={r.status_code}  body={unlocked_body}")
         check(r.status_code == 200, "case8: the activate endpoint answers 200")
@@ -587,8 +732,10 @@ def main() -> int:  # noqa: C901
   run the check" must never share an outcome.
 
   RUN EVERY MUTATION AGAINST A RESTORED SCRATCH DATABASE, NEVER DEV. Mutations
-  A and B both make the server MORE permissive, and CASE 7 then posts a bill
-  under a locked account: with the guard gone that POST SUCCEEDS and writes a
+  A, B and C all end with CASE 7 posting a bill under an account that is not
+  actually locked - A and B by removing a guard, C without touching a guard at
+  all, by sending the lock to a uuid that names nobody. That POST then SUCCEEDS
+  and writes a
   schema-valid, FK-satisfying, reconcile-clean bill that the correct product
   could not have produced, which hard rule 5 makes unremovable. Ten such rows
   are already in the dev database from the created_by work — see
@@ -626,6 +773,46 @@ def main() -> int:  # noqa: C901
   from account_inactive to token_revoked. AN ASSERTION ON THE STATUS ALONE
   WOULD STAY GREEN WITH THIS GUARD DELETED. That is why the guard is ordered
   before the version check and why these two cells read `code`.
+
+  ---- MUTATION C (the roster) : server/app/users.py, _USER_SELECT ----------
+      SELECT tenant_id AS id, username, full_name, role, is_active FROM users
+  The id resolves from the wrong column. EVERY SHAPE STAYS RIGHT: the row
+  count, the usernames, the full names, the roles, is_active, both tenant
+  controls and both byte checks. A proof that asserted the shape of a list
+  would be FULLY GREEN over it.
+  EXECUTED 2026-08-07 against a scratch copy: exit 1, 54 OK / 16 FAIL. (Those
+  counts are written WITHOUT brackets on purpose: a bracketed tag in prose is
+  counted as a cell by any grep over this script's output, which is a trap
+  proveSignOut already paid for once.)
+  RED: case6b's "the id on the roster IS the id /whoami gave"; case6b's POSITIVE
+  CONTROL "tenant B's roster carries tenant B's OWN admin"; and then FOURTEEN
+  cells across CASE 7 and CASE 8 in a cascade, because the lock is sent to a
+  uuid that names no user.
+  GREEN: the lookup cell, the three tier cells, "tenant A's staff is ABSENT from
+  tenant B's roster", and all four byte checks.
+
+  A WRITTEN PREDICTION WAS CORRECTED BY THIS RUN, and it is left corrected here
+  rather than quietly fixed. It said BOTH tenant cells would stay green. The
+  POSITIVE CONTROL fired instead - it asserts on an id too, and every id in
+  tenant B's roster was equally wrong. Only the disjointness cell survived, and
+  the reason it survived is the part worth keeping: it compared two WRONG ids
+  that happened to differ, so under this mutation it was true BY ACCIDENT rather
+  than by the property it names. That is precisely the weaker side of a paired
+  control (lessons/a-differential-control-is-only-as-good-as-its-weaker-side.md),
+  and it was found by RUNNING the mutation, not by reasoning about it.
+
+  ---- MUTATION D (the tier) : server/app/users.py, list_users -------------
+      principal: Principal = Depends(require_admin)
+  changed to Depends(get_principal). EXECUTED 2026-08-07 against a scratch copy:
+  exit 1, 67 OK / 3 FAIL, and the three are case6b's tier cells - NOTHING
+  else moved. Every other call in this file is made with an admin token, so a
+  widened gate is invisible to all of them, and without those three the tier is
+  a decision no instrument measures.
+
+  NOTE: get_principal is NOT imported by users.py, so this mutation must add it
+  to the `from .auth import ...` line. Left as a bare name it is a NameError at
+  import, uvicorn never boots, and every cell fails for a reason that is not the
+  mutation - which is the outcome the paragraph at the top of this case forbids.
 
   Run each by hand, in this order, and keep every output:
     1. restore a scratch copy, point uvicorn at it, confirm by a response

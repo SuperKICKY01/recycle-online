@@ -1,4 +1,12 @@
-"""Account state and session state: the two things an admin may do to a user.
+"""The shop's people: the roster, the sessions they hold, and the account state.
+
+GET /users is what makes the three routes below reachable. Each of them takes a
+user_id in the path, and until this endpoint existed NO response anywhere in
+this API produced another user's uuid except as a bare id on a bill header
+(purchase_bills.created_by / voided_by, and only for bills that have one). So
+every capability in this module was built, proven, and invokable only by someone
+holding a database connection. A shop owner dismissing an employee had no way to
+name them.
 
 TWO KINDS OF THING, AND THEY MUST NOT BE READ AS ONE
 -----------------------------------------------------
@@ -60,9 +68,9 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 
 from .auth import Principal, forbidden, require_admin
@@ -74,9 +82,138 @@ from .db import tenant_connection
 # -it-checks.md draws exactly this line (duplicate arithmetic, never duplicate a
 # convention). It wants its own module eventually; that refactor is recorded in
 # OPEN_ITEMS.md and is deliberately not done here.
-from .master import _not_found
+#
+# _active_filter arrives on the same argument and for the same reason. What it
+# carries is not the two-line string it builds — a second author would write
+# `WHERE is_active` unprompted — but the BOUND stated in its own docstring: it
+# is for LIST endpoints, and row-level reads never use it. That bound is the
+# whole of what migration 0007's COMMENT ON COLUMN asks of this file, so it
+# should arrive with the code rather than be remembered beside it.
+from .master import _active_filter, _not_found
 
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# The roster
+# ---------------------------------------------------------------------------
+# A SEPARATE annotated type, NOT master.IncludeInactive, and the difference is
+# one sentence of prose that would otherwise be wrong on this route. That one
+# reads "the yard app must never be offered a retired product" — true of a
+# picker, false here, and it is published in the OpenAPI schema where it is the
+# only description a caller ever sees.
+IncludeInactiveUsers = Annotated[
+    bool,
+    Query(
+        description=(
+            "Include locked accounts. Default false FOR CONSISTENCY with the"
+            " four master-data lists, which is the whole of the reason: those"
+            " default false to keep a retired row out of a picker, and NOTHING"
+            " here picks a user to write a row, so that justification does not"
+            " transfer and must not be assumed. Pass true to find an account"
+            " that was locked by mistake — a row that cannot be listed cannot"
+            " be reactivated either."
+        )
+    ),
+]
+
+
+def _user_payload(r: Mapping[str, Any]) -> dict:
+    """FIVE KEYS, and the two that are missing are the decisions.
+
+    `user_id` rather than `id`, matching _user_or_404 below so the key a caller
+    reads a user out of is one string across this whole module. master.py says
+    `id`; its routes are not the ones this list feeds.
+
+    NO password_hash, for no reason worth writing down.
+
+    NO token_version, and this is the one that needed an argument. It is not a
+    secret — a caller's own version already sits in the token in their pocket —
+    so withholding it is not confidentiality, it is declining to publish a field
+    with no reader and one bad use. The bad use: auth.get_principal decides a
+    session on `claimed_version != current_version`, EQUALITY and never
+    ordering, for the reason _require_live_session states. Publish the current
+    value in a list and a client can re-derive that check without asking, and it
+    will re-derive it wrong — stale by the time it acts, and as an ordering
+    comparison, which is the shape that was deliberately refused. A second
+    implementation of a security predicate is exactly what
+    lessons/a-checker-must-not-share-the-code-it-checks.md forbids.
+    The three write routes DO return it, and that is not an inconsistency: there
+    a caller is reading the effect of their own action on one named row, which
+    _user_or_404 argues for itself.
+
+    NO created_at. It reveals nothing and would be genuinely useful for telling
+    two accounts apart — but it is a timestamp a human reads, and every one of
+    those must render through the one shop-time formatter
+    (lessons/render-in-shop-time-not-device-time.md). There is no screen yet to
+    render it; shipping the field ahead of the formatter is how a client ends up
+    slicing the ISO string. Adding a key later breaks nothing.
+    """
+    return {
+        "user_id": str(r["id"]),
+        "username": r["username"],
+        "full_name": r["full_name"],
+        "role": r["role"],
+        "is_active": r["is_active"],
+    }
+
+
+_USER_SELECT = "SELECT id, username, full_name, role, is_active FROM users"
+
+
+@router.get("/users")
+async def list_users(
+    include_inactive: IncludeInactiveUsers = False,
+    principal: Principal = Depends(require_admin),
+) -> dict:
+    """The shop's people. ADMIN ONLY — and that BREAKS the convention on purpose.
+
+    Every other list route in this API is Depends(get_principal): uoms,
+    product-categories, products, sellers, bills. This one is not, and the
+    reason is an asymmetry rather than a preference.
+
+    Whether GET /bills should be shop-wide for staff is an open question in
+    OPEN_ITEMS.md, but it is a DIFFERENT question: a staff token can already
+    read every bill in its shop, both prices included, so the day's numbers are
+    derivable by a phone today and the decision there is whether to close a door
+    already standing open. Nothing in this API yields a colleague's NAME. So
+    applying the convention here would not be following a precedent, it would be
+    making a new disclosure — the shop's whole staff list, with roles, to every
+    handset at the weighbridge — by inertia rather than by decision.
+
+    And the two directions do not cost the same. Opening this later is one
+    dependency changed; closing it after every phone has held the roster is not.
+    Same asymmetry the daily report was settled on.
+
+    A LIST IS NOT A ROW-LEVEL READ, which is what makes the is_active filter
+    legitimate here. Migration 0007's COMMENT ON COLUMN says "no row-level read
+    of this table may filter on this column", and the harm it names is specific:
+    a filtered row-level read would blank the author of every bill a departed
+    employee ever wrote, because purchase_bills.created_by and .voided_by are
+    composite FKs into this table. A list endpoint cannot blank a bill's author.
+    Nothing in this module reads a user row for a bill, and if anything ever
+    does, it must not call _active_filter.
+
+    ORDER BY username is a TOTAL order, not merely a stable one:
+    uq_users_tenant_username (migration 0001) makes it unique per tenant, so
+    unlike master.py's ORDER BY code it can never tie and never needs a
+    tiebreak.
+
+    NO hand-written `WHERE tenant_id`, for the reason revoke_sessions gives
+    below (hard rule 2): tenant_connection issues SET LOCAL from the TOKEN's
+    tenant and the RLS policy's USING clause does the scoping, so an admin of
+    tenant A sees tenant A's users and there is no predicate here to get wrong.
+    """
+    async with tenant_connection(principal.tenant_id) as conn:
+        rows = (
+            await conn.execute(
+                text(
+                    f"{_USER_SELECT}{_active_filter(include_inactive)}"
+                    f" ORDER BY username"
+                )
+            )
+        ).mappings().all()
+    return {"users": [_user_payload(r) for r in rows]}
 
 
 @router.post("/users/{user_id}/revoke-sessions")

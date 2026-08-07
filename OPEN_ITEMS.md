@@ -628,7 +628,22 @@ idea — only that it is unresolved.
   database, and marks only `_proof/` dump directories safe to delete. As of
   2026-08-07 the cluster also holds `recycle_recon_pre0005b`,
   `recycle_clock_scratch` and `recycle_recon_scratch`, and the backup root
-  holds every dump ever taken. *Not done:* deliberately — **inventing a
+  holds every dump ever taken. **RE-MEASURED 2026-08-07 against
+  `pg_database`, and the list above was already short by one: the cluster
+  holds SEVEN `recycle%` databases — the live one plus
+  `recycle_restore_scratch`, `recycle_recon_pre0005b`,
+  `recycle_clock_scratch`, `recycle_recon_scratch`, `recycle_lock_scratch`
+  (P1.4, never listed here) and `recycle_users_scratch` (the `GET /users`
+  mutations).** The last of those holds **three bills the correct product
+  could not have produced** — written through the real path while the id
+  mutation sent a lock to a uuid naming nobody, so a supposedly-locked
+  account still posted. That is exactly where such rows are supposed to
+  land (`lessons/a-mutation-on-a-protected-write-path-needs-a-scratch-
+  database.md`), and it is also a reason this copy is not casually reusable
+  as a clean baseline. One dump directory was added the same day,
+  `recycle_20260807T151023Z_users-phase3`. **The inventory grows once per
+  destructive phase, which is the shape of the problem rather than an
+  incident.** *Not done:* deliberately — **inventing a
   retention rule in passing is how a convention gets set by accident**, and
   these directories hold real money data plus cluster password hashes.
   *Unblocks:* the owner deciding whether scratch databases are disposable
@@ -671,6 +686,28 @@ idea — only that it is unresolved.
   daily report being admin-only is therefore defence in depth, not a
   confidentiality boundary. *Not done:* explicitly left open. *Unblocks:*
   the owner deciding what a yard worker may see.
+- **Whether `GET /users` should stay ADMIN-ONLY — SETTLED as `require_admin`
+  2026-08-07 and recorded here as the owner's to revisit, NOT as the entry
+  above wearing a second hat.** It is filed separately on purpose: the two
+  look like one question and the DEFAULTS run opposite ways, which is the
+  whole reason a session reading only one of them would get it wrong.
+  **The asymmetry.** For `GET /bills` the data is already derivable by a
+  phone today, so the decision there is whether to CLOSE a door standing
+  open, and doing nothing changes nothing. For `GET /users` nothing in this
+  API yields a colleague's NAME — a staff token can pull `created_by` uuids
+  off bill headers (`bills.py:256`) and that is where it stops — so applying
+  the convention every other list route follows (`Depends(get_principal)` on
+  uoms, product-categories, products, sellers, bills) would have been a NEW
+  disclosure of the shop's whole staff list, with roles, to every handset at
+  the weighbridge, made by inertia rather than by decision. And the two
+  directions do not cost the same: opening later is one dependency changed;
+  closing after every phone has held the roster is not. *Not done:* the tier
+  is what the code does and is proven to be so — `prove_revocation.py` CASE
+  6b has three cells on it, and swapping in `get_principal` fires exactly
+  those three and nothing else. What is open is whether it is what the OWNER
+  wants. *Unblocks:* the owner's answer, which `ROADMAP.md § STAGE 3` "User
+  management inside a shop" needs before it draws a screen — a roster the
+  yard cannot open is a different screen from one it can.
 - **Thousands separators in money** — deliberately absent; `128400.00`
   is genuinely harder to read than `128,400.00`. *Not done:* it is the
   owner's call, and grouping is one edit from splitting a money string

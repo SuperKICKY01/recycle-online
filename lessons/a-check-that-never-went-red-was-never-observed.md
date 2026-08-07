@@ -444,3 +444,99 @@ a fixture is the one input nobody re-reads when it changes size. Sibling of
 [[proof-must-run-twice]], which is about a fixture a proof normalises for itself;
 this is about a fixture the whole team replaced on purpose, correctly, with a
 consequence nobody could see from the commit.
+
+---
+
+## A NINTH MECHANISM (2026-08-07) — the needle was fine and the HAYSTACK was empty
+
+Mechanisms 1 and 2 are *the needle was empty* — a defect in how the instrument
+built its own search term, fixable by building the needle better. **This is the
+same vacuity arriving from the opposite end, and no care taken over the assertion
+can prevent it**: the needle is correct, the comparison is correct, and the
+COLLECTION being searched came back empty from the system under test.
+
+**The shape.** A cell asserting that something is ABSENT from a collection parsed
+out of a response:
+
+```python
+b_ids = {u.get("user_id") for u in body_of(r_b_roster).get("users", [])}
+check(listed_staff_id is not None and listed_staff_id not in b_ids,
+      "tenant A's staff is ABSENT from tenant B's roster")
+```
+
+`x not in set()` is true for every `x` that has ever existed. So is `x not in
+{something wrong}`. **Absence and correctness are indistinguishable whenever the
+response is empty — and also whenever it is uniformly wrong.**
+
+### Two instances, measured on the same day, and the second is the one that decides it
+
+**Instance 1 — the collection was empty because the response was an ERROR.**
+`prove_revocation.py` CASE 5 has tenant B's admin revoke ITSELF, deliberately, to
+prove self-revocation ends the caller's own session; CASE 6 then mints a fresh
+token. A new CASE 6b used the OLD token. `GET /users` answered **401**,
+`.get("users", [])` turned that into `[]`, and the isolation cell printed `[OK]`
+over a response containing no roster at all.
+
+**Instance 2 — the collection was full, and every value in it was wrong.** A
+mutation resolved the roster's `user_id` from `tenant_id`, so tenant A's ids all
+came back `1111…` and tenant B's all came back `2222…`. The same cell passed
+again — this time because **two WRONG values happened to differ.** The property
+it names, tenant isolation, had nothing to do with it.
+
+| | status cell | the ABSENCE cell | the positive control |
+|---|---|---|---|
+| instance 1 — 401, empty list | **RED** | green, vacuously | **RED** |
+| instance 2 — 200, every id wrong | green | green, **by accident** | **RED** |
+
+**Instance 2 is why this is a mechanism and not a note about token hygiene.** In
+instance 1 the status assertion also fired, so the run was going red anyway — but
+it fires under the wrong NAME, saying "B's admin did not get a 200" rather than
+"your isolation cell measured nothing". In instance 2 the status cell is green,
+the absence cell is green, and **the positive control is the only red in the
+file.** Nothing else available could have substituted for it.
+
+### Why it is not one of the eight, and why it is not the differential lesson
+
+Not mechanisms 1–2: the needle is well built and the assertion is capable of
+failing. What is empty is supplied by the system under test, through an error
+path, at runtime.
+
+Not mechanism 3: the failing state is perfectly reachable — a genuine isolation
+break puts A's id in B's roster and the cell fires correctly. It is reachable and
+it was not reached, because a *different* failure got there first and satisfied
+the assertion on the way past.
+
+**And deliberately NOT filed under
+[[a-differential-control-is-only-as-good-as-its-weaker-side]], which is the near
+miss and the reason this section says so out loud.** That lesson is about a
+comparison one of whose operands *the proof supplies itself*, and its remedy is to
+derive both sides from the real path. **Here the proof supplied neither.** Both
+operands were read off live responses; that discipline was followed exactly, and
+it did not help. What that file asks — *could this assertion have come out the
+other way, given the inputs I supplied?* — is necessary and **not sufficient**:
+in instance 2 it could have, and it came out the right way for the wrong reason.
+The question this adds is the follow-on: **if it came out right, was it right for
+the reason it names?**
+
+### Two more, appended to How to apply
+
+14. **An assertion that something is ABSENT needs a sibling asserting something
+    is PRESENT — in the SAME RESPONSE, not merely in the same run.** The failure
+    mode is that response being empty, refused or uniformly wrong, and a control
+    read from any other response cannot see it. One extra line: assert that the
+    collection contains the thing it *should* contain, then that it lacks the
+    thing it should lack. Neither half is worth much alone.
+15. **Before asserting over a collection parsed from a response, assert the
+    response.** `body_of(r).get("users", [])` flattens 401, 403, 404, 500 and an
+    unparseable body into the same empty list, and every "is not in" over an empty
+    list is true. A defaulted empty collection is
+    [[a-defaulted-getattr-is-a-silent-dead-branch]] one layer out — an absent
+    value read as a confident answer — and it fails toward green.
+
+**The family.** Mechanisms 1–4 ask *could this have failed given my inputs?*, 5–7
+*was it looking at the right thing?*, 8 *does it still reach its failing state on
+today's fixture?*. This one asks the question that survives a yes to all four:
+**how many DIFFERENT states satisfy this assertion, and is "the code is correct"
+the only interesting one?** Every negative assertion — absent, not equal, not
+present, zero, empty — has a large satisfying family, and the members of it that
+are silent breakage are exactly the ones a proof will never think to supply.

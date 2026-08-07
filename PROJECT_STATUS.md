@@ -57,6 +57,71 @@ not read the green as re-run.**
 
 ## Current phase
 
+**`GET /users` — THE ENDPOINT THAT MAKES THREE BUILT CAPABILITIES REACHABLE.
+LANDED 2026-08-07. NOT a P-number** — see `ROADMAP.md § STAGE 1` "GET /users is
+not a step in this file".
+
+`POST /users/{id}/deactivate`, `/activate` and `/revoke-sessions` all take a uuid
+in the path, and nothing in this API produced another user's uuid except as a
+bare id on a bill header. All three were built, proven and invokable only by
+someone with a database connection: a shop owner dismissing an employee had no
+way to name them. `GET /users` closes that, admin-only, tenant-scoped by RLS.
+Two files: `server/app/users.py` and `server/scripts/prove_revocation.py`.
+
+**THE SURVEY THAT OPENED THIS PHASE WAS WRONG TWICE, and both corrections make
+the case stronger rather than weaker.** (1) `prove_revocation.py` does NOT take
+its ids from `seeddata.py`'s constants — it reads them from `/whoami` after
+logging in AS each user (`:273-275`), which is a route to an id the product's
+user does not have, since an owner does not hold an employee's password. (2)
+`GET /bills/{id}` DOES return another user's uuid — `created_by` and `voided_by`
+(`bills.py:256,259`), to any signed-in principal. The honest premise is the
+narrowed one: a uuid with no name, one bill at a time, for bills since 0006 only,
+and nothing anywhere answering "who works here".
+
+**THE AUTH TIER IS `require_admin`, WHICH BREAKS THE CONVENTION DELIBERATELY**,
+and the asymmetry is the argument. For `GET /bills` a staff token can already
+read every bill in its shop, so that open question is whether to close a door
+already standing open. Nothing in this API yields a colleague's NAME, so applying
+the convention here would have been a NEW disclosure made by inertia. Opening
+later is one dependency; closing after every phone has held the roster is not.
+Recorded as its own entry under `OPEN_ITEMS.md § Decisions open`, NOT folded into
+the `GET /bills` one.
+
+**FIVE KEYS: `user_id`, `username`, `full_name`, `role`, `is_active`.**
+`password_hash` obviously never leaves. `token_version` is omitted for a reason
+worth keeping: publishing it invites a client to re-derive `get_principal`'s
+`claimed != current` check, which is an EQUALITY and never an ordering, and a
+client re-deriving it would write the ordering. `created_at` is omitted as a
+timestamp shipped ahead of the formatter that must render it.
+
+**BOTH MUTATIONS WERE EXECUTED AGAINST A RESTORED SCRATCH COPY, NEVER DEV, AND
+THE HAZARD WAS REAL.** Under the id mutation the lock lands on a uuid naming
+nobody, so CASE 7's `POST /bills` under a supposedly-locked account SUCCEEDS.
+Measured after the run: **scratch 338 bills, dev 335** — all three unremovable
+rows landed in the copy.
+
+**THE FINDING THAT OUTLIVES THE PHASE, and it is about proofs rather than about
+users.** A cell asserting tenant A's staff is ABSENT from tenant B's roster
+passed twice while measuring nothing: once over a 401 whose empty list made
+`x not in set()` trivially true, and once over a mutation where every id was
+wrong and two WRONG ids happened to differ. In the second the status cell and the
+absence cell are BOTH green and the positive control is the only red in the file.
+Written up as the ninth mechanism in
+`lessons/a-check-that-never-went-red-was-never-observed.md`.
+
+**A WRITTEN PREDICTION WAS CORRECTED BY A RUN**, and the correction is in the
+proof rather than applied quietly: CASE 9 predicted both tenant cells would stay
+green under the id mutation. The positive control fired too.
+
+**NOTHING IN THIS PHASE RAN ON A HANDSET AND NO SCREEN EXISTS.** The observations,
+with what they do NOT establish, are the dated entry at the end of Baseline
+observations.
+
+**The text below this block is the PREVIOUS phase's entry and is left standing** —
+a dated record is superseded, never rewritten.
+
+---
+
 **P1.10 — `prove_reconcile.py` BACK TO GREEN. LANDED 2026-08-07. The second
 P-number recorded as met.** RED since 2026-08-03, and the four failing cells that
 two documents had recorded as one thing turned out to be TWO. Three were absolute
@@ -2669,3 +2734,135 @@ remains reachable and was observed four times in the breaks above.
 - **The scratch-database inventory is UNCHANGED.** `recycle_recon_scratch` was
   restored, mangled and restored again; no new database and no new dump directory was
   created.
+
+### 2026-08-07 — `GET /users`, the roster (server + proof)
+
+**NO DEVICE AND NO SCREEN.** Everything below is an HTTP response, a proof script
+or a hash on this box. No dated green elsewhere in this file is refreshed by any
+of it. Two files changed: `server/app/users.py` and
+`server/scripts/prove_revocation.py`.
+
+**PORTS 8137 AND 8138 WERE CHOSEN BECAUSE NOTHING ELSE ON THIS BOX HAS A REASON
+TO TOUCH THEM.** A background task this session did not create was observed
+reporting `Restart uvicorn on 8099 against dev with the reverted code`, so 8099
+was treated as contested ground. Neither 8137 nor 8138 is any script's default
+(8000, 8098 and 8099 are), neither appears in any code — the only `git grep` hits
+are coincidental substrings inside `uv.lock` sha256 hashes — and both were free.
+**8137 served dev; 8138 served the scratch copy.** Note also that the harness
+reported `exit 127` for a uvicorn started in the background AND still running, so
+no server claim here rests on an exit code; every one rests on a response.
+
+**WHICH CODE AND WHICH DATABASE, ESTABLISHED BY A RESPONSE AT EVERY STEP.** The
+route's own presence is the code probe — `GET /users` answered **404 for all four
+callers** before the change (22-byte `{"detail":"Not Found"}`) and **401
+unauthenticated** after. The database probe is a marker seller created through
+**`POST /sellers`** — the real path, not a direct INSERT — present in
+`recycle_users_scratch` (1 row) and absent in `recycle` (0), read out of both
+databases:
+
+| step | port | database | staff tier | roster ids |
+|---|---|---|---|---|
+| baseline | 8137 | DEV (marker absent) | 403 | correct |
+| scratch baseline | 8138 | SCRATCH (marker present) | 403 | correct |
+| mutation C | 8138 | SCRATCH | 403 | **both the tenant uuid** |
+| mutation D | 8138 | SCRATCH | **200 (widened)** | correct |
+| after both reverts | 8138 | SCRATCH | 403 | correct |
+| final | 8137 | DEV (marker absent) | 403 | correct |
+
+**THE ENDPOINT, READ OFF RESPONSES.** Tenant A admin → 200, two entries, keys
+exactly `full_name, is_active, role, user_id, username`. Tenant A staff → **403**
+`kind=forbidden` `code=admin_required`. Tenant B admin → 200 with a roster
+DISJOINT from A's, A's staff absent from it, B's own admin present. Both tenants
+hold a user named `staff`, so a roster resolved by username rather than by tenant
+context would have collided there and did not. `include_inactive` exercised in
+both directions: locking staff A left the default roster `['admin']` and
+`?include_inactive=true` `['admin','staff']` with `is_active=False` reported
+honestly; unlocked, and the restore read back off a response.
+
+**THE FORBIDDEN COLUMNS ARE ASSERTED ON RAW BYTES**, not parsed keys and not
+decoded text — the 403 bodies carry Thai and this box is codepage 874, so bytes
+need no codec to be believed. `b"password_hash"` and `b"token_version"` absent
+from every 200.
+
+**THE PROOF: `prove_revocation.py` CASE 6b, 13 new cells.** Green TWICE bare with
+no reseed, **70 `[OK]` / 0 `[FAIL]`** each run (57 pre-existing + 13). Counted by
+`grep -c '^  \[OK  \]'` — anchored at line start with `check()`'s exact
+two-space indent and padding, which no prose in the file can produce. That
+mattered: an earlier draft printed `[OK]`/`[FAIL]` inside CASE 9's text and an
+unanchored grep read them as cells, returning `OK=72 FAIL=2` over a run that
+exited 0. The brackets were removed at source rather than documented, because it
+is the trap `proveSignOut` already paid for once.
+
+**ONE CELL THE BRIEF DID NOT SPECIFY WAS ADDED, and without it a mutation would
+have fired nothing.** The five cells asked for carry no assertion about the auth
+tier, so the tier mutation would have run fully green over a wide-open gate.
+Three tier cells (status, kind, code) are in CASE 6b for that reason.
+
+**BOTH MUTATIONS EXECUTED AGAINST `recycle_users_scratch`, NEVER DEV.**
+
+| mutation | what changed | exit | fired | stayed green |
+|---|---|---|---|---|
+| **C** — the id resolves from the wrong column (`SELECT tenant_id AS id …`) | `users.py` `_USER_SELECT` | **1** | 54 OK / **16 FAIL**: the id cell, the POSITIVE CONTROL, and 14 across CASE 7/8 in cascade | the lookup cell, all three tier cells, the absence cell, all four byte checks |
+| **D** — `require_admin` → `get_principal` | `users.py` `list_users` | **1** | 67 OK / **3 FAIL**: exactly the three tier cells | everything else — every other call in the file uses an admin token |
+
+**Mutation C is the one that carries information.** Row count, usernames, full
+names, roles, `is_active` and the tier were ALL correct under it — a shape-only
+assertion would have been fully green. `get_principal` is not imported by
+`users.py`, so mutation D must add the import or it is a `NameError` at import,
+uvicorn never boots, and "the tier is open" and "nobody could run the check"
+share an outcome; that is recorded in CASE 9.
+
+**A WRITTEN PREDICTION WAS WRONG AND THE RUN CORRECTED IT.** CASE 9 predicted
+both tenant cells would stay green under mutation C. **The positive control fired
+too**, because it also asserts on an id and every id in B's roster was equally
+wrong. Only the disjointness cell survived — by comparing two WRONG ids that
+happened to differ, i.e. true by accident rather than by the property it names.
+The correction is written into CASE 9 rather than applied quietly.
+
+**A VACUOUS PASS WAS CAUGHT ON THE FIRST EXECUTION OF THE NEW CASE.** The first
+run used `b_admin_token`, which CASE 5 deliberately revokes to prove
+self-revocation. `GET /users` answered 401, `.get("users", [])` made the roster
+`[]`, and `tenant A's staff is ABSENT from tenant B's roster` printed `[OK]` over
+a response holding no roster at all. **Two cells fired — the status cell and the
+positive control** (an earlier report of this said the control was the only one;
+that was wrong). The status cell would have failed the run anyway, but under the
+WRONG NAME. Under mutation C the status cell is green, the absence cell is green,
+and the positive control is the only red in the file — which is what makes this a
+mechanism rather than a note about token hygiene. Ninth mechanism in
+`lessons/a-check-that-never-went-red-was-never-observed.md`.
+
+**REVERTS PROVEN BY TWO HASHES EACH, after every mutation.** `users.py`
+`git hash-object f1679b94d4e3b4f817d6402759057b727bed7dad`, sha256
+`fb89607ceec81acb4e2851fb7f1b0dedde45e67ca76ce29bfa23ded4ee11d7ef`, 19724 bytes —
+identical to baseline after mutation C's revert and again after mutation D's.
+
+**THE FULL SERVER PROOF SET RE-RUN AFTER THE PROOF EDITS, each bare, one command
+per invocation, redirected and never piped. FOURTEEN runs, every one exit 0:**
+`prove_revocation` (twice, 70/0 each), `prove_auth`, `prove_bills`, `prove_rls`,
+`prove_master`, `prove_master_write` (128), `prove_master_data_gate` (15),
+`prove_seller_pricing` (27), `prove_shop_time` (12), `prove_daily_report` (74),
+`prove_backup_restore`, `prove_docno_clock` (12, `--database
+recycle_clock_scratch`), and **`prove_reconcile` 119 `[OK]` / 0 `[FAIL]` / 1
+`[SKIP]`, exit 0** against `recycle_recon_scratch` restored from the post-0007
+dump. `prove_master` needed `API_BASE_URL` set explicitly — its default is 8000.
+
+**WHAT THIS DOES NOT ESTABLISH.**
+
+- **Nothing ran on a handset and no screen exists.** `P3.7` owns the screen. Whether
+  a roster is usable, or a locked account looks like anything sensible on a phone,
+  is untested.
+- **No client calls this endpoint.** Mobile does not, desktop does not exist. The
+  only caller is `curl` and the proof.
+- **The tier is a decision, not a measurement.** `require_admin` is proven to be
+  what the code does; that it is what the OWNER wants is an open item, and the
+  endpoint would have to change if the answer changes.
+- **`prove_docno_clock`'s fixture is a schema behind.** `recycle_clock_scratch` is
+  at 0006 while live is 0007. It passed because it builds its own `Principal` and
+  never calls `get_principal`; a future `create_bill` change touching a 0007+
+  column would fail there for a fixture-age reason.
+- **`recycle_users_scratch` and the dump `recycle_20260807T151023Z_users-phase3`
+  now exist.** Neither removed; no retention rule invented. Added to the inventory
+  in `OPEN_ITEMS.md`.
+- **The mutation runs left 3 bills in `recycle_users_scratch`** (338 against dev's
+  335). They are in a scratch copy, which is the whole point, and they stay there
+  until it is dropped.
