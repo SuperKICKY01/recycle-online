@@ -12,7 +12,7 @@ lesson file; anything written here is destroyed by the next run.
 byte for byte, with line endings normalised to LF on both sides first. It exits
 1 on any difference. That is how a lesson edited without regenerating is caught.
 
-**Sources:** 34 lesson files, `lessons/*.md`, ASCII filename order.
+**Sources:** 35 lesson files, `lessons/*.md`, ASCII filename order.
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
@@ -39,6 +39,7 @@ line instead of by heading depth.
 - `a-check-that-never-went-red-was-never-observed.md` -- A check that has never gone red has not been observed
 - `a-checker-must-not-share-the-code-it-checks.md` *(1 amendment)* -- A checker must not share the code it checks — and must not reach past it
 - `a-defaulted-getattr-is-a-silent-dead-branch.md` -- A defaulted `getattr` is a silent dead branch
+- `a-differential-control-is-only-as-good-as-its-weaker-side.md` -- A differential control is only as good as its weaker side
 - `a-proof-fixture-must-be-a-row-the-product-could-produce.md` -- A proof fixture must be a row the product could have produced
 - `a-report-is-many-reads-that-must-agree.md` -- A report is many reads; under READ COMMITTED they are many moments
 - `a-stored-future-instant-is-a-promise-about-a-clock.md` -- A stored future instant is a promise about a clock you do not control
@@ -872,6 +873,75 @@ that proves nothing, because the code under test was unreachable. Both come from
 the same move: believing a story about the system instead of observing it. When a
 conditional guards something expensive to get wrong, the question is not "is the
 condition right?" but **"have I ever seen this branch execute?"**
+
+---
+
+**SOURCE:** `a-differential-control-is-only-as-good-as-its-weaker-side.md`
+
+# A differential control is only as good as its weaker side
+
+**Applies to** every check of the form "these two outputs must DIFFER" or "these
+two must AGREE" — a paired control, an A/B assertion, a before/after comparison.
+If either side is a hardcoded literal, the relation is true by construction and
+the control measures the literal.
+
+## What was measured
+
+`proveSignOut.ts` S9 ends with the control the whole case was built around: the
+expired sheet and the offline sheet must differ, from an identical queue count
+measured off a real `SqliteLocalStore`. Its own comment says why — *"A sentence
+hardcoded into both branches ... cannot survive this line."*
+
+R2b landed with the dead half's `session` derived from a real 401 pass and the
+live half's left as the literal `"active"`. In that configuration the fold was
+then broken so that a pass which said nothing about the caller — a plain outage,
+`retryable` only — reported the session as ENDED. That is not a subtle defect:
+it is an outage classified as a dead token, which is the exact wording defect
+R2b existed to remove, pointed the other way.
+
+**It ran fully green. Exit 0, zero failed cells.** Deriving the live half as
+well, changing nothing else, turned the same mutation into **6 red cells** —
+and the control was one of them.
+
+| live half | broken fold | result |
+|---|---|---|
+| literal `"active"` | outage reported as expired | **exit 0, 0 failures** |
+| derived from `liveRun` | same mutation | **exit 1, 6 failures, control fires** |
+
+## Why the control went blind
+
+It compares `deadText !== liveText`. With one side a literal, the literal keeps
+the two texts apart no matter what the code under test does. The control cannot
+fail, so its green carries no information — the mechanism
+`a-check-that-never-went-red-was-never-observed.md` catalogues, wearing a face
+that file does not list: not an empty needle, not an unreachable failing state,
+not a break that stops the build, but **a comparison one of whose operands the
+proof supplies itself.**
+
+It is also the exact twin of
+`a-checker-must-not-share-the-code-it-checks.md`, with the sign flipped. There,
+a checker reading its expected value out of the thing under test made AGREEMENT
+true by construction. Here, a checker supplying one side of a comparison makes
+DIFFERENCE true by construction. Same defect, opposite relation — so the test is
+neither "did I share code" nor "did I hardcode", but: **could this assertion have
+come out the other way, given the inputs I supplied?**
+
+## The prediction, and why it is recorded
+
+The plan for this fix said the control "is the only cell that would notice" a
+predicate that reported expired for everything. **That was wrong, and wrong in
+the direction that costs most:** with only one half derived the control notices
+*nothing*. The reasoning was sound and the conclusion was false, which is the
+whole argument for running the disproof instead of arguing it — the null result
+in the table above took one run and settled what an hour of reading could not.
+
+## The rule
+
+Derive BOTH sides of a difference from the real path, or the difference measures
+the literal. A paired control does not inherit strength from the stronger half;
+it is bounded by the weaker one. And when a proof measures one input off a real
+run and hand-types another beside it, the hand-typed one is where the next
+defect hides — the measured neighbour makes the whole cell look measured.
 
 ---
 

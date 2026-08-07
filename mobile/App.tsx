@@ -63,7 +63,13 @@ import { cleanVehicleNo, gradePrice, indexPlates } from "./src/cart/sellers";
 import type { Draft } from "./src/cart/types";
 import { ExpoSqliteDriver } from "./src/device/expoSqliteDriver";
 import { SecureTokenStore } from "./src/device/secureTokenStore";
-import { applyClearedSession, maySync, sessionStateOf, signOut } from "./src/session/signOut";
+import {
+  applyClearedSession,
+  maySync,
+  sessionEndedAfterPass,
+  sessionStateOf,
+  signOut,
+} from "./src/session/signOut";
 import type { SignOutFailure } from "./src/session/signOut";
 import { signOutCard } from "./src/session/signOutNotice";
 import type { SignOutAction } from "./src/session/signOutNotice";
@@ -615,7 +621,12 @@ export default function App() {
     // 401. It is also the reason `online` is set TRUE here: the server answered,
     // promptly, so calling this an outage was never anything but wrong.
     if (r.sessionExpired > 0) {
-      setSessionEnded(true);
+      // The VALUE is decided in src/session/signOut.ts, where a proof can drive
+      // it from a real run; this line only applies it. The updater form is used
+      // rather than reading `sessionEnded` out of the closure, which would put
+      // it in this callback's dependency array and restart the 4 s interval
+      // every time the flag moved.
+      setSessionEnded((was) => sessionEndedAfterPass(was, r));
       setOnline(true);
       return;
     }
@@ -657,7 +668,8 @@ export default function App() {
     // even if nothing here ever asked it to.
     if (r.synced > 0 || r.rejected > 0 || r.masterDataBlocked > 0) {
       setOnline(true);
-      setSessionEnded(false);
+      // Same applier as the expiry branch above, same one decision in src/.
+      setSessionEnded((was) => sessionEndedAfterPass(was, r));
       // A bill that went through is DIRECT evidence this account may submit —
       // the only evidence there is, and stronger than the flag. It happens after
       // a sign-in as a different user, or after the owner fixes the role and the

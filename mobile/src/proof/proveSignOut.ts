@@ -31,7 +31,8 @@
  *   S5  the draft AND the shop's master cache are still in SQLite — read back out
  *   S6  the whole sheet as ONE string in draw order (the N2b discipline)
  *   S9  R2b — a queue that CANNOT drain behind a 401, and the sheet that says
- *       why: the count is MEASURED off the store, and both sessions are driven
+ *       why: the count is MEASURED off the store and the session is DERIVED
+ *       from the pass, on both halves
  *   S7  the disproof: which branch, removed, turns this red
  *
  * ON THE OUTPUT. Mostly Thai. Mojibake in the console is the console — this box
@@ -50,6 +51,7 @@ import {
   applyClearedSession,
   CLEARED_SESSION,
   maySync,
+  sessionEndedAfterPass,
   sessionStateOf,
   signOut,
 } from "../session/signOut.js";
@@ -1205,6 +1207,16 @@ function s6WholeSheet(): void {
  * into both branches turns the active half red; deleting the active half would
  * make the dead half unfalsifiable.
  *
+ * AND THE SESSION IS NOW DERIVED TOO, WHICH IT WAS NOT WHEN THIS CASE LANDED.
+ * `pending` was measured off a real store from the first version; `session` was
+ * typed in as "expired" and "active", so the one link R2b created — the sheet
+ * depending on session state — was exercised by nothing, and the label 100 lines
+ * below claiming "the halves differ in the ENGINE, not only in what is passed to
+ * the card" was the claim not established. Both halves now go
+ * run -> sessionEndedAfterPass -> sessionStateOf -> signOutCard, through the same
+ * two functions App.tsx calls, so a wrong fold reaches the sheet instead of
+ * being papered over by a literal that agreed with it.
+ *
  * WHAT THIS STILL DOES NOT COVER: HttpTransport's own 401 -> session_expired
  * mapping (proveSync owns it), and the handset. Green here is not the device.
  */
@@ -1292,11 +1304,27 @@ async function s9SessionDrivesTheSheet(): Promise<void> {
       `paused=${String(paused)}`,
     );
 
+    /*
+     * THE SESSION, DERIVED FROM THIS PASS — not typed in beside a measured
+     * count. `token` stays a literal deliberately: it is the same value asserted
+     * at "token held" above, and WHO the caller is was never the hand-typed
+     * input this case was missing. What was missing is the fold from the run.
+     */
+    const deadSession = sessionStateOf({
+      token: "a-token",
+      sessionEnded: sessionEndedAfterPass(false, run),
+    });
+    check(
+      "the session the sheet is given is DERIVED from the 401 pass, and it is expired",
+      deadSession === "expired",
+      deadSession,
+    );
+
     const deadCard = signOutCard({
       pending,
       failed: 0,
       failure: null,
-      session: "expired",
+      session: deadSession,
     });
     const deadText = signOutCardText(deadCard);
     console.log(`  sheet (expired): ${deadText}`);
@@ -1410,11 +1438,32 @@ async function s9SessionDrivesTheSheet(): Promise<void> {
       `offline=${String(liveSnap.pendingCount)} dead=${String(pending)}`,
     );
 
+    /*
+     * DERIVED THE SAME WAY, and this half is the one that pins the THIRD arm.
+     * An outage tells the fold nothing about the caller, so it returns the
+     * belief it was handed — which is why `wasEnded` is a parameter at all, and
+     * why both directions of it are asserted below rather than one.
+     */
+    const liveSession = sessionStateOf({
+      token: "a-token",
+      sessionEnded: sessionEndedAfterPass(false, liveRun),
+    });
+    check(
+      "the OUTAGE pass derives an ACTIVE session — it did not invent an expiry",
+      liveSession === "active",
+      liveSession,
+    );
+    check(
+      "...and the same pass cannot CLEAR one either: handed an expired belief, it keeps it",
+      sessionEndedAfterPass(true, liveRun) === true,
+      `sessionEndedAfterPass(true, liveRun)=${String(sessionEndedAfterPass(true, liveRun))}`,
+    );
+
     const liveCard = signOutCard({
       pending: liveSnap.pendingCount,
       failed: 0,
       failure: null,
-      session: "active",
+      session: liveSession,
     });
     const liveText = signOutCardText(liveCard);
     console.log(`  sheet (active) : ${liveText}`);

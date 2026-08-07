@@ -300,6 +300,38 @@ idea — only that it is unresolved.
   ordering. *Unblocks:* a proof that owns the ORDER of a sync pass rather
   than only the predicate it consults — which would also cover any future
   guard added to `syncOnce`.
+- **The sync pass's session DECISION moved into `src/`; the two lines that
+  APPLY it did not, and cannot.** Direct sibling of the item above, same
+  structural cause, and recorded separately because what remains is a
+  different kind of thing. `sessionEndedAfterPass`
+  (`mobile/src/session/signOut.ts`) now owns the whole mapping from a
+  `SyncRunResult` to `sessionEnded` — which before this lived nowhere but
+  `App.tsx:617`, confirmed by grep across the tree — and `proveSignOut` S9
+  drives it from a real 401 pass and a real outage pass against a real
+  `SqliteLocalStore`. Break its `sessionExpired` arm and seven cells go
+  red, the paired control among them, while BOTH typecheck programs stay
+  at exit 0. **What is still unobservable is the CALL.**
+  `mobile/App.tsx:617` and `:658` each read
+  `setSessionEnded((was) => sessionEndedAfterPass(was, r))`; delete either
+  line and `prove:signout` stays green and `npm run typecheck:app` still
+  exits 0, for the reason given one item above — `tsconfig.node.json` sets
+  `rootDir: "src"` and no node proof can compile that file. **What DID
+  change, and it is not nothing:** the residue is now WIRING rather than a
+  decision. `App.tsx` writes no `true` and no `false` for `sessionEnded`
+  anywhere in `syncOnce`. The two `if` conditions still standing there —
+  `r.sessionExpired > 0`, and the accept/reject/park test — now serve
+  `online` and the early returns, so if either ever drifts from the
+  predicate **the session value stays CORRECT and only `online` is
+  wrong.** That is a smaller blast radius, not a closed item. *Not done:*
+  nothing closes it short of an instrument that is not a node proof. A
+  source scan over `App.tsx` was proposed and REFUSED by the owner, on the
+  ground that a check asserting TEXT rather than behaviour would be a
+  fifth instance of the shape
+  `lessons/a-check-that-never-went-red-was-never-observed.md` catalogues —
+  added to verify the fix for the fourth. *Unblocks:* the same thing the
+  item above needs, and one proof would cover both: something that owns
+  the ORDER and the WIRING of a sync pass, not only the predicates it
+  consults.
 
 ## Code debt found and left in place
 

@@ -202,6 +202,47 @@ boundaries, not because any of them changed behaviour.
 
 Per the CLAUDE.md workflow this is a phase boundary: stop for review.
 
+### R2b follow-up — the sheet's session input is MEASURED now, not typed in
+
+A red-team pass on `62cee25` found four issues. **This closes ONE.** The other
+three are untouched and still queued; nothing below says anything about them.
+
+**What it fixes is a PROOF, not a product defect.** The sheet's behaviour is
+unchanged on every path, no wording moved, and nothing here ran on a handset.
+Read that as the limit it is: this commit makes an existing claim measurable, it
+does not repair anything the yard could have seen.
+
+**The finding, in its own terms.** `session` was a hand-typed literal at all 21
+of `proveSignOut.ts`'s `session:` call sites, S9's two included. S9 measured
+`pending` off a real `SqliteLocalStore` and then typed the session in beside it
+— so the one link R2b created, the sheet depending on session state, was
+exercised by nothing, and S9's own label claiming "the halves differ in the
+ENGINE, not only in what is passed to the card" was the claim not established.
+Measured by the red team rather than argued: delete `setSessionEnded(true)` at
+`App.tsx:618` and `prove:signout`, `typecheck` and `typecheck:app` all stay
+green. (The count is **21**, not the 22 `grep -c 'session:'` reports: one of the
+22 is prose at `proveSignOut.ts:1079`.)
+
+**What changed.** `sessionEndedAfterPass` in `src/session/signOut.ts` now owns
+the mapping from a `SyncRunResult` to `sessionEnded` — a decision that lived
+nowhere but `App.tsx:617`, confirmed by grep across the whole tree before the
+change. `App.tsx:617` and `:658` apply it and write no boolean of their own. S9's
+two `session:` inputs are derived from the real 401 pass and the real outage
+pass. The other 19 literals are untouched on purpose, S6's wording table most of
+all: it declares its expectation per cell so the checker does not recompute the
+rule it checks.
+
+**The acceptance test asked for at the start of this work was UNMEETABLE and was
+replaced.** It required that deleting `App.tsx:618` turn `prove:signout` red;
+`tsconfig.node.json` sets `rootDir: "src"`, so no node proof can observe a
+deletion in that file. That obstacle was already recorded seven lines away in
+`OPEN_ITEMS.md` for the `maySync` placement. The residue it leaves is filed
+beside that twin.
+
+**OBSERVED** — the numbers, the disproof and a corrected prediction are in the
+dated entry at the end of Baseline observations. Nothing in this subsection is a
+claim that was not run.
+
 ## Previous phase
 
 **A2 — reconciliation. Server only, one script, no endpoint and no schedule.
@@ -1938,3 +1979,75 @@ about a queue deep enough to expose one. And the dead session was reached by
 `revoke-sessions`, NOT by a token expiring naturally, which is the case every
 handset actually meets every hour of every shift; the two are believed to reach
 the same client state and that belief is not what was measured here.
+
+### 2026-08-07 — headless, this box (R2b follow-up: S9's session input)
+
+**NO DEVICE.** Everything below is a node proof or a compiler. No screen was
+read, and the 12:08 device pass above is not refreshed by any of it.
+
+**Baseline, before any edit, at `62cee25` with a clean tree.** Each command run
+bare, one per invocation: `npm run prove:signout` exit 0 **twice** with no
+reseed, 148 `[OK]` cells; `npm run typecheck` exit 0; `npm run typecheck:app`
+exit 0.
+
+**A COUNTING TRAP, recorded because it misreads every run in this entry.**
+`proveSignOut` prints FIVE `[FAIL]` strings unconditionally — they are S7's
+recorded prose (`proveSignOut.ts:1492-1496`), not cells. `grep -c '\[FAIL\]'`
+therefore returns 5 on a fully green run. Every count here is taken ABOVE the S7
+header.
+
+**After the change.** `npm run prove:signout` exit 0 twice, no reseed, **151**
+`[OK]`, 0 live failures. `npm run typecheck` exit 0. `npm run typecheck:app`
+exit 0.
+
+**THE DISPROOF.** `sessionEndedAfterPass`'s `sessionExpired` arm changed from
+`return true` to `return false`. `prove:signout` **exit 1, SEVEN live cells, all
+in S9**:
+
+- the session the sheet is given is DERIVED from the 401 pass, and it is
+  expired — `active`
+- the sheet does NOT tell the operator to wait for the queue to finish
+- ...and does NOT promise the bills go by themselves in seconds
+- ...it names the expiry, in statusNotice's word
+- ...and names the account that releases them
+- ...and carries the sign-in button — `dismiss`
+- **the two sheets DIFFER although the measured count is identical** — the
+  paired control, and it fired
+
+**`npm run typecheck` and `npm run typecheck:app` BOTH stayed at exit 0 under
+that mutation.** The compiler cannot see it; the proof is the only instrument
+that can. Reverted and verified byte-exact — SHA-256
+`E24AC2044CB142B16AFD7E31BC0B12932AD17C928CDD7B6DA68A044D2055CBA3`, 17346 bytes
+— after which the proof was green again, 151 `[OK]`, 0 failures.
+
+**THE SECOND DISPROOF, AND IT CORRECTED A WRITTEN PREDICTION.** The plan for
+this work said that with only the dead half derived, a fold reporting expired
+for everything would be caught by the paired control and by nothing else. Three
+runs:
+
+| S9's live half | the fold | result |
+|---|---|---|
+| literal `"active"` | correct | exit 0, 0 failures |
+| literal `"active"` | an outage reported as EXPIRED | **exit 0, 0 failures** |
+| derived from `liveRun` | the same mutation | exit 1, **6** failures, control among them |
+
+**The prediction was wrong.** With one side of the comparison supplied by the
+proof itself, the control catches nothing at all — a fold classifying every
+outage as a dead session, which is the R2b defect pointed the other way, ran
+FULLY GREEN. Deriving both halves is therefore not a marginal strengthening; it
+is the difference between that shipping green and six red cells. Written up as
+`lessons/a-differential-control-is-only-as-good-as-its-weaker-side.md`, the
+35th lesson.
+
+**WHAT THIS DOES NOT ESTABLISH.**
+
+- **Nothing here ran on a handset.** No sheet was drawn, no button pressed. The
+  device evidence for R2b remains the single 12:08 pass above, at its own width.
+- **`App.tsx:618` is still unobservable to every node proof.** Deleting it
+  leaves `prove:signout` green and both typechecks at 0, and no arrangement
+  changes that while the line is in a file `rootDir: "src"` excludes. What moved
+  is the DECISION, not the call — tracked in `OPEN_ITEMS.md` beside its
+  `maySync` twin, and deliberately not written up as closed.
+- **The product's behaviour is unchanged**, which is the point rather than a
+  caveat: both `App.tsx` call sites are bit-identical in effect to the literals
+  they replaced.

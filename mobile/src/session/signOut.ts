@@ -36,6 +36,7 @@
  * in. The contract now reports (session/tokenStore.ts ClearOutcome), and a
  * failure leaves the operator SIGNED IN and says so.
  */
+import type { SyncRunResult } from "../sync/engine.js";
 import type { SessionState } from "../sync/parkedReason.js";
 import type { ClearOutcome, TokenStore } from "./tokenStore.js";
 
@@ -78,6 +79,72 @@ export function sessionStateOf(s: {
  */
 export function maySync(s: { paused: boolean; token: string | null }): boolean {
   return !s.paused && s.token !== null;
+}
+
+/**
+ * The counters this decision may read. A Pick off the ENGINE'S OWN result type,
+ * so renaming a counter there is a compile error here rather than a branch that
+ * quietly stops matching.
+ *
+ * `forbidden` and `voidsForbidden` are absent ON PURPOSE — see below.
+ */
+export type PassEvidence = Pick<
+  SyncRunResult,
+  "sessionExpired" | "synced" | "rejected" | "masterDataBlocked"
+>;
+
+/**
+ * WHAT ONE SYNC PASS SAYS ABOUT THE CALLER — folded into the sessionEnded flag.
+ *
+ * EXTRACTED FROM App.tsx FOR THE REASON sessionStateOf WAS, AND IT IS THE HALF
+ * THAT WAS MISSING. sessionStateOf has been in src/ since R1b, but the value it
+ * reads — sessionEnded — was decided by two expressions inside App.tsx's
+ * syncOnce, and tsconfig.node.json ("rootDir": "src") puts that file outside the
+ * node proof program entirely. So proveSignOut could drive a real 401 through a
+ * real SyncEngine and STILL had to hand-type `session: "expired"` into the
+ * sheet: the one link R2b created was exercised by nothing.
+ *
+ * `r.sessionExpired > 0` is a CONVENTION, not arithmetic. A second author given
+ * only the spec could as easily have written `>= r.attempted`, or folded it into
+ * `retryable` — which engine.ts's own comment on the field exists to warn
+ * against. So it must be IMPORTED by whoever needs it and never recomputed
+ * (lessons/a-checker-must-not-share-the-code-it-checks.md: duplicate arithmetic,
+ * never duplicate a convention).
+ *
+ * WHAT THIS MUST NOT ABSORB. Each arm of syncOnce's classifier decides more than
+ * one fact, and the others are not this function's:
+ *
+ *   `online`. A 401 sets online TRUE — the server answered, promptly — so the
+ *   same branch that ends a session also reports a working network. Two facts,
+ *   one branch, and folding them together here would give one function an answer
+ *   a future change will want to move separately. It stays in App.tsx.
+ *
+ *   `submitRefused` (403). A refusal about what the caller MAY DO is a fourth
+ *   class and never a session variant — lessons/403-is-about-what-the-caller-
+ *   may-do.md, whose argument is precisely that App clears sessionEnded on any
+ *   server answer, so a 403 routed through here would evaporate every pass.
+ *   `forbidden` is therefore absent from PassEvidence: it cannot be read here
+ *   even by accident.
+ *
+ *   The early returns. Whether a pass stops classifying is control flow about
+ *   the other two facts, and it stays with the setters it guards.
+ *
+ * THREE OUTCOMES, NOT TWO, and the third is why `wasEnded` is a parameter. A
+ * pass that only bounced has learned NOTHING about the caller and must neither
+ * create an expiry nor clear one. A function returning a bare boolean from the
+ * run alone would have to invent an answer there, and both inventions are wrong:
+ * false clears a real expiry on the first outage after it, true announces one
+ * that never happened.
+ */
+export function sessionEndedAfterPass(wasEnded: boolean, r: PassEvidence): boolean {
+  // The server ANSWERED, and refused the caller. Neither an outage nor a
+  // rejected bill — lessons/401-is-about-the-caller-not-the-bill.md.
+  if (r.sessionExpired > 0) return true;
+  // Accepted, refused on the BILL'S merits, or parked: all three are direct
+  // evidence the token still works, which is stronger than the flag.
+  if (r.synced > 0 || r.rejected > 0 || r.masterDataBlocked > 0) return false;
+  // Silent. Nothing on the wire spoke about the caller; the belief is unchanged.
+  return wasEnded;
 }
 
 /**

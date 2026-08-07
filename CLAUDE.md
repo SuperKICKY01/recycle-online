@@ -185,6 +185,21 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   would drag a BOM and CRLF into the generated file. Both reasons are
   real; do not remove the exclusion on the strength of refuting one.
 
+  **CORRECTED 2026-08-07, BY THE COMMIT THAT CARRIES THIS LINE.** The
+  wording above named no OBJECT, and until now it did not have to: the
+  working tree carried CRLF 41 of 41 AND so did the blob at `62cee25`
+  (measured separately, `git show HEAD:lessons/README.md`). Appending one
+  index line took the working tree to 42 of 42; `eol=lf` normalised on
+  write, so **the blob committed here is LF and the CRLF half is now false
+  of the blob.** `git diff` reported ONE added line, because it normalises
+  both sides — the conversion is invisible in a diff and nobody meets it by
+  reading one. NOT OBSERVED, and stated as such: the same `eol=lf` should
+  put LF in the working tree at the next checkout, ending the CRLF
+  entirely; nothing has checked it out yet. **The BOM survives — `efbbbf`,
+  measured after the append — so the exclusion does not move.** This is
+  exactly the case the sentence above was written for: one of its two
+  reasons has been refuted and the exclusion stands on the other.
+
 ### Boot check — name the observable, don't assume the environment
 
 Before judging any result, name the observation that proves the
