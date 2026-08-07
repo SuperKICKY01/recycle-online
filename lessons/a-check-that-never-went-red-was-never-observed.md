@@ -204,3 +204,90 @@ was. And it is [[two-green-proofs-do-not-cover-the-seam]] pointed at instruments
 rather than components — there, no proof file owned the seam; here, no checker
 owned the new file, and in both cases the thing nobody owns is the thing nobody
 measures.
+
+## AMENDED AGAIN (2026-08-07): a sixth mechanism — the instrument never read what POINTS AT the artifact
+
+The fifth is *the instrument never read the artifact*. This is its **inverse, and
+it is harder to see**: the instrument DID read the artifact, opened it, parsed
+every citation in it, ran both controls over it and reported it clean — **and the
+report was true.** What it never read was the file pointing AT it.
+
+**The instance.** `ROADMAP.md` was REPLACED rather than amended. The old file
+carried a heading `## What next, and why that`; the new one did not. `ARCHITECTURE.md`
+line 11 carries a section-only citation, `` `ROADMAP.md § What next, and why that` ``,
+naming the file's role in the document map. **Deleting a heading from the file you
+are editing breaks a citation that lives in a file you are not**, and nothing in
+the edited file records that anyone was depending on it.
+
+**MEASURED, and the measurement is the whole amendment.** The break was found once
+by accident and then reproduced deliberately, by re-deleting the same heading on
+the same tree:
+
+| run | exit | what it said |
+|---|---|---|
+| `-Source ROADMAP.md` | **0** | `CITATIONS=56 BROKEN=0`, **both controls OK** |
+| `-Source START_HERE.md,ARCHITECTURE.md,ROADMAP.md` | **1** | the break prints under `=== SOURCE: ARCHITECTURE.md ===` — `22 BROKEN ROADMAP.md sect=What next, and why that hits=0 (section-only)` — while `ROADMAP.md` reports `BROKEN=0` **in the same run** |
+
+Reverted; `sha256` `f23dea1b…f456e3` identical before and after; all three sources
+then green, `SOURCES=3 CITATIONS=130 BROKEN=0`.
+
+**The first row is the finding.** A person who has just rewritten a file and wants
+to know whether they broke anything will scope the checker to that file — it is the
+obvious thing to type, and the citations they are anxious about are their own
+outbound ones. They would have been told `BROKEN=0`, with both positive controls
+holding, about a repository they had just broken.
+
+**Why it is not the fifth mechanism restated.** There, the damaged file was the
+SUBJECT of the change and was simply absent from the source list. Here the changed
+file is present, is read, and is genuinely clean. **The direction of the pointer is
+what hides it**: a citation is WRITTEN in the citing file and LIVES OR DIES on a
+heading in the cited one, so the damage propagates *opposite* to the edit. Every
+tool that answers "is this file OK" is scoped the wrong way round for it, and the
+answer it gives is not wrong — it is about the wrong file.
+
+**This generalises past citations. A heading is an interface**, and so is a file
+path, an anchor, an exported name, a handle. Any cross-file reference has this
+shape, and it is why "I only touched one file" is never an argument about blast
+radius.
+
+### The tool makes this easy to get wrong, and this is the SECOND session to hit it
+
+Said plainly rather than left as a lesson about care:
+
+- **`verify_citations.ps1`'s default `-Source` is `@('START_HERE.md','ARCHITECTURE.md')`
+  and is now STALE.** `ROADMAP.md` carries 56 citations and the default will never
+  open it. Run with no arguments after editing `ROADMAP.md` and you check two files,
+  neither of which is the one you changed, and exit 0. The header already says *"if
+  you add a document that cites, ADD IT TO `$Source`"* — that is an edit to the
+  script, and a phase constrained to one modified file cannot make it, so the full
+  source list has to be typed by hand every time and nothing enforces that.
+- **The default is wrong in both directions at once**, which is why it is worth a
+  paragraph: it omits the newly written file (missing every OUTBOUND break) and it
+  happens to include `ARCHITECTURE.md` (catching this INBOUND one) — the second by
+  luck rather than design, because `ARCHITECTURE.md` was added to the default for an
+  unrelated reason.
+- **`powershell -File script.ps1 -Source A,B,C` does not work**: `-File` binds
+  `A,B,C` as a single string, and the script reports `SOURCE MISSING: …A,B,C` and
+  exits 1. Harmless because it is red, but it pushes the next person toward the
+  bare default, which is the failure above. Invoke the script directly
+  (`& .\tools\verify_citations.ps1 -Source A,B,C`) so `[string[]]` binds.
+
+### Two more, appended to How to apply
+
+8. **Run a citation checker over EVERY source, never over the file you are
+   editing.** The file you edited is the one place an inbound break cannot appear,
+   so scoping to it is the single most dangerous scope available — it is the same
+   number the fifth mechanism produced, arrived at from the other side. If you can
+   only afford one run, run the whole set; there is no cheaper subset that is safe.
+9. **Before deleting or renaming a heading, grep for it across the repository.**
+   One command, and it is the only thing that turns "a section I removed" into "a
+   contract I broke". Replacing a document entirely is the maximum-risk form of
+   this, because every heading it had is deleted at once and the diff shows only
+   additions in the file you were looking at.
+
+**The trap it sets is the fifth's trap wearing the opposite face.** There, the
+brief ordered a green and got a true statement about the wrong object. Here, the
+brief's green is a true statement about the RIGHT object — `ROADMAP.md`'s citations
+really do all resolve — and it is still a false assurance, because the question
+being asked was "did I break the repository" and the instrument answered "is this
+file internally consistent". **Two different questions with the same exit code.**

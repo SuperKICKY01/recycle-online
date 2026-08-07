@@ -2251,3 +2251,86 @@ rather than deleted). **NONE came from the stale process.** The query bucketed
 everything else as "OTHER — investigate" and that bucket returned ZERO rows,
 which is the control that makes this a finding instead of an assumption. The
 hazard was real and never fired.
+
+### 2026-08-07, later still — `ROADMAP.md` replaced, and a citation break the edited file could not show
+
+**DOCUMENTATION AND ONE LESSON. No code was touched, no proof was run, and no
+dated green elsewhere in this file is refreshed by any of it.** `ROADMAP.md` was
+replaced rather than amended, on the owner's instruction and against six decisions
+(S1–S6) settled in a working session and recorded in no file until now.
+
+**The R-number census, which is what justified closing them as a log.** Measured at
+`6de5cec`, excluding `ROADMAP.md` itself: `git grep -oE '\bR(10|[1-9])b?\b' -- '*.md'
+':!ROADMAP.md'` returns **120 mentions across 12 tracked files** — `BRIEFING.md`,
+`OPEN_ITEMS.md`, `PROJECT_STATUS.md`, `SRS_MAP.md`, and eight under `lessons/`, one
+of which (`all-lessons.md`) is generated. `git log --all --format=... --grep='\bR[0-9]' -E`
+returns **10 commits**. The eight labels actually in use outside the file are
+`R1 R1b R2 R2b R3 R4 R5 R7`; `R6` and `R8`–`R10` existed only inside it. **The
+owner's recollection was "six files"; the measurement is twelve, and the file
+carries the measurement.**
+
+**The new prefix was checked for collision before it was chosen, not after.**
+`git grep -nE '\bP[0-9]+(\.[0-9]+)?\b' -- '*.md'` returned **nothing** at `6de5cec`.
+That command necessarily returns many hits now, from `ROADMAP.md` itself; the claim
+is dated to the commit, which is the only way it stays true.
+
+**A CITATION WAS BROKEN BY THE REWRITE AND THE EDITED FILE COULD NOT SHOW IT.**
+`ARCHITECTURE.md:11` carries a section-only citation
+`` `ROADMAP.md § What next, and why that` ``. The replacement did not carry that
+heading, so the citation resolved to nothing. **It was caught by an accident of
+which sources were in the checker's `-Source` list** — `ARCHITECTURE.md` was there
+because the phase required running over every source, not because anyone suspected
+it. The repair was made in `ROADMAP.md` (the heading exists again, and now names the
+three steps with no predecessor), so `ARCHITECTURE.md` was not edited.
+
+**The disproof was then EXECUTED rather than described**, by deleting the same
+heading again on the same tree:
+
+| run | exit | what it reported |
+|---|---|---|
+| `-Source ROADMAP.md` | **0** | `CITATIONS=56 BROKEN=0`, both controls OK — a true statement about the file, over a broken repository |
+| `-Source START_HERE.md,ARCHITECTURE.md,ROADMAP.md` | **1** | the break printed under `=== SOURCE: ARCHITECTURE.md ===` as `22 BROKEN ROADMAP.md sect=What next, and why that hits=0 (section-only)`, while `ROADMAP.md` read `BROKEN=0` in that same run |
+
+**Reverted and proven by hash**, not by inspection: `sha256` of `ROADMAP.md` is
+`f23dea1b63d5fa6c4f4d415c4c64fca942fedcbb54ca7a79069e0d6b81f456e3` both before the
+mutation and after the revert. Final state, run bare over all three sources:
+**`SOURCES=3 CITATIONS=130 BROKEN=0`, exit 0** — per source `START_HERE.md` 37,
+`ARCHITECTURE.md` 37, `ROADMAP.md` 56, every count non-zero and both controls
+(sections, non-empty) holding on each.
+
+**What this does NOT establish.** That the checker would catch an inbound break in
+any other file: it caught this one only because the citing document happened to be
+in the source list, and the script's DEFAULT list is
+`@('START_HERE.md','ARCHITECTURE.md')`, which never opens `ROADMAP.md` at all. Nor
+that no other heading was lost — no inventory of the old file's headings was taken
+before it was replaced, and the only one known to have been cited is the one that
+went red.
+
+**The lesson that came out of it** is the sixth mechanism in
+`lessons/a-check-that-never-went-red-was-never-observed.md`, written unprompted at
+the boundary: the fifth inverted — the instrument read the artifact and never what
+POINTS AT it. `build_all_lessons.py --check` exits **0** afterwards, over **36
+lesson files and 36 toc entries**, 15 amendments across 7 files, 4201 document
+lines.
+
+**A THIRD, INCIDENTAL MEASUREMENT, AND IT CONTRADICTS A MACHINE FOOTGUN.**
+`CLAUDE.md`'s CRLF entry states, as its corrected and final position, that the
+`lessons/README.md` BLOB is CRLF — "blob at `62cee25` CRLF 41/41 … blob at
+`9f929ad` CRLF 42/42". **Measured here with `git cat-file -p` and a positive
+control, every one of those blobs holds ZERO CR bytes.** The control is a synthetic
+`a\r\nb\r\n` stream through the identical counter, which returns 2, so the
+instrument is not blind. At `9f929ad` the blob is **0 CR, 42 LF**; at `62cee25`,
+**0 CR**; at `6de5cec`, **0 CR, 43 LF**; the BOM (`ef bb bf`) is present on all
+three. **The 41/42 figures are LINE counts, and the file is LF in the blob and CRLF
+in the working tree** — which is exactly what this file's own entry two sections
+above already reports for all eleven such files, and that entry is the one that is
+right. The WORKING TREE half of the footgun is correct and unchallenged: 43 CR and
+43 LF today, re-measured after this session's edit.
+
+**No file is corrected on the strength of this.** `CLAUDE.md` is out of scope, and
+the footgun's operational advice — measure the blob, never let git's warning be the
+observation — is sound and is what produced this measurement. What is wrong is one
+number in it, recorded here so the next session does not rediscover it as a mystery.
+Note also that `git add` printed its usual `CRLF will be replaced by LF` warning on
+`lessons/README.md` during this work, and per that same footgun it was not read as
+evidence of anything.
