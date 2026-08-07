@@ -71,6 +71,21 @@ RECONCILE = os.path.join(SERVER_DIR, "scripts", "reconcile.py")
 RESTORE = os.path.join(SERVER_DIR, "scripts", "restore_db.py")
 
 _failures: list[str] = []
+_skipped: list[str] = []
+
+
+class Unfit(Exception):
+    """The copy cannot be injected into. NOT "the money is wrong".
+
+    reconcile.py separates exit 1 ("at least one VIOLATION") from exit 2 ("the
+    checker could not run") and says why in its own docstring: anything that
+    treats them the same will one day report a silent green because the database
+    was unreachable. That discipline was never applied to THIS script. A copy
+    that could not be normalised, or that does not hold the rows the injections
+    aim at, exited 1 — the same code as an injection that failed to fire, so a
+    dirty fixture and a broken checker shared an outcome. Raised here, answered
+    with exit 2 in main().
+    """
 
 
 def check(label: str, ok: bool, detail: str = "") -> bool:
@@ -78,6 +93,19 @@ def check(label: str, ok: bool, detail: str = "") -> bool:
     if not ok:
         _failures.append(label)
     return ok
+
+
+def skip(label: str, reason: str) -> None:
+    """A claim whose PRECONDITION is absent. Not a pass, and not a failure.
+
+    lessons/proof-must-run-twice.md, fourth amendment: a proof must SKIP rather
+    than pass when a claim's precondition is absent. The reason is printed
+    beside it and the count is carried into the summary, so "exit 0 with three
+    claims never exercised" cannot be read off as "exit 0".
+    """
+    print(f"    [SKIP] {label}")
+    print(f"           {reason}")
+    _skipped.append(label)
 
 
 def header(title: str) -> None:
@@ -150,6 +178,14 @@ class Injection:
     expect: dict[str, int] = field(default_factory=dict)
     expect_rows: list[str] = field(default_factory=list)
     mode: str = "exact"          # "exact" | "superset"
+
+    # Tenant ids that must EACH carry a failing T0 in their own block of the
+    # report. Deliberately not a count — see t0_tenants_named() below.
+    expect_t0_for: list[str] = field(default_factory=list)
+
+    # Non-empty = this claim's precondition is absent on this copy. SKIP with
+    # the reason printed, never a quiet pass, and never applied.
+    skip: str = ""
 
 
 ROLE_SQL = re.compile(r"\b(alter|create|drop)\s+role\b", re.I)
@@ -224,9 +260,21 @@ async def main() -> int:
 
         await normalise(conn, args.database, restored=bool(args.backup))
         if _failures:
-            return 1
+            print("\nPROVE_RECONCILE INCONCLUSIVE: the copy could not be normalised into a"
+                  "\nclean baseline, so nothing below would have been injected into a known"
+                  "\nstate. Exit 2 — the FIXTURE is unfit. Deliberately NOT exit 1, which"
+                  "\nmeans an injection did not fire.")
+            for f in _failures:
+                print(f"    - {f}")
+            return 2
 
-        fx = await fixtures(conn)
+        try:
+            fx = await fixtures(conn)
+        except Unfit as e:
+            print(f"\nPROVE_RECONCILE INCONCLUSIVE: {e}"
+                  "\nExit 2 — the FIXTURE is unfit. Deliberately NOT exit 1.")
+            return 2
+
         injections = build(fx)
         for inj in injections:
             guard(inj)
@@ -235,7 +283,7 @@ async def main() -> int:
         for inj in injections:
             await run_injection(conn, args.database, inj)
 
-        await prove_x3(conn, args.database)
+        await prove_x3(conn, args.database, fx)
         await prove_inconclusive(args.database, live)
         not_injected()
     finally:
@@ -245,9 +293,18 @@ async def main() -> int:
     print(f"  failures: {len(_failures)}")
     for f in _failures:
         print(f"    - {f}")
+    print(f"  skipped : {len(_skipped)}")
+    for s in _skipped:
+        print(f"    - {s}")
     if _failures:
         print("\nPROVE_RECONCILE FAILED")
         return 1
+    if _skipped:
+        print("\nPROVE_RECONCILE OK, WITH SKIPS: every claim that RAN was made to fire,"
+              "\nnamed its rows, and cleared again when the injection was undone. The"
+              "\nskipped claims above were NOT exercised on this copy, and this run says"
+              "\nnothing whatever about them. Read the count, not the exit code.")
+        return 0
     print("\nPROVE_RECONCILE OK: every check above was made to fire, named its rows,"
           "\nand cleared again when the injection was undone.")
     return 0
@@ -320,9 +377,10 @@ async def normalise(conn: asyncpg.Connection, database: str, *, restored: bool) 
     # so the check would pass having demonstrated nothing — the exact shape
     # lessons/proof-must-run-twice.md is about. It is SKIPPED rather than passed.
     if not restored or before.total == 0:
-        print("    [SKIP] the diagnosis claim needs a freshly restored copy;"
-              f" this one started with {before.total} violations")
-        print("           (re-run with --from <backup dir> to make it)")
+        skip("the two known causes account for ALL of the live violations",
+             "this claim needs a freshly restored copy that arrives DIRTY, and this one"
+             f" arrived with {before.total} violations. Re-run with --from pointed at a"
+             " dump that carries them.")
     else:
         check("the two known causes account for ALL of the live violations,"
               f" all {before.total} of them", after.total == 0,
@@ -339,8 +397,10 @@ async def normalise(conn: asyncpg.Connection, database: str, *, restored: bool) 
 @dataclass
 class Fx:
     tenant: uuidlib.UUID
-    other_tenant: uuidlib.UUID
-    other_seller: uuidlib.UUID
+    other_tenant: uuidlib.UUID | None    # None = the copy holds only one bill-carrying tenant
+    other_seller: uuidlib.UUID | None
+    tenants: int                         # rows in `tenants`, read ONCE in fixtures()
+    tenant_ids: list[str]                # every tenant id in the copy, as text
     be_year: int
     max_seq: int
     max_bill: uuidlib.UUID
@@ -352,11 +412,42 @@ class Fx:
 
 async def fixtures(conn: asyncpg.Connection) -> Fx:
     header("fixtures in the copy")
+
+    # THE TENANT COUNT, READ ONCE, HERE, FROM THIS SCRIPT'S OWN CONNECTION.
+    #
+    # Three expectations below are derived from it, and until 2026-08-07 all
+    # three were LITERALS of the database this proof happened to be written
+    # against — 46 tenants, so `{"T0": 91}`, `...context=46` and
+    # `rows_at_start=46 rows_at_end=47`. The 2026-08-03 rebuild took that
+    # database to 2 tenants and the proof went red for four days over a checker
+    # that was working perfectly. A count assertion over data that can change
+    # has a half-life (lessons/proof-must-run-twice.md).
+    #
+    # READ HERE, and not later, for one reason: prove_x3() INSERTS a tenant, so
+    # a number read at probe time would be read from the fixture the probe has
+    # already moved.
+    #
+    # AND NOT PARSED OUT OF reconcile.py'S REPORT, which would be the same
+    # mistake wearing a fix's clothes. That report is the object under test: a
+    # checker that swept the wrong tenant set would carry the expectation along
+    # with it and every assertion below would hold BY CONSTRUCTION — which is
+    # lessons/a-checker-must-not-share-the-code-it-checks.md, and its
+    # sign-flipped twin a-differential-control-is-only-as-good-as-its-weaker-
+    # side.md, where a control ran fully green against the exact defect it was
+    # written for because one side of it was supplied by the test. This is a
+    # different process, a different role and a different query, and reconcile.py
+    # writes nothing — so no defect in the checker can change what it returns.
+    tenant_ids = [str(r["id"]) for r in await conn.fetch("SELECT id FROM tenants")]
+
     # The two tenants holding the most bills: one to break, one to point at.
     rows = await conn.fetch(
         "SELECT tenant_id, count(*) AS n FROM purchase_bills GROUP BY 1"
         " ORDER BY 2 DESC LIMIT 2")
-    tenant, other = rows[0]["tenant_id"], rows[1]["tenant_id"]
+    if not rows:
+        raise Unfit("the copy holds no purchase bills at all, so there is nothing to"
+                    " break. Every injection below aims at a real row.")
+    tenant = rows[0]["tenant_id"]
+    other = rows[1]["tenant_id"] if len(rows) > 1 else None
 
     # Every column an undo needs is captured HERE, before anything is broken.
     # An undo that re-derives a value it could have remembered is one refactor
@@ -372,25 +463,37 @@ async def fixtures(conn: asyncpg.Connection) -> Fx:
          WHERE b.tenant_id = $1 AND b.doc_no IS NOT NULL
          ORDER BY seq
         """, tenant)
+    if not bills:
+        raise Unfit(f"tenant {tenant} holds no NUMBERED bills, so the doc_no series the"
+                    " injections aim at does not exist in this copy.")
     top = bills[-1]
     singles = [b for b in bills if not b["voided"] and b["lines"] == 1 and b["id"] != top["id"]]
     voided = [b for b in bills if b["voided"]]
     if len(singles) < 2 or not voided:
-        raise SystemExit("the copy does not hold the fixtures this proof needs")
+        raise Unfit("the copy does not hold the fixtures this proof needs:"
+                    f" {len(singles)} active single-line bills below the top of the series"
+                    f" (2 wanted) and {len(voided)} voided bills (1 wanted).")
 
     mid, mid2 = singles[0], singles[1]
     item = await conn.fetchrow(
         "SELECT * FROM purchase_bill_items WHERE bill_id = $1", mid["id"])
-    other_seller = await conn.fetchval(
+    other_seller = None if other is None else await conn.fetchval(
         "SELECT id FROM sellers WHERE tenant_id = $1 LIMIT 1", other)
 
     fx = Fx(tenant=tenant, other_tenant=other, other_seller=other_seller,
+            tenants=len(tenant_ids), tenant_ids=tenant_ids,
             be_year=top["be_year"], max_seq=top["seq"], max_bill=top["id"],
             mid=mid, mid2=mid2, mid_item=item, voided=voided[0])
+    print(f"  tenants in copy   : {fx.tenants}  (every expectation about a tenant count"
+          " below is derived from this number, at runtime)")
     print(f"  tenant under test : {tenant}  ({len(bills)} numbered bills,"
           f" be_year {fx.be_year}, highest seq {fx.max_seq})")
-    print(f"  another tenant    : {other}  (its seller {other_seller} is the"
-          " cross-tenant target)")
+    if other is None:
+        print("  another tenant    : NONE — the copy holds one bill-carrying tenant, so"
+              " the cross-tenant claims below are SKIPPED, not passed")
+    else:
+        print(f"  another tenant    : {other}  (its seller {other_seller} is the"
+              " cross-tenant target)")
     print(f"  active 1-line     : {mid['doc_no']} {mid['id']}")
     print(f"  another 1-line    : {mid2['doc_no']} {mid2['id']}")
     print(f"  highest doc_no    : {top['doc_no']} {top['id']}")
@@ -546,6 +649,10 @@ def build(fx: Fx) -> list[Injection]:
             expect_rows=["bill -> seller", f"holder={mid['doc_no']}",
                          f"pointed_at_tenant={fx.other_tenant}",
                          "constraint=fk_bills_seller  MISSING"],
+            skip=("" if fx.other_seller is not None else
+                  "there is no second tenant with a seller in this copy, so there is no"
+                  " cross-tenant reference to make. T10, X1 and the S5 constraint check"
+                  " they share are NOT exercised here."),
         ),
         Injection(
             "T11", "a voided bill keeps its timestamp and its author but loses its"
@@ -626,16 +733,36 @@ def build(fx: Fx) -> list[Injection]:
                          "add it to ALL_RLS_TABLES"],
         ),
         Injection(
+            # T0 is asserted BY NAME, per tenant, and NOT by a count. The count
+            # is 2N-1 — every tenant sees N tenants instead of 1, and every
+            # tenant but the min(id::text) one also reports the wrong visible
+            # tenant. That formula is not arithmetic, it is a transcription of
+            # how many strings context_check happens to append, which is a
+            # CONVENTION: add a fourth problem there and the formula goes
+            # silently wrong while nothing announces it. Apply the test in
+            # lessons/a-checker-must-not-share-the-code-it-checks.md — could a
+            # second author, given only the spec, reach 2N-1? No. So assert the
+            # thing T0 exists for instead: that the context was checked for
+            # EVERY tenant, each named in its own block of the report.
             "S3/T0", "row-level security is switched off on `tenants`. Every tenant"
-                     " context now sees all 46, so the sweep's own self-check screams"
-                     " before any money check does",
+                     " context now sees every tenant in the copy, so the sweep's own"
+                     " self-check screams before any money check does",
             apply=[("ALTER TABLE tenants DISABLE ROW LEVEL SECURITY", ())],
             undo=[("ALTER TABLE tenants ENABLE ROW LEVEL SECURITY", ())],
-            expect={"S3": 1, "B1": 1, "B2": 1, "T0": 91},
+            expect={"S3": 1, "B1": 1, "B2": 1},
+            expect_t0_for=fx.tenant_ids,
             expect_rows=["table=tenants  RLS NOT ENABLED",
-                         "table=tenants  rows_visible_with_no_tenant_context=46",
-                         "tenants visible under this context, expected 1"],
+                         f"table=tenants  rows_visible_with_no_tenant_context={fx.tenants}",
+                         f"{fx.tenants} tenants visible under this context, expected 1"],
             mode="superset",
+            skip=("" if fx.tenants >= 2 else
+                  f"the copy holds {fx.tenants} tenant. With one tenant, disabling RLS on"
+                  " `tenants` changes nothing T0 can observe — one row is visible either"
+                  " way and it is this tenant's own — so T0 CANNOT fire, and asserting"
+                  " that it does would be a red about the copy rather than about the"
+                  " checker. A pilot shop's database has exactly one tenant"
+                  " (ROADMAP.md D10), so this is the ordinary case there, not an exotic"
+                  " one. S3, B1 and B2 are not exercised on such a copy either."),
         ),
         Injection(
             "S3/X2", "row-level security is switched off on purchase_bills — the"
@@ -648,12 +775,50 @@ def build(fx: Fx) -> list[Injection]:
                          "table=purchase_bills  rows_visible_with_no_tenant_context=",
                          "table=purchase_bills  seen_by_the_sweep="],
             mode="superset",
+            skip=("" if fx.tenants >= 2 else
+                  f"the copy holds {fx.tenants} tenant. X2 compares what the per-tenant"
+                  " sweep SAW against what is globally present; with one tenant those are"
+                  " the same number whether RLS is on or off, so X2 cannot fire. The"
+                  " cascades this injection also expects (a tenant seeing another's bills)"
+                  " have nothing to cascade from."),
         ),
     ]
 
 
+def t0_tenants_named(out: str) -> set[str]:
+    """Every tenant whose OWN block of the report carries a failing T0.
+
+    Parsed out of the report a person reads at 07:00, per tenant, rather than
+    off the aggregate violation count — because the aggregate is 2N-1 only by
+    virtue of how many problem strings context_check appends, and that is a
+    convention of the checker rather than a fact about the data. This survives a
+    third problem string being added; a count does not.
+
+    It is also the stronger claim. A count says "T0 fired 3 times" and cannot
+    distinguish that from one tenant firing three times, which is EXACTLY the
+    failure T0 exists to catch (its own docstring: "A sweep that silently
+    re-checked tenant A forty-six times would otherwise print forty-six
+    greens"). Where two mechanisms produce one number, that number is evidence
+    about neither — the seventh mechanism in
+    lessons/a-check-that-never-went-red-was-never-observed.md.
+
+    reconcile.py's sweep prints "  --- tenant <uuid> ---" before that tenant's
+    results whenever any of them failed, and Report.emit prints "  [FAIL] T0 "
+    within that block.
+    """
+    named: set[str] = set()
+    for block in out.split("\n  --- tenant ")[1:]:
+        tid = block.split(" ---", 1)[0].strip()
+        if re.search(r"^\s*\[FAIL\] T0\b", block, re.M):
+            named.add(tid)
+    return named
+
+
 async def run_injection(conn: asyncpg.Connection, database: str, inj: Injection) -> None:
     print(f"\n  --- {inj.id}: {inj.why} ---")
+    if inj.skip:
+        skip(f"{inj.id}: not exercised on this copy", inj.skip)
+        return
     for sql, _ in inj.apply:
         print(f"      inject: {' '.join(sql.split())[:110]}")
     await exec_all(conn, inj.apply)
@@ -671,6 +836,14 @@ async def run_injection(conn: asyncpg.Connection, database: str, inj: Injection)
             check(f"{inj.id}: the named checks fire with the expected counts"
                   " (others may cascade)", not missing,
                   f"wrong or absent: {missing}" if missing else f"got {run.counts}")
+        if inj.expect_t0_for:
+            named = t0_tenants_named(run.out)
+            silent = [t for t in inj.expect_t0_for if t not in named]
+            check(f"{inj.id}: T0 fired for EVERY one of the {len(inj.expect_t0_for)}"
+                  " tenants in the copy, each named in its own block of the report",
+                  not silent,
+                  f"no failing T0 in the block of: {silent}" if silent
+                  else f"named {sorted(named)}")
         for needle in inj.expect_rows:
             check(f"{inj.id}: the report NAMES it - {needle!r}", run.names(needle))
     finally:
@@ -685,14 +858,51 @@ async def run_injection(conn: asyncpg.Connection, database: str, inj: Injection)
 # ---------------------------------------------------------------------------
 # X3 — the database moving under the checker while it runs
 # ---------------------------------------------------------------------------
-async def prove_x3(conn: asyncpg.Connection, database: str) -> None:
+async def prove_x3(conn: asyncpg.Connection, database: str, fx: Fx) -> None:
     print("\n  --- X3: a row lands WHILE the sweep is running ---")
     print("      X3 is not an invariant about the data; it is a statement about the")
     print("      RESULT. A violation found while rows were landing could be a bill")
     print("      mid-flight rather than a defect, and the reader must be told.")
+
+    # fx.tenants was read before the first injection. Every injection since has
+    # been undone and re-verified against a clean exit-0 run, so it must still
+    # hold — this is a drift check on the fixture, not a second opinion about
+    # the checker, and it is here because the two assertions below rest on it.
+    now = await conn.fetchval("SELECT count(*) FROM tenants")
+    check("X3: the tenant count the expectations are derived from has not moved since"
+          " fixtures", now == fx.tenants, f"fixtures={fx.tenants} now={now}")
+
     tid = uuidlib.uuid4()
     proc = await asyncio.create_subprocess_exec(
-        sys.executable, RECONCILE, "--database", database, "--max-rows", "0",
+        # -u, AND IT IS THE WHOLE PROBE.
+        #
+        # This probe works by watching the child's output for a marker and
+        # inserting a row while the sweep is still running. Python BLOCK-buffers
+        # a non-tty stdout at 8192 bytes, so on a small copy the entire report
+        # (5364 bytes over a 2-tenant database, measured 2026-08-07) reaches the
+        # pipe only when the child EXITS. The marker then arrives after the
+        # sweep is over, the row lands outside the window, X3 correctly reports
+        # no drift — and the probe has silently stopped probing.
+        #
+        # It was green until 2026-08-03 for a reason that is not one: the
+        # 46-tenant report ran to several buffers, so the first flush happened
+        # to land mid-sweep. Nothing about the assertion changed. The fixture
+        # shrank, and with it the timing the assertion had been resting on.
+        #
+        # -u on ARGV rather than PYTHONUNBUFFERED in the environment: an
+        # argument cannot be dropped by whoever launches this script. It changes
+        # WHEN bytes arrive and nothing about what the checker computes.
+        #
+        # `=== structure` below is the EARLIEST SAFE marker and must not be
+        # moved earlier: it is the first thing reconcile.py prints after it takes
+        # its opening fingerprint, so a marker before it risks the row landing
+        # before the window opens — a silent false negative rather than a red.
+        #
+        # A RESIDUAL REMAINS AND IT FAILS CLOSED: the sweep must not finish
+        # between the marker arriving and the INSERT committing. If it does, X3
+        # does not fire and the cell below is RED. There is no path to a false
+        # green.
+        sys.executable, "-u", RECONCILE, "--database", database, "--max-rows", "0",
         cwd=SERVER_DIR, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
     injected = False
     chunks: list[bytes] = []
@@ -715,7 +925,8 @@ async def prove_x3(conn: asyncpg.Connection, database: str) -> None:
     check("X3: a row landing mid-run is reported, not silently absorbed",
           counts.get("X3") == 1, f"got {counts}")
     check("X3: the report names the table and both counts",
-          "table=tenants  rows_at_start=46  rows_at_end=47" in out)
+          f"table=tenants  rows_at_start={fx.tenants}  rows_at_end={fx.tenants + 1}" in out,
+          f"expected rows_at_start={fx.tenants} rows_at_end={fx.tenants + 1}")
 
     await conn.execute("DELETE FROM tenants WHERE id = $1", tid)
     back = await run_reconcile(database)

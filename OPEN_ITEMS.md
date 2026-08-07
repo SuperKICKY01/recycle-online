@@ -176,8 +176,24 @@ idea — only that it is unresolved.
   is unknown. *Unblocks:* reading those two files against this
   reproduction, which is cheap to stage — revoke a session, or just let
   a token expire while a bill is queued.
-- **`prove_reconcile.py` is RED, and has been since the 2026-08-03
-  rebuild — NOT caused by anything in R1a.** Three of its expectations
+- **~~`prove_reconcile.py` is RED, and has been since the 2026-08-03
+  rebuild~~ — CLOSED 2026-08-07 by `ROADMAP.md § STAGE 1`
+  "prove_reconcile.py back to green".** It exits 0 twice bare against a
+  scratch copy with no reseed between. **The record is the dated entry in
+  `PROJECT_STATUS.md`'s Baseline observations (2026-08-07, P1.10) and is
+  deliberately NOT restated here:** two copies drift, and a new session
+  believes whichever it reads first. **One thing the entry below got wrong
+  travels with the closure**, because it is the finding rather than a
+  detail: the four failing cells were **two different defects, not one**.
+  Three were the stale counts described below; the fourth, `:716`, holds no
+  count at all and was red because the X3 probe had stopped landing its row
+  inside the window it measures. Deriving the three — which is what this
+  entry, `ROADMAP.md` and `PROJECT_STATUS.md` all prescribed — would have
+  left that cell red. The text below is left standing as the record of what
+  was believed at the time. *(The "3 tenants, `T0` got 3" figure in it does
+  not fit the 2N−1 relation the other measurements do, which predicts 5. Noted
+  during P1.10, not chased.)*
+  **Three of its expectations
   are absolute counts of a database that no longer exists:
   `prove_reconcile.py:634` `{"T0": 91}`, `:636`
   `rows_visible_with_no_tenant_context=46`, and `:718`
@@ -198,8 +214,16 @@ idea — only that it is unresolved.
   in the very file its fourth amendment was written about** — a count
   assertion over data that can change has a half-life, and this one
   expired the day the database was rebuilt.
-- **`prove_reconcile.py`'s injection COUNT is recorded two different ways, and
-  nobody has measured which is right.** The script's own run header prints
+- **~~`prove_reconcile.py`'s injection COUNT is recorded two different ways~~ —
+  SETTLED 2026-08-07 in P1.10: it is 19.** Measured three ways — the header
+  prints `injections (19)` from `len(injections)`, 19 constructors stand in
+  `build()`, and `aa0a5d5`, the only commit that has ever touched the file, also
+  holds 19. `PROJECT_STATUS.md`'s single "23" is corrected there. **No reason for
+  the 23 is recorded anywhere, deliberately:** a reconstruction that fits
+  arithmetically is not a recovered reason, and an invented one would be
+  indistinguishable a year from now from a reason somebody actually had. The text
+  below is left standing as the record of the discrepancy.
+  The script's own run header prints
   `=== injections (19) ===`, and the 2026-08-02 entry in `PROJECT_STATUS.md`
   agrees with it ("118 assertions, 0 failures, 19 injections"). The 2026-08-07
   `created_by` entry says "Every money injection passed across **23**
@@ -213,6 +237,31 @@ idea — only that it is unresolved.
   gets settled**, because that step has to read the injection list anyway to
   derive the three counts that expired in the rebuild; whoever is in there
   should count the injections and correct whichever number is wrong.
+- **ON A ONE-TENANT DATABASE, THREE OF `prove_reconcile.py`'s INJECTIONS DO NOT
+  RUN — AND A PILOT SHOP'S DATABASE HAS ONE TENANT.** Found in P1.10 and
+  MEASURED on a copy reduced to one tenant on purpose, not reasoned:
+  **S3/T0** cannot fire (with one tenant, exactly one row is visible whether RLS
+  on `tenants` is on or off, so T0 has nothing to report), **S3/X2** cannot fire
+  (the per-tenant sweep's total and the global total are the same number), and
+  **T10** cannot fire (there is no other shop's seller to point a bill at).
+  **Those three are the injections that exercise TENANT ISOLATION**, which is the
+  most heavily enforced property in the system
+  (`ARCHITECTURE.md § 8.2 Tenant isolation, in full`). They now SKIP with the
+  reason printed and the count carried into the summary — which is the correct
+  outcome and is NOT the same as covering them. *Not done, and it may be
+  unfixable rather than undone:* these injections need two tenants because the
+  property they break is a relation BETWEEN tenants, and manufacturing a second
+  tenant inside a shop's own database to test it would put a row in a paying
+  shop's ledger that the product could not have produced
+  (`lessons/a-proof-fixture-must-be-a-row-the-product-could-produce.md`).
+  **The consequence to carry, and the thing to actually read:** at a pilot shop
+  this proof's exit 0 means LESS than the same exit 0 means on this box, and the
+  number that says how much less is the **skip count**, not the exit code.
+  `ROADMAP.md § STAGE 2` "A standing reconcile against the shop's real data"
+  rests on this proof; it rests on a narrower green there. *Unblocks:* a decision
+  on whether a two-tenant scratch copy restored from the shop's dump is the thing
+  P2.2 points the proof at — which would keep the coverage and keep the
+  fabricated tenant out of the shop's own database. Nobody has taken it.
 - **A 400 ms unconditional `refresh()` runs on a screen that has signed
   out** — `App.tsx:560-569` re-reads the local bill store every 400 ms
   while `ready`, with no gate on the session at all, so it keeps running
@@ -497,6 +546,57 @@ idea — only that it is unresolved.
   four call-site modules importing from it. No behaviour change; the
   bodies on the wire must come out byte-identical, which is what makes it
   safe to do in its own commit.
+- **P1.10 REPAIRED `prove_reconcile.py`. FIVE THINGS IT DID NOT REMOVE, each of
+  which can still turn that proof red for a reason that is NOT a money defect.**
+  Written down because the repair was scoped to the four failing cells and these
+  were surveyed in the same pass; none is a new hazard, and all five were
+  previously unrecorded.
+  - **The X3 probe is still a RACE, and it now FAILS CLOSED.** `-u` on the child's
+    argv makes the marker arrive during the sweep instead of after it, but the
+    sweep must still not finish between the marker arriving and the INSERT
+    committing. If it does, X3 does not fire and the cell is **RED** — there is
+    no path to a false green, which is the acceptable direction and is stated at
+    the call site. On a small copy this is a real flake risk. *Not done:* the
+    marker used (`=== structure`) is genuinely the earliest SAFE point — anything
+    sooner risks the row landing before the window opens, which would be a silent
+    false negative rather than a red. *Unblocks:* a synchronisation point the
+    probe CONTROLS rather than one it watches, which reconcile.py does not
+    currently offer.
+  - **`normalise()` carries a hardcoded `interval '7 years'`, and against a
+    current dump it does nothing at all.** That shift repairs the one debris cause
+    it was written for — `prove_daily_report`'s old 2019 fixture day, seven
+    Gregorian years adrift — and a differently-adrift fixture would not be
+    repaired by it. It is a fourth database-shaped constant of exactly the family
+    P1.10 removed, currently DORMANT: every run now reports `DELETE 0, DELETE 0,
+    UPDATE 0`, and the diagnosis claim beside it correctly SKIPs because the dump
+    arrives clean. **So ~55 lines of normalisation logic run against nothing on
+    every run and their own correctness is unobserved.** *Not done:* out of
+    P1.10's scope, and it fails closed (the "clean copy to inject into" check goes
+    red). *Unblocks:* deciding whether that block still has a job now that the two
+    debris sources are fixed at source.
+  - **An undo is not transactional.** `exec_all` runs an injection's undo
+    statements one at a time with no transaction, so a failure part-way through
+    leaves the copy half-restored — e.g. T3 restoring the weight but never
+    re-adding `ck_items_net`, after which S5 is red for every following injection
+    under `mode="exact"` and the run reads as the checker misbehaving. *Not done:*
+    it has never fired, and each injection's own "undoing returns the copy to a
+    clean exit-0 run" cell does catch it with a distinguishable label. *Unblocks:*
+    wrapping apply and undo in one transaction.
+  - **A dump older than the schema the checker requires goes red for its AGE.**
+    `REQUIRED_CONSTRAINTS` and `REQUIRED_INDEXES` are read out of migrations 0001
+    and 0002, so a pre-0002 copy has no `doc_no_counters` and S3 reports it
+    missing. This is the inverse of the two entries above about
+    `ck_users_token_version` and `fk_bills_created_by` being deliberately EXCLUDED,
+    and it is inherent to restoring from arbitrary dumps rather than a defect.
+    *Not done:* nothing to do until someone restores from a dump that old.
+  - **A run that dies between the X3 INSERT and its DELETE leaves a probe tenant
+    in the copy.** Harmless in itself — an empty tenant is clean — and healed by
+    the next `--from` restore. It matters only because the derived expectations
+    are read once in `fixtures()`; they would read the inflated count correctly,
+    but a future edit that read the count later would not. The drift check added
+    in P1.10 (`the tenant count … has not moved since fixtures`) is what stands
+    between those two. *Not done:* nothing to do; recorded so the drift check is
+    not deleted as ceremony.
 - **A stale comment cites a TypeScript config that no longer exists**
   (`mobile/src/device/expoSqliteDriver.ts`). *Not done:* comment only,
   nothing depends on it. *Unblocks:* one edit, whenever that file is

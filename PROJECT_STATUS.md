@@ -57,6 +57,42 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.10 — `prove_reconcile.py` BACK TO GREEN. LANDED 2026-08-07. The second
+P-number recorded as met.** RED since 2026-08-03, and the four failing cells that
+two documents had recorded as one thing turned out to be TWO. Three were absolute
+counts of the 46-tenant database the rebuild destroyed and are now DERIVED from the
+restored copy at runtime. **The fourth held no count at all** — the X3 probe had
+silently stopped landing its row inside the window it measures, because Python
+block-buffers a non-tty stdout at 8192 bytes and the checker's whole report over a
+2-tenant copy is 5364. **No assertion, no code and no test had been edited**; the
+database shrank and the stimulus stopped arriving. The fix is `-u` on the child's
+argv. `ROADMAP.md § STAGE 1` "prove_reconcile.py back to green" carries the DONE
+WHEN — **corrected there, because as written it named only the three counts and
+meeting it would have left the fourth cell red** — and is marked met. The
+observations, with what they do NOT establish, are the dated entry at the end of
+Baseline observations.
+
+**NOTHING IN THIS PHASE RAN ON A HANDSET, AND NO PRODUCT CODE CHANGED.** One file:
+`server/scripts/prove_reconcile.py`. `reconcile.py` was mutated four times to make
+the repaired cells go red and is byte-identical to its committed blob.
+
+**THE FINDING THAT MATTERS MORE THAN THE REPAIR, and it is about the pilot.** On a
+ONE-TENANT database — which is what a pilot shop's is (`ROADMAP.md` D10) — three
+injections cannot fire at all: **S3/T0** (one tenant is visible whether RLS is on
+or off, so T0 has nothing to report), **S3/X2** (the per-tenant sum and the global
+count are the same number), and **T10** (there is no other shop's seller to point
+at). Those are the injections that exercise TENANT ISOLATION, the most heavily
+enforced property in the system. They now SKIP with their reason printed rather
+than passing or inventing a red, and the run reports a skip count — but the
+consequence stands and is not softened by the skip being correct: **this proof's
+green says less at a pilot shop than it says on this box, and the number to read
+there is the skip count, not the exit code.** Recorded in `OPEN_ITEMS.md`.
+
+**The text below this block is the PREVIOUS phase's entry and is left standing** —
+a dated record is superseded, never rewritten.
+
+---
+
 **P1.4 — AN ACCOUNT THAT CAN BE LOCKED, NOT ONLY SIGNED OUT. LANDED 2026-08-07,
 migration 0007. The first P-number recorded as met.** `users.is_active`
 (NOT NULL DEFAULT true), checked at BOTH sites a lock has to bite —
@@ -2209,8 +2245,12 @@ site. Measured, not predicted.
 **`prove_reconcile.py` — exit 1, 113 `[OK]` / 4 `[FAIL]`, and the four are the
 four already recorded.** Verbatim: `S3/T0 … wrong or absent: {'T0': 91}`,
 `S3/T0 … rows_visible_with_no_tenant_context=46`, `X3 … got {}`, `X3 … names
-the table and both counts`. Every money injection passed across 23 injections.
-Nothing in this work touched it.
+the table and both counts`. Every money injection passed across 19 injections.
+Nothing in this work touched it. **[19 CORRECTED 2026-08-07 in P1.10; this
+sentence read 23 when written. Measured three ways — the run header prints
+`injections (19)` from `len(injections)`, 19 constructors stand in `build()`, and
+the only commit that has ever touched the file holds 19. NO REASON FOR THE 23 IS
+RECORDED: a reconstruction that fits arithmetically is not a recovered reason.]**
 
 **A LINE-ENDING FINDING, AND THE MECHANISM IS UNDETERMINED — no cause is named
 here because none was measured.** After editing, `server/scripts/prove_bills.py`
@@ -2502,3 +2542,130 @@ cell count here was re-taken with `grep -a`.
 - **`recycle_lock_scratch` and one more dump directory now exist.** Neither was
   removed, because `OPEN_ITEMS.md` records that no retention rule exists and
   that inventing one in passing is how a convention gets set by accident.
+
+### 2026-08-07 — P1.10, `prove_reconcile.py` back to green (a proof, not the product)
+
+**NO DEVICE AND NO PRODUCT CODE.** Everything below is a proof script, a checker and
+a scratch database on this box. One file changed. No dated green elsewhere in this
+file is refreshed by any of it.
+
+**THE FOUR FAILING CELLS WERE TWO DIFFERENT DEFECTS**, which `OPEN_ITEMS.md` and this
+file had both recorded as one for four days. Reproduced first, from a run made rather
+than read: **113 `[OK]` / 4 `[FAIL]`, exit 1**, against a copy restored from the
+post-0007 dump (523 rows, 2 tenants).
+
+- **Three were counts of the destroyed database.** `:634` `{"T0": 91}`, `:636`
+  `rows_visible_with_no_tenant_context=46`, `:718` `rows_at_start=46 rows_at_end=47`.
+  The T0 figure is **2N−1** where N is the tenant count: every tenant sees N instead
+  of 1, and every tenant except the `min(id::text)` one also reports the wrong visible
+  tenant. Confirmed at three points — 46→91 (the 2026-08-02 green), 48→95 (recorded in
+  `OPEN_ITEMS.md`), and **2→3 measured here.** *(The "3 tenants, T0 got 3" line in
+  `OPEN_ITEMS.md` does not fit that formula, which predicts 5. Noted, not chased.)*
+- **The fourth held no count and is a different defect.** `:716` is
+  `counts.get("X3") == 1` and hardcodes nothing. It was red because **X3 genuinely
+  did not fire**: the checker reported `exit 0, 0 violations {}`. Established from the
+  run's own output — the parent printed `inserted tenant … mid-run`, so it received the
+  marker and issued the INSERT; the marker is printed after the checker takes its
+  opening fingerprint; X3 still saw no drift; therefore the row landed after the
+  CLOSING fingerprint.
+
+**THE CAUSE, MEASURED.** `reconcile.py`'s entire report over this 2-tenant copy is
+**5364 bytes**, with the `=== structure` marker at byte **253**. Python block-buffers
+a non-tty stdout at **8192** bytes, so nothing reaches the pipe until the child exits.
+**Disproof run with the prediction written first, and it required editing nothing:**
+`PYTHONUNBUFFERED=1` took the failures from **4 to 3**, turning `X3: a row landing
+mid-run is reported` green and leaving the other three red — exactly as predicted.
+Written up as the EIGHTH mechanism in
+`lessons/a-check-that-never-went-red-was-never-observed.md`.
+
+**THE INJECTION COUNT IS 19**, measured three ways: the header prints
+`=== injections (19) ===` from `len(injections)`; `grep -c "^        Injection($"`
+returns 19; and `aa0a5d5`, the only commit that has ever touched the file, also holds
+19. `git grep "23 injections"` returned exactly one line — `PROJECT_STATUS.md:2212`,
+introduced by `9673171` — corrected above with no reason recorded for the 23.
+
+**THE REPAIR.** The tenant count and the tenant id list are read ONCE in `fixtures()`,
+before any injection and before the X3 probe moves them, from the prove script's own
+superuser connection: a different process, role and query from the checker, which
+writes nothing, so no defect in it can move the expectation. Deliberately NOT parsed
+out of the checker's report, which is the object under test
+(`lessons/a-checker-must-not-share-the-code-it-checks.md`, and its sign-flipped twin
+`a-differential-control-is-only-as-good-as-its-weaker-side.md`). **T0 is asserted by
+NAME, per tenant, not by count:** 2N−1 transcribes how many problem strings
+`context_check` happens to append, which is a convention a second author could not
+re-derive, and a count cannot tell "T0 fired for every tenant" from "one tenant fired
+three times" — the failure T0 exists to catch.
+
+**GREEN, each run bare, one command per invocation, redirected and never piped.**
+
+| run | when | cells | exit |
+|---|---|---|---|
+| 1 | before any break | 119 `[OK]` / 0 `[FAIL]` / **1 `[SKIP]`** | **0** |
+| 2 | immediately after, no reseed | 119 / 0 / 1 | **0** |
+| 3 | after all four breaks were reverted | 119 / 0 / 1 | **0** |
+
+The single skip is pre-existing and correct: the post-0007 dump arrives CLEAN, so the
+diagnosis claim has no dirty baseline to demonstrate against and is skipped rather
+than passed.
+
+**EACH REPAIRED CELL OBSERVED GOING RED, AND EACH BREAK LEFT ITS NEIGHBOURS GREEN.**
+Cells: **1** = T0 by name, **2** = the `rows_visible…=N` needle, **3** = `X3 …
+reported`, **4** = the `rows_at_start/end` needle.
+
+| break | where | 1 | 2 | 3 | 4 | exit |
+|---|---|---|---|---|---|---|
+| A — T0 loses its "how many are visible" problem | `reconcile.py` `context_check` | **RED** | **RED** | green | green | 1 |
+| B — the blind read reports one row fewer | `reconcile.py` `blind_read` | green | **RED** | green | green | 1 |
+| C — `-u` removed from the X3 child | `prove_reconcile.py` | green | green | **RED** | **RED** | 1 |
+| D — the X3 row misreports its end count | `reconcile.py` `did_it_move` | green | green | green | **RED** | 1 |
+
+**Break A is the whole argument for asserting T0 by name.** The old `{"T0": 91}` would
+ALSO have gone red under it — T0's count falls to 1 — but it could only have said that
+a number was wrong. The by-name cell NAMED WHICH TENANT WENT UNCHECKED:
+`11111111-…`, the `min(id::text)` one, whose only remaining T0 problem was precisely
+the one the break removed. That is the discriminating field rather than the outcome two
+mechanisms share.
+
+**Break C reproduced the original `got {}` on the repaired file**, confirming the
+buffering mechanism a second time and that `-u` is load-bearing rather than decoration.
+
+`reconcile.py` reverted and verified byte-exact after every break: `git hash-object`
+`ded4ebfd…`, sha256 `c461115b…`, 54654 bytes, identical before and after.
+
+**THE ONE-TENANT RUN.** A copy was restored and the second tenant's whole graph removed
+(33 rows across ten tables, one transaction), leaving `SELECT count(*) FROM tenants` =
+**1**. The run exits **0 with FOUR skips**, each printing its reason: the diagnosis
+claim, plus **T10, S3/T0 and S3/X2 — the three injections that exercise tenant
+isolation.** None can fire on one tenant. **Two of those three skips were not asked for
+and were forced:** reaching the S3/T0 skip meant `fixtures()` had to survive the absence
+of a second tenant, where it previously died on `rows[1]` with an IndexError; and once
+past it, S3/X2 and T10 fail for the same structural reason. A pilot shop's database has
+one tenant (`ROADMAP.md` D10), so this is the ordinary case there, not an exotic one.
+
+**EXIT 2 ON AN UNFIT FIXTURE, distinct from exit 1, observed on a copy the checker
+itself calls clean.** With the voided-bill fixture removed, the run printed
+`the normalised copy is a clean, exit-0 run to inject into - exit=0 violations=0 {}`
+and then `PROVE_RECONCILE INCONCLUSIVE: the copy does not hold the fixtures this proof
+needs: 204 active single-line bills below the top of the series (2 wanted) and 0 voided
+bills (1 wanted). Exit 2 — the FIXTURE is unfit. Deliberately NOT exit 1.` **Zero
+violations and exit 2**, so the code cannot be read as "the money is wrong". Exit 1
+remains reachable and was observed four times in the breaks above.
+
+**WHAT THIS DOES NOT ESTABLISH.**
+
+- **Nothing ran on a handset and no product code changed.** This phase repaired the
+  proof of an instrument. It says nothing new about any bill.
+- **`reconcile.py` is unchanged**, and nothing here strengthens it. Its S4 role check
+  remains unproven by execution for the reason it always was.
+- **The X3 probe is still a race**, now failing CLOSED. It can go red on a small copy
+  if the sweep finishes between the marker arriving and the INSERT committing; there is
+  no path to a false green. Recorded in `OPEN_ITEMS.md`.
+- **The 46-tenant half of the buffering explanation is inference, not measurement.**
+  5364 bytes over 2 tenants was measured; that the pre-rebuild report exceeded 8192 is
+  reasoned from it and cannot be re-measured, that database having been replaced.
+- **`normalise()` still carries a hardcoded `interval '7 years'`**, and against a clean
+  dump it does nothing at all (`DELETE 0, DELETE 0, UPDATE 0`), so its own correctness
+  is unobserved on every current run. Out of this phase's scope; in `OPEN_ITEMS.md`.
+- **The scratch-database inventory is UNCHANGED.** `recycle_recon_scratch` was
+  restored, mangled and restored again; no new database and no new dump directory was
+  created.

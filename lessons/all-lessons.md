@@ -817,6 +817,97 @@ obvious assertion could not see it.
 
 ---
 
+## AN EIGHTH MECHANISM (P1.10, 2026-08-07) — the stimulus stopped arriving, and NOBODY EDITED ANYTHING
+
+The second mechanism is *"the failing state is unreachable from the inputs
+supplied"*, and every instance of it above is about the inputs' VALUES: a literal
+`pending: 3`, an empty needle, a mutation the compiler ate. **This is the same
+sentence with TIMING substituted for values** — and it has one property none of
+the other seven has. **It arrived with no edit at all.** Nobody touched the proof.
+The proof stopped proving.
+
+**The shape.** `prove_reconcile.py`'s X3 probe asserts that a row landing WHILE
+the checker sweeps is reported rather than absorbed. To land the row inside that
+window it watches the checker's own stdout for a marker and inserts the moment it
+sees one:
+
+```python
+if not injected and b"=== structure" in line:
+    await conn.execute("INSERT INTO tenants (id, name) VALUES ($1, 'x3 probe')", tid)
+```
+
+Python **block-buffers a non-tty stdout at 8192 bytes**. Measured 2026-08-07: the
+checker's entire report over the 2-tenant database is **5364 bytes**, with the
+marker at byte **253**. Nothing reaches the pipe until the child exits. The marker
+therefore arrives after the sweep is over, the row lands outside the window, X3
+correctly reports no drift — and the probe has stopped probing **while still
+printing `inserted tenant … mid-run`**.
+
+**It was green on 2026-08-02, honestly, and red on 2026-08-03.** The green was
+real: the row genuinely did land mid-sweep, and the report said
+`rows_at_start=46 rows_at_end=47`. What changed on 2026-08-03 was that the
+database was rebuilt from 46 tenants to 2. *(That the 46-tenant report ran to
+several buffers is inference from the measured 5364 — each tenant prints its own
+scope block — and it cannot be re-measured, because that database was replaced.)*
+**No assertion changed, no code changed, no test was edited.** The fixture shrank,
+and the stimulus the assertion depended on stopped being delivered.
+
+**Why it hid, and this part is not incidental.** It failed inside a proof that was
+ALREADY RED for three unrelated reasons — three hardcoded counts of the destroyed
+database — and it wore the same label they did. Four failing cells, three of one
+kind and one of another, recorded in two documents for four days as *"the two
+tenant-count assertions and the X3 timing probe"*. Nothing in the output separates
+"this expectation is stale" from "this probe never fired": both are a red cell
+under one heading. **A failure that resembles the failures beside it does not get
+investigated separately** — and the repair everyone had written down (derive the
+three counts) would have left this one red, because it had no count to derive.
+
+**MEASURED, with the prediction written first.** The mechanism was named before it
+was tested, and the test required editing nothing at all:
+
+| run | change | result |
+|---|---|---|
+| baseline | none | 4 failing cells, X3 reporting `got {}` |
+| disproof | `PYTHONUNBUFFERED=1` on the parent, inherited by the child | **3 failing cells** — `X3: a row landing mid-run is reported` GREEN, the other three unmoved |
+
+One cell moved, exactly the predicted one; three stayed red. The fix is `-u` on the
+child's **argv** rather than in the environment, because an argument cannot be
+dropped by whoever launches the script, and it changes WHEN bytes arrive and
+nothing about what the checker computes. On the repaired file, removing `-u` again
+reproduces `got {}` while every neighbouring cell stays green.
+
+### Two more, appended to How to apply
+
+12. **A test that synchronises by OBSERVING the thing under test has an unwritten
+    dependency on how much output that thing produces.** Watching for a marker in
+    a child's stdout, waiting on a log line, polling until a file appears — each
+    ties the assertion's reachability to a volume nobody declared and no fixture
+    guarantees. Ask of any such probe: *what does the fixture have to be for this
+    to still land?* Write the answer beside it. It is part of the test's contract
+    and it exists in no other place.
+13. **Prefer a synchronisation point the test CONTROLS over one it merely
+    watches.** Where you cannot have one — the marker here is genuinely the
+    earliest SAFE point, since anything sooner risks the row landing before the
+    window opens, which would be a silent false negative — make the residual fail
+    CLOSED and say so at the site: if the row lands late, X3 does not fire and the
+    cell is RED. Never green.
+
+**The question this adds, which the other seven do not ask.** Instances 1–4 ask
+*could this assertion have failed given the inputs I supplied?* and 5–7 ask *was it
+looking at the right thing?*. This one asks: **does this assertion still reach its
+failing state on TODAY's fixture?** That is not a property of the test. It is a
+property of the test and the data TOGETHER — so it can lapse with no diff, and no
+review of the change that broke it will ever show it, because there was no change
+to review.
+
+**A fixture is an input.** Everything in this file about inputs applies to it, and
+a fixture is the one input nobody re-reads when it changes size. Sibling of
+[[proof-must-run-twice]], which is about a fixture a proof normalises for itself;
+this is about a fixture the whole team replaced on purpose, correctly, with a
+consequence nobody could see from the commit.
+
+---
+
 **SOURCE:** `a-checker-must-not-share-the-code-it-checks.md`
 
 # A checker must not share the code it checks — and must not reach past it

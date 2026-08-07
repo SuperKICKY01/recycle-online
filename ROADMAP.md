@@ -71,8 +71,8 @@ them waits on a decision that has not been made.
 - **P1.2 — the hosting decision.** The only step in this file with external lead
   time: a host has to be chosen, paid for and pointed at a name, and procurement has
   a clock that code does not. This is the one place where parallelism is free.
-- **P1.10 — `prove_reconcile.py` back to green.** No dependency at all, and it is the
-  instrument stage 2 rests on.
+- **P1.10 — `prove_reconcile.py` back to green. MET 2026-08-07**, so two of the three
+  remain. No dependency at all, and it is the instrument stage 2 rests on.
 
 Everything else in stage 1 waits on one of those three, or on another step in it. The
 order below is argued step by step; where a step could be moved, the argument for its
@@ -488,9 +488,42 @@ so this is a repair to an instrument, not a defect in the checker.
 **Unblocks:** P2.2 meaning anything.
 
 **DONE WHEN:** it exits 0 **twice in a row, bare, against a scratch database, with
-no reseed between** (`lessons/README.md § Lessons` "proof-must-run-twice.md"), and
+no reseed between** (`lessons/README.md § Lessons` "proof-must-run-twice.md"),
 `git grep -n "T0" -- server/scripts/prove_reconcile.py` no longer shows a hardcoded
-count.
+count, **AND the fourth failing cell is green** — `prove_reconcile.py:716`,
+`counts.get("X3") == 1`.
+
+**THAT LAST CLAUSE IS A CORRECTION, made 2026-08-07 while doing the step, and the
+reason it is written into the DONE WHEN rather than into the record is that this
+file is where a future session reads what "finished" means.** As originally
+written this step named THREE expectations and required only that they be derived.
+There were FOUR failing cells, and the fourth is not one of the three: it holds no
+count, so no derivation reaches it. It was red because the X3 probe had stopped
+landing its row inside the window it measures — the checker was working, the proof
+had stopped probing, and nothing had been edited. **Meeting the step as originally
+written would have left the proof red.** The step was one item narrower than the
+step.
+
+**MET 2026-08-07. All three clauses, and the third one was found rather than
+inherited.** The evidence is `PROJECT_STATUS.md § Baseline observations`
+"P1.10, `prove_reconcile.py` back to green" and the phase entry it sits under; it
+is deliberately NOT restated here, because two copies drift and a new session
+believes whichever it reads first. What belongs to ORDERING rather than to
+evidence, and so is added here:
+
+- **P2.2 rests on a NARROWER green at a pilot shop than the one measured here, and
+  the narrowing is structural.** On a one-tenant database three injections cannot
+  fire — S3/T0, S3/X2 and T10, which are the ones that exercise tenant isolation.
+  They now SKIP with the reason printed rather than passing. **A pilot shop's
+  database has one tenant** (D10), so this is the ordinary case there.
+  `OPEN_ITEMS.md § Verification gaps — built, not proven` "ON A ONE-TENANT DATABASE"
+  carries it, with the open question P2.2 has to answer: what the proof is pointed
+  at when the shop's data is real. **The number to read there is the skip count,
+  not the exit code.**
+- **Five residuals are recorded and none is closed.** They are at
+  `OPEN_ITEMS.md § Code debt found and left in place`
+  "FIVE THINGS IT DID NOT REMOVE", and the X3 probe among them remains a race
+  that fails closed.
 
 ### P1.11 — An installable build on staff-owned phones, and the Android answer
 
