@@ -412,6 +412,7 @@ shorthand for locating the row, not the rule.
 | 6 | all three weights, both prices, stored amount | **DB columns**, all NOT NULL, plus `ck_items_net CHECK (net_weight = gross_weight - tare_weight)` | schema |
 | 7 | keep both timestamps | **DB columns**, both NOT NULL; `server_received_at` written explicitly from the transaction's own clock, not left to the default | schema |
 | 8 | write locally first, failure visible | **CLIENT ONLY, by definition** — it is a statement about an app on a phone. No server constraint can express it and none does | client, proofs only |
+| — | **an account that can be locked** — NOT one of the eight; see the note below the next two | **DB column** `users.is_active` NOT NULL DEFAULT true (0007), plus **TWO application checks** that both have to be there: `main.py`'s login refuses a locked account, and `auth.py`'s `get_principal` refuses the tokens it already holds. The lock bumps `token_version` in the SAME `UPDATE`, so ending the live sessions is a property of the statement rather than of a second call | schema for the column, application for both checks |
 
 **The two rows that must not be misread:**
 
@@ -433,6 +434,27 @@ shorthand for locating the row, not the rule.
   no heartbeat and no device column, so the server has no evidence with which to
   ever claim a day is complete. The enforcement is the mobile proof suite and
   device passes, and nothing else.
+
+**And the row with no number, added 2026-08-07 by migration 0007.** It is in
+that table because this section is about WHERE AN INVARIANT IS ENFORCED and the
+answer for account locking is genuinely split across three places, which is
+exactly the kind of thing a reader gets wrong. **It is not a ninth hard rule**
+— `CLAUDE.md § Hard rules` still holds eight and this file does not add to them.
+
+**The ORDER of the two application checks is load-bearing, and this is the one
+structural fact about them worth carrying here.** In `get_principal` the account
+check runs BEFORE the session-version check. That is not style: because a lock
+bumps `token_version` in the same statement, both guards are true of every token
+alive when the lock lands, so the reverse order leaves the account check
+**unreachable through every path the product has** — a token whose version is
+current but whose account is locked cannot be minted, because minting one needs a
+login and login refuses a locked account. Ordered first, the account check names
+the durable fact and deleting it changes only the refusal's `code`
+(`account_inactive` becomes `token_revoked`), never its status. Both halves of
+that were measured; the record is
+`PROJECT_STATUS.md § Baseline observations` "57 of 57" and the generalisation
+is the seventh mechanism in
+`lessons/README.md § Lessons` "a-check-that-never-went-red-was-never-observed.md".
 
 ### 8.2 Tenant isolation, in full
 
@@ -634,3 +656,50 @@ known rather than undiscovered.
 
 - **`SRS_MAP.md § 8. Stale references, recorded as stale` "Found, not fixed."**
   holds four more that this file does not duplicate. Read them there.
+
+---
+
+## 13. Corrections to THIS file, appended rather than edited
+
+**Why they are here and not applied above.** Everything counted in this document
+was measured at commit `3babd52` (see *Freshness* at the top), and a dated
+measurement is superseded rather than rewritten — the same rule
+`PROJECT_STATUS.md` follows. Editing the original sentences would destroy the
+evidence that the file was right when written and hide how fast structure
+decays. Three of the four below were found by a session reading this file
+against the code; **the fourth was created by the change that also records it.**
+
+- **§2.1 and §4 say FIVE migrations, `0001` through `0005`. There are SEVEN.**
+  `0006_bills_created_by.py` (2026-08-07) and `0007_users_is_active.py`
+  (2026-08-07) came after the measurement. **The count of TEN business tables is
+  UNCHANGED and must not be "corrected" with it** — both new migrations add
+  COLUMNS to existing tables and neither creates a relation, so §4's table is
+  still complete and `public` still holds those ten plus `alembic_version`.
+
+- **§11 says `purchase_bills` has no author column, and that its grep returns
+  exit 1. FALSE since `0006`.** The column is `created_by uuid`, NULLABLE, with
+  `fk_bills_created_by FOREIGN KEY (tenant_id, created_by) REFERENCES users
+  (tenant_id, id)`. **The rest of §11 survives intact and is the part that
+  mattered**: every bill written before that migration is authorless
+  permanently, no column added later makes one existing row traceable, and the
+  section says so as a fact rather than a gap. What has changed is only that the
+  gap is closed GOING FORWARD. Note also that §11's grep has decayed the way
+  §12 predicts for `SRS_MAP.md`'s: `git grep -n "created_by" -- server/` now
+  returns many hits, this file's own text among the reasons.
+
+- **§4's `users` row says "No `is_active`, so a session can be revoked but an
+  account cannot be locked". FALSE since `0007`, and this phase is what made it
+  so.** `users.is_active` is `boolean NOT NULL DEFAULT true`. An account can now
+  be locked as distinct from having its sessions ended, and where that is
+  enforced is the unnumbered row in §8.1 — added in the same change, because a
+  file whose job is naming the enforcing layer should not gain a capability and
+  a stale sentence in the same commit.
+
+- **Nothing above records that `users` gained `token_version` in `0005`
+  either.** §4's `users` row does name it, so this is not a contradiction — it
+  is noted only so the next reader does not treat the row as wholly stale. The
+  three columns `users` has gained since `0001` are `token_version` (0005) and
+  `is_active` (0007); `full_name` was always there.
+
+**Re-derive before resting a decision on any number in this file.** The count
+that decayed fastest was the migration count, and it decayed twice in one day.

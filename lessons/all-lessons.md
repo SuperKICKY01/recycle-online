@@ -755,6 +755,68 @@ file internally consistent". **Two different questions with the same exit code.*
 
 ---
 
+## A SEVENTH MECHANISM (P1.4, 2026-08-07) — the guard is reachable, but a SIBLING GUARD gets there first
+
+The second mechanism is "the failing state is unreachable from the inputs
+supplied", and its remedy is to supply better inputs. **This one cannot be fixed
+that way, because no input exists.** The state is unreachable through every path
+the product has, and it is another correct guard that makes it so.
+
+**The shape.** `POST /users/{id}/deactivate` locks an account and bumps
+`token_version` in the SAME `UPDATE` — deliberately, so a lock has no window in
+which the sessions it should have ended are still live. `get_principal` then holds
+two independent guards:
+
+    _require_active_account(row["is_active"])          # is this account usable
+    _require_live_session(token_version, row["..."])   # is this token current
+
+After a lock, **both are true of every token in existence**. Put the account check
+second and it can never fire: the version check refuses first, every time, and no
+request can be constructed that reaches the account check — because minting a
+token for a locked account requires a login, and login refuses one. A guard in
+that position is not weakly tested. It is **untestable**, and deleting it changes
+nothing observable at all.
+
+**MEASURED, not reasoned.** Ordered FIRST, the guard deleted (mutation B, against
+a restored scratch database): `prove_revocation.py` exit 1, and **exactly two
+cells fired — both the ones reading `code`.** Sitting immediately beside them,
+GREEN:
+
+    [FAIL] case7: the refusal names the ACCOUNT (account_inactive), not the token
+    [FAIL] case7: the refused bill create names the account, not the token
+    [OK  ] case7: the token held before the lock is refused
+    [OK  ] case7: a locked account cannot reach the money path
+
+The request is **still 401**. It falls through to the version check and comes back
+`token_revoked` instead of `account_inactive`. **A proof asserting only the status
+would have been fully green with the guard deleted** — 57 of 57, nothing to see.
+
+**Two rules, and the second is the one that generalises.**
+
+10. **When two guards can both be true of the same request, ORDER the one that
+    names the durable fact first** — and know that you have thereby made the
+    other one's green partly uninformative for that input. Ordering is not
+    cosmetic here; it decides which guard is observable at all.
+11. **Assert on the field that DISCRIMINATES, not the field they share.** Both
+    guards answer 401; only `code` says which one answered. Ask of every
+    assertion: *if I deleted the thing this is supposed to be watching, would
+    this cell move?* Where two mechanisms produce an identical outcome, the
+    shared outcome is not evidence about either.
+
+**Why it is not redundancy.** The guard still earns its place — it is what
+refuses if any future path mints a token for a locked account (a bump made
+conditional, a password reset, an onboarding tool). But its value is
+FORWARD-LOOKING, and a forward-looking guard is exactly the kind whose green
+nobody checks. Say so at the site, in the code, or the next reader will delete it
+as dead and every test will agree with them.
+
+**The family.** The fifth and sixth mechanisms are about an instrument reading
+the wrong artifact. This one is about an instrument reading the right artifact
+through the wrong FIELD — the observation was available, one key away, and the
+obvious assertion could not see it.
+
+---
+
 **SOURCE:** `a-checker-must-not-share-the-code-it-checks.md`
 
 # A checker must not share the code it checks — and must not reach past it

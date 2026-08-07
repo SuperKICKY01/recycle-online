@@ -71,6 +71,15 @@ _REVOKED = unauthenticated(
     "token_revoked", "session was revoked; sign in again for a current token"
 )
 
+# The ACCOUNT is locked: an admin deactivated it (migration 0007). Unlike
+# _REVOKED, signing in again does not help — /auth/login refuses this user too,
+# and refuses them with the same body a wrong password gets, so the code exists
+# for the log and for nothing else. A device still reacts to all four of these
+# identically; see the note on unauthenticated() above.
+_INACTIVE = unauthenticated(
+    "account_inactive", "account is deactivated and may not be used"
+)
+
 
 # The only two roles there are. users.role is CHECK-constrained to exactly these
 # in migration 0001, so nothing else can be in the database to begin with.
@@ -183,17 +192,24 @@ async def get_principal(
     async with tenant_connection(claimed.tenant_id) as conn:
         row = (
             await conn.execute(
-                # token_version rides along on the query that was ALREADY here.
-                # No second read per request: that is a design constraint of this
-                # work, not an optimisation. The lookup that proves the user
-                # exists is on this path regardless, and it now returns two
-                # columns instead of one.
-                text("SELECT role, token_version FROM users WHERE id = :uid"),
+                # token_version and is_active ride along on the query that was
+                # ALREADY here. No second read per request: that is a design
+                # constraint of this work, not an optimisation. The lookup that
+                # proves the user exists is on this path regardless, and it now
+                # returns three columns instead of one.
+                text(
+                    "SELECT role, is_active, token_version"
+                    " FROM users WHERE id = :uid"
+                ),
                 {"uid": claimed.user_id},
             )
         ).mappings().first()
     if row is None:
         raise _UNAUTHENTICATED
+
+    # THE LOCK CHECK. Its own deletable line, and it runs BEFORE the revocation
+    # check — the ordering is load-bearing and the helper's docstring says why.
+    _require_active_account(row["is_active"])
 
     # THE REVOCATION CHECK. Deleting this ONE line leaves valid, running code in
     # which a revoked token is accepted until it expires — which is exactly the
@@ -212,6 +228,41 @@ async def get_principal(
     # This costs nothing: the lookup that proves the user still exists is already
     # on this path, and it now returns a column instead of a constant.
     return replace(claimed, role=row["role"])
+
+
+def _require_active_account(is_active: bool) -> None:
+    """Refuse a token belonging to an account an admin has deactivated.
+
+    A helper rather than an inline `if`, for the reason _require_live_session
+    gives below and by the same argument: it leaves the disproof ONE deletable
+    line that keeps the module parsable and the server bootable, so "the check is
+    gone" and "nobody could run the check" cannot share an outcome.
+
+    WHAT DELETING IT ACTUALLY CHANGES — LESS THAN IT LOOKS, and a proof written
+    on the assumption that it is more would be measuring nothing. Deactivation
+    bumps token_version in the SAME statement, so every token in existence when
+    the lock lands is also stale, and _require_live_session below would refuse it
+    anyway. Delete this line and such a request is still 401. What changes is the
+    CODE — account_inactive becomes token_revoked — which is what an assertion
+    can see and what an operator reading a log would notice.
+
+    THAT IS WHY IT RUNS FIRST. Ordered after the version check it would be
+    unreachable through every path this product has, and a guard no input can
+    reach is a guard whose green carries no information — the second mechanism in
+    lessons/a-check-that-never-went-red-was-never-observed.md, "the failing state
+    is unreachable from the inputs supplied". Ordered here it names the durable
+    fact, that the ACCOUNT is locked, rather than the incidental one, that this
+    particular token is old.
+
+    IT IS STILL NOT REDUNDANT. It is what refuses if any future path mints a
+    token for a locked account: a bump made conditional, a password reset, an
+    onboarding tool, a change to what /auth/login checks. The version check
+    answers "is this token current"; only this one answers "may this account be
+    used at all", and those stop being the same question the moment anything else
+    can issue a token.
+    """
+    if not is_active:
+        raise _INACTIVE
 
 
 def _require_live_session(claimed_version: int, current_version: int) -> None:

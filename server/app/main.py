@@ -66,7 +66,7 @@ async def login(body: LoginRequest) -> LoginResponse:
             await conn.execute(
                 text(
                     "SELECT id, tenant_id, username, role, token_version,"
-                    " password_hash FROM users WHERE username = :u"
+                    " is_active, password_hash FROM users WHERE username = :u"
                 ),
                 {"u": body.username},
             )
@@ -77,6 +77,36 @@ async def login(body: LoginRequest) -> LoginResponse:
         await verify_password(DUMMY_HASH, body.password)
         raise _INVALID_LOGIN
     if not await verify_password(row["password_hash"], body.password):
+        raise _INVALID_LOGIN
+
+    # THE LOCK, AND IT IS CHECKED AFTER THE PASSWORD ON PURPOSE.
+    #
+    # Ordering first, because getting it wrong fails silently. Short-circuiting
+    # on is_active BEFORE verify_password would let a locked account answer
+    # without paying for an argon2 verify, so it would come back measurably
+    # faster than a live account with a bad password. That is a timing oracle for
+    # "this username exists and is locked" — precisely what the DUMMY_HASH verify
+    # four lines above exists to close, reintroduced one branch further down.
+    # Checked here, all three refusals cost exactly one verify: unknown user
+    # (dummy), wrong password (real), locked (real).
+    #
+    # THE REFUSAL IS BYTE-IDENTICAL TO THE OTHER TWO, deliberately. A distinct
+    # code would tell anyone who can reach this endpoint that a given
+    # (tenant_id, username) is a real account. The caller must already hold the
+    # shop's uuid today, which narrows that a long way; the step that replaces
+    # the uuid with something a human can type removes the narrowing, and a
+    # refusal shape written now would outlive it.
+    # lessons/login-resolves-under-tenant.md is the standing rule — ONE generic
+    # error for both unknown-user and wrong-password — and this is a third arm of
+    # the same refusal rather than an exception to it.
+    #
+    # THE COST, STATED RATHER THAN HIDDEN: a locked person and a person who
+    # mistyped their password get the same sentence, so nothing they can see
+    # tells the two apart and a call to the shop is the only way to find out.
+    # The ADMIN is told instead, through a channel the refused caller is not on —
+    # POST /users/{id}/deactivate returns is_active and the new token_version in
+    # its own 200.
+    if not row["is_active"]:
         raise _INVALID_LOGIN
 
     token = create_access_token(

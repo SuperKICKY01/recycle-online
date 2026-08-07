@@ -364,6 +364,24 @@ response, not a predicted one — and the proof that establishes it has been see
 going RED with the lock check removed
 (`lessons/README.md § Lessons` "a-check-that-never-went-red-was-never-observed.md").
 
+**MET 2026-08-07, migration 0007. Both clauses, and the second one twice.** The
+evidence is `PROJECT_STATUS.md § Current phase` "The first P-number recorded as met" and the dated entry it
+points at; it is deliberately NOT restated here, because two copies drift and a
+new session believes whichever it reads first. What this file adds is only the
+two things about the CLOSURE that belong to ordering rather than to evidence:
+
+- **P1.3 was skipped knowingly.** This step's "Depends on" above names it, and
+  it is not done. The capability was built and proven against the login that
+  still takes a uuid, so what P1.4 cannot yet do is be exercised by a human
+  typing a shop code. **The dependency was real and remains owed** — P1.3 will
+  change the login path this step just added a check to, and whoever does it
+  must not lose the check.
+- **The lock has a consequence on the PHONE that nothing fixes yet.** A locked
+  account's handset invites the operator to sign in and the sign-in cannot work.
+  `OPEN_ITEMS.md § Code debt found and left in place` "A LOCKED ACCOUNT'S PHONE"
+  carries it, against **P3.7**, which this step already lists under Unblocks.
+  It is DERIVED from reading the client, not observed on a handset.
+
 ### P1.5 — Account provisioning: a first admin, then a person per phone
 
 **What it is.** A path by which a shop's first admin exists, and by which that admin
@@ -918,8 +936,18 @@ know they are known rather than undiscovered.
   never let git's warning be the observation — is exactly what produced the correct
   measurement. It is wrong in one number and right in its method, which is why it is
   a correction rather than a removal.
-- **THREE corrections are now owed to a LOCKED section, and NOT ONE of them is made
-  here.** Two are D12's; the third is the entry above. Each needs the owner's
+- **`CLAUDE.md § Scope and status` still says forward steps are R-numbers**, and
+  this file's own *Numbering* section closed them as a log on 2026-08-07 and
+  issues P-numbers instead. The exact sentence is "Forward steps are R-numbers,
+  defined in ROADMAP.md and nowhere else" — which was true when written and is
+  now wrong in the one direction that matters, because it is the pointer a booting
+  session follows to find out what the next step is even CALLED. Found while
+  closing P1.4. `START_HERE.md § 1. Reading order` "R-numbers are defined here"
+  carries the same stale sentence; that file is not locked and is a one-line fix,
+  which is why it is listed separately below rather than folded in here.
+- **FOUR corrections are now owed to a LOCKED section, and NOT ONE of them is made
+  here.** Two are D12's; the third is the CRLF entry above; the fourth is the
+  R-number bullet immediately above this one. Each needs the owner's
   confirmation in a phase of its own:
   `ARCHITECTURE.md § 2.3 A tension, recorded and not resolved` "amending it is a separate phase".
 - **`START_HERE.md § 1. Reading order` does not name `ARCHITECTURE.md`**, so a

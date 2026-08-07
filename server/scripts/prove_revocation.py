@@ -14,11 +14,18 @@ to test. This script asserts the mechanism EXISTS and BITES:
 
   CASE 1  a live session works                     -> 200/201 on the money path
   CASE 2  a bumped version refuses the SAME token  -> 401 token_revoked
-  CASE 3  the user is NOT locked out               -> a new login works
+  CASE 3  a BUMP does not lock the user out        -> a new login works
   CASE 4  a pre-0005 token is refused              -> 401 token_unversioned
   CASE 5  a bump is scoped to ONE user             -> A's peers and tenant B live
   CASE 6  the bump endpoint is admin-only and RLS-scoped -> 403 / 404
-  CASE 7  the disproof: which line, deleted, makes this go red
+  CASE 7  a LOCKED account cannot sign in AT ALL   -> 401, and no token in the body
+  CASE 8  unlocking restores it                    -> and the refused bill was never written
+  CASE 9  the disproof: which lines, deleted, make this go red
+
+CASE 3 AND CASE 7 ARE EACH OTHER'S NEGATION, which is why they belong in one
+file. "A revoked user can sign in again the same second" and "a locked user
+cannot sign in at all" are the two halves of one distinction, and split across
+two scripts neither run would ever hold both.
 
 EVERY CHECK IS PHRASED AS THE CLAIM THAT MUST HOLD, never as the failure it
 would be. A line reading `[OK] a revoked token was not refused` is a sentence
@@ -47,11 +54,21 @@ TWICE IN A ROW, NO RESEED (lessons/proof-must-run-twice.md):
     script has been run — a check with a half-life;
   - nothing is normalised as setup. The script creates what it measures.
 
-WHAT IT LEAVES BEHIND: 2 active bills per run in tenant A (hard rule 5 — a
+WHAT IT LEAVES BEHIND: 3 active bills per run in tenant A (hard rule 5 — a
 proof cannot delete a transaction), and the token_version of both tenant A
 users and tenant B's admin raised by a few. Neither is a row the product could
 not have produced; the bills are ordinary purchases and the counters are what
 the endpoint is for. The bill count is printed in the summary.
+
+AND ONE THING IT LEAVES BEHIND ONLY IF IT DIES: CASE 7 locks tenant A's staff
+account and CASE 8 unlocks it. `check()` records a failure without raising, so
+a failed assertion still reaches the unlock; an EXCEPTION between the two does
+not, and the account stays locked, at which point run 2 cannot log in as staff
+and fails for a reason that is not about the code. Clear it by hand —
+POST /users/{staff_id}/activate as an admin — before re-running. Recorded here
+rather than guarded with a finally: the unlock is itself one of the six claims
+(CASE 8), and a teardown that silently performed it would be doing the thing
+the assertion is supposed to observe.
 
 NOTHING HERE ASSERTS ON A MESSAGE. The server's kind/code is the contract; the
 message is English, for logs. Thai text in a 403/404 body will render as
@@ -83,6 +100,7 @@ from app.seeddata import (  # noqa: E402
     TENANT_A_STAFF_PASSWORD,
     TENANT_B_ID,
     TENANT_B_PASSWORD,
+    TENANT_B_STAFF_PASSWORD,
 )
 
 BASE = os.environ.get("API_BASE_URL", "http://127.0.0.1:8099")
@@ -122,11 +140,23 @@ def detail_of(r: httpx.Response) -> dict:
     return d if isinstance(d, dict) else {}
 
 
-def login(client: httpx.Client, tenant_id, username: str, password: str) -> str | None:
-    r = client.post(
+def login_raw(
+    client: httpx.Client, tenant_id, username: str, password: str
+) -> httpx.Response:
+    """The whole response, because CASE 7 asserts on what is NOT in the body.
+
+    A login that is refused must carry no access_token, and a check that only
+    reads the status cannot see one that does. Asserting the absence needs the
+    body, so the raw response is the primitive and login() is the convenience.
+    """
+    return client.post(
         f"{BASE}/auth/login",
         json={"tenant_id": str(tenant_id), "username": username, "password": password},
     )
+
+
+def login(client: httpx.Client, tenant_id, username: str, password: str) -> str | None:
+    r = login_raw(client, tenant_id, username, password)
     return body_of(r).get("access_token") if r.status_code == 200 else None
 
 
@@ -156,6 +186,19 @@ def bump(client: httpx.Client, admin_token: str, user_id: str) -> httpx.Response
     return client.post(
         f"{BASE}/users/{user_id}/revoke-sessions", headers=auth(admin_token)
     )
+
+
+def set_active(
+    client: httpx.Client, admin_token: str, user_id: str, active: bool
+) -> httpx.Response:
+    """Lock or unlock an account through the real endpoint (migration 0007).
+
+    One helper for both verbs on purpose: the pair is the claim. A deactivate
+    with no activate would leave this script unable to run twice, which is the
+    bar every proof here is held to.
+    """
+    verb = "activate" if active else "deactivate"
+    return client.post(f"{BASE}/users/{user_id}/{verb}", headers=auth(admin_token))
 
 
 def bill_payload(tag: str) -> dict:
@@ -228,12 +271,14 @@ def main() -> int:  # noqa: C901
             return 2
 
         staff_id = body_of(whoami(client, staff_token)).get("user_id")
+        admin_id = body_of(whoami(client, admin_token)).get("user_id")
         b_admin_id = body_of(whoami(client, b_admin_token)).get("user_id")
         print(f"  run tag        : {RUN}")
         print(f"  tenant A staff : {staff_id}")
+        print(f"  tenant A admin : {admin_id}")
         print(f"  tenant B admin : {b_admin_id}")
         print(f"  staff token claims: {claims_of(staff_token)}")
-        if not (staff_id and b_admin_id):
+        if not (staff_id and admin_id and b_admin_id):
             print("  /whoami did not return a user_id — cannot continue")
             return 2
         check("token_version" in claims_of(staff_token),
@@ -394,27 +439,200 @@ def main() -> int:  # noqa: C901
         print(f"  bumping a user id that does not exist      status={r.status_code}")
         check(r.status_code == 404, "case6: an unknown user id is a 404")
 
+        # ------------------------------------------------------------------
+        banner("CASE 7 - a LOCKED account cannot sign in at all (migration 0007)")
+        # The account under test is tenant A's staff user, and CASE 8 unlocks it.
+        # See WHAT IT LEAVES BEHIND ONLY IF IT DIES in the module docstring.
+        #
+        # staff_token3 was minted in CASE 3 carrying version v2 and was still
+        # answering 200 in CASE 5, so it is a LIVE session at this point. Holding
+        # it across the lock is what lets this case show a lock ending a session
+        # that already exists, rather than only refusing a new one.
+        pre_lock_token = staff_token3
+
+        r = set_active(client, admin_token, staff_id, False)
+        locked_body = body_of(r)
+        v_lock = locked_body.get("token_version")
+        print(f"  POST /users/{{id}}/deactivate  status={r.status_code}  body={locked_body}")
+        check(r.status_code == 200, "case7: the deactivate endpoint answers 200")
+        check(locked_body.get("is_active") is False,
+              "case7: the admin's OWN response reports the account is now inactive")
+        # A DELTA, never an absolute. v2 is what the last bump REPORTED, so this
+        # asserts the lock performed the revocation too — in the same statement,
+        # which is the whole reason the two move together.
+        check(isinstance(v_lock, int) and isinstance(v2, int) and v_lock == v2 + 1,
+              "case7: locking bumped token_version by exactly one (delta, not absolute)")
+
+        # --- THE DONE-WHEN: a locked account is refused at login. -----------
+        r = login_raw(client, TENANT_A_ID, STAFF_USERNAME, TENANT_A_STAFF_PASSWORD)
+        locked_login = body_of(r)
+        print(f"  POST /auth/login, CORRECT password  status={r.status_code}")
+        print(f"    body: {json.dumps(locked_login, ensure_ascii=False)}")
+        check(r.status_code == 401,
+              "case7: a locked account is REFUSED at login even with the CORRECT password")
+        # Asserting the ABSENCE, not only the status. A 401 carrying a usable
+        # token would satisfy a status-only check and hand out a session.
+        check("access_token" not in locked_login,
+              "case7: the refused login body carries NO access_token")
+
+        # The refusal must be indistinguishable from a wrong password. BOTH
+        # sides are read off real responses — neither is a literal, so this can
+        # come out the other way (lessons/a-differential-control-is-only-as-good
+        # -as-its-weaker-side.md).
+        r_wrong = login_raw(client, TENANT_A_ID, STAFF_USERNAME, "totally-wrong-password")
+        print(f"  the same login with a WRONG password  status={r_wrong.status_code}"
+              f"  body={json.dumps(body_of(r_wrong), ensure_ascii=False)}")
+        check(r.status_code == r_wrong.status_code and locked_login == body_of(r_wrong),
+              "case7: the locked refusal is INDISTINGUISHABLE from a wrong password")
+
+        # --- the live session it was holding is dead too --------------------
+        r = whoami(client, pre_lock_token)
+        print(f"  GET /whoami with the PRE-LOCK token   status={r.status_code}"
+              f"  code={detail_of(r).get('code')}")
+        check(r.status_code == 401, "case7: the token held before the lock is refused")
+        # THE CODE, NOT THE STATUS, AND THIS IS THE CELL THAT CARRIES MUTATION B.
+        # Both guards in get_principal are true of this request: the account is
+        # inactive AND the version is stale, because the lock did both in one
+        # statement. _require_active_account runs FIRST, so the code names the
+        # durable fact. Delete that line and this request is STILL 401 — it falls
+        # through to _require_live_session and comes back token_revoked. A
+        # status-only assertion here would stay green with the guard gone.
+        check(detail_of(r).get("code") == "account_inactive",
+              "case7: the refusal names the ACCOUNT (account_inactive), not the token")
+
+        # --- and it cannot reach the money path -----------------------------
+        locked_bill = bill_payload("locked")
+        r = post_bill(client, pre_lock_token, locked_bill)
+        print(f"  POST /bills with the PRE-LOCK token   status={r.status_code}"
+              f"  code={detail_of(r).get('code')}")
+        check(r.status_code == 401, "case7: a locked account cannot reach the money path")
+        check(detail_of(r).get("code") == "account_inactive",
+              "case7: the refused bill create names the account, not the token")
+
+        # --- THE POSITIVE CONTROL -------------------------------------------
+        # Without this, "login answers 401" is satisfiable by a server that has
+        # simply stopped letting anyone in, and every assertion above would hold.
+        r = whoami(client, admin_token)
+        print(f"  tenant A ADMIN token after locking staff   status={r.status_code}")
+        check(r.status_code == 200,
+              "case7: locking staff leaves tenant A's ADMIN session working")
+        r = login_raw(client, TENANT_A_ID, ADMIN_USERNAME, TENANT_A_PASSWORD)
+        check(r.status_code == 200 and "access_token" in body_of(r),
+              "case7: tenant A's admin can still SIGN IN while staff is locked")
+        # The sharpest peer available: tenant B's staff carries the SAME username
+        # as the locked account. Locking is per ROW, and usernames are unique only
+        # per tenant (uq_users_tenant_username), so this is the one control that
+        # would catch a lock applied by username instead of by id.
+        r = login_raw(client, TENANT_B_ID, STAFF_USERNAME, TENANT_B_STAFF_PASSWORD)
+        print(f"  tenant B's 'staff' (SAME username) signing in  status={r.status_code}")
+        check(r.status_code == 200 and "access_token" in body_of(r),
+              "case7: another shop's user with the SAME username still signs in")
+
+        # --- the two guards on the endpoint itself --------------------------
+        # Beyond the six claims, and here because a guard nothing exercises is a
+        # guard whose green carries no information.
+        r = set_active(client, admin_token, admin_id, False)
+        print(f"  admin deactivating ITSELF   status={r.status_code}"
+              f"  code={detail_of(r).get('code')}")
+        check(r.status_code == 403, "case7: an admin cannot deactivate its OWN account")
+        check(detail_of(r).get("code") == "cannot_deactivate_self",
+              "case7: the self-lock refusal carries code=cannot_deactivate_self")
+        check(whoami(client, admin_token).status_code == 200,
+              "case7: the refused self-lock changed nothing — the admin still works")
+
+        r = set_active(client, admin_token, b_admin_id, False)
+        print(f"  tenant A admin locking a TENANT B user id   status={r.status_code}")
+        check(r.status_code == 404,
+              "case7: a cross-tenant lock is refused 404 (RLS, not a hand-written WHERE)")
+        check(bool(login(client, TENANT_B_ID, ADMIN_USERNAME, TENANT_B_PASSWORD)),
+              "case7: the cross-tenant lock attempt left tenant B's admin untouched")
+
+        # ------------------------------------------------------------------
+        banner("CASE 8 - unlocking restores the account, and the refused bill was never written")
+        r = set_active(client, admin_token, staff_id, True)
+        unlocked_body = body_of(r)
+        print(f"  POST /users/{{id}}/activate  status={r.status_code}  body={unlocked_body}")
+        check(r.status_code == 200, "case8: the activate endpoint answers 200")
+        check(unlocked_body.get("is_active") is True,
+              "case8: the response reports the account is active again")
+        check(unlocked_body.get("token_version") == v_lock,
+              "case8: unlocking does NOT bump the version — there are no sessions to end")
+
+        staff_token4 = login(client, TENANT_A_ID, STAFF_USERNAME, TENANT_A_STAFF_PASSWORD)
+        check(bool(staff_token4), "case8: the account can sign in again once unlocked")
+        if not staff_token4:
+            return 1
+        check(claims_of(staff_token4).get("token_version") == v_lock,
+              "case8: the new token carries the version the lock left behind")
+        r = whoami(client, staff_token4)
+        print(f"  GET /whoami with the restored session  status={r.status_code}")
+        check(r.status_code == 200, "case8: the restored session is accepted (200)")
+
+        # The bill refused under the lock was never written: the SAME idempotency
+        # key now CREATES (201) rather than resolving to an existing bill (200).
+        # If the 401 had landed after the insert, this would be a 200.
+        r = post_bill(client, staff_token4, locked_bill)
+        print(f"  POST /bills, SAME key as the one refused under the lock  "
+              f"status={r.status_code}  doc_no={body_of(r).get('doc_no')}")
+        check(r.status_code == 201,
+              "case8: the bill refused under the lock wrote NOTHING (its key is still free: 201, not 200)")
+        if r.status_code == 201:
+            bills_created += 1
+
     # ----------------------------------------------------------------------
-    banner("CASE 7 - THE DISPROOF: the single line this proof rests on")
-    print("""  server/app/auth.py, in get_principal:
+    banner("CASE 9 - THE DISPROOF: the lines this proof rests on")
+    print("""  THREE LINES, IN TWO FILES, AND EACH ONE HAS ITS OWN MUTATION. Every one of
+  them is a helper CALL rather than an inline `if`, so deleting it leaves the
+  module parsable and the server bootable: "the check is gone" and "nobody could
+  run the check" must never share an outcome.
 
+  RUN EVERY MUTATION AGAINST A RESTORED SCRATCH DATABASE, NEVER DEV. Mutations
+  A and B both make the server MORE permissive, and CASE 7 then posts a bill
+  under a locked account: with the guard gone that POST SUCCEEDS and writes a
+  schema-valid, FK-satisfying, reconcile-clean bill that the correct product
+  could not have produced, which hard rule 5 makes unremovable. Ten such rows
+  are already in the dev database from the created_by work — see
+  lessons/a-mutation-on-a-protected-write-path-needs-a-scratch-database.md.
+  Establish WHICH CODE IS RUNNING BY A RESPONSE before and after each edit; a
+  process list is not that observation.
+
+  ---- MUTATION 0 (0005) : server/app/auth.py, in get_principal --------------
       _require_live_session(token_version, row["token_version"])
+  RED: CASE 2 — the bumped token is accepted, /whoami answers 200, and
+  POST /bills writes a bill under a revoked session.
+  GREEN: CASE 4, because a versionless token is refused earlier by
+  claims["token_version"] raising KeyError. CASE 7 also stays green, because a
+  locked account is refused by the OTHER guard and by login.
 
-  DELETE THAT ONE LINE and this proof must go RED. The code still parses and
-  the server still starts — that is why the check is a helper call rather than
-  an inline `if`, since deleting a `raise` out of an inline branch leaves an
-  empty block and the server would not boot at all. A proof that goes red
-  because nothing could run has measured nothing.
+  ---- MUTATION A (0007) : server/app/main.py, in login ---------------------
+      if not row["is_active"]:
+          raise _INVALID_LOGIN
+  RED: CASE 7's login cells — a locked account is issued a token. The two that
+  fire are "refused at login with the correct password" and "the refused login
+  body carries NO access_token", and the indistinguishability check goes red
+  with them, since a 200 and a 401 are not the same response.
+  GREEN: everything about the TOKEN — the pre-lock token is still refused, the
+  money path is still refused, and CASE 8 still restores. That split is the
+  information: it says the lock is missing from LOGIN and present in
+  get_principal.
 
-  With the line gone, CASE 2 turns green->red: the bumped token is accepted,
-  /whoami answers 200, and POST /bills writes a bill under a revoked session.
-  CASE 4 stays GREEN, because the versionless token is refused earlier, by
-  claims["token_version"] raising KeyError. That split is itself informative —
-  the two guards are independent and this proof can tell which one is missing.
+  ---- MUTATION B (0007) : server/app/auth.py, in get_principal -------------
+      _require_active_account(row["is_active"])
+  RED: exactly the two cells that read the CODE — "the refusal names the ACCOUNT
+  (account_inactive), not the token" on /whoami and on POST /bills.
+  GREEN: every STATUS in CASE 7, and this is the point. Deactivation bumps
+  token_version in the same statement, so the pre-lock token is ALSO stale and
+  _require_live_session refuses it anyway — still 401, only the code changes,
+  from account_inactive to token_revoked. AN ASSERTION ON THE STATUS ALONE
+  WOULD STAY GREEN WITH THIS GUARD DELETED. That is why the guard is ordered
+  before the version check and why these two cells read `code`.
 
-  Run by hand, in this order, and keep both outputs:
-    1. comment out that line, restart uvicorn, run this script  -> expect FAIL
-    2. restore it, restart uvicorn, run this script twice       -> expect PASS""")
+  Run each by hand, in this order, and keep every output:
+    1. restore a scratch copy, point uvicorn at it, confirm by a response
+    2. apply ONE mutation, restart uvicorn, confirm by a response, run this
+       script -> expect the cells above and only those
+    3. revert, prove the revert by HASH, restart, run this script twice
+       -> expect PASS""")
 
     banner("RESULT")
     print(f"  bills created by this run: {bills_created}"

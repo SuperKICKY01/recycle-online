@@ -198,6 +198,21 @@ idea — only that it is unresolved.
   in the very file its fourth amendment was written about** — a count
   assertion over data that can change has a half-life, and this one
   expired the day the database was rebuilt.
+- **`prove_reconcile.py`'s injection COUNT is recorded two different ways, and
+  nobody has measured which is right.** The script's own run header prints
+  `=== injections (19) ===`, and the 2026-08-02 entry in `PROJECT_STATUS.md`
+  agrees with it ("118 assertions, 0 failures, 19 injections"). The 2026-08-07
+  `created_by` entry says "Every money injection passed across **23**
+  injections". Re-observed 2026-08-07 across three runs against a scratch copy
+  restored from the post-0006 dump: the header reads **19**, with 113 `[OK]` /
+  4 `[FAIL]` every time. *Not done:* deliberately NOT chased — it is a
+  documentation discrepancy with no money consequence, the four failing cells
+  are tracked in the entry above, and every injection about money passed in all
+  three runs. *Unblocks:* nothing.
+  **`ROADMAP.md § STAGE 1` "Deriving the three expectations" is where it
+  gets settled**, because that step has to read the injection list anyway to
+  derive the three counts that expired in the rebuild; whoever is in there
+  should count the injections and correct whichever number is wrong.
 - **A 400 ms unconditional `refresh()` runs on a screen that has signed
   out** — `App.tsx:560-569` re-reads the local bill store every 400 ms
   while `ready`, with no gate on the session at all, so it keeps running
@@ -442,6 +457,32 @@ idea — only that it is unresolved.
   It is also the concrete reason the NULL-prefix check under Decisions open
   stays a proposal: that check would go red on every run of this proof.
   *Unblocks:* n/a.
+- **A LOCKED ACCOUNT'S PHONE INVITES THE OPERATOR TO SIGN IN, AND THE SIGN-IN
+  CANNOT WORK. A loop, and it is `R2b`'s shape rather than an accepted cost.**
+  Migration 0007 makes `POST /auth/login` refuse a deactivated account with a
+  body byte-identical to a wrong password — deliberate, and argued at the lock
+  check in `server/app/main.py` — while `get_principal` refuses the tokens that
+  account already holds. The mobile client maps every 401 to `session_expired`,
+  which draws `หมดเวลาเข้าใช้งาน` with a `เข้าสู่ระบบ` button. So a dismissed
+  employee's handset tells them to sign in; the sign-in is refused with a body
+  it cannot tell from a typo; and the screen tells them to sign in again.
+  **Nothing on the device ends that loop and nothing on the screen says why**,
+  which is precisely the R2b amendment to
+  `lessons/correct-classification-can-still-render-as-an-error.md`: a sentence
+  naming an action the system cannot perform. *Not done:* **found by reading the
+  client against the server change, NOT observed on a handset** — no device pass
+  has been run against a locked account, and staging one is the first thing that
+  should happen, because everything above this sentence is derivation rather
+  than observation. It is also not a server defect: the server behaves as
+  designed and both halves of that design are proven (`prove_revocation.py`
+  CASE 7). *Unblocks:* **`ROADMAP.md § STAGE 3` "User management inside a shop"**,
+  which owns that screen and is the step this lock capability was built for. The
+  question it has to answer is what a phone may honestly be TOLD, given that the
+  login refusal is deliberately indistinguishable: a client cannot derive "your
+  account is locked" from a 401 it cannot tell from a mistyped password, so
+  either the operator gets something honest and vague, or the refusal vocabulary
+  changes and the username-oracle argument is re-opened. **That is a decision,
+  not a fix, and it is the owner's.**
 - **The refusal vocabulary wants its own module.** `kind`/`code`/`message`
   builders are now spread across three files — `auth.forbidden` and
   `auth.unauthenticated`, `master._not_found`/`_invalid`/`_conflict`, and

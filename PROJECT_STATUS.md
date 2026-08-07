@@ -57,6 +57,46 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.4 — AN ACCOUNT THAT CAN BE LOCKED, NOT ONLY SIGNED OUT. LANDED 2026-08-07,
+migration 0007. The first P-number recorded as met.** `users.is_active`
+(NOT NULL DEFAULT true), checked at BOTH sites a lock has to bite —
+`POST /auth/login` and `get_principal` — because either alone is half a lock:
+login alone leaves every token already in a pocket working until it expires
+(`JWT_TTL_SECONDS` 3600), and `get_principal` alone refuses every request while
+login keeps handing out usable tokens. Locking bumps `token_version` in the SAME
+`UPDATE`, so the sessions the account already holds end with it and there is no
+window between the two. `POST /users/{id}/deactivate` and `/activate` are the
+capability; **P3.7 owns the screen and no screen exists.**
+`ROADMAP.md § STAGE 1` "An account that can be locked, not only signed out"
+carries the DONE WHEN and is marked met there. The
+observations, with what they do NOT establish, are the dated entry at the end of
+Baseline observations.
+
+**NOTHING IN THIS PHASE RAN ON A HANDSET.** Every green is a migration, an HTTP
+proof, a catalogue read or a hash on this box.
+
+**THE FINDING THAT OUTLIVED THE PHASE**, because it is about proofs rather than
+about locking. `get_principal` holds two guards that are BOTH true of a locked
+account's token, since the lock bumps the version in the same statement. The
+account check is ordered FIRST deliberately: ordered second it is unreachable
+through every path the product has, because minting a token for a locked account
+needs a login and login refuses one. Deleting it leaves the request **still
+401** and moves only the `code` — so a status-only assertion would have stayed
+green with the guard gone, which was MEASURED (mutation B below) rather than
+argued. Written up as the seventh mechanism in
+`lessons/a-check-that-never-went-red-was-never-observed.md`.
+
+**One thing the phase created and did not fix**, recorded in `OPEN_ITEMS.md`
+against P3.7: a locked account's phone invites the operator to sign in and the
+sign-in cannot work. **That is DERIVED from reading the client against the
+server change, not observed** — no device pass has been run against a locked
+account.
+
+**The text below this block is the PREVIOUS phase's entry and is left standing**
+— a dated record is superseded, never rewritten.
+
+---
+
 **`created_by` ON `purchase_bills` — LANDED 2026-08-07, migration 0006. Not an
 R-number: it is the schema/audit question `OPEN_ITEMS.md` has carried since
 2026-08-05, settled by the owner and built in four phases.** Bills written from
@@ -2334,3 +2374,131 @@ number in it, recorded here so the next session does not rediscover it as a myst
 Note also that `git add` printed its usual `CRLF will be replaced by LF` warning on
 `lessons/README.md` during this work, and per that same footgun it was not read as
 evidence of anything.
+
+### 2026-08-07 — P1.4, `users.is_active`, migration 0007 (server + proof)
+
+**NO DEVICE.** Everything below is a migration, an HTTP proof, a catalogue read
+or a hash on this box. No screen was opened and no button pressed; the 12:08
+device pass above is not refreshed by any of it.
+
+**The column, read out of the CATALOGUE rather than off the file.**
+`information_schema.columns` gives `is_active | boolean | NO | true` — name,
+type, is_nullable, default. The `COMMENT ON COLUMN` is the second use of 0006's
+convention and is ASCII by design, which was MEASURED rather than intended:
+`length 485 = octet_length 485`, so it never needs hex to be trusted on a
+codepage-874 box.
+
+**THE INVERSE WAS EXECUTED, NOT ASSERTED**, and the column state was read back at
+each of the three points:
+
+| step | exit | column_rows | comment_octets | alembic_version |
+|---|---|---|---|---|
+| `alembic upgrade head` | 0 | 1 | 485 | 0007 |
+| `alembic downgrade 0006` | 0 | **0** | **0** | 0006 |
+| `alembic upgrade head` | 0 | 1 | 485 | 0007 |
+
+Gone, then back byte-identical. The comment died with the column, which is what
+`downgrade()` claims and why it has no second statement.
+
+**ALL FOUR SEEDED USERS READ BACK `is_active = t`, and zero accounts are
+locked.** That is 0004's "the migration cannot change the meaning of any current
+data" observed rather than argued — every existing row was already a live
+account, so `true` restates a fact instead of guessing one.
+
+**The proof: `prove_revocation.py` CASE 7 and CASE 8, 25 new cells.** Green
+TWICE bare with no reseed, **57 `[OK]` / 0 `[FAIL]`** each run, and green twice
+again after the mutations were reverted. CASE 3 and CASE 7 are each other's
+negation — "a bump does not lock the user out" and "a lock refuses login
+entirely" — which is why they are in one file: split across two, no run would
+ever hold both.
+
+**Two assertions sharper than the brief asked for, recorded because the reason
+generalises.** The locked refusal is asserted INDISTINGUISHABLE from a wrong
+password with both sides read off real responses and neither a literal
+(`lessons/a-differential-control-is-only-as-good-as-its-weaker-side.md`). And
+the peer control is tenant B's `staff` — the SAME username as the locked
+account, since usernames are unique only per tenant — which is the one control
+that would catch a lock applied by username instead of by id.
+
+**BOTH MUTATIONS, RUN AGAINST A SCRATCH DATABASE, NEVER DEV.** A fresh post-0007
+backup was restored into `recycle_lock_scratch` and a marker seller inserted
+into it; the marker was then confirmed PRESENT in scratch (1 row) and ABSENT in
+dev (0 rows), so "which database is this server on" is answerable from a
+response. uvicorn ran on 8098 against the copy, and the dev server was killed
+first so exactly one server existed and reaching the wrong one was impossible.
+The reason for all of this is
+`lessons/a-mutation-on-a-protected-write-path-needs-a-scratch-database.md`: with
+either guard removed, CASE 7's `POST /bills` under a locked account SUCCEEDS and
+writes a bill the correct product could not have produced, which hard rule 5
+makes permanent.
+
+Which code was answering was established BY A RESPONSE at every step, never from
+a process list:
+
+| probe | baseline | mutation A | mutation B | after revert |
+|---|---|---|---|---|
+| database | SCRATCH | SCRATCH | SCRATCH | DEV |
+| locked login | 401, no token | **200, token** | 401, no token | 401, no token |
+| locked `whoami` | 401 `account_inactive` | 401 `account_inactive` | **401 `token_revoked`** | 401 `account_inactive` |
+
+**MUTATION A** — the `is_active` check removed from `main.py`'s login. Exit 1,
+**three cells**, and they are the three CASE 9 predicts: the locked account is
+refused at login with the correct password; the refused body carries no
+`access_token`; the refusal is indistinguishable from a wrong password. **GREEN:
+every token-side cell** — the pre-lock token still refused, the money path still
+refused, CASE 8 still restoring. That split is the information: it says the lock
+is missing from LOGIN and present in `get_principal`.
+
+**MUTATION B** — `_require_active_account(row["is_active"])` removed from
+`get_principal`. Exit 1, **two cells, both of them reading `code`**:
+`the refusal names the ACCOUNT (account_inactive), not the token`, on `/whoami`
+and on `POST /bills`. **GREEN, and sitting immediately beside them:**
+`the token held before the lock is refused` and
+`a locked account cannot reach the money path` — the two STATUS cells. The
+request is still 401; it falls through to the version check and comes back
+`token_revoked`. **A status-only proof would have been 57 of 57 with the guard
+deleted.** This is the phase's finding, and it is a measurement.
+
+**Both reverts proven by TWO independent hashes each**, and re-confirmed at the
+end of the phase: `main.py` `git hash-object 7d531e96…` / sha256 `e616fbd5…`;
+`auth.py` `git hash-object 12f62014…` / sha256 `ec30b1fb…`. Each mutation
+required killing and restarting uvicorn (no `--reload`).
+
+**The proof set, each run bare, one command per invocation.** Twelve at exit 0:
+`prove_auth`, `prove_revocation`, `prove_bills`, `prove_rls`, `prove_master`,
+`prove_master_write`, `prove_master_data_gate`, `prove_seller_pricing`,
+`prove_shop_time`, `prove_daily_report`, `prove_backup_restore`,
+`prove_docno_clock`. `prove_reconcile` exit 1, **113 `[OK]` / 4 `[FAIL]`**, the
+four already recorded, unchanged by this work; every money injection passed.
+`reconcile.py` names `users` only by table and by its two constraint names, so a
+new column disturbs nothing there. Both mobile TypeScript programs exit 0 bare,
+which for a server-only change is a regression check and evidence about nothing
+else.
+
+**ONE RUN WAS DISCARDED RATHER THAN COUNTED.** The first `prove_auth` went
+through `| tail -6`, so `tail` owned the exit code — `CLAUDE.md`'s pipe footgun
+exactly. Everything above was re-run bare with redirection, which is not a pipe.
+A second counting trap bit in the same session: `grep -c` over a proof's output
+stopped at "Binary file matches" because the 403/404 bodies carry Thai, so every
+cell count here was re-taken with `grep -a`.
+
+**WHAT THIS DOES NOT ESTABLISH.**
+
+- **Nothing ran on a handset.** No screen was drawn. Whether a locked account
+  looks like anything sensible on a phone is untested.
+- **The mobile sign-in loop is DERIVED, not observed.** A locked account's phone
+  will invite the operator to sign in and the sign-in cannot work; that is read
+  out of the client's 401 handling against the server change, and **no device
+  pass has been run against a locked account.** Recorded in `OPEN_ITEMS.md`
+  against P3.7, which owns the screen and the decision about what a phone may
+  honestly be told.
+- **`P1.4`'s stated predecessor P1.3 is not done.** `ROADMAP.md` makes P1.4
+  depend on it because an account is created and locked inside a tenant. The
+  capability was built and proven against the uuid-carrying login; what it
+  cannot yet do is be exercised by a human typing a shop code. Skipped
+  knowingly, not overlooked.
+- **No account has ever been locked by a person.** Every lock in this record was
+  performed by a proof script or a probe.
+- **`recycle_lock_scratch` and one more dump directory now exist.** Neither was
+  removed, because `OPEN_ITEMS.md` records that no retention rule exists and
+  that inventing one in passing is how a convention gets set by accident.
