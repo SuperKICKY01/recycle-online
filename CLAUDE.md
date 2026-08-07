@@ -214,6 +214,35 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   commit, and count — which is the rule the paragraph above already gave,
   disregarded by the person who appended to it.
 
+- **`Measure-Object -Line` does not count blank lines, so it UNDERCOUNTS every
+  file with a blank line in it.** `-Line` counts the lines *inside* each input
+  string, and `Get-Content` yields one string per line, so an EMPTY string
+  contributes **zero**. `Get-Content -Encoding UTF8 PROJECT_STATUS.md |
+  Measure-Object -Line` returned **1823** where `wc -l` and a raw LF-byte count
+  both return **2053** — 230 blank lines silently dropped. `lessons/README.md`
+  came back 40 against an actual 42, by the same mechanism.
+
+  **It lies in the direction that refutes a TRUE claim, which is the opposite of
+  most entries here and is why it gets its own.** The number it produced was not
+  merely wrong, it was wrong across a THRESHOLD: `PROJECT_STATUS.md` sets its own
+  split-review trigger at "Revisit at 2000 lines" in its own text, so 1823 reads
+  as comfortably under while the file is 53 lines past it. A stale reference that
+  had been correctly identified would have been dismissed as already fixed, and
+  nothing would have looked wrong — there is no error, no red, and the command is
+  the obvious PowerShell one to reach for.
+
+  It also cannot be caught by agreement, because **both** natural PowerShell
+  spellings share the flaw's neighbourhood: `(Get-Content $p).Count` is right for
+  content lines but disagrees with `wc -l` by one whenever a file has no trailing
+  newline (`OPEN_ITEMS.md` is exactly that: `wc -l` 603, content 604). Decide
+  which of the two you mean before reading either.
+
+  Instead: count LF bytes, or use `wc -l` from the Bash tool, and say which
+  definition you used. And give any count you are about to rest a decision on a
+  SECOND, independent measurement — the same rule the `.ps1` entry above gives,
+  for the same reason: a checker that fails by finding LESS is indistinguishable
+  from one that passed.
+
 ### Boot check — name the observable, don't assume the environment
 
 Before judging any result, name the observation that proves the
