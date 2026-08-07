@@ -429,6 +429,19 @@ idea — only that it is unresolved.
   `lessons/a-mutation-on-a-protected-write-path-needs-a-scratch-database.md`:
   a mutation on a protected write path runs against a restored scratch
   copy, and DEV IS NOT SCRATCH.
+- **`prove_backup_restore.py` adds one permanent AUTHORLESS bill per run,
+  by design, and that will not stop.** Its marker is a DIRECT INSERT
+  (`prove_backup_restore.py:208`) — deliberately, so the proof keeps
+  working when no API is running — and it is VOIDED rather than deleted
+  (hard rule 5), so `created_by` stays NULL on it forever. Measured
+  2026-08-07: of **seven** authorless bills written after migration 0006,
+  five were the mutation rows above and **two were these markers**; nothing
+  else produced one, and the stale pre-0006 uvicorn on port 8000 produced
+  ZERO before it was killed. *Not done:* nothing to do — this is correct
+  behaviour, recorded so the count is not re-discovered later as a defect.
+  It is also the concrete reason the NULL-prefix check under Decisions open
+  stays a proposal: that check would go red on every run of this proof.
+  *Unblocks:* n/a.
 - **The refusal vocabulary wants its own module.** `kind`/`code`/`message`
   builders are now spread across three files — `auth.forbidden` and
   `auth.unauthenticated`, `master._not_found`/`_invalid`/`_conflict`, and
@@ -467,6 +480,19 @@ idea — only that it is unresolved.
   whether a session held to these rules actually finds anything, and
   whether an empty report from it can be trusted. That is only
   answerable by running it a few times.
+- **No retention rule exists for scratch databases or backup directories,
+  and the inventory is accumulating.** `server/scripts/BACKUP.md` states
+  "No scheduling, no cloud or off-site upload, no retention or pruning",
+  names `recycle_restore_scratch` as the one reusable verification
+  database, and marks only `_proof/` dump directories safe to delete. As of
+  2026-08-07 the cluster also holds `recycle_recon_pre0005b`,
+  `recycle_clock_scratch` and `recycle_recon_scratch`, and the backup root
+  holds every dump ever taken. *Not done:* deliberately — **inventing a
+  retention rule in passing is how a convention gets set by accident**, and
+  these directories hold real money data plus cluster password hashes.
+  *Unblocks:* the owner deciding whether scratch databases are disposable
+  and whether dumps get a retention window. Both become real questions at
+  `R3`, when backups start running unattended and landing off-site.
 - **A `reconcile.py` check that `created_by` is never NULL on an
   API-written bill — PROPOSED, not decided, and the cost is why.** After
   migration 0006 `POST /bills` cannot write a NULL (`create_bill` is

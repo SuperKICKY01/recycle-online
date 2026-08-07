@@ -2205,3 +2205,49 @@ Known stale references.** Not corrected here; `CLAUDE.md` was out of scope.
   explicitly at 8099 and 8099 was established as the current tree BY A RESPONSE
   (`created_by` present in a `GET /bills/{id}` body) rather than by a process
   list. 8000 against the migrated schema writes bills with a NULL author.
+
+### 2026-08-07, later — two corrections to the entry above, both measured
+
+**THE CRLF GENERALISATION ABOVE IS WRONG. It is corrected here rather than
+edited there**, because a dated observation is superseded, not rewritten. That
+entry says six untouched files were sampled, were all `CR=0`, and that CRLF is
+therefore "not a repository pattern". The sample was six files, all under
+`server/`, and the conclusion does not survive a full count.
+
+**Measured across all 178 tracked text files: ELEVEN carry CRLF in the working
+tree, and ALL ELEVEN have LF blobs.** `lessons/README.md` (43),
+`mobile/app/ids.ts` (15), `mobile/src/proof/proveSync.ts` (1550),
+`proveNotice.ts` (1253), `proveSeller.ts` (938), `proveVoid.ts` (541),
+`proveCart.ts` (462), `sqliteProof.ts` (417), `cartCrashChild.ts` (139),
+`draftCrashChild.ts` (64), and `server/scripts/prove_master_data_gate.py`
+(286). **Several are proof files nobody touched that day.**
+
+So the pattern is close to the opposite of what was written: working-tree line
+endings vary across about 6% of this repository, the blobs are uniformly LF, and
+`.gitattributes`' `text=auto eol=lf` normalises on comparison so `git status`
+reports none of it. **`prove_bills.py` matches that pre-existing distribution
+rather than having been caused by an edit** — which a six-file sample could not
+have settled in either direction. The normalisation applied to it was therefore
+unnecessary rather than harmful: the blob was going to be LF either way.
+
+**THE MECHANISM REMAINS UNDETERMINED, and no cause is named here because none
+has been measured.** What is established is the distribution above and that the
+blobs are LF throughout. Nothing here says what writes a CRLF working copy, or
+when.
+
+This is `CLAUDE.md`'s own rule about counts, disregarded: "give any count you
+are about to rest a decision on a SECOND, independent measurement". A sample of
+six was treated as a census of 178.
+
+**THE STALE PORT-8000 PROCESS WROTE NOTHING, and that is a measurement rather
+than a relief.** Killed 2026-08-07 — PID 28564, started 13:21:02 shop time,
+`uvicorn app.main:app --host 0.0.0.0 --port 8000` from the repo venv, so
+pre-0006 code was serving for roughly two hours AFTER 0006 applied. Port
+confirmed clear afterwards: nothing LISTENING, `curl` 000. **Authorless bills
+written after 0006: SEVEN, every one attributed** — five are mutation 1
+(`bill-A-e903453d-*`, recorded above), two are `prove_backup_restore`'s
+deliberate direct-INSERT markers (`backup-proof-marker-*`, one per run, voided
+rather than deleted). **NONE came from the stale process.** The query bucketed
+everything else as "OTHER — investigate" and that bucket returned ZERO rows,
+which is the control that makes this a finding instead of an assumption. The
+hazard was real and never fired.
