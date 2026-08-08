@@ -7,12 +7,19 @@ to the instrument you are about to cite as evidence for something else.
 case, run in the same pass, that makes it fire. A check nobody has watched go red
 is a claim about the code, not a measurement of it.
 
+**NINE MECHANISMS, and this line is the ONLY place in this file that says how
+many.** Every heading below names its own mechanism and never the running total,
+so appending a tenth is a one-number edit, here. This line exists because the
+count used to live in three headings and in this file's index line, and all four
+went stale together while the body grew from four to nine — the index line ended
+up reading "Six mechanisms" and "a NINTH mechanism" in one sentence.
+
 Sibling of [[a-checker-must-not-share-the-code-it-checks]] — that one is about
 where the expected value comes FROM; this one is about whether the assertion
-could have failed AT ALL, and three of the four cases below share no code with
-what they check.
+could have failed AT ALL. Of the first four cases below, three share no code
+with what they check.
 
-## Four instances, four mechanisms, one symptom
+## The first four instances — four mechanisms, one symptom
 
 **1. The needle was empty — in the instrument itself.** A verifier written to
 confirm `lessons/all-lessons.md` carries no UTF-8 BOM contained:
@@ -89,7 +96,7 @@ valuable one — but they are a DIFFERENT guarantee, and the mutation test
 returned no information about the runtime checks at all. **A disproof that is
 intercepted upstream has not been performed.**
 
-## What the four have in common
+## What the first four have in common
 
 | | why it could not go red |
 |---|---|

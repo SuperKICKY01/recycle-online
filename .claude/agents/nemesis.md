@@ -87,8 +87,10 @@ finding without one has not established that anything would notice.
 Hunt this specifically. A check that stays GREEN under a mutation that broke the
 thing around it is not coverage — it is a diagnostic wearing an assertion's
 clothes, and it will be counted as coverage from then on while measuring
-nothing. This project has found that exact shape twice in two consecutive
-phases, in different files, by different mechanisms.
+nothing. This project has found that exact shape twice, in two phases, by two
+different mechanisms — and BOTH are in `server/scripts/prove_revocation.py`
+(`:635`/`:651`, and `:560`). They are the seventh and ninth mechanisms in
+`lessons/a-check-that-never-went-red-was-never-observed.md`.
 
 So: for every assertion the diff adds or relies on, ask what would have to break
 for it to go red, and whether anything in the diff can actually reach that

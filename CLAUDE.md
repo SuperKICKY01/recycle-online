@@ -351,11 +351,27 @@ false pass and a red run into a confidently wrong cause.
   the mistake landing is. A phase is not finished until the lesson
   it produced is written.
 - Two homes, one test — which thing would the forgetting break? A
-  LESSON is for what would cause a bug in the PRODUCT; a MACHINE
+  LESSON is for what this project would otherwise RELEARN; a MACHINE
   FOOTGUN is for what would cause a wrong DIAGNOSIS on this box.
   Environment traps go to footguns and do NOT also get a lesson;
   writing both is ceremony, and it dilutes an index whose value is
   that every line in it bites.
+  **WIDENED 2026-08-08, and the wording it replaces is the reason.**
+  This read "a LESSON is for what would cause a bug in the PRODUCT",
+  which was true of every lesson in the index — until that date a
+  product bug was the only thing this project operated on. It now
+  operates on a SECOND thing: an agent layer under `.claude/` that it
+  writes, dispatches, and believes the output of. A finding about how
+  we run our own instruments — a scan that read its own command, a
+  gate that logged the search into the medium being searched, a role
+  definition asserting something the files refute — costs the same to
+  relearn as a product bug, and is a LESSON. Under the old wording it
+  was homeless: not a product bug, and not a property of this box.
+  **The footgun line does NOT move.** A footgun is still only what is
+  true of THIS BOX; widening one home is not licence to blur the
+  other. An agent-layer finding that IS a property of this machine —
+  ripgrep skipping a gitignored path when the search root is the
+  parent directory — is still a footgun, and gets no lesson.
 
 ## Conventions
 
