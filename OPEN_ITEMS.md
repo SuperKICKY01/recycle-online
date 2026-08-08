@@ -535,6 +535,41 @@ idea — only that it is unresolved.
   start and stop a server process. If yes, (3) is perhaps thirty lines.
   If no, the clause stays uncovered and that is a knowing choice rather
   than an oversight — which is the difference this entry exists to make.
+- **A FIXTURE ASSERTS AS CORRECT A BEHAVIOUR OUR OWN COMMITS MADE WRONG
+  SEVEN HOURS EARLIER, AND IT WILL STAY GREEN — FOUND 2026-08-08. This is
+  a CLASS, not an instance.** `mobile/src/proof/fakes.ts:645-651` returns
+  a 503 as `{kind: "unavailable", reachable: true}` and comments it as
+  intended: "That is the poison shape: the network is fine, the reachable
+  server keeps erroring on this one payload. It is what the UI must
+  escalate to a red alarm." That was true when written. The clock guard
+  committed the same morning made 503 a condition true of EVERY bill,
+  which is the one thing `engine.ts:620-634` says must never feed the
+  per-bill alarm. **The cell is not wrong about what the code does — it
+  is wrong about what the code should do, and nothing in a test run can
+  tell those apart.** It will pass every time until someone changes the
+  classification it encodes.
+  **Why this is a class.** A fixture states a PREMISE about the world the
+  product lives in. When the product moves under it, the cell does not go
+  red — it reports agreement with a world that no longer exists, and its
+  green is indistinguishable from a green that means something. Related
+  to `lessons/a-check-that-never-went-red-was-never-observed.md` and
+  inverted from it: those nine mechanisms are cells that CANNOT go red;
+  this is a cell that WOULD go red if the premise it encodes were
+  updated, and stays green precisely because nobody updated it.
+  **THE OPEN QUESTION THIS RAISES, and it is deliberately unanswered:
+  how many other cells in either proof suite encode a premise the clock
+  work changed?** Two commits added a server-wide 503 and a tenant-wide
+  409 to paths that previously had neither. Any fixture, fake or
+  assertion written before them may be asserting the older world.
+  *Not done:* nobody has looked, and nobody should start before the size
+  of the question is known. *What would answer it:* an inventory — every
+  fixture and fake in `mobile/src/proof/` and `server/scripts/` that
+  encodes an assumption about what a status code MEANS rather than about
+  what a function returns, checked against the statuses the clock work
+  introduced. The count matters more than the fixes: a handful is a
+  sweep, and dozens is a statement about how this project writes
+  fixtures. *Unblocks:* knowing whether the answer is a sweep or a
+  practice change.
 - **`CLOCK_GUARD_TICK_SECONDS` HAS TWO DIFFERENT DEFAULTS, AND NOTHING ON
   EITHER SIDE CHECKS THEY AGREE — FOUND 2026-08-08 while verifying the
   entry above.** `server/app/clock_guard.py:48` reads it with a default of
@@ -817,6 +852,44 @@ idea — only that it is unresolved.
   Which class they should take instead — 424-style parking is the obvious
   candidate, since the year gate's own description matches "resolvable" —
   is a DESIGN decision and is not settled here.
+  **BLOCKED 2026-08-08 ON THE RE-OPENED DECISION under `Decisions open`,
+  and the analysis below is recorded so it does not have to be
+  re-derived.** The block is not sequencing convenience: the fix for that
+  decision may remove the 409-forever case entirely, and if it does the
+  classification below stays correct while its worst consequence
+  disappears — which changes what the wording has to carry. Building the
+  wording first would be making a symptom legible and calling it handled.
+  **THE CLASSIFICATION, derived and not implemented.** *409 is a
+  RESOLVABLE refusal:* the bill is well-formed and would be accepted
+  unchanged once the server's counter state or clock is corrected, so it
+  passes `lessons/unavailable-is-not-rejected.md`'s test — "can anything
+  make this bill valid later, and does the failure NAME what" — and the
+  server names it in the body. Same class as the 424 already handled at
+  `httpTransport.ts:148-158`; it should reuse that PARKED path, still
+  owed and out of the sendable queue. *503 is about the SERVER,* not the
+  bill and not the network: it refuses every request from every device.
+  It should retry like `unavailable` but must NOT feed the per-bill
+  poison counter, mirroring what `markSessionExpired` and
+  `markSendForbidden` already do at `engine.ts:635-645`. *Wording must be
+  DERIVED from the cause with the CALL SITE as a required argument*, per
+  `correct-classification-can-still-render-as-an-error.md`, so a new
+  member is a compile error rather than an optional carrying the old
+  sentence as its default.
+  **The mechanism underneath both:** `reachable: true` is one word doing
+  two jobs — "the network works" and "the server refuses THIS payload".
+  `engine.ts:620-634` already states the rule for 403 in its own words. A
+  fix that does not separate those two meanings will produce a fourth
+  instance of this class.
+  **PROVENANCE, and it bounds everything above.** Every claim here about
+  `httpTransport.ts`, `engine.ts`, `fakes.ts` and the proof suite is
+  READ FROM SOURCE. No device pass, no Metro bundle, nothing executed on
+  the mobile side. The server-side 409 and 503 were observed running
+  against scratch; their mobile classification was not. And the defect
+  lives in the composition transport -> engine -> queueHealth ->
+  statusNotice, which is precisely where
+  `lessons/two-green-proofs-do-not-cover-the-seam.md` says it will be and
+  where no single proof file owns it. Whoever builds this should know the
+  analysis established a SHAPE and observed nothing.
 
 ## Decisions open — the owner's, not the code's
 
