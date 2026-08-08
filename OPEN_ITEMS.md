@@ -853,12 +853,64 @@ idea — only that it is unresolved.
   (MIT) stays in place beside the files it covers. **This is a fork
   now, and the record of what it forked from lives here because the
   directory that held it does not.**
+  **RESOLVED 2026-08-08 FOR `agents/` AND `skills/` — THEY ARE IN
+  GIT.** `.gitignore` now reads `.claude/*` with `!.claude/agents/`,
+  `!.claude/skills/` and `!.claude/settings.json`, and **the `*` is
+  load-bearing**: under a plain `.claude/` every negation is INERT,
+  because git never descends into an excluded directory to read one.
+  Measured in a throwaway repo — all four probe paths came back decided
+  by line 1, and `git add -A` staged nothing beneath it. **15 files,
+  102,940 bytes, all mode 100644, no gitlink.** The invisibility this
+  entry opens with is closed for those two directories: `git log`,
+  `git blame` and a diff reach them, and a red-team pass can now be
+  handed them. **They were renormalised in the SAME commit**, because
+  `git add` strips CRLF from the BLOB at once while leaving the working
+  tree alone, and the warning it prints is about a future checkout —
+  718 CR bytes over 8 files, two of which are cited by byte count in
+  `CLAUDE.md § Workflow`, where tracking without renormalising would
+  have left the tripwire false by exactly the amount normalised.
+  **`settings.local.json` STAYS OUT, and `.claude/*` excludes it with
+  no extra rule.** Four reasons, all present in the file: ABSOLUTE
+  MACHINE PATHS (`E:\recycle-online\server\.venv\Scripts\python.exe` in
+  nine grants, plus `/e/...`, `E:/recycle-online-backups/...` and a
+  `PYTHONPATH` of `E:\recycle-online\server`); a DEV CREDENTIAL on line
+  20 (`recycle_app:app_pw_dev@localhost:5544`), which committing would
+  make permanent and uneditable out of history; DEAD PER-SESSION GRANTS
+  (line 18 admits reads under a scratchpad UUID whose session ended;
+  lines 4-5 name `device/metro.config.js` when this project's client is
+  `mobile/`); and STANDING TRUST rather than configuration, which is
+  its own entry below. `.claude/settings.json` does not exist yet — the
+  negation is written for it in advance and admits nothing today.
   *Not done:* seven of the nine are undecided and have still never been
   read by the owner, and the `references/` pair is unreconciled. Two
-  are decided and amended; nothing is committed.
+  are decided, amended and committed; all nine are now VISIBLE to a
+  reviewer, which is a different thing from having been reviewed.
   *Unblocks:* an owner decision PER SKILL — keep, amend or delete — for
-  the remaining seven, a separate one on `settings.local.json`, and a
-  home for the role-over-preload rule above.
+  the remaining seven, and a home for the role-over-preload rule above.
+  `settings.local.json` is settled: it stays out.
+- **`settings.local.json` pre-approves `git commit`, while `CLAUDE.md`
+  says nothing commits until the owner confirms. Both are in force —
+  FOUND 2026-08-08.** Three of its 51 grants are `Bash(git add *)`,
+  `Bash(git commit *)` and `PowerShell(git *)`. The rule they sit
+  against is `CLAUDE.md § Workflow` "Do not commit until the owner
+  confirms", restated in `START_HERE.md § 2` as the owner being "the
+  only one who confirms a commit" and a third time in that file's
+  done-checklist. **Neither mechanism is wrong on its own, and they
+  disagree about what happens next.** The grant removes the permission
+  prompt — the one artifact that would physically put a commit in front
+  of the owner BEFORE it exists — and leaves the rule enforced only by
+  a session choosing to obey it. This project's own instinct is the
+  opposite: hard rule 2 says enforce at the lowest layer available,
+  "not by remembering in each handler". **The asymmetry is the finding.**
+  The rule is prominent and the grant was unreadable by every reviewing
+  role until today, so a reader who checks finds the rule and concludes
+  it is enforced. The file is still untracked by design, so this entry
+  is the only place the disagreement is visible. *Not done:* nobody has
+  decided which way it resolves — drop the two `git` grants and let the
+  prompt return; keep them and say plainly in `CLAUDE.md` that the rule
+  is honour-only; or narrow them, `git add` yes and `git commit` no.
+  *Unblocks:* the owner's answer. Dropping them costs one prompt per
+  commit and nothing else.
 
 ## Business questions — unanswered, and not answerable from the code
 
