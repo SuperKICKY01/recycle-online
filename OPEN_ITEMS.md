@@ -1373,6 +1373,264 @@ or from a plausible-sounding summary.
   general form, that "the proof reads its expected value out of the thing
   under test" has now bitten with a HELPER and with a CONSTANT, so the
   test is the relationship, not the kind of thing shared.
+- **THE LESSON DEBT, SURVEYED 2026-08-08. NINE ARTIFACTS OWED UNDER
+  `lessons/`, NOT TWELVE — and the number came from a conversation,
+  which is why it was checked.** Three read-only passes (Read/Grep/Glob
+  only, no shell, every claim carrying path:line) checked a recalled
+  list of twelve candidates against the files. **Two did not survive
+  contact and are recorded below as REFUTED so they are not raised
+  again.** Three collapse into one file. One genuinely-owed debt was
+  not on the list at all. **The corpus stood at 36 lessons**, agreed by
+  four instruments: `ls -1 lessons/*.md | wc -l` (38 raw, minus the
+  index and the generated concatenation), `grep -c '^- '
+  lessons/README.md`, the banner at `lessons/all-lessons.md:15`, and
+  that file's TOC. The exclusion set is not a judgement —
+  `server/scripts/build_all_lessons.py:75-86` defines it, and `:81` is
+  the line that excludes the generator's own output from its own input.
+  **(1) NEW `lessons/the-observer-is-a-writer-to-what-it-observes.md`**
+  — three mechanisms of one shape: a scan that read its own command; a
+  PreToolUse gate that logged the search into the medium being
+  searched; a counter whose own text sat in its own denominator,
+  returning an impossible negative count. Merged rather than split on
+  the criterion extracted from what this corpus DID rather than what it
+  says: **ONE FILE PER OPERATIVE TEST, not per mechanism and not per
+  remedy.** `a-check-that-never-went-red-was-never-observed.md` carries
+  nine mechanisms and fifteen distinct remedies in ONE file because all
+  nine answer one question (`:174-176`); `a-differential-control-is-
+  only-as-good-as-its-weaker-side.md` split off because its question
+  differs (`:46-47`), and that file and the nine-mechanism one each
+  declined to absorb the other, in writing. Differing remedies are
+  therefore NOT evidence for splitting here. *Done when:* the file
+  carries three mechanisms; the three-clause operative test (WRITERS /
+  BURNT TOKENS / DOMAIN AND EXCLUDE BY IDENTITY) **with the failed
+  single-clause first attempt shown rather than edited out** — the
+  falsification is the argument, and the first attempt caught one of
+  three; mechanism 7 marked INCIDENT NOT REPRODUCIBLE FROM THIS REPO,
+  the way `a-check-that-never-went-red-was-never-observed.md:49-51`
+  already marks one; a "why it is not X" section against that file's
+  mechanisms 1-2, 5 and 9, against
+  `a-checker-must-not-share-the-code-it-checks.md:164`, and against
+  `proof-must-run-twice.md:159`; `build_all_lessons.py:76` and `:81`
+  named as the remedy already working in this tree and named by no
+  lesson; the mechanism count stated in exactly ONE place in the file;
+  and an index line in `lessons/README.md` carrying no count.
+  **Two things measured AFTER the design and owed to the file.** Clause
+  1 sharpened to name the writer AND THE ACTIONS IT FIRES ON: the gates
+  log SHELL CALLS ONLY — `185 ALLOW Bash, 11 ALLOW commit`, zero
+  Read/Grep entries — so an agent holding Read/Grep/Glob does not
+  contaminate and a session holding Bash does, and which of the two you
+  are is not a detail. And the three-generations instance at
+  `.claude/hooks/gate.log:211,215,216`, where `:216` is the command run
+  to CHECK for `:211`, and the match count moved 4 to 5 between two
+  readings with no other cause. **That instance is better evidence than
+  the incident this lesson was proposed from, because it is in-repo and
+  because it MOVED.**
+  **(2) AMEND `lessons/a-check-that-never-went-red-was-never-observed.md`
+  — a TENTH mechanism: the needle was well-formed and landed inside a
+  LARGER TOKEN.** `grep -o 'agent_type'` returned three hits, read as
+  the central question answered yes; it was matching inside
+  `subagent_type`, a parameter the caller had sent. Not mechanisms 1-2:
+  `:96` defines those as "vacuously true — no input exists that fails
+  it", and an input that fails this one exists. **The proof it is a
+  different mechanism is that the existing remedy PASSES on it** —
+  `:112-113` says build needles numerically and assert their length,
+  and `len("agent_type") == 10` holds while the answer stays wrong.
+  *Done when:* the mechanism section exists; remedies 16-17 are
+  appended to the running How-to-apply list (bound the match at the
+  token boundary; run a NEGATIVE control over the confusable
+  superstring in the same pass and require the specific count to exceed
+  it); and the single count line is updated NINE -> TEN. That last is a
+  one-number edit by construction, which is the 2026-08-08 repair
+  paying out.
+  **(3) NEW — a fixture encoding a premise the product moved under.**
+  `mobile/src/proof/fakes.ts:645-651` comments a 503 as the poison
+  shape; `reachable: true` is at `:652`, one line outside the range as
+  recalled. The clock guard made 503 a condition true of EVERY bill
+  (`server/app/main.py:85-92`), which
+  `mobile/src/sync/engine.ts:626-628` says must never feed the per-bill
+  alarm. NOT covered by
+  `a-proof-fixture-must-be-a-row-the-product-could-produce.md`: apply
+  its test at `:51-54` — "Could the code have made it?" — and the
+  answer is YES,
+  `mobile/src/adapters/httpTransport.ts:162-166` produces that exact
+  shape for any 5xx. The fixture is faithful to the code and wrong
+  about the requirement, and its test returns "fine". Full working
+  already in the entry under Verification gaps beginning "A FIXTURE
+  ASSERTS AS CORRECT A BEHAVIOUR"; not restated, and deliberately NOT
+  written as a `file § Section` "handle" citation — a citation whose
+  TARGET is this same file counts its own text, so it can never reach
+  the exactly-one hit `tools/verify_citations.ps1` requires. *Done
+  when:* the lesson names the class — a fixture states a PREMISE about
+  what a status code MEANS,
+  falsifiable by a change in a different repository half with no edit
+  to the fixture — and says why the nine mechanisms are its inverse:
+  they are cells that CANNOT go red, this is one that can and nobody
+  moved it.
+  **(4) NEW — read the spec before designing the experiment.** Two
+  propagation experiments were designed to establish what one line of
+  vendor documentation already states, costing over an hour. The same
+  day's counter-examples — registration latency, tool restriction
+  enforced by non-offering, an agent list stale in both directions —
+  appear in no documentation and could only be measured. NEW rather
+  than covered: `vendor` returns 0 matching lines across the corpus and
+  `before designing` returns 0. *Done when:* the lesson states the
+  partition applied at DESIGN time — does a party who OWNS this
+  behaviour document it? — and carries both halves, because the
+  counter-examples are what stop it collapsing into "read the docs
+  first".
+  **(5) NEW — a negative result needs two timestamps.** A custom agent
+  did not resolve at 11:37 and did resolve at ~11:50, from a definition
+  file written at 11:20. A correct measurement taken too early is
+  indistinguishable IN THE REPORT IT PRODUCES from a permanent
+  negative. NOT the Metro-bundle footgun (`CLAUDE.md § Boot check`
+  "WHICH BUNDLE THE HANDSET IS RUNNING"): same family, opposite remedy
+  — a stale bundle NEVER converges and the fix is an ACTION (`expo
+  start -c`), while a propagation delay converges on its own and
+  re-applying the cause DESTROYS the evidence. That
+  same-question-opposite-response structure is the one
+  `a-stored-future-instant-is-a-promise-about-a-clock.md:57-71` says
+  must be preserved rather than tidied away. *Done when:* the lesson
+  requires a negative to carry when it was taken AND when the cause was
+  applied, and names re-measurement rather than re-application as the
+  discriminator.
+  **(6) AMEND `lessons/revoke-in-migration.md` — a narrow GRANT can be
+  a NO-OP.** `server/db/init/00_init_roles.sql:33-34` — the path was
+  recalled as `db/init/...` and is under `server/` — runs ALTER DEFAULT
+  PRIVILEGES granting arwd on every future table. Migration 0008
+  observed this and remedied it with REVOKE at `:151`; `0008:76-78`
+  records "The GRANT was not wrong, it was irrelevant." **The half of
+  the candidate claiming a migration docstring records a restriction
+  the database lacks is REFUTED** — no such migration exists. What is
+  live is `0002:56`, a narrow GRANT on `doc_no_counters` omitting
+  DELETE with no REVOKE anywhere in that file, on the counter whose
+  gaps `be-year-comes-after-the-timezone.md:148-150` calls
+  unrepairable. *Blocked on:* a measurement no read-only pass could
+  take — bring Postgres up per `CLAUDE.md § Boot check`
+  "Postgres must be up", then read `role_table_grants` for
+  `doc_no_counters` to settle whether the omission is live or was
+  widened. *Done when:* that
+  measurement is recorded here with the query that produced it, and the
+  lesson says a GRANT can be a no-op, that narrowing is done by REVOKE,
+  and that the observable is reading the catalogue back.
+  **(7) AMEND `lessons/wait-for-the-event-not-the-ticks.md` — one env
+  var name, two defaults, two processes.**
+  `server/app/clock_guard.py:48` defaults `CLOCK_GUARD_TICK_SECONDS` to
+  60; `server/scripts/prove_clock_guard.py:119` defaults the SAME name
+  to 2 and sleeps in multiples of its own value. The proof does not
+  override production — it defines a second default in its own process
+  — and `/health` does not report the interval
+  (`clock_guard.py:89-101`), so the proof cannot ask. Full working
+  already in the entry under Verification gaps beginning
+  "HAS TWO DIFFERENT DEFAULTS"; not restated, and not written as a
+  citation for the reason given in item (3). *Done when:* the lesson
+  carries the
+  cross-PROCESS case the existing file does not — its remedy presumes
+  the test can observe the event, and here the event is inside another
+  process — and records that this failure went RED and read as a
+  product defect, the reverse of the direction that file discusses at
+  `:47-49` ("Red is the lucky outcome").
+  **(8) AMEND
+  `lessons/a-mutation-on-a-protected-write-path-needs-a-scratch-database.md`
+  — a prose constraint fails in BOTH directions.** A built-in agent
+  described as read-only wrote a file via PowerShell, and in the same
+  dispatch refused two ordinary Bash calls citing its own instructions
+  before any tool call was issued: leaked once, over-fired twice, one
+  run. The corpus states "prose is not a mechanism" in six places —
+  `a-mutation-on-a-protected-write-path-needs-a-scratch-database.md:73-77`,
+  `a-checker-must-not-share-the-code-it-checks.md:79-82`,
+  `be-year-comes-after-the-timezone.md:43-46`,
+  `unavailable-is-not-rejected.md:39-41`,
+  `render-in-shop-time-not-device-time.md:86-88`,
+  `a-stored-future-instant-is-a-promise-about-a-clock.md:214-218` — and
+  **every one describes prose failing OPEN**: decays, forgotten, "a
+  comment nobody reads". None describes one OVER-firing. *Done when:*
+  the amendment states that a restriction expressed as prose in a
+  prompt is a probability with a failure rate in BOTH directions at
+  once, that the enforceable form is the tool grant itself
+  (non-offering), and does NOT generalise it to comments in code, which
+  fail in one direction only.
+  **(9) AMEND `lessons/a-checker-must-not-share-the-code-it-checks.md`
+  — ALREADY FILED, listed here only so the set is countable in one
+  place.** Its argument is the entry above beginning "An amendment is
+  OWED", found 2026-08-06, and is deliberately NOT restated: two copies
+  drift. **It was absent from the recalled list of twelve**, which is
+  the clearest single piece of evidence that the list was a memory
+  rather than a reading.
+  **REFUTED, and recorded so they are not raised again.** *A
+  `log.error` in a module that defines `logger`* — does not exist. All
+  four `log.*` calls are in `server/app/clock_guard.py`, which defines
+  `log` at `:42`; both `logger.*` calls are in `server/app/bills.py`,
+  which defines `logger` at `:28`; a union grep over `server/` returns
+  exactly 6 lines and no third name. The only two `NameError` strings
+  in the repo are instructions for a deliberate mutation
+  (`prove_revocation.py:812-815`). *"A diagnostic wearing an
+  assertion's clothes"* — COVERED three times over, and the candidate
+  merged three catalogued mechanisms wrongly. The phrase is a HUNTING
+  BRIEF in `.claude/agents/nemesis.md` and `hephaestus.md`, not a
+  finding; its two instances are mechanisms 7 and 9 of
+  `a-check-that-never-went-red-was-never-observed.md`; and the
+  description "asserts a fact about its own INPUT" fits NEITHER — that
+  file says so at `:513`, "Here the proof supplied neither."
+  **THE TREE CARRIES A LATENT RED AS OF 2026-08-08, AND NOTHING RUNS
+  IT.** Three lesson-source repairs landed today, in
+  `a-check-that-never-went-red-was-never-observed.md` and
+  `lessons/README.md`, so `lessons/all-lessons.md` no longer matches
+  its sources and `build_all_lessons.py --check` would exit 1 —
+  `:240-254` compares byte for byte after LF normalisation.
+  Deliberately NOT regenerated: item (1) adds a lesson file and would
+  invalidate a regeneration done now. **A known-stale generated
+  artifact with no scheduled regeneration is a green nobody is looking
+  at**, which is why it is written down here rather than remembered.
+  *Done when:* `build_all_lessons.py --write` is run after item (1)
+  lands, and `--check` is observed exiting 0.
+  **ALSO OWED, and NOT part of the nine — three MACHINE FOOTGUNS for
+  `CLAUDE.md § Machine footguns`,** kept out of `lessons/` by the rule
+  as amended today (`CLAUDE.md § Workflow` "Two homes, one test"): the
+  PreToolUse gates record every shell command verbatim into
+  `.claude/hooks/*.log` (`pipe_gate.py:237`, `commit_gate.py:199`,
+  under `settings.json`'s `"matcher": "*"`), so a repo-wide search
+  writes its own search terms into the tree; ripgrep skips a gitignored
+  path when the search root is a DIRECTORY and reads it when the root
+  is the FILE — measured both ways, `rg -ic 'read-only' .claude/` exits
+  1 while `rg -ic 'read-only' .claude/agents/` returns a hit, against
+  `git check-ignore` reporting that file NOT ignored; and `git log
+  --since` with a bare date inherits the current time-of-day, so
+  `--since=2026-08-08` returned 0 commits where `--since='2026-08-08
+  00:00'` returns 18. *Done when:* all three are entries in `CLAUDE.md
+  § Machine footguns` in that section's symptom / why it lies / what to
+  do instead form.
+  **AND A FOURTH, WHICH IS A CORRECTION RATHER THAN AN ADDITION —
+  `CLAUDE.md § Machine footguns` IS WRONG ABOUT THE BLOB, IN THE ONE
+  PARAGRAPH THAT ALREADY RECORDS A WRONG CORRECTION.** Measured
+  2026-08-08 while committing the repairs above, because that paragraph
+  says to check the blob AFTER the commit and count. `CLAUDE.md:191`
+  states "the blob at `9f929ad` is CRLF, 42 of 42" and `:209-211` lists
+  four agreeing points including "blob at `62cee25` CRLF 41/41".
+  **Both blobs are LF.** `62cee25` stored 24531 bytes, CR=0, LF=41;
+  `9f929ad` stored 25619, CR=0, LF=42; the parent of this work
+  `6b8b2d4`, CR=0; and every one of the last 20 commits touching the
+  file, CR=0. **The obvious confound was ruled out rather than
+  assumed:** if `git show` stripped CR on output its stream would be
+  shorter than the stored size, and it is not — stored equals streamed
+  at both commits, 24531/24531 and 25619/25619 — so no filter runs and
+  the counts are the stored blobs'. The WORKING TREE is genuinely CRLF
+  and nothing here disputes that: today CR=43 LF=43, and 31482 worktree
+  bytes minus 31439 blob bytes is exactly 43. So the paragraph is right
+  that the two are different objects and wrong about the value one of
+  them holds. Its BOM claim is CORRECT — `efbbbf` on both blobs.
+  **The sharp part, and why this is a queue entry and not a quiet
+  edit:** the correction appended in `9f929ad` said the blob would be
+  LF, and that correction was RIGHT. The correction OF it is what
+  stands in the file today, and it is the wrong one — so the paragraph
+  now warns against the reasoning that produced the true answer.
+  **Nothing practical changes:** `build_all_lessons.py` reads the
+  WORKING TREE from disk, which is CRLF and BOM'd, so both stated
+  reasons for excluding `README.md` from `all-lessons.md` still hold.
+  *Done when:* `:188-215` is rewritten against these measurements — BOM
+  claim kept, working-tree claims kept, blob claims corrected — each
+  with the instrument named, because the last two attempts at this
+  paragraph disagreed about the answer and neither recorded how it was
+  measured.
 - **Four open questions carried by `ROADMAP.md` rather than this list**,
   because each one moves a step rather than adding an item: does the
   pilot shop need a printed slip on day one (if yes, printing and the
