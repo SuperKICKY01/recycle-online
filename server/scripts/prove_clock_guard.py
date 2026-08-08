@@ -313,6 +313,60 @@ def main() -> int:
         check(client.get(f"{BASE}/health").status_code == 200,
               "C6: guard cleared after the reset, no restart")
 
+        # ------------------------------------------------------------- C7
+        # should_refuse() has THREE clauses and only `tripped` had a cell.
+        # `consecutive_failures > 0` is covered here; `not has_evaluated` is
+        # NOT, and cannot be from this script - see the note at the end.
+        #
+        # The failure is produced, not simulated: renaming the table away makes
+        # evaluate()'s SELECT raise, which is the same except-branch a database
+        # that cannot be read takes. tripped must stay FALSE throughout, because
+        # an unreadable database is not a tripped clock.
+        banner("C7 — a FAILED read refuses, and is not reported as a trip")
+        healthy = client.get(f"{BASE}/health")
+        check(healthy.status_code == 200, "C7: healthy before the break",
+              f"got {healthy.status_code}")
+        # THE CONTROL. Without it, mutating should_refuse() to `return True`
+        # would satisfy every cell below and measure nothing.
+        check(healthy.json().get("clock", {}).get("consecutive_failures") == 0,
+              "C7 CONTROL: a healthy guard has zero consecutive failures")
+
+        sql(OWNER, "ALTER TABLE server_clock_watermark"
+                   " RENAME TO server_clock_watermark_c7")
+        try:
+            wait_ticks(3)
+            h = client.get(f"{BASE}/health")
+            j = h.json()
+            c = j.get("clock", {})
+            print(f"  /health with the table gone -> {h.status_code}"
+                  f"  status={j.get('status')}"
+                  f"  tripped={c.get('tripped')}"
+                  f"  consecutive_failures={c.get('consecutive_failures')}")
+            check(h.status_code == 503, "C7: a failed read REFUSES",
+                  f"got {h.status_code}")
+            check((c.get("consecutive_failures") or 0) > 0,
+                  "C7: consecutive_failures actually rose")
+            check(c.get("has_evaluated") is True,
+                  "C7: has_evaluated stays TRUE — this is the stale clause, "
+                  "not the never-evaluated one")
+            check(c.get("tripped") is False,
+                  "C7: tripped stays FALSE — an unreadable database is not a "
+                  "tripped clock")
+            check(j.get("status") == "clock_guard_stale",
+                  "C7: status names the STALE cause",
+                  f"got {j.get('status')}")
+            r = client.post(f"{BASE}/bills", headers=auth(token), json=bill_body(
+                SELLER_A_ID, f"clock-{RUN}-stale", [item(PRODUCT_A_ID, 1, "1.000")]))
+            check(r.status_code == 503,
+                  "C7: business endpoint refuses on a failed read",
+                  f"status={r.status_code}")
+        finally:
+            sql(OWNER, "ALTER TABLE server_clock_watermark_c7"
+                       " RENAME TO server_clock_watermark")
+        wait_ticks(3)
+        check(client.get(f"{BASE}/health").status_code == 200,
+              "C7: recovers once the read succeeds again")
+
     print("\n" + "=" * 70)
     if FAILS:
         print(f"CLOCK GUARD PROOF FAILED — {len(FAILS)} cell(s):")

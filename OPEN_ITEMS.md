@@ -432,6 +432,21 @@ idea — only that it is unresolved.
   read-only cross-check comparing a bill count taken through psql on
   `--database` against one taken through the API, refusing when they
   disagree. Not designed here.
+  **CORRECTION 2026-08-08, and `5010375`'s COMMIT MESSAGE IS WRONG about
+  this — a future reader who finds it should not trust that sentence.**
+  It says the URL is "rebound so anything reading it in THIS process
+  cannot escape". It is not. `server/app/db.py:24` runs
+  `create_async_engine(APP_DATABASE_URL, ...)` at IMPORT, from the value
+  `app.config` read at import, so by the time `main()` rebinds
+  `os.environ`, the engine already exists and still points wherever
+  `.env` said. **The protective value of this change is the REFUSAL,
+  which is proven in both directions; the rebinding is not what makes it
+  safe.** No harm today — neither script uses `app.db`'s engine, they use
+  psql through the container and httpx against the API — but the same
+  question applies to `prove_docno_clock.py:127`, whose rebinding was the
+  model copied here and which may be equally inert. Not checked, and not
+  this entry's to fix. History is permanent: the commit stands and this
+  supersedes it.
   *Honest debt, left deliberately:* the refusal is now DUPLICATED in three
   scripts — `prove_docno_clock.py`, `prove_clock_guard.py`,
   `prove_year_gate.py` — and three copies of one convention are free to
@@ -462,6 +477,64 @@ idea — only that it is unresolved.
   is deleted IN TURN with the corresponding cells observed going RED and
   their neighbours staying green. Deleting a clause and seeing nothing
   move is the current state, and is not a pass.
+  **PARTLY CLOSED 2026-08-08: `consecutive_failures > 0` now has cells;
+  `not has_evaluated` still does not — see the entry below.**
+  `prove_clock_guard.py` C7 produces the failure rather than simulating
+  it: renaming `server_clock_watermark` away makes `evaluate()`'s SELECT
+  raise, which is the same except-branch an unreadable database takes.
+  Nine cells, including a CONTROL that a healthy guard has zero
+  consecutive failures — without it, mutating `should_refuse()` to
+  `return True` would satisfy every other cell.
+  Disproof, measured as a DELTA against a baseline run in identical
+  conditions rather than as an absolute: production code 33 PASS / 0
+  FAIL; clause deleted 30 PASS / 3 FAIL; red only under the mutation and
+  red in both, 3 and 0. The three are "a failed read REFUSES" (got 200),
+  "status names the STALE cause" (got ok), and "business endpoint
+  refuses on a failed read" (status=201 — the mutated guard ACCEPTED a
+  bill while its clock read was failing). The other six C7 cells stay
+  green under it correctly: they assert state transitions in
+  `evaluate()`, which the mutation does not touch.
+  *A first attempt at this reported 17 red and could not account for
+  eleven of them.* The cause was the mutation harness, not the product:
+  it left its health-wait on the API's first RESPONSE rather than on the
+  guard having evaluated, so the proof began against a guard with a null
+  instant and the run cascaded. That attempt measured two things at once
+  and is superseded by the delta above, which pre-checks the table name
+  and waits for `checked_at`. Recorded because a disproof arriving
+  inside a run nobody can account for is not a disproof.
+- **`should_refuse()`'s `not has_evaluated` CLAUSE CANNOT BE COVERED
+  WITHOUT A DECISION THIS PROJECT HAS NEVER MADE — NAMED 2026-08-08, and
+  deliberately left open.** It is the clause that refuses when the guard
+  has NEVER successfully read the clock. Three routes, all closed:
+  **(1)** `has_evaluated` is MONOTONIC — `clock_guard.py:156` sets it
+  True and nothing sets it back — so it cannot be driven on a live
+  process, which is why C7 covers the stale clause and not this one.
+  **(2)** In-process is closed by `server/app/db.py:24`, which builds the
+  engine at IMPORT from `.env`; calling `evaluate()` from a proof would
+  read DEV's table, and forcing its failure would mean renaming dev's
+  table. **(3)** What remains is for the proof to SPAWN ITS OWN uvicorn
+  against a scratch database whose watermark table is already renamed
+  away, assert 503 with `clock_guard_never_evaluated`, then rename back
+  and stop it.
+  **(3) is a design decision and it is the owner's, not a session's.** It
+  makes a proof own a server process — a new failure surface (ports,
+  startup races, orphaned processes, a kill that does not land) inside
+  the artifact whose whole job is to be trustworthy. This repository has
+  never done it, and a session adopting it quietly at the end of a phase
+  is how a convention gets made by accident.
+  **What leaving it costs, stated rather than implied:** the clause that
+  fires when a guard has never evaluated is the clause that would have
+  caught the defect observed on the morning of 2026-08-08 —
+  `clock_guard.py:59-62` records it, a guard that had never once read the
+  clock answering `/health` with `{"status":"ok"}`. **That exact clause
+  is the one still with no cell.** The finding was "a clause written in
+  response to an observed defect has no cell"; one level in, the half
+  that remains uncovered is the half that names the defect.
+  *Not done:* nothing, and nothing should be until the decision is made.
+  *Unblocks:* the owner ruling on whether a proof in this repository may
+  start and stop a server process. If yes, (3) is perhaps thirty lines.
+  If no, the clause stays uncovered and that is a knowing choice rather
+  than an oversight — which is the difference this entry exists to make.
 - **`CLOCK_GUARD_TICK_SECONDS` HAS TWO DIFFERENT DEFAULTS, AND NOTHING ON
   EITHER SIDE CHECKS THEY AGREE — FOUND 2026-08-08 while verifying the
   entry above.** `server/app/clock_guard.py:48` reads it with a default of
