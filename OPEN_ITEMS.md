@@ -832,6 +832,27 @@ idea — only that it is unresolved.
   `argus.md:2` and nothing else — so any per-role preload
   recommendation rests on the role its name implies, Nemesis excepted,
   which the owner has now ruled on directly.
+  **DE-VENDORED 2026-08-08 — `buddhist-method`'s nested `.git` IS
+  REMOVED, and this paragraph is now the only copy of what it held.**
+  45,749 bytes over 29 files, deleted so that tracking `.claude/` writes
+  six blobs instead of one gitlink. With the nested repo present
+  `git add -A` **exits 0** and stages mode **160000**: the six files
+  never become blobs, a clone gets an EMPTY directory, no `.gitmodules`
+  means `git submodule update` cannot recover it, and — because the
+  amendments were uncommitted INSIDE it — the pointer would have named
+  the version WITHOUT them. The one file this project had just amended
+  would have been the one file the commit did not contain.
+  Provenance, read out of `.git/logs/HEAD` before the delete: cloned
+  from **https://github.com/nai0om/buddhist-method**, branch `main`, at
+  commit **745caa74ef27fce7c57cbdbf27af5add3de884d7**, on
+  **2026-05-11T18:25:33+07:00**, and **never fetched afterwards** — the
+  reflog holds exactly one entry, the clone, and no `FETCH_HEAD` ever
+  existed. Upstream tracked exactly the six files that remain, no more.
+  The local copy has **DIVERGED**: `SKILL.md` alone, 27 insertions and
+  3 deletions, which are the five amendments recorded above. `LICENSE`
+  (MIT) stays in place beside the files it covers. **This is a fork
+  now, and the record of what it forked from lives here because the
+  directory that held it does not.**
   *Not done:* seven of the nine are undecided and have still never been
   read by the owner, and the `references/` pair is unreconciled. Two
   are decided and amended; nothing is committed.
