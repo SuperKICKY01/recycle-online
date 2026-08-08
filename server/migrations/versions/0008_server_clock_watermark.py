@@ -70,7 +70,7 @@ impossible even by hand - but DELETE would remove the only row, and a guard with
 no watermark to read is a guard that cannot run.
 
 WRITING ONLY THE NARROW GRANT DOES NOT PRODUCE A NARROW GRANT, AND THIS WAS
-OBSERVED HERE RATHER THAN REASONED ABOUT. db/init/00_init_roles.sql line 33 runs
+OBSERVED HERE RATHER THAN REASONED ABOUT. db/init/00_init_roles.sql:106-107 runs
 ALTER DEFAULT PRIVILEGES FOR ROLE recycle_owner IN SCHEMA public, which hands
 recycle_app arwd - insert, select, update, delete - on every table created
 afterwards, this one included. The first application of this migration granted

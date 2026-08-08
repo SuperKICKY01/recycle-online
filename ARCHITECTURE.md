@@ -469,7 +469,7 @@ this is where each layer of it lives.
 | **policy, the 10th table** | `0002_bills_docno_and_vehicle.py:47-52` | `doc_no_counters` gets the same three statements, **in a different migration** |
 | the predicate | `0001_initial_schema.py:62` | `NULLIF(current_setting('app.tenant_id', true), '')::uuid` — unset or empty becomes NULL, the predicate becomes unknown, **no rows** |
 | context, per request | `server/app/db.py:86-91` | `conn.begin()`, then `set_config('app.tenant_id', :t, true)` — the third argument is what makes it `SET LOCAL`, transaction-scoped, unable to leak across a pooled connection |
-| the roles | `server/db/init/00_init_roles.sql:12-16` | both `recycle_owner` and `recycle_app` are `NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`. `FORCE` is what makes the policy bind the owner too |
+| the roles | `server/db/init/00_init_roles.sql` (the `CREATE ROLE` blocks) | all three of `recycle_owner`, `recycle_app` and `recycle_directory` are `NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`. `FORCE` is what makes the policy bind the owner too |
 | structural backstop | `0001_initial_schema.py:28-37` | composite tenant-carrying FKs (§4) — holds even where RLS does not apply |
 | asserted by | `reconcile.py:877-887` (S4, role attributes), `prove_rls.py` | the roles and the policies are checked, not assumed |
 

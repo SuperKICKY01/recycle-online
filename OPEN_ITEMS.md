@@ -1500,7 +1500,7 @@ or from a plausible-sounding summary.
   applied, and names re-measurement rather than re-application as the
   discriminator.
   **(6) AMEND `lessons/revoke-in-migration.md` — a narrow GRANT can be
-  a NO-OP.** `server/db/init/00_init_roles.sql:33-34` — the path was
+  a NO-OP.** `server/db/init/00_init_roles.sql:106-107` — the path was
   recalled as `db/init/...` and is under `server/` — runs ALTER DEFAULT
   PRIVILEGES granting arwd on every future table. Migration 0008
   observed this and remedied it with REVOKE at `:151`; `0008:76-78`
