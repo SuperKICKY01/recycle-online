@@ -396,6 +396,99 @@ idea — only that it is unresolved.
   item above needs, and one proof would cover both: something that owns
   the ORDER and the WIRING of a sync pass, not only the predicates it
   consults.
+- **TWO NEW PROOF SCRIPTS CAN WRITE TO A DATABASE THEY WERE NOT POINTED
+  AT — FOUND 2026-08-08 by the first red-team pass, CONFIRMED by reading.
+  SEQUENCE: FIRST of three, and it is first by DEPENDENCY, not by
+  severity.** `prove_clock_guard.py:225-229` spawns
+  `reset_clock_watermark.py` with `--reason` and
+  `--yes-the-clock-is-verified-correct` and **no `--database`**, while
+  `reset_clock_watermark.py:52-53` offers exactly that flag and `:61`
+  otherwise falls back to the inherited `MIGRATION_DATABASE_URL`, which
+  `app.config`'s `load_dotenv()` points at dev. `PROVE_DB` — the knob the
+  docstring discusses — reaches only the `sql()` helper and never the
+  subprocess. Separately, `prove_year_gate.py:43` takes `PROVE_DB` as a
+  DEFAULT, never required and never compared to the live URL, and
+  `clear_bills()` at `:105-106` issues `DELETE FROM purchase_bill_items`
+  and `DELETE FROM purchase_bills`. Both docstrings say scratch-only; a
+  docstring is not a guard, and `lessons/README.md` line 43 records the
+  last time one was the only protection here.
+  **WHY FIRST:** the entry below cannot be verified by RUNNING anything,
+  because running it trips this. Two guards committed on 2026-08-08
+  cannot be exercised without risking dev, which makes this the blocker
+  rather than the largest item.
+  **The standard already exists in this repository and was not applied:**
+  `prove_docno_clock.py:109-128` requires `--database`, compares it
+  against `APP_DATABASE_URL`, refuses with exit 2 and the restore command
+  printed, and rebinds the URL so the code under test cannot escape.
+  *Done when:* each script REFUSES when pointed at the live database,
+  printing the restore command, and RUNS when pointed at a scratch one —
+  both directions observed, or neither counts — and `--database` reaches
+  the C6 subprocess.
+  *Known residual this does NOT close:* both scripts drive an EXTERNAL
+  API through `API_BASE_URL`, and that process is bound to its database
+  at startup, so rebinding a URL inside the script cannot reach it. A
+  script correctly pointed at scratch while the API runs against dev
+  still writes bills to dev through the real path. Candidate closure: a
+  read-only cross-check comparing a bill count taken through psql on
+  `--database` against one taken through the API, refusing when they
+  disagree. Not designed here.
+  *Honest debt, left deliberately:* the refusal is now DUPLICATED in three
+  scripts — `prove_docno_clock.py`, `prove_clock_guard.py`,
+  `prove_year_gate.py` — and three copies of one convention are free to
+  drift. Extracting a shared helper means editing `prove_docno_clock.py`,
+  which is working code nobody asked to have touched, so it is recorded
+  rather than done. That is the obvious follow-up whenever a fourth
+  script needs the same guard.
+- **`should_refuse()`'s TWO FAIL-CLOSED CLAUSES ARE COVERED BY NOTHING —
+  FOUND 2026-08-08, CONFIRMED by reading. SEQUENCE: SECOND of three,
+  and it cannot start until the entry above is done.**
+  `clock_guard.py:80` is `return self.tripped or not self.has_evaluated
+  or self.consecutive_failures > 0`. **`prove_clock_guard.py` contains
+  ZERO occurrences of `has_evaluated` or `consecutive_failures`**; the
+  only occurrence in either new suite is `prove_year_gate.py:203`, which
+  asserts `has_evaluated is True` — the healthy side. No cell can reach
+  the state those two clauses guard, so reducing the method to
+  `return self.tripped` cannot redden anything in either file.
+  **What makes it sharp rather than tidy:** `clock_guard.py:59-62`
+  records the incident the clauses were written for — a guard that had
+  never once read the clock answering `/health` with `{"status":"ok"}`,
+  observed the same day. A clause written that morning in response to an
+  observed defect has no cell. That is
+  `lessons/a-check-that-never-went-red-was-never-observed.md` mechanism 2
+  — the failing state unreachable from the inputs supplied — arriving in
+  code approved hours earlier.
+  *Done when:* one cell drives `has_evaluated == False` and one drives
+  `consecutive_failures > 0`, each asserting a REFUSAL; and each clause
+  is deleted IN TURN with the corresponding cells observed going RED and
+  their neighbours staying green. Deleting a clause and seeing nothing
+  move is the current state, and is not a pass.
+- **`CLOCK_GUARD_TICK_SECONDS` HAS TWO DIFFERENT DEFAULTS, AND NOTHING ON
+  EITHER SIDE CHECKS THEY AGREE — FOUND 2026-08-08 while verifying the
+  entry above.** `server/app/clock_guard.py:48` reads it with a default of
+  **"60"**; `server/scripts/prove_clock_guard.py:119` reads the SAME
+  variable with a default of **"2"**, and `wait_ticks()` sleeps in
+  multiples of its own value. Unless the variable is exported to BOTH
+  processes, the proof waits 30x less than the API takes to tick.
+  **It failed in the expensive direction.** Run without it, nine cells go
+  red — C2 (the watermark "did not advance") and all of C3 (`/health`
+  "returned 200 while tripped"), which reads exactly like the guard being
+  broken. It is not: the server log showed `CLOCK GUARD TRIPPED ... 503`
+  at the correct moment, and the proof had simply already looked. A
+  proof-harness timing artifact wearing a product defect's clothes, and
+  the only thing that separated them was reading the server's own log
+  instead of the proof's verdict. With the variable set to 2 on both
+  sides, 24/24 cells pass twice consecutively.
+  **Two knobs that must agree, with nothing checking that they do** — the
+  same shape as the three-target hazard in the entry above, and the third
+  time today that a green or a red turned on an environment fact no
+  assertion covered.
+  *Not done:* deliberately unfixed in this phase. *Done when:* the proof
+  REFUSES to run unless it can establish the API's actual tick interval
+  rather than assuming one — reading it from a value the API reports, or
+  requiring the variable explicitly and failing closed when it is unset.
+  Making the two defaults equal is NOT a fix: it removes today's symptom
+  and leaves the next shell that sets one and not the other in exactly
+  this position.
 
 ## Code debt found and left in place
 
@@ -623,6 +716,34 @@ idea — only that it is unresolved.
   docstring as well, because that is where the next person looks.
   *Unblocks:* nothing is blocked. Workaround is to read the file bare or
   redirect to one.
+- **A 409 AND A 503 FEED THE PER-BILL POISON ALARM, AND BOTH ARE TRUE OF
+  EVERY BILL — FOUND 2026-08-08, CONFIRMED by reading. SEQUENCE: THIRD
+  of three; mobile-side, and it blocks nothing.**
+  `mobile/src/adapters/httpTransport.ts` `sendBill` handles 201, 200,
+  400/422, 401, 403 and 424 and has **no 409 case**, so the year gate's
+  new `be_year_not_contiguous` falls to the catch-all at `:163-165` as
+  `{kind:"unavailable", reachable:true}`. The clock guard's 503 maps
+  there too, per `:12`. And `:15-16` documents `reachable: true` as "the
+  poison signal ... which the UI escalates to a loud alarm" — so the yard
+  is told one NAMED bill has failed repeatedly and to contact support,
+  when nothing is wrong with that bill or with any bill. (The 409 at
+  `:221` is `voidBill`, a different method, where it means success.)
+  **This is the THIRD instance of the class** after 401 (2c-7) and 403
+  (2d), and **the first this project added deliberately** — the guards
+  committed on 2026-08-08 are what created it. `engine.ts:627` states the
+  rule it breaks, in its own words.
+  **It composes with the re-opened decision under `Decisions open`:** if
+  a tenant's year gate refuses for up to a year, this is not a transient
+  misfire but a permanent red alarm naming one bill for the whole
+  outage, while head-of-line ordering dams the queue behind it. That
+  raises its severity without changing its position, because it still
+  blocks nothing.
+  *Not done:* nothing changed. *Done when:* neither condition reaches the
+  per-bill counter, and a proof drives repeated 409s and repeated 503s
+  and asserts on the RENDERED strip rather than on the classification.
+  Which class they should take instead — 424-style parking is the obvious
+  candidate, since the year gate's own description matches "resolvable" —
+  is a DESIGN decision and is not settled here.
 
 ## Decisions open — the owner's, not the code's
 

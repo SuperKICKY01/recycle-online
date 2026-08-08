@@ -21,12 +21,15 @@ nothing covers for the Postgres direction.
 """
 from __future__ import annotations
 
+import argparse
 import datetime as dt
 import os
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+from sqlalchemy.engine import make_url
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -40,8 +43,56 @@ from app.seeddata import (  # noqa: E402
 )
 
 CONTAINER = os.environ.get("PROVE_PG_CONTAINER", "recycle_pg")
-DB = os.environ.get("PROVE_DB", "recycle_clock_scratch")
+# Set by _require_scratch_database() before any statement runs. NOT a default:
+# PROVE_DB used to default to a scratch name, which meant a shell that had it
+# unset or set to something else decided the target silently.
+DB = ""
 OWNER = "recycle_owner"
+
+
+def _require_scratch_database() -> str | None:
+    """Refuse to run against the live database. Returns the name, or None.
+
+    The same shape as `prove_docno_clock.py:109-128`, which this repository
+    already proved: --database REQUIRED with no default, compared against
+    APP_DATABASE_URL, refused with the restore command printed, and the URL
+    rebound so anything reading it in THIS process cannot escape.
+
+    WHAT IT DOES NOT REACH, and this is not a detail: the API under test is a
+    SEPARATE PROCESS bound to its database at startup, via API_BASE_URL. No
+    rebinding here can move it. If that API is running against dev while this
+    script is pointed at scratch, post_bill() still writes real bills to dev
+    through the real path. Point the API at the same scratch database and check
+    that you did.
+    """
+    ap = argparse.ArgumentParser(description="Prove the year-boundary gate.")
+    ap.add_argument("--database", required=True,
+                    help="a SCRATCH database. This script fabricates "
+                         "doc_no_counters rows for years that have not happened "
+                         "and DELETEs this tenant's bills, so it may not be "
+                         "pointed at the live database.")
+    args = ap.parse_args()
+
+    url = os.environ.get("APP_DATABASE_URL")
+    if not url:
+        print("REFUSED: APP_DATABASE_URL is not set, so this script cannot tell\n"
+              "  which database is the live one. Refusing rather than guessing.")
+        return None
+
+    live = make_url(url)
+    if args.database == live.database:
+        print(f"REFUSED: --database {args.database!r} is the LIVE database.\n"
+              "  This script writes doc_no_counters rows for years that have not\n"
+              "  happened and DELETEs purchase_bills for its tenant. Hard rule 5\n"
+              "  means those deletions are not something the product can undo.\n"
+              "  Restore a copy and point it there:\n"
+              "    python scripts/backup_db.py\n"
+              "    python scripts/restore_db.py <dir> --into recycle_clock_scratch")
+        return None
+
+    os.environ["APP_DATABASE_URL"] = live.set(
+        database=args.database).render_as_string(hide_password=False)
+    return args.database
 
 FAILS: list[str] = []
 RUN = str(int(time.time()))
@@ -118,6 +169,15 @@ def post_bill(client, token, tag):
 
 
 def main() -> int:
+    # BEFORE any statement runs, and before anything is imported that might
+    # read the URL. A refusal here must cost nothing.
+    global DB
+    chosen = _require_scratch_database()
+    if chosen is None:
+        return 2
+    DB = chosen
+    print(f"target database: {DB} (checked against APP_DATABASE_URL)")
+
     print(__doc__.split("RUN AGAINST")[0])
     original = sql("SELECT coalesce(string_agg(be_year||':'||last_seq, ',' ORDER BY be_year),'')"
                    f" FROM doc_no_counters WHERE tenant_id = '{TENANT_A_ID}'")
