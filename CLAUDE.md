@@ -306,11 +306,22 @@ false pass and a red run into a confidently wrong cause.
   been run (server: actual HTTP request; not "it should work").
 - Read actual files before stating numbers or facts. Never guess.
 - Fix root causes, not symptoms.
-- For any debugging — device, build, or server misbehaviour — follow
-  debug-mantra: reproduce reliably before hypothesising, run the
-  disproof first, keep a ledger across runs. buddhist-method's
-  Kalāma: never assert what the device or server did from memory,
-  only from an observed response.
+- For any debugging — device, build, or server misbehaviour — OPEN
+  and follow `.claude/skills/debug-mantra/SKILL.md` (6,427 bytes).
+  Before asserting what the device or server did, OPEN and follow
+  Kalāma in `.claude/skills/buddhist-method/SKILL.md`
+  (13,257 bytes). **Paths, not a summary, and that is the whole
+  point of this entry.** Five lines of paraphrase stood here in
+  place of both bodies; a measured session made 204 tool calls and
+  opened neither file, so the paraphrase is what got acted on — and
+  it omitted the step ordering, the escalation inside step 2, and
+  five of the six principles. Same rule as `Scope and status`
+  above: two copies drift, and a session believes whichever it
+  reads first. Neither file is in git (`.gitignore:30` is
+  `.claude/`), so nothing can detect them changing under this line.
+  The byte counts are a staleness tripwire, not a fact to rely
+  on — if one differs, this line is the stale copy and the file
+  wins.
 - If something doesn't work, say so plainly. Negative results are
   valuable.
 - A RED-TEAM pass is defined in `RED_TEAM.md`: a session that reads
