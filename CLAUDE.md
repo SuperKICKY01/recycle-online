@@ -322,8 +322,16 @@ false pass and a red run into a confidently wrong cause.
   see them change, which it could not when this entry was written.
   The byte counts are a second and cheaper tripwire, not a fact to
   rely on: if one differs, this line is the stale copy and the file
-  wins. They are LF counts — both files were CRLF until tracking
-  normalised them, which is where 90 and 161 bytes went.
+  wins. **Know which kind of number you are holding.** These are RAW
+  bytes of the working-tree file, and both files are CR=0 today — so
+  raw and LF-normalised sizes are IDENTICAL, and no measurement taken
+  now can tell you which definition this line used. That makes the
+  numbers worth less than ones whose definition can be checked; they
+  diverge by exactly 90 and 161 the moment either file carries CRLF
+  again, which is what tracking normalised away. The check HAS been
+  seen to fire: on 2026-08-08 one byte appended to debug-mantra
+  reddened that file's cell alone while its neighbour stayed green,
+  and restoring returned the committed blob byte for byte.
 - If something doesn't work, say so plainly. Negative results are
   valuable.
 - A RED-TEAM pass is defined in `RED_TEAM.md`: a session that reads
