@@ -37,3 +37,8 @@ desktop.ini
 !.claude/agents/
 !.claude/skills/
 !.claude/settings.json
+!.claude/hooks/
+# ...but the gate's own audit log is runtime data, not config. These two
+# patterns come AFTER the negation on purpose: the last match wins.
+.claude/hooks/*.log
+.claude/hooks/*.log.1
