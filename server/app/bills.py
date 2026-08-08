@@ -427,6 +427,91 @@ async def create_bill(
             received_at = (await conn.execute(text("SELECT now()"))).scalar_one()
             be_year = _be_year(received_at)
 
+            # ---------------------------------------------------- YEAR GATE
+            # THE ONLY PLACE THE CLOCK CAN DO IRREVERSIBLE DAMAGE. A now() wrong
+            # by enough to cross a Buddhist year boundary opens the counter for a
+            # year that has not happened; when the real year arrives its first
+            # sequence number is already spent, B-<year>-1 never exists, and a
+            # gap in a legal document sequence cannot be repaired afterwards.
+            #
+            # So the gate fires HERE, at the moment a NEW (tenant_id, be_year)
+            # row would be created, and nowhere else. An existing counter is the
+            # normal hot path and is not touched.
+            #
+            # IT CANNOT CATCH A JUMP OF EXACTLY +1 YEAR. Y == max+1 is precisely
+            # what a real new year looks like, and with only this server's own
+            # clock to consult there is nothing that distinguishes the two.
+            # Closing that needs an independent time reference this system does
+            # not have. Stated here because an unstated limit is worse than a
+            # known one.
+            #
+            # A TENANT'S FIRST EVER COUNTER IS ALLOWED UNGUARDED. There is no
+            # predecessor to compare against, so the gate is silent by
+            # construction. Refusing instead would block every new shop's first
+            # bill, which is a far larger harm than the one being prevented - but
+            # it does mean a tenant onboarded under a wrong clock takes a wrong
+            # first year and nothing here notices.
+            # THIS READ IS ON EVERY BILL WRITE, AND THAT WAS A DECISION.
+            # It can be avoided entirely: `ON CONFLICT DO NOTHING ... RETURNING
+            # be_year` returns a row ONLY when the insert actually happened, so
+            # the check could ride on the upsert below and the hot path — an
+            # existing counter, which is every bill but one per tenant per year
+            # — would do ZERO extra reads.
+            #
+            # Rejected, for now. That form inserts the bad counter row FIRST and
+            # relies on the transaction aborting to remove it. True today, but
+            # it makes rollback semantics load-bearing for correctness: a later
+            # refactor that catches the exception inside the transaction would
+            # keep the row, which is precisely the damage this gate exists to
+            # prevent. The current form is wrong-proof on inspection.
+            #
+            # REVISIT WHEN: bill-write latency has been MEASURED and this read
+            # actually matters. It is one indexed aggregate over a table holding
+            # one row per tenant-year, so that is a real bar, not a formality.
+            counter_state = (
+                await conn.execute(
+                    text(
+                        "SELECT max(be_year) AS max_year,"
+                        "       bool_or(be_year = :y) AS year_exists"
+                        "  FROM doc_no_counters"
+                    ),
+                    {"y": be_year},
+                )
+            ).mappings().one()
+            max_year = counter_state["max_year"]
+            year_exists = bool(counter_state["year_exists"])
+
+            if not year_exists and max_year is not None and be_year != max_year + 1:
+                # REFUSE, not flag. This branch is unreachable under a correct
+                # clock, and fires at most once per tenant per year even under a
+                # wrong one - a far smaller false-positive budget than the
+                # startup guard, which blocks all trade. The asymmetry decides
+                # it: allowing writes a permanent unrepairable gap into a legal
+                # sequence, refusing delays one bill that the device still holds
+                # locally (hard rule 8) and that syncs once the clock is fixed.
+                #
+                # WHAT IT COSTS WHEN IT IS WRONG: a yard that wrote NO bills for
+                # an entire Buddhist year reopens at max+2 and is refused with
+                # cash already paid. There is deliberately no override yet.
+                logger.error(
+                    "YEAR GATE REFUSED a bill: tenant=%s be_year=%s but the"
+                    " highest counter for this tenant is %s. Either this"
+                    " server's clock is wrong, or this shop has not traded for"
+                    " a full Buddhist year. server_received_at=%s",
+                    principal.tenant_id, be_year, max_year, received_at.isoformat(),
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "kind": "year_gate_refused",
+                        "code": "be_year_not_contiguous",
+                        "message": "ปีเอกสารไม่ต่อเนื่อง กรุณาตรวจสอบนาฬิกาของเซิร์ฟเวอร์",
+                        "be_year": str(be_year),
+                        "highest_be_year": str(max_year),
+                        "server_received_at": received_at.isoformat(),
+                    },
+                )
+
             # Assign a GAP-FREE doc_no. The counter row is upserted then locked by
             # the UPDATE, in the SAME transaction as the insert: concurrent submits
             # serialize on the row lock (no collision) and a rolled-back submit

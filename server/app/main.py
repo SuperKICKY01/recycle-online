@@ -5,14 +5,18 @@ per-request tenant-context layer over real HTTP.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from . import clock_guard
 from .auth import Principal, get_principal
 from .bills import router as bills_router
 from .db import engine, tenant_connection
@@ -35,11 +39,59 @@ class LoginResponse(BaseModel):
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    yield
-    await engine.dispose()
+    # EVALUATED BEFORE THE FIRST REQUEST IS SERVED, not on the first request.
+    # A clock that is wrong is wrong for bill number one, and there is no
+    # "first request" on a shop's server that is safe to get wrong.
+    await clock_guard.evaluate()
+    tick = asyncio.create_task(clock_guard.tick_forever())
+    try:
+        yield
+    finally:
+        tick.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await tick
+        await engine.dispose()
 
 
 app = FastAPI(title="Recycle Online API (Phase 2c-2)", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def _refuse_while_clock_is_wrong(request, call_next):
+    """Refuse to serve while the clock guard is tripped — except /health.
+
+    WHAT THIS COVERS: everything except the exact path /health. That includes
+    POST /auth/login, so a tripped clock means NOBODY CAN SIGN IN — including
+    whoever has to diagnose it. That is deliberate: with a wrong clock every
+    write would be refused anyway and every report would carry a wrong day, so a
+    session buys nothing. It is still the consequence most likely to surprise
+    someone at 06:00, so it is written here rather than left to be discovered.
+
+    THE WAY BACK IN, in order:
+      1. /health needs no auth and stays up. It returns the machine-readable
+         reason, the watermark, the observed instant and how far behind it is.
+         This is why the guard does not exit the process.
+      2. The tick clears it UNATTENDED if the clock corrects itself — the
+         container-that-started-before-NTP case, which is the likeliest trigger.
+         No human action at all.
+      3. Otherwise scripts/reset_clock_watermark.py, run as the OWNER role
+         DIRECTLY AGAINST THE DATABASE. It does not go through this API and
+         needs no login.
+
+    THE CONSEQUENCE THAT MATTERS TO WHOEVER HITS THIS: recovery by path 3 needs
+    DATABASE CREDENTIALS AND SHELL ACCESS ON THE HOST, not an admin account in
+    the product. A support path that only speaks HTTP cannot clear this guard.
+    """
+    if clock_guard.STATE.should_refuse() and request.url.path != "/health":
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": clock_guard.TRIPPED_DETAIL,
+                     "status": clock_guard.STATE.refusal_status(),
+                     "clock": clock_guard.STATE.as_dict()},
+        )
+    return await call_next(request)
+
+
 app.include_router(bills_router)
 app.include_router(master_router)
 app.include_router(reports_router)
@@ -51,8 +103,17 @@ _INVALID_LOGIN = HTTPException(
 
 
 @app.get("/health")
-async def health() -> dict:
-    return {"status": "ok"}
+async def health() -> JSONResponse:
+    # A green /health under a wrong clock would be the most expensive lie this
+    # service could tell: it is the one thing an operator checks first.
+    clock = clock_guard.STATE.as_dict()
+    if clock_guard.STATE.should_refuse():
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": clock_guard.STATE.refusal_status(),
+                     "detail": clock_guard.TRIPPED_DETAIL, "clock": clock},
+        )
+    return JSONResponse(content={"status": "ok", "clock": clock})
 
 
 @app.post("/auth/login", response_model=LoginResponse)
