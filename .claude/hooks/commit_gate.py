@@ -45,7 +45,7 @@ import sys
 
 # Roles that may not commit. Names are frontmatter `name:` values, which is
 # what `agent_type` reports - not filenames.
-GATED_AGENTS = {"hephaestus"}
+GATED_AGENTS = {"hephaestus", "metis"}
 
 SHELL_TOOLS = {"Bash", "PowerShell"}
 
