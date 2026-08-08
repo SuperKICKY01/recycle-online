@@ -1425,6 +1425,12 @@ or from a plausible-sounding summary.
   readings with no other cause. **That instance is better evidence than
   the incident this lesson was proposed from, because it is in-repo and
   because it MOVED.**
+  **LANDED 2026-08-08 in `14e94d5`**, written as specified, plus one
+  improvement on the design: mechanism 3 keeps its INCIDENT NOT
+  REPRODUCIBLE FROM THIS REPO marker AND gains a second instance that IS
+  in-repo — `tools/verify_citations.ps1` counts the handle in the target,
+  so a citation whose target is its own file counts itself and can never
+  resolve. Corpus is now 37, agreed by three instruments.
   **(2) AMEND `lessons/a-check-that-never-went-red-was-never-observed.md`
   — a TENTH mechanism: the needle was well-formed and landed inside a
   LARGER TOKEN.** `grep -o 'agent_type'` returned three hits, read as
@@ -1583,6 +1589,62 @@ or from a plausible-sounding summary.
   at**, which is why it is written down here rather than remembered.
   *Done when:* `build_all_lessons.py --write` is run after item (1)
   lands, and `--check` is observed exiting 0.
+  **CLEARED 2026-08-08 in `14e94d5`, AND THE INFERENCE IS NOW A
+  MEASUREMENT.** `--write` exit 0, then `--check` exit 0: `CHECK OK`,
+  37 lesson files, 37 TOC entries, 252273 bytes, LF-normalised. The
+  paragraph above predicted exit 1 from reading `:240-254` and never ran
+  it; that prediction was correct and was still a prediction.
+  **THE CITATION CHECKER FOUND NINE REAL BREAKS WHERE FOUR WERE
+  EXPECTED, AND THREE OF THE NINE WERE INTRODUCED BY THIS ENTRY.** Run
+  2026-08-08 over all TEN root sources, not the two-file default at
+  `tools/verify_citations.ps1:69`. Before repair `CITATIONS=177
+  BROKEN=13`; after, `CITATIONS=176 BROKEN=10`. **BROKEN counts CONTROL
+  failures as well as breaks** — `:164` and `:173` both increment it — so
+  the count is read and the exit code is not: 4 of the 10 are the
+  non-empty controls that BRIEFING/CLAUDE/README/RED_TEAM produce by
+  legitimately carrying no citations, and 6 are real.
+  **The three that were mine are FIXED rather than filed**, and all three
+  were one defect: a handle wrapped across two lines, so the string
+  exists on no line of the target — the rule `START_HERE.md:8-11` states
+  about itself and which binds every file that cites. Two of them could
+  not be fixed by unwrapping, because a citation whose TARGET is the file
+  it is written in counts its own line and can never reach the
+  exactly-one hit `:138` requires; those are prose now, and item (3) of
+  this entry says why.
+  **THE SIX THAT REMAIN ALL PREDATE THIS WORK, AND TWO WERE NEVER
+  RECORDED.** Three are genuine, the target lacking the string:
+  `OPEN_ITEMS.md:181` and `PROJECT_STATUS.md:134` both cite
+  `ROADMAP.md § STAGE 1` with the handle `prove_reconcile.py back to
+  green`, and `OPEN_ITEMS.md:1090-1091` cites `RED_TEAM.md` with the
+  handle `and nothing else`. **Both are written here with the handle in
+  BACKTICKS rather than quotes on purpose:** rendering a broken citation
+  in citation form REPRODUCES it, and describing these two would have
+  added two more breaks to the count this paragraph reports. That is
+  item (1)'s mechanism 3 arriving for the third time in one day, in the
+  act of writing it down.
+  Three are wrapped strings: `OPEN_ITEMS.md:992-993`,
+  `OPEN_ITEMS.md:1211-1212`, and `SRS_MAP.md:502-503` — the last a
+  wrapped SECTION name rather than a handle. The two never recorded are
+  the first two wraps.
+  **THE FOUR KNOWN BREAKS WERE SUPPLIED AS FACT AND WERE WRONG IN BOTH
+  DIRECTIONS, and the owner recorded why rather than letting it pass:**
+  the line numbers came from a report several hours old, from a file that
+  had grown by two hundred lines in between, and were not re-measured.
+  One of the four, `OPEN_ITEMS.md:708`, carries no citation at all today.
+  **The count came out nine instead of four because the session
+  re-measured rather than trusting the coordinates it was handed.** That
+  is the shape item (4) of this entry describes — read the spec before
+  designing the experiment, and know which numbers are owned by someone
+  else — arriving from the OWNER's side rather than the session's, and it
+  is the second time in one day a number passed along as fact did not
+  survive contact with the files. The first was the twelve candidates, of
+  which two were refuted. Neither is a reason to distrust the source; both
+  are the reason the re-measurement is not optional.
+  *Done when:* the six are repaired at their sources — the three wraps by
+  putting each handle or section name on ONE line, the three genuine ones
+  by finding the heading or handle that replaced what they cite — and a
+  full ten-source run reports `BROKEN=4`, those four being the controls
+  and nothing else.
   **ALSO OWED, and NOT part of the nine — three MACHINE FOOTGUNS for
   `CLAUDE.md § Machine footguns`,** kept out of `lessons/` by the rule
   as amended today (`CLAUDE.md § Workflow` "Two homes, one test"): the
@@ -1631,6 +1693,16 @@ or from a plausible-sounding summary.
   with the instrument named, because the last two attempts at this
   paragraph disagreed about the answer and neither recorded how it was
   measured.
+  **OWNER RULING 2026-08-08 ON HOW THIRD MUST DO IT, and it constrains
+  the FORM rather than the content: the repair is NOT to write a third
+  correction.** It is to state what was MEASURED — carrying the
+  stored-versus-streamed check that ruled out the output filter, because
+  that check is the only thing separating this answer from the two
+  before it — and to say plainly WHICH correction was right and which
+  superseded it wrongly. A third correction written without the
+  measurement attached would be the same failure a third time, and the
+  paragraph would then read wrong, right, wrong, and unfalsifiable in
+  turn.
 - **Four open questions carried by `ROADMAP.md` rather than this list**,
   because each one moves a step rather than adding an item: does the
   pilot shop need a printed slip on day one (if yes, printing and the
