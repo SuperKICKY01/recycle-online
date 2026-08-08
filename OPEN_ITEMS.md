@@ -606,6 +606,23 @@ idea — only that it is unresolved.
   API uses. *Not done:* no client sends one yet. *Unblocks:* a validator
   on that parameter — small, and worth doing before a second client
   consumes the endpoint.
+- **`pipe_gate.py` refuses a check script being READ, not only one being
+  RUN — SECOND false-positive class, FOUND 2026-08-08 when the gate
+  refused its own author mid-verification.** The matcher hits a check's
+  FILENAME regardless of whether the command invokes it:
+  `sed -n '199,215p' prove_clock_guard.py | head` runs no proof, and is
+  blocked, because `prove_\w*\.py` matches and a pipe follows. `sed`,
+  `cat`, `head`, `wc`, `grep` and every other reader over a check script
+  are affected, and reading a proof through a pager is a normal thing to
+  want. Phase B named the FIRST class — a check name appearing only as
+  quoted data, `grep "pytest" . | head` — and did not see this one.
+  *Not done:* nothing. **The bias stays**: telling a reader from an
+  invoker needs argv-position analysis the gate deliberately does not
+  attempt, and the opposite error manufactures a green, which is the
+  whole reason the gate exists. Recorded in `pipe_gate.py`'s own
+  docstring as well, because that is where the next person looks.
+  *Unblocks:* nothing is blocked. Workaround is to read the file bare or
+  redirect to one.
 
 ## Decisions open — the owner's, not the code's
 
@@ -959,6 +976,58 @@ idea — only that it is unresolved.
   document is authoritative for numbering. The fix is one line in
   whichever loses, but it is a change to the BOOT PATH and gets its own
   phase. *Unblocks:* the owner naming the winner.
+- **RE-OPENED 2026-08-08: "a tenant's first-ever counter is unguarded"
+  was accepted as a bounded cost, and what it actually costs is a shop
+  that cannot trade for up to a year.** The accepted reading was that an
+  unguarded first bill takes a wrong `be_year` and the numbering looks
+  odd. Nemesis traced it forward on its first dispatch, from the diff
+  alone and with none of this disclosed to it. The full path: a shop's
+  FIRST-EVER bill is written while the server clock reads a year ahead —
+  the case `bills.py:484` lets through, because it guards only when
+  `max_year is not None`, and the case migration 0008 states it "does NOT
+  catch, and it cannot". `doc_no_counters` now holds 2570 and nothing for
+  2569. The clock is then corrected, by NTP or by an operator running
+  `reset_clock_watermark.py` after the clock guard trips. Every
+  subsequent `POST /bills` evaluates `be_year != max_year + 1` as
+  2569 != 2571 and returns **409 `be_year_not_contiguous`, tenant-wide,
+  for every device, until the real calendar reaches BE 2570** — with no
+  override, because `bills.py` says "deliberately no override yet". Cash
+  keeps leaving the till and no bill is recorded. **The comment at
+  `bills.py:493` states the cost of the OPPOSITE direction only** (a
+  counter reopening at max+2), so the file documents the cheaper half of
+  the trade and not this one. **What makes it new is the composition:**
+  the year gate did not exist when the first-ever-counter gap was
+  accepted. Before it, a clock excursion cost a numbering oddity and the
+  shop kept trading; after it, the same excursion — once CORRECTED —
+  stops the shop trading. Note also that a jump of exactly +1 year is
+  invisible to both guards, since `be_year == max_year + 1` is the
+  contiguous case the gate permits and a FORWARD jump never trips a
+  backwards-only watermark. *Not done:* nothing is changed. This is an
+  entry, not a fix. *Unblocks:* an owner decision on whether the accepted
+  cost is still acceptable now that it is known to be this one — and, if
+  not, what an override looks like, which is a design question and not a
+  patch.
+- **A STANDING TENSION BETWEEN TWO GOOD HABITS, and it is not resolved
+  here — FOUND 2026-08-08, reported by Nemesis about ITSELF, unprompted.**
+  `RED_TEAM.md:21-26` says a reviewer who reads the author's reasons
+  inherits the author's model of why the code is correct, and that not
+  having it is the red team's only advantage. The dispatch that produced
+  the findings above was clean: no phase brief, no commit message, no
+  conversation. **The author's model arrived anyway, inside the artifact
+  under review.** This project comments its reasoning at the site, at
+  length — `server/app/bills.py:430-470`, `server/app/clock_guard.py:1-40`,
+  `server/migrations/versions/0008_server_clock_watermark.py:1-90` — and a
+  reviewer reading the files a diff touches, which `RED_TEAM.md:19`
+  REQUIRES, reads all of it. **No dispatch discipline can prevent this and
+  no mechanism can detect it.** Both habits are good ones: a comment
+  explaining why a line exists is how this repository stops relearning
+  things, and a review that has not been told why is how it catches what
+  the author could not see. They are in direct conflict and the conflict
+  has no clean side. *Not done:* deliberately nothing. A resolution
+  written today would be a preference dressed as a finding. *Unblocks:*
+  the owner's thinking, unhurried. Note for whoever picks it up: Nemesis
+  found the defects anyway, so the leak degraded the pass without
+  defeating it, and that is one data point rather than a general result.
 
 ## Business questions — unanswered, and not answerable from the code
 

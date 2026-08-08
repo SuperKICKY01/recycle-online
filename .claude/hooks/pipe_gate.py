@@ -35,6 +35,17 @@ still fires, at the cost of a FALSE POSITIVE on a check name that appears only
 as quoted data - `grep "pytest" . | head` is refused. Blocking that is an
 annoyance; missing the other manufactures a green.
 
+SECOND FALSE-POSITIVE CLASS, observed 2026-08-08 when this gate refused its own
+author mid-verification. The matcher hits a check's FILENAME whether the command
+RUNS it or merely READS it. `sed -n '199,215p' prove_clock_guard.py | head`
+invokes no proof - it reads one - but `prove_\\w*\\.py` matches and a pipe
+follows, so it is refused. `sed`, `cat`, `head`, `wc`, `grep` and every other
+reader over a check script are affected, and reading a proof through a pager is
+a normal thing to want. Telling a reader from an invoker needs argv-position
+analysis this deliberately does not attempt. The bias stays - the opposite error
+manufactures a green - and the limit is recorded here because this docstring is
+where the next person looks. Workaround: read the file bare, or redirect.
+
 Not handled: `$(...)` and backtick substitution are not parsed, so a check
 inside one is judged as if it were at top level (over-blocks, which is the
 safe direction). Nothing here understands shell functions, aliases, or a
