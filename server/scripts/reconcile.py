@@ -816,7 +816,12 @@ async def structure_checks(rep: Report, admin: asyncpg.Connection) -> None:
         SELECT c.relname AS table_name
           FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
          WHERE n.nspname = 'public' AND c.relkind = 'r'
-           AND c.relname NOT IN ('alembic_version', 'tenants')
+           -- server_clock_watermark holds ONE timestamp about this MACHINE and
+           -- no shop data at all, so it has no tenant_id and cannot have one.
+           -- Excluded for the same reason as alembic_version. See 0008 and the
+           -- CANNOT_SEE entry, which carries the prohibition that makes it safe.
+           AND c.relname NOT IN ('alembic_version', 'tenants',
+                                 'server_clock_watermark')
            AND NOT EXISTS (SELECT 1 FROM pg_attribute a
                             WHERE a.attrelid = c.oid AND a.attname = 'tenant_id'
                               AND NOT a.attisdropped)
@@ -829,7 +834,9 @@ async def structure_checks(rep: Report, admin: asyncpg.Connection) -> None:
     # S2 — a table this checker has never heard of is covered by nothing above.
     r = Result("S2", "no table exists that this checker does not know about",
                examined=f"{len(present)} tables")
-    unknown = [t for t in present if t not in [*ALL_RLS_TABLES, "alembic_version"]]
+    unknown = [t for t in present
+               if t not in [*ALL_RLS_TABLES, "alembic_version",
+                            "server_clock_watermark"]]
     r.total = len(unknown)
     r.rows = [f"table={t}  — add it to ALL_RLS_TABLES and give it checks" for t in unknown]
     rep.add("global", r)
@@ -1130,6 +1137,44 @@ CANNOT_SEE = [
     " (scripts/prove_docno_clock.py lies to Python's clock and shows the code"
     " unmoved). There is no longer any moment at which a T7 hit can be honest:"
     " every one is either a row this product did not write, or a defect.",
+
+    "WHETHER THE SERVER'S OWN CLOCK IS RIGHT — and T7 above is the reason this"
+    " entry exists. T7 compares the be_year parsed from doc_no against"
+    " _be_year(server_received_at), but create_bill derives BOTH from ONE"
+    " now(), so T7 is _be_year(X) against _be_year(X) and cannot disagree"
+    " however wrong X was. T8 and T9 take no time input at all. T12 is the only"
+    " check here that compares two clock readings taken at different moments,"
+    " and it needs the bill to have been VOIDED, so it catches a backward jump"
+    " only by accident. Nothing in this sweep disbelieves now().",
+
+    "server_clock_watermark IS NOT CHECKED HERE, AND IS EXCLUDED FROM S1 AND S2"
+    " ON PURPOSE. It holds ONE timestamp — the highest now() this server has"
+    " ever observed — and no shop data of any kind. It has no tenant_id and sits"
+    " OUTSIDE RLS because the guard that reads it runs at STARTUP, before any"
+    " request and therefore before any tenant context exists;"
+    " tenant_connection(None) fails closed, so an RLS-protected watermark would"
+    " be unreadable exactly when it must be read. That makes it the second table"
+    " the app role can read with no tenant context, after alembic_version —"
+    " which the app role cannot read at all. NOTHING TENANT-SCOPED MAY EVER BE"
+    " ADDED TO THIS TABLE: that prohibition is the whole reason a table outside"
+    " the isolation model is acceptable, and if it is ever broken S1 and S2 will"
+    " NOT catch it, because they have been told to skip this table.",
+
+    "THAT THE CLOCK WATERMARK ONLY EVER MOVES FORWARD. app/clock_guard.py"
+    " advances it with GREATEST(highest_seen, now()), so no code path in the"
+    " application lowers it — but UPDATE is granted to recycle_app, so a"
+    " hand-written statement as the app role CAN lower it, and nothing in the"
+    " database refuses. Only INSERT and DELETE are refused at the grant level."
+    " Forward-only is an application property, not a schema one. Closing it"
+    " needs a BEFORE UPDATE trigger, which this schema does not have anywhere.",
+
+    "WHETHER A doc_no's BE YEAR IS THE YEAR IT SHOULD HAVE BEEN. The year gate"
+    " in create_bill refuses a NEW (tenant_id, be_year) counter that is not"
+    " max+1, but it cannot see a jump of exactly +1 year — that is identical to"
+    " a real new year given only this server's clock — and it is silent for a"
+    " tenant's FIRST counter, which has no predecessor to compare against. A"
+    " shop onboarded under a wrong clock takes a wrong first year and neither"
+    " the gate nor T7 nor anything here will say so.",
 ]
 
 
