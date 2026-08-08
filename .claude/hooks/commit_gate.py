@@ -129,6 +129,13 @@ def main():
 
     tool = payload.get("tool_name")
 
+    # LIVE or TEST, from the payload's own shape rather than a flag a harness
+    # must remember. Claude Code sends hook_event_name on every real
+    # PreToolUse payload; a hand-built test payload does not. This log is the
+    # evidence base for every claim made about this gate, and an evidence base
+    # a test can write into indistinguishably is not evidence.
+    src = "LIVE" if "hook_event_name" in payload else "TEST"
+
     # THE ABSENT KEY. Tested for presence, never with a default.
     if "agent_type" not in payload:
         if tool in SHELL_TOOLS:
@@ -137,11 +144,11 @@ def main():
             if isinstance(cmd, str) and any(
                     s == "commit" or s.startswith("commit-")
                     for s in git_subcommands(cmd)):
-                log("%s MAIN ALLOW commit-shaped %s :: %s"
-                    % (stamp(), tool, cmd[:160]))
+                log("%s %s MAIN ALLOW commit-shaped %s :: %s"
+                    % (stamp(), src, tool, flat(cmd)))
             else:
-                log("%s MAIN ALLOW %s :: %s"
-                    % (stamp(), tool, (cmd or "")[:160]))
+                log("%s %s MAIN ALLOW %s :: %s"
+                    % (stamp(), src, tool, flat(cmd or "")))
         allow()
 
     agent = payload.get("agent_type")
@@ -155,8 +162,8 @@ def main():
     if agent not in GATED_AGENTS:
         ti = payload.get("tool_input")
         cmd = ti.get("command") if isinstance(ti, dict) else ""
-        log("%s %s ALLOW (ungated role) %s :: %s"
-            % (stamp(), agent, tool, str(cmd)[:160]))
+        log("%s %s %s ALLOW (ungated role) %s :: %s"
+            % (stamp(), src, agent, tool, flat(cmd)))
         allow()
 
     ti = payload.get("tool_input")
@@ -173,7 +180,7 @@ def main():
 
     subs = git_subcommands(cmd)
     if any(s == "commit" or s.startswith("commit-") for s in subs):
-        log("%s %s BLOCK %s :: %s" % (stamp(), agent, tool, cmd[:160]))
+        log("%s %s %s BLOCK %s :: %s" % (stamp(), src, agent, tool, flat(cmd)))
         block(
             "BLOCKED by .claude/hooks/commit_gate.py\n"
             "\n"
@@ -189,13 +196,18 @@ def main():
             "reads the diff and commits." % agent,
             "Command refused: %s" % cmd[:400])
 
-    log("%s %s ALLOW %s :: %s" % (stamp(), agent, tool, cmd[:160]))
+    log("%s %s %s ALLOW %s :: %s" % (stamp(), src, agent, tool, flat(cmd)))
     allow()
 
 
 def stamp():
     return datetime.datetime.now(datetime.timezone.utc).strftime(
         "%Y-%m-%dT%H:%M:%SZ")
+
+
+def flat(s):
+    """One log entry must be one physical line, or counting the file lies."""
+    return str(s).replace("\r", " ").replace("\n", "\\n")[:200]
 
 
 if __name__ == "__main__":
