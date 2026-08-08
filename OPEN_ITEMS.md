@@ -766,10 +766,78 @@ idea — only that it is unresolved.
   second home for all eleven. Three dead grants inside
   `settings.local.json` were measured the same way and are recoverable
   the same way.
-  *Not done:* nobody has decided what to keep. The directory has never
-  been read by the owner, and this entry proposes nothing.
-  *Unblocks:* an owner decision PER SKILL — keep, amend or delete — and
-  a separate one on `settings.local.json`.
+  **AMENDED 2026-08-08 — TWO OF THE NINE ARE RECONCILED, SEVEN ARE
+  NOT.** `debug-mantra` and `buddhist-method` were read in full against
+  `CLAUDE.md`, `START_HERE.md`, `lessons/README.md` and `RED_TEAM.md`
+  and amended in place: four amendments to the first, five to the
+  second. The 2026-08-07 figures above stand as a dated record; the
+  current ones are nine `SKILL.md` files **74,342 bytes** (same
+  definition as the 69,370 above: whole files, frontmatter included)
+  and nine `description:` lines **5,013 bytes as line text, 5,022
+  counting one terminator each** — the 4,989 above used the second
+  definition, and the two differ by exactly 9 bytes, one per file.
+  Every byte of the growth is accounted for: **+4,972** from these nine
+  amendments and **+5,029** from `.claude/agents/argus.md`, which did
+  not exist when the survey ran and makes **16 authored files, not
+  15**; `.claude/` entire is now 153,690 bytes against 143,689, and
+  10,001 is exactly 4,972 + 5,029.
+  **E is closed, and what A-K did NOT contain matters more.** E named
+  `debug-mantra`'s recital; the amendment resolves it in the direction
+  the recital could never have worked from — the order is to recite
+  VERBATIM a block that exists only in the body, while what enters a
+  session is the `description:` line, so the only available compliance
+  was a paraphrase the same skill forbids two rules later.
+  **`buddhist-method` appears NOWHERE in A-K and five disagreements
+  were found in it**: Kalāma treating a consulted source as verified,
+  where every entry in `CLAUDE.md § Machine footguns` is a consulted
+  source that lied; Sati assuming one state to re-read, where this
+  system routinely has several; Anatta's discard against hard rule 5
+  and against dated records; Pahāna sending deferred work to a code
+  TODO against the one queue this file is, and calling a guard on an
+  untrusted input a workaround; Upekkhā's hold-position unbounded by
+  the owner's authority. **Seven outstanding is a FLOOR, not a count**
+  — a skill that scored zero in the first pass scored five in the
+  second, so the remaining seven are un-surveyed as much as undecided.
+  **The `references/` files under `buddhist-method` (8,846 bytes,
+  `ariyasacca-debug.md` and `extended-principles.md`) are
+  UNRECONCILED** and are not covered by "two of nine": two of their
+  lines fed the Pahāna amendment, the rest was read only for its
+  preload cost.
+  **OWNER RULING 2026-08-08: Nemesis preloads nothing.** `RED_TEAM.md`
+  "and nothing else" wins; a preloaded body is a fifth input to a pass
+  whose value is the narrowness of its four. The general rule drawn
+  from it: **preloading a general skill beside a stronger
+  role-specific rule licenses the looser reading, so prefer writing
+  the discipline into the role definition**, as `.claude/agents/argus.md`
+  already does — its own Kalāma, counts and negatives rules are
+  stricter than the skill's. **That rule has no home yet.** It governs
+  agent definitions; `CLAUDE.md § Workflow` is the candidate and it is
+  not written there, because it was not in the approved edit.
+  **Still open, and each is a thing NOT OBSERVED rather than a thing
+  undecided.** The `skills:` agent-frontmatter field exists — read from
+  the installed CLI 2.1.226 binary, described there as "Skills
+  preloaded for this agent", in the same schema object as `tools` and
+  `effort` that `argus.md` already uses — but **its YAML shape is
+  UNVERIFIED** (name or path, scalar or list), and **that preloading
+  injects the BODY rather than the `description:` is
+  PLAUSIBLE-FROM-SOURCE AND UNOBSERVED**: the runtime calls the same
+  `getPromptForCommand` a normal invocation uses, which was read in
+  minified source and never watched running. One agent run with the
+  field set settles both. Unobserved likewise: whether the rewritten
+  `debug-mantra` `description:` actually causes a session to OPEN the
+  body — that needs a fresh session and a tool-call count, which is the
+  204-call measurement re-run, and it is the entire premise of the
+  amendment. And **`Metis`, `Hephaestus` and `Nemesis` have no design
+  anywhere in this repository** — one grep across every `.md` returns
+  `argus.md:2` and nothing else — so any per-role preload
+  recommendation rests on the role its name implies, Nemesis excepted,
+  which the owner has now ruled on directly.
+  *Not done:* seven of the nine are undecided and have still never been
+  read by the owner, and the `references/` pair is unreconciled. Two
+  are decided and amended; nothing is committed.
+  *Unblocks:* an owner decision PER SKILL — keep, amend or delete — for
+  the remaining seven, a separate one on `settings.local.json`, and a
+  home for the role-over-preload rule above.
 
 ## Business questions — unanswered, and not answerable from the code
 
