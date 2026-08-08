@@ -881,6 +881,38 @@ idea — only that it is unresolved.
   `mobile/`); and STANDING TRUST rather than configuration, which is
   its own entry below. `.claude/settings.json` does not exist yet — the
   negation is written for it in advance and admits nothing today.
+  **CORRECTED 2026-08-08, BESIDE THE DATED FIGURES ABOVE AND NOT OVER
+  THEM.** Four things asserted earlier in this entry are false as of this
+  measurement. Metis found all four on its first dispatch.
+  **(1) The nine `SKILL.md` files are 74,026 bytes, not the 74,342
+  recorded above. (2) The `references/` pair is 8,689 bytes, not
+  8,846.** Both are the class this project tracks: a number measured
+  under one definition and quoted under another. `79b1e75` renormalised
+  those files from CRLF to LF, and `280580b` — which wrote the figures —
+  came AFTER it, so both were stale the moment they were recorded. The
+  references delta is **157 bytes against 157 LF lines** — one CR per
+  line, which matches that cause exactly. The skills delta is
+  **316** and does NOT decompose cleanly across the nine files;
+  there is no pre-renormalisation blob to check it against, so the cause
+  is consistent but UNVERIFIED and is left that way. Both new figures were
+  measured from the working tree in the same process that wrote this
+  paragraph — which is the discipline the two wrong numbers lacked.
+  **(3) "`.claude/settings.json` does not exist yet" is false** — it
+  exists, is tracked, and registers two `PreToolUse` hooks.
+  **(4) "`Metis`, `Hephaestus` and `Nemesis` have no design anywhere in
+  this repository" is false** — `.claude/agents/hephaestus.md` and
+  `.claude/agents/metis.md` exist and are tracked. Nemesis alone is still
+  undesigned.
+  **A KNOWN SEAM, recorded and NOT resolved, because resolving it is a
+  decision.** A plan may legitimately specify
+  `git show HEAD:<path> | wc -c`, where the PRINTED NUMBER is the
+  observable and the exit code belongs to `wc`. `.claude/hooks/pipe_gate.py`
+  would refuse that exact form if the left side were a check rather than
+  `git show`. Neither rule is wrong: the gate is right that a check's
+  status must not be decided by a pipe, and the plan is right that a byte
+  count read off stdout is not a status. They meet at commands that both
+  produce a number AND carry an exit code, and nothing here decides which
+  wins.
   *Not done:* seven of the nine are undecided and have still never been
   read by the owner, and the `references/` pair is unreconciled. Two
   are decided, amended and committed; all nine are now VISIBLE to a
@@ -911,6 +943,22 @@ idea — only that it is unresolved.
   is honour-only; or narrow them, `git add` yes and `git commit` no.
   *Unblocks:* the owner's answer. Dropping them costs one prompt per
   commit and nothing else.
+- **`CLAUDE.md` and `ROADMAP.md` disagree about what a forward step is
+  even CALLED — FOUND 2026-08-08.** `CLAUDE.md:67` says "Forward steps
+  are **R-numbers**, defined in `ROADMAP.md` and nowhere else."
+  `ROADMAP.md:35` says "**The R-numbers R1-R10 are a CLOSED LOG. No new
+  R-number will be issued.**", and `ROADMAP.md:41` says "**Forward steps
+  are P-numbers**". Both files are in the boot path, `CLAUDE.md` is read
+  FIRST, and it points at the file that contradicts it. **This is not
+  cosmetic: it is a pointer a booting session follows to learn what the
+  next step is even called**, so a session that reads `CLAUDE.md` and
+  stops will ask for an R-number that will never be issued. Found by
+  Metis while planning something else and correctly declined as out of
+  scope; an outside review reached the same defect independently, which
+  is two arrivals at one line. *Not done:* nobody has decided which
+  document is authoritative for numbering. The fix is one line in
+  whichever loses, but it is a change to the BOOT PATH and gets its own
+  phase. *Unblocks:* the owner naming the winner.
 
 ## Business questions — unanswered, and not answerable from the code
 
