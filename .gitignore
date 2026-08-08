@@ -26,5 +26,14 @@ yarn-debug.log*
 Thumbs.db
 desktop.ini
 
-# Claude Code local tooling (not part of the product)
-.claude/
+# Claude Code. agents/ and skills/ ARE tracked: they carry standing
+# instructions that enter every session, and until now no reviewing
+# role - owner, red team, git log, any diff - could see them.
+# settings.local.json stays out: per-machine trust, absolute paths,
+# a dev credential. MEASURED: this must be `.claude/*`, never
+# `.claude/` - a negation under an ignored DIRECTORY is inert,
+# because git never descends into it to read the negation.
+.claude/*
+!.claude/agents/
+!.claude/skills/
+!.claude/settings.json

@@ -307,21 +307,23 @@ false pass and a red run into a confidently wrong cause.
 - Read actual files before stating numbers or facts. Never guess.
 - Fix root causes, not symptoms.
 - For any debugging — device, build, or server misbehaviour — OPEN
-  and follow `.claude/skills/debug-mantra/SKILL.md` (6,427 bytes).
+  and follow `.claude/skills/debug-mantra/SKILL.md` (6,337 bytes).
   Before asserting what the device or server did, OPEN and follow
   Kalāma in `.claude/skills/buddhist-method/SKILL.md`
-  (13,257 bytes). **Paths, not a summary, and that is the whole
+  (13,096 bytes). **Paths, not a summary, and that is the whole
   point of this entry.** Five lines of paraphrase stood here in
   place of both bodies; a measured session made 204 tool calls and
   opened neither file, so the paraphrase is what got acted on — and
   it omitted the step ordering, the escalation inside step 2, and
   five of the six principles. Same rule as `Scope and status`
   above: two copies drift, and a session believes whichever it
-  reads first. Neither file is in git (`.gitignore:30` is
-  `.claude/`), so nothing can detect them changing under this line.
-  The byte counts are a staleness tripwire, not a fact to rely
-  on — if one differs, this line is the stale copy and the file
-  wins.
+  reads first. Both files are NOW TRACKED — `.gitignore` admits
+  `.claude/agents/` and `.claude/skills/` — so a diff can finally
+  see them change, which it could not when this entry was written.
+  The byte counts are a second and cheaper tripwire, not a fact to
+  rely on: if one differs, this line is the stale copy and the file
+  wins. They are LF counts — both files were CRLF until tracking
+  normalised them, which is where 90 and 161 bytes went.
 - If something doesn't work, say so plainly. Negative results are
   valuable.
 - A RED-TEAM pass is defined in `RED_TEAM.md`: a session that reads
