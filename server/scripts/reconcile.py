@@ -1293,6 +1293,35 @@ CANNOT_SEE = [
     " tenant's FIRST counter, which has no predecessor to compare against. A"
     " shop onboarded under a wrong clock takes a wrong first year and neither"
     " the gate nor T7 nor anything here will say so.",
+
+    "S4's SUBJECT IS THE CLUSTER, NOT THE DATABASE UNDER TEST. pg_roles is shared"
+    " by every database in the cluster, so S4 returns the SAME answer whatever"
+    " --database is given, and that cuts both ways. A green S4 beside a restored"
+    " scratch copy is therefore a statement about the LIVE money database too,"
+    " which is stronger than anything else in this report. And S4 cannot be made"
+    " to differ by restoring a different copy: no dump can move it, no fixture can"
+    " exercise it, and it is the one structural check here that is not about the"
+    " database it was pointed at.",
+
+    "S4 CHECKS THE VALUE OF A ROLE'S search_path AND NEVER THAT THE SCHEMA EXISTS."
+    " Three things follow that it cannot see. (1) It cannot tell a cluster that"
+    " has NEVER run migration 0009 from one DOWNGRADED away from it: rolconfig"
+    " survives `alembic downgrade`, so both show a role naming a schema that is"
+    " not there — which is the DESIGNED state before 0009"
+    " (db/init/00_init_roles.sql:78-86) and a broken one after it."
+    " (2) It cannot see a COORDINATED RENAME IN SOURCE. Rename the schema in 0009"
+    " and the path in 00_init_roles.sql together and the cluster still agrees with"
+    " the literal in REQUIRED_ROLES while the link is gone: this check binds the"
+    " CLUSTER to the checker, not one source file to another."
+    " (3) IT CANNOT SEE A PER-DATABASE OVERRIDE, and this one was MEASURED rather"
+    " than reasoned. `ALTER ROLE ... IN DATABASE ... SET search_path` writes"
+    " pg_db_role_setting and does NOT touch pg_roles.rolconfig. On a throwaway"
+    " cluster built from db/init/00_init_roles.sql, after that statement rolconfig"
+    " still read {search_path=directory} — so S4 is GREEN — while a session as"
+    " that role INTO THAT DATABASE returned `something_else`, and the same role"
+    " into another database still returned `directory`. The role-wide value S4"
+    " reads can be contradicted, in the one database it is about, without S4"
+    " moving.",
 ]
 
 

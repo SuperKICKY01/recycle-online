@@ -343,6 +343,26 @@ idea — only that it is unresolved.
   while it ran. *Not done:* deliberately, and the harness refuses such
   injections by scanning for them. *Unblocks:* a genuinely separate
   cluster. Low value; recorded so nobody "fixes" the label.
+  **AMENDED 2026-08-09, AND NOT CLOSED — the sentence above is now true of
+  ONE THIRD of S4 and false of the rest, which is the whole finding.** When
+  it was written S4 was one thing: a read of `rolsuper`/`rolbypassrls`. It
+  now has THREE clauses — the role SET exists, the ATTRIBUTES, and the
+  rolconfig SETTINGS — and they do not share a fate. **The attribute clause
+  is still unproven by execution and for exactly the reason above**, which
+  has not weakened: granting SUPERUSER or BYPASSRLS is cluster-wide and the
+  live money database shares this cluster. **The other two are now proven**,
+  and by an instrument the original sentence did not consider: changing what
+  the CHECKER DECLARES rather than what the cluster IS. That reaches no role,
+  no database and no cluster, so the argument that blocked the attribute
+  clause never applied to it. Measured 2026-08-09 — declare a `search_path`
+  on a role that has none and S4 goes red naming it while the correctly
+  configured role stays green in the same run; declare a role that does not
+  exist and the missing-role arm fires while `examined` moves 3 of 3 to 3 of
+  4; and deleting either arm removes exactly its own red and leaves the
+  other's standing. *Still not done:* the attribute clause. *Unblocks:* the
+  same genuinely separate cluster, and nothing else. **The label was right
+  and has become too broad — do not read it as covering S4 entire, and do
+  not delete it either.**
 - **The sign-out guard on an IN-FLIGHT send sits where no proof can
   reach it.** `mobile/App.tsx:611` re-checks
   `maySync({ paused: syncPausedRef.current, token: tokenRef.current })`
@@ -983,6 +1003,33 @@ idea — only that it is unresolved.
   *Unblocks:* making `copy_block_counts` and the restore-side count
   query agree on schema qualification — either both schema-qualified or
   both stripped — and doing it BEFORE anyone trusts the next backup.
+- **A BACKUP DIRECTORY'S LABEL NAMES WHAT THE BACKUP IS ABOUT, NOT WHAT IT
+  CONTAINS, AND ONE ALREADY LIES — FOUND 2026-08-09 while looking for a copy to
+  point `prove_reconcile.py` at.** `backup_db.py` writes
+  `recycle_<timestamp>[_label]`, and the label is free text supplied by whoever
+  took it. **`recycle_20260808T074116Z_clock-guard` reads as the clock-guard
+  state and its dump is at 0007** — and 0008 IS the clock-watermark migration, so
+  the label names precisely the thing that copy does not have. Read out of the
+  artefact, `COPY public.alembic_version` in each `recycle.sql`, never off the
+  name: 0003, 0003, 0004, 0006, 0007, 0007, **0007** and 0008 across the eight
+  directories. **Exactly ONE is at 0008**
+  (`recycle_20260809T045731Z_pre-directory-role`), and it is the only copy any
+  proof requiring the current schema can be pointed at.
+  **Why it is worse than untidy.** The failure it produces is not an error: a
+  copy restored from a dump older than the schema a checker requires goes RED for
+  its AGE, which this list already records two entries above as inherent to
+  restoring arbitrary dumps — so the operator meets a red that looks like a money
+  defect and is a fixture defect. And the 07:00 path in `server/scripts/BACKUP.md`
+  has an operator choosing a directory under time pressure, by name, with the
+  dumps' actual contents one grep away and nobody grepping. *Not done:* renaming
+  the existing directories would destroy the only record of when each was taken
+  and is not obviously right; `MANIFEST.json` already records the source database
+  and the instant but **not the migration version**, which is the field that would
+  have answered this without opening the dump. *Unblocks:* deciding between two
+  fixes that are not the same — record `alembic_version` in `MANIFEST.json` at
+  backup time so the artefact states its own schema, or have `restore_db.py`
+  print the dump's version prominently before it starts. The first is the honest
+  one; the second helps only whoever already ran the restore.
 
 ## Decisions open — the owner's, not the code's
 
