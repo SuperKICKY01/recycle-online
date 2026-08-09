@@ -1158,6 +1158,27 @@ idea — only that it is unresolved.
   relation per shape `pg_dump` must quote — upper case, a space, a dot in the
   name, an embedded quote — in schemas `q` and `Q S`. It carries its own DROP
   WHEN condition as a database comment, in the form the 0009 fixture uses.
+  **TWO OF THE THREE CLOSED 2026-08-09/10. ONE REMAINS, AND IT IS NOT THE ONE
+  THIS ENTRY OPENED WITH.** Everything above stands as written; what follows is
+  what landed.
+  *Defect 2, the KEY SPACE — CLOSED in `68d679d`.* `copy_block_counts` now
+  tokenises a COPY header with quotes respected and writes the LOGICAL relation
+  name, so the key for a quoted identifier is correct and the reader's
+  `split_key` resolves it. The format did NOT change — bare for public,
+  `schema.relation` otherwise — so every manifest already in the backup root
+  still restores; measured green across five artefacts at 0003, 0006, 0007,
+  0008 and 0009. Verified end to end on the fixture: 22 relations, 22 keys, 22
+  comparison rows, source count and manifest count and restored count agreeing
+  for every one.
+  *Defect 3, the UNQUOTED INTERPOLATION — CLOSED in `cf2dadf`*, together with
+  the same repair in `restore_db.py` (`89d55ce`). **And its description in this
+  entry was WRONG until that commit**: it said the backup fails closed. It does
+  not — see the correction inside item 3 above.
+  *STILL OPEN, AND IT IS DEFECT 1 ONLY:* the summary total against its own
+  itemisation. `:512` sums `counts_dump.values()` across every schema while
+  `:556` itemises public tables alone — 845 against 844 when measured. Nothing
+  in these commits touched it. **The count in this entry and in the queue below
+  now reads ONE remaining, not three.**
 - **A BACKUP DIRECTORY'S LABEL NAMES WHAT THE BACKUP IS ABOUT, NOT WHAT IT
   CONTAINS, AND ONE ALREADY LIES — FOUND 2026-08-09 while looking for a copy to
   point `prove_reconcile.py` at.** `backup_db.py` writes
@@ -1238,14 +1259,14 @@ idea — only that it is unresolved.
   section to bind this to, because by design there is none.** The sequence is
   written down here so it is not lost with a chat session; it is NOT an R-number,
   none was invented, and issuing one is the owner's act in `ROADMAP.md`.
-  1. **`backup_db.py`'s three defects**, together and against a control that can
-     distinguish them — the summary-versus-itemisation total, `copy_block_counts`
-     mangling any identifier `pg_dump` had to quote, and `live_row_counts`
-     counting the WRONG RELATION on a quoted identifier in schema `public`
-     (aborting only where no colliding name exists — corrected 2026-08-09). All
-     three are described in full in the half-closed entry above; they are not
-     restated here, because two copies drift. **This said TWO until 2026-08-09**,
-     when a control pass measured the third.
+  1. **`backup_db.py`'s ONE REMAINING defect** — the summary total against its
+     own itemisation, `:512` summing across every schema while `:556` itemises
+     public tables alone. Described in full in the entry above; not restated
+     here, because two copies drift. **This said TWO on 2026-08-09, then THREE
+     when a control pass measured a third, and now ONE**: `cf2dadf` closed the
+     unquoted interpolation and `68d679d` closed the key space. The count has
+     moved three times, which is why it is written here with its history
+     attached rather than as a bare number.
   2. **The dev cluster to 0009.** `recycle` still reads 0008 with a `directory`
      schema count of 0, re-measured 2026-08-09. 0009 has been applied only to
      throwaways and to `recycle_tw20260809_0009fixture`, which survives under a
@@ -1275,6 +1296,56 @@ idea — only that it is unresolved.
   place, at the paragraph where it begins, rather than moved or deleted. Nothing
   was destroyed and nothing was silently left looking current. *Unblocks:* a
   change whose only subject is that move, so the diff is a move and reads as one.
+- **`recycle_keyshape_scratch` IS THE ONLY INSTRUMENT IN THIS PROJECT THAT CAN
+  DETECT THE KEY-SPACE DEFECT, AND DROPPING IT WOULD LEAVE AN ACCEPTANCE
+  CRITERION THAT IS GREEN FOREVER WITH NOTHING BEHIND IT — MEASURED 2026-08-10,
+  not reasoned.** The key parser was deliberately mutated back to its old
+  space-splitting behaviour and all three acceptance runs were repeated. The
+  identifier-shape fixture went **RED**, naming the relation:
+  `BACKUP FAILED: tables with no COPY block in the dump at all: ['Odd Name']`.
+  **The other two stayed GREEN, exit 0 each**: the ordinary-backup check, whose
+  database has no name needing quotes, and the old-manifest restores, which read
+  manifests written before that parser existed and never invoke it. So of the
+  three checks that look like they cover this repair, exactly one does.
+  **What follows, and it is the reason this is filed rather than remembered:** if
+  that database is dropped, nothing on this box reproduces the defect, and the
+  remaining checks continue to pass. A future session would inherit a green suite
+  over a repair it cannot test, which is indistinguishable from a working one.
+  The fixture carries its own DROP WHEN as a database comment for this reason.
+  *Not done:* nothing is owed while the fixture exists. *Unblocks:* whoever
+  eventually deletes it must first make the shapes reproducible from a script, so
+  the instrument survives the database.
+- **THE MANIFEST KEY FORMAT CANNOT REPRESENT TWO IDENTIFIER SHAPES, AND THEY FAIL
+  BY COLLIDING WITH A LEGITIMATE KEY RATHER THAN BY FAILING TO PARSE.** The
+  reader partitions on the FIRST dot, so a dot inside a relation name in a
+  NON-public schema is fine — `q` + `a.b` → `q.a.b` → `(q, a.b)`, measured
+  round-tripping. The two that are not:
+  a dot inside a **public** relation's name (key is the bare `a.b`, read as
+  schema `a`, relation `b`), and a dot inside a **schema** name (`x.y` + `t` →
+  `x.y.t`, read as `(x, y.t)`).
+  **Neither raises anything.** Each produces a key that is well-formed and means
+  a different relation, so no check can separate the two readings and no error
+  appears at any point. That is why this is filed as a limit rather than a bug:
+  it is ambiguous, not detectably wrong. *Not done:* fixing it needs a manifest
+  FORMAT change — a version marker or a different key shape — which this project
+  has deliberately not taken on. *Unblocks:* that decision. No database on this
+  box and no manifest in the backup root carries such a name today.
+- **RESTORING A DATABASE'S OWN BACKUP INTO THE DEFAULT TARGET TRIPS THE
+  OVERWRITE-LIVE GATE, and the next person will meet it.** `restore_db.py`'s gate
+  fires when `--into` names the database the backup came FROM and that database
+  exists. Backing up `recycle_restore_scratch` and then restoring that dump
+  without `--into` satisfies both conditions, because the default target IS the
+  source — so a harmless verification of a scratch backup is refused as "a
+  destructive overwrite of live data". The gate is correct; the surprise is that
+  the default target is also the most convenient thing to back up.
+  *Recorded because of what it cost:* a temporary database
+  `recycle_keyspace_check` had to be created to receive that restore, and the
+  brief that required it forbade dropping databases, so it survived a commit
+  before a later brief authorised removing it. It held a 0008 copy, 12 user
+  tables, 385 bills, and was dropped 2026-08-10 — cluster `recycle%` count 10 →
+  9, verified by naming all ten and reporting which was absent. *Not done:*
+  nothing; this is a note. *Unblocks:* anyone verifying a backup of the scratch
+  database, who needs to know to pass `--into` something else.
 
 ## Decisions open — the owner's, not the code's
 
@@ -2078,6 +2149,23 @@ or from a plausible-sounding summary.
   00:00'` returns 18. *Done when:* all three are entries in `CLAUDE.md
   § Machine footguns` in that section's symptom / why it lies / what to
   do instead form.
+  **AND A FIFTH, ADDED 2026-08-10, WHICH BELONGS BESIDE THE RIPGREP ONE ABOVE
+  BECAUSE IT IS THE SAME FAILURE WEARING THE SEARCHER'S OWN CLOTHES: A PATTERN
+  CAN RETURN "No matches found" BECAUSE THE PATTERN IS BROKEN, NOT BECAUSE THE
+  TEXT IS ABSENT.** Measured 2026-08-10: a search for the fail-closed wording
+  across every `*.md` returned no matches, and the text was in TWO files the
+  whole time. The cause was a `\n` inside the pattern's own alternation, which
+  made the alternation match nothing; a simpler pattern found all three sites
+  immediately. **It lies in exactly the direction the ripgrep entry does — an
+  empty result reads as "the thing is not there" when it means "the instrument
+  did not look" — and it is worse in one respect: the ripgrep case at least has
+  a rule (root is a directory), while this one has no tell at all.** It was
+  caught only because the searcher had personally written the missing text
+  minutes earlier and knew it existed; nothing in the output would have said so
+  otherwise. *Done when:* it is an entry in `CLAUDE.md § Machine footguns` with
+  the others, and the rule it carries is the one that generalises: **a search
+  that returns zero needs a PRESENCE control — the same pattern against
+  something known to match — before the zero is reported as an absence.**
   **AND A FOURTH, WHICH IS A CORRECTION RATHER THAN AN ADDITION —
   `CLAUDE.md § Machine footguns` IS WRONG ABOUT THE BLOB, IN THE ONE
   PARAGRAPH THAT ALREADY RECORDS A WRONG CORRECTION.** Measured

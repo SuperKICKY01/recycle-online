@@ -57,9 +57,31 @@ not read the green as re-run.**
 
 ## Current phase
 
-**THE BACKUP/RESTORE KEY SPACE — REPRODUCED ON A FIXTURE, THEN FIXED ON THE
-RESTORE SIDE ONLY. 2026-08-09.** No R-number was issued and none was invented:
+**IDENTIFIER QUOTING ON BOTH SIDES, AND THE MANIFEST KEY SPACE CORRECTED.
+2026-08-09 into 2026-08-10.** No R-number was issued and none was invented:
 R-numbers are defined in `ROADMAP.md` and are the owner's to issue.
+
+**Three commits, and the arc is one thing**: `89d55ce` quoted every identifier
+reaching SQL in `restore_db.py`, `cf2dadf` did the same in `backup_db.py`, and
+`68d679d` made the manifest key carry the LOGICAL relation name so a quoted
+identifier keys correctly. **Of `backup_db.py`'s three defects, TWO ARE NOW
+CLOSED and ONE REMAINS OPEN** — the summary total against its own itemisation,
+which is not next and is not scheduled here. Full arc, with every number and
+control, in the dated entry `2026-08-10 — identifier quoting on both sides` at
+the end of this file.
+
+**THE DEFECT'S REAL SHAPE WAS WRONG IN THESE FILES UNTIL IT WAS MEASURED, and
+the correction runs the wrong way.** They said an unquoted identifier made the
+backup FAIL CLOSED — abort, no artefact, the only danger a missing exit line.
+It does not. `from public.Odd Name` is VALID SQL naming relation `Odd`, folded
+to `odd`, with the ALIAS `Name`; it aborted only because no relation `odd`
+existed. With one present the backup COMPLETES and records a count from the
+WRONG TABLE. **The abort was the lucky case.** Corrected in both files in
+`cf2dadf`; the old wording is kept beside each correction.
+
+The paragraphs below this one describe the phase that PRECEDED these commits and
+are kept for the arc; the sentence "NOT FIXED: backup_db.py" in them is true of
+that moment and no longer true today.
 
 Migration 0009 created `directory.shop_codes`, the first relation outside schema
 `public`. `backup_db.py` keys its manifest off whatever `pg_dump` wrote, stripping
@@ -3253,6 +3275,10 @@ because it then looks for `"public"."directory.shop_codes"`. Reverted, green
 returned. A check that cannot be made to fail was never observed to work.
 
 **WHAT IS NOT FIXED, DELIBERATELY — AND IT IS THREE DEFECTS, NOT ONE.**
+**TRUE OF THIS PHASE, AND NO LONGER TRUE TODAY: two of the three were closed by
+`cf2dadf` and `68d679d`, and only the summary-versus-itemisation defect remains.
+See `2026-08-10 — identifier quoting on both sides`. Item 3's description below
+was also wrong about the defect's shape and is corrected in place.**
 `backup_db.py` was not touched, because its divergence has no repeatable control
 yet and fixing both sides against one control means a regression could not be
 attributed to a side. **THIS ENTRY SAID TWO UNTIL 2026-08-09**, when a control
@@ -3324,3 +3350,92 @@ corrected here and the third is item 3 below.
 - **Nothing was run on a handset**, and no device gap in this file is refreshed.
 - **The dev database is still at 0008.** No migration was applied anywhere this
   phase.
+
+### 2026-08-10 — identifier quoting on both sides, and the manifest key space
+
+**ONE ARC ACROSS THREE COMMITS**, and it closes two of `backup_db.py`'s three
+defects. `89d55ce` — every identifier reaching SQL in `restore_db.py` quoted.
+`cf2dadf` — the same in `backup_db.py`, plus the correction below. `68d679d` —
+the manifest key made to carry the LOGICAL relation name. Two more commits landed
+in the same window and are status updates rather than work: `2413330` and
+`72ba65d`.
+
+**THE DEFECT'S REAL SHAPE, AND THESE FILES HAD IT WRONG.** Both this file and
+`OPEN_ITEMS.md` described the third `backup_db.py` defect as failing CLOSED: an
+abort, no artefact, the only hazard a missing `BACKUP_EXIT` line. **That was
+false, and false in the dangerous direction.** Unquoted, `from public.Odd Name`
+is VALID SQL — it names relation `Odd`, folded by PostgreSQL to `odd`, with the
+ALIAS `Name`. It errored only because no relation `odd` existed. Measured
+2026-08-09 after adding a decoy `public.odd` beside `public."Odd Name"`: the
+unquoted code returns **`{'Odd Name': 11}`** where the truth is **13** — no
+error, no warning, the wrong number under the right label. **The abort was the
+lucky case; the defect's real shape is a silently wrong count in the manifest.**
+Both files were corrected in `cf2dadf`, at all three passages that stated it,
+with the old wording quoted inside each correction rather than deleted.
+
+**WHAT MADE THE ACCEPTANCE TEST REAL, because before it there was one that
+passed with the fix deliberately broken.** Two things, and neither is optional:
+
+- **A DECOY.** `public.odd` (11 rows) is exactly what an unquoted
+  `public.Odd Name` resolves to. Without it the defect merely errors and the
+  dangerous case — the silent wrong count — cannot be observed at all.
+- **DISTINCT ROW COUNTS PER RELATION**, so a count taken from the wrong table
+  cannot coincidentally match the right one. Measured and each unique in that
+  database: `public.odd` **11**, `public."Odd Name"` **13**, `public."don't"`
+  **17**, against the counts already present (1, 2, 3, 4, 5, 6, 7, 24, 385,
+  408).
+
+`public."don't"` is there for a third reason: it is the only shape that forces
+the LABEL literal to be escaped rather than the FROM clause, and no relation in
+the non-public half carries a single quote.
+
+**THE KEY-SPACE DECISION AND ITS BOUNDARY.** The manifest format did NOT change:
+a public relation is still a BARE key, anything else is still `schema.relation`.
+What changed is that the key now carries the LOGICAL name — pg_dump's quoting is
+stripped, because `restore_db.py`'s `split_key` feeds each part through
+`quote_ident`, and a key retaining the quotes would be quoted a second time and
+name nothing. The reader partitions on the FIRST dot, which decides exactly what
+the format can say:
+
+| case | representable? |
+| --- | --- |
+| a dot inside a relation name in a NON-public schema (`q` + `a.b` → `q.a.b`) | **yes** — the reader stops at the first dot and returns `(q, a.b)` |
+| a dot inside a PUBLIC relation's name | **no** — the key is the bare `a.b`, read as schema `a`, relation `b` |
+| a dot inside a SCHEMA name (`x.y` + `t` → `x.y.t`) | **no** — read as `(x, y.t)` |
+
+**The two unrepresentable cases COLLIDE with a legitimate key rather than
+failing to parse.** They are ambiguous, not detectably wrong: nothing errors,
+nothing can tell the two apart, and no check can be written that separates them
+without a format change. That limit is the format's and is published in
+`restore_db.py`'s CANNOT_SEE block.
+
+**EVERY MANIFEST ALREADY IN THE BACKUP ROOT STILL RESTORES GREEN**, which is the
+guarantee the change had to keep. Five artefacts written by the OLD parser,
+spanning five schema ages, versions read out of each body's
+`COPY public.alembic_version` block and not off its directory name (the version
+parser's own control returning `9999` first):
+
+| version | artefact | restore |
+| --- | --- | --- |
+| 0003 | `recycle_20260728T041551Z` | exit 0 |
+| 0006 | `recycle_20260807T092659Z_post-0006` | exit 0 |
+| 0007 | `recycle_20260808T074116Z_clock-guard` | exit 0 |
+| 0008 | `recycle_20260809T045731Z_pre-directory-role` | exit 0 |
+| 0009 | `…_tw0009fixture-at-0009-onerow` | exit 0 |
+
+**THE POSITIVE RESULT.** The identifier-shape fixture backed up and restored
+end to end: 22 relations, 22 manifest keys, 22 comparison rows, none absent, and
+the source count, the manifest count and the restored count agreeing for every
+one — including `q.a.b`, the dotted relation name that round-trips, and the
+decoy pair 11 beside 13.
+
+**WHAT THIS DOES NOT ESTABLISH.**
+
+- **One `backup_db.py` defect remains OPEN**: the summary total sums across
+  every schema while the itemisation beside it lists public tables only —
+  845 against 844 when it was measured. Not fixed, not scheduled here.
+- **`prove_backup_restore.py` still carries the identical unquoted
+  interpolation** and is not fixed, because proving a fix means running it and
+  it writes a permanent bill to the live database.
+- **No proof script was run** in any of these commits.
+- **Nothing was run on a handset**; the dev database is still at 0008.
