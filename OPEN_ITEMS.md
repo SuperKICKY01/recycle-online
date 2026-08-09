@@ -1716,7 +1716,7 @@ or from a plausible-sounding summary.
   item (1)'s mechanism 3 arriving for the third time in one day, in the
   act of writing it down.
   Three are wrapped strings: `OPEN_ITEMS.md:992-993`,
-  `OPEN_ITEMS.md:1211-1212`, and `SRS_MAP.md:509-510` — the last a
+  `OPEN_ITEMS.md:1211-1212`, and `SRS_MAP.md:515-516` — the last a
   wrapped SECTION name rather than a handle. The two never recorded are
   the first two wraps.
   **THE FOUR KNOWN BREAKS WERE SUPPLIED AS FACT AND WERE WRONG IN BOTH

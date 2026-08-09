@@ -443,9 +443,15 @@ NOBYPASSRLS, and no endpoint reads `tenants`. **There is currently no way for th
 vendor to be a user of this system**, which is why `reconcile.py` runs as a
 script with a superuser DSN rather than as an endpoint. *What exists to build
 on:* `reconcile.py` is a working, proven cross-tenant reader, and it is the only
-one. *What is unresolved:* whether a provider seat should exist at all, and if so
-whether it is a role, a separate service, or a superuser script that stays a
-script. **The survey believed an earlier `ROADMAP.md` had recorded a decision
+one. *What has since been decided, and is recorded in
+`ARCHITECTURE.md § 10. The three settled decisions`:* the provider gets a separate
+seat rather than a third tier on the existing roles (D1); cross-tenant reads stay a
+per-tenant loop with no `BYPASSRLS` role (D2); and the shop list that loop iterates
+comes from a dedicated relation outside the tenant model, whose migration is
+committed and **NOT YET APPLIED to any cluster**. *What is still unbuilt:* all of
+it — no provider seat, service or endpoint exists, and the sentence above about
+there being no way in remains true of the running system.
+**The survey believed an earlier `ROADMAP.md` had recorded a decision
 here. It has not:** `git log --all -S "separate service"` and
 `-S "share a token"` each return **no commit**, and **no markdown file has ever
 been deleted from this repository** (`git log --all --diff-filter=D -- '*.md'` →

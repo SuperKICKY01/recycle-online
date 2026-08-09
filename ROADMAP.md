@@ -180,8 +180,8 @@ on at all, and it is answered at P1.11 or recorded as accepted.
 
 ## The decisions the ordering forced
 
-The spine could not be ordered without answering these. **Seven are settled**, with
-the owner's reasoning recorded; **five are open**, each with what would settle it.
+The spine could not be ordered without answering these. **Eight are settled**, with
+the owner's reasoning recorded; **four are open**, each with what would settle it.
 None of them is derivable from S1–S6.
 
 ### Settled
@@ -207,6 +207,17 @@ transactions"). It warns on screen and withholds what is not the act of buying a
 selling. A money system that locks an operator out mid-shift is a system that costs
 them money, and the shop is not the party who failed to pay.
 
+**D4 — the tenant-identity mechanism is a SHOP CODE, resolved through a relation
+outside the tenant model.** Not a baked-in tenant, which S1's single handover made
+awkward — shop number two would need its own build — and not a global identifier.
+The relation is `directory.shop_codes`, mapping a code to a `tenant_id`, and the
+same relation is what a provider service enumerates shops from, which closes the
+open half of `ARCHITECTURE.md § 10. The three settled decisions` D2. One mapping,
+one relation, read by a third role that can reach nothing else. **The migration is
+committed and NOT YET APPLIED to any cluster.** The format and its reasoning are
+recorded in that architecture section and in the migration's docstring, and are
+not repeated here.
+
 **D5 — price editing exists on BOTH surfaces**, per S6. S3 puts the desktop on the
 pilot path regardless, so the cost that made the old R4 recommend the phone —
 "it pulls the entire Electron scaffold in front of a shop trading" — is already
@@ -228,12 +239,6 @@ and restored without being emptied first.
 See *Corrections owed elsewhere* at the end.
 
 ### Open — named, with what would settle each
-
-**D4 — which tenant-identity mechanism.** A shop code, a baked-in tenant, or a
-global identifier. A baked-in tenant is in tension with S1's single handover, since
-shop number two would need its own build; that is a tension, not a disqualification.
-*Settled by:* the owner choosing, before P1.3 writes a migration — and before the
-pilot's rows exist, per D10.
 
 **D6 — what else goes in the shared package once it exists.** The survey names
 `shopTime.ts` only. The API client, the money type and the refusal vocabulary are
@@ -331,12 +336,22 @@ scratch database, with its row counts read back against its own manifest
 **What it is.** The decision at D4, then the migration and the server change that
 implement it, so that a person can name their shop without typing a uuid.
 
-**Depends on:** D4 being answered. This is a dependency rather than a preference
-because the alternative is a screen that cannot be built: `main.py:26` requires a
-uuid and nothing on a login form can derive one — usernames are unique per shop
-(`0001_initial_schema.py:104`), so a username does not identify a tenant. It is
-before P1.7 because the screen's fields are decided by the answer, and before the
-pilot's rows exist because it is a schema change (D10).
+**Depends on:** D4, which is now answered — a shop code in `directory.shop_codes`.
+The dependency was real rather than a preference: the alternative is a screen that
+cannot be built, because `main.py:26` requires a uuid and nothing on a login form
+can derive one — usernames are unique per shop (`0001_initial_schema.py:104`), so
+a username does not identify a tenant. It is before P1.7 because the screen's
+fields are decided by the answer, and before the pilot's rows exist because it is
+a schema change (D10).
+
+**Where this step now stands.** The SCHEMA half is written: the migration creating
+the relation, its constraints and its reader role is committed and **NOT YET
+APPLIED to any cluster**. The rest of the step is untouched — the server change is
+not written, and this file says nothing about what the login endpoint will do
+because that is not decided. Two things are worth naming as absent rather than
+assumed: **nothing writes to that relation today**, and **who issues a code when a
+new shop is onboarded is undecided** — there is no provisioning path, by any
+route, manual or otherwise.
 
 **Unblocks:** P1.4, P1.5, P1.7, P1.14.
 
@@ -709,8 +724,9 @@ using it" drifts into meaning "a shop has it installed".
 
 **Depends on:** all of stage 1.
 
-**Unblocks:** every step after it, and the answers to D4, D6, D7, D9, D11 that the
-code cannot supply.
+**Unblocks:** every step after it, and the answers to D6, D7, D9, D11 that the
+code cannot supply. (D4 was on this list and has been removed: it was settled
+before the pilot, by the owner, and not by evidence a shop produced.)
 
 **TRUE WHEN:** a shop that is not ours has bought real loads on this system on
 consecutive trading days, with nobody running a request by hand for them, and has
@@ -784,7 +800,7 @@ cause is named (`CLAUDE.md § Workflow` "For any debugging").
 
 ### P2.6 — The decisions the pilot is the evidence for
 
-**What it is.** The five open decisions above, plus the ones S6 deliberately left to
+**What it is.** The four open decisions above, plus the ones S6 deliberately left to
 the shop: where sellers actually get created, which surface actually edits prices,
 and whether the counter really prints the slip.
 
@@ -794,8 +810,9 @@ was asked.
 **Unblocks:** stage 3 building for a stranger on evidence rather than on a guess
 about one shop.
 
-**DONE WHEN:** D4, D6, D7, D9 and D11 each carry an answer, or a recorded reason the
-pilot did not settle it.
+**DONE WHEN:** D6, D7, D9 and D11 each carry an answer, or a recorded reason the
+pilot did not settle it. D4 was on this list and is not: it was settled by the
+owner ahead of the pilot, so the pilot is not the evidence for it.
 
 ---
 
@@ -825,9 +842,16 @@ asking.
 
 ### P3.2 — What the provider service enumerates shops FROM
 
-**What it is.** The unanswered half of `ARCHITECTURE.md § 10. The three settled decisions`
+**What it is.** Formerly the unanswered half of
+`ARCHITECTURE.md § 10. The three settled decisions`
 D2 — cross-tenant reads are a per-tenant loop and no `BYPASSRLS` role is created,
-which is satisfiable while this question remains open.
+which was satisfiable while the enumeration source stayed open.
+
+**The SOURCE is now decided** and is the same relation D4 chose,
+`directory.shop_codes`, read by a third role that holds no access to schema
+`public`. Its migration is committed and **NOT YET APPLIED to any cluster**. That
+settles what this step reads FROM; it does not by itself complete the step, and
+the DONE WHEN below is unchanged for that reason.
 
 **Depends on:** P3.1, since licence state is per shop and the list is what a loop
 iterates. It is a hard prerequisite and not a detail: the `tenants` policy is keyed

@@ -530,7 +530,6 @@ These are decisions, not proposals, and none of them is built.
 
 **Open, and named as open** (each is somebody's decision, none is designed here):
 
-- **What a provider service enumerates tenants FROM** — §10, D2.
 - **Where master-data screens live** — mobile or desktop. Tracked as a fork in
   `ROADMAP.md`; it changes which programs exist on the path to a first shop.
 - **How a licence is enforced.** Nothing exists (§2.2).
@@ -581,34 +580,52 @@ than by comments: `reconcile.py:877-887` (S4) asserts both project roles are
 (`:161-163`) — so the destructive proof cannot reach for the one statement that
 would make S4 fire.
 
-**AND AN OPEN QUESTION THIS DECISION DOES NOT ANSWER: what the provider service
-enumerates tenants FROM.** The constraint as stated is satisfiable while the
-problem remains, so it is recorded rather than treated as closed.
+**AND THE QUESTION THIS DECISION USED TO LEAVE OPEN — what the provider service
+enumerates tenants FROM — IS NOW ANSWERED: a dedicated relation outside the
+tenant model.** It is `directory.shop_codes`, one row per shop, mapping a shop
+code to a `tenant_id`. The migration that creates it is **committed and NOT YET
+APPLIED to any cluster**, so nothing below describes a database that exists today.
 
-The `tenants` policy is keyed on the table's own `id`. So under `recycle_app`: with
+The problem it solves is worth stating first, because it is not obvious. The
+`tenants` policy is keyed on the table's own `id`. So under `recycle_app`: with
 the GUC set, `SELECT id FROM tenants` returns exactly one row, its own; with the
 GUC unset, it returns none. **The application role cannot produce the list that a
 per-tenant loop needs in order to start.**
 
-`reconcile.py` resolves this by not using the application role for that step.
-`list_tenants` at `reconcile.py:663-668` runs `SELECT id FROM tenants` on a
-separate `admin` connection, and `reconcile.py:627` **refuses to run unless that
-role is a superuser**. A superuser bypasses RLS by virtue of being a superuser —
-a strictly stronger privilege than `BYPASSRLS`. **So D2's letter is satisfied while
-the only working cross-tenant reader in the system still depends on `postgres`.**
+**Reasoning, against the two alternatives that were also on the table.** An owner
+or superuser connection is the largest privilege in the system, and choosing it
+would make the provider service a superuser client permanently. Carrying the
+mapping on D1's `provider_users` would tie the shop list to who happens to hold a
+provider account, so a shop with no provider row would be invisible to the very
+service meant to oversee it. A relation outside the tenant model has neither
+property: it sits outside RLS the way `alembic_version` already does, and it is
+read by a THIRD role — `recycle_directory`, `NOSUPERUSER NOBYPASSRLS`, holding no
+`USAGE` on schema `public` — which can therefore reach the shop list and nothing
+else. The same relation also answers the login question (`ROADMAP.md` D4): a
+lookup that turns a typed code into a `tenant_id` is the same lookup a provider
+loop needs, and two relations for one mapping would be two things to keep in step.
 
-The candidates visible from the current code, none designed and none chosen:
+The code is eight characters from a 31-character alphabet, immutable once issued,
+one per shop enforced by `tenant_id` being the primary key. The alphabet, the
+constraint and the measurements behind them live in that migration's docstring
+and are deliberately not restated here.
 
-- **an owner or superuser connection**, as `reconcile.py` does today — honest about
-  what it is, and the largest privilege in the system;
-- **the `provider_users` table from D1 carrying the mapping itself** — the provider
-  service would then read only shops it has a row for, and would never enumerate
-  `tenants`;
-- **a dedicated relation outside the tenant model** holding the shop list, the way
-  `alembic_version` sits outside it today.
+**WHAT THIS DOES NOT CHANGE, AND IT IS WHAT A READER WILL GET WRONG.**
+`reconcile.py` does NOT stop needing a superuser. Only the tenant listing at
+`reconcile.py:663-668` is replaced by a directory read. X1, X2 and X3 are
+`count(*)` and cross-tenant joins issued against the ten FORCE-RLS business
+tables, and the gate at `reconcile.py:627` refuses on the `is_superuser`
+attribute itself rather than on any capability — so it would refuse a
+`NOSUPERUSER` role however the shop list had been obtained.
 
-Which of these is right is the owner's, and it wants deciding before the provider
-service is built rather than after.
+That dependency is deliberate, and it is not the provider's. **`reconcile.py` is
+an AUDITOR, and it is supposed to see what RLS hides:** a checker that could see
+only one tenant's rows could not tell you that a row belonging to tenant A had
+landed in tenant B, which is the one thing it exists to catch. The provider
+service has the opposite requirement — enumerate shops, read no shop data — which
+is why one gets a third role with a single grant and the other keeps `postgres`.
+Reading this section as "the work is half finished" is the error it is written to
+prevent.
 
 ### D3 — audit logging exists from the provider service's first day
 
