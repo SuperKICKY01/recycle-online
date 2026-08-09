@@ -12,7 +12,7 @@ lesson file; anything written here is destroyed by the next run.
 byte for byte, with line endings normalised to LF on both sides first. It exits
 1 on any difference. That is how a lesson edited without regenerating is caught.
 
-**Sources:** 39 lesson files, `lessons/*.md`, ASCII filename order.
+**Sources:** 41 lesson files, `lessons/*.md`, ASCII filename order.
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
@@ -38,6 +38,7 @@ line instead of by heading depth.
 - `a-backup-is-a-claim-until-it-is-restored.md` -- A backup is a claim until it has been restored
 - `a-check-that-never-went-red-was-never-observed.md` *(2 amendments)* -- A check that has never gone red has not been observed
 - `a-checker-must-not-share-the-code-it-checks.md` *(1 amendment)* -- A checker must not share the code it checks — and must not reach past it
+- `a-control-must-contain-what-fooled-you.md` -- A control must contain the thing that fools the counter
 - `a-defaulted-getattr-is-a-silent-dead-branch.md` -- A defaulted `getattr` is a silent dead branch
 - `a-differential-control-is-only-as-good-as-its-weaker-side.md` -- A differential control is only as good as its weaker side
 - `a-gate-that-matches-a-keyword-misses-its-aliases.md` -- A gate that matches a keyword misses the engine's aliases for it
@@ -46,6 +47,7 @@ line instead of by heading depth.
 - `a-report-is-many-reads-that-must-agree.md` -- A report is many reads; under READ COMMITTED they are many moments
 - `a-round-trip-must-agree-on-its-key-space.md` -- A round trip must agree on its key space
 - `a-stored-future-instant-is-a-promise-about-a-clock.md` -- A stored future instant is a promise about a clock you do not control
+- `a-warning-in-one-file-does-not-protect-the-next.md` -- A warning written in one file does not protect the file beside it
 - `be-year-comes-after-the-timezone.md` *(2 amendments)* -- The BE year comes AFTER the timezone conversion — and an ISO-shaped BE date is a trap
 - `cached-master-data-is-a-price-claim.md` -- A cached price is a claim about today, and a backwards clock makes it look fresh
 - `concurrency-tests-need-a-barrier.md` -- A concurrency test without a start barrier proves nothing
@@ -1202,6 +1204,129 @@ to enter, for the same reason a cell nothing was ever seen to redden.
 
 ---
 
+**SOURCE:** `a-control-must-contain-what-fooled-you.md`
+
+# A control must contain the thing that fools the counter
+
+**Applies to** every positive control, every fixture, every hand-built input you
+put in front of an instrument before trusting its number — and hardest to a
+counter, because a counter returns a plausible integer for almost any input and
+never announces which lines it looked at.
+
+**The rule:** a control proves an instrument works ON THE INPUTS THE CONTROL
+CONTAINS, and says nothing about any shape it does not. Build the control out of
+what the REAL input actually holds, including the parts you were not thinking
+about. If the control cannot come out wrong under the mistake you are worried
+about, it is not a control for that mistake — it is a control for a mistake you
+have already ruled out.
+
+## The instance
+
+Counting the rows of a `restore_db.py` want/got block. The counter:
+
+    grep -c "^  \[" <file>
+
+The control was six lines of exactly the shape being counted, with a blank line
+and an unanchored decoy, correct answer **4**:
+
+    [OK  ] alpha        dump=1  restored=1
+    [FAIL] beta         dump=2  restored=None
+    -- a comment mentioning [OK  ] inline
+    [OK  ] gamma        dump=3  restored=3
+    (blank)
+    [OK  ] delta        dump=4  restored=4
+
+It returned **4**. Anchoring proven, blank-line dropping ruled out, and both of
+those conclusions were true. Then the same counter, run against a real restore,
+returned **17** where the visible table held **13**.
+
+The real output carries a block the control did not:
+
+    === integrity ===
+      [OK  ] database.sql (989 bytes, sha256 verified)
+      [OK  ] globals.sql (1225 bytes, sha256 verified)
+      [OK  ] recycle.sql (214624 bytes, sha256 verified)
+      [OK  ] recycle.sql contains no \connect (safe to retarget)
+
+Four lines, same two-space-then-bracket prefix, different meaning. 13 + 4 = 17.
+
+**The control was not weak. It was about the wrong thing.** Every property it
+tested, it tested correctly. It simply contained no line of the shape that
+produced the error, so no possible result of running it could have moved.
+
+## The repair, and the shape of the evidence
+
+Put the contaminant IN the control and require the two candidate patterns to
+disagree over it:
+
+    [OK  ] database.sql (989 bytes, sha256 verified)          <- contaminant
+    [OK  ] recycle.sql contains no \connect (safe to retarget) <- contaminant
+    [OK  ] alpha     dump=1  restored=1
+    [FAIL] beta      dump=2  restored=None
+    [FAIL] gamma     dump=3  restored=MISSING
+    -- a comment mentioning [OK  ] and restored= inline
+    [OK  ] delta     dump=4  restored=4
+    (blank)
+    [OK  ] epsilon   dump=5  restored=5
+
+| pattern | control | verdict |
+| --- | --- | --- |
+| `^  \[` | **7** | wrong — counts both contaminants |
+| `^  \[.*restored=` | **5** | correct |
+
+**The evidence is the PAIR, not the green.** A refined pattern returning 5 is
+consistent with a pattern that was always right; what establishes anything is the
+old pattern returning 7 over the same file. Same discipline as
+[[a-gate-that-matches-a-keyword-misses-its-aliases]], which requires ADMITTED
+under the old and REFUSED under the new in one table, for the same reason: a
+control that only ever sees the fixed version measures the fix's existence, not
+its effect.
+
+Note the third line of the rebuilt control, `restored=MISSING`. That shape did not
+exist when the counter was first written — it was introduced by a change made
+later in the same session. **A control has to be re-opened when the thing it
+watches grows a new shape**, which is the same failure with time substituted for
+inputs, and is the eighth mechanism of
+[[a-check-that-never-went-red-was-never-observed]] — a fixture is an input, and it
+is the one input nobody re-reads when it changes.
+
+## How to tell this from an ordinary control gap
+
+Ask what the instrument's real input contains that your control does not, and be
+concrete: not "edge cases" but "the four lines of the integrity block". The
+question has an answer you can read off the actual output in ten seconds, and it
+is the only cheap defence, because the failure produces a number rather than an
+error and the number is in the right order of magnitude.
+
+**It is caught by disagreement, not by inspection.** 17 against 13 was noticed
+only because a visible table could be counted by eye — thirteen rows are
+countable, and had the table held ninety the discrepancy would have shipped. So
+where the real answer is not eyeball-checkable, get a SECOND instrument on it: the
+same phase counted `COPY` headers with both `grep` and a Python parser and
+required them to agree, which they did at 11 and at 13.
+
+## How to apply
+
+1. **Read the real input before writing the control.** Not the shape you have in
+   mind — the actual bytes the instrument will meet, including the headers,
+   banners and summary lines around the part you care about.
+2. **Put the confusable in.** If two blocks of the output share a prefix, the
+   control must contain a line from each, or the control cannot tell them apart
+   any better than the instrument can.
+3. **Require two patterns to DISAGREE over it.** The naive one and the intended
+   one, both run on the control, both numbers reported. If they agree, the
+   control still does not discriminate and you have learned nothing.
+4. **Re-open the control when the watched thing grows a new shape.** A new status
+   string, a new row type, a new section — each is a new input, and the control
+   silently stops covering the output the day it appears.
+5. **Where the true answer cannot be checked by eye, use a second instrument**
+   and require agreement. One controlled counter is an instrument; two agreeing
+   controlled counters are a measurement.
+6. **State the definition beside the number.** "Lines matching `^  \[.*restored=`"
+   is a claim someone can refute; "13 rows" is not.
+
+---
+
 **SOURCE:** `a-defaulted-getattr-is-a-silent-dead-branch.md`
 
 # A defaulted `getattr` is a silent dead branch
@@ -2172,6 +2297,110 @@ A guard in `SyncEngine`'s constructor **throws** if `backoffMaxMs` or
 never write schedules its own reader would discard as clock damage. A comment
 would have been forgotten; a throw fires on every path that builds an engine,
 proofs included.
+
+---
+
+**SOURCE:** `a-warning-in-one-file-does-not-protect-the-next.md`
+
+# A warning written in one file does not protect the file beside it
+
+**Applies to** every hazard this repository has already paid for and written down
+at the site where it bit — a comment at the line, a note in a docstring, an
+entry in a module header. Those notes are worth keeping. This is about what they
+do NOT do.
+
+**The rule:** a warning defends the line it sits on. It does not defend the next
+file, the next author, or the same author an hour later, because nobody reads a
+file they are not editing. **What defends the second site is an acceptance
+criterion that the mistake would fail.** If the hazard can only be caught by
+somebody remembering, it will be paid for again, and the interval can be shorter
+than a single session.
+
+## The instance
+
+`backup_db.py` carries this at its superuser check, in its own words:
+
+> `rolsuper::text` renders 'true'/'false' (psql only shows t/f for an uncast
+> boolean) — comparing against 't' here silently failed every check once.
+
+A precise, dated, correctly-sited warning about a real trap on this box: casting
+a boolean to `text` in a psql query yields `true`/`false`, not `t`/`f`.
+
+In the same repository, in the same session, `restore_db.py` grew a new presence
+probe that asked the database which relations existed:
+
+    select 'product_prices', (to_regclass('"public"."product_prices"') is not null)::text
+
+and compared the answer with `r[1] == "t"`.
+
+**All thirteen keys reported `MISSING` against a database that held every one of
+them.** Every relation was there. The restore was perfect. The check said nothing
+had arrived.
+
+The warning was one directory entry away, in the file this script is a sibling of,
+about the identical construct, and it did not help — because writing
+`restore_db.py` does not involve reading `backup_db.py`, and there is no moment in
+that work at which a person would go looking.
+
+## What actually caught it, and it was not a person
+
+The acceptance criterion for the change was written before the change, and it was
+not "exit 0". It was:
+
+> the two 0009 dumps: exit 0, **and `directory.shop_codes` PRESENT as an OK row
+> with a number on both sides**. A green that reaches exit 0 by not asking about
+> that key is the wrong fix and looks like the right one.
+
+That criterion fails the bug instantly and loudly: thirteen `[FAIL] … restored=MISSING`
+rows and exit 1. **An exit-code criterion would not have.** The bug's natural
+failure direction here happened to be red, but the same mistake pointed the other
+way — a comparison that treats every key as absent and has no keys to check —
+reaches exit 0 by asking nothing, which is exactly the shape
+[[a-check-that-never-went-red-was-never-observed]] catalogues and exactly what the
+"number on both sides" clause was written to forbid.
+
+**The defence generalises past this bug.** "Exit 0" is satisfied by a check that
+did the work and by a check that skipped it. "This named row is present, and both
+sides of it are numbers" can only be satisfied by a check that asked the question
+and got an answer.
+
+## Why this is not just "write more tests"
+
+The claim is narrower and it is about WHERE the knowledge has to live. This repo
+already does the right thing at the first site: the hazard is recorded at the line
+that suffered it, which is what
+[[a-gate-that-matches-a-keyword-misses-its-aliases]] concluded when it put an
+alias list at a pattern that no test cell could hold. That remains correct. What
+this file adds is that a note at the site is a floor and not a ceiling: **the
+second site needs its own mechanism, and the cheapest mechanism is an acceptance
+criterion phrased as an observation rather than as an outcome.**
+
+Note also what did NOT catch it. The change was reviewed while being written. Its
+diff was read. The helper's docstring is careful and correct about identifier
+quoting, several paragraphs long, and sits eight lines above the defect. Attention
+was fully engaged on the file and on the right subject, and the bug shipped
+anyway.
+
+## How to apply
+
+1. **Write the acceptance criterion before the code, and phrase it as an
+   observation.** "Row X present with a number on both sides", "the count moved
+   from 24 to 20", "the report NAMES this doc_no" — never "it passes", never
+   "exit 0".
+2. **Ask what a check that did nothing would print**, and make sure your
+   criterion refuses it. If a no-op could satisfy the criterion, the criterion is
+   about the process exiting, not about the work.
+3. **When you write a warning at a site, ask which OTHER sites share the
+   construct** and whether anything would make them fail. Grep for the construct,
+   not the symptom — `::text` here, not "boolean". This is the sweep
+   [[be-year-comes-after-the-timezone]] requires for a computation, applied to a
+   hazard.
+4. **Do not upgrade a comment into a promise.** A note at a line is worth writing
+   and worth keeping; it is not coverage, and a plan that relies on someone
+   reading it has no coverage at that point.
+5. **Count the interval.** Here it was under an hour, in one session, by one
+   author, with the warning in a sibling file. Any argument of the form "we wrote
+   it down, so we will remember" has to survive that number.
 
 ---
 

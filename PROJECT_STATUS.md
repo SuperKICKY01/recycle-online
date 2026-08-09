@@ -57,9 +57,44 @@ not read the green as re-run.**
 
 ## Current phase
 
-**`GET /users` — THE ENDPOINT THAT MAKES THREE BUILT CAPABILITIES REACHABLE.
-LANDED 2026-08-07. NOT a P-number** — see `ROADMAP.md § STAGE 1` "GET /users is
-not a step in this file".
+**THE BACKUP/RESTORE KEY SPACE — REPRODUCED ON A FIXTURE, THEN FIXED ON THE
+RESTORE SIDE ONLY. 2026-08-09.** No R-number was issued and none was invented:
+R-numbers are defined in `ROADMAP.md` and are the owner's to issue.
+
+Migration 0009 created `directory.shop_codes`, the first relation outside schema
+`public`. `backup_db.py` keys its manifest off whatever `pg_dump` wrote, stripping
+a literal `public.` and nothing else; `restore_db.py` built the other side from
+schema `public` alone and compared over the UNION of the two key sets. A key
+present on one side and absent on the other failed the restore — **a restore in
+which every row had landed.**
+
+**THE TRIGGER IS MIGRATION-TIME, NOT FIRST-USE.** `pg_dump` writes a `COPY` header
+for a table holding zero rows, so it fires on the first backup taken after the
+migration, before any code reads the relation. Everyone's stated guess, recorded
+in `OPEN_ITEMS.md` as an unmeasured inference, was the first issued code.
+
+**FIXED: the restore side, commit `4150833`.** The comparison now walks the
+manifest's keys and nothing else, splits each key into schema and relation, and
+quotes each part separately. **NOT FIXED: `backup_db.py`, deliberately, and it
+now carries TWO defects rather than one.** Both are named below and in
+`OPEN_ITEMS.md`.
+
+The arc, with every number and the controls that make the numbers mean anything,
+is in the two dated entries `2026-08-09 — the 0009 key-space defect` and
+`2026-08-09, later — the restore side fixed` at the end of this file. The work
+this section previously named, `GET /users`, landed 2026-08-07 and has its own
+dated entry; it is not restated here.
+
+**EVERYTHING BELOW THIS PARAGRAPH, TO THE END OF THIS SECTION, IS THE SUPERSEDED
+PHASE'S RECORD — `GET /users`, landed 2026-08-07 — RETAINED IN PLACE RATHER THAN
+ROTATED, AND THAT IS A DEBT AND NOT A DECISION.** This file's convention is a
+rotation: the old § Current phase becomes § Previous phase, and the old
+§ Previous phase (A2, reconciliation) joins § Earlier phases. Doing it here would
+move roughly 360 lines of `GET /users` and roughly 240 of A2 inside a commit whose
+subject is a backup/restore defect, and a 600-line move nobody asked for cannot be
+reviewed alongside the change it is stapled to. **The rotation is OWED and filed
+in `OPEN_ITEMS.md`.** Until it happens: the paragraphs ABOVE are the phase, the
+paragraphs BELOW are history, and nothing below has been re-verified today.
 
 `POST /users/{id}/deactivate`, `/activate` and `/revoke-sessions` all take a uuid
 in the path, and nothing in this API produced another user's uuid except as a
@@ -3145,3 +3180,111 @@ means "nothing raised", which is weaker, and the weaker statement is the true on
 - **The directory lookup still does not exist as a code path.** The fixture has a
   row in `directory.shop_codes` because one was inserted by hand to move the
   second observable; no endpoint resolves a code and no client sends one.
+
+### 2026-08-09, later — the restore side fixed, the backup side deliberately not
+
+**ONE ARC WITH THE ENTRY ABOVE, and it is worth reading as one.** That entry
+reproduced the defect on a fixture and measured its trigger; this one records the
+fix, which covers ONE OF THE TWO SIDES. Landed as `4150833`, one file,
+`server/scripts/restore_db.py`, 173 insertions and 19 deletions.
+
+**THE TRIGGER IS MIGRATION-TIME, AND THAT IS THE FINDING THAT ROTS FASTEST INTO
+"we fixed it".** `pg_dump` writes a `COPY` header for a table holding ZERO rows.
+Measured: 12 headers in the dump at 0008, **13 at 0009 with `directory.shop_codes`
+holding nothing at all**, manifest key `"directory.shop_codes": 0`. So the red
+arrives on the first backup taken after the migration is applied — before any
+endpoint reads the relation, before any client sends a code, before the feature
+exists as a code path. **Everyone's stated guess was first-use**, and
+`OPEN_ITEMS.md` had recorded it in those terms as an inference nobody had
+measured. The window between "applied" and "first row", which that inference
+assumed existed, is zero wide.
+
+**THE PARENT'S NUMBERS, MEASURED ON UNMODIFIED CODE BEFORE ANYTHING WAS TOUCHED.
+This is the control, and without it none of the after-numbers mean anything.** A
+green measured only after a change is not a control; it is consistent with a
+change that silenced the check.
+
+| measured on the parent | result |
+| --- | --- |
+| the two 0009 dumps | **exit 1**, `[FAIL] directory.shop_codes  dump=0  restored=None` and `dump=1  restored=None` |
+| dumps at 0003 / 0006 / 0008, versions read out of each body's `COPY public.alembic_version` block and never off the directory name | **exit 0**, with 11 / 11 / 12 want-got rows equal to each manifest's 11 / 12 keys |
+| the bare-key three-beat | green `dump=24 restored=24`, **red** `dump=24 restored=20`, green `dump=24 restored=24`, with the database read back at each beat: 24, 20, 24 |
+
+The same three, re-run after the change: the 0009 pair now **exit 0** with
+`directory.shop_codes` present as an OK row carrying a number on BOTH sides —
+`dump=0 restored=0` and `dump=1 restored=1` — the older three still exit 0 with
+11 / 11 / 12 rows, and the three-beat still reads green / red / green with the
+same figures. **The fix did not weaken the case that already worked.**
+
+**THE MEASUREMENT THE PARENT COULD NOT MAKE AT ALL, and it is the one that
+distinguishes a fix from a silencing.** A 0009 dump was fabricated whose body had
+lost the `shop_codes` row while its manifest still claimed one. Under the parent:
+
+    [FAIL] directory.shop_codes     dump=1  restored=None      <- intact dump, target holds 1
+    [FAIL] directory.shop_codes     dump=1  restored=None      <- lossy dump, target holds 0
+
+**Byte-identical output over opposite database states.** That table was not merely
+misreported — IT WAS NOT BEING CHECKED. `restored=None` was never a count; it
+meant "this key was never asked about", and the parent's target genuinely held the
+row (`recycle_restore_scratch` read `0009|1|TW9FXTR2` immediately after that red).
+Under the fix the same fabricated dump reads
+
+    [FAIL] directory.shop_codes     dump=1  restored=0
+
+and exits 1. A real count, and a red for the real reason.
+
+**A BUG THE FIX'S OWN NEW CODE SHIPPED, CAUGHT BY THE ACCEPTANCE RUN, and the
+warning that did not protect it.** The new presence probe compared `r[1] == "t"`.
+`boolean::text` renders `true`/`false`; psql shows `t`/`f` only for an UNCAST
+boolean. **All thirteen keys reported MISSING against a database that held every
+one of them.** `backup_db.py` already carried the identical warning in its own
+text at its superuser check — "comparing against 't' here silently failed every
+check once" — and the file beside it made the same mistake within one session. A
+warning written in one file does not protect the file next to it. What caught it
+was the acceptance criterion, which demanded the key be PRESENT as an OK row with
+a number on both sides rather than merely demanding exit 0: a `restored=None`
+that had become `restored=MISSING` would have satisfied "exit 0" reasoning and
+failed the actual test.
+
+**THE DISPROOF.** `split_key` was mutated to resolve every key to `public`; the
+0009 dump went red at `[FAIL] directory.shop_codes dump=1 restored=MISSING`,
+because it then looks for `"public"."directory.shop_codes"`. Reverted, green
+returned. A check that cannot be made to fail was never observed to work.
+
+**WHAT IS NOT FIXED, DELIBERATELY — AND IT IS TWO DEFECTS NOW, NOT ONE.**
+`backup_db.py` was not touched, because its divergence has no repeatable control
+yet and fixing both sides against one control means a regression could not be
+attributed to a side.
+
+1. **The summary total versus its own itemisation.** It sums `counts_dump.values()`
+   across every schema while the itemisation beside it iterates public tables
+   only, so once a non-public row exists the total stops equalling its own list —
+   measured, **845 against 844**, with `shop_codes` appearing zero times in the
+   itemisation it is being counted into.
+2. **`copy_block_counts` produces a WRONG KEY for any identifier `pg_dump` had to
+   quote.** Measured this session with that function IMPORTED rather than
+   reimplemented, so the answer cannot be wrong about the code it reports on:
+   `COPY directory."Odd Name" (a) FROM stdin;` is keyed as **`directory."Odd`** —
+   truncated at the space, quote character retained. The restore side now handles
+   such a key correctly (`[OK  ] directory.Odd Name  dump=2  restored=2` against a
+   fabricated dump carrying a real `directory."Odd Name"` relation); the writer
+   cannot yet produce one.
+
+**WHAT THIS DOES NOT ESTABLISH.**
+
+- **No proof was run.** `prove_backup_restore.py` was NOT run and the reason is
+  now a queue item: it has no argparse and no `--database`, it reads
+  `APP_DATABASE_URL` and inserts a marker bill into the LIVE database, and it
+  voids rather than deletes it, so under hard rule 5 the bill and its `doc_no` are
+  permanent. Its coupling to the changed file was established by READING instead:
+  it gates on the child's `returncode` and builds its own counts from its own
+  query, parsing none of this script's text. `prove_reconcile.py` DOES parse three
+  strings — `RESTORE_EXIT=`, `RESTORE OK`, `rows in dump` — and the change touches
+  none of them. Neither proof was executed.
+- **The manifest format is unchanged**, deliberately, and still carries no
+  version marker of any kind — measured across artefacts: the 2026-07-28 manifest
+  has no `roles` key where the 2026-08-09 one does, and nothing in either says
+  which shape it is.
+- **Nothing was run on a handset**, and no device gap in this file is refreshed.
+- **The dev database is still at 0008.** No migration was applied anywhere this
+  phase.

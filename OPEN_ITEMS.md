@@ -1085,6 +1085,46 @@ idea — only that it is unresolved.
   restore-side count query still disagree about schema qualification and
   neither was touched. Written up as
   `lessons/a-round-trip-must-agree-on-its-key-space.md`.
+  **HALF CLOSED 2026-08-09 in `4150833`. THE RESTORE SIDE IS FIXED; THE BACKUP
+  SIDE IS NOT, AND IT IS TWO DEFECTS RATHER THAN THE ONE THIS ENTRY DESCRIBES.**
+  Everything above stands as the description of the defect and of how it was
+  found; what follows is what changed and what did not.
+  *(a) DONE — the restore side.* The comparison in `restore_db.py` now walks the
+  manifest's keys and nothing else, so the UNION over two key sets is gone and
+  nothing can be compared that the dump did not name. Each key is split into
+  (schema, relation) — bare means public, dotted carries its own schema — and
+  each part is quoted separately; `quote_ident` and `quote_literal` are the first
+  identifier-quoting helpers in this repository, and they live on this side
+  because the script has no database driver and a bound parameter is a VALUE
+  rather than an identifier. Presence is asked with `to_regclass` before any
+  count, so a key naming an absent relation is a named FAIL rather than a psql
+  abort. **The two 0009 dumps now exit 0 with `directory.shop_codes` present as
+  an OK row carrying a number on BOTH sides**, and a fabricated dump that lost
+  that row reads `dump=1  restored=0` and goes red — under the old code it read
+  `restored=None` whether the row was there or not, which is to say the table was
+  never being checked at all.
+  *(b) STILL OPEN — `backup_db.py`, and DELIBERATELY.* Its divergence has no
+  repeatable control yet, and fixing both sides against one control means a
+  regression could not be attributed to a side. **TWO defects, and they are
+  separate problems with separate fixes:**
+    1. **The summary total does not equal its own itemisation.** `:512` sums
+       `counts_dump.values()` across every schema while `:556` itemises public
+       tables only and `:521` reports them "across N tables" — measured, **845
+       against 844**, with `shop_codes` appearing zero times in the list it is
+       being counted into. `restore_db.py:143` prints the same inflated total.
+       Fires only once a non-public row EXISTS.
+    2. **`copy_block_counts` emits a WRONG KEY for any identifier `pg_dump` had
+       to quote.** It takes `line.split(" ", 2)[1]`, so
+       `COPY directory."Odd Name" (a) FROM stdin;` is keyed as
+       **`directory."Odd`** — truncated at the space, quote character retained.
+       Measured 2026-08-09 with that function IMPORTED rather than
+       reimplemented, so the answer cannot be wrong about the code it reports
+       on. This is NOT the schema-qualification defect and is not fixed by
+       fixing it; the restore side already handles such a key correctly, and the
+       writer cannot yet produce one.
+  *Unblocks:* both, together, against a control that can distinguish them — which
+  means a fixture carrying a non-public table AND a quoted identifier, both of
+  which now exist as scratchpad fabrications from this phase.
 - **A BACKUP DIRECTORY'S LABEL NAMES WHAT THE BACKUP IS ABOUT, NOT WHAT IT
   CONTAINS, AND ONE ALREADY LIES — FOUND 2026-08-09 while looking for a copy to
   point `prove_reconcile.py` at.** `backup_db.py` writes
@@ -1112,6 +1152,93 @@ idea — only that it is unresolved.
   backup time so the artefact states its own schema, or have `restore_db.py`
   print the dump's version prominently before it starts. The first is the honest
   one; the second helps only whoever already ran the restore.
+- **`restore_db.py` HAS NO COMPARISON-ONLY MODE, so testing the comparison means
+  fabricating a dump that disagrees with its own manifest — FOUND 2026-08-09, and
+  recorded because the next person to test it will otherwise spend the same hour
+  discovering it.** Its argparse declares exactly five arguments — `backup_dir`,
+  `--into`, `--container`, `--with-globals`, `--overwrite-live` — and `:262`
+  `DROP DATABASE IF EXISTS … WITH (FORCE)` then `:267` `CREATE DATABASE` before
+  the comparison at the end of the run. **So a row deleted from a restored copy is
+  destroyed by the very run that would notice it**, and "run the comparison, break
+  something, run it again" cannot be done. *The method that works, which is what
+  this entry is for:* copy a dump directory somewhere outside the backup root,
+  remove rows from ONE `COPY` block in the body, update
+  `MANIFEST["files"][body]["sha256"]` and `["bytes"]` so the integrity gate is not
+  what fires, and leave `row_counts_in_dump` alone — the disagreement between body
+  and manifest IS the injection. Verified both ways this phase: a public key gave
+  green / `dump=24 restored=20` / green with the database read back at each beat
+  (24, 20, 24), and a dotted key gave `dump=1 restored=0`. *Not done:* nothing;
+  this is a note, not a debt. *Unblocks:* anyone asked to prove a change to that
+  comparison.
+- **`prove_backup_restore.py` WRITES A PERMANENT BILL TO THE LIVE DATABASE ON
+  EVERY RUN, and has no flag to point it elsewhere — so it cannot be run under any
+  brief that forbids live writes.** Measured 2026-08-09 by reading it: no
+  `argparse`, no `ArgumentParser`, no `sys.argv`, no `--database` — zero matches.
+  It derives `live_db` from `APP_DATABASE_URL` (`:282`) and inserts a marker bill
+  at `:364`. It VOIDS the marker afterwards rather than deleting it, correctly,
+  because hard rule 5 forbids the delete — **and that is exactly why the write is
+  permanent**: the bill stays, and the `doc_no` it consumed from the live gap-free
+  counter is never reissued. Every run costs one. **This bounds who may ever be
+  told to run it**: it is not a check that can be demanded by a phase whose ground
+  rules include "do not write to the live database", and one such phase has
+  already had to decline it. *Not done:* it takes no `--database`. *Unblocks:*
+  either a flag, or an explicit standing statement that this proof is only ever
+  run against live and with the owner's knowledge that it spends a doc_no.
+- **`prove_backup_restore.py`'s OWN comparison is NARROWER than the one inside the
+  script it exercises, so a table the child would flag passes the parent
+  silently.** Measured 2026-08-09 by reading it, and it exists today rather than
+  being created by any change: `:292` sets `tables = table_names(live_db)` — the
+  LIVE SOURCE's catalogue — and `:392-393` iterates `for t in tables` when
+  comparing `in_dump` against `counts_restored`. So the comparison is bounded by
+  what the source happens to hold, not by what the manifest CLAIMS. A key present
+  in the manifest and absent from the source's public catalogue is never compared
+  at all — which is precisely the class of failure the child was just changed to
+  catch. **The proof is therefore weaker than the thing it proves.** *Not done:*
+  nothing was touched; the file was read, not modified. *Unblocks:* making that
+  loop walk the manifest's keys, the same change that just landed one level down.
+- **THE NEXT THREE PIECES OF WORK ON THE BACKUP/RESTORE ARC, IN THE ORDER THE
+  OWNER GAVE THEM ON 2026-08-09 — and the order is recorded here under protest of
+  this file's own contract.** `OPEN_ITEMS.md` says of itself at its head: "This is
+  a LIST, not a tracker. There are no priorities and no dates here", and that
+  `ROADMAP.md` ranks the subset on the critical path and argues the order.
+  `CLAUDE.md` says the same split. **There was no ordered not-yet-scheduled
+  section to bind this to, because by design there is none.** The sequence is
+  written down here so it is not lost with a chat session; it is NOT an R-number,
+  none was invented, and issuing one is the owner's act in `ROADMAP.md`.
+  1. **`backup_db.py`'s two defects**, together and against a control that can
+     distinguish them — the summary-versus-itemisation total, and
+     `copy_block_counts` mangling any identifier `pg_dump` had to quote. Both are
+     described in full in the half-closed entry above; they are not restated here,
+     because two copies drift.
+  2. **The dev cluster to 0009.** `recycle` still reads 0008 with a `directory`
+     schema count of 0, re-measured 2026-08-09. 0009 has been applied only to
+     throwaways and to `recycle_tw20260809_0009fixture`, which survives under a
+     stated DROP WHEN condition. Doing this BEFORE (1) means the first backup
+     afterwards is the one that meets the unfixed writer.
+  3. **The reconcile predicate widening.** Bounded to schema `public` at seven
+     sites, so a relation in `directory` is invisible to it; the limit is the
+     PREDICATE and not the exclusion lists, so adding a name to a `NOT IN`
+     changes no result. **CARRY THIS NUMBER FORWARD, because it is the one a
+     widened predicate gets wrong immediately: schema `directory` holds THREE
+     `pg_class` rows, not one.** Read from the catalogue on the fixture at 0009:
+     `shop_codes` at relkind `'r'`, plus `shop_codes_pkey` and `uq_shop_code` at
+     relkind `'i'`. A predicate widened from `nspname = 'public'` to "outside
+     `public`" WITHOUT a relkind filter enumerates three relations where one is
+     meant and reports two indexes as unknown tables — a wrong answer in the
+     opposite direction from the defect this arc was about.
+  *Unblocks:* the owner deciding whether any of the three is an R-number, which
+  is the only place an order becomes binding.
+- **`PROJECT_STATUS.md`'s PHASE ROTATION IS OWED — its § Current phase names the
+  2026-08-09 backup/restore work at the top and then carries roughly 360 lines of
+  the SUPERSEDED `GET /users` phase underneath it.** That file's convention is a
+  rotation: the old § Current phase becomes § Previous phase, and the old
+  § Previous phase (A2, reconciliation, ~240 lines) joins § Earlier phases.
+  *Not done:* the rotation moves roughly 600 lines, and doing it inside a commit
+  whose subject is a backup/restore defect would produce a diff nobody could
+  review against that subject — the superseded material is therefore marked in
+  place, at the paragraph where it begins, rather than moved or deleted. Nothing
+  was destroyed and nothing was silently left looking current. *Unblocks:* a
+  change whose only subject is that move, so the diff is a move and reads as one.
 
 ## Decisions open — the owner's, not the code's
 
@@ -1880,6 +2007,25 @@ or from a plausible-sounding summary.
   by finding the heading or handle that replaced what they cite — and a
   full ten-source run reports `BROKEN=4`, those four being the controls
   and nothing else.
+  **AMENDED 2026-08-09 — THAT DONE-CONDITION CAN BE SATISFIED BY A RUN
+  THAT READ ONE FILE, and the obvious way to type it is the one that
+  does.** `powershell -File tools\verify_citations.ps1 -Source A B C`
+  binds only the FIRST value and silently discards the rest: a
+  non-advanced script swallows the remaining arguments into `$args`,
+  where nothing looks at them. Measured 2026-08-09 with six sources named
+  on one command line — `SOURCES=1  CITATIONS=42  BROKEN=0`, **EXIT 0**,
+  five files named and never opened, both positive controls printing OK
+  and truthfully, about the one file it read. The COMMA spelling is
+  already recorded in
+  `lessons/a-check-that-never-went-red-was-never-observed.md`'s sixth
+  mechanism as harmless BECAUSE it is red — it degrades to one filename
+  and takes the SOURCE MISSING branch — and it is that documented red
+  which pushes the reader toward the silent spelling. Written up as an
+  entry in `CLAUDE.md § Machine footguns` in `2a3fb93`. **Whoever closes
+  this item must invoke it with the call operator —
+  `& .\tools\verify_citations.ps1 -Source @('A.md','B.md',...)` — and
+  READ `SOURCES=` and confirm it equals the number passed, before reading
+  `BROKEN`.** A count nobody checked is a corpus nobody checked.
   **ALSO OWED, and NOT part of the nine — three MACHINE FOOTGUNS for
   `CLAUDE.md § Machine footguns`,** kept out of `lessons/` by the rule
   as amended today (`CLAUDE.md § Workflow` "Two homes, one test"): the
