@@ -44,6 +44,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -120,6 +121,21 @@ def quote_ident(name: str) -> str:
 def quote_literal(text: str) -> str:
     """ONE string literal, escaped the way PostgreSQL escapes them."""
     return "'" + text.replace("'", "''") + "'"
+
+
+# The privileges `aclexplode` can report for a DATABASE. A privilege word is NOT
+# an identifier and MUST NOT be quoted — `GRANT "CONNECT" ON DATABASE` is a
+# syntax error, so quote_ident here would break every restore rather than harden
+# one. A keyword's defence is a closed set, not an escape function.
+DATABASE_PRIVILEGES = frozenset({"CONNECT", "CREATE", "TEMPORARY", "TEMP"})
+
+# A GUC name, and it is not a relation identifier either. Custom settings carry
+# exactly one dot (`app.tenant_id`), and that dot is part of the NAME rather than
+# a schema separator, so quoting the whole thing as one identifier changes what
+# it means and splitting it on the dot is wrong for the opposite reason. Neither
+# escape is right, so this validates instead and refuses anything it does not
+# recognise — the same reasoning as the privilege set above.
+GUC_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
 
 
 def split_key(key: str) -> tuple[str, str]:
@@ -268,8 +284,12 @@ def main() -> int:
     # name on an EMPTY cluster is the disaster-recovery path — there is nothing
     # to overwrite, and making an operator type --overwrite-live at 07:00 with a
     # dead disk would be a gate that trains people to pass the flag by reflex.
+    # A LITERAL here, not an identifier: it is compared against datname, it is
+    # not naming an object. --into comes from the command line, so it is the one
+    # value in this file an outsider chooses.
     target_exists = bool(psql(args.container, "postgres",
-                              f"select 1 from pg_database where datname = '{target}'"))
+                              "select 1 from pg_database where datname ="
+                              f" {quote_literal(target)}"))
     if target == source_db and target_exists and not args.overwrite_live:
         fail(f"--into {target!r} is the database this backup came FROM and it already exists on"
              f" {args.container}. That is a destructive overwrite of live data. Pass"
@@ -348,26 +368,53 @@ def main() -> int:
         if db_facts["locale_provider"] != "c":
             fail(f"backup records locale provider {db_facts['locale_provider']!r}; this script"
                  " only recreates libc databases")
-        psql(args.container, "postgres", f'DROP DATABASE IF EXISTS "{target}" WITH (FORCE)')
+        # THE MOST EXPOSED STATEMENT IN THIS FILE, and it was the least protected:
+        # a hand-written pair of double quotes around a value the caller supplies
+        # on the command line escapes nothing, so a --into carrying a double
+        # quote closed the quoting and the rest of the argument became SQL — in a
+        # DROP DATABASE.
+        psql(args.container, "postgres",
+             f"DROP DATABASE IF EXISTS {quote_ident(target)} WITH (FORCE)")
         # Built from MANIFEST.json, not from database.sql, because database.sql
         # hard-codes the SOURCE name. Same facts, one source of truth.
+        #
+        # THREE KINDS OF VALUE IN ONE STATEMENT, and they do not take the same
+        # treatment: the database and its OWNER are identifiers; the encoding and
+        # the two locales are string literals.
         psql(
             args.container, "postgres",
-            f'CREATE DATABASE "{target}" WITH TEMPLATE = template0'
-            f" ENCODING = '{db_facts['encoding']}'"
-            f" LC_COLLATE = '{db_facts['collate']}' LC_CTYPE = '{db_facts['ctype']}'"
-            f' OWNER = "{db_facts["owner"]}"',
+            f"CREATE DATABASE {quote_ident(target)} WITH TEMPLATE = template0"
+            f" ENCODING = {quote_literal(db_facts['encoding'])}"
+            f" LC_COLLATE = {quote_literal(db_facts['collate'])}"
+            f" LC_CTYPE = {quote_literal(db_facts['ctype'])}"
+            f" OWNER = {quote_ident(db_facts['owner'])}",
         )
         for entry in db_facts["acl"]:
-            grantee = "PUBLIC" if entry["grantee"] == "PUBLIC" else f'"{entry["grantee"]}"'
+            # The PRIVILEGE is a keyword and is deliberately NOT quoted; it is
+            # checked against the closed set Postgres can report for a database
+            # instead. PUBLIC is a keyword too, which is why it keeps its
+            # existing exception rather than being quoted into a role named
+            # "PUBLIC" — a different grantee entirely.
+            privilege = str(entry["privilege"]).upper()
+            if privilege not in DATABASE_PRIVILEGES:
+                fail(f"manifest ACL names privilege {entry['privilege']!r}, which is not one"
+                     f" Postgres reports for a database ({sorted(DATABASE_PRIVILEGES)});"
+                     " refusing to build a GRANT from it")
+            grantee = ("PUBLIC" if entry["grantee"] == "PUBLIC"
+                       else quote_ident(entry["grantee"]))
             psql(args.container, "postgres",
-                 f'GRANT {entry["privilege"]} ON DATABASE "{target}" TO {grantee}')
+                 f"GRANT {privilege} ON DATABASE {quote_ident(target)} TO {grantee}")
         for setting in db_facts.get("settings", []):
             for item in str(setting).split(" "):
                 if item:
                     key, _, value = item.partition("=")
+                    if not GUC_KEY.match(key):
+                        fail(f"manifest records a database setting whose name is {key!r},"
+                             " which is not a shape this script will build SQL from"
+                             " (letters, digits and underscores, with at most one dot)")
                     psql(args.container, "postgres",
-                         f"ALTER DATABASE \"{target}\" SET {key} = '{value}'")
+                         f"ALTER DATABASE {quote_ident(target)} SET {key} ="
+                         f" {quote_literal(value)}")
         print(f"  created {target} (owner {db_facts['owner']}, {db_facts['encoding']},"
               f" ACL from the backup)")
 
