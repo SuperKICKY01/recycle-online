@@ -34,9 +34,21 @@ takings to balance the cash box against.
   is tipped on the pile either way. So the phone is the FIRST WRITER and the
   server is the AUTHORITY, and the gap between them is a visible first-class
   state, never papered over by the UI.
-- **Multi-tenant.** One shop must never see another's data. Not "must not" by
-  discipline — **cannot**, by construction. Shop A's bills and shop B's sit in the
-  same tables in the same database.
+- **Multi-tenant.** One shop must never see another's data. Shop A's bills and
+  shop B's sit in the same tables in the same database. Enforcement is row-level
+  security with `FORCE`, which binds the table owner too, and all three project
+  roles are `NOSUPERUSER NOBYPASSRLS` — none of them can step around a policy. A
+  handler that forgets its filter returns NOTHING rather than everything, which
+  is why the rule lives in a policy on the table and not in a `WHERE` in every
+  handler.
+  **The boundary, because the sentence above used to claim more than it could.**
+  The tenant context is a GUC the application role sets for ITSELF, so anything
+  able to execute SQL as that role can set it to another shop and read that
+  shop's rows. The guarantee is complete against application MISTAKES; it is not
+  a defence against SQL execution. That is covered by parameterised queries
+  everywhere, and by the directory lookup running as a separate role with no
+  access to schema `public` — which bounds what THAT lookup can reach, not what
+  the application role can.
 
 ## 2. Architecture — decided facts, each with its reason
 

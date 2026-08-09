@@ -181,13 +181,20 @@ not a defect, and no design for changing it appears in this file:
   tables**, `USING (<key> = NULLIF(current_setting('app.tenant_id', true), '')::uuid)`
   — keyed on `tenant_id` everywhere except `tenants`, keyed on its own `id`. Read
   from `pg_class`/`pg_policy` on the running database, not from the migration.
-  **The GUC holds one uuid and never a list**, so there is no cross-tenant read
-  short of not being subject to the policy. `alembic_version` is the exception:
+  **The GUC holds one uuid and never a list**, so no single query spans two
+  shops. It does NOT follow that a cross-tenant read requires escaping the
+  policy: the GUC is set by the application role itself, so anything executing
+  SQL as that role can set it to another shop's id and read that shop's rows,
+  one tenant at a time. MEASURED on the live cluster — one `recycle_app`
+  connection returned 376 bills for tenant A and 9 for tenant B, changing only
+  `app.tenant_id`. `alembic_version` is the exception:
   `relrowsecurity = f`, `relforcerowsecurity = f`, **no policy** — visible in the
   catalog rather than assumed, and it holds a version string and no business data.
 - Both DB roles are `NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS` — declared
   in `00_init_roles.sql` **and read back from `pg_roles` on the live cluster**,
-  all four flags `f` for both. Neither can escape the policy.
+  all four flags `f` for both. Neither can escape the policy BY ROLE — and
+  neither needs to in order to read another shop, because the tenant the policy
+  compares against is a value the application role supplies (see above).
 - `get_principal` takes the tenant from the token and applies it as
   `set_config('app.tenant_id', :t, true)` — SET LOCAL, transaction-scoped
   (`db.py:89`). ⚠ Of the 34 `tenant_connection(` call sites in `server/app/`,

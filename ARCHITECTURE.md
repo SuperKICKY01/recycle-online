@@ -485,6 +485,33 @@ then guarantees the lookup can only see that tenant's users, so there is no
 cross-tenant login. It is the one place the rule "the tenant comes from the token"
 does not apply, and it is deliberate.
 
+**WHAT THIS COVERS AND WHAT IT DOES NOT, MEASURED RATHER THAN ARGUED.** Every
+layer in the table above is real, and none of them decides WHICH tenant. That is
+decided by a GUC the application role sets for itself, so the isolation is
+complete against a handler that forgets a filter and is NOT a defence against
+anything able to execute SQL as `recycle_app`.
+
+Measured on this cluster, from ONE `recycle_app` connection, changing nothing but
+`app.tenant_id`. With no context set: `tenants` 0 rows, `purchase_bills` 0 rows.
+Context set to tenant A: `purchase_bills` 376. Set to tenant B: 9. Both match what
+the superuser reads per tenant, and `count(DISTINCT tenant_id)` was 1 each time —
+so the GUC selects the shop, and nothing between the connection and the rows
+checks whether that role is entitled to the shop it named.
+
+Two controls ran on the same connection and were both REFUSED: `SET
+log_min_messages` and `SET session_replication_role` each raised `permission
+denied to set parameter`. The reading above is therefore not "this role can set
+anything" — `app.tenant_id` is settable by it and other parameters are not.
+
+What the property still buys is worth keeping and is the reason for the design: a
+forgotten `WHERE` returns NOTHING rather than everything, and `FORCE` means the
+owner cannot skip a policy either. What it does not buy is protection from SQL
+injection, or from anything else running statements as that role. That is covered
+elsewhere — parameterised queries in every handler, and the directory reader being
+a separate role holding no `USAGE` on schema `public`. That last one bounds what
+the pre-authentication lookup can reach; it does not bound `recycle_app`, and a
+deployment may hold both sets of credentials in one process.
+
 ---
 
 ## 9. What is LOCKED, and what is open
