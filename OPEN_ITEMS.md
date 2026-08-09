@@ -674,6 +674,27 @@ idea — only that it is unresolved.
   S4 selecting `rolconfig` and naming `recycle_directory`, with the
   expected `search_path` asserted against the schema name rather than
   assumed.
+  **DONE 2026-08-09 in `50e82c7`, and the paragraph above is KEPT because
+  its line numbers are themselves the finding.** S4 now reads `rolconfig`
+  and covers `recycle_directory`: `REQUIRED_ROLES` is the single
+  declaration and carries `recycle_directory: {"search_path":
+  "directory"}`; the SQL takes it as `= ANY($1::text[])`; the
+  missing-role arm and the settings loop both iterate it. The three
+  hand-kept copies this entry complained about are GONE rather than
+  synchronised, which is why it closes. Comparison is per setting name,
+  never the array whole, and `examined` reads "N of M roles; C of D
+  declared setting(s) compared" with both halves enforced rather than
+  displayed. **Every position cited above is now wrong** — `:885`,
+  `:888`, `:891` and `:886-888` name none of what they claim, because
+  `50e82c7` and `2c8f300` added 161 lines to that file. Re-derived
+  2026-08-09: the declaration is at `:353-357`, the query at `:970-972`.
+  That is the lesson `015bee3` recorded hours earlier about
+  `00_init_roles.sql` — a citation carrying a POSITION rots, one naming
+  the file and the symbol does not — and this is the next instance,
+  inside the same day. *Still not done:* 0009 remains committed and
+  unapplied, so nothing has yet confirmed that the `search_path` S4
+  asserts names a schema that EXISTS; S4 checks the value and never the
+  existence, which is `CANNOT_SEE` entry 2 and not this entry.
 
 ## Code debt found and left in place
 

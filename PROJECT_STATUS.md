@@ -2866,3 +2866,138 @@ dump. `prove_master` needed `API_BASE_URL` set explicitly — its default is 800
 - **The mutation runs left 3 bills in `recycle_users_scratch`** (338 against dev's
   335). They are in a scratch copy, which is the whole point, and they stay there
   until it is dropped.
+
+### 2026-08-09 — the directory role, migration 0009, S4, and two tools (eleven commits)
+
+**NO DEVICE, NO SCREEN, AND NO PROOF RUN BY THIS SESSION.** This entry was written
+after the fact, from the commits and from the cluster. Every claim below is marked
+either MEASURED HERE — this session ran the query or read the file today — or
+RECORDED FROM THE COMMIT, meaning the commit message asserts it and this session
+did not re-run it. **The distinction is the point of the entry**: nine commits
+landed with no status update, and a status file that adopts a commit message's
+greens without saying so is exactly the failure that produced the gap.
+
+**ELEVEN COMMITS, NOT NINE, AND ONE IS NOT FROM TODAY.** `f009415` is dated
+2026-08-08 23:56:53 +0700; the other ten are 2026-08-09. The nine that are WORK
+are `f009415` through `2c8f300`; `845355e` and `eb049e5` are tooling added while
+writing this up.
+
+| commit | what it did |
+|---|---|
+| `f009415` (08-08) | `db/init/00_init_roles.sql` re-runnable (DO blocks, `\gexec`); adds the `recycle_directory` role, `CONNECT` on `recycle`, no `USAGE` on `public` |
+| `015bee3` | repairs three citations that `f009415`'s rewrite moved (34 → 117 lines) |
+| `12d16a2` | migration **0009** — schema `directory`, `directory.shop_codes`, precondition guard on `pg_roles`, downgrade refuses once a code is issued |
+| `0168d8e` | states what tenant isolation covers and what it does not — the GUC is set by the app role FOR ITSELF |
+| `fc9cd5c` | records D4 and D2's open half as decided |
+| `1e37621` | stale odds and ends; the `Measure-Object -Line` footgun |
+| `7d13b9c` | proof gate 2 refused `ALTER ROLE` and admitted `ALTER USER`; new lesson `a-gate-that-matches-a-keyword-misses-its-aliases.md` |
+| `50e82c7` | S4 covers `recycle_directory`; `REQUIRED_ROLES` becomes the single declaration; `examined` becomes enforceable |
+| `2c8f300` | S4's two blind spots into `CANNOT_SEE`; `not_injected()` stops naming roles |
+| `845355e` | `tools/build_paste_set.py` — the paste set and its manifest |
+| `eb049e5` | `START_HERE.md` — the advisor's two unprompted duties |
+
+**MIGRATION 0009 IS COMMITTED AND UNAPPLIED. MEASURED HERE.** `recycle_pg` holds
+eight databases; **not one has a schema named `directory`** — `SELECT count(*) FROM
+pg_namespace WHERE nspname='directory'` returned **0** in every one of `postgres`,
+`recycle`, `recycle_clock_scratch`, `recycle_lock_scratch`,
+`recycle_recon_pre0005b`, `recycle_recon_scratch`, `recycle_restore_scratch`,
+`recycle_users_scratch`. `alembic_version` in `recycle` reads **0008**. The other
+fixtures read: `recycle_clock_scratch` 0008, `recycle_recon_scratch` 0008,
+`recycle_lock_scratch` 0007, `recycle_restore_scratch` 0007,
+`recycle_users_scratch` 0007, `recycle_recon_pre0005b` 0004. **Nothing reads
+`shop_codes`** — no endpoint, no client, no code path of any kind.
+
+**`recycle_directory` EXISTS ON THE DEV CLUSTER BY HAND-APPLICATION, NOT BY ANY
+MIGRATION, AND ON NO OTHER CLUSTER. MEASURED HERE.** `pg_roles` on `recycle_pg`
+returns exactly three `recycle%` roles — `recycle_app` (no rolconfig),
+`recycle_owner` (no rolconfig), **`recycle_directory` with
+`{search_path=directory}`**. It got there because `db/init/00_init_roles.sql` was
+applied by hand: the Postgres entrypoint runs that file **only on an empty data
+directory**, and this cluster has been up two days with data in it. No migration
+creates the role — 0009 GRANTS to it and guards on its existence, which is why it
+reads `pg_roles` before it writes. The second cluster on this box,
+`infra-postgres-1` (an unrelated project, `tirerescue`), returns **0** roles
+matching `recycle%`. **A fresh clone therefore does not have this role**, and 0009
+will refuse there with its own RuntimeError rather than an asyncpg error — that
+refusal is RECORDED FROM `12d16a2`, observed on a throwaway, not re-run here.
+
+**S4 NOW COVERS THREE ROLES AND ASSERTS `rolconfig`. VERIFIED HERE BY READING THE
+FILE.** `reconcile.py` `REQUIRED_ROLES` (`:353-357`) is the single declaration and
+carries `recycle_directory: {"search_path": "directory"}`. The query (`:970-972`)
+selects `rolname, rolsuper, rolbypassrls, rolconfig` with `rolname = ANY($1::text[])`
+built from that dict, so the SQL, the missing-role arm (`:976`) and the settings
+loop (`:980`) cannot drift from each other; the title names no role. Comparison is
+**per setting name, never the array whole**, and `examined` reads "N of M roles
+(...); C of D declared setting(s) compared" with both halves enforced rather than
+displayed. **Its two blind spots are in `CANNOT_SEE` (`:1290-1324`), printed on
+every run, green or red**: (1) S4's subject is the CLUSTER, not the database under
+test — `pg_roles` is shared, so no dump moves it and no fixture exercises it, and a
+green S4 beside a restored scratch copy is a statement about the live money
+database too; (2) it checks the VALUE of `search_path` and never that the schema
+EXISTS, with three consequences — it cannot distinguish never-upgraded from
+downgraded, cannot see a coordinated rename in source, and **cannot see a
+per-database override**. RECORDED FROM `2c8f300`: the third was MEASURED on a
+throwaway cluster (`tw_s4_` prefix, own volume, port 5599, loopback only) —
+`ALTER ROLE … IN DATABASE … SET search_path` writes `pg_db_role_setting` and leaves
+`pg_roles.rolconfig` reading `{search_path=directory}`, so **S4 reports green while
+a session in the one database it is about gets something else**. Teardown proven;
+`recycle_pg` unchanged across it.
+
+**THE PREDICATE WIDENING IS NOT DONE, AND IS CURRENTLY UNPROVABLE ON EVERY FIXTURE
+THAT EXISTS. VERIFIED HERE, BOTH HALVES.** `reconcile.py` still bounds its
+enumeration to schema `public` at **seven sites** — `:883`, `:892`, `:925`, `:929`,
+`:931`, `:1021`, `:1023` — so a relation in schema `directory` is invisible to it.
+The limit is the PREDICATE, not the exclusion lists: adding `'shop_codes'` to a
+`NOT IN` changes nothing, because the enumeration never produces the name. **And it
+cannot be proven today by any fixture on this box**, because the widened predicate
+would have to find a relation outside `public` and no database here has one — the
+same measurement as above, `directory` schema count 0 in all eight. Until 0009 is
+applied somewhere, a green from a widened S1/S2/S3/S5 would be green over an empty
+set. **Note the debt's own citations have already rotted**: `12d16a2` recorded the
+seven sites as `:809`, `:818`, `:851`, `:855`, `:857`, `:903`, `:905`, and
+`50e82c7` and `2c8f300` then added 161 lines to the file. The list above was
+re-derived today, not copied.
+
+**`restore_db.py` WILL REPORT A FALSE FAILURE THE MOMENT 0009 IS APPLIED. VERIFIED
+HERE BY READING BOTH FILES.** `backup_db.py` (`:348-352`) parses each
+`COPY <table> FROM stdin;` and strips **only** a `public.` prefix, so a
+`COPY directory.shop_codes FROM stdin;` block is recorded in the manifest under the
+key `directory.shop_codes`, unstripped. `restore_db.py` (`:300-304`) builds its
+counts from `n.nspname = 'public'` alone, so that key can never appear on the
+restored side; `:316` walks `set(expected) | set(counts)` — the UNION — so the key
+is compared, `want` is a number, `got` is `None`, and `:323-324` calls `fail()`.
+**Every row would have landed correctly and the restore would be reported as
+broken.** RECORDED FROM `12d16a2`: it also reddens `prove_backup_restore.py:384`
+and `prove_reconcile.py:331`. Nothing has been changed to prevent this; the debt is
+filed in `OPEN_ITEMS.md` and the trigger is the first backup taken after 0009 is
+applied.
+
+**THE PROOF RUNS ARE RECORDED FROM THE COMMITS AND WERE NOT RE-RUN HERE.**
+`2c8f300` states `reconcile.py` bare against `recycle_recon_scratch` exit 0 with
+`CANNOT_SEE` moving 12 entries to 14 and every other cell byte-identical to the
+previous baseline, and `prove_reconcile.py` exit 0 twice consecutively with no
+reseed, 19 injections, 0 failures, 1 pre-existing SKIP. `50e82c7` states the D1/D2
+differential runs. **This session ran none of them.** The last proof-suite run this
+file records by observation is still the fourteen-run set under
+`2026-08-07 — GET /users`.
+
+**WHAT THIS DOES NOT ESTABLISH.**
+
+- **No phase boundary was declared and `PROJECT_STATUS.md § Current phase` still
+  names `GET /users`, landed 2026-08-07.** Whether these eleven commits constitute
+  a phase, and what to call it, is the owner's to set; this entry records the work
+  without claiming a phase closed.
+- **Nothing here was run on a handset.** No device gap in this file is refreshed.
+- **0009 has never been applied to a cluster that survived.** Every application was
+  on a throwaway (`tw0009c_pg_a`, `tw0009c_pg_b`, both destroyed). The dev cluster
+  was deliberately not migrated: `system_identifier 7669585484237623334`, unchanged.
+- **The directory lookup does not exist as a code path.** The migration creates the
+  relation; no endpoint resolves a code and no client sends one. Login still takes
+  a tenant uuid.
+- **A fresh clone cannot run 0009** until `db/init/00_init_roles.sql` is applied,
+  and that file is DEV-ONLY by its own statement — its passwords are literal
+  strings in a tracked file.
+- **`recycle_clock_scratch` is no longer a schema behind.** The
+  `2026-08-07 — GET /users` entry records it at 0006 against live 0007; measured
+  today both read 0008. That earlier caveat is stale, and is corrected here rather
+  than edited there.
