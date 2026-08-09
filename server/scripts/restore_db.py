@@ -88,6 +88,95 @@ def psql(container: str, db: str, sql: str) -> list[list[str]]:
     return [line.split("|") for line in text.split("\n") if line != ""]
 
 
+# ---------------------------------------------------------------------------
+# identifiers — the first identifier-quoting helpers in this repository
+# ---------------------------------------------------------------------------
+def quote_ident(name: str) -> str:
+    """ONE identifier, quoted the way PostgreSQL quotes identifiers.
+
+    Wrap in double quotes, double any embedded double quote. Always quoting is
+    correct for every legal identifier, so this does not have to decide whether
+    quoting is REQUIRED — pg_catalog's own quote_ident() omits the quotes when
+    it can, and that difference is cosmetic in generated SQL.
+
+    WHY IT IS DONE HERE AND NOT BY POSTGRES OR A DRIVER, because this repo had
+    no such helper before and the next person will ask. This script has no
+    database driver at all: it shells out to `psql -c` through docker exec, so
+    asyncpg's parameter binding is not available — and it would not help if it
+    were, because a bound parameter is a VALUE and an identifier is not one.
+    The server's own quote_ident() is no use either: it returns text, and text
+    cannot appear in a FROM clause without dynamic SQL, which would need a DO
+    block, which cannot return the counts we came for. So the quoting happens
+    on this side, by the documented rule, in exactly one place.
+
+    IT MUST BE APPLIED PER PART, NEVER TO A WHOLE KEY. `"directory.shop_codes"`
+    is ONE relation with a dot in its name, looked up through the search path;
+    it is not shop_codes in schema directory. Split first (split_key), then
+    quote each part.
+    """
+    return '"' + name.replace('"', '""') + '"'
+
+
+def quote_literal(text: str) -> str:
+    """ONE string literal, escaped the way PostgreSQL escapes them."""
+    return "'" + text.replace("'", "''") + "'"
+
+
+def split_key(key: str) -> tuple[str, str]:
+    """A manifest row-count key -> (schema, relation).
+
+    backup_db.py's copy_block_counts() strips the literal `public.` prefix off a
+    COPY header's table name and NOTHING else, so a BARE key is a relation in
+    schema public and a DOTTED key carries its own schema. That asymmetry IS the
+    manifest format, and this function is the only place that knows it.
+
+    Split on the FIRST dot: what pg_dump wrote in front of the name is the
+    schema. A relation whose own name contains a dot is therefore ambiguous in
+    this format — see the CANNOT_SEE entry. Resolving that needs a manifest
+    format change, which is deliberately not in this commit.
+    """
+    schema, dot, relation = key.partition(".")
+    if not dot:
+        return "public", key
+    return schema, relation
+
+
+def cannot_see(partitioned: int) -> list[str]:
+    """The limits of the comparison, printed on EVERY run, green or red.
+
+    Form taken from scripts/reconcile.py: a list of entries, each opening with a
+    capitalised lead, printed under its own header as `  - `. One difference,
+    and it is deliberate — the second entry carries a number MEASURED on this
+    target rather than a claim, because a limit stated as a guess is the thing a
+    block like this exists to replace.
+    """
+    return [
+        "WHETHER THE TARGET HOLDS ANYTHING THE DUMP DID NOT CARRY. This walks the"
+        " manifest's keys and asks the database about each one, so it answers"
+        " whether the dump LANDED COMPLETELY and nothing else. It cannot see an"
+        " extra relation, or extra rows in a relation the dump does not name."
+        " The previous version enumerated the target's catalogue as a second key"
+        " source and could see a public table the dump never mentioned; that is"
+        " gone, and nothing else in this script looks for it.",
+
+        "A PARTITIONED TABLE, IF ONE EVER EXISTS. pg_dump emits COPY for a"
+        " partition's LEAVES and not for its parent, so the manifest would carry"
+        " one key per leaf while the reader is thinking in whole tables — a"
+        " different unit, counted silently. MEASURED ON THIS TARGET, NOT"
+        f" ASSUMED: {partitioned} relation(s) with relkind='p' outside"
+        " pg_catalog and information_schema. At zero this is a statement about"
+        " the future, and the number is re-measured every run so it cannot"
+        " quietly stop being zero.",
+
+        "A RELATION WHOSE OWN NAME CONTAINS A DOT. The manifest key space is"
+        " hybrid — bare for public, schema-qualified for everything else — so"
+        " `a.b` is read as relation b in schema a, and a public relation"
+        " genuinely named `a.b` would be looked for in the wrong schema. No"
+        " manifest in the backup root carries such a key today. Fixing it needs"
+        " a manifest FORMAT change, deliberately not in this commit.",
+    ]
+
+
 def sha256_of(path: Path) -> str:
     import hashlib
 
@@ -296,32 +385,97 @@ def main() -> int:
     psql(args.container, target, "ANALYZE")
 
     print("\n=== what landed ===")
+    # ONE KEY SET, AND IT IS THE MANIFEST'S. The catalogue used to supply a
+    # second set of keys and the two were compared over their UNION, so a key
+    # present on one side and absent on the other landed in `bad` and failed a
+    # restore in which every row had arrived. The first relation outside schema
+    # public — directory.shop_codes, migration 0009 — made that fire on the
+    # first backup taken after the migration, with the table still empty.
+    # Walking the dump's own keys removes the union: nothing can be compared
+    # that the dump did not name.
     expected = manifest["row_counts_in_dump"]
-    tables = [r[0] for r in psql(
-        args.container, target,
-        "select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace"
-        " where n.nspname = 'public' and c.relkind = 'r' order by 1",
-    )]
-    if not tables:
-        fail("the restored database has no tables in schema public")
-    counts = {
-        r[0]: int(r[1])
+    if not expected:
+        fail("this backup's manifest records no row counts at all; re-take it with"
+             " the current backup_db.py")
+
+    keys = sorted(expected)
+    targets = {k: split_key(k) for k in keys}
+
+    # PRESENCE FIRST, and to_regclass rather than a count, because to_regclass
+    # returns NULL for an absent relation where `count(*)` raises. Counting
+    # blind would abort psql and kill the run with a driver error instead of
+    # naming the relation that did not arrive.
+    # `== "true"`, NOT `== "t"`. `boolean::text` renders 'true'/'false'; psql
+    # only shows t/f for an UNCAST boolean. backup_db.py carries the same note
+    # at its superuser check, where comparing against 't' "silently failed every
+    # check once" — and it failed every check here too, on the first run of this
+    # code: all 13 keys reported MISSING against a database that held them all.
+    present = {
+        r[0]: r[1] == "true"
         for r in psql(
             args.container, target,
-            " union all ".join(f"select '{t}', count(*) from public.{t}" for t in tables)
-            + " order by 1",
+            " union all ".join(
+                f"select {quote_literal(k)},"
+                f" (to_regclass({quote_literal(quote_ident(s) + '.' + quote_ident(rel))})"
+                " is not null)::text"
+                for k, (s, rel) in targets.items()
+            ),
         )
     }
-    bad = []
-    for t in sorted(set(expected) | set(counts)):
-        want = expected.get(t)
-        got = counts.get(t)
+
+    countable = [k for k in keys if present.get(k)]
+    counts: dict[str, int] = {}
+    if countable:
+        counts = {
+            r[0]: int(r[1])
+            for r in psql(
+                args.container, target,
+                " union all ".join(
+                    f"select {quote_literal(k)}, count(*) from"
+                    f" {quote_ident(targets[k][0])}.{quote_ident(targets[k][1])}"
+                    for k in countable
+                ),
+            )
+        }
+
+    missing, differing = [], []
+    for k in keys:
+        want = expected[k]
+        if not present.get(k):
+            missing.append(k)
+            print(f"  [FAIL] {k:<24} dump={want}  restored=MISSING")
+            continue
+        got = counts.get(k)
         ok = want == got
         if not ok:
-            bad.append(t)
-        print(f"  [{'OK  ' if ok else 'FAIL'}] {t:<24} dump={want}  restored={got}")
-    if bad:
-        fail(f"row counts differ from the dump for {bad}")
+            differing.append(k)
+        print(f"  [{'OK  ' if ok else 'FAIL'}] {k:<24} dump={want}  restored={got}")
+
+    # Printed BEFORE the verdict so it appears on a red run too. fail() exits
+    # immediately, so a limits block written after it would only ever be read by
+    # someone whose restore had already succeeded — which is the reader who
+    # needs it least.
+    partitioned = int(psql(
+        args.container, target,
+        "select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace"
+        " where c.relkind = 'p' and n.nspname not in ('pg_catalog','information_schema')",
+    )[0][0])
+    print("\n=== what this comparison CANNOT see ===")
+    for line in cannot_see(partitioned):
+        print(f"  - {line}")
+
+    # TWO DIFFERENT EVENTS, NAMED DIFFERENTLY. "row counts differ" was printed
+    # for both before this change, and for the absent-key case it was false:
+    # no count differed, a key was absent on one side. An operator at 07:00 gets
+    # the distinction in the sentence now, not only in the table above it.
+    problems = []
+    if missing:
+        problems.append(f"{len(missing)} relation(s) named by the dump are ABSENT from"
+                        f" the restored database: {missing}")
+    if differing:
+        problems.append(f"row counts differ from the dump for {differing}")
+    if problems:
+        fail("; ".join(problems))
 
     rls = psql(
         args.container, target,
