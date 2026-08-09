@@ -597,6 +597,63 @@ idea — only that it is unresolved.
   Making the two defaults equal is NOT a fix: it removes today's symptom
   and leaves the next shell that sets one and not the other in exactly
   this position.
+- **`reconcile.py`'s five structural checks cannot see a relation outside
+  schema `public`, and the limit is the PREDICATE, not the exclusion
+  lists.** Migration 0009 (written, not applied, not committed) creates
+  `directory.shop_codes`, the first relation in this database outside
+  `public`. Seven sites bound every structural check to that schema:
+  `server/scripts/reconcile.py:809` (the shared `present` query, which
+  feeds S1's `examined` and ALL of S2's detection), `:818` (S1's own
+  query), `:851`, `:855`, `:857` (S3), `:903` (S5 constraints, from
+  `pg_constraint`) and `:905` (S5 indexes, from `pg_indexes`). **A
+  relation in another schema is never ENUMERATED, so it can never be
+  reported as unknown**, and the obvious-looking fix is a no-op: adding
+  `'shop_codes'` to the `NOT IN` list at `:823-824` or to S2's list at
+  `:838-839` would read as coverage while changing no result, because
+  those lists remove names that were already enumerated. The consequence
+  is not about this one relation: from 0009 onward a tenant-scoped table
+  with no RLS can be added to schema `directory` and S1, S2, S3 and S5
+  all stay green, including S2, whose entire stated job is to notice a
+  table the checker has never heard of. *Not done:* 0009 deliberately
+  changes no checker; 0008 updated S1, S2 and `CANNOT_SEE` in the same
+  change that created its exception, and 0009 does not, which is the
+  gap. *Unblocks:* widening the seven predicates to a named set of
+  schemas AND schema-qualifying the comparison keys — `present` (`:809`)
+  selects bare `c.relname`, and `ALL_RLS_TABLES` (`:290-294`),
+  `REQUIRED_CONSTRAINTS` (`:299-317`) and `REQUIRED_INDEXES`
+  (`:318-323`) are all bare-name-keyed, so admitting a second schema
+  without qualifying them makes two same-named relations
+  indistinguishable. A `CANNOT_SEE` entry is owed with it: `0008:56-59`
+  set the precedent that the boundary of a check belongs in the check's
+  own output and not only in a migration docstring nobody runs.
+- **Nothing enforces that `recycle_directory`'s `search_path` names the
+  schema migration 0009 creates.** `server/db/init/00_init_roles.sql:87`
+  runs `ALTER ROLE recycle_directory SET search_path = directory`, and
+  the capitalised warning above it at `:76` says the name must match the
+  schema 0009 creates. That is a bootstrap statement on one side and a
+  comment on the other, with no assertion between them. Rename either
+  and the other points nowhere; the observed failure is
+  `relation "..." does not exist`, naming no schema, no permission and
+  no migration — recorded as the DESIGNED pre-migration outcome at that
+  file's `:78-86`, which means the broken state and the expected state
+  are indistinguishable by their error message. **A DOWNGRADED database
+  and a never-upgraded one are indistinguishable the same way** —
+  `rolconfig` survives `alembic downgrade 0008` and still names a schema
+  that no longer exists, measured this session on a throwaway
+  immediately after a successful downgrade
+  (`recycle_directory | search_path=directory` with
+  `directory_schema_count = 0`). **The check that would
+  catch it does not read the field:** S4 at
+  `server/scripts/reconcile.py:886-888` selects `rolname, rolsuper,
+  rolbypassrls` only, never `rolconfig`, and its `WHERE rolname IN
+  ('recycle_app', 'recycle_owner')` at `:888` does not name
+  `recycle_directory` at all — so a third role is outside its coverage
+  in two independent ways. *Not done:* 0009 changes no checker, and the
+  role list is hard-coded at three sites (`:885` title, `:888` SQL,
+  `:891` the missing-role tuple) which must move together. *Unblocks:*
+  S4 selecting `rolconfig` and naming `recycle_directory`, with the
+  expected `search_path` asserted against the schema name rather than
+  assumed.
 
 ## Code debt found and left in place
 
@@ -890,6 +947,42 @@ idea — only that it is unresolved.
   `lessons/two-green-proofs-do-not-cover-the-seam.md` says it will be and
   where no single proof file owns it. Whoever builds this should know the
   analysis established a SHAPE and observed nothing.
+- **`restore_db.py` will FAIL a byte-correct restore the moment migration
+  0009 is applied, and two proofs go red with it.** 0009 (written, not
+  applied, not committed) creates `directory.shop_codes`, the first
+  relation outside schema `public`, and the backup/restore pair is
+  asymmetric about schemas in a way nothing else is. Mechanism, end to
+  end: `server/scripts/backup_db.py:436-440` invokes `pg_dump` with no
+  `--schema` flag, so the body carries a
+  `COPY directory.shop_codes ... FROM stdin;` block — pg_dump always
+  schema-qualifies these headers, measured on the existing dumps
+  (`COPY public.uoms (...) FROM stdin;`). `copy_block_counts`
+  (`backup_db.py:329-362`) strips only a `public.` prefix at `:351-352`,
+  so the manifest records the key `directory.shop_codes` UNSTRIPPED.
+  `restore_db.py:299` reads that manifest as `expected`, `:300-314`
+  builds `counts` from schema `public` alone, and `:316` walks
+  `set(expected) | set(counts)` — so the directory key is present on one
+  side and absent on the other, `want != got`, and `:324` fails a
+  restore in which every row landed. **It is a red drawn over a good
+  restore, which is the failure mode that teaches an operator to stop
+  reading the check.** Blast radius beyond the operator:
+  `prove_backup_restore.py:384` gates on `restore_db.py` exiting 0 and
+  returns 1 at `:387`; `prove_reconcile.py:331` goes red with
+  `RESTORE_EXIT=none`. Two secondary effects: `backup_db.py:512` sums
+  `counts_dump.values()` including directory rows while `:521` reports
+  them "across N tables" and `:556` itemises only public tables, so once
+  a code exists the summary total stops equalling its own itemisation,
+  and `restore_db.py:143` prints the same inflated total. *Not done:*
+  0009 records the debt in its docstring and fixes nothing, deliberately
+  — a checker change belongs with the reconcile change above, not inside
+  a migration. **One inference not measured:** whether `pg_dump` emits a
+  `COPY` block for an EMPTY table. If it does, this fires on the first
+  backup after 0009 is applied; if not, on the first backup after the
+  first code is issued. It fires either way, and the measurement is
+  cheap — dump a genuinely empty table and look for the header.
+  *Unblocks:* making `copy_block_counts` and the restore-side count
+  query agree on schema qualification — either both schema-qualified or
+  both stripped — and doing it BEFORE anyone trusts the next backup.
 
 ## Decisions open — the owner's, not the code's
 
