@@ -76,7 +76,8 @@ in `OPEN_ITEMS.md` as an unmeasured inference, was the first issued code.
 **FIXED: the restore side, commit `4150833`.** The comparison now walks the
 manifest's keys and nothing else, splits each key into schema and relation, and
 quotes each part separately. **NOT FIXED: `backup_db.py`, deliberately, and it
-now carries TWO defects rather than one.** Both are named below and in
+now carries THREE defects rather than one — the count read TWO until 2026-08-09,
+when a control pass measured a third.** All three are named below and in
 `OPEN_ITEMS.md`.
 
 The arc, with every number and the controls that make the numbers mean anything,
@@ -3251,10 +3252,12 @@ failed the actual test.
 because it then looks for `"public"."directory.shop_codes"`. Reverted, green
 returned. A check that cannot be made to fail was never observed to work.
 
-**WHAT IS NOT FIXED, DELIBERATELY — AND IT IS TWO DEFECTS NOW, NOT ONE.**
+**WHAT IS NOT FIXED, DELIBERATELY — AND IT IS THREE DEFECTS, NOT ONE.**
 `backup_db.py` was not touched, because its divergence has no repeatable control
 yet and fixing both sides against one control means a regression could not be
-attributed to a side.
+attributed to a side. **THIS ENTRY SAID TWO UNTIL 2026-08-09**, when a control
+pass built one relation per identifier shape and measured a third; the count is
+corrected here and the third is item 3 below.
 
 1. **The summary total versus its own itemisation.** It sums `counts_dump.values()`
    across every schema while the itemisation beside it iterates public tables
@@ -3269,6 +3272,28 @@ attributed to a side.
    such a key correctly (`[OK  ] directory.Odd Name  dump=2  restored=2` against a
    fabricated dump carrying a real `directory."Odd Name"` relation); the writer
    cannot yet produce one.
+3. **A quoted identifier in schema `public` makes the backup ABORT rather than
+   mis-key — no artefact is produced at all.** `live_row_counts` interpolates
+   `public.{t}` UNQUOTED, so a relation `public."Odd Name"` yields
+   `... count(*) as n from public.Odd Name ...` and psql refuses it. Measured
+   2026-08-09 by creating that relation in a scratch database and running the
+   real tool:
+
+       BACKUP FAILED: psql failed (1): ERROR:  relation "public.odd" does not exist
+       LINE 1: select 'Odd Name' as t, count(*) as n from public.Odd Name u...
+
+   Exit 1, and **no `BACKUP_EXIT` line** — `fail()` calls `sys.exit(1)` before the
+   print is reached. **IT FAILS CLOSED, WHICH IS THE SAFE DIRECTION**: no dump, no
+   manifest, no half-written artefact that could later be trusted, and defects 1
+   and 2 cannot arise because nothing is written. **The danger is the MISSING EXIT
+   LINE, not a corrupt backup** — a reader scanning for `BACKUP_EXIT=` finds
+   nothing and can take that for output not yet read, which is the absence-is-the-
+   signal shape `CLAUDE.md` records for `restore_db.py`'s `RESTORE_EXIT`. Such a
+   database simply cannot be backed up by this tool today.
+   **`prove_backup_restore.py` CARRIES THE IDENTICAL UNQUOTED INTERPOLATION** at
+   its own `row_counts()` — `f"select '{t}' || '=' || count(*)::text from
+   public.{t}"` — so it would fail the same way on the same input. Read, not run;
+   that file is not modified here and was not executed.
 
 **WHAT THIS DOES NOT ESTABLISH.**
 

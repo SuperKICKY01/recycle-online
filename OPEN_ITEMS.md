@@ -1086,7 +1086,7 @@ idea — only that it is unresolved.
   neither was touched. Written up as
   `lessons/a-round-trip-must-agree-on-its-key-space.md`.
   **HALF CLOSED 2026-08-09 in `4150833`. THE RESTORE SIDE IS FIXED; THE BACKUP
-  SIDE IS NOT, AND IT IS TWO DEFECTS RATHER THAN THE ONE THIS ENTRY DESCRIBES.**
+  SIDE IS NOT, AND IT IS THREE DEFECTS RATHER THAN THE ONE THIS ENTRY DESCRIBES.**
   Everything above stands as the description of the defect and of how it was
   found; what follows is what changed and what did not.
   *(a) DONE — the restore side.* The comparison in `restore_db.py` now walks the
@@ -1105,8 +1105,9 @@ idea — only that it is unresolved.
   never being checked at all.
   *(b) STILL OPEN — `backup_db.py`, and DELIBERATELY.* Its divergence has no
   repeatable control yet, and fixing both sides against one control means a
-  regression could not be attributed to a side. **TWO defects, and they are
-  separate problems with separate fixes:**
+  regression could not be attributed to a side. **THREE defects, and they are
+  separate problems with separate fixes. THIS READ "TWO" UNTIL 2026-08-09**, when
+  a control pass built one relation per identifier shape and measured a third:
     1. **The summary total does not equal its own itemisation.** `:512` sums
        `counts_dump.values()` across every schema while `:556` itemises public
        tables only and `:521` reports them "across N tables" — measured, **845
@@ -1122,9 +1123,33 @@ idea — only that it is unresolved.
        on. This is NOT the schema-qualification defect and is not fixed by
        fixing it; the restore side already handles such a key correctly, and the
        writer cannot yet produce one.
-  *Unblocks:* both, together, against a control that can distinguish them — which
-  means a fixture carrying a non-public table AND a quoted identifier, both of
-  which now exist as scratchpad fabrications from this phase.
+    3. **A quoted identifier in schema `public` ABORTS the backup rather than
+       mis-keying it — no artefact is produced at all.** `live_row_counts`
+       interpolates `public.{t}` UNQUOTED, so `public."Odd Name"` yields
+       `... count(*) as n from public.Odd Name ...`. Measured 2026-08-09 by
+       creating that relation in a scratch database and running the real tool:
+       `BACKUP FAILED: psql failed (1): ERROR: relation "public.odd" does not
+       exist`, exit 1, and **no `BACKUP_EXIT` line** — `fail()` calls
+       `sys.exit(1)` before the print. **IT FAILS CLOSED, WHICH IS THE SAFE
+       DIRECTION:** no dump, no manifest, nothing half-written that could later
+       be trusted, and defects 1 and 2 cannot arise because nothing is written.
+       **The danger is the MISSING EXIT LINE, not a corrupt backup** — a reader
+       scanning for `BACKUP_EXIT=` finds nothing and can read that as output not
+       yet arrived, which is the absence-is-the-signal shape `CLAUDE.md` records
+       for `RESTORE_EXIT`. Consequence: such a database cannot be backed up by
+       this tool at all.
+       **`prove_backup_restore.py` CARRIES THE IDENTICAL UNQUOTED
+       INTERPOLATION** in its own `row_counts()` —
+       `f"select '{t}' || '=' || count(*)::text from public.{t}"` — so it fails
+       the same way on the same input. Established by reading; that file was not
+       modified and was not run.
+  *Unblocks:* all three, together, against a control that can distinguish them,
+  which means a fixture carrying a non-public table AND a quoted identifier.
+  **That fixture now exists as a DURABLE database rather than a scratchpad file:
+  `recycle_keyshape_scratch`**, at 0009, carrying `directory.shop_codes` plus one
+  relation per shape `pg_dump` must quote — upper case, a space, a dot in the
+  name, an embedded quote — in schemas `q` and `Q S`. It carries its own DROP
+  WHEN condition as a database comment, in the form the 0009 fixture uses.
 - **A BACKUP DIRECTORY'S LABEL NAMES WHAT THE BACKUP IS ABOUT, NOT WHAT IT
   CONTAINS, AND ONE ALREADY LIES — FOUND 2026-08-09 while looking for a copy to
   point `prove_reconcile.py` at.** `backup_db.py` writes
@@ -1205,11 +1230,13 @@ idea — only that it is unresolved.
   section to bind this to, because by design there is none.** The sequence is
   written down here so it is not lost with a chat session; it is NOT an R-number,
   none was invented, and issuing one is the owner's act in `ROADMAP.md`.
-  1. **`backup_db.py`'s two defects**, together and against a control that can
-     distinguish them — the summary-versus-itemisation total, and
-     `copy_block_counts` mangling any identifier `pg_dump` had to quote. Both are
-     described in full in the half-closed entry above; they are not restated here,
-     because two copies drift.
+  1. **`backup_db.py`'s three defects**, together and against a control that can
+     distinguish them — the summary-versus-itemisation total, `copy_block_counts`
+     mangling any identifier `pg_dump` had to quote, and `live_row_counts`
+     aborting the backup outright on a quoted identifier in schema `public`. All
+     three are described in full in the half-closed entry above; they are not
+     restated here, because two copies drift. **This said TWO until 2026-08-09**,
+     when a control pass measured the third.
   2. **The dev cluster to 0009.** `recycle` still reads 0008 with a `directory`
      schema count of 0, re-measured 2026-08-09. 0009 has been applied only to
      throwaways and to `recycle_tw20260809_0009fixture`, which survives under a
