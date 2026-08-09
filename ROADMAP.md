@@ -221,9 +221,12 @@ The relation is `directory.shop_codes`, mapping a code to a `tenant_id`, and the
 same relation is what a provider service enumerates shops from, which closes the
 open half of `ARCHITECTURE.md § 10. The three settled decisions` D2. One mapping,
 one relation, read by a third role that can reach nothing else. **The migration is
-committed and NOT YET APPLIED to any cluster.** The format and its reasoning are
-recorded in that architecture section and in the migration's docstring, and are
-not repeated here.
+committed and APPLIED TO THE LIVE DATABASE `recycle` ON 2026-08-09** — this
+sentence read "NOT YET APPLIED to any cluster" until then. The format and its
+reasoning are recorded in that architecture section and in the migration's
+docstring, and are not repeated here. **What that application settles and what it
+does not:** the SCHEMA half of P1.3 is done, and P1.3 itself is not — that step is
+finished by a login, not by a migration, and its DONE WHEN is unchanged.
 
 **D5 — price editing exists on BOTH surfaces**, per S6. S3 puts the desktop on the
 pilot path regardless, so the cost that made the old R4 recommend the phone —
@@ -351,10 +354,14 @@ a username does not identify a tenant. It is before P1.7 because the screen's
 fields are decided by the answer, and before the pilot's rows exist because it is
 a schema change (D10).
 
-**Where this step now stands.** The SCHEMA half is written: the migration creating
-the relation, its constraints and its reader role is committed and **NOT YET
-APPLIED to any cluster**. The rest of the step is untouched — the server change is
-not written, and this file says nothing about what the login endpoint will do
+**Where this step now stands.** The SCHEMA half is written AND APPLIED: the
+migration creating the relation, its constraints and its reader role was
+**APPLIED TO THE LIVE DATABASE `recycle` ON 2026-08-09**, where this read "NOT
+YET APPLIED to any cluster" until then. **THAT DOES NOT ADVANCE THIS STEP'S DONE
+WHEN, which is unchanged below**: P1.3 is finished by a login that carries no
+uuid returning 200, not by a migration. The rest of the step is untouched — the
+server change is not written, and this file says nothing about what the login
+endpoint will do
 because that is not decided. Two things are worth naming as absent rather than
 assumed: **nothing writes to that relation today**, and **who issues a code when a
 new shop is onboarded is undecided** — there is no provisioning path, by any
@@ -856,9 +863,13 @@ which was satisfiable while the enumeration source stayed open.
 
 **The SOURCE is now decided** and is the same relation D4 chose,
 `directory.shop_codes`, read by a third role that holds no access to schema
-`public`. Its migration is committed and **NOT YET APPLIED to any cluster**. That
-settles what this step reads FROM; it does not by itself complete the step, and
-the DONE WHEN below is unchanged for that reason.
+`public`. Its migration is committed and was **APPLIED TO THE LIVE DATABASE
+`recycle` ON 2026-08-09**, where this read "NOT YET APPLIED to any cluster" until
+then — so the relation this step reads FROM now exists on the database the pilot
+will run on. That settles what this step reads FROM; it does not by itself
+complete the step, and the DONE WHEN below is unchanged for that reason. The
+schema half of P1.3 being done changes nothing about P1.3's own DONE WHEN either,
+which is a login rather than a migration.
 
 **Depends on:** P3.1, since licence state is per shop and the list is what a loop
 iterates. It is a hard prerequisite and not a detail: the `tenants` policy is keyed

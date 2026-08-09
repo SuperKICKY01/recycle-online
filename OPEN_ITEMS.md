@@ -619,9 +619,14 @@ idea — only that it is unresolved.
   this position.
 - **`reconcile.py`'s five structural checks cannot see a relation outside
   schema `public`, and the limit is the PREDICATE, not the exclusion
-  lists.** Migration 0009 (committed, NOT YET APPLIED to any cluster) creates
-  `directory.shop_codes`, the first relation in this database outside
-  `public`. Seven sites bound every structural check to that schema:
+  lists.** Migration 0009 (committed, and **APPLIED TO THE LIVE DATABASE
+  `recycle` ON 2026-08-09** — this read "NOT YET APPLIED to any cluster" until
+  then) creates `directory.shop_codes`, the first relation in this database
+  outside `public`. **That changes this item's status from unprovable to
+  provable:** the relation the widened predicate must enumerate now exists on
+  the live database, so a green from a widened check is no longer green over an
+  empty set. Still open; nothing about the predicate has changed. Seven sites
+  bound every structural check to that schema:
   `server/scripts/reconcile.py:809` (the shared `present` query, which
   feeds S1's `examined` and ALL of S2's detection), `:818` (S1's own
   query), `:851`, `:855`, `:857` (S3), `:903` (S5 constraints, from
@@ -695,6 +700,14 @@ idea — only that it is unresolved.
   unapplied, so nothing has yet confirmed that the `search_path` S4
   asserts names a schema that EXISTS; S4 checks the value and never the
   existence, which is `CANNOT_SEE` entry 2 and not this entry.
+  **AMENDED 2026-08-09 — THE PREMISE OF THAT LAST SENTENCE IS GONE.** 0009 was
+  **APPLIED TO THE LIVE DATABASE `recycle`**, so schema `directory` now exists
+  there and `recycle_directory`'s `search_path=directory` names something real.
+  **The GAP ITSELF IS UNCHANGED and this item stays open:** S4 still checks the
+  VALUE of the setting and never whether the schema exists, so it would report
+  green on a cluster where the schema is absent. What changed is that the
+  condition is now satisfied on the one database that matters, by application
+  rather than by any check noticing.
 
 ## Code debt found and left in place
 
@@ -1030,7 +1043,9 @@ idea — only that it is unresolved.
   `recycle_tw20260809_0009fixture`, restored from
   `recycle_20260809T045731Z_pre-directory-role` and walked up the real upgrade
   path rather than migrated from 0001. The live database was never written to
-  and still reads 0008 with a `directory` schema count of 0.
+  and still reads 0008 with a `directory` schema count of 0. **TRUE OF THAT
+  PHASE ONLY: 0009 was applied to `recycle` on 2026-08-09, which now reads 0009
+  with a `directory` schema count of 1.**
   *(a) THE "one inference not measured" CLAUSE IS CLOSED, AGAINST US.*
   `pg_dump` DOES write a `COPY` block for an empty table. 12 `COPY` headers in
   the dump at 0008 against 12 user tables, and **13 at 0009 with
@@ -1267,11 +1282,29 @@ idea — only that it is unresolved.
      unquoted interpolation and `68d679d` closed the key space. The count has
      moved three times, which is why it is written here with its history
      attached rather than as a bare number.
-  2. **The dev cluster to 0009.** `recycle` still reads 0008 with a `directory`
-     schema count of 0, re-measured 2026-08-09. 0009 has been applied only to
-     throwaways and to `recycle_tw20260809_0009fixture`, which survives under a
-     stated DROP WHEN condition. Doing this BEFORE (1) means the first backup
-     afterwards is the one that meets the unfixed writer.
+  2. **The dev cluster to 0009. DONE 2026-08-09 — and the ordering note below
+     was followed rather than overtaken.** The text as written: "`recycle` still
+     reads 0008 with a `directory` schema count of 0, re-measured 2026-08-09.
+     0009 has been applied only to throwaways and to
+     `recycle_tw20260809_0009fixture`, which survives under a stated DROP WHEN
+     condition. Doing this BEFORE (1) means the first backup afterwards is the
+     one that meets the unfixed writer."
+     **What actually happened is the safer order**: item (1)'s first two thirds
+     landed FIRST — `cf2dadf` and `68d679d` — and 0009 was applied after, so the
+     first backup taken afterwards met a FIXED writer and a fixed reader. It
+     came back green with `directory.shop_codes` as an OK row, which on the
+     parent code was the red that started this work. `recycle` now reads 0009,
+     `directory` count 1, proven by a cluster-wide before/after differential
+     rather than by an exit code.
+     **WHAT THIS UNBLOCKS, and what it does not.** Item 3 below moves from
+     unprovable to provable: a widened reconcile predicate now has a real
+     relation outside schema `public` to enumerate on the live database, so its
+     green would no longer be green over an empty set. **P1.3 is NOT unblocked
+     into done** — the schema half is what landed; the step is finished by a
+     login carrying no uuid returning 200, and the server change is not written.
+     Nothing reads or writes `directory.shop_codes`, and who issues a code when
+     a shop is onboarded is still undecided. *Ranking is `ROADMAP.md`'s; nothing
+     is reordered here.*
   3. **The reconcile predicate widening.** Bounded to schema `public` at seven
      sites, so a relation in `directory` is invisible to it; the limit is the
      PREDICATE and not the exclusion lists, so adding a name to a `NOT IN`
@@ -1346,6 +1379,29 @@ idea — only that it is unresolved.
   9, verified by naming all ten and reporting which was absent. *Not done:*
   nothing; this is a note. *Unblocks:* anyone verifying a backup of the scratch
   database, who needs to know to pass `--into` something else.
+- **A READ-ONLY COMMAND WAS REFUSED BY THE PERMISSION CLASSIFIER FOR A REASON NO
+  FILE WE HAVE READ EXPLAINS — 2026-08-09, recorded as unexplained because that
+  is what it is.** Immediately after applying 0009, a `docker exec … psql -f
+  /tmp/versions_snapshot.sql` reading `alembic_version` from every database was
+  denied: *"Permission for this action was denied by the Claude Code auto mode
+  classifier."* **The identical command had been PERMITTED minutes earlier** to
+  take the before-snapshot; the only difference was an output redirect to a
+  scratchpad file. The same query without the redirect was then permitted and
+  returned the same kind of data.
+  *It was NOT routed around.* An equivalent read was run instead — the natural
+  alternative the refusal text itself suggests — and the refusal is reported
+  rather than absorbed. **Why this is filed and not shrugged at:** the command
+  was read-only, it was part of proving that a migration had reached the
+  database it was meant to reach, and a refusal arriving at exactly that moment
+  is the kind of thing that, taken as noise, leaves an unproven claim in a
+  status file. Nothing in `.claude/settings.json`, the hooks, or any document in
+  this repository accounts for it, and no hook fired — `pipe_gate.py` refuses
+  with its own text and this was not that.
+  *Not done:* nothing is understood. *Unblocks:* knowing whether the trigger is
+  the redirect, the file path, non-determinism, or something outside this
+  repository entirely — a settings file none of us has surveyed. Until then,
+  treat an unexplained refusal as a finding to report, never as a reason to
+  reach for a different spelling until one works.
 
 ## Decisions open — the owner's, not the code's
 

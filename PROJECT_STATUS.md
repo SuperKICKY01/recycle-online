@@ -57,9 +57,30 @@ not read the green as re-run.**
 
 ## Current phase
 
-**IDENTIFIER QUOTING ON BOTH SIDES, AND THE MANIFEST KEY SPACE CORRECTED.
-2026-08-09 into 2026-08-10.** No R-number was issued and none was invented:
-R-numbers are defined in `ROADMAP.md` and are the owner's to issue.
+**MIGRATION 0009 APPLIED TO THE LIVE DATABASE — the first write to `recycle` in
+this whole line of work. 2026-08-09.** No R-number was issued and none was
+invented: R-numbers are defined in `ROADMAP.md` and are the owner's to issue.
+
+`recycle` reads **0009** and carries schema `directory` with
+`directory.shop_codes`, empty. The twelve pre-existing tables are untouched,
+compared against a manifest written before the migration. **This does NOT
+advance P1.3's DONE WHEN**, which is a login carrying no uuid returning 200;
+what it completes is that step's SCHEMA half. `ROADMAP.md` said in THREE places
+that the migration had never been applied to any cluster — at D4, at P1.3, and
+at P3.2, the step that will read FROM this relation — and all three are
+corrected in this update.
+
+**The ordering paid out.** The three backup/restore fixes landed first, on
+purpose, so that the first backup taken after the migration would meet a fixed
+writer and a fixed reader. It did: the live database at 0009 backs up and
+restores green, with `directory.shop_codes` present as an OK row. On the parent
+code that exact restore was the red that started this line of work.
+
+Full evidence in the dated entry `2026-08-09 — migration 0009 applied to the
+live database` at the end of this file. **The paragraphs below describe the
+phases that PRECEDED this one** — identifier quoting on both sides, and the
+key-space work before that — and are kept for the arc, newest first, which is
+this section's usual shape.
 
 **Three commits, and the arc is one thing**: `89d55ce` quoted every identifier
 reaching SQL in `restore_db.py`, `cf2dadf` did the same in `backup_db.py`, and
@@ -3439,3 +3460,88 @@ decoy pair 11 beside 13.
   it writes a permanent bill to the live database.
 - **No proof script was run** in any of these commits.
 - **Nothing was run on a handset**; the dev database is still at 0008.
+  **SUPERSEDED THE SAME DAY: the live database is now at 0009.** See the entry
+  below; that sentence was true when written and is the last thing in this file
+  that said so.
+
+### 2026-08-09 — migration 0009 applied to the live database
+
+**THE FIRST WRITE TO `recycle` IN THIS WHOLE LINE OF WORK.** Everything before
+it — the fixture, the three fixes, the key space — was done on throwaways so
+that this could be done once, with a proven path underneath it.
+
+**THE TARGET WAS PROVEN BY A CLUSTER-WIDE DIFFERENTIAL, NOT BY THE EXIT CODE,
+and the reason is the whole point.** `env.py` calls `load_dotenv()`, and
+`server/.env`'s `MIGRATION_DATABASE_URL` already names `recycle` — so a
+deliberate override and a silent fallback to the configured default **land on
+the same database**, and `alembic upgrade head` returns 0 either way. An exit
+code cannot tell the two apart. What can is a before/after reading of EVERY
+database on the cluster:
+
+| database | before | after |
+| --- | --- | --- |
+| **`recycle`** | **0008, directory=0** | **0009, directory=1** |
+| `recycle_clock_scratch` | 0008, directory=0 | unchanged |
+| `recycle_keyshape_scratch` | 0009, directory=1 | unchanged |
+| `recycle_lock_scratch` | 0007, directory=0 | unchanged |
+| `recycle_recon_pre0005b` | 0004, directory=0 | unchanged |
+| `recycle_recon_scratch` | 0008, directory=0 | unchanged |
+| `recycle_restore_scratch` | 0008, directory=0 | unchanged |
+| `recycle_tw20260809_0009fixture` | 0009, directory=1 | unchanged |
+| `recycle_users_scratch` | 0007, directory=0 | unchanged |
+
+**Exactly one database moved and it is the one that was meant.** The target was
+also named in code rather than inherited: the URL was rebuilt from `.env` with
+its database component REPLACED by an explicit constant and asserted before
+anything ran, and the credential was kept off the command line because a DSN
+carrying one has already been written verbatim into `.claude/hooks/*.log` once.
+`ALEMBIC_EXIT=0`.
+
+**THE PREDICTION WAS WRITTEN BEFORE THE RUN AND THE CATALOGUE WAS READ BACK
+AFTER IT, item by item. Every item agreed and NOTHING UNPREDICTED APPEARED:**
+`alembic_version` 0009; schema `directory`; `directory.shop_codes` at relkind
+`r`; **three `pg_class` rows in that schema, not one** — the table plus
+`shop_codes_pkey` and `uq_shop_code` at relkind `i`; columns `tenant_id uuid
+NOT NULL` and `code text NOT NULL` and no others; four constraints —
+`shop_codes_pkey` (p), `uq_shop_code` (u), `ck_shop_code` (c)
+`CHECK ((code ~ '^[A-HJKMNP-Z2-9]{8}$'::text))`, `shop_codes_tenant_id_fkey`
+(f); both grants and only those, `nspacl` carrying `recycle_directory=U` and
+`relacl` carrying `recycle_directory=r`, with `recycle_app` in neither; zero
+policies and `relrowsecurity` / `relforcerowsecurity` both false. The table
+holds no rows. **The pg_roles guard's precondition was confirmed by query
+first** — `recycle_directory` exists on this cluster by hand-application of
+`db/init/00_init_roles.sql` and by no migration.
+
+**NOTHING ELSE IN THE LIVE DATABASE MOVED**, compared against an ARTEFACT
+written before the migration rather than against a memory: the manifest of
+`recycle_20260809T173038Z_at-0008-pre-0009`, whose counts were parsed out of the
+dump FILE. All twelve pre-existing tables equal, 844 rows both sides, **zero
+tables changed**. Control: the same comparison against a manifest of different
+content reports 11 tables differing, so the equality carries information.
+
+**THE BACKUP PATH ON REAL MONEY DATA, AND IT IS WHY THE ORDERING WAS CHOSEN.**
+Backed up at 0009 and restored: `BACKUP_EXIT=0`, `RESTORE_EXIT=0`, and
+
+    [OK  ] directory.shop_codes     dump=0  restored=0
+
+present, with a number on both sides. **On the parent code this exact restore
+was the red that started this entire line of work** — a byte-correct restore
+reported broken because the manifest key and the reader disagreed. The three
+fixes went first precisely so the first backup after the migration would meet a
+fixed writer and a fixed reader. Two backup directories, both kept:
+`recycle_20260809T173038Z_at-0008-pre-0009`, the only pre-0009 copy of real data
+that will ever exist and proven restorable before the migration ran, and
+`recycle_20260809T173946Z_at-0009`.
+
+**WHAT THIS DOES NOT ESTABLISH.**
+
+- **P1.3 is NOT done.** Its DONE WHEN is a `POST /auth/login` carrying no uuid
+  returning 200, run bare with the request and response recorded. Nothing reads
+  `directory.shop_codes`, no endpoint resolves a code, no client sends one, and
+  **nothing writes to that relation** — there is no provisioning path by any
+  route. The schema half is what landed.
+- **`backup_db.py`'s summary total against its own itemisation is still open**,
+  the last of its three.
+- **No proof script was run**, and nothing was run on a handset.
+- **The dev cluster is a separate question**: `recycle` is the live database and
+  is now at 0009; no other database was migrated.
