@@ -389,6 +389,108 @@ def render_database_sql(facts: dict[str, object]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# the manifest key space
+# ---------------------------------------------------------------------------
+# THE FORMAT IS UNCHANGED BY THIS FILE'S REPAIR, and that is a constraint rather
+# than a happy accident: every manifest already in the backup root must keep
+# restoring. A public relation is a BARE key, anything else is `schema.relation`,
+# and restore_db.py's split_key() partitions on the FIRST dot -- so everything
+# after that dot is the relation name.
+#
+# WHAT THAT SHAPE CAN AND CANNOT SAY, worked out from the reader rather than
+# guessed:
+#   representable    a dot INSIDE a relation name in a non-public schema.
+#                    `q` + `a.b` -> `q.a.b` -> reader returns (q, a.b). Correct,
+#                    because the reader stops at the first dot.
+#   NOT representable a dot inside a PUBLIC relation's name: the key is the bare
+#                    `a.b`, which the reader reads as schema a, relation b.
+#   NOT representable a dot inside a SCHEMA name: `x.y` + `t` -> `x.y.t` ->
+#                    reader returns (x, y.t).
+# Both unrepresentable cases COLLIDE with a legitimate key rather than merely
+# failing to parse, so they are ambiguous and not detectably wrong. Fixing them
+# needs a manifest FORMAT change, which is deliberately not taken on here;
+# restore_db.py already publishes the same limit in its CANNOT_SEE block.
+#
+# QUOTING IS STRIPPED, and the reader is why. split_key's output goes through
+# quote_ident, which ADDS quoting -- a key that kept pg_dump's quotes would be
+# quoted a second time and name a relation that does not exist. The manifest
+# carries LOGICAL names; the reader re-quotes them.
+def _qualified_name(line: str) -> str:
+    """The schema-qualified name token of a COPY header, quotes respected.
+
+    `line.split(" ", 2)[1]` cannot do this: pg_dump quotes any identifier that
+    needs it, so the name may legally contain a space -- or a `(` -- and
+    splitting on either truncates it. Measured before this repair:
+    `COPY public."Odd Name" (a) FROM stdin;` tokenised as `public."Odd`.
+    """
+    rest = line[len("COPY "):]
+    out: list[str] = []
+    i = 0
+    inq = False
+    while i < len(rest):
+        ch = rest[i]
+        if ch == '"':
+            # A doubled quote inside a quoted identifier toggles twice, which
+            # leaves this flag correct without special-casing it here.
+            inq = not inq
+            out.append(ch)
+            i += 1
+            continue
+        if not inq and ch in " (":
+            break
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _split_qualified(text: str) -> list[str]:
+    """A qualified name -> its LOGICAL parts: unquoted, split on unquoted dots."""
+    parts: list[str] = []
+    cur: list[str] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch == '"':
+            i += 1
+            while i < len(text):
+                if text[i] == '"':
+                    if i + 1 < len(text) and text[i + 1] == '"':
+                        cur.append('"')      # "" inside quotes is one literal "
+                        i += 2
+                        continue
+                    i += 1
+                    break
+                cur.append(text[i])
+                i += 1
+            continue
+        if ch == ".":
+            parts.append("".join(cur))
+            cur = []
+            i += 1
+            continue
+        cur.append(ch)
+        i += 1
+    parts.append("".join(cur))
+    return parts
+
+
+def copy_header_key(line: str) -> str:
+    """A COPY header -> the manifest key for that relation.
+
+    Joining parts[1:] rather than taking parts[1] MIRRORS the reader exactly: it
+    partitions on the first dot and keeps the rest, so a name that somehow
+    arrived with more parts must be reassembled the same way or the two sides
+    would disagree about a case neither can represent.
+    """
+    parts = _split_qualified(_qualified_name(line))
+    if len(parts) >= 2:
+        schema, relation = parts[0], ".".join(parts[1:])
+    else:
+        schema, relation = "public", parts[0]
+    return relation if schema == "public" else f"{schema}.{relation}"
+
+
+# ---------------------------------------------------------------------------
 # dump verification: does the FILE actually contain the rows?
 # ---------------------------------------------------------------------------
 def copy_block_counts(path: Path) -> dict[str, int]:
@@ -411,10 +513,10 @@ def copy_block_counts(path: Path) -> dict[str, int]:
             line = raw.rstrip("\n")
             if current is None:
                 if line.startswith("COPY ") and line.endswith("FROM stdin;"):
-                    table = line.split(" ", 2)[1]
-                    current = table.split("(")[0].strip()
-                    if current.startswith("public."):
-                        current = current[len("public."):]
+                    # Was: split on spaces, then on "(", then strip a literal
+                    # `public.` prefix. All three steps assume the name carries
+                    # no quoting, and pg_dump quotes whatever needs it.
+                    current = copy_header_key(line)
                     n = 0
                 continue
             if line == "\\.":
