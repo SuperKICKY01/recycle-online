@@ -599,7 +599,7 @@ idea — only that it is unresolved.
   this position.
 - **`reconcile.py`'s five structural checks cannot see a relation outside
   schema `public`, and the limit is the PREDICATE, not the exclusion
-  lists.** Migration 0009 (written, not applied, not committed) creates
+  lists.** Migration 0009 (committed, NOT YET APPLIED to any cluster) creates
   `directory.shop_codes`, the first relation in this database outside
   `public`. Seven sites bound every structural check to that schema:
   `server/scripts/reconcile.py:809` (the shared `present` query, which
@@ -948,8 +948,8 @@ idea — only that it is unresolved.
   where no single proof file owns it. Whoever builds this should know the
   analysis established a SHAPE and observed nothing.
 - **`restore_db.py` will FAIL a byte-correct restore the moment migration
-  0009 is applied, and two proofs go red with it.** 0009 (written, not
-  applied, not committed) creates `directory.shop_codes`, the first
+  0009 is applied, and two proofs go red with it.** 0009 (committed, NOT
+  YET APPLIED to any cluster) creates `directory.shop_codes`, the first
   relation outside schema `public`, and the backup/restore pair is
   asymmetric about schemas in a way nothing else is. Mechanism, end to
   end: `server/scripts/backup_db.py:436-440` invokes `pg_dump` with no
@@ -1416,6 +1416,14 @@ or from a plausible-sounding summary.
 
 ## Documentation
 
+- **`SRS_MAP.md`'s "Of the 34 `tenant_connection(` call sites in
+  `server/app/`" is UNVERIFIED.** The line beneath it was corrected by the
+  commit that records this, and the count above it was deliberately NOT
+  measured while doing so — a number confirmed by silence is worse than one
+  known to be unchecked. *Not done:* measuring it was outside that commit's
+  scope, and fixing a number nobody has counted is how a wrong number gets
+  an air of authority. *Unblocks:* one grep for `tenant_connection(` under
+  `server/app/`, and either the count stands or it moves.
 - **~~There is no `ROADMAP.md`~~ — CLOSED 2026-08-05.** It genuinely did
   not exist (checked against git history) and had been referred to as if
   it did; it was written from this list plus `PROJECT_STATUS.md` and now
@@ -1716,9 +1724,14 @@ or from a plausible-sounding summary.
   item (1)'s mechanism 3 arriving for the third time in one day, in the
   act of writing it down.
   Three are wrapped strings: `OPEN_ITEMS.md:992-993`,
-  `OPEN_ITEMS.md:1211-1212`, and `SRS_MAP.md:515-516` — the last a
-  wrapped SECTION name rather than a handle. The two never recorded are
-  the first two wraps.
+  `OPEN_ITEMS.md:1211-1212`, and in `SRS_MAP.md` the entry naming
+  `tsconfig.device.json` — the last a wrapped SECTION name rather than a
+  handle. **That one is named by what to look for rather than by line
+  because the line form moved in three consecutive commits** as this work
+  grew the file above it; a pointer that has to be repaired every time
+  something is inserted is not a pointer. It is still not rendered in
+  citation form, for the reason given two paragraphs up. The two never
+  recorded are the first two wraps.
   **THE FOUR KNOWN BREAKS WERE SUPPLIED AS FACT AND WERE WRONG IN BOTH
   DIRECTIONS, and the owner recorded why rather than letting it pass:**
   the line numbers came from a report several hours old, from a file that

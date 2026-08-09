@@ -126,6 +126,13 @@ Four, from the capability survey that preceded this rewrite. Each was re-derived
 against the tree at `6de5cec` before it was written down here; the commands are
 given so the next session re-runs them rather than trusting these.
 
+**These entries record what a survey found AT THE TIME, and are deliberately NOT
+updated when a later decision supersedes one.** Editing history to match the
+present erases the record of what was once unknown, and a decision only reads as
+necessary against the gap it filled. Where an entry has been superseded, the
+answer is written where answers live — *The decisions the ordering forced* below,
+and `ARCHITECTURE.md` — and this section is left as the question it was.
+
 **1. There is no shared package to port `shopTime.ts` into, so "port" today can
 only mean copy.** `git ls-files | grep 'package.json$'` returns **one** path,
 `mobile/package.json`, which carries no `workspaces` key; there is no root

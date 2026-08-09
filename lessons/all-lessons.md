@@ -3997,6 +3997,20 @@ NO context set — the RLS policy reads
 nothing and the request sees zero rows. There is no "unset means all tenants"
 path, ever.
 
+**What the rule does NOT cover, and that is a boundary rather than a defect.**
+The GUC is set by the application role for ITSELF, so this covers a handler that
+forgets a filter COMPLETELY, and it is NOT a defence against anything able to
+execute SQL as that role — such a thing can set the GUC to another shop's id and
+read that shop's rows, one tenant at a time. MEASURED on the live cluster: one
+`recycle_app` connection returned 376 bills for tenant A and 9 for tenant B,
+changing only `app.tenant_id`; with no context set it returned 0. Two controls on
+that same connection were REFUSED — `SET log_min_messages` and
+`SET session_replication_role` both raised `permission denied to set parameter` —
+so this is a property of that one parameter and not of the role being able to set
+anything it likes. What covers SQL execution is parameterised queries, not RLS.
+Write the rule down with its boundary: a guarantee stated without its scope gets
+read as covering the case it does not.
+
 **Why (the failure it prevents).** A session-level SET survives on the pooled
 connection after the request ends; the next request — possibly another tenant —
 inherits the stale context and reads/writes the wrong tenant's data. In a

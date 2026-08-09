@@ -190,15 +190,18 @@ not a defect, and no design for changing it appears in this file:
   `app.tenant_id`. `alembic_version` is the exception:
   `relrowsecurity = f`, `relforcerowsecurity = f`, **no policy** — visible in the
   catalog rather than assumed, and it holds a version string and no business data.
-- Both DB roles are `NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS` — declared
-  in `00_init_roles.sql` **and read back from `pg_roles` on the live cluster**,
-  all four flags `f` for both. Neither can escape the policy BY ROLE — and
-  neither needs to in order to read another shop, because the tenant the policy
+- All THREE DB roles are `NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS` —
+  `recycle_owner`, `recycle_app` and `recycle_directory`, declared in
+  `00_init_roles.sql` **and read back from `pg_roles` on the live cluster**,
+  all four flags `f` for each. None can escape the policy BY ROLE — and none
+  needs to in order to read another shop, because the tenant the policy
   compares against is a value the application role supplies (see above).
 - `get_principal` takes the tenant from the token and applies it as
   `set_config('app.tenant_id', :t, true)` — SET LOCAL, transaction-scoped
   (`db.py:89`). ⚠ Of the 34 `tenant_connection(` call sites in `server/app/`,
-  every one passes the principal's tenant **except `main.py:64`**, the login
+  every one passes the principal's tenant **except the one in `main.py`'s
+  `login` handler** — the `tenant_connection(body.tenant_id)` call, named rather
+  than given a line number because line numbers rot — the login
   path, where no token exists yet and the tenant comes from the request body —
   by design, per `lessons/login-resolves-under-tenant.md`.
 - **No endpoint reads even the shop name.** `git grep "FROM tenants" server/app/`
@@ -438,8 +441,8 @@ question none of the above answers.
 ### 7b. The provider has no seat
 
 Not a missing feature: a property of four layers at once, set out in §3. Every
-principal belongs to exactly one shop, the GUC holds one uuid, both DB roles are
-NOBYPASSRLS, and no endpoint reads `tenants`. **There is currently no way for the
+principal belongs to exactly one shop, the GUC holds one uuid, all three DB roles
+are NOBYPASSRLS, and no endpoint reads `tenants`. **There is currently no way for the
 vendor to be a user of this system**, which is why `reconcile.py` runs as a
 script with a superuser DSN rather than as an endpoint. *What exists to build
 on:* `reconcile.py` is a working, proven cross-tenant reader, and it is the only

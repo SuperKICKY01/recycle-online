@@ -479,7 +479,9 @@ table did not exist in `0001`. Nothing is wrong; the enumeration is simply split
 across two files, and the split has to be stated somewhere or it reads as a hole.
 
 **One by-design exception, and it is the login path.** Every tenant context comes
-from the caller's token except at `server/app/main.py:64`, where no token exists
+from the caller's token except in `server/app/main.py`'s `login` handler — the
+`tenant_connection(body.tenant_id)` call, named rather than cited by line so it
+does not rot — where no token exists
 yet and the tenant comes from the request body as a submitted identity claim. RLS
 then guarantees the lookup can only see that tenant's users, so there is no
 cross-tenant login. It is the one place the rule "the tenant comes from the token"

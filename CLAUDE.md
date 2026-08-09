@@ -243,6 +243,28 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   for the same reason: a checker that fails by finding LESS is indistinguishable
   from one that passed.
 
+- **`git commit -F <path>` exits 128 because the message was drafted in a REPLY
+  and never written to the file.** The text is `fatal: could not read log file
+  '<path>': No such file or directory`, naming a path that looks correct —
+  because it IS the intended path, and the only thing wrong with it is that
+  nothing was ever written there. It lies by pointing at the filesystem when the
+  fault is a skipped step: the message exists in full, in the conversation, so it
+  was drafted, reviewed and approved, and every one of those passed. The absent
+  artefact is the one thing nobody looked at.
+
+  **It has happened TWICE in one session** — before `12d16a2` and again before
+  `fc9cd5c`, the second time after the first had already been noticed and
+  reported out loud, which is what makes it a footgun and not a slip. Nothing is
+  committed and the staged tree survives, so the cost is a wasted round trip
+  rather than a bad commit. The real cost is subtler: the recovery is to write
+  the file and re-run, and the reply then has to claim the message is "verbatim
+  as drafted" with nothing checking that it is.
+
+  Instead: WRITE THE FILE FIRST, then show it, then commit from it. The file is
+  the artefact and the reply is a copy of it, never the other way round — and a
+  message shown from a file that already exists cannot disagree with the one
+  that lands.
+
 ### Boot check — name the observable, don't assume the environment
 
 Before judging any result, name the observation that proves the
