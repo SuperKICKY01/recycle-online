@@ -322,6 +322,40 @@ REQUIRED_INDEXES = {
     "purchase_bills": ["uq_bills_tenant_docno"],
 }
 
+# The cluster roles this database's isolation rests on, and the rolconfig
+# settings each one must carry. An EMPTY dict means: this role must exist and
+# must be NOSUPERUSER + NOBYPASSRLS, and nothing is asserted about its rolconfig.
+#
+# ONE DECLARATION, THREE READERS — S4's title, its SQL and its missing-role arm.
+# Those were three separate spellings of this set until 2026-08-09, and they
+# failed in OPPOSITE directions, which is why they could not simply be kept in
+# step by hand: a name in the SQL alone was checked but never required to EXIST
+# (fail-open); a name in the tuple alone was reported DOES NOT EXIST even when it
+# existed, because membership was tested against rows the SQL had never fetched
+# (fail-closed, and false); and a name in the title alone changed no result at
+# all while the report claimed the coverage.
+#
+# `search_path=directory` IS A RESTATEMENT, NOT AN INDEPENDENT DERIVATION, and it
+# is named as one here for exactly the reason this module's docstring gives about
+# doc_no's `B-{year}-{seq}` shape. db/init/00_init_roles.sql:87 sets it in SQL at
+# cluster bootstrap; there is no helper to import. Reading the expected value out
+# of that file, or out of pg_namespace, would make the two sides agree BY
+# CONSTRUCTION (lessons/a-checker-must-not-share-the-code-it-checks.md) and would
+# destroy the only disproof this check has. It is written here by hand and must
+# be MAINTAINED here by hand.
+#
+# WHAT THIS ASSERTS, AND WHAT IT DELIBERATELY DOES NOT. It compares the CLUSTER's
+# rolconfig against the literal below. It does NOT check that a schema of that
+# name exists: on a database at 0008 it genuinely does not, BY DESIGN
+# (db/init/00_init_roles.sql:78-86 records the observation), so a check that
+# reddened there would be red for being correct. That boundary is owed a
+# CANNOT_SEE entry and does not have one yet.
+REQUIRED_ROLES: dict[str, dict[str, str]] = {
+    "recycle_app": {},
+    "recycle_owner": {},
+    "recycle_directory": {"search_path": "directory"},
+}
+
 # Every composite (tenant_id, x) -> parent (tenant_id, id) reference in the
 # schema. X1 reads these WITHOUT RLS, which is the only lens that can compare
 # the two tenant_ids directly.
@@ -802,6 +836,46 @@ async def blind_read(rep: Report, ident: str, title: str) -> None:
 # ---------------------------------------------------------------------------
 # structural checks — is the schema still promising what the row checks assume?
 # ---------------------------------------------------------------------------
+def rolconfig_setting(rolconfig: Sequence[str] | None,
+                      name: str) -> tuple[str, str | None]:
+    """One setting's value out of a `pg_roles.rolconfig` array. PURE, no I/O.
+
+    `rolconfig` is `text[]` of `name=value` entries, or NULL for a role that
+    carries none. Returns (state, value):
+
+        ("absent",     None)   no entry for `name`
+        ("present",    value)  exactly one entry
+        ("duplicated", None)   more than one entry for `name`
+
+    PER SETTING NAME, NEVER THE ARRAY WHOLE. A role may legitimately carry
+    unrelated entries — `statement_timeout`, `lock_timeout` — and S4 has no
+    opinion on them, so comparing the whole array would redden for a setting
+    nothing here asked about.
+
+    SPLIT ON THE FIRST `=` ONLY. A search_path value carries commas and quotes
+    (`search_path="$user", public`) and a quoted identifier may carry the
+    separator itself (`search_path="a=b", public`) — that SECOND example is the
+    one this rule exists for, and the first does not exercise it at all.
+
+    `duplicated` fails CLOSED rather than taking the first entry. Postgres is not
+    expected to produce two entries for one name; a checker that ASSUMES it
+    cannot is asserting a fact about its own input, which is the shape
+    lessons/a-check-that-never-went-red-was-never-observed.md exists for.
+
+    Module-level and pure so it can be driven directly with inputs written by
+    hand — see prove_reconcile.py's `prove_rolconfig_parse`, which explains why
+    that is an exception to how everything else in that file asserts.
+    """
+    prefix = f"{name}="
+    hits = [entry[len(prefix):] for entry in (rolconfig or [])
+            if entry.startswith(prefix)]
+    if not hits:
+        return "absent", None
+    if len(hits) > 1:
+        return "duplicated", None
+    return "present", hits[0]
+
+
 async def structure_checks(rep: Report, admin: asyncpg.Connection) -> None:
     print("\n=== structure (does the schema still promise what the checks assume?) ===")
     present = [x["t"] for x in await admin.fetch(
@@ -881,16 +955,60 @@ async def structure_checks(rep: Report, admin: asyncpg.Connection) -> None:
     r.rows = bad
     rep.add("global", r)
 
-    # S4 — the runtime role cannot step around any of it.
-    r = Result("S4", "recycle_app is NOSUPERUSER + NOBYPASSRLS, and so is the owner")
+    # S4 — the runtime roles cannot step around any of it, and the directory
+    # reader still names the schema its migration creates.
+    #
+    # EVERY ROW BELOW PRINTS BOTH SIDES — the value read from pg_roles and the
+    # value expected. A row saying only MISMATCH would be printed identically by
+    # a checker that never queried anything, so it would be evidence of nothing.
+    #
+    # The role set, the SQL and the missing-role arm all read REQUIRED_ROLES; the
+    # title names no role, so there is no fourth copy to drift. `= ANY($1::text[])`
+    # rather than an IN literal, the same shape S3 already uses for ALL_RLS_TABLES.
+    r = Result("S4", "every required role exists, is NOSUPERUSER + NOBYPASSRLS,"
+                     " and carries the rolconfig settings declared for it")
     rows = await admin.fetch(
-        "SELECT rolname, rolsuper, rolbypassrls FROM pg_roles"
-        " WHERE rolname IN ('recycle_app', 'recycle_owner') ORDER BY 1")
+        "SELECT rolname, rolsuper, rolbypassrls, rolconfig FROM pg_roles"
+        " WHERE rolname = ANY($1::text[]) ORDER BY 1", list(REQUIRED_ROLES))
+    found = {x["rolname"]: x for x in rows}
     bad = [f"role={x['rolname']}  superuser={x['rolsuper']}  bypassrls={x['rolbypassrls']}"
            for x in rows if x["rolsuper"] or x["rolbypassrls"]]
-    bad += [f"role={n}  DOES NOT EXIST" for n in ("recycle_app", "recycle_owner")
-            if n not in {x["rolname"] for x in rows}]
-    r.examined = f"{len(rows)} roles"
+    bad += [f"role={n}  DOES NOT EXIST" for n in REQUIRED_ROLES if n not in found]
+
+    declared = sum(len(s) for s in REQUIRED_ROLES.values())
+    compared = 0
+    for role, settings in REQUIRED_ROLES.items():
+        row = found.get(role)
+        if row is None:
+            continue          # already reported DOES NOT EXIST, above
+        for setting, want in settings.items():
+            compared += 1
+            state, got = rolconfig_setting(row["rolconfig"], setting)
+            if state == "present" and got == want:
+                continue
+            if state == "duplicated":
+                bad.append(f"role={role}  setting={setting}  is=DUPLICATED"
+                           f"  expected={want!r}"
+                           f"  rolconfig={list(row['rolconfig'] or [])}")
+            else:
+                bad.append(f"role={role}  setting={setting}"
+                           f"  is={'ABSENT' if state == 'absent' else repr(got)}"
+                           f"  expected={want!r}")
+
+    # THE FLOOR, on both dimensions, and the arm that makes the settings half of
+    # it enforceable rather than decorative. `examined` used to be len(rows) — a
+    # count of what was FOUND, with nothing requiring it to be what was WANTED, so
+    # a role vanishing from the cluster shortened the number and nothing objected.
+    # A declared setting that went uncompared while its role was PRESENT is a
+    # defect in THIS check rather than in the cluster, and it says which.
+    unreachable = declared - compared - sum(
+        len(s) for n, s in REQUIRED_ROLES.items() if n not in found)
+    if unreachable:
+        bad.append(f"CHECKER DEFECT: {unreachable} declared setting(s) were never"
+                   " compared although the role carrying them is present")
+    r.examined = (f"{len(rows)} of {len(REQUIRED_ROLES)} roles"
+                  f" ({', '.join(sorted(REQUIRED_ROLES))});"
+                  f" {compared} of {declared} declared setting(s) compared")
     r.total = len(bad)
     r.rows = bad
     rep.add("global", r)

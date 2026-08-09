@@ -300,6 +300,12 @@ async def main() -> int:
         for inj in injections:
             guard(inj)
 
+        # Before the destructive part, and cheap: a pure-function assertion that
+        # needs no copy and no connection. Placed here so a broken parse is
+        # reported BEFORE 19 injections run, not after. See its docstring for why
+        # this one assertion does not go through reconcile.py's report.
+        prove_rolconfig_parse()
+
         header(f"injections ({len(injections)})")
         for inj in injections:
             await run_injection(conn, args.database, inj)
@@ -975,6 +981,79 @@ async def prove_inconclusive(database: str, live: Any) -> None:
     m = EXIT_RE.search(out)
     check("a database that does not exist exits 2, not 0", bool(m) and m.group(1) == "2",
           f"exit={m.group(1) if m else 'none'}")
+
+
+# ---------------------------------------------------------------------------
+# The rolconfig parse — the ONE assertion in this file that does not run
+# reconcile.py and does not read its report
+# ---------------------------------------------------------------------------
+def prove_rolconfig_parse() -> None:
+    """S4's rolconfig parse, driven directly, with inputs written HERE.
+
+    THIS IS A NEW INSTRUMENT SHAPE IN THIS FILE AND IT IS DELIBERATE, NOT
+    CASUAL. Every other assertion in this script breaks a restored copy, runs
+    reconcile.py as a SUBPROCESS, and asserts against the human report. This one
+    imports a function and calls it. Written down here so the next person reads
+    it as the exception it is rather than as the file's convention.
+
+    WHY IT IS NEEDED. S4 extracts one setting out of a rolconfig ARRAY. This
+    cluster has exactly one role carrying rolconfig at all and it holds exactly
+    one entry, so the multi-entry, duplicate, NULL and separator-in-the-value
+    branches are unreachable from any database this project has; and
+    manufacturing them needs ALTER ROLE, which gate 2 refuses for the reason gate
+    2 exists. A clause no input can reach is the shape
+    lessons/a-check-that-never-went-red-was-never-observed.md catalogues, and
+    this is the cheapest honest way to give these ones a cell.
+
+    WHY IT DOES NOT VIOLATE
+    lessons/a-checker-must-not-share-the-code-it-checks.md. That lesson's test is
+    whether the proof read its EXPECTED VALUE out of the thing under test. It did
+    not. The subject is the function; the inputs and the expected outputs below
+    are written by hand from the shape of pg_roles.rolconfig, and are read
+    neither from reconcile.py, nor from REQUIRED_ROLES, nor from any database.
+    Nothing here can agree with the function by construction — change the
+    function and these cells go red, which is the whole point.
+    """
+    from reconcile import rolconfig_setting  # noqa: E402 — see the docstring
+
+    header("the rolconfig parse (pure function, inputs written in this file)")
+    cases: list[tuple[str, list[str] | None, str, tuple[str, str | None]]] = [
+        ("NULL rolconfig - a role that carries no settings at all",
+         None, "search_path", ("absent", None)),
+        ("the only entry, and it is the one asked for",
+         ["search_path=directory"], "search_path", ("present", "directory")),
+        ("the setting sits BESIDE unrelated entries and must still be found",
+         ["statement_timeout=5s", "search_path=directory", "lock_timeout=1s"],
+         "search_path", ("present", "directory")),
+        ("a value containing commas and quotes",
+         ['search_path="$user", public'], "search_path",
+         ("present", '"$user", public')),
+        # THE SEPARATOR MUST BE IN THE VALUE, and the first version of this cell
+        # got that wrong: it used '"$user", public', which carries no `=` at all,
+        # so it asserted the split-on-the-FIRST-`=` rule without exercising it.
+        # Measured: mutating the parse to entry.split('=')[1] reddened NOTHING.
+        # A quoted identifier may contain `=`, and this is the input that fails
+        # under any parse that splits on every separator.
+        ("a value that itself contains the separator - splits on the FIRST only",
+         ['search_path="a=b", public'], "search_path",
+         ("present", '"a=b", public')),
+        ("a non-empty array holding no such setting is ABSENT, not empty-string",
+         ["statement_timeout=5s"], "search_path", ("absent", None)),
+        # PREFIX, NEVER SUBSTRING, and this one was uncovered too: mutating
+        # `entry.startswith(prefix)` to `prefix in entry` reddened NOTHING until
+        # this cell existed. The first entry is a synthetic confusable rather
+        # than a real GUC - the property under test is the parse, not Postgres'
+        # settings catalogue - and under substring matching it makes the lookup
+        # return `duplicated` for a role that is perfectly configured.
+        ("a DIFFERENT setting whose name ENDS WITH the one asked for is not a match",
+         ["not_the_search_path=wrong", "search_path=directory"], "search_path",
+         ("present", "directory")),
+        ("two entries for one setting fail CLOSED, never take the first",
+         ["search_path=a", "search_path=b"], "search_path", ("duplicated", None)),
+    ]
+    for label, cfg, name, want in cases:
+        got = rolconfig_setting(cfg, name)
+        check(f"parse: {label}", got == want, f"expected {want}, got {got}")
 
 
 def not_injected() -> None:
