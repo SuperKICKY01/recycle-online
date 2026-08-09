@@ -1018,13 +1018,26 @@ against the unfixed code first, and both outputs are in Baseline observations.
   one**: `prove_reconcile` (it breaks invariants on purpose) and
   `prove_docno_clock` (it lies to the server about the time, which against
   unfixed code permanently corrupts a doc_no series). Both take `--database`.
-  `prove_reconcile` is the odd one out: it restores a COPY (calling
-  `restore_db.py` itself, so every run starts from the same dump), breaks
+  `prove_reconcile` is the odd one out: it can restore a COPY (calling
+  `restore_db.py` itself, so that run starts from a known dump), breaks
   each invariant on purpose, and asserts the checker fires, NAMES the row,
   and clears again when the injection is undone. Each must pass twice in a row without
   reseeding (`lessons/proof-must-run-twice.md`). `seed_dev.py` loads
   the dev fixture — now an `admin` AND a `staff` user per tenant, since
   a role gate cannot be proven without a token that gets refused.
+  **CORRECTED 2026-08-09 — the `prove_reconcile` sentence above read "so every
+  run starts from the same dump" and that was FALSE.** Established from the
+  source and not from a run: `restore_copy()` has exactly ONE call site and it
+  sits inside `if args.backup:`, so the restore happens only on a run given
+  `--from`. `--skip-restore` is the documented alternative, and the argument
+  check refuses only when NEITHER flag is passed. A `--skip-restore` run never
+  calls `restore_db.py`, SKIPs the diagnosis claim rather than passing it
+  (`normalise(..., restored=False)`), and can still return 0 through the
+  `PROVE_RECONCILE OK, WITH SKIPS` branch — so a full two-consecutive-run pass
+  is completable with the copy never restored from a dump at all. The owner
+  had observed such a run; the prose was the thing that was wrong. This
+  matters beyond tidiness: the 0009 blast-radius claim in `OPEN_ITEMS.md`
+  names this script, and that red can only reach a `--from` run.
 - **Backup** — `backup_db.py` writes plain `globals.sql` /
   `database.sql` / `recycle.sql` + manifests + sha256 to a host path
   outside the docker volume; `restore_db.py` restores into a scratch
@@ -2968,9 +2981,24 @@ restored side; `:316` walks `set(expected) | set(counts)` — the UNION — so t
 is compared, `want` is a number, `got` is `None`, and `:323-324` calls `fail()`.
 **Every row would have landed correctly and the restore would be reported as
 broken.** RECORDED FROM `12d16a2`: it also reddens `prove_backup_restore.py:384`
-and `prove_reconcile.py:331`. Nothing has been changed to prevent this; the debt is
-filed in `OPEN_ITEMS.md` and the trigger is the first backup taken after 0009 is
-applied.
+and `prove_reconcile.py` `restore_copy()` `:358`. Nothing has been changed to
+prevent this; the debt is filed in `OPEN_ITEMS.md` and the trigger is the first
+backup taken after 0009 is applied.
+
+**THAT SECOND CITATION READ `prove_reconcile.py:331` AND WAS WRONG. Corrected
+2026-08-09, re-derived at `0aee22e` rather than carried from a report.** Line 331
+is a fragment of the `PROVE_RECONCILE OK, WITH SKIPS` message. The
+`RESTORE_EXIT=none` string is at `:358`, inside `restore_copy()`, which begins at
+`:343`. **This is the SECOND rotted citation traced to `12d16a2`** — the first is
+the reconcile public-only predicate list two paragraphs above, which this file
+already records as re-derived rather than copied. One commit, two stale pointers,
+and neither looked stale. The mechanism in both was correct; only the position
+moved, which is precisely why nobody re-checked it.
+
+**AND THE CLAIM IT SITS IN IS NOW MEASURED RATHER THAN READ. See
+`2026-08-09 — the 0009 key-space defect` below**: the restore red was reproduced
+on a fixture, and it fires EARLIER than this paragraph implies — with the new
+table holding zero rows, not once a code is issued.
 
 **THE PROOF RUNS ARE RECORDED FROM THE COMMITS AND WERE NOT RE-RUN HERE.**
 `2c8f300` states `reconcile.py` bare against `recycle_recon_scratch` exit 0 with
@@ -3001,3 +3029,119 @@ file records by observation is still the fourteen-run set under
   `2026-08-07 — GET /users` entry records it at 0006 against live 0007; measured
   today both read 0008. That earlier caveat is stale, and is corrected here rather
   than edited there.
+
+### 2026-08-09 — the 0009 key-space defect, measured on a surviving fixture
+
+**NO FIX IS INCLUDED AND THE DEFECT REMAINS OPEN.** `backup_db.py` and
+`restore_db.py` are byte-identical to what they were before this work.
+`reconcile.py` was not opened and no predicate was widened. What changed is that a
+defect previously established by READING two files has now been reproduced, its
+trigger measured, and one of its recorded inferences resolved against us.
+
+**WHAT WAS BUILT, AND SURVIVES.** A throwaway database
+`recycle_tw20260809_0009fixture`, restored from
+`recycle_20260809T045731Z_pre-directory-role` (the only dump at 0008, verified out
+of the artefact at `COPY public.alembic_version` and not off the directory name)
+and then walked up the REAL upgrade path with `alembic upgrade head` rather than
+migrated from 0001. It carries its own provenance as a database comment, readable
+with `shobj_description`:
+
+    created 2026-08-09; source dump directory
+    recycle_20260809T045731Z_pre-directory-role; DROP WHEN: the backup/restore
+    schema symmetry is green AND a dump taken at 0009 exists in the backup root.
+
+Three dump directories under `E:\recycle-online-backups\`, and **that DROP WHEN
+condition governs all four artefacts** — they are the fixture the next two phases
+need, and nothing here may be deleted before it is met:
+
+| directory | state |
+| --- | --- |
+| `recycle_tw20260809_0009fixture_20260809T120530Z_tw0009fixture-at-0008` | at 0008, the negative control |
+| `recycle_tw20260809_0009fixture_20260809T120912Z_tw0009fixture-at-0009-empty` | at 0009, `directory.shop_codes` empty |
+| `recycle_tw20260809_0009fixture_20260809T121049Z_tw0009fixture-at-0009-onerow` | at 0009, one code issued |
+
+Each label states the migration version because nothing else in the artefact does
+— `MANIFEST.json` records the source database and the instant and NOT the schema
+version, which is the gap the backup-label entry in `OPEN_ITEMS.md` already names.
+
+**WHAT WAS PROVEN, WITH THE NUMBERS.** The counting instrument was controlled
+first: `grep -c "^COPY "` against a hand-built six-line file whose correct answer
+is 3 returned 3 — not 4, so the pattern is anchored to line start; not fewer, so
+blank lines are not being dropped, which is the `Measure-Object -Line` footgun.
+
+- At 0008: **12** `COPY` headers in the dump against **12** user tables
+  (`relkind` `'r'`; the `'p'` count is **0**, reported separately). They agree.
+  No table in this fixture has zero rows, so this could not settle the
+  empty-table question, and did not.
+- At 0009 with the new table EMPTY: **13** headers. The header
+  `COPY directory.shop_codes (tenant_id, code) FROM stdin;` is present with no
+  rows between it and its terminator. The manifest records
+  `"directory.shop_codes": 0`, unstripped. `restore_db.py` **exited 1**, printing
+  `[FAIL] directory.shop_codes     dump=0  restored=None` with all twelve other
+  tables `[OK]`, and `RESTORE FAILED: row counts differ from the dump for
+  ['directory.shop_codes']`.
+- At 0009 with one code issued (`TW9FXTR2`, constructed from `ck_shop_code` and
+  avoiding `O`, `0`, `I`, `1`, `L`): the same red with `dump=1  restored=None`.
+- **The restore it condemned was correct.** Read back afterwards, the target held
+  schema `directory`, the table, and `alembic_version` 0009, with every public
+  table's count equal to the dump's.
+- **The second observable waits for the row and the first does not.** At 0009
+  empty the summary read `844 rows` over an itemisation of 844 — in agreement. At
+  0009 with one row it read `845 rows` over an itemisation of 844, `MANIFEST.txt`
+  read `Rows      : 845 across 12 tables` in a list where `shop_codes` appears
+  zero times, and `restore_db.py` echoed `rows in dump   : 845`.
+- A FAILED `restore_db.py` prints **no** `RESTORE_EXIT` line at all: `fail()`
+  calls `sys.exit(1)` before the print. Both reds above are exit 1 with the line
+  absent, which is the `RESTORE_EXIT=none` that `prove_reconcile.py` reads.
+
+**THE CONTROL THAT MAKES THE RED MEAN ANYTHING.** A backup of the SAME fixture at
+0008 restored into the same default target with the SAME two scripts one migration
+earlier: `RESTORE_EXIT=0`, twelve `[OK]` rows. Without that, a red at 0009 is
+consistent with a bad fixture, a bad box or a bad pair of scripts, and establishes
+nothing about the migration. A second control sits underneath the whole phase and
+prevented a much worse outcome: `MIGRATION_DATABASE_URL` was pointed at a database
+that does not exist and `alembic` was made to fail naming it, proving the override
+reaches `env.py` before the real upgrade ran. `env.py` calls `load_dotenv()`, whose
+`.env` names the LIVE database; had the override not won, `alembic upgrade head`
+would have migrated `recycle`. Both databases read 0008 at that moment, so nothing
+else could have distinguished the two outcomes.
+
+**THE pg_ROLES GUARD — WHAT WAS ACTUALLY OBSERVED, AND WHAT WAS NOT.** What was
+observed is that **NOTHING STOPPED THE MIGRATION**. `alembic_version` moved to
+0009, `directory.shop_codes` is in `pg_class`, and both GRANTs resolved against a
+real role — `nspacl` reads `recycle_directory=U/recycle_owner` and `relacl` reads
+`recycle_directory=r/recycle_owner`. The guard is the first statement in
+`upgrade()` and raises before anything is written, and `env.py` wraps the run in
+one transaction, so those effects existing means the guard cannot have raised.
+
+**That is an inference from an absence, and it is not the same thing as watching
+the guard refuse.** A guard that had been deleted outright would have produced the
+identical observation. **The refusal path of 0009 has never been seen by any
+session of ours.** It is recorded in this file as observed on a throwaway cluster
+that was then destroyed, it was not re-run here, and re-running it was explicitly
+not this phase's job. Do not let "the guard was satisfied" stand alone anywhere: it
+means "nothing raised", which is weaker, and the weaker statement is the true one.
+
+**CORRECTIONS TO THIS FILE THAT THIS WORK FORCES.**
+
+- **"0009 has never been applied to a cluster that survived" is now FALSE**, and
+  it is the entry immediately above this one. It has been applied to
+  `recycle_tw20260809_0009fixture` on the DEV cluster, which survives on purpose
+  under the DROP WHEN condition quoted above. The dev cluster's own
+  `recycle` database was NOT migrated and still reads 0008 with a `directory`
+  schema count of 0, re-read at the end of the phase alongside its 385 purchase
+  bills.
+- The `prove_reconcile` bullet under what is built claimed the script restores a
+  copy on every run. Corrected in place, with the flag that makes it conditional
+  named.
+
+**WHAT THIS DOES NOT ESTABLISH.**
+
+- **No fix, and none is designed here.** `copy_block_counts` and the restore-side
+  count query still disagree about schema qualification.
+- **No proof suite was run.** Not `prove_reconcile.py`, not
+  `prove_backup_restore.py`, neither of which this phase touched or measured.
+- **Nothing was run on a handset**, and no device gap in this file is refreshed.
+- **The directory lookup still does not exist as a code path.** The fixture has a
+  row in `directory.shop_codes` because one was inserted by hand to move the
+  second observable; no endpoint resolves a code and no client sends one.

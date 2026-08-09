@@ -1008,8 +1008,8 @@ idea — only that it is unresolved.
   restore, which is the failure mode that teaches an operator to stop
   reading the check.** Blast radius beyond the operator:
   `prove_backup_restore.py:384` gates on `restore_db.py` exiting 0 and
-  returns 1 at `:387`; `prove_reconcile.py:331` goes red with
-  `RESTORE_EXIT=none`. Two secondary effects: `backup_db.py:512` sums
+  returns 1 at `:387`; `prove_reconcile.py` `restore_copy()` `:358` goes red
+  with `RESTORE_EXIT=none`. Two secondary effects: `backup_db.py:512` sums
   `counts_dump.values()` including directory rows while `:521` reports
   them "across N tables" and `:556` itemises only public tables, so once
   a code exists the summary total stops equalling its own itemisation,
@@ -1024,6 +1024,67 @@ idea — only that it is unresolved.
   *Unblocks:* making `copy_block_counts` and the restore-side count
   query agree on schema qualification — either both schema-qualified or
   both stripped — and doing it BEFORE anyone trusts the next backup.
+  **AMENDED 2026-08-09 — MEASURED ON A FIXTURE, AND THE INFERENCE ABOVE
+  RESOLVED TO THE WORSE BRANCH. Everything above stands; five of its clauses
+  now carry numbers instead of reasoning.** The fixture is
+  `recycle_tw20260809_0009fixture`, restored from
+  `recycle_20260809T045731Z_pre-directory-role` and walked up the real upgrade
+  path rather than migrated from 0001. The live database was never written to
+  and still reads 0008 with a `directory` schema count of 0.
+  *(a) THE "one inference not measured" CLAUSE IS CLOSED, AGAINST US.*
+  `pg_dump` DOES write a `COPY` block for an empty table. 12 `COPY` headers in
+  the dump at 0008 against 12 user tables, and **13 at 0009 with
+  `directory.shop_codes` holding no rows at all** — the header
+  `COPY directory.shop_codes (tenant_id, code) FROM stdin;` present with its
+  terminator immediately after it. The manifest recorded
+  `"directory.shop_codes": 0` and `restore_db.py` exited 1 on a restore in
+  which every row landed and the target genuinely held the schema, the table
+  and `alembic_version` 0009. **So it fires on the first backup after the
+  migration is applied, not on the first code issued.** The window between
+  those two, which this entry assumed existed, is zero wide.
+  *(b) THE BLAST-RADIUS CLAIM NAMING `prove_reconcile.py` IS CONDITIONAL, and
+  the sentence above does not say so.* That red can fire only on a run given
+  `--from`: `restore_copy()` has exactly one call site and it sits inside
+  `if args.backup:`. **A `--skip-restore` run never calls `restore_db.py` at
+  all and is untouched by this defect.** `prove_backup_restore.py` is
+  unconditional and that half of the claim is unchanged. Note also that a
+  FAILED `restore_db.py` prints no `RESTORE_EXIT` line whatever — `fail()`
+  calls `sys.exit(1)` before the print is reached — so `none` above is an
+  ABSENCE and not a parse failure, which is now recorded at
+  (`CLAUDE.md § Machine footguns` "the attempt comes back EMPTY rather than failing").
+  *(c) TWO OBSERVABLES, TWO DIFFERENT TRIGGERS, and only one of them waits for
+  data.* The restore red does not wait — it fired at 0009 with the table
+  empty. The summary-versus-itemisation disagreement DOES wait for the first
+  row: at 0009 empty the summary read `844 rows` over an itemisation of 844,
+  in agreement and looking entirely correct; with one code issued it read
+  `845 rows`, `MANIFEST.txt` read `Rows      : 845 across 12 tables` over an
+  itemisation of 844 in which `shop_codes` appears zero times, and
+  `restore_db.py` printed the same inflated `rows in dump   : 845`. **Anyone
+  reproducing this by issuing a code first meets both symptoms at once and
+  concludes the data was the trigger.** It is one defect with two triggers,
+  and the earlier one is the one nobody predicted.
+  *(d) THE CITATION `prove_reconcile.py:331` ABOVE WAS WRONG and is corrected
+  in place to `restore_copy()` `:358`.* Line 331 is a fragment of the
+  `PROVE_RECONCILE OK, WITH SKIPS` message; the `RESTORE_EXIT=none` string is
+  at `:358`, inside `restore_copy()`, which begins at `:343`. Re-derived at
+  `0aee22e` and not carried from a report. **This is the SECOND rotted
+  citation traced to `12d16a2`**, the first being the reconcile public-only
+  predicate list that `PROJECT_STATUS.md` already records as re-derived rather
+  than copied. One commit, two stale pointers, both reading as authoritative.
+  *(e) SCHEMA `directory` HOLDS THREE `pg_class` ROWS, NOT ONE, and this has
+  stopped being an observation.* Read from the catalogue on the fixture at
+  0009: `shop_codes` at `relkind` `'r'`, plus `shop_codes_pkey` and
+  `uq_shop_code` at `relkind` `'i'`. **The next phase gets this number wrong
+  immediately if its widened predicate does not filter `relkind`** — widening
+  `nspname = 'public'` to "outside `public`" without one enumerates three
+  relations where one is meant and reports two indexes as unknown tables,
+  which is a different wrong answer in the opposite direction from the one
+  this entry is about. There is no existing relkind entry in this file to bind
+  that to; it is recorded here, beside the defect that produced it.
+  *Still not done, deliberately:* the fix. `copy_block_counts` and the
+  restore-side count query still disagree about schema qualification and
+  neither was touched. Written up as
+  `lessons/a-round-trip-must-agree-on-its-key-space.md`.
 - **A BACKUP DIRECTORY'S LABEL NAMES WHAT THE BACKUP IS ABOUT, NOT WHAT IT
   CONTAINS, AND ONE ALREADY LIES — FOUND 2026-08-09 while looking for a copy to
   point `prove_reconcile.py` at.** `backup_db.py` writes

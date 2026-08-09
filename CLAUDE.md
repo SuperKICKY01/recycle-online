@@ -265,6 +265,94 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   message shown from a file that already exists cannot disagree with the one
   that lands.
 
+- **An exit code cannot be read by a SEPARATE tool invocation on this box, and
+  the attempt comes back EMPTY rather than failing.** Shell state does not
+  persist between invocations of either shell tool. An invocation containing
+  only `"EXIT=$LASTEXITCODE"`, issued immediately after a `restore_db.py` run
+  that had just exited 0, printed `EXIT=` — no digit, no error, exit 0. The
+  WORKING DIRECTORY does persist, which is exactly what makes the assumption
+  reasonable and wrong: one kind of state survives and the other does not, so
+  a session that has watched `cd` hold across calls has evidence for the
+  opposite of what is true here.
+
+  It lies about as quietly as the `.ps1` entry above, and in the same
+  direction. There is no error to read and nothing goes red, because nothing
+  ran: an empty string sitting beside a command that plainly succeeded reads
+  as a formatting slip, and the report then carries a step as observed whose
+  observation is a blank. A brief that asks for the status "as a separate
+  command" is asking for something this harness cannot do — say so, rather
+  than printing the blank and moving on.
+
+  Instead: read the status in the SAME invocation —
+  `<command>; "EXIT=$LASTEXITCODE"`. `;` is a SEQUENCE, not a pipe: it cannot
+  take the preceding command's status away, which is the distinction the
+  `A pipe or &&` entry above turns on, and `.claude/hooks/pipe_gate.py` states
+  it in its own refusal text.
+
+  AND KNOW WHICH PATH SUPPRESSES A SCRIPT'S OWN EXIT LINE, because several
+  scripts here print their status themselves — `BACKUP_EXIT=`,
+  `RESTORE_EXIT=`, `PROVE_RECONCILE_EXIT=` — and that line is written by the
+  `__main__` block from the same integer it hands to `sys.exit()`, so it is
+  trustworthy WHEN PRESENT. It is not always present. `restore_db.py`'s
+  `fail()` calls `sys.exit(1)` directly and never reaches the print, so a
+  FAILED restore emits no exit line at all. THE ABSENCE IS THE SIGNAL, and it
+  is the one an eye scanning for a number does not register — a reader looking
+  for `RESTORE_EXIT=1` finds nothing and can take that for output not yet
+  read. Observed twice on 2026-08-09, both runs exit 1 with no exit line.
+  `prove_reconcile.py` already encodes the rule: its restore check reports
+  `RESTORE_EXIT=none` when the pattern matches nothing, and treats the absence
+  as the failure rather than as a missing field.
+
+- **`powershell -File <script>.ps1 -Source A B C` binds the FIRST value and
+  silently discards the rest, then exits 0 over the sources it never opened.**
+  Measured 2026-08-09, six sources named on one command line:
+
+      powershell -File tools\verify_citations.ps1 -Source START_HERE.md
+        ARCHITECTURE.md ROADMAP.md OPEN_ITEMS.md SRS_MAP.md PROJECT_STATUS.md
+
+      SOURCES=1  CITATIONS=42  BROKEN=0          EXIT=0
+
+  One file was read. Five were named and never opened, and nothing said so.
+  The mechanism is PowerShell's, not the script's: a non-advanced script binds
+  the first positional value to `[string[]]$Source` and swallows the remaining
+  arguments into `$args`, where nothing looks at them. Both of the script's
+  positive controls printed OK — truthfully, about the one file it read.
+
+  IT FAILS BY MEASURING LESS, WITH NO SIGNAL, which is this repository's oldest
+  failure shape and the reason it gets an entry rather than a footnote. There
+  is no error, no red, and no missing output; the only tell is `SOURCES=1`,
+  sitting beside two numbers that look healthy, in a line whose reader is
+  looking at `BROKEN`. **The entry directly above is the other half of the same
+  family** — one instrument reports a status it never took, this one reports a
+  result over a corpus it never read, and both leave the reader believing more
+  was observed than was.
+
+  AND THIS IS THE SECOND HOLE OF THIS KIND IN ONE TOOL. The first is already
+  recorded: `verify_citations.ps1` once hardcoded `START_HERE.md` as its only
+  source and printed `BROKEN=0` over `ARCHITECTURE.md`'s 37 citations without
+  opening the file — a green structurally incapable of turning red, written up
+  at
+  `lessons/a-check-that-never-went-red-was-never-observed.md § a fifth mechanism`.
+  That hole was closed by adding `-Source`; this one is in `-Source` itself.
+  **Two holes, one tool, both ending in exit 0.** The `§ a sixth mechanism`
+  amendment in the same file already records that the tool's DEFAULT source
+  list is stale, so a session choosing between "type the sources by hand" and
+  "run it bare" has now been wrong in three different ways.
+
+  THE SAFE-FAILURE CONTRAST, and it is the reason this went unnoticed. The
+  COMMA spelling — `-Source A,B,C` — degrades into a single filename, takes the
+  `SOURCE MISSING` branch and exits 1 (measured the same day:
+  `SOURCES=1  CITATIONS=0  BROKEN=1`, `EXIT=1`). That failure is loud, is
+  already documented in that lesson's sixth mechanism as harmless BECAUSE it is
+  red, and it pushes the reader toward the SPACE spelling, which is the silent
+  one. A trap reached by fleeing a documented trap.
+
+  Instead: invoke the script directly with the call operator so `[string[]]`
+  binds — `& .\tools\verify_citations.ps1 -Source @('A.md','B.md','C.md')` —
+  and then READ `SOURCES=` and confirm it equals the number you passed, before
+  reading `BROKEN`. A count you did not check is a corpus you did not check.
+  → `lessons/a-check-that-never-went-red-was-never-observed.md`
+
 ### Boot check — name the observable, don't assume the environment
 
 Before judging any result, name the observation that proves the
