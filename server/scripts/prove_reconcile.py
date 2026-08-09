@@ -188,7 +188,28 @@ class Injection:
     skip: str = ""
 
 
-ROLE_SQL = re.compile(r"\b(alter|create|drop)\s+role\b", re.I)
+# ROLE, AND EVERY SPELLING POSTGRES ACCEPTS FOR IT — the alias list IS the gate's
+# domain, and it lives here because no cell can hold it (see below).
+#
+# `ALTER USER`, `CREATE USER` and `DROP USER` are documented aliases of the ROLE
+# forms and write pg_authid, the same catalogue. `ALTER GROUP` is the same family
+# one step out: its RENAME form is defined as `ALTER ROLE ... RENAME`, and its
+# ADD/DROP USER forms write role MEMBERSHIP in pg_auth_members. All of them are
+# CLUSTER-WIDE, which is the only property gate 2 cares about.
+#
+# A pattern naming `role` alone therefore ADMITTED `ALTER USER recycle_app
+# BYPASSRLS` — the exact statement this module's docstring says gate 2 exists to
+# refuse, in the other spelling. Matching the keyword and not the engine's
+# synonyms for it is how a mechanical gate quietly becomes the promise to
+# remember that it was written to replace.
+#
+# WHY THE PROBE FOR THIS IS NOT A CELL IN THIS FILE. guard() raises SystemExit,
+# so a probe injection carrying one of these statements would abort the whole
+# run at the loop below rather than report a pass. A gate whose positive result
+# kills the suite cannot be self-tested from inside it — the probe is external
+# and one-off, which is why the alias list is written HERE, where the next person
+# editing this pattern must read it. Re-run that probe when this line changes.
+ROLE_SQL = re.compile(r"\b(alter|create|drop)\s+(role|user|group)\b", re.I)
 
 
 def guard(inj: Injection) -> None:
