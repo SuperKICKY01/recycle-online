@@ -169,6 +169,48 @@ def psql(container: str, db: str, sql: str) -> list[list[str]]:
     return [line.split("|") for line in text.split("\n") if line != ""]
 
 
+# ---------------------------------------------------------------------------
+# identifiers
+# ---------------------------------------------------------------------------
+# THESE ARE A SECOND COPY. restore_db.py defines the same two functions, and the
+# duplication is deliberate rather than lazy.
+#
+# lessons/a-checker-must-not-share-the-code-it-checks.md, Bound 1, gives the
+# test: could a second author, given only the SPEC, reach the same answer? For
+# PostgreSQL identifier quoting the answer is yes — the rule is published and
+# `quote_ident()` is its authority, so two authors write the identical function.
+# That makes it ARITHMETIC, which that bound says to duplicate. A CONVENTION is
+# the opposite case and must be imported: restore_db.py's `split_key` encodes
+# THIS repository's manifest key-space choice, has no authority outside this
+# tree, and is deliberately NOT copied here.
+#
+# The alternative — a shared module — would have meant editing restore_db.py to
+# import what it currently defines, and that file is a separate concern from
+# this one; a second edit to it belongs in its own change. It would also make
+# this the second cross-script import in server/scripts, where the only existing
+# one (prove_reconcile.py importing reconcile.rolconfig_setting) carries a
+# docstring arguing at length that it is an exception.
+def quote_ident(name: str) -> str:
+    """ONE identifier, quoted the way PostgreSQL quotes identifiers.
+
+    Wrap in double quotes, double any embedded double quote. Always quoting is
+    correct for every legal identifier, so this does not have to decide whether
+    quoting is REQUIRED.
+
+    WHAT IT PREVENTS HERE IS NOT A SYNTAX ERROR. Unquoted, `from public.Odd Name`
+    is VALID SQL — it reads as relation `public.Odd` with alias `Name`. Measured
+    on this box: it failed only because no relation `odd` existed. Had one
+    existed, the count would have come back from the WRONG TABLE and looked
+    entirely plausible in the manifest.
+    """
+    return '"' + name.replace('"', '""') + '"'
+
+
+def quote_literal(text: str) -> str:
+    """ONE string literal, escaped the way PostgreSQL escapes them."""
+    return "'" + text.replace("'", "''") + "'"
+
+
 def sha256_of(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as fh:
@@ -229,7 +271,15 @@ def live_row_counts(container: str, db: str, tables: list[str]) -> dict[str, int
         return {}
     # One statement, one line: UNION ALL over exact counts (never reltuples,
     # which is an estimate and would make the emptiness check meaningless).
-    parts = [f"select '{t}' as t, count(*) as n from public.{t}" for t in tables]
+    #
+    # TWO KINDS OF VALUE FROM ONE NAME. `t` is a relation name read out of the
+    # catalogue by public_tables(), so it is an IDENTIFIER in the FROM clause and
+    # a string LITERAL in the label that carries it back. The schema qualifier
+    # stays hardcoded because public_tables() only ever returns relations in
+    # public — that `public.` is this program's own choice, not a value from
+    # outside it.
+    parts = [f"select {quote_literal(t)} as t, count(*) as n"
+             f" from public.{quote_ident(t)}" for t in tables]
     sql = " union all ".join(parts) + " order by 1"
     return {r[0]: int(r[1]) for r in psql(container, db, sql)}
 
@@ -238,9 +288,11 @@ def database_facts(container: str, db: str) -> dict[str, object]:
     rows = psql(
         container,
         db,
+        # A LITERAL, not an identifier: `db` is compared against datname here, it
+        # names no object. It comes from --db, or from APP_DATABASE_URL.
         "select pg_get_userbyid(d.datdba), pg_encoding_to_char(d.encoding), d.datcollate,"
         " d.datctype, d.datlocprovider::text from pg_database d"
-        f" where d.datname = '{db}'",
+        f" where d.datname = {quote_literal(db)}",
     )
     if not rows:
         fail(f"database {db!r} not found")
@@ -253,7 +305,7 @@ def database_facts(container: str, db: str) -> dict[str, object]:
             db,
             "select case when a.grantee = 0 then '' else pg_get_userbyid(a.grantee) end,"
             " a.privilege_type from pg_database d, aclexplode(d.datacl) a"
-            f" where d.datname = '{db}' order by 1, 2",
+            f" where d.datname = {quote_literal(db)} order by 1, 2",
         )
     ]
     settings = [
@@ -262,7 +314,8 @@ def database_facts(container: str, db: str) -> dict[str, object]:
             container,
             db,
             "select coalesce(array_to_string(s.setconfig, ' '), '') from pg_db_role_setting s"
-            f" join pg_database d on d.oid = s.setdatabase where d.datname = '{db}'",
+            " join pg_database d on d.oid = s.setdatabase where d.datname ="
+            f" {quote_literal(db)}",
         )
     ]
     return {
@@ -302,23 +355,35 @@ def render_database_sql(facts: dict[str, object]) -> str:
         "-- DATABASE when restoring under a different name.",
         "--",
         "",
-        f'CREATE DATABASE "{name}" WITH TEMPLATE = template0'
-        f" ENCODING = '{facts['encoding']}'"
-        f" LC_COLLATE = '{facts['collate']}'"
-        f" LC_CTYPE = '{facts['ctype']}'"
-        f' OWNER = "{facts["owner"]}";',
+        # The database and its OWNER are identifiers; the encoding and the two
+        # locales are string literals. Same three-way split as everywhere else.
+        f"CREATE DATABASE {quote_ident(str(name))} WITH TEMPLATE = template0"
+        f" ENCODING = {quote_literal(str(facts['encoding']))}"
+        f" LC_COLLATE = {quote_literal(str(facts['collate']))}"
+        f" LC_CTYPE = {quote_literal(str(facts['ctype']))}"
+        f" OWNER = {quote_ident(str(facts['owner']))};",
         "",
-        f'REVOKE ALL ON DATABASE "{name}" FROM PUBLIC;',
+        f"REVOKE ALL ON DATABASE {quote_ident(str(name))} FROM PUBLIC;",
     ]
     for entry in facts["acl"]:  # type: ignore[union-attr]
+        # The PRIVILEGE is a keyword, NOT an identifier, and is deliberately left
+        # bare: `GRANT "CONNECT" ON DATABASE` is a syntax error, so quoting it
+        # would break every disaster-recovery run rather than harden one. PUBLIC
+        # is a keyword too, which is why it keeps its exception instead of
+        # becoming a role literally named "PUBLIC".
         grantee = entry["grantee"]
-        target = "PUBLIC" if grantee == "PUBLIC" else f'"{grantee}"'
-        lines.append(f'GRANT {entry["privilege"]} ON DATABASE "{name}" TO {target};')
+        target = "PUBLIC" if grantee == "PUBLIC" else quote_ident(str(grantee))
+        lines.append(f"GRANT {entry['privilege']} ON DATABASE"
+                     f" {quote_ident(str(name))} TO {target};")
     for setting in facts["settings"]:  # type: ignore[union-attr]
         for item in str(setting).split(" "):
             if item:
                 key, _, value = item.partition("=")
-                lines.append(f'ALTER DATABASE "{name}" SET {key} = \'{value}\';')
+                # The GUC KEY is left bare for the same reason: a custom setting
+                # carries a dot that belongs to the NAME, so quoting it as one
+                # identifier changes its meaning. The VALUE is a literal.
+                lines.append(f"ALTER DATABASE {quote_ident(str(name))} SET {key} ="
+                             f" {quote_literal(value)};")
     lines.append("")
     return "\n".join(lines)
 

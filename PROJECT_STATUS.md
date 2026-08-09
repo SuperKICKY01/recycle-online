@@ -3272,8 +3272,10 @@ corrected here and the third is item 3 below.
    such a key correctly (`[OK  ] directory.Odd Name  dump=2  restored=2` against a
    fabricated dump carrying a real `directory."Odd Name"` relation); the writer
    cannot yet produce one.
-3. **A quoted identifier in schema `public` makes the backup ABORT rather than
-   mis-key — no artefact is produced at all.** `live_row_counts` interpolates
+3. **A quoted identifier in schema `public` makes `live_row_counts` count the
+   WRONG RELATION where a colliding name exists, and abort only where one does
+   not — see the correction below, which replaces this heading's original
+   claim that it always aborts.** `live_row_counts` interpolates
    `public.{t}` UNQUOTED, so a relation `public."Odd Name"` yields
    `... count(*) as n from public.Odd Name ...` and psql refuses it. Measured
    2026-08-09 by creating that relation in a scratch database and running the
@@ -3283,13 +3285,22 @@ corrected here and the third is item 3 below.
        LINE 1: select 'Odd Name' as t, count(*) as n from public.Odd Name u...
 
    Exit 1, and **no `BACKUP_EXIT` line** — `fail()` calls `sys.exit(1)` before the
-   print is reached. **IT FAILS CLOSED, WHICH IS THE SAFE DIRECTION**: no dump, no
-   manifest, no half-written artefact that could later be trusted, and defects 1
-   and 2 cannot arise because nothing is written. **The danger is the MISSING EXIT
-   LINE, not a corrupt backup** — a reader scanning for `BACKUP_EXIT=` finds
-   nothing and can take that for output not yet read, which is the absence-is-the-
-   signal shape `CLAUDE.md` records for `restore_db.py`'s `RESTORE_EXIT`. Such a
-   database simply cannot be backed up by this tool today.
+   print is reached.
+
+   **CORRECTED 2026-08-09, AND THE CORRECTION IS THE WHOLE POINT: THE ABORT IS
+   THE LUCKY CASE, NOT THE DEFECT.** The paragraph above read "IT FAILS CLOSED,
+   WHICH IS THE SAFE DIRECTION — the danger is the MISSING EXIT LINE, not a
+   corrupt backup." **That is false, and it is false in the dangerous
+   direction.** Unquoted, `from public.Odd Name` is VALID SQL: it names relation
+   `Odd` — folded to `odd` — with the ALIAS `Name`. It errored only because no
+   relation `odd` existed. **Where one does, the statement SUCCEEDS and the
+   backup records a count read from the WRONG TABLE**, with nothing red anywhere.
+   Measured 2026-08-09 on `recycle_keyshape_scratch` after adding a decoy
+   `public.odd` (11 rows) beside `public."Odd Name"` (13 rows): the unquoted code
+   returns `{'Odd Name': 11}` — no error, no warning, the wrong number under the
+   right label. So this defect does NOT fail closed; it fails closed only when
+   the collision happens to be absent, and it fails SILENTLY and WRONG when it is
+   not. The missing `BACKUP_EXIT` line is a real hazard and a lesser one.
    **`prove_backup_restore.py` CARRIES THE IDENTICAL UNQUOTED INTERPOLATION** at
    its own `row_counts()` — `f"select '{t}' || '=' || count(*)::text from
    public.{t}"` — so it would fail the same way on the same input. Read, not run;

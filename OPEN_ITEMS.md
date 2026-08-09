@@ -1123,21 +1123,29 @@ idea — only that it is unresolved.
        on. This is NOT the schema-qualification defect and is not fixed by
        fixing it; the restore side already handles such a key correctly, and the
        writer cannot yet produce one.
-    3. **A quoted identifier in schema `public` ABORTS the backup rather than
-       mis-keying it — no artefact is produced at all.** `live_row_counts`
+    3. **A quoted identifier in schema `public` makes `live_row_counts` COUNT
+       THE WRONG RELATION where a colliding name exists, and abort only where
+       one does not. This item said "ABORTS the backup" until 2026-08-09; the
+       correction is below and it moves the defect from safe to silent.**
+       `live_row_counts`
        interpolates `public.{t}` UNQUOTED, so `public."Odd Name"` yields
        `... count(*) as n from public.Odd Name ...`. Measured 2026-08-09 by
        creating that relation in a scratch database and running the real tool:
        `BACKUP FAILED: psql failed (1): ERROR: relation "public.odd" does not
        exist`, exit 1, and **no `BACKUP_EXIT` line** — `fail()` calls
-       `sys.exit(1)` before the print. **IT FAILS CLOSED, WHICH IS THE SAFE
-       DIRECTION:** no dump, no manifest, nothing half-written that could later
-       be trusted, and defects 1 and 2 cannot arise because nothing is written.
-       **The danger is the MISSING EXIT LINE, not a corrupt backup** — a reader
-       scanning for `BACKUP_EXIT=` finds nothing and can read that as output not
-       yet arrived, which is the absence-is-the-signal shape `CLAUDE.md` records
-       for `RESTORE_EXIT`. Consequence: such a database cannot be backed up by
-       this tool at all.
+       `sys.exit(1)` before the print.
+       **CORRECTED 2026-08-09 — THE ABORT IS THE LUCKY CASE, NOT THE DEFECT.**
+       This entry read "IT FAILS CLOSED, WHICH IS THE SAFE DIRECTION — the
+       danger is the MISSING EXIT LINE, not a corrupt backup." **False, and
+       false in the dangerous direction.** Unquoted, `from public.Odd Name` is
+       VALID SQL naming relation `Odd` — folded to `odd` — with the ALIAS
+       `Name`; it errored only because no `odd` existed. **Where one does, the
+       statement SUCCEEDS and a count from the WRONG TABLE is recorded**, with
+       nothing red anywhere. Measured on `recycle_keyshape_scratch` after adding
+       a decoy `public.odd` (11 rows) beside `public."Odd Name"` (13 rows): the
+       unquoted code returns `{'Odd Name': 11}`. It fails closed only when the
+       collision happens to be absent. The missing `BACKUP_EXIT` line is a real
+       hazard and the lesser one.
        **`prove_backup_restore.py` CARRIES THE IDENTICAL UNQUOTED
        INTERPOLATION** in its own `row_counts()` —
        `f"select '{t}' || '=' || count(*)::text from public.{t}"` — so it fails
@@ -1233,7 +1241,8 @@ idea — only that it is unresolved.
   1. **`backup_db.py`'s three defects**, together and against a control that can
      distinguish them — the summary-versus-itemisation total, `copy_block_counts`
      mangling any identifier `pg_dump` had to quote, and `live_row_counts`
-     aborting the backup outright on a quoted identifier in schema `public`. All
+     counting the WRONG RELATION on a quoted identifier in schema `public`
+     (aborting only where no colliding name exists — corrected 2026-08-09). All
      three are described in full in the half-closed entry above; they are not
      restated here, because two copies drift. **This said TWO until 2026-08-09**,
      when a control pass measured the third.
