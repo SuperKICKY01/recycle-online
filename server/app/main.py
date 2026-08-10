@@ -19,7 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from . import clock_guard
 from .auth import Principal, get_principal
 from .bills import router as bills_router
-from .db import engine, tenant_connection
+from .db import directory_engine, engine, tenant_connection
+from .directory import router as directory_router
 from .master import router as master_router
 from .reports import router as reports_router
 from .security import DUMMY_HASH, create_access_token, verify_password
@@ -51,6 +52,13 @@ async def lifespan(_: FastAPI):
         with contextlib.suppress(asyncio.CancelledError):
             await tick
         await engine.dispose()
+        # BOTH engines, and this one was owed. f84b54d added directory_engine
+        # and named its absence here as a debt for "the first commit that opens
+        # a connection from the application" -- this is that commit. It was
+        # harmless while nothing connected on it (dispose on an engine with an
+        # empty pool is a no-op); it stops being harmless the moment a request
+        # checks a connection out.
+        await directory_engine.dispose()
 
 
 app = FastAPI(title="Recycle Online API (Phase 2c-2)", lifespan=lifespan)
@@ -93,6 +101,7 @@ async def _refuse_while_clock_is_wrong(request, call_next):
 
 
 app.include_router(bills_router)
+app.include_router(directory_router)
 app.include_router(master_router)
 app.include_router(reports_router)
 app.include_router(users_router)
