@@ -19,6 +19,22 @@ idea — only that it is unresolved.
 
 ## Blocking one real paying shop
 
+- **NOBODY CAN ISSUE A SHOP CODE, and as of 2026-08-10 that is the ONLY thing
+  standing between P1.3's two criteria.** `POST /auth/shop-code` is built and
+  proven (`1951b19`), and it reads a relation that **nothing writes to by any
+  route** — no endpoint, no script, no migration, no manual path. The relation is
+  empty on the live database, so in production the endpoint returns 404 for every
+  input. It is not broken; it has nothing to resolve. **This is the door with no
+  key**, and it is the answer to "why does the thing we just built not work".
+  *Not done:* who issues a code when a shop is onboarded is undecided — whether
+  the provider service mints it, whether it is generated at tenant creation, and
+  what happens if a shop loses its slip are all open, and none is settled by the
+  schema. *Unblocks:* P1.3's Criterion B, and nothing else does. Bound to P1.5.
+  *Note the asymmetry a reader should not miss:* Criterion A (the server is
+  correct) is provable TODAY against a scratch database, and B is not provable at
+  all until this exists — so "P1.3 is not done" will mean two different things
+  depending on which is outstanding, which is why `ROADMAP.md` now names them
+  separately.
 - **A reachable server — `R3`** — the API runs on a development box and
   the app points at a LAN address. *Not done:* no hosting has been chosen
   or paid for. *Unblocks:* a decision on where it runs, then a deploy.
@@ -711,6 +727,36 @@ idea — only that it is unresolved.
 
 ## Code debt found and left in place
 
+- **A UVICORN PAIR HAS BEEN SERVING THIS REPOSITORY'S OWN API ON 127.0.0.1:8137
+  SINCE 2026-08-07, RUNNING CODE THAT PREDATES SEVERAL COMMITS — and two of the
+  three things wrong with it are not about the endpoint that found it. MUST NOT
+  BE KILLED WITHOUT THE OWNER'S DECISION.** Measured 2026-08-10:
+  PID **28972**, `python3.12` from the Windows Store distribution, started
+  **2026-08-07 22:16:16**, command line
+  `…\server\.venv\Scripts\uvicorn.exe app.main:app --host 127.0.0.1 --port 8137`.
+  Its parent, PID **26216**, is the venv python running the same launcher and is
+  still alive, so **stopping it needs BOTH processes in the chain**; killing the
+  child alone leaves the parent.
+  **(1) IT IS OUR OWN API, not a stray process** — established from its command
+  line, not guessed from its name.
+  **(2) ITS `/health` CANNOT GO RED ON A WRONG CLOCK.** Asked, not inferred: it
+  returns `{"status":"ok"}` with **no `clock` key**, so it predates the clock
+  guard's health reporting entirely. **An operator who checks `/health` on 8137
+  is structurally incapable of seeing a clock problem** — a green that cannot
+  turn red, which is this repository's oldest failure shape, running unattended.
+  **(3) IT HAS HELD A DATABASE CONNECTION SINCE 2026-08-07**, to whatever
+  `APP_DATABASE_URL` named then, most likely the live `recycle`.
+  **What it already cost:** it produced a FALSE GREEN. A proof that hardcoded
+  port 8137 could not bind, and its health poll was answered by this server; two
+  refusal assertions then passed against a route that did not exist. Asked
+  directly, it declares **28 openapi paths and no `/auth/shop-code`**.
+  *Not done:* nothing observable depends on it — it binds loopback only, so no
+  handset can reach it, and `netstat` showed no established client connections —
+  but it is not this session's to kill. *Unblocks:* an owner decision to stop
+  both processes, after which the port stops being a trap and the misleading
+  `/health` stops being reachable. **Its own piece of work, not a footnote to the
+  endpoint that happened to find it.**
+
 *The five entries immediately below were all measured on 2026-08-10, read-only, on
 the live cluster, as part of the `recycle_directory` privilege pass. Each is a
 capability or a location that **no file in this repository asserts**. They are kept
@@ -1392,11 +1438,15 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
      unprovable to provable: a widened reconcile predicate now has a real
      relation outside schema `public` to enumerate on the live database, so its
      green would no longer be green over an empty set. **P1.3 is NOT unblocked
-     into done** — the schema half is what landed; the step is finished by a
-     login carrying no uuid returning 200, and the server change is not written.
-     Nothing reads or writes `directory.shop_codes`, and who issues a code when
-     a shop is onboarded is still undecided. *Ranking is `ROADMAP.md`'s; nothing
-     is reordered here.*
+     into done** — the schema half is what landed. This read "the step is
+     finished by a login carrying no uuid returning 200, and the server change
+     is not written. Nothing reads or writes `directory.shop_codes`" until
+     2026-08-10, and **all three clauses have moved**: that DONE WHEN was
+     rewritten (see P1.3, which carries the reason and the old wording), the
+     server change LANDED in `1951b19`, and `POST /auth/shop-code` now READS
+     that relation. **NOTHING WRITES TO IT, which is the half that did not
+     move**, and who issues a code when a shop is onboarded is still undecided.
+     *Ranking is `ROADMAP.md`'s; nothing is reordered here.*
   3. **The reconcile predicate widening.** Bounded to schema `public` at seven
      sites, so a relation in `directory` is invisible to it; the limit is the
      PREDICATE and not the exclusion lists, so adding a name to a `NOT IN`
@@ -1440,6 +1490,19 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   *Not done:* nothing is owed while the fixture exists. *Unblocks:* whoever
   eventually deletes it must first make the shapes reproducible from a script, so
   the instrument survives the database.
+  **AMENDED 2026-08-10 — A SECOND THING NOW WRITES TO THIS DATABASE, and whoever
+  maintains the instrument should know before they are surprised by it.**
+  `server/scripts/prove_shop_code.py` uses it as its `--directory-database` and
+  DELETEs then INSERTs a fixture row in `directory.shop_codes` on every run.
+  **The instrument is believed unharmed**, because what it measures is
+  identifier SHAPES — relation names carrying a space or a dot — and rows inside
+  `shop_codes` are not part of that. **BELIEVED, NOT MEASURED:** this database
+  held one `shop_codes` row before that proof first ran, the proof's DELETE
+  clause would have removed it if it named tenant A, and the phase recording
+  this was forbidden to touch any database, so whether a pre-existing row was
+  displaced is UNKNOWN. *Not done:* re-point that proof at a database with no
+  other job, or measure what is in there and say so. *Unblocks:* an instrument
+  whose contents only one thing depends on.
 - **THE MANIFEST KEY FORMAT CANNOT REPRESENT TWO IDENTIFIER SHAPES, AND THEY FAIL
   BY COLLIDING WITH A LEGITIMATE KEY RATHER THAN BY FAILING TO PARSE.** The
   reader partitions on the FIRST dot, so a dot inside a relation name in a
@@ -1497,6 +1560,23 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
 
 ## Decisions open — the owner's, not the code's
 
+- **SHOULD A TYPED SHOP CODE BE CASE-NORMALISED? A PRODUCT DECISION, NOT A BUG,
+  and it is deliberately not settled in code.** `ck_shop_code` admits only
+  `^[A-HJKMNP-Z2-9]{8}$` — uppercase, and the alphabet excludes O, 0, I, 1 and L
+  because those are what a human misreads off a thermal slip. `POST
+  /auth/shop-code` compares the submitted string EXACTLY, so **a person who types
+  their code in lowercase is refused with the same 404 as somebody guessing at a
+  shop that does not exist.** That indistinguishability is correct and
+  deliberate — D4 requires one refusal for every cause, and a distinct "wrong
+  case" reply would be exactly the oracle it forbids. **The cost is that the
+  refusal cannot teach.** Uppercasing the input before the lookup would fix the
+  typing case at no disclosure cost, since the alphabet has no lowercase members
+  for it to collide with. *Why it was not just done:* D4 does not decide it, and
+  inventing input-normalisation behaviour for the one endpoint a shop owner meets
+  first is the owner's call, not this session's. *Not done:* undecided.
+  *Unblocks:* one line in the handler if the answer is yes, and a sentence in D4
+  either way — including "no", which is a legitimate answer if the slip is always
+  read as printed.
 - **The red-team trial — DEFINED 2026-08-05, never yet run.**
   `RED_TEAM.md` now says what the pass is: inputs (BRIEFING, CLAUDE,
   lessons index, the diff — and NOT the conversation that produced the

@@ -57,6 +57,82 @@ not read the green as re-run.**
 
 ## Current phase
 
+**THE SHOP-CODE LOOKUP IS BUILT AND PROVEN, AND P1.3's DONE WHEN WAS REWRITTEN
+BECAUSE THE DECISION MADE IT UNREACHABLE. 2026-08-10.** No R-number was issued;
+R-numbers are defined in `ROADMAP.md` and are the owner's to issue.
+
+**WHAT LANDED.** `POST /auth/shop-code` (`1951b19`), unauthenticated, in its own
+module rather than beside login — D4's whole content is that resolving a code is
+SEPARATE from signing in, and one file would have blurred the boundary that is
+the security property. It reads through `recycle_directory` on the second engine
+added in `f84b54d`, returns `{"tenant_id": "<uuid>"}` and nothing else (enforced
+by a `response_model`, so a future handler cannot widen it by accident), and
+refuses unknown, malformed and over-long input from ONE module-level exception
+object — three raise sites, one object, so the bodies cannot drift apart.
+**Login was not touched**, and that is measured rather than asserted:
+`LoginRequest`, `LoginResponse`, `_INVALID_LOGIN`, the handler `def` and the
+route decorator each appear **0 times** in the commit's diff, with a presence
+control (`directory_router`, 2 hits) proving the search reads the diff.
+
+**THE FIXTURE, AND WHY IT IS REPEATABLE.** Nothing writes to
+`directory.shop_codes`, so a hit cannot be tested without a row. The proof
+creates one in a SCRATCH database and refuses to run against the live database
+for either of its two arguments — and refuses if the two are equal, because that
+would delete its own discriminator. The row is DELETED and re-created every run
+rather than found, per `lessons/README.md § Lessons` "proof-must-run-twice.md".
+Run twice with no reseed: green both times. **`recycle` was not written to.**
+
+**THE FIVE PROPOSITIONS.** P1 a real code resolves and the body carries EXACTLY
+`{tenant_id}`, with six named fields asserted ABSENT rather than merely one
+asserted present; P2 a well-formed absent code is refused; P3 a malformed code is
+refused with a body BYTE-IDENTICAL to P2's; P4 the read went through the
+directory role, made discriminating by putting the fixture in one database and
+asserting it absent from the other, so the app engine could not have answered for
+two independent reasons; P5 CONTROL — login still 200s with a token, still 401s a
+wrong password and an unknown user, and those two refusals are still byte-
+identical to each other.
+
+**SEEN RED TWICE BEFORE BEING BELIEVED.** Mutation A added one field to the
+response model: exactly two cells reddened, the exact-key-set assertion and the
+`code` ABSENCE assertion — a presence-only check would have stayed green.
+Mutation B gave the malformed case its own 422: exactly P3's two cells reddened.
+Both undone, green returned, residue search 0 with a presence control at 1.
+
+**THE FALSE GREEN, AND IT IS THE MOST TRANSFERABLE THING THIS PHASE PRODUCED.**
+The proof first used a hardcoded port where a server had been listening since
+2026-08-07. The child uvicorn could not bind and exited; the `/health` poll got
+200 from THE OTHER SERVER; and **P2 and P3 PASSED against a route that did not
+exist**, because a route-not-found 404 is shaped like the refusal we designed —
+same status, same `detail` key. Only P1 failed. The proof now takes a free port,
+detects a dead child instead of waiting it out, and — the fix that actually
+closes it — **asks the server for its own `/openapi.json` and requires it to
+declare `/auth/shop-code` before any assertion runs.** P2 is additionally pinned
+to this endpoint's own refusal text, so deleting the route reddens it.
+
+**THE DOOR HAS NO KEY, and this is the answer to "why does the thing we just
+built not work".** Nothing writes to `directory.shop_codes` by any route —
+manual, endpoint, script or migration. **In production this endpoint returns 404
+for every input, and will until somebody can issue a code.** That is not a defect
+in it; it is P1.5, and it is now the only thing standing between the two criteria
+below.
+
+**P1.3's DONE WHEN WAS REWRITTEN, AND THE REASON IS CHECKABLE.** It demanded a
+`POST /auth/login` carrying **no uuid** returning 200. D4 decided login does not
+change, and `LoginRequest.tenant_id` is a required uuid — so that request can only
+ever return 422. **The bar was unreachable BY DESIGN, not unmet**, and it was not
+touched because the work was hard: the server change it waited for LANDED. It is
+now two criteria — **A**, the server is correct, provable today against a
+throwaway database; **B**, the route works for a real shop, which needs P1.5.
+**Both are outstanding**, and `ROADMAP.md` carries the old wording, the date and
+the reason beside them.
+
+**A ROUTE-COUNT FIGURE IN AN EARLIER ENTRY IS CORRECTED**, re-derived here rather
+than carried: see the dated entry below.
+
+Full evidence in the dated entry `2026-08-10 — the shop-code endpoint, and the
+criterion that had to be rewritten` at the end of this file. **The paragraphs
+below describe the phases that PRECEDED this one**, newest first.
+
 **`recycle_directory`'s PRIVILEGES MEASURED ON THE LIVE CLUSTER, AND THE SHOP-CODE
 LOOKUP DECIDED. 2026-08-10.** Read-only throughout: no write to any database, no
 endpoint written, nothing under `server/app/` or `server/scripts/` touched. No
@@ -3755,3 +3831,130 @@ cause. Reasoning is there, not here.
 - **The second cluster on this box was not enumerated.** `infra-postgres-1` has no
   `postgres` role (`FATAL: role "postgres" does not exist`, exit 2). It is a
   different project and not the cluster `.env` names.
+
+### 2026-08-10 — the shop-code endpoint, and the criterion that had to be rewritten
+
+**WHAT LANDED, `1951b19`.** `POST /auth/shop-code` in `server/app/directory.py`,
+a new module rather than a third handler in `main.py`. Unauthenticated. Reads
+through `directory_connection()` on the second engine (`f84b54d`), bound to
+`recycle_directory` — a role holding SELECT on exactly one relation and no
+privilege on any relation in schema `public`. Returns `{"tenant_id": "<uuid>"}`
+and nothing else, enforced by a `response_model` so FastAPI STRIPS anything a
+future handler adds rather than relying on the handler staying disciplined.
+`main.py` gains three lines: an import, an `include_router`, and
+`await directory_engine.dispose()` — the debt `f84b54d` named as owed by "the
+first commit that opens a connection from the application".
+
+**THE ENDPOINT DOES NOT VALIDATE THE CODE'S SHAPE, and that is a choice with a
+reason.** A `pattern=` on the request model would make pydantic answer a
+malformed code with 422 while the handler answers an unknown one with 404, and
+those two differing IS the oracle D4 exists to close. The login handler's
+DUMMY_HASH timing argument was read and does NOT reach the same conclusion here:
+rejecting a malformed code early would separate well-formed from malformed, a
+property of the string the caller just constructed and already knows, not
+exists-from-absent. `ck_shop_code` guarantees no stored code is outside
+`^[A-HJKMNP-Z2-9]{8}$`, so a malformed code cannot match a row however far it
+travels. One refusal path, because one refusal path cannot disagree with itself.
+
+**LOGIN WAS NOT TOUCHED, MEASURED FROM THE DIFF RATHER THAN RECALLED.**
+`LoginRequest`, `LoginResponse`, `_INVALID_LOGIN`, `async def login` and
+`@app.post("/auth/login"` each appear **0 times** on a changed line of the
+commit; presence control `directory_router` = 2 hits in `main.py`. The three
+`/auth/login` occurrences in the diff are all client URLs in the new proof.
+
+**THE FIXTURE.** `server/scripts/prove_shop_code.py` takes `--app-database` and
+`--directory-database`, refuses the live database for either, and refuses if they
+are equal. It creates its fixture row by DELETE-then-INSERT every run rather than
+finding one. Two consecutive runs, no reseed, green both times.
+**Inserting a fixture into a scratch database is not issuing a code** — that is
+P1.5 and remains undone.
+
+**THE FIVE PROPOSITIONS, all green, `PROVE_SHOP_CODE_EXIT=0`.**
+
+- **P1** a real code resolves; the body carries EXACTLY `{tenant_id}`, with
+  `name`, `shop_name`, `code`, `created_at`, `is_active`, `id` each asserted
+  ABSENT. A presence-only check would pass against a response that also leaked a
+  shop's name, which is why the absences are asserted individually.
+- **P2** a well-formed absent code is refused, 404, pinned to this endpoint's own
+  `detail` rather than to the status alone.
+- **P3** a malformed code is refused with a body BYTE-IDENTICAL to P2's, compared
+  in full rather than by status.
+- **P4** the read went through the directory role. Discriminating by
+  CONSTRUCTION, not by reading the source: the fixture is created in the
+  DIRECTORY database and asserted ABSENT from the APP database, and the app role
+  is separately shown refused on that relation with `permission denied for schema
+  directory`. Two independent reasons the app engine cannot have answered.
+- **P5** CONTROL — login still 200s with a token, still 401s a wrong password and
+  an unknown user, and those two refusals are still byte-identical to each other.
+
+**SEEN RED, TWICE.** Mutation A added one field to the response model: exactly
+two cells reddened — the exact-key-set assertion and the `code` ABSENCE
+assertion. Mutation B gave the malformed case its own 422: exactly P3's two cells
+reddened, the status comparison and the full-body comparison. Both exit 1. Undone,
+green returned, and a residue search over `server/app` found 0 mutation markers
+with a presence control on the same files returning 1.
+
+**THE FALSE GREEN — the most transferable thing this phase produced.** The proof
+first used a hardcoded port 8137, where a process had been listening since
+2026-08-07. The child uvicorn could not bind and exited; `wait_for_health` polled
+`/health` and got **200 from the other server**; and **P2 and P3 then PASSED
+against a route that did not exist**. A route-not-found 404 is shaped like the
+refusal this endpoint was designed to give — same status, same `detail` key — so
+an assertion written to check for that refusal is satisfied by its absence. Only
+P1 failed, and P1 is the assertion nobody would call the safety net. Three fixes:
+a free port chosen at runtime, a dead child detected rather than waited out, and
+the one that actually closes it — **the server is asked for its own
+`/openapi.json` and must declare `/auth/shop-code` before any assertion runs.**
+P2 is additionally pinned to the endpoint's own refusal text.
+
+**THE DOOR WITH NO KEY. This is the answer to "why does the thing we just built
+not work", and it is not a defect in the endpoint.** Nothing writes to
+`directory.shop_codes` — no endpoint, no script, no migration, no manual path.
+The relation is empty on the live database. **So in production `POST
+/auth/shop-code` returns 404 for every input, correctly, and will until somebody
+can issue a code.** Who issues one is undecided; the work is P1.5.
+
+**P1.3's DONE WHEN WAS REWRITTEN, AND THE RULE THAT MAKES THAT LEGITIMATE IS IN
+THE FILE.** It demanded a `POST /auth/login` carrying no uuid returning 200; D4
+decided login does not change, and `LoginRequest.tenant_id` is a required uuid, so
+that request can only return 422. **Unreachable by design, not unmet** — and NOT
+rewritten because the work was hard, since the server change it waited for
+landed. `ROADMAP.md` keeps the old wording with the date and the reason beside it,
+in that file's existing form for superseded text, and now carries two criteria:
+**A** the server is correct (two chained requests, both recorded, plus a
+404 control and a token-actually-works control), **B** the route works for a real
+shop (needs P1.5). **Both outstanding.** Four other passages in `ROADMAP.md` and
+one in `OPEN_ITEMS.md` restated the old criterion and were corrected in the same
+change; three passages in THIS file also restate it — at `:138`, and inside the
+dated entries at `:3614` and `:3745` — and are deliberately **not** rewritten,
+because a dated measurement is superseded rather than edited. They were true when
+written; this entry is the supersession.
+
+**A ROUTE-COUNT FIGURE FROM `f84b54d` IS CORRECTED, re-derived here.** That
+commit's message said "the route count is unchanged at 11". The number was real
+but it was not an endpoint count. **Measured at `1951b19`:** `len(app.routes)` is
+**12**, and it decomposes as 4 FastAPI defaults (`/openapi.json`, `/docs`,
+`/docs/oauth2-redirect`, `/redoc`) + **5 opaque `_IncludedRouter` wrappers**, one
+per `include_router` call + 3 app-level routes (`/health`, `/auth/login`,
+`/whoami`). In this FastAPI version an included router's own paths are NOT
+flattened into `app.routes`, so that quantity counts routers, not endpoints —
+which is why it moved from 11 to 12 when this commit added one router carrying
+one path. **The endpoint count is the openapi path count: 29, measured at
+`1951b19`.** The before figure is **28**, and it is measured rather than
+subtracted: the stale server on 8137 predates this commit, declares 28 paths, and
+differs from the current schema by exactly `/auth/shop-code`.
+
+**WHAT THIS DOES NOT ESTABLISH.**
+
+- **No client sends this.** Neither mobile nor desktop calls the endpoint.
+- **Criterion A is provable but NOT PROVEN.** The proof exercises the lookup and
+  login separately and never chains one into the other; no assertion uses a token
+  obtained from a resolved code, and none exercises such a token against an
+  authenticated endpoint. That chaining is what A asks for.
+- **Repeated-attempt protection is open**, and this endpoint is where it matters
+  most: unauthenticated, and it answers a yes/no question about the directory.
+- **Case is not normalised.** A lowercase code typed off a printed slip is
+  refused indistinguishably from an unknown shop. `OPEN_ITEMS.md` carries it as a
+  decision owed to the owner.
+- **No proof script was run in the phase that wrote THIS entry**, and no database
+  was touched by it.

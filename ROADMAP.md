@@ -225,8 +225,10 @@ committed and APPLIED TO THE LIVE DATABASE `recycle` ON 2026-08-09** — this
 sentence read "NOT YET APPLIED to any cluster" until then. The format and its
 reasoning are recorded in that architecture section and in the migration's
 docstring, and are not repeated here. **What that application settles and what it
-does not:** the SCHEMA half of P1.3 is done, and P1.3 itself is not — that step is
-finished by a login, not by a migration, and its DONE WHEN is unchanged.
+does not:** the SCHEMA half of P1.3 is done, and P1.3 itself is not. This read
+"that step is finished by a login, not by a migration, and its DONE WHEN is
+unchanged" until 2026-08-10, when that DONE WHEN was rewritten — see P1.3, which
+carries the reason and the old wording.
 
 **D5 — price editing exists on BOTH surfaces**, per S6. S3 puts the desktop on the
 pilot path regardless, so the cost that made the old R4 recommend the phone —
@@ -363,10 +365,13 @@ does not — the rule this file's own queue entry records.)*
 **Where this step now stands.** The SCHEMA half is written AND APPLIED: the
 migration creating the relation, its constraints and its reader role was
 **APPLIED TO THE LIVE DATABASE `recycle` ON 2026-08-09**, where this read "NOT
-YET APPLIED to any cluster" until then. **THAT DOES NOT ADVANCE THIS STEP'S DONE
-WHEN, which is unchanged below**: P1.3 is finished by a login that carries no
-uuid returning 200, not by a migration. The rest of the step is untouched — the
-server change is not written.
+YET APPLIED to any cluster" until then. **THAT DID NOT ADVANCE THIS STEP'S DONE
+WHEN** — a migration is not the criterion. This passage read "which is unchanged
+below: P1.3 is finished by a login that carries no uuid returning 200, not by a
+migration. The rest of the step is untouched — the server change is not written"
+until 2026-08-10, and **both halves of that are now false**: the DONE WHEN was
+rewritten below for the reason given there, and **the server change IS written**
+— `POST /auth/shop-code` landed in `1951b19`, with its own proof.
 
 **WHAT THE ENDPOINT WILL DO IS NOW DECIDED — 2026-08-10.** This passage read "this
 file says nothing about what the login endpoint will do because that is not decided"
@@ -374,21 +379,71 @@ until then, and that sentence is now false. The decision is recorded at
 `ARCHITECTURE.md § 10. The three settled decisions` as D4, and is deliberately NOT
 restated here: **the login body does not change**, the code resolves at a separate
 unauthenticated endpoint returning the tenant identifier and nothing else, refusing
-identically whatever the cause. **THIS STEP'S DONE WHEN IS UNCHANGED** — a decision
-is not a login, and P1.3 is still finished by the observed 200 below.
+identically whatever the cause. This sentence read "**THIS STEP'S DONE WHEN IS
+UNCHANGED** — a decision is not a login, and P1.3 is still finished by the
+observed 200 below" until 2026-08-10. It is now false, and the DONE WHEN below
+records why it had to change.
 
 Two things are still worth naming as absent rather than
 assumed: **nothing writes to that relation today**, and **who issues a code when a
 new shop is onboarded is undecided** — there is no provisioning path, by any
-route, manual or otherwise. Two more, added by D4: **whether the endpoint is
-protected against repeated attempts is undecided**, and the **second connection it
-requires does not exist** — no `recycle_directory` DSN is present anywhere in the
-tree.
+route, manual or otherwise. One more, added by D4: **whether the endpoint is
+protected against repeated attempts is undecided**. A third read "the **second
+connection it requires does not exist** — no `recycle_directory` DSN is present
+anywhere in the tree" until 2026-08-10; it exists, added in `f84b54d` and proven
+from the application's own stack.
 
 **Unblocks:** P1.4, P1.5, P1.7, P1.14.
 
-**DONE WHEN:** a `POST /auth/login` whose body carries **no uuid** returns 200 and a
-usable token, run bare against the server, with the request and response recorded.
+**DONE WHEN — REWRITTEN 2026-08-10.** This read "a `POST /auth/login` whose body
+carries **no uuid** returns 200 and a usable token, run bare against the server,
+with the request and response recorded" until then.
+
+**THAT CRITERION IS UNREACHABLE BY DESIGN, NOT UNMET.** D4 in
+`ARCHITECTURE.md § 10. The three settled decisions` decided that the login body
+does not change, and `LoginRequest.tenant_id` is a required uuid — so a login
+carrying no uuid can only ever return 422. The old bar describes a road this
+project looked at and decided not to take.
+
+**IT WAS NOT REWRITTEN BECAUSE THE WORK TURNED OUT TO BE HARD**, and that is the
+part a later reader should check rather than take: the server change it was
+waiting for LANDED, in `1951b19`, and the endpoint the old bar wanted folded INTO
+login was deliberately built beside it instead. A criterion is rewritten here
+when a DOCUMENTED DECISION changed the route, never for difficulty. The decision
+is D4, it is dated, it is quotable, and it predates this rewrite.
+
+**THE STEP IS NOW FINISHED BY TWO CRITERIA, AND THEY FAIL FOR DIFFERENT REASONS.
+Whenever this step is called not done, say WHICH ONE**, or "P1.3 is not done"
+stays ambiguous between a wrong server and an unusable one.
+
+**CRITERION A — THE SERVER IS CORRECT.** Provable today, against a throwaway
+database at 0009 carrying a fixture code. The observables, not a description of
+them:
+
+1. **Two requests in sequence, run bare against a running server**:
+   `POST /auth/shop-code` exchanges an eight-character code for a tenant
+   identifier, and THAT identifier — not one typed by hand — is then used in
+   `POST /auth/login` to obtain a token.
+2. **Both requests and both responses recorded.**
+3. **CONTROL, the refusing side**: a code that does not exist returns 404.
+4. **CONTROL, the accepting side**: the token from step 1 is USED against an
+   endpoint that requires authentication, and that request succeeds. A token is
+   a string until something accepts it, so obtaining one proves nothing alone.
+
+**INSERTING A FIXTURE ROW INTO A SCRATCH DATABASE IS NOT ISSUING A CODE, and A
+does not pre-empt P1.5.** A fixture is a row a test wrote into a database no
+shop uses. Issuing is a path by which a real shop comes to have a real code, and
+there is none.
+
+**CRITERION B — THE ROUTE WORKS FOR A REAL SHOP.** Requires that somebody can
+issue a code, which is P1.5. Nothing writes to `directory.shop_codes` by any
+route, so in production this endpoint resolves nothing at all.
+
+**B DOES NOT GATE A, AND A DOES NOT SATISFY B.** A is about whether the server is
+right; B is about whether anyone can reach it. **Outstanding as of 2026-08-10:
+BOTH.** A is provable but NOT YET PROVEN — the proof that exists exercises the
+lookup and login separately and does not chain one into the other, and none of
+its assertions uses a token obtained from a resolved code. B waits on P1.5.
 
 ### P1.4 — An account that can be locked, not only signed out
 
@@ -886,8 +941,10 @@ which was satisfiable while the enumeration source stayed open.
 then — so the relation this step reads FROM now exists on the database the pilot
 will run on. That settles what this step reads FROM; it does not by itself
 complete the step, and the DONE WHEN below is unchanged for that reason. The
-schema half of P1.3 being done changes nothing about P1.3's own DONE WHEN either,
-which is a login rather than a migration.
+schema half of P1.3 being done changes nothing about P1.3's own DONE WHEN either.
+That clause read "which is a login rather than a migration" until 2026-08-10;
+P1.3's DONE WHEN was rewritten on that date and is now two criteria, for the
+reason recorded at P1.3. Nothing about THIS step's DONE WHEN changes.
 
 **Depends on:** P3.1, since licence state is per shop and the list is what a loop
 iterates. It is a hard prerequisite and not a detail: the `tenants` policy is keyed
