@@ -121,10 +121,24 @@ DENIED_NEW = f"p4-refused-{RUN}"
 SHORT_NEW = f"p6-shortpw-{RUN}"
 CROSS_NEW = f"p7-crossed-{RUN}"
 
+SELF_NEW = f"s1-self-{RUN}"
+RESET_NEW = f"s5-reset-{RUN}"
+
 # Set by this script, sent to this server, never printed. Length 8+ is what the
 # route requires; SHORT_PW is one character under it on purpose.
 NEW_PW = f"yard-pass-{RUN}"
 SHORT_PW = "abc1234"
+
+# The password work needs several distinct secrets in one run, and each must be
+# distinctive enough that finding its bytes in a response body could not be a
+# coincidence. None is ever printed.
+PW2 = f"yard-second-{RUN}"
+PW3 = f"yard-third-{RUN}"
+RESET_PW = f"yard-reset-{RUN}"
+WRONG_PW = f"yard-wrong-{RUN}"
+# Over PASSWORD_MAX_LENGTH (128), so the SELF route's `current_password` fails
+# validation and its value would have been echoed before c296738.
+OVERLONG_PW = "y" * 200
 
 failures: list[str] = []
 # A COUNT the reader must meet. A proof that fails by running FEWER cells is
@@ -216,6 +230,28 @@ def create_user(client: httpx.Client, token: str, username: str, full_name: str,
     payload = {"username": username, "full_name": full_name, "role": role,
                "password": password, **extra}
     return client.post(f"{BASE}/users", headers=auth(token), json=payload)
+
+
+def whoami(client: httpx.Client, token: str) -> httpx.Response:
+    return client.get(f"{BASE}/whoami", headers=auth(token))
+
+
+def change_own_password(client: httpx.Client, token: str, current: str,
+                        new: str, **extra) -> httpx.Response:
+    """POST /users/me/password. `extra` exists for the malformed-payload cells."""
+    return client.post(
+        f"{BASE}/users/me/password", headers=auth(token),
+        json={"current_password": current, "new_password": new, **extra},
+    )
+
+
+def reset_password(client: httpx.Client, token: str, user_id: str,
+                   new: str) -> httpx.Response:
+    """POST /users/{user_id}/password — the ADMIN route. No current password."""
+    return client.post(
+        f"{BASE}/users/{user_id}/password", headers=auth(token),
+        json={"new_password": new},
+    )
 
 
 def list_users(client: httpx.Client, token: str,
@@ -886,6 +922,249 @@ def main() -> int:  # noqa: C901
                   " API's kind/code refusals")
 
             # ==============================================================
+            banner("S1-S9 - changing a password: the two routes D6 still owed")
+            # ==============================================================
+            # THE FIXTURES COME FROM POST /users, NEVER AN INSERT. That route is
+            # proven above in this same run, so the accounts these cells act on
+            # are rows the product could produce -- which is the whole of
+            # lessons/a-proof-fixture-must-be-a-row-the-product-could-produce.md.
+            r_s = create_user(client, admin_token, SELF_NEW,
+                              "Self password changer", "staff", NEW_PW)
+            r_r = create_user(client, admin_token, RESET_NEW,
+                              "Reset target", "staff", NEW_PW)
+            self_id = body_of(r_s).get("user_id")
+            reset_id = body_of(r_r).get("user_id")
+            print(f"  fixtures via POST /users: {SELF_NEW} -> {self_id}")
+            print(f"                            {RESET_NEW} -> {reset_id}")
+            check(r_s.status_code == 201 and r_r.status_code == 201,
+                  "s0: both password fixtures were CREATED through POST /users,"
+                  " not inserted")
+
+            # ---------------------------------------------------------- S1
+            tok_self_pre = login(client, TENANT_A_ID, SELF_NEW, NEW_PW)
+            check(bool(tok_self_pre), "s1: the fixture can sign in before anything")
+            v_before = claims_of(tok_self_pre).get("token_version") \
+                if tok_self_pre else None
+            r1 = change_own_password(client, tok_self_pre, NEW_PW, PW2)
+            b1 = body_of(r1)
+            print(f"\n  S1  POST /users/me/password  status={r1.status_code}"
+                  f"  body={shown(b1)}")
+            check(r1.status_code == 200, "s1: a caller may change their OWN password")
+            check(set(b1) == {"user_id", "username", "token_version"},
+                  f"s1: the body carries EXACTLY"
+                  f" ['token_version','user_id','username'], got {sorted(b1)}")
+            check(b1.get("user_id") == self_id and b1.get("username") == SELF_NEW,
+                  "s1: it names the caller's own row")
+            # A DELTA, never an absolute: the version only ever climbs, so an
+            # absolute assertion would measure how often this fixture has been
+            # touched. v_before comes off the TOKEN the server minted.
+            check(isinstance(b1.get("token_version"), int)
+                  and isinstance(v_before, int)
+                  and b1["token_version"] == v_before + 1,
+                  f"s1: the response reports the version moved by exactly one"
+                  f" ({v_before} -> {b1.get('token_version')})")
+            check(SELF_NEW.encode() in r1.content
+                  and NEW_PW.encode() not in r1.content
+                  and PW2.encode() not in r1.content,
+                  "s1: the 200 body names the user and carries NEITHER password")
+
+            # ---------------------------------------------------------- S2
+            # THE CELL THE DISPROOF TARGETS. A number that moved in the database
+            # is not the same fact as a token that stopped working, so this
+            # asserts the REFUSAL -- status and code -- and never the number.
+            r2 = whoami(client, tok_self_pre)
+            print(f"\n  S2  GET /whoami with the PRE-CHANGE token"
+                  f"  status={r2.status_code}  code={detail_of(r2).get('code')!r}")
+            check(r2.status_code == 401,
+                  "s2: the token held BEFORE the change is refused")
+            check(detail_of(r2).get("code") == "token_revoked",
+                  "s2: and the refusal names the session, not the account")
+            # A SECOND ENDPOINT, so the refusal is a property of the TOKEN rather
+            # than of /whoami. GET /products is get_principal, which a staff
+            # token normally passes.
+            r2b = client.get(f"{BASE}/products", headers=auth(tok_self_pre))
+            print(f"      GET /products with the same dead token"
+                  f"  status={r2b.status_code}")
+            check(r2b.status_code == 401,
+                  "s2: that token is refused on a SECOND endpoint too -- the"
+                  " session is gone, not one route being odd")
+
+            # ---------------------------------------------------------- S3
+            tok_self_2 = login(client, TENANT_A_ID, SELF_NEW, PW2)
+            r3_old = login_raw(client, TENANT_A_ID, SELF_NEW, NEW_PW)
+            print(f"\n  S3  login with the NEW password  ->"
+                  f" {'token' if tok_self_2 else 'NO TOKEN'}")
+            print(f"      login with the OLD password  -> {r3_old.status_code}")
+            check(bool(tok_self_2), "s3: the NEW password signs in")
+            check(r3_old.status_code == 401,
+                  "s3: the OLD password does not, in the same run")
+            check("access_token" not in r3_old.text,
+                  "s3: and that refusal carries no token")
+
+            # ---------------------------------------------------------- S4
+            r4 = change_own_password(client, tok_self_2, WRONG_PW, PW3)
+            print(f"\n  S4  wrong current password  status={r4.status_code}"
+                  f"  body={shown(body_of(r4))}")
+            check(r4.status_code == 400,
+                  "s4: a wrong current password answers 400, plainly")
+            check(detail_of(r4).get("kind") == "bad_request",
+                  "s4: the refusal carries kind=bad_request")
+            check(detail_of(r4).get("code") == "current_password_incorrect",
+                  "s4: and code=current_password_incorrect")
+            # NOTHING CHANGED, and it is shown two independent ways: the token
+            # used is still live (a bump would have killed it), and the password
+            # that was current still signs in.
+            check(whoami(client, tok_self_2).status_code == 200,
+                  "s4: the caller's token still works -- no version was bumped")
+            check(bool(login(client, TENANT_A_ID, SELF_NEW, PW2)),
+                  "s4: the password that was current still signs in")
+            check(login_raw(client, TENANT_A_ID, SELF_NEW, PW3).status_code == 401,
+                  "s4: and the password the refused request asked for does NOT")
+
+            # --- THE DECISION THIS ROUTE HAD TO TAKE, MEASURED ------------
+            # D9 forbids a reuse rule ("no expiry, no reuse history"), so setting
+            # the same password again is ACCEPTED rather than refused. It is not
+            # a no-op: the row takes a fresh salt and the bump ends every session,
+            # which is "sign me out everywhere" without changing what you have to
+            # remember. An unexercised decision is a claim no instrument measures.
+            tok_same = login(client, TENANT_A_ID, SELF_NEW, PW2)
+            r4b = change_own_password(client, tok_same, PW2, PW2)
+            print(f"\n  S4b setting the SAME password again  status={r4b.status_code}")
+            check(r4b.status_code == 200,
+                  "s4b: the same password again is ACCEPTED (D9 forbids a reuse"
+                  " rule), not refused")
+            check(whoami(client, tok_same).status_code == 401,
+                  "s4b: and it still ended the session -- not a no-op")
+            check(bool(login(client, TENANT_A_ID, SELF_NEW, PW2)),
+                  "s4b: that password still signs in afterwards")
+
+            # ---------------------------------------------------------- S5
+            # BOTH SIDES IN ONE RUN. A route that killed every session in the
+            # tenant would satisfy the first half on its own.
+            tok_reset_pre = login(client, TENANT_A_ID, RESET_NEW, NEW_PW)
+            check(bool(tok_reset_pre),
+                  "s5: the reset target can sign in before the reset")
+            r5 = reset_password(client, admin_token, reset_id, RESET_PW)
+            b5 = body_of(r5)
+            print(f"\n  S5  admin resets {RESET_NEW}  status={r5.status_code}"
+                  f"  body={shown(b5)}")
+            check(r5.status_code == 200, "s5: an admin may reset another user's"
+                                         " password")
+            check(b5.get("user_id") == reset_id and b5.get("username") == RESET_NEW,
+                  "s5: the response names the TARGET, not the caller")
+            check(isinstance(b5.get("token_version"), int),
+                  "s5: it returns the new token_version")
+            check(RESET_PW.encode() not in r5.content,
+                  "s5: and does not echo the password it just set")
+            r5b = whoami(client, tok_reset_pre)
+            print(f"      the TARGET's pre-reset token  status={r5b.status_code}"
+                  f"  code={detail_of(r5b).get('code')!r}")
+            check(r5b.status_code == 401 and
+                  detail_of(r5b).get("code") == "token_revoked",
+                  "s5: the target's existing session is refused afterwards")
+            # THE OTHER HALF, and without it the cell above is satisfied by a
+            # route that ends every session in the shop.
+            r5c = whoami(client, admin_token)
+            r5d = list_users(client, admin_token)
+            print(f"      the ADMIN'S OWN token  /whoami={r5c.status_code}"
+                  f"  /users={r5d.status_code}")
+            check(r5c.status_code == 200 and r5d.status_code == 200,
+                  "s5: and the ADMIN'S OWN session is untouched -- the reset was"
+                  " scoped to one row")
+            if tok2:
+                check(whoami(client, tok2).status_code == 200,
+                      "s5 CONTROL: an UNRELATED user's session in the same tenant"
+                      " is untouched too")
+
+            # ---------------------------------------------------------- S6
+            tok_reset_new = login(client, TENANT_A_ID, RESET_NEW, RESET_PW)
+            r6_old = login_raw(client, TENANT_A_ID, RESET_NEW, NEW_PW)
+            print(f"\n  S6  reset user with the NEW password  ->"
+                  f" {'token' if tok_reset_new else 'NO TOKEN'}")
+            print(f"      with the OLD password  -> {r6_old.status_code}")
+            check(bool(tok_reset_new), "s6: the password the admin set signs in")
+            check(r6_old.status_code == 401,
+                  "s6: the password it replaced does not")
+
+            # ---------------------------------------------------------- S7
+            r7 = reset_password(client, staff_token, reset_id, PW3)
+            print(f"\n  S7  STAFF caller on the admin route  status={r7.status_code}"
+                  f"  body={shown(body_of(r7))}")
+            check(r7.status_code == 403,
+                  "s7: a STAFF caller is refused the reset route with 403")
+            check(r7.status_code != 404,
+                  "s7: NOT 404 -- 404 would say the row was invisible, which is a"
+                  " different fact and the wrong one about a caller who may not")
+            check(detail_of(r7).get("kind") == "forbidden",
+                  "s7: the refusal carries kind=forbidden")
+            check(detail_of(r7).get("code") == "admin_required",
+                  "s7: and code=admin_required")
+            check(bool(login(client, TENANT_A_ID, RESET_NEW, RESET_PW)),
+                  "s7: the refused reset changed nothing -- the target's password"
+                  " still signs in")
+
+            # ---------------------------------------------------------- S8
+            # A REAL user id in the OTHER tenant, read out of tenant B's own rows
+            # rather than invented: an id that names nobody anywhere would be
+            # refused by a route with no tenant scoping at all, so it would not
+            # discriminate.
+            b_admin = named(db_users(TENANT_B_ID), ADMIN_USERNAME)
+            b_admin_id = str(b_admin["id"]) if b_admin else str(uuid.uuid4())
+            check(b_admin is not None,
+                  "s8: tenant B's admin was found, so the id below names a REAL"
+                  " row in another tenant")
+            r8 = reset_password(client, admin_token, b_admin_id, PW3)
+            print(f"\n  S8  tenant A admin targeting a TENANT B user id"
+                  f"  status={r8.status_code}  body={shown(body_of(r8))}")
+            check(r8.status_code == 404,
+                  "s8: a cross-tenant target is refused 404 (RLS, not a"
+                  " hand-written WHERE)")
+            check(detail_of(r8).get("code") == "user_not_found",
+                  "s8: the refusal carries code=user_not_found")
+            check(bool(login(client, TENANT_B_ID, ADMIN_USERNAME,
+                             TENANT_B_PASSWORD)),
+                  "s8: and tenant B's admin is untouched -- its password still"
+                  " signs in")
+
+            # ---------------------------------------------------------- S9
+            # c296738 removed pydantic's `input` from every validation error this
+            # API emits. THESE TWO ROUTES DID NOT EXIST WHEN IT LANDED, which is
+            # exactly what makes them the test of "API-wide by construction".
+            tok_s9 = login(client, TENANT_A_ID, SELF_NEW, PW2)
+            r9 = change_own_password(client, tok_s9, OVERLONG_PW, SHORT_PW)
+            e9 = body_of(r9).get("detail")
+            e9 = e9 if isinstance(e9, list) else []
+            print(f"\n  S9  self route, BOTH fields invalid  status={r9.status_code}")
+            print(f"      body={r9.text.strip()[:300]}")
+            check(r9.status_code == 422, "s9: the self route refuses 422")
+            check(len(e9) == 2 and all("input" not in e for e in e9),
+                  f"s9: both fields errored and NEITHER error carries an `input`"
+                  f" key (entries={len(e9)})")
+            check(OVERLONG_PW.encode() not in r9.content,
+                  "s9: the submitted CURRENT password is absent from the raw bytes")
+            check(SHORT_PW.encode() not in r9.content,
+                  "s9: the submitted NEW password is absent from the raw bytes")
+            check(b"current_password" in r9.content
+                  and b"new_password" in r9.content,
+                  "s9 CONTROL: the same byte search DOES find both field names --"
+                  " the absences above are not an empty haystack")
+
+            r9b = reset_password(client, admin_token, reset_id, SHORT_PW)
+            e9b = body_of(r9b).get("detail")
+            e9b = e9b if isinstance(e9b, list) else []
+            print(f"      admin route, short password  status={r9b.status_code}")
+            print(f"      body={r9b.text.strip()[:300]}")
+            check(r9b.status_code == 422, "s9: the admin route refuses 422")
+            check(SHORT_PW.encode() not in r9b.content,
+                  "s9: and does not carry the submitted value in its bytes")
+            check(len(e9b) == 1 and "input" not in e9b[0]
+                  and b"new_password" in r9b.content,
+                  "s9 CONTROL: its one error names the field and carries no"
+                  " `input` key")
+            check(bool(login(client, TENANT_A_ID, RESET_NEW, RESET_PW)),
+                  "s9: neither refused request changed a password")
+
+            # ==============================================================
             banner("P8 - the existing revocation proof still passes, UNCHANGED")
             # ==============================================================
             # This commit adds a route to a module prove_revocation.py already
@@ -934,9 +1213,10 @@ def main() -> int:  # noqa: C901
         log.close()
 
     banner("SUMMARY")
-    print(f"  accounts created by this run: 2 in tenant A ({STAFF_NEW},"
-          f" {ADMIN_NEW}) and 1 in tenant B ({STAFF_NEW}), plus whatever"
-          " prove_revocation.py wrote. None of them can be deleted.")
+    print(f"  accounts created by this run: 4 in tenant A ({STAFF_NEW},"
+          f" {ADMIN_NEW}, {SELF_NEW}, {RESET_NEW}) and 1 in tenant B"
+          f" ({STAFF_NEW}), plus whatever prove_revocation.py wrote."
+          " None of them can be deleted.")
     print(f"  uvicorn log: {log.name}")
     if failures:
         print("  THESE CLAIMS DID NOT HOLD:")

@@ -30,29 +30,38 @@ because they act on somebody who is already there. Until it existed an admin
 holding a valid token could not bring a staff account into being at all, and the
 only credentials a shop had were whatever seeded or installed it.
 
-IT IS ROUTE 1 OF THREE, and the other two are not built. ARCHITECTURE.md § 10.
-The three settled decisions D6 splits account provisioning into an admin creating
-a user, an admin setting another user's password, and a user changing their own —
-three ROUTES rather than one branching on who is calling, because the guard, the
-request body and whose session dies all differ, and a branch deciding all three
-from one inspection of the caller can be wrong in the permissive direction.
+IT IS ROUTE 1 OF THREE, and as of 2026-08-10 ALL THREE EXIST. ARCHITECTURE.md
+§ 10. The three settled decisions D6 splits account provisioning into an admin
+creating a user, an admin setting another user's password, and a user changing
+their own — three ROUTES rather than one branching on who is calling, because the
+guard, the request body and whose session dies all differ, and a branch deciding
+all three from one inspection of the caller can be wrong in the permissive
+direction.
 
-So this does NOT weaken the paragraph below. There is still no way for anybody to
-CHANGE a password, their own or anyone else's; setting one at create is the only
-password write in this system, and an account whose password is lost is an
-account nothing in this product can recover.
+**THIS PARAGRAPH SAID THE OTHER TWO WERE NOT BUILT, AND SO DID FIVE OTHERS IN
+THIS FILE.** They were true when route 1 landed and false one commit later; they
+are corrected where they stand rather than left for a reader who would believe
+whichever they reached first. What each said, and what is true now: there IS a
+way to change a password, by POST /users/me/password and POST
+/users/{user_id}/password at the foot of this module; an account whose password
+is lost can be RESET BY AN ADMIN, though one whose only admin loses theirs still
+cannot be recovered from inside the system.
 
 WHAT IS STILL A STOPGAP, AND WHAT NO LONGER IS
 -----------------------------------------------
 The design calls for `users.token_version` to be bumped on TWO events: a
 password change and a user deactivation. DEACTIVATION NOW EXISTS and bumps it
-here, as prescribed. A password endpoint still does not exist anywhere in this
-system, so revoke-sessions keeps its original job for that half.
+here, as prescribed. **THE PASSWORD HALF IS NO LONGER A STOPGAP EITHER** — this
+read "A password endpoint still does not exist anywhere in this system, so
+revoke-sessions keeps its original job for that half" until 2026-08-10, and both
+password routes now bump the version in the SAME UPDATE as the hash, exactly as
+the sentence below asked them to.
 
-It is not redundant even once a password endpoint arrives, and the reason is the
-job deactivation cannot do: ending a session on a HANDOVER, where the account
-must go on working afterwards. When a password-change endpoint is built, IT
-should bump the version as part of its own work, exactly as deactivate does.
+revoke-sessions is not redundant, and the reason is the job neither password
+route can do: ending a session on a HANDOVER, where the account must go on
+working afterwards and its holder must not be given a new password to learn. It
+is now the only one of the three that ends a session and leaves the credential
+alone.
 
 WHAT A DEACTIVATION DOES NOT DO, STATED PLAINLY
 ------------------------------------------------
@@ -90,12 +99,19 @@ import uuid
 from collections.abc import Mapping
 from typing import Annotated, Any, Literal, get_args
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, StringConstraints
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from .auth import ADMIN_ROLE, STAFF_ROLE, Principal, forbidden, require_admin
+from .auth import (
+    ADMIN_ROLE,
+    STAFF_ROLE,
+    Principal,
+    forbidden,
+    get_principal,
+    require_admin,
+)
 from .db import constraint_name_of, tenant_connection
 
 # The refusal vocabulary is master.py's and is IMPORTED rather than restated.
@@ -134,7 +150,7 @@ from .db import constraint_name_of, tenant_connection
 # `Password` are declared below instead, because their bounds are about a login
 # credential and nothing in master.py means that.
 from .master import Name, _TENANT, _active_filter, _conflict, _not_found
-from .security import hash_password
+from .security import hash_password, verify_password
 
 router = APIRouter()
 
@@ -305,9 +321,10 @@ PASSWORD_MAX_LENGTH = 128
 # NO strip_whitespace, and that is the one difference from every other string in
 # this API. Stripping a password SILENTLY CHANGES THE CREDENTIAL: the admin
 # types "hunter2 ", the row stores the hash of "hunter2", and /auth/login — which
-# strips nothing — refuses the password the person was given. Today that is
-# permanent: D6's routes 2 and 3 do not exist, so nothing can change a password
-# afterwards. A space is a character a password may contain.
+# strips nothing — refuses the password the person was given. This read "Today
+# that is permanent: D6's routes 2 and 3 do not exist" until 2026-08-10; it is
+# now recoverable, by an admin reset or by the person themselves, and the field
+# still must not strip. A space is a character a password may contain.
 Password = Annotated[
     str,
     StringConstraints(
@@ -409,13 +426,13 @@ async def create_user(
     provisional credential and records no "must change" state; there is no third
     account state and no column for one.
 
-    WHAT D8 RESTS ON DOES NOT EXIST YET, and this is the sentence to carry out of
-    here: D8 is acceptable BECAUSE a staff member may change their own password
-    at any time (D6's route 3) — and route 3 is not built. Until it is, the first
-    password is known to two people permanently, and the only account state a
-    shop can reach for is /deactivate. That is a consequence of shipping route 1
-    first, not a defect of this route, and it is what makes the password routes
-    the next phase rather than a later one.
+    WHAT D8 RESTS ON NOW EXISTS. This paragraph read "WHAT D8 RESTS ON DOES NOT
+    EXIST YET… route 3 is not built. Until it is, the first password is known to
+    two people permanently" until 2026-08-10, and it named the password routes as
+    the next phase for exactly this reason. They are built: POST
+    /users/me/password lets the person it belongs to change it whenever they
+    like, with no admin and no request, which is the whole of what D8's argument
+    rested on.
 
     NO hand-written `WHERE tenant_id`, and NO tenant_id from the caller (hard
     rule 2). tenant_connection issues SET LOCAL from the TOKEN's tenant; the
@@ -448,11 +465,13 @@ async def create_user(
     recognise is a genuine surprise and must not be dressed up as a client error
     we understood.
 
-    WHAT THIS ROUTE DOES NOT DO. It does not change a password — nobody can, in
-    this system, including the person who owns one. It does not delete, here or
-    anywhere. It issues no provisional or temporary credential: the password the
-    admin types is the password the person is given, and it is on the admin to
-    hand it over out of band.
+    WHAT THIS ROUTE DOES NOT DO. It does not change a password — this read "nobody
+    can, in this system, including the person who owns one" until 2026-08-10, and
+    the two routes at the foot of this module now do it; what stands is that THIS
+    route only ever sets the FIRST one. It does not delete, here or anywhere. It
+    issues no provisional or temporary credential: the password the admin types is
+    the password the person is given, and it is on the admin to hand it over out
+    of band.
     """
     # OUTSIDE the transaction — see the docstring.
     password_hash = await hash_password(body.password)
@@ -672,3 +691,274 @@ async def activate_user(
         ).mappings().first()
 
     return _user_or_404(row)
+
+
+# ---------------------------------------------------------------------------
+# Changing a password — D6's routes 2 and 3, and the stopgap this module has
+# carried since 0005 finally stops being one
+# ---------------------------------------------------------------------------
+# THE MODULE ASKED FOR THIS AND SAID WHAT IT MUST DO. "The design calls for
+# `users.token_version` to be bumped on TWO events: a password change and a user
+# deactivation… When a password-change endpoint is built, IT should bump the
+# version as part of its own work, exactly as deactivate does." Both routes below
+# do that, in the SAME UPDATE as the hash, for the reason deactivate_user gives:
+# one statement leaves no window in which the credential has changed and the
+# sessions it minted have not.
+#
+# revoke-sessions IS NOT MADE REDUNDANT, and the module already said why: it is
+# the only one of the three that ends a session while leaving the credential
+# alone, which is what a HANDOVER needs. Nothing here replaces it.
+
+
+# A CONSTRAINT, NOT THE PASSWORD RULE, and the difference decides who is locked
+# out. PASSWORD_MIN_LENGTH is about what this API is willing to STORE; this field
+# carries what the caller is asking us to CHECK, and it may predate the rule —
+# provision_shop.py reads the first admin's password from the environment and
+# applies no minimum, so an account can legitimately hold a shorter one. Requiring
+# eight here would refuse that person the one route that could fix it. The maximum
+# stays, because it is a bound on argon2's work rather than a rule about
+# credentials.
+CurrentPassword = Annotated[
+    str, StringConstraints(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+]
+
+
+def _bad_request(code: str, message: str, **context: Any) -> HTTPException:
+    """400: the request is well-formed, and a VALUE in it is wrong.
+
+    THE ENVELOPE IS THE CONVENTION AND IS REPRODUCED EXACTLY — kind, code,
+    message, then context — so nothing here is a second SHAPE. What is new is the
+    status and the kind, and a new kind needs a reason, because this module's own
+    import comment argues against second copies of anything.
+
+    THE REASON: none of the five kinds already in play means this. 401
+    `unauthenticated` says the caller is nobody, and this caller is somebody with
+    a live session. 403 `forbidden` says no action of theirs can clear it, and
+    typing the right password clears this immediately. 404 `not_found` is about a
+    row. 409 `conflict` is about a value already taken. 422 `invalid_request` is
+    for a payload that CAN NEVER BE VALID — and this payload is valid, it is the
+    submitted credential that does not match, so the same request with the right
+    password succeeds. Answering 422 would put "you typed your password wrong"
+    into the class the sync engine treats as permanently rejected.
+    400 IS ALREADY CONTRACTED ON THE CLIENT SIDE: mobile/src/adapters/
+    httpTransport.ts classifies 400 with 422 as `rejected: terminal`, so this
+    status is not an unknown arriving at a device that has no branch for it.
+    """
+    return HTTPException(
+        status.HTTP_400_BAD_REQUEST,
+        detail={"kind": "bad_request", "code": code, "message": message, **context},
+    )
+
+
+def _session_payload(r: Mapping[str, Any]) -> dict:
+    """The three keys both password routes answer with.
+
+    `token_version` rides in the body for the reason revoke_sessions gives about
+    its own: the caller is reading the effect of their own action on one named
+    row, and the number is how they see that the sessions went. Its contract is
+    that it CHANGED, never its value.
+
+    ONE helper for the two routes below rather than a copy in each. It is
+    deliberately NOT applied to revoke_sessions, which builds the identical dict
+    inline: that endpoint's shape is already proven by prove_revocation.py, and
+    rewriting a proven endpoint for tidiness is the same change _user_or_404's
+    docstring declined to make for the same reason.
+    """
+    return {
+        "user_id": str(r["id"]),
+        "username": r["username"],
+        "token_version": r["token_version"],
+    }
+
+
+class SelfPasswordChange(BaseModel):
+    """The caller's own password. TWO fields, and both are secrets.
+
+    NO user_id — the caller IS the target, which is D6's whole argument for three
+    routes rather than one branching on who is asking. A body that could name
+    somebody else is one missing `if` away from setting a colleague's password.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    current_password: CurrentPassword
+    new_password: Password
+
+
+class AdminPasswordReset(BaseModel):
+    """An admin setting somebody else's password. The target is in the PATH.
+
+    NO current_password, and that is the point of the route: an admin resetting a
+    dismissed employee's account does not know their password, and if they did,
+    the account would not need resetting.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    new_password: Password
+
+
+# DECLARED BEFORE /users/{user_id}/password, AND THE ORDER IS LOAD-BEARING.
+# Starlette matches routes in registration order and `{user_id}` has no converter
+# in the path string, so it would swallow the literal `me` — the request would
+# reach the ADMIN route with "me" as its user_id and be refused 422 for a
+# malformed uuid, or 403 for a staff caller who is entitled to this route. Both
+# are the wrong answer, and neither looks like a routing fault.
+@router.post("/users/me/password")
+async def change_own_password(
+    body: SelfPasswordChange, principal: Principal = Depends(get_principal)
+) -> dict:
+    """Change your own password. ANY authenticated caller — this one is not admin.
+
+    D6's route 3, and the only route in this module a staff phone may call. It has
+    to be: D8 accepts that a first password is known to two people BECAUSE the
+    person it belongs to can change it whenever they like, and until this existed
+    that sentence rested on nothing.
+
+    YOUR OWN SESSION DIES, IMMEDIATELY AND ON PURPOSE, and the module already
+    settled which side of that question this sits on. Self-revocation is ALLOWED
+    here — "their very next request 401s… the cost of being wrong is one login" —
+    while self-deactivation is REFUSED, and the difference the module names is
+    RECOVERABILITY: a locked admin cannot unlock itself, so that door has no way
+    back. This one does: sign in again with the password you just set. A password
+    change is therefore the self-revocation case, not the self-deactivation case,
+    and refusing it would be the invented rule that docstring warns about.
+
+    It is also the behaviour the change is FOR. If your password is being changed
+    because somebody watched you type the old one, a route that left every session
+    it had minted alive would have changed a string and nothing else.
+
+    ONE UPDATE, NOT TWO — deactivate_user's rule, applied to the other event 0005
+    named. The hash and the bump move in the same statement, so there is no window
+    in which the new credential is live and the old sessions are too.
+
+    THE SAME PASSWORD AGAIN IS ACCEPTED, NOT REFUSED. D9 is "a minimum length, and
+    nothing else — no character classes, no dictionary check, no expiry, NO REUSE
+    HISTORY", and "the new one must differ from the old" is a reuse-history rule
+    one entry deep. It is also not a no-op: the row gets a fresh argon2 salt and
+    the bump ends every session, which is a legitimate thing to want — it is
+    "sign me out everywhere" without changing what you have to remember. Erred
+    toward accepting, because the cost of being wrong that way is a user who
+    logs in once more, and the cost the other way is a rule a settled decision
+    forbids, refusing a person at a weighbridge for a reason no screen can
+    explain.
+
+    A WRONG CURRENT PASSWORD IS A PLAIN 400, with no timing equalisation and no
+    disguise. /auth/login collapses its three refusals into one byte-identical
+    answer because an unauthenticated caller must not learn whether a username
+    exists. NOTHING IS LEARNED HERE: the caller already holds a valid token for
+    this exact account, so "this account exists" and "this account is active" are
+    facts they arrived with. What stops somebody with a borrowed unlocked handset
+    is having to supply the old password, and how many times they may try is a
+    WHOLE-SYSTEM gap recorded in OPEN_ITEMS.md — not something to invent at one
+    route, where it would read as handled everywhere.
+
+    THE NEW HASH IS COMPUTED BEFORE THE CONNECTION OPENS; the verify happens
+    inside it. create_user's rule was "no argon2 inside the transaction FOR NO
+    REASON" — here there is a reason for exactly one of the two: the verify needs
+    the row, and doing it in the same transaction as the UPDATE means the hash
+    that was checked is the hash that is being replaced. The other one has no such
+    need and stays outside.
+    """
+    new_hash = await hash_password(body.new_password)
+
+    async with tenant_connection(principal.tenant_id) as conn:
+        # NO hand-written `WHERE tenant_id` (hard rule 2), the doctrine this
+        # module states three times: the RLS policy scopes the row, and the id
+        # comes from the TOKEN rather than from the body, so there is no
+        # predicate here to get wrong and no argument here to get wrong.
+        current = (
+            await conn.execute(
+                text("SELECT password_hash FROM users WHERE id = :id"),
+                {"id": principal.user_id},
+            )
+        ).scalar_one_or_none()
+        # get_principal has already proven this row exists and is active THIS
+        # request; a None here would mean it vanished mid-request, which is not a
+        # client error and must not be dressed up as one.
+        if current is None:  # pragma: no cover - see above
+            raise _not_found("user")
+        if not await verify_password(current, body.current_password):
+            raise _bad_request(
+                "current_password_incorrect",
+                "the current password does not match this account",
+            )
+
+        row = (
+            await conn.execute(
+                text(
+                    "UPDATE users"
+                    " SET password_hash = :ph,"
+                    " token_version = token_version + 1"
+                    " WHERE id = :id"
+                    " RETURNING id, username, token_version"
+                ),
+                {"ph": new_hash, "id": principal.user_id},
+            )
+        ).mappings().one()
+
+    return _session_payload(row)
+
+
+@router.post("/users/{user_id}/password")
+async def reset_user_password(
+    user_id: uuid.UUID,
+    body: AdminPasswordReset,
+    principal: Principal = Depends(require_admin),
+) -> dict:
+    """Set another user's password. ADMIN ONLY.
+
+    D6's route 2, and a SEPARATE ROUTE from the one above rather than a branch
+    inside it. D6 argues that at length: the guard differs, the request body
+    differs, and whose session dies differs, and a single handler deciding all
+    three by inspecting the caller can be wrong in the permissive direction — a
+    staff token that manages to supply a target user id would be one missing `if`
+    away from setting a colleague's password, and the failure would answer 200.
+    Two routes make that a refusal from the router.
+
+    ADMIN, for the same reason every other route here is: this is authority over
+    an account, the same class of thing as locking one or voiding a bill.
+
+    THE TARGET'S SESSIONS DIE; THE CALLER'S DO NOT. That is the whole difference
+    from the route above and it is what makes a reset usable — an owner resetting
+    a dismissed employee's account must not be signed out of their own by doing
+    it. One UPDATE, on one row, named in the path.
+
+    NO CURRENT PASSWORD, and no attempt to invent one. An admin resetting an
+    account does not know its password.
+
+    NO hand-written `WHERE tenant_id`, deliberately (hard rule 2), and this is the
+    route where that doctrine earns its keep: the RLS policy's USING clause
+    already restricts the visible rows to the context tenant, so an admin of
+    tenant A naming a user id in tenant B matches NOTHING, the UPDATE touches no
+    row, and this answers 404. Not 403 — from inside this tenant that row does not
+    exist, and answering "forbidden" would confirm that some other shop has a user
+    with that id, which is what revoke_sessions gives as the reason for the same
+    choice.
+
+    WHETHER AN ADMIN MAY RESET THEIR OWN PASSWORD THROUGH THIS ROUTE IS NOT
+    DECIDED, and no rule is invented here in either direction: D6 records it as
+    open, under "whether an admin may set their OWN password through route 2 as
+    well as route 3, which is a question about overlap and not about privilege".
+    Nothing refuses it, so it works, and it behaves exactly as the route above
+    would — the bump ends the caller's own sessions, because the caller is the
+    target. That is a consequence of the rule already written, not a second one.
+    """
+    new_hash = await hash_password(body.new_password)
+
+    async with tenant_connection(principal.tenant_id) as conn:
+        row = (
+            await conn.execute(
+                text(
+                    "UPDATE users"
+                    " SET password_hash = :ph,"
+                    " token_version = token_version + 1"
+                    " WHERE id = :id"
+                    " RETURNING id, username, token_version"
+                ),
+                {"ph": new_hash, "id": user_id},
+            )
+        ).mappings().first()
+
+    if row is None:
+        raise _not_found("user")
+
+    return _session_payload(row)
