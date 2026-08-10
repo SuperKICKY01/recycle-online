@@ -792,6 +792,41 @@ known rather than undiscovered.
 - **`SRS_MAP.md § 8. Stale references, recorded as stale` "Found, not fixed."**
   holds four more that this file does not duplicate. Read them there.
 
+- **`OPEN_ITEMS.md` corrected ONE of its two "not yet applied" sentences and left
+  the other**, found 2026-08-10. Its `restore_db.py` key-space item still opens
+  *"0009 (committed, NOT YET APPLIED to any cluster) creates directory.shop_codes"*,
+  which is false — the migration was applied to `recycle` on 2026-08-09. `8b17bc2`
+  corrected that file's OTHER instance, the `reconcile.py` predicate item, and a
+  dated amendment roughly forty lines below that opening line already records the
+  migration as applied, unambiguously. **So the correction exists and the opening
+  line was not updated to match it** — which is the reason this is worth writing
+  down rather than a contradiction the file cannot resolve: a reader who reaches
+  the amendment is fine, and a reader who reads the item's first sentence and
+  moves on is not. Owed to a commit that edits `OPEN_ITEMS.md`; deliberately not
+  fixed here.
+
+- **`PROJECT_STATUS.md` says nothing writes to `directory.shop_codes` by any
+  route — "manual, endpoint, script or migration". That became false at
+  `8d395fc`**, which commits `server/scripts/provision_shop.py`: it mints a code
+  and INSERTs it as `recycle_owner`. **What did NOT change with it** — the script
+  has never been run against the live database, `recycle`'s copy of the relation
+  still holds no rows, and P1.3's Criterion B is still outstanding, that commit
+  saying so in its own message. Owed to a commit that edits `PROJECT_STATUS.md`.
+
+- **Three files cite INTO this file by LINE NUMBER — which this file's own
+  *Citations* rule forbids — and the citation had already rotted before this
+  commit.** `OPEN_ITEMS.md:826`,
+  `lessons/a-grant-boundary-belongs-to-a-database-not-a-role.md:24` and the
+  GENERATED `lessons/all-lessons.md:1660` all cite `ARCHITECTURE.md:604-605` for
+  the sentence bounding what `recycle_directory` can reach. That sentence is at
+  **607-609**; 604-605 holds the `provider_users` alternative, a different
+  argument entirely. **Nothing in this commit moved it**: the first line this
+  commit adds is 795, below the whole of it, so the rot is exactly as old as it
+  was and no worse — it is reported here, not caused here. Repairing
+  it means editing a lesson AND regenerating `all-lessons.md`, so it belongs with
+  a lessons commit. The durable repair is the one this file already prescribes at
+  the top — cite a section and a quoted handle, never a position.
+
 ---
 
 ## 13. Corrections to THIS file, appended rather than edited
@@ -803,6 +838,11 @@ measurement is superseded rather than rewritten — the same rule
 evidence that the file was right when written and hide how fast structure
 decays. Three of the four below were found by a session reading this file
 against the code; **the fourth was created by the change that also records it.**
+**That sentence counts the ORIGINAL four and has been appended to twice since —
+there are SEVEN bullets below as of 2026-08-10.** It is left standing rather than
+renumbered, because a count in a preamble is the first thing to rot and the last
+thing anybody re-reads; treat the list, not this paragraph, as the authority on
+its own length.
 
 - **§2.1 and §4 say FIVE migrations, `0001` through `0005`. There are SEVEN.**
   `0006_bills_created_by.py` (2026-08-07) and `0007_users_is_active.py`
@@ -851,6 +891,75 @@ against the code; **the fourth was created by the change that also records it.**
   `db/init/00_init_roles.sql:38-41` and in migration `0009:55-59` and is owed there
   too, which is recorded in `OPEN_ITEMS.md`. Full statement of the trap:
   `lessons/README.md § Lessons` "a-grant-boundary-belongs-to-a-database-not-a-role.md".
+
+- **FOUR sentences in this file say D2's relation and D4's endpoint do not exist.
+  ALL FOUR ARE FALSE as of 2026-08-10**, and they are one claim written four
+  times, which is why they are corrected in one place rather than four. Quoted as
+  the file still states them:
+  - §9 — "These are decisions, not proposals, and none of them is built."
+  - §10's preamble — "None of the four is built. No implementation is designed
+    here."
+  - §10, D2 — "The migration that creates it is committed and NOT YET APPLIED to
+    any cluster, so nothing below describes a database that exists today."
+  - §10, D4 — `recycle_directory` "needs a second engine and a connection string
+    that do not exist anywhere in this repository today".
+
+  **Every one of them was true when written**, which is why none is deleted: §9's
+  at `3e2c996`, D2's at `fc9cd5c`, and §10's preamble and D4's at `c7bc5fe` — the
+  last of those false within the same day it was written.
+
+  **WHAT IS TRUE, PRECISELY AND NO FURTHER:**
+
+  - **The relation is on the live database.** Migration `0009` was **APPLIED TO
+    `recycle` ON 2026-08-09**. `directory.shop_codes` is present with
+    `shop_codes_pkey`, `uq_shop_code` and `ck_shop_code`. It held **no rows** when
+    `recycle` was last measured, on 2026-08-09, and nothing has written to it
+    since — stated with its date rather than in the present tense, because this
+    commit read no database and a row count is exactly the kind of number that
+    moves without anyone editing a file.
+  - **The endpoint is committed, and carries its own proof.**
+    `POST /auth/shop-code` (`1951b19`) is `server/app/directory.py`, registered at
+    `server/app/main.py:104`, unauthenticated, returning the tenant identifier and
+    nothing else behind a `response_model`. Its proof is
+    `server/scripts/prove_shop_code.py`, which refuses to run against the live
+    database.
+  - **The reader role connects from the application's own stack.** `f84b54d` added
+    `DIRECTORY_DATABASE_URL` (`server/app/config.py:67`, no default, failing closed
+    at import) and a SECOND engine, `directory_engine` (`server/app/db.py:50`),
+    opened by the API process and disposed at `server/app/main.py:61`.
+  - **The SECOND of D4's three "NOT decided" bullets is answered by that same
+    commit** — "The mechanics of the second connection: a second engine, where its
+    DSN comes from, and whether the API process holds it or a separate one does" is
+    settled in all three of its parts, above. **The FIRST and THIRD stand**:
+    nothing in the tree limits repeated attempts at any endpoint, and who issues a
+    code for shop number two is still undecided.
+
+  **AND THE SENTENCE THIS CORRECTION MUST NOT BECOME — D4 IS NOT DELIVERED.** A
+  code can now be MINTED: `8d395fc` commits `server/scripts/provision_shop.py`,
+  which issues one as `recycle_owner`, and that commit's own message records that
+  it has never been run against `recycle`. No shop has a code, so this endpoint
+  still answers 404 to every input in production.
+  `ROADMAP.md § P1.3 — What identifies a shop at login` is finished by two
+  criteria; A is satisfied and **B is outstanding**, which is now the entire
+  meaning of "P1.3 is not done" (`PROJECT_STATUS.md § Current phase`
+  "OUTSTANDING: CRITERION B, AND ONLY B."). **D1 and D3 remain wholly unbuilt.**
+  So §9 and §10's preamble are false about D2 and D4 and TRUE about D1 and D3 —
+  half-false, which is the kind of sentence that survives longest, because every
+  reader who checks the half they came for finds it correct.
+
+- **§3's topology picture and §3.1's unauthenticated tier stopped being complete
+  when the second connection landed, and neither is redrawn here.** §3 shows three
+  roles reaching PostgreSQL — `recycle_app`, `recycle_owner` and `postgres` — and
+  there are now FOUR: `recycle_directory` connects from the API process on its own
+  engine. §3.1's "no authentication" row reads "health, and login itself"; that
+  surface is now three routes, the third being `POST /auth/shop-code`. **Neither is
+  a false sentence — both are enumerations that quietly stopped being
+  exhaustive**, the same failure this file already warns about at §4 for relations
+  and at §8.2 for policies, arriving in the two places a reader looks FIRST to
+  learn what talks to what and what can be reached without a token. Recorded
+  rather than redrawn: realigning the ASCII picture produces a diff no reviewer
+  can read as a correction, and that is a change to propose on its own rather than
+  to slip into this one.
 
 **Re-derive before resting a decision on any number in this file.** The count
 that decayed fastest was the migration count, and it decayed twice in one day.
