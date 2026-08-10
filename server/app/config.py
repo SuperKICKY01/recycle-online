@@ -36,9 +36,35 @@ load_dotenv()
 SHOP_TIMEZONE_NAME: str = "Asia/Bangkok"
 SHOP_TIMEZONE: dt.timezone = dt.timezone(dt.timedelta(hours=7), SHOP_TIMEZONE_NAME)
 
-# The app connects ONLY as the RLS-bound application role. It must never use the
-# owner/migration URL at runtime.
+# TWO RUNTIME ROLES, AND NEITHER OF THEM IS THE OWNER. Neither URL below may be
+# the owner/migration URL at runtime.
+#
+# THIS COMMENT READ "The app connects ONLY as the RLS-bound application role"
+# until 2026-08-10, and adding DIRECTORY_DATABASE_URL below made that sentence
+# false. It is corrected here rather than left standing: a comment that has
+# quietly become false is worse than none, because it is the one a reader trusts
+# instead of checking.
+#
+# APP_DATABASE_URL is the RLS-bound application role. EVERYTHING that touches
+# shop data goes through it, and it is the only one that ever carries a tenant
+# context.
 APP_DATABASE_URL: str = os.environ["APP_DATABASE_URL"]
+
+# DIRECTORY_DATABASE_URL is the shop-code directory reader, added 2026-08-10.
+# A SECOND ROLE, not a second spelling of the first. It reads the one relation
+# that has to be readable BEFORE any principal exists, and it is granted nothing
+# else. MEASURED on the live cluster 2026-08-10, as the role itself: SELECT on
+# directory.shop_codes, and no privilege on any relation in schema public, where
+# a read is refused with `permission denied for schema public` -- at the SCHEMA,
+# not at the relation.
+#
+# NO DEFAULT, the same `os.environ[...]` shape as the two values above, and it
+# fails closed at import for the same reason: a URL that can be silently absent
+# turns a boot-time misconfiguration into a request-time one, at the moment
+# somebody is trying to sign in. THE CONSEQUENCE, STATED RATHER THAN DISCOVERED:
+# this key is now REQUIRED, so an existing environment whose .env predates it
+# will not start until it is added. server/.env.example carries the dev value.
+DIRECTORY_DATABASE_URL: str = os.environ["DIRECTORY_DATABASE_URL"]
 
 # NO DEFAULT, deliberately. A fallback secret is a fallback IDENTITY: with a
 # known value anyone can mint a token claiming any tenant_id, and RLS will

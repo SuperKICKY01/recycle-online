@@ -9,6 +9,25 @@ connections. Never a session-level SET.
 RLS policies read `NULLIF(current_setting('app.tenant_id', true), '')::uuid`,
 an unset context matches nothing -> the request fails CLOSED (zero rows). There
 is deliberately no "unset means all tenants" path anywhere.
+
+THE DIRECTORY ENGINE IS THE ONE CONNECTION HERE THAT SETS NO TENANT CONTEXT AND
+IS NOT FAILING CLOSED BY DOING SO, which is why it is spelled out rather than
+left to look like an oversight. `directory_connection()` uses a SEPARATE engine
+bound to a SEPARATE role and never touches app.tenant_id. The question its one
+relation answers is "which tenant?", so a tenant-filtered read of it would be
+readable exactly when it is useless, and with no context set it would fail
+closed to zero rows on every legitimate read.
+
+WHAT CONTAINS THAT ROLE IS THE GRANT, NOT A POLICY -- migration 0009's own
+section heading. Measured on the live cluster 2026-08-10, as the role itself:
+it holds SELECT on directory.shop_codes and no privilege on any relation in
+schema public, where a read is refused with `permission denied for schema
+public`. So the absence of a GUC costs nothing: there is no shop data within
+its reach for a policy to have filtered.
+
+Do NOT hand `directory_engine` to `tenant_connection`, and do not reach for
+`directory_connection()` from a request that already has a principal -- a
+request that knows its tenant must use `engine`.
 """
 from __future__ import annotations
 
@@ -19,9 +38,16 @@ from contextlib import asynccontextmanager
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
-from .config import APP_DATABASE_URL
+from .config import APP_DATABASE_URL, DIRECTORY_DATABASE_URL
 
 engine = create_async_engine(APP_DATABASE_URL, pool_pre_ping=True)
+
+# The shop-code directory reader. A separate engine because it is a separate
+# ROLE -- see the module docstring for why this one sets no tenant context.
+# Nothing in the application opens a connection on it yet; no endpoint resolves
+# a code. Creating the engine makes no connection, so this costs nothing until
+# something uses it.
+directory_engine = create_async_engine(DIRECTORY_DATABASE_URL, pool_pre_ping=True)
 
 
 def constraint_name_of(exc: BaseException) -> str:
@@ -89,4 +115,23 @@ async def tenant_connection(
                     text("SELECT set_config('app.tenant_id', :t, true)"),
                     {"t": str(tenant_id)},
                 )
+            yield conn
+
+
+@asynccontextmanager
+async def directory_connection() -> AsyncIterator[AsyncConnection]:
+    """Yield a connection on the directory engine. NO tenant context is set.
+
+    The omission is the design, not an oversight; the module docstring gives the
+    reason and the measurement behind it. This exists so that the absence of a
+    `set_config` call is a property of a NAMED primitive that says why, rather
+    than something a future caller has to remember not to add.
+
+    It takes no tenant_id and no isolation_level. There is no tenant to pass --
+    resolving one is what the caller is about to do -- and the single relation
+    within this role's reach is read by one statement, so there are no separate
+    reads that could disagree with each other.
+    """
+    async with directory_engine.connect() as conn:
+        async with conn.begin():
             yield conn
