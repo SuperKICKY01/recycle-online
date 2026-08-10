@@ -57,6 +57,77 @@ not read the green as re-run.**
 
 ## Current phase
 
+**`recycle_directory`'s PRIVILEGES MEASURED ON THE LIVE CLUSTER, AND THE SHOP-CODE
+LOOKUP DECIDED. 2026-08-10.** Read-only throughout: no write to any database, no
+endpoint written, nothing under `server/app/` or `server/scripts/` touched. No
+R-number was issued and none was invented — R-numbers are defined in `ROADMAP.md`
+and are the owner's to issue.
+
+**Twenty-four propositions were written down BEFORE the first query ran**, each one
+quoted out of `0009`, `db/init/00_init_roles.sql`, `server/README.md`,
+`ARCHITECTURE.md`, `SRS_MAP.md` or this file, and each phrased so a query could
+refute it. **Twenty-two hold. Two do not**, and both are in `server/README.md`:
+that the migration is applied to no cluster (it is on four databases), and a role
+table that presents RLS as what contains this role.
+
+**THE CONTROL RAN FIRST AND PASSED, WHICH IS WHAT MAKES EVERY REFUSAL AFTER IT
+INFORMATIVE.** As `recycle_directory` itself, a read of `directory.shop_codes`
+returned — count, both columns, and the column list resolved through
+`::regclass`. Only then were the refusals taken. **A refusal produced by a broken
+connection or a missing role looks identical to a refusal produced by a missing
+grant**, and nothing in the error text tells them apart; the control is the only
+thing that separates them, and it is reported first for that reason.
+
+**THE REFUSALS ARE AT SCHEMA LEVEL, NOT RELATION LEVEL, and a design can rest on
+that distinction.** Exactly:
+
+    ERROR:  permission denied for schema public
+    LINE 1: SELECT count(*) FROM public.tenants;
+
+Five more — `users`, `purchase_bills`, `purchase_bill_items`, `alembic_version`,
+`server_clock_watermark` — were **identical in kind**, naming the schema and never
+the relation. A relation-level refusal would mean the role can enter `public` and
+is stopped per table, so every future table would need remembering; a schema-level
+one means it cannot enter at all, and new tables are excluded by default.
+
+**THE CLAIM WAS NOT QUALIFIED BY DATABASE, SO IT WAS TESTED ON EVERY DATABASE THIS
+ROLE CAN CONNECT TO — nine — AND NOT ONLY THE LIVE ONE.** `0009:57-59` says "BY ANY
+PATH" and `00_init_roles.sql:39-41` says "even by accident"; neither says "in
+`recycle`". **The expectation going in was that the scratch copies would be WEAKER**
+— that a database created by restore rather than by the bootstrap script would have
+missed `REVOKE ALL ON SCHEMA public FROM PUBLIC` and left PUBLIC its default
+`USAGE`. **That expectation was wrong.** All nine report `has_schema_privilege(...,
+'public', 'USAGE') = f` and refuse identically, `recycle_restore_scratch` — which
+holds a restore of live data — among them. A claim that survives a test nobody asked
+of it is worth more than one that passes a test designed to pass, and this one was
+not designed to pass.
+
+**WHAT IS NEW HERE AND WHAT WAS ALREADY ON RECORD — separated, because presenting
+the whole of it as new would be false.** The GRANT side was read back after the
+migration and is recorded at `:3191-3192` and `:3508-3510`; today's figures **agree
+with it exactly**, `nspacl` carrying `recycle_directory=U/recycle_owner` and
+`relacl` carrying `recycle_directory=r/recycle_owner`, and that is corroboration
+rather than discovery. **What had never been observed by anyone is the REFUSAL
+side**: no session had connected as this role and been told no. That half is new,
+and so are **five capabilities or locations no file in the repository claims** —
+recorded as five separate entries in `OPEN_ITEMS.md`, with two bounding negatives
+beside them, and not restated here.
+
+**A SEPARATE SURVEY, RUN IN ANOTHER SESSION AND RECORDED SECOND-HAND**, established
+what this repository says about limiting repeated login attempts. It is reported,
+not verified, and is labelled as such in the dated entry below.
+
+**DECIDED, and recorded where this project records settled decisions** —
+`ARCHITECTURE.md § 10. The three settled decisions`, as D4: the shop-code lookup is
+a SEPARATE endpoint and the login body does not change. The reasoning, the two
+things it leaves open, and why the refusal shape is argued rather than inherited are
+there and are deliberately not restated here.
+
+Full evidence in the dated entry `2026-08-10 — recycle_directory's privileges
+measured, and the shop-code lookup decided` at the end of this file. **The
+paragraphs below describe the phases that PRECEDED this one**, newest first, which
+is this section's usual shape.
+
 **MIGRATION 0009 APPLIED TO THE LIVE DATABASE — the first write to `recycle` in
 this whole line of work. 2026-08-09.** No R-number was issued and none was
 invented: R-numbers are defined in `ROADMAP.md` and are the owner's to issue.
@@ -1057,9 +1128,14 @@ against the unfixed code first, and both outputs are in Baseline observations.
   runtime role `recycle_app` is NOSUPERUSER + NOBYPASSRLS and holds
   DML only.
 - **Endpoints** (`server/app/`), in THREE categories, not two. **No
-  authentication at all**: `GET /health` (`main.py:53`), `POST /auth/login`
-  (`main.py:58`) — read off the handlers, neither of which takes a
-  principal. This file used to file both under "open to any signed-in
+  authentication at all**: `GET /health` (`main.py:105`), `POST /auth/login`
+  (`main.py:119`) — read off the handlers, neither of which takes a
+  principal. **Both positions were stale and were re-derived at `8b17bc2` on
+  2026-08-10**; this read `:53` and `:58`, which are `await engine.dispose()`
+  and a blank line. The classification above was and is correct — only the
+  two numbers had rotted, which is the failure mode a position-carrying
+  citation has and a symbol-carrying one does not.
+  This file used to file both under "open to any signed-in
   user", which was wrong in the direction that matters: it described an
   unauthenticated surface as an authenticated one. **Any signed-in user**
   (`Depends(get_principal)`): `GET /whoami`, `GET /products`,
@@ -3545,3 +3621,137 @@ that will ever exist and proven restorable before the migration ran, and
 - **No proof script was run**, and nothing was run on a handset.
 - **The dev cluster is a separate question**: `recycle` is the live database and
   is now at 0009; no other database was migrated.
+
+### 2026-08-10 — recycle_directory's privileges measured, and the shop-code lookup decided
+
+**Read-only throughout.** Every statement executed was a `SELECT` or a psql
+meta-command. No `CREATE`, `ALTER`, `GRANT`, `REVOKE`, migration, proof script or
+password change was run, and nothing under `server/app/` or `server/scripts/` was
+touched. The credential never reached a command line: `pg_hba.conf` carries
+`local all all trust`, so the role was reached over the container's Unix socket
+with no password supplied anywhere.
+
+**BOOT CHECK.** `recycle_pg` `Up 2 days (healthy)` on `5544->5432`. Repo at
+`8b17bc2`, `git status --porcelain` **empty, 0 lines**, before and after. Migration
+head per the files is **0009** — nine files, one linear chain `0001←…←0009`, and no
+file names `0009` as its `down_revision`, so there is a single head — and the live
+database is AT it, neither behind nor ahead.
+
+**THE CLUSTER INVENTORY, AND THE ONE IN THIS FILE AT `§ 2026-08-09 — the directory
+role` IS NOW STALE.** Measured across all nine `recycle*` databases:
+
+| database | alembic_version | schema `directory` |
+|---|---|---|
+| `recycle` | **0009** | yes |
+| `recycle_keyshape_scratch` | 0009 | yes |
+| `recycle_restore_scratch` | 0009 | yes |
+| `recycle_tw20260809_0009fixture` | 0009 | yes |
+| `recycle_clock_scratch` | 0008 | no |
+| `recycle_recon_scratch` | 0008 | no |
+| `recycle_lock_scratch` | 0007 | no |
+| `recycle_users_scratch` | 0007 | no |
+| `recycle_recon_pre0005b` | 0004 | no |
+
+That earlier entry lists `recycle` at 0008 and `recycle_restore_scratch` at 0007,
+and names neither `recycle_keyshape_scratch` nor `recycle_tw20260809_0009fixture`.
+**It is not rewritten** — a dated measurement is superseded rather than edited, the
+rule this file already follows — and it was true when written. The correction lives
+here and in `OPEN_ITEMS.md`. Note that the *last* bullet of that entry's successor,
+"no other database was migrated", remains defensible as scoped to that operation:
+the three other 0009 databases are a 0009-era fixture and restores of 0009 dumps,
+not separate `alembic upgrade` runs. That was not measured today and is not claimed.
+
+**THE ROLE.** `rolsuper f`, `rolinherit t`, `rolcreaterole f`, `rolcreatedb f`,
+`rolcanlogin t`, `rolreplication f`, `rolbypassrls f`, `rolconnlimit -1`,
+`rolvaliduntil` null, `rolconfig {search_path=directory}`. **Zero role memberships
+in either direction** — which closes the third privilege path (direct grant, PUBLIC,
+membership) that a listing of direct grants alone cannot rule out.
+
+**WHAT IT HOLDS.** Every relation in every non-system schema, across all seven table
+privileges, unfiltered — **exactly one row came back**:
+
+    schema    | relname    | relkind | sel | ins | upd | del | trunc | refs | trig
+    directory | shop_codes | r       | t   | f   | f   | f   | f     | f    | f
+
+`nspacl` on `directory` is `{recycle_owner=UC/recycle_owner,recycle_directory=U/recycle_owner}`;
+`relacl` on `shop_codes` is `{recycle_owner=arwdDxt/recycle_owner,recycle_directory=r/recycle_owner}`;
+`nspacl` on `public` is `{recycle_owner=UC/recycle_owner,recycle_app=U/recycle_owner}`
+— no `recycle_directory` entry and no PUBLIC entry. `pg_default_acl` holds **exactly
+one row**. Column ACLs: none. Non-system functions executable: none. RLS on
+`shop_codes`: `relrowsecurity f`, `relforcerowsecurity f`, **0 policies, 0 rows**.
+`pg_catalog` `nspacl` and `information_schema` `nspacl` are both
+`{postgres=UC/postgres,=U/postgres}`, exactly as `0009:64-67` predicted.
+
+**THE CONTROL, REPORTED FIRST.** As the role: `directory.shop_codes` returned its
+count, both columns, and its column list via `'directory.shop_codes'::regclass`. The
+refusals below are therefore about grants and not about a broken session.
+
+**THE REFUSALS.** Six schema-qualified reads of `public` tables, each:
+`ERROR:  permission denied for schema public`. **Schema level, never relation
+level.** Unqualified `SELECT count(*) FROM tenants` gives
+`ERROR:  relation "tenants" does not exist` — no schema, no permission, no
+migration named, which is the designed outcome `00_init_roles.sql:78-86` records.
+`pg_authid` and `pg_shadow` are both refused.
+
+**WHAT IT CAN SEE, and `0009:68-70` is right that this is larger than nothing.**
+Tested as the role: the 12 table names in `public`, the 9 column names of
+`public.users`, and RLS policy expressions in full, e.g.
+`(tenant_id = (NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid)`.
+126 of 140 `pg_catalog` relations are readable. It learns the SHAPE and no CONTENTS.
+
+**TESTED ON EVERY DATABASE, BECAUSE THE CLAIM WAS NOT QUALIFIED BY ONE.** All nine
+`recycle*`: `public` USAGE `f`, every read refused. **The expectation was that the
+scratch copies would be weaker, and it was wrong** — see `§ Current phase`.
+
+**FIVE CAPABILITIES OR LOCATIONS NO FILE IN THIS REPOSITORY CLAIMS** are recorded as
+five separate entries in `OPEN_ITEMS.md`, with two bounding negatives beside them,
+and are not restated here. The one that matters most is not about this role at all:
+**"no `USAGE` on schema `public`" is a property of the DATABASE `recycle`, not of
+the role** — in the `postgres` maintenance database the same role DOES hold `public`
+USAGE. That one is also the lesson this phase owed.
+
+**SECOND-HAND, AND LABELLED AS SUCH — a survey run in a DIFFERENT session, which
+this session did not see and did not verify.** Reported, not measured:
+
+- **Exactly one written passage in this repository addresses limiting repeated login
+  attempts**, and the file it sits in declares in its own words that it records
+  findings only and decides nothing. **That passage is therefore an OBSERVATION —
+  not a requirement, and not a decision.**
+- It exists **in no code and in no schema column**.
+- **Nothing anywhere addresses repeated attempts at any endpoint other than login.**
+  That absence is recorded in those words; it is as much the answer as a passage
+  would have been.
+
+**Its bound, recorded in the same breath.** "One passage" is bounded by what that
+survey opened or reached with its patterns, and a survey reports what it read.
+**The specific bound proposed for this record does not exist and is therefore not
+cited**: a section of `ARCHITECTURE.md` whose title concerns failed attempts was to
+be named as unread, and **there is no such section**. Verified here against that
+file's complete heading list — thirteen `##` sections and their `###`
+subsections — before the bound was written. The nearest two matches are
+`## 7. The offline model: record state and failure class are different axes`, whose
+"failure class" is sync classification and not login attempts, and
+`### D1 — the provider gets a separate seat, not a third role`, which matched only
+because "sepa**rate**" contains the letters. The bound stands without it.
+
+**DECIDED — `ARCHITECTURE.md § 10. The three settled decisions`, D4.** The shop-code
+lookup is a separate unauthenticated endpoint; the login body does not change; it
+returns the tenant identifier and nothing else; it refuses identically whatever the
+cause. Reasoning is there, not here.
+
+**WHAT THIS DOES NOT ESTABLISH.**
+
+- **No endpoint was written and no code path exists.** The decision is a decision.
+- **P1.3's DONE WHEN is untouched** — a login carrying no uuid returning 200.
+- **`TEMPORARY` was measured from the catalogue and NOT exercised**, because
+  creating a temp table is a write and this pass took none.
+- **One count is unreconciled**: `pg_catalog` readability is 126 by two independent
+  `pg_class` definitions (SELECT-only, and any-of-six-privileges — both run, set
+  difference empty), while `information_schema.tables` reported 127 in the role's
+  own session. The extra row was not identified. Nothing above rests on it.
+- **`template0` reports `CONNECT = t` from `has_database_privilege` while
+  `datallowconn = f`** blocks it by a different mechanism. Do not read that cell as
+  reachability.
+- **The second cluster on this box was not enumerated.** `infra-postgres-1` has no
+  `postgres` role (`FATAL: role "postgres" does not exist`, exit 2). It is a
+  different project and not the cluster `.env` names.

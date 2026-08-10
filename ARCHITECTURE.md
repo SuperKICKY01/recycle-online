@@ -527,7 +527,7 @@ help defend them.
   implements a business rule.
 - The eight hard rules, `CLAUDE.md § Hard rules`.
 
-**Settled but recorded here rather than in `CLAUDE.md`** — §10, D1 through D3.
+**Settled but recorded here rather than in `CLAUDE.md`** — §10, D1 through **D4**.
 These are decisions, not proposals, and none of them is built.
 
 **Open, and named as open** (each is somebody's decision, none is designed here):
@@ -545,7 +545,10 @@ These are decisions, not proposals, and none of them is built.
 ## 10. The three settled decisions
 
 Recorded as decided, with the reasoning, because they existed only in conversation.
-**None of the three is built. No implementation is designed here.**
+**None of the four is built. No implementation is designed here.**
+**There are FOUR — D4 was appended 2026-08-10 and the heading was deliberately left
+saying "three"**, because six citations resolve to it by name; the reason is stated
+at D4 itself.
 
 ### D1 — the provider gets a separate seat, not a third role
 
@@ -642,6 +645,92 @@ The current state makes this concrete rather than precautionary:
 at `3babd52`, `git grep -iE "audit_log|audit_trail"` over the tracked non-markdown
 tree returns **exit 1**. Nothing records who changed a price, who retired a product,
 or who signed in. A master-data write leaves the new value and no author.
+
+### D4 — the shop code resolves at a SEPARATE endpoint; the login body does not change
+
+**Added 2026-08-10. The heading above still reads "three" deliberately — it is an
+interface.** SIX citations resolve to it by name — `ROADMAP.md` ×5 and
+`SRS_MAP.md` ×1, all section-only — so renaming it would break every one at once.
+(§9 above also refers to it, in prose the checker does not parse as a citation;
+that reference is a seventh reader and not a seventh citation, and the distinction
+is the point: the checker would have caught six of the seven.) That is the sixth
+mechanism in
+`lessons/README.md § Lessons` "a-check-that-never-went-red-was-never-observed.md" —
+damage propagates OPPOSITE to the edit, and the file you changed is the one place an
+inbound break cannot appear. Appending under an unchanged heading is this file's own
+convention (§13).
+
+`POST /auth/login` keeps the three fields it has today. A second, unauthenticated
+endpoint resolves an eight-character code to a `tenant_id`, **returns that identifier
+and nothing else**, and refuses identically whatever the cause. It reads through
+`recycle_directory` — which needs a second engine and a connection string that **do
+not exist anywhere in this repository today**.
+
+**Reasoning — the invariant protecting login is an ORDER, and a code resolution
+cannot stand inside it.** `server/app/main.py:125` opens the connection from
+`body.tenant_id` BEFORE the user lookup at `:126-134` runs, so RLS filters that
+lookup, and the handler states the consequence in its own comment (`:121-124`): *"a
+username belonging to another tenant is simply invisible here -> there is no
+cross-tenant login path"*. A code resolution necessarily runs BEFORE any tenant is
+known — producing the tenant is what it is for — so it sits outside that protection
+**by construction, not by oversight**. Folding a code into the login body would not
+relocate the protection, it would delete it, and a replacement would have to be
+invented in the same change. A separate endpoint leaves the order intact and confines
+what runs pre-authentication to a relation holding two columns.
+
+**Returning the identifier and nothing else is migration 0009's own argument**, made
+there about COLUMNS rather than about a response, and it carries unchanged:
+
+> THE REASON IS A SECURITY PROPERTY, NOT TIDINESS. Every column here is readable
+> through a path that runs BEFORE ANY PRINCIPAL EXISTS [...] So a `name` column would
+> make every shop's trading name enumerable to anyone who can reach the lookup, and a
+> `created_at` would date every shop's onboarding to the same audience. A code that
+> resolves to a uuid tells an outsider nothing they did not already type at it; a code
+> that resolves to a shop's name tells them who they just found.
+
+A response body has the same audience as a column. This decision **agrees with the
+schema's stated intent rather than arriving at it independently**, which is the part
+worth recording: the relation was designed for this, and the endpoint is not free to
+widen what it discloses.
+
+**The keyspace arithmetic in that same migration is NOT a defence, and is recorded
+here as not one because a later reader will otherwise cite it as though it were.**
+Under the heading `THE ALPHABET IS 31 CHARACTERS, NOT 36`, 0009 states
+`31^8 = 852,891,037,441` against `36^8 = 2,821,109,907,456` and frames it explicitly
+as **a cost paid for legibility** — five confusables removed so that "no support call
+ever turns on whether a character was an I or a 1". A large number is not a rate
+limit. Nothing in this repository limits repeated attempts at any endpoint, so the
+arithmetic bounds guessing per attempt and bounds nothing about attempts.
+
+**The refusal shape needs its own reason and does not inherit one.** The standing
+generic-refusal rule — `lessons/README.md § Lessons` "login-resolves-under-tenant.md",
+extended to a third arm at `server/app/main.py:154-162` — covers login and per-tenant
+identity lookups. But this project decides refusal shape PER ENDPOINT, which is the
+content of `lessons/README.md § Lessons` "403-is-about-what-the-caller-may-do.md":
+the same status carries a different meaning and a different sentence depending on the
+call site, and wording is a function of (code, call site). So the shape here is argued
+rather than inherited. **This endpoint refuses identically for an unknown code, a
+malformed one, and a real code withheld for any reason — and the reason is
+enumeration.** Its caller holds no credential and has not claimed to be anyone, so a
+refusal that distinguishes cases is a free oracle over the shop directory: *does this
+code name a real shop?*, answered for anyone who can reach it. Login's collapse
+protects an account; this one protects the existence of a shop. Different asset,
+separate argument, same shape by coincidence rather than by inheritance.
+
+**NOT decided, named rather than assumed:**
+
+- **Whether this endpoint is protected against repeated attempts.** Nothing anywhere
+  in the tree addresses repeated attempts at any endpoint — see the 2026-08-10 entry
+  in `PROJECT_STATUS.md`, which records that as a second-hand survey result.
+- **The mechanics of the second connection**: a second engine, where its DSN comes
+  from, and whether the API process holds it or a separate one does.
+- **Who issues a code when a shop is onboarded.**
+  `ROADMAP.md § P1.3 — What identifies a shop at login` already records this as
+  undecided, and nothing here changes it.
+
+Measured, at `8b17bc2`: `LoginRequest`'s three fields are at
+`server/app/main.py:29-32` with `tenant_id: uuid.UUID` at `:30`; the tenant context
+opens at `:125`; the user lookup runs at `:126-134`.
 
 ---
 
@@ -746,6 +835,22 @@ against the code; **the fourth was created by the change that also records it.**
   is noted only so the next reader does not treat the row as wholly stale. The
   three columns `users` has gained since `0001` are `token_version` (0005) and
   `is_active` (0007); `full_name` was always there.
+
+- **§10's D2 says `recycle_directory` holds "no `USAGE` on schema `public`" and
+  names no database. That is TRUE of `recycle` and FALSE as a property of the
+  role** — measured 2026-08-10 on the live cluster. The containment was
+  established by `db/init/00_init_roles.sql:101`, which runs after
+  `\connect recycle` at `:95`, so it applies to that database and no other. A role
+  is cluster-wide; a schema `REVOKE` is not. In the `postgres` maintenance
+  database the same role DOES hold `USAGE` on `public` — harmlessly today, because
+  that schema holds zero relations and `CREATE` is `f`, which is luck about content
+  and not a boundary. **D2's conclusion is unaffected**: the shop list still comes
+  from a relation outside the tenant model read by a role that reaches nothing else
+  *in `recycle`*. Only the scope of the sentence was wrong. Appended rather than
+  edited, per this section's rule; the same sentence appears in
+  `db/init/00_init_roles.sql:38-41` and in migration `0009:55-59` and is owed there
+  too, which is recorded in `OPEN_ITEMS.md`. Full statement of the trap:
+  `lessons/README.md § Lessons` "a-grant-boundary-belongs-to-a-database-not-a-role.md".
 
 **Re-derive before resting a decision on any number in this file.** The count
 that decayed fastest was the migration count, and it decayed twice in one day.

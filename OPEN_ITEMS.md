@@ -711,6 +711,98 @@ idea — only that it is unresolved.
 
 ## Code debt found and left in place
 
+*The five entries immediately below were all measured on 2026-08-10, read-only, on
+the live cluster, as part of the `recycle_directory` privilege pass. Each is a
+capability or a location that **no file in this repository asserts**. They are kept
+separate rather than merged because their consequences differ, and one of them is
+not about this role at all.*
+
+- **`recycle_directory` holds `TEMPORARY` on every `recycle*` database, and the
+  passage written to prevent exactly this understatement does not mention it.**
+  `has_database_privilege('recycle_directory', <db>, 'TEMPORARY')` is `t` on all
+  nine, conferred by the PUBLIC entry `=Tc/recycle_owner` in each `datacl`.
+  `0009:62-72` exists specifically to state "the true baseline and not the
+  flattering one" — it names `CONNECT`, and `USAGE` on `pg_catalog` and
+  `information_schema`, and stops. **`TEMPORARY` is a WRITE capability**: the role
+  may create objects in its own `pg_temp` schema and consume disk, which is not
+  something a reader of "reads the shop directory and nothing else"
+  (`server/db/init/00_init_roles.sql:38`) would predict. *Not done:* it was
+  measured from the catalogue and deliberately **not exercised**, because creating
+  a temp table is a write and that pass took none — so the privilege is proven
+  present and its effect is unproven. *Unblocks:* either a
+  `REVOKE TEMPORARY ON DATABASE ... FROM PUBLIC` in a migration
+  (`lessons/README.md § Lessons` "revoke-in-migration.md" applies — it belongs in a
+  migration, not a one-off), or a sentence in `0009`'s baseline paragraph admitting
+  it. Not both, and neither is done.
+
+- **`CONNECT` on `recycle` is held TWICE, and the explicit grant is not what
+  confers it.** `datacl` reads
+  `{=Tc/recycle_owner,recycle_owner=CTc/recycle_owner,recycle_app=c/recycle_owner,recycle_directory=c/recycle_owner}`
+  — the leading `=Tc` is **PUBLIC**, so every role on this cluster already holds
+  `CONNECT` on the live database. `server/db/init/00_init_roles.sql:92-93` grants it
+  again explicitly to `recycle_app` and `recycle_directory`. **Revoking those two
+  explicit grants would remove no access at all.** *Why it matters:* anyone
+  reasoning that a role is confined because it was granted `CONNECT` to one database
+  has the mechanism backwards — `CONNECT` is not a boundary here for any role, and
+  the boundary that does exist is the schema `USAGE`. *Not done:* nothing is broken
+  today and the fix is a `REVOKE ... FROM PUBLIC` whose blast radius is every role
+  and every database on the cluster, which is a decision and not a tidy-up.
+
+- **The role can connect to eight databases besides the live one, including a
+  restore of live data — and one of those carries an explicit grant no file
+  accounts for.** All nine `recycle*` databases are reachable by the same PUBLIC
+  `=Tc` mechanism. **`recycle_restore_scratch` additionally carries
+  `recycle_directory=c/recycle_owner` in its `datacl`**, an explicit `GRANT CONNECT`
+  that appears in no migration, in no `db/init` file and in no document; the
+  bootstrap script grants on `recycle` only. *Measured, and this is the reassuring
+  half:* containment HOLDS in all nine — `public` `USAGE` is `f` and every read of
+  `public.tenants` is refused at the schema — so this is **reach, not exposure**.
+  *Not done:* the origin of that grant is unexplained. It was presumably issued by
+  hand while building the fixture, but nothing records it, and an unexplained grant
+  on a database holding real money data is worth an explanation or a revoke.
+
+- **"No `USAGE` on schema `public`" is a property of the DATABASE `recycle`, not a
+  property of the role — and in the `postgres` database the same role DOES hold
+  it.** This is the entry that is not about `recycle_directory` at all.
+  `server/db/init/00_init_roles.sql:101` runs `REVOKE ALL ON SCHEMA public FROM
+  PUBLIC` **after** `\connect recycle` at `:95`, so it only ever applied to that one
+  database. Measured in `postgres`: `has_schema_privilege(..., 'public', 'USAGE')`
+  is **`t`**, with `nspacl` at the PostgreSQL 15+ default
+  `{pg_database_owner=UC/pg_database_owner,=U/pg_database_owner}`. *The hole has
+  nothing behind it today* — that schema holds **0 relations**, and 0 readable — and
+  `CREATE` is `f`, so no permanent object can be added. *Why it is recorded anyway:*
+  **three** files state the no-`USAGE` property as though it travels with the role —
+  `server/db/init/00_init_roles.sql:38-41`, migration `0009:55-59`, and
+  `ARCHITECTURE.md:604-605`. It does not. Any new database on this cluster starts
+  with PUBLIC holding `USAGE` on its `public` schema unless something revokes it,
+  and the only thing that ever revokes it is a script that runs on an empty data
+  directory. *Partly addressed in the commit that records this:* `server/README.md`
+  was a FOURTH site and now names the database; `ARCHITECTURE.md` carries an
+  appended correction in its §13 rather than an edit to D2, per that section's own
+  rule. **The two `server/` sources are NOT corrected** — one is an applied
+  migration and one is the bootstrap script, and changing either is a separate
+  decision rather than a documentation fix. *Unblocks:* a `CANNOT_SEE` entry on
+  `reconcile.py`'s S4, whose subject is the cluster, and a decision about whether
+  the revoke belongs in a migration so that it travels with the schema.
+
+- **`recycle_directory`'s `search_path` is set cluster-wide, not per database, which
+  widens the gap already recorded under "Nothing enforces that `recycle_directory`'s
+  `search_path` names the schema migration 0009 creates".** `pg_db_role_setting`
+  holds exactly one row and its `setdatabase` is `0` — `<ALL DATABASES>`. So
+  `search_path=directory` applies in all **twelve** databases on this cluster,
+  including the five `recycle*` below 0009 plus `postgres` and `template1`, none of
+  which has a schema called `directory`. *What changes:* that entry describes the
+  failure as reachable on a downgraded database. It is reachable on **seven**
+  databases right now, and the error names no schema, no permission and no
+  migration in every one of them. *Not done:* S4 still checks the VALUE of the
+  setting and never whether the schema exists; that half is unchanged.
+
+*Two negatives from the same pass, recorded because they bound the claims above
+rather than extend them: the role holds **zero role memberships in either
+direction**, which closes the inherited-privilege path a grant listing cannot rule
+out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68-70`'s
+"it can enumerate the SHAPE" — that reach stops short of credentials.*
+
 - **A red build still overwrites `dist/`, and the only thing between that
   and RUNNING it is the `&&` in an npm script.**
   `mobile/tsconfig.node.json` does not set `noEmitOnError` (read
@@ -1834,6 +1926,24 @@ or from a plausible-sounding summary.
   question, and there is no billing anywhere in this system yet.
 
 ## Documentation
+
+- **The cluster inventory in `PROJECT_STATUS.md`'s `2026-08-09 — the directory role`
+  entry is STALE, and is deliberately not being rewritten.** It records
+  `alembic_version` in `recycle` as **0008** and `recycle_restore_scratch` as
+  **0007**, and names neither `recycle_keyshape_scratch` nor
+  `recycle_tw20260809_0009fixture`. Measured 2026-08-10: `recycle` is **0009**,
+  and **four** databases carry schema `directory` — `recycle`,
+  `recycle_keyshape_scratch`, `recycle_restore_scratch`,
+  `recycle_tw20260809_0009fixture`. The other five (`recycle_clock_scratch` 0008,
+  `recycle_recon_scratch` 0008, `recycle_lock_scratch` 0007,
+  `recycle_users_scratch` 0007, `recycle_recon_pre0005b` 0004) agree with what that
+  entry says. *Why it is not edited:* a dated measurement is superseded rather than
+  rewritten — the rule that file already follows — and it was true when written.
+  The corrected table lives in the `2026-08-10` entry. *What this queue entry is
+  for:* so that a reader who reaches the older entry first learns it has been
+  superseded, which the older entry cannot tell them itself. *Not done:* nothing
+  cross-links dated entries in that file, and building that is a bigger change than
+  this finding justifies.
 
 - **`SRS_MAP.md`'s "Of the 34 `tenant_connection(` call sites in
   `server/app/`" is UNVERIFIED.** The line beneath it was corrected by the

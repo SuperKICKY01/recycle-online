@@ -451,7 +451,11 @@ one. *What has since been decided, and is recorded in
 seat rather than a third tier on the existing roles (D1); cross-tenant reads stay a
 per-tenant loop with no `BYPASSRLS` role (D2); and the shop list that loop iterates
 comes from a dedicated relation outside the tenant model, whose migration is
-committed and **NOT YET APPLIED to any cluster**. *What is still unbuilt:* all of
+committed and **APPLIED TO THE LIVE DATABASE `recycle` ON 2026-08-09** — this read
+**"NOT YET APPLIED to any cluster"** until 2026-08-10, when the cluster was measured
+and the relation was found on four databases. This was the FIFTH file carrying that
+sentence; `8b17bc2` corrected three in `ROADMAP.md` and `server/README.md` was the
+fourth. *What is still unbuilt:* all of
 it — no provider seat, service or endpoint exists, and the sentence above about
 there being no way in remains true of the running system.
 **The survey believed an earlier `ROADMAP.md` had recorded a decision

@@ -348,11 +348,17 @@ implement it, so that a person can name their shop without typing a uuid.
 
 **Depends on:** D4, which is now answered — a shop code in `directory.shop_codes`.
 The dependency was real rather than a preference: the alternative is a screen that
-cannot be built, because `main.py:26` requires a uuid and nothing on a login form
-can derive one — usernames are unique per shop (`0001_initial_schema.py:104`), so
+cannot be built, because `LoginRequest.tenant_id` requires a uuid and nothing on
+a login form can derive one — usernames are unique per shop
+(`0001_initial_schema.py:104`), so
 a username does not identify a tenant. It is before P1.7 because the screen's
 fields are decided by the answer, and before the pilot's rows exist because it is
 a schema change (D10).
+*(That citation read `main.py:26` until 2026-08-10 and had rotted — `:26` is
+`from .users import router as users_router`. The requirement is at
+`server/app/main.py:30`, re-derived at `8b17bc2`. It is written as a SYMBOL here
+because a citation carrying a POSITION rots and one naming the file and the symbol
+does not — the rule this file's own queue entry records.)*
 
 **Where this step now stands.** The SCHEMA half is written AND APPLIED: the
 migration creating the relation, its constraints and its reader role was
@@ -360,12 +366,24 @@ migration creating the relation, its constraints and its reader role was
 YET APPLIED to any cluster" until then. **THAT DOES NOT ADVANCE THIS STEP'S DONE
 WHEN, which is unchanged below**: P1.3 is finished by a login that carries no
 uuid returning 200, not by a migration. The rest of the step is untouched — the
-server change is not written, and this file says nothing about what the login
-endpoint will do
-because that is not decided. Two things are worth naming as absent rather than
+server change is not written.
+
+**WHAT THE ENDPOINT WILL DO IS NOW DECIDED — 2026-08-10.** This passage read "this
+file says nothing about what the login endpoint will do because that is not decided"
+until then, and that sentence is now false. The decision is recorded at
+`ARCHITECTURE.md § 10. The three settled decisions` as D4, and is deliberately NOT
+restated here: **the login body does not change**, the code resolves at a separate
+unauthenticated endpoint returning the tenant identifier and nothing else, refusing
+identically whatever the cause. **THIS STEP'S DONE WHEN IS UNCHANGED** — a decision
+is not a login, and P1.3 is still finished by the observed 200 below.
+
+Two things are still worth naming as absent rather than
 assumed: **nothing writes to that relation today**, and **who issues a code when a
 new shop is onboarded is undecided** — there is no provisioning path, by any
-route, manual or otherwise.
+route, manual or otherwise. Two more, added by D4: **whether the endpoint is
+protected against repeated attempts is undecided**, and the **second connection it
+requires does not exist** — no `recycle_directory` DSN is present anywhere in the
+tree.
 
 **Unblocks:** P1.4, P1.5, P1.7, P1.14.
 
