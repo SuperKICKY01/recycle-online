@@ -19,13 +19,54 @@ idea — only that it is unresolved.
 
 ## Blocking one real paying shop
 
-- **NOBODY CAN ISSUE A SHOP CODE, and as of 2026-08-10 that is the ONLY thing
-  standing between P1.3's two criteria.** `POST /auth/shop-code` is built and
-  proven (`1951b19`), and it reads a relation that **nothing writes to by any
-  route** — no endpoint, no script, no migration, no manual path. The relation is
-  empty on the live database, so in production the endpoint returns 404 for every
-  input. It is not broken; it has nothing to resolve. **This is the door with no
-  key**, and it is the answer to "why does the thing we just built not work".
+- **NO STAFF ACCOUNT EXISTS AND THERE IS NO WAY TO CREATE ONE — measured
+  2026-08-10, not inferred.** The API declares **29 paths**; under `/users` there
+  is only `GET /users` and `POST /users/{user_id}` `activate` / `deactivate` /
+  `revoke-sessions`. **No create-user route and no password-change route exists**,
+  so an admin holding a valid token cannot bring a staff account into being, and
+  the first admin of the pilot shop is the only credential that shop has.
+  *Not done:* P1.5. Its text said an admin creates one account per staff member;
+  that sentence is corrected in `ROADMAP.md` and its DONE WHEN is untouched.
+  *Unblocks:* a create-user endpoint under the admin gate, writing into `users`
+  under the caller's own tenant context, plus a way to set a first password.
+  **THE BOUND TRAVELS WITH THE FINDING**: the endpoint negative is authoritative
+  because it comes from the schema the app publishes, but the companion survey of
+  which writers reach `tenants` at all was run over RAW-SQL SPELLINGS, so its
+  answer is **three sites FOUND, not three proven to be all** — an ORM call or a
+  differently-spelled statement would not have matched it.
+
+- **NOTHING HAS SIGNED IN FROM A HANDSET SINCE THE SHOP EXISTED.** The pilot shop
+  on the dev database has an admin and a code, and no phone has ever presented
+  either. P1.5's DONE WHEN wants a first admin AND a staff account both signing in
+  from a handset; P1.3's Criterion A was satisfied over loopback HTTP by a proof,
+  not by a device. *Not done:* no device pass has been run against the provisioned
+  shop. *Unblocks:* nothing until there is an installable build and a reachable
+  server, so this is bounded by R3 and R5 rather than by the accounts.
+
+- **THE BELOW-LINE VOWEL CLASS IS UNTESTED BY THE ENCODING MEASUREMENT.** The
+  2026-08-10 five-layer check used a name carrying above-line vowels (U+0E34,
+  U+0E35) and a thanthakhat (U+0E4C) but **no U+0E38/U+0E39/U+0E3A**, so nothing
+  is known about that class through those layers. It is very unlikely to differ —
+  they are ordinary three-byte UTF-8 sequences in the same block — but "unlikely"
+  is not "measured", and the whole value of that round was refusing to accept a
+  rendering in place of bytes. *Not done:* no name exercising it has been sent
+  through. *Unblocks:* one extra control name the next time anything is
+  provisioned, at the cost of one more tenant row.
+
+- **A SHOP CODE CAN NOW BE ISSUED — BY A SHELL SCRIPT, NOT BY THE RUNNING
+  SYSTEM.** This entry read "**NOBODY CAN ISSUE A SHOP CODE**… it reads a relation
+  that **nothing writes to by any route** — no endpoint, no script, no migration,
+  no manual path. The relation is empty on the live database, so in production the
+  endpoint returns 404 for every input… **This is the door with no key**" until
+  2026-08-10. **Two of those clauses moved and one did not.** `8d395fc` committed
+  `server/scripts/provision_shop.py`, which mints a code and INSERTs it as
+  `recycle_owner`, and it was run against `recycle` that day: the pilot shop
+  there holds `R6VD7RAC`, so the relation is no longer empty on the dev database.
+  **NO ENDPOINT WRITES IT AND NO MIGRATION DOES**, which is the clause that has
+  not moved — the running system still cannot give a shop a code, only an
+  installer at a shell can. And `recycle` is the DEV database
+  (`ARCHITECTURE.md § 10. The three settled decisions` D5), so **in PRODUCTION —
+  which does not exist yet — the endpoint would still resolve nothing.**
   *Not done:* who issues a code when a shop is onboarded is undecided — whether
   the provider service mints it, whether it is generated at tenant creation, and
   what happens if a shop loses its slip are all open, and none is settled by the
@@ -823,7 +864,9 @@ not about this role at all.*
   `CREATE` is `f`, so no permanent object can be added. *Why it is recorded anyway:*
   **three** files state the no-`USAGE` property as though it travels with the role —
   `server/db/init/00_init_roles.sql:38-41`, migration `0009:55-59`, and
-  `ARCHITECTURE.md:604-605`. It does not. Any new database on this cluster starts
+  `ARCHITECTURE.md:609-611` (re-derived 2026-08-10; it read `:604-605`, which had
+  rotted, and `:607-609` was itself stale within the same round). It does not.
+  Any new database on this cluster starts
   with PUBLIC holding `USAGE` on its `public` schema unless something revokes it,
   and the only thing that ever revokes it is a script that runs on an empty data
   directory. *Partly addressed in the commit that records this:* `server/README.md`
@@ -1144,8 +1187,10 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   where no single proof file owns it. Whoever builds this should know the
   analysis established a SHAPE and observed nothing.
 - **`restore_db.py` will FAIL a byte-correct restore the moment migration
-  0009 is applied, and two proofs go red with it.** 0009 (committed, NOT
-  YET APPLIED to any cluster) creates `directory.shop_codes`, the first
+  0009 is applied, and two proofs go red with it.** 0009 (committed, and
+  this read "NOT YET APPLIED to any cluster" until 2026-08-10 — it was
+  **APPLIED TO `recycle` ON 2026-08-09** and is now on four databases)
+  creates `directory.shop_codes`, the first
   relation outside schema `public`, and the backup/restore pair is
   asymmetric about schemas in a way nothing else is. Mechanism, end to
   end: `server/scripts/backup_db.py:436-440` invokes `pg_dump` with no

@@ -21,7 +21,7 @@ state its containment as a property of the role:
 - `server/migrations/versions/0009_directory_shop_codes.py:55-59` — "recycle_directory
   has NO USAGE on schema public [...] cannot reach tenants, users, purchase_bills or
   any other business table **BY ANY PATH**".
-- `ARCHITECTURE.md:604-605` — "holding no `USAGE` on schema `public` — which can
+- `ARCHITECTURE.md:609-611` — "holding no `USAGE` on schema `public` — which can
   therefore reach the shop list **and nothing else**."
 
 None of the three names a database. **The property was established by one

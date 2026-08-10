@@ -57,6 +57,76 @@ not read the green as re-run.**
 
 ## Current phase
 
+**THE PILOT SHOP IS PROVISIONED ON THE DEV DATABASE, AND THAI SURVIVED FOUR OF
+FIVE ENCODING LAYERS. 2026-08-10.** `provision_shop.py` was run against
+`recycle` for the first time. No R-number was issued; R-numbers are defined in
+`ROADMAP.md` and are the owner's to issue.
+
+**WHAT NOW EXISTS IN `recycle` THAT DID NOT.** Two tenants, two users and two
+shop codes, on top of the two seed fixtures:
+
+| tenant | name | users | code | what it is |
+|---|---|---|---|---|
+| `982d76af-dd35-4c46-a54c-f087c39b92c8` | บางกอก สเกลล์ รีไซเคิล | `admin` | **`R6VD7RAC`** | **the owner's shop** |
+| `a45432ea-eda2-41f3-a091-dea5c3a10447` | `ZZ-ENCODING-CONTROL-DO-NOT-USE` | `zz_control_admin` | `VRG5QWBU` | **the ASCII control** |
+| `1111…1111` / `2222…2222` | Shop A / Shop B | 2 each | — | `seed_dev.py` fixtures |
+
+**`ZZ-ENCODING-CONTROL-DO-NOT-USE` IS NAMED HERE ON PURPOSE.** It was created by
+this session, by the same script and down the identical path, so that the Thai
+result at every layer could be read against a name that cannot be mis-encoded.
+It is not a shop, it is an instrument, and its removal is an open question for
+the owner. A row that explains itself only inside the database is a row the next
+reader finds and cannot place.
+
+**THE ENCODING MEASUREMENT, WHICH IS THE REUSABLE PART.** Five layers, expected
+bytes fixed ONCE before the write from a file that never crossed a shell:
+argv into the script, the row written to and read back from Postgres, the `COPY`
+block inside the `pg_dump` body, and that row again after a restore — **all four
+that PERSIST the name were byte-exact UTF-8. The one layer that mangled it was
+stdout**, and stdout persists nothing.
+**THE LAYER THAT CORRUPTS IS THE ONLY LAYER A PERSON CHECKS BY EYE, AND THE FOUR
+THAT MATTER ARE ONES NOBODY SEES.** Anyone judging this by looking at the console
+would have concluded the opposite of the truth in both directions: the output
+looked right, and there would have been no reason to check the four that were.
+**What actually happens is not corruption**: Python encodes stdout as CP874 on
+this box, CP874 represents every character in that name, so nothing is lost — the
+bytes are simply not UTF-8, and anything decoding that stream as UTF-8 gets
+mojibake. The full form is in `CLAUDE.md § Machine footguns`, appended to the
+codepage entry it extends rather than restating it.
+**The ASCII control is what makes that readable** — it matched at every layer
+INCLUDING stdout, so the Thai mismatch there is a property of non-ASCII text and
+not of a broken comparison. Two bounds: the stdout figure is a PROXY, and the
+name carries above-line vowels and a thanthakhat but no below-line vowel, so
+that class is untested.
+
+**THE FIXTURES WERE PROVEN UNCHANGED BY ARTEFACT AGAINST ARTEFACT**, not by a
+re-read compared with a memory: the `COPY public.tenants` rows for Shop A and
+Shop B are byte-identical in the pre-provisioning dump and the post-provisioning
+dump, `created_at` included.
+
+**THE SECOND RUN REFUSED AND WROTE NOTHING**, and the no-write is counted rather
+than trusted: 4 / 6 / 2 immediately before and 4 / 6 / 2 immediately after.
+
+**TWO BACKUPS, BOTH KEPT.**
+`recycle_20260810T090615Z_at-0009-pre-provisioning` — taken before any write,
+its schema version read as `0009` out of the dump's own body rather than off its
+label, and proven restorable (`RESTORE_EXIT=0`, every want/got row matching).
+`recycle_20260810T093442Z_at-0009-post-provisioning` — taken after, 850 rows,
+and the source of layers three and four.
+
+**NO ENDPOINT CREATES A USER AND NONE CHANGES A PASSWORD.** The API declares 29
+paths; under `/users` there is only `GET /users` and `POST /users/{user_id}`
+`activate` / `deactivate` / `revoke-sessions`. **The bound belongs with the
+finding, not under it:** that negative is authoritative for ENDPOINTS because it
+comes from the schema the app itself publishes, but the companion survey — which
+writers reach `tenants` at all — was run over RAW-SQL SPELLINGS, so its answer is
+**three sites FOUND, not three sites proven to be all**; an ORM call or a
+differently-spelled statement would not have matched.
+
+Full evidence in the dated entry `2026-08-10 — the pilot shop provisioned, and
+the one layer of five that mangles` at the end of this file. **The paragraphs
+below describe the phases that PRECEDED this one**, newest first.
+
 **P1.3's CRITERION A IS SATISFIED: THE CHAIN CLOSED IN ONE EXECUTION.
 2026-08-10, `b22d449`.** Test-only — no endpoint, request model, login handler,
 schema or migration changed, and `recycle` was not written to. No R-number was
@@ -167,11 +237,13 @@ declare `/auth/shop-code` before any assertion runs.** P2 is additionally pinned
 to this endpoint's own refusal text, so deleting the route reddens it.
 
 **THE DOOR HAS NO KEY, and this is the answer to "why does the thing we just
-built not work".** Nothing writes to `directory.shop_codes` by any route —
-manual, endpoint, script or migration. **In production this endpoint returns 404
-for every input, and will until somebody can issue a code.** That is not a defect
-in it; it is P1.5, and it is now the only thing standing between the two criteria
-below.
+built not work".** This read "Nothing writes to `directory.shop_codes` by any
+route — manual, endpoint, script or migration" until 2026-08-10, and **the
+script half became false the same day**: `8d395fc` committed
+`server/scripts/provision_shop.py`, which mints a code and INSERTs it as
+`recycle_owner`. **No ENDPOINT writes it and no migration does**, which is the
+half that has not moved. The door has a key now, and the key is a shell script an
+installer runs — not something the running system can do for itself.
 
 **P1.3's DONE WHEN WAS REWRITTEN, AND THE REASON IS CHECKABLE.** It demanded a
 `POST /auth/login` carrying **no uuid** returning 200. D4 decided login does not
@@ -4127,3 +4199,97 @@ separately rather than as one reassuring sentence.
 - **The proof asserts one thing Criterion A does not require** — A5, the
   authenticated endpoint's refusing half. Whether that belongs in the criterion
   or stays as extra rigour is the owner's call and is queued.
+
+### 2026-08-10 — the pilot shop provisioned, and the one layer of five that mangles
+
+**`provision_shop.py` run against `recycle` for the first time**, with
+`--yes-this-is-the-live-database`, which is the mechanism the script itself
+defines: it compares `--database` against the database named in
+`APP_DATABASE_URL` — read from configuration, not hardcoded, so the guard cannot
+quietly stop guarding if a deployment renames the database — and requires that
+explicit long flag. The admin password came from `PROVISION_ADMIN_PASSWORD` in
+the environment and appears in no output and on no command line.
+
+**THE ORDER WAS THE POINT.** A backup was taken and PROVEN RESTORABLE before
+anything was written, and the command-line hop was measured before the write
+rather than after. These rows cannot be deleted and a shop code cannot be
+reissued, so a mangled name would have been permanent. That rule is now in
+`CLAUDE.md § Workflow`.
+
+**WHAT LANDED.** Tenant `982d76af-dd35-4c46-a54c-f087c39b92c8`, name 62 bytes /
+22 codepoints, `created_at 2026-08-10 09:32:06.883251+00`; user
+`35770909-1393-4b8c-b3e9-0feeb6c9ae50`, username `admin`, role `admin`,
+`is_active t`, `token_version 1`, password hash prefixed `$argon2id`; code
+**`R6VD7RAC`**. Resolved as `recycle_directory`: `R6VD7RAC` ->
+`982d76af-…-f087c39b92c8`, which is the shape `POST /auth/shop-code` consumes.
+Counts moved 2/4/0 -> 4/6/2 — **two each, not one**, both increments accounted:
+the owner's shop and the ASCII control tenant the comparison required.
+
+**THE FIVE LAYERS, HEX AGAINST AN EXPECTED VALUE FIXED ONCE.** Expected was
+established from a file written by the editor, never crossing a shell:
+`e0b89ae0b8b2…e0b8a5`, 62 bytes.
+
+| layer | Thai | ASCII control |
+|---|---|---|
+| argv into the script | match | match |
+| written to and read back from `recycle` | match, 22 chars / 62 bytes | match |
+| **stdout as the script printed it** | **MISMATCH — `bad2a7a1cda1…`, 22 bytes** | **match** |
+| the `COPY` block in the dump file | match | match |
+| the same row after a restore | match | match |
+
+Layers one, two, four and five were compared by paths a console cannot touch:
+`encode(convert_to(name,'UTF8'),'hex')` computed server-side, and the dump read
+in BINARY and never decoded.
+
+**THE FIRST AND ONLY LAYER TO DIFFER IS STDOUT, AND WHAT THE BYTES BECAME IS THE
+USABLE PART.** Python reports `sys.stdout.encoding=cp874` and
+`locale.getpreferredencoding(False)=cp874` on this box. It encoded the 22
+characters as 22 single-byte CP874 codes — `บ`->`ba`, `า`->`d2`, `ก`->`a1`,
+`์`->`ec`, `ี`->`d5`, `ิ`->`d4`. **CP874 represents every character in that name,
+so NOTHING IS LOST**: no error, no `?????`, no mojibake, and it renders correctly
+wherever anyone looks at it. It breaks only when something downstream decodes
+that stream as UTF-8. **The layer that mangles is the only layer a person checks
+by eye, and the four that matter are ones nobody sees.**
+
+**THE CONTROL IS WHAT MAKES THAT READABLE.** An ASCII-only name went down the
+identical path in the same round and matched at EVERY layer including stdout, so
+the Thai mismatch there is a property of non-ASCII text rather than of a broken
+comparison. **Two bounds.** The stdout figure is a PROXY — the same interpreter
+writing the same string to a redirected stream, not the captured bytes of the
+original run, which cannot be recovered from where the reader sits. And the name
+carries above-line vowels (U+0E34, U+0E35) and a thanthakhat (U+0E4C) but **no
+below-line vowel**, so that class was not exercised.
+
+**THE FIXTURES, PROVEN UNCHANGED ARTEFACT AGAINST ARTEFACT.** The
+`COPY public.tenants` rows for Shop A and Shop B are byte-identical in
+`recycle_20260810T090615Z_at-0009-pre-provisioning` and
+`recycle_20260810T093442Z_at-0009-post-provisioning`, `created_at` of
+`2026-08-02` included. Not a re-read weighed against a memory.
+
+**THE SECOND RUN REFUSED**, naming the one-code-per-shop rule and saying nothing
+was written; **counted either side rather than believed**: 4/6/2 before, 4/6/2
+after.
+
+**BACKUPS, BOTH KEPT.** `…090615Z_at-0009-pre-provisioning`, its version read as
+`0009` from the dump body at `recycle.sql:331` rather than off its label, and
+restored green before any write. `…093442Z_at-0009-post-provisioning`, 850 rows,
+restored into the default scratch target for layer five.
+
+**WHAT THIS DOES NOT ESTABLISH.**
+
+- **`recycle` IS THE DEV DATABASE AND STAYS DEV.** Production does not exist and
+  will be created fresh when hosting is chosen, so this shop, this admin and
+  `R6VD7RAC` are discarded with this database. **Nobody should print a slip from
+  that code.** Recorded as D5 in `ARCHITECTURE.md § 10. The three settled decisions`.
+- **THE FIRST STEP TOWARD A PAYING SHOP IS NOT CLOSED BY THIS RUN.** It is a test
+  of the script under the most realistic conditions available today. P1.3's
+  Criterion B is still outstanding, because a real shop is one on production.
+- **P1.5 IS NOT SATISFIED.** One admin exists and no staff account does, nothing
+  signed in from a handset, and **there is no endpoint by which an admin could
+  create one** — 29 declared paths, none of them a create-user or password-change
+  route. `ROADMAP.md` P1.5 said an admin creates one account per staff member and
+  is corrected in this change.
+- **The user-writer survey's bound travels with it:** the endpoint negative comes
+  from the published schema and is authoritative for endpoints, but the survey of
+  which writers reach `tenants` was run over raw-SQL spellings, so it is three
+  sites FOUND rather than three proven to be all.

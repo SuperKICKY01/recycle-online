@@ -87,6 +87,47 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   text by eye out of a console or an unpinned pipe.
   → `lessons/console-is-not-the-observation.md`
 
+  **THE SAME CODEPAGE, THE OPPOSITE DIRECTION — and this half LOSES
+  NOTHING, which is exactly why it is harder to see.** The paragraph
+  above is about a READER decoding UTF-8 as CP874: visible mojibake,
+  and it accuses the data. This half is about a WRITER. Python on this
+  box ENCODES its output as CP874 — measured 2026-08-10,
+  `sys.stdout.encoding=cp874` and
+  `locale.getpreferredencoding(False)=cp874` on a redirected non-tty
+  stream — so a Thai name printed by a script and captured to a file
+  or a pipe arrives as **22 bytes where UTF-8 needs 62**, hexing as
+  `bad2a7a1cda1…` and not `e0b89ae0b8b2…`. **CP874 represents every
+  character in that name, so nothing is lost**: no error, no `?????`,
+  no mojibake, and it renders perfectly wherever you look at it. It
+  breaks only when something downstream decodes that stream as UTF-8.
+
+  IT LIES BY BEING CORRECT ON THE ONE LAYER ANYONE INSPECTS. Measured
+  across five layers of the provisioning path the same day — the
+  command-line argv hop, the row written to and read back from
+  Postgres, the `COPY` block inside the `pg_dump` body, and that row
+  again after a restore — **all four layers that PERSIST the name were
+  byte-exact UTF-8, and the only layer that re-encoded was stdout.**
+  The layer that mangles is the one a person checks by eye; the four
+  that matter are ones nobody sees. Judging by the console would have
+  given the opposite of the truth in BOTH directions: the output
+  looked right, and there would have been no reason to check the four
+  that were.
+
+  Instead: never compare a name by what a program PRINTED. Take hex
+  from the authority — `encode(convert_to(col,'UTF8'),'hex')` computed
+  server-side, or the dump read in binary — against an expected value
+  fixed ONCE, before the write, from a source that never crossed a
+  shell. Pair it with an ASCII control down the identical path: the
+  ASCII name matched at every layer INCLUDING stdout, and that is the
+  only reason the Thai mismatch there reads as a property of
+  non-ASCII text rather than of a broken comparison. Two bounds, so
+  the measurement is not over-trusted: the stdout figure is a PROXY,
+  the same interpreter writing the same string to a redirected stream
+  rather than the captured bytes of the original run, which cannot be
+  recovered from where the reader sits; and the name carried
+  above-line vowels and a thanthakhat but NO below-line vowel, so that
+  class is untested.
+
 - **A non-ASCII character in `.ps1` SOURCE breaks the program before
   it runs, and the 874 entry above does NOT cover this.** That one is
   about DATA — Thai read through a console or an unpinned pipe. This
@@ -414,6 +455,23 @@ false pass and a red run into a confidently wrong cause.
 - Do not commit until the owner confirms.
 - applied ≠ verified: a change is done only when the real path has
   been run (server: actual HTTP request; not "it should work").
+- **WHEN THE WRITE CANNOT BE UNDONE, MEASURE WHAT YOU ARE ABOUT TO
+  WRITE BEFORE WRITING IT — not afterwards.** Afterwards is the
+  normal order and it is right almost everywhere, because almost
+  everything can be corrected. Some things cannot: hard rule 5 forbids
+  deleting a transaction, a shop code is immutable once issued because
+  it lives on printed slips this system never sees again, and a row
+  written into a database somebody else is about to depend on is not
+  yours to take back. For those, a wrong value is permanent, so the
+  measurement has to come first or it is only an autopsy.
+  EARNED 2026-08-10: the shop name for the pilot is Thai, and the
+  command-line hop into the script was measured — argv hexed and
+  compared against an expected value fixed from a file — BEFORE the
+  provisioning ran. It matched, so nothing came of it. Had it not, the
+  alternative was a permanently mangled name in a row that cannot be
+  deleted, discovered by the check that would otherwise have run one
+  command later. The cost of measuring first is one command; the cost
+  of measuring second is the whole row.
 - Read actual files before stating numbers or facts. Never guess.
 - Fix root causes, not symptoms.
 - For any debugging — device, build, or server misbehaviour — OPEN

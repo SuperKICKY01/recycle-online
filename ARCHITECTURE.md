@@ -546,9 +546,11 @@ These are decisions, not proposals, and none of them is built.
 
 Recorded as decided, with the reasoning, because they existed only in conversation.
 **None of the four is built. No implementation is designed here.**
-**There are FOUR — D4 was appended 2026-08-10 and the heading was deliberately left
-saying "three"**, because six citations resolve to it by name; the reason is stated
-at D4 itself.
+**There are FIVE — D4 and D5 were appended 2026-08-10 and the heading was
+deliberately left saying "three"**, because six citations resolve to it by name;
+the reason is stated at D4 itself. **D5 is the exception to the sentence above:
+it is not an unbuilt design but a statement about which database this project is
+running on, and it is settled rather than proposed.**
 
 ### D1 — the provider gets a separate seat, not a third role
 
@@ -732,6 +734,36 @@ Measured, at `8b17bc2`: `LoginRequest`'s three fields are at
 `server/app/main.py:29-32` with `tenant_id: uuid.UUID` at `:30`; the tenant context
 opens at `:125`; the user lookup runs at `:126-134`.
 
+### D5 — `recycle` is the DEV database and stays dev; production does not exist yet
+
+**Added 2026-08-10.** The database this project has been building against since the
+first migration is a development database on a developer's own machine. **It will
+not become production.** When P1.2's hosting choice is made, the production
+database is created FRESH there: migrations applied from `0001`, no rows carried
+across.
+
+**WHAT FOLLOWS, AND IT IS THE WHOLE REASON THIS IS WRITTEN DOWN.** Everything now
+in `recycle` — including the pilot shop provisioned into it on 2026-08-10, its
+admin user and its shop code `R6VD7RAC` — **is discarded with that database.** A
+shop code is immutable once issued, but that is a promise about a code's life
+INSIDE one directory; a directory that is thrown away takes its codes with it. So
+the owner's shop will be provisioned again, on production, and will get a
+different code then. Nobody should print a slip from the code that exists today.
+
+**THEREFORE THE FIRST STEP TOWARD A PAYING SHOP IS NOT CLOSED** by anything done
+against `recycle`. `POST /auth/shop-code` resolving a real code there is a test of
+the server under the most realistic conditions available today, and it is not a
+shop that can trade. P1.3's Criterion B remains outstanding for exactly this
+reason: B asks whether the route works for a real shop, and a real shop is one on
+production.
+
+**WHAT THIS DOES NOT CHANGE.** `ROADMAP.md § The decisions the ordering forced`
+D10 — the pilot runs on the PRODUCTION database, with no rebuild available after
+the first real bill — is unchanged and unchallenged. What is clarified is WHICH
+database that sentence means: not the one running today. D10 is a constraint on
+the hosting choice; D5 is the statement that the choice has not been made and that
+today's database is not a candidate for it.
+
 ---
 
 ## 11. A known absence, stated as true rather than as a gap
@@ -820,8 +852,15 @@ known rather than undiscovered.
   GENERATED `lessons/all-lessons.md:1660` all cite `ARCHITECTURE.md:604-605` for
   the sentence bounding what `recycle_directory` can reach. That sentence is at
   **607-609**; 604-605 holds the `provider_users` alternative, a different
-  argument entirely. **Nothing in this commit moved it**: the first line this
-  commit adds is 795, below the whole of it, so the rot is exactly as old as it
+  argument entirely.
+  **REPAIRED 2026-08-10, AND THE REPAIR HAD TO RE-DERIVE THE NUMBER RATHER THAN
+  TAKE THIS ONE.** Both live citations now read `:609-611`. `607-609` was correct
+  when measured above and was stale by the time it was acted on, because the same
+  round that repaired it had already added two lines to §10's preamble — a
+  position cited in one file and moved by an edit to another, which is the exact
+  failure this bullet is about, recurring inside a single day.
+  **Nothing in THAT commit moved it**: the first line it
+  adds is 795, below the whole of it, so the rot is exactly as old as it
   was and no worse — it is reported here, not caused here. Repairing
   it means editing a lesson AND regenerating `all-lessons.md`, so it belongs with
   a lessons commit. The durable repair is the one this file already prescribes at

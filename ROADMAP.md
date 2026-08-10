@@ -246,6 +246,13 @@ at `PROJECT_STATUS.md § What the rebuild cost — stated, not glossed` "Also go
 every user id". This is a **constraint on P1.2's hosting choice**, not a note
 beside it: whatever is chosen there must be a thing that can be migrated, backed up
 and restored without being emptied first.
+**WHICH DATABASE THIS MEANS, clarified 2026-08-10 and unchanged in substance.**
+This decision is untouched — the pilot still runs on production. What a reader
+should not infer is that the database running today IS production: it is not, and
+`ARCHITECTURE.md § 10. The three settled decisions` D5 records that `recycle` is
+the dev database and that production will be created fresh when the hosting choice
+is made. So the pilot shop provisioned into `recycle` on 2026-08-10 is a test of
+the path, and the shop this decision is about does not exist yet.
 
 **D12 — `CLAUDE.md` is owed TWO corrections, and this file does not make them.**
 See *Corrections owed elsewhere* at the end.
@@ -501,8 +508,38 @@ two things about the CLOSURE that belong to ordering rather than to evidence:
 ### P1.5 — Account provisioning: a first admin, then a person per phone
 
 **What it is.** A path by which a shop's first admin exists, and by which that admin
+creates one account per staff member.
+
+**CORRECTED 2026-08-10 — THE SECOND HALF DESCRIBES SOMETHING THAT DOES NOT EXIST.**
+This read "A path by which a shop's first admin exists, and by which that admin
 creates one account per staff member. Today the only credentials in existence come
-from the dev fixture — `PROJECT_STATUS.md § What is NOT built` "Real per-shop login".
+from the dev fixture" until then. **Two different things were wrong with it and
+they are not the same kind.** The clause about an admin creating accounts is the
+step's GOAL and is not false — it is UNBUILT, and a reader was entitled to take
+it as describing something that exists, because nothing said otherwise.
+**MEASURED, not inferred: there is no endpoint by which an admin can create any
+account.** The API declares 29 paths and the only ones under `/users` are
+`GET /users` and `POST /users/{user_id}` `activate` / `deactivate` /
+`revoke-sessions` — no create route and no password-change route — so an admin
+holding a valid token has no way to bring a staff account into existence.
+**The second sentence was flatly false rather than merely unbuilt**: credentials
+no longer come only from the dev fixture, since `provision_shop.py` created the
+pilot shop's first admin on 2026-08-10.
+
+**IT CHANGED BECAUSE A MEASUREMENT CONTRADICTED IT, NOT BECAUSE THE WORK TURNED OUT
+HARD.** Nothing here was attempted and abandoned; the sentence simply described a
+capability nobody had built, and it survived because the surrounding step is
+correct about the goal. **THE DONE WHEN BELOW IS UNCHANGED** — the bar was always a
+staff account existing and signing in, and that bar is untouched by discovering
+that the route to it is missing.
+
+**WHAT WOULD HAVE TO BE BUILT for that sentence to become true:** a create-user
+endpoint under the admin gate, writing into `users` under the caller's own tenant
+context, plus a way to set that user's first password. Today the credentials that
+exist come either from the dev fixture — `PROJECT_STATUS.md § What is NOT built`
+"Real per-shop login" — or from `server/scripts/provision_shop.py`, which creates a
+shop's FIRST admin from the installer's shell and deliberately does not create
+anyone else.
 
 **Depends on:** P1.3 and P1.4. A user exists only inside a tenant, so the identity
 question must be answered first; and per-person accounts are what make locking mean
