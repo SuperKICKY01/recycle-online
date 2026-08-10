@@ -19,12 +19,20 @@ idea — only that it is unresolved.
 
 ## Blocking one real paying shop
 
-- **NO STAFF ACCOUNT EXISTS AND THERE IS NO WAY TO CREATE ONE — measured
-  2026-08-10, not inferred.** The API declares **29 paths**; under `/users` there
-  is only `GET /users` and `POST /users/{user_id}` `activate` / `deactivate` /
-  `revoke-sessions`. **No create-user route and no password-change route exists**,
-  so an admin holding a valid token cannot bring a staff account into being, and
-  the first admin of the pilot shop is the only credential that shop has.
+- **~~NO STAFF ACCOUNT EXISTS AND THERE IS NO WAY TO CREATE ONE — measured
+  2026-08-10, not inferred.~~ — THE SECOND HALF IS CLOSED, THE FIRST STANDS.**
+  The measurement below is left exactly as taken: at `a73c264` the API declared
+  **29 paths** and under `/users` there was only `GET /users` and
+  `POST /users/{user_id}` `activate` / `deactivate` / `revoke-sessions`, with no
+  create-user route and no password-change route, so an admin holding a valid
+  token could not bring a staff account into being.
+  **THERE IS NOW A WAY, as of `cb11f6a`**: `POST /users` (`0241cc8`),
+  `POST /users/me/password` and `POST /users/{user_id}/password` — 31 declared
+  paths and 37 operations, read out of the schema the app publishes. **What is
+  still true is the FIRST half**: no staff account exists in any real shop, and
+  the first admin of the pilot shop is still the only credential that shop has,
+  because nothing has been created through those routes outside a scratch
+  database.
   *Not done:* P1.5. Its text said an admin creates one account per staff member;
   that sentence is corrected in `ROADMAP.md` and its DONE WHEN is untouched.
   *Unblocks:* **the SHAPE is now decided; at `a73c264` not one line of it is
@@ -36,8 +44,10 @@ idea — only that it is unresolved.
   password, and a user changes their own — recorded with the reasoning for the
   split at `ARCHITECTURE.md § 10. The three settled decisions` D6, together with
   D7 (an admin may create another admin), D8 (no forced change on first use) and
-  D9 (minimum length, no composition rule). **What is outstanding is writing them,
-  not deciding them.** This entry read "a create-user endpoint under the admin
+  D9 (minimum length, no composition rule). **~~What is outstanding is writing
+  them, not deciding them.~~ — ALL THREE ARE WRITTEN AND PROVEN as of `cb11f6a`;
+  what is outstanding is a handset and a production database, neither of which is
+  code.** This entry read "a create-user endpoint under the admin
   gate, writing into `users` under the caller's own tenant context, plus a way to
   set a first password" until 2026-08-10: true as far as it went, and it named two
   things where there are three.
@@ -197,6 +207,25 @@ idea — only that it is unresolved.
   is empty. *Unblocks:* same decision as the master-data screens.
 
 ## Verification gaps — built, not proven
+
+- **NOTHING PROVES WHAT TWO SIMULTANEOUS PASSWORD WRITES DO. Recorded 2026-08-10,
+  and it is a GAP IN THE PROOF rather than a known defect.** `cb11f6a`'s proof
+  drives both password routes sequentially, in one process, one request at a
+  time. Three interleavings are untested: two self-changes at once; an admin
+  reset racing the same user's self-change; and a self-change racing that user's
+  `revoke-sessions`. The self route reads the stored hash and writes in ONE
+  transaction, which is why this is a gap rather than an accusation — the read
+  and the write cannot be separated by another transaction's commit under
+  Postgres' default isolation, and both writers bump the same counter, so the
+  plausible outcome is that one write wins and both sessions die.
+  **THAT IS AN ARGUMENT, AND AN ARGUMENT IS NOT A MEASUREMENT** —
+  `lessons/README.md § Lessons` "concurrency-tests-need-a-barrier.md" is explicit
+  that without a start barrier and printed overlap evidence, the workers ran
+  sequentially and a green result proves nothing, so this cannot be closed by
+  adding two calls and observing that neither broke. *Not done:* no proof drives
+  them concurrently. *Unblocks:* a barrier-based cell in
+  `prove_user_create.py`, which is cheap; what makes it worth doing is that the
+  losing write here is a CREDENTIAL a person was told to use.
 
 - **~~The 403 rendering on the daily money screen has never been drawn
   on a device — `R2`~~ — CLOSED 2026-08-06.** It was drawn, under a staff
@@ -2208,6 +2237,19 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   the owner deciding whether attempt limiting is in scope before a shop
   trades, which is also a hosting question (`R3`/P1.2 puts the API on the
   public internet, and today it is on a LAN).
+  **WIDENED 2026-08-10 BY `cb11f6a`, AND THE WIDENING IS THE POINT RATHER THAN A
+  FOOTNOTE.** `POST /users/me/password` takes a CURRENT password and refuses a
+  wrong one with a plain 400. That refusal is correct and was argued: the caller
+  already holds a valid token for that exact account, so nothing about the
+  account's existence is disclosed by answering plainly. **What it adds is a
+  SECOND place in this API where guessing a credential is free** — unlimited
+  tries, no counter, no record that any were made, and this one behind a session
+  rather than in front of it, so a borrowed unlocked handset is the threat rather
+  than a stranger on the internet. The route's own docstring says the limiting
+  question is a whole-system gap recorded here rather than something to invent at
+  one route; this line is that record catching up. **Nothing about the route
+  changes if a limiter arrives** — it is a decision about where attempts are
+  counted, not about what the 400 means.
 
 ## Business questions — unanswered, and not answerable from the code
 

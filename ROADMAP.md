@@ -80,6 +80,63 @@ position is written into it rather than left implied.
 
 ---
 
+## The four steps to one paying shop
+
+**Written down 2026-08-10 because they existed only in conversation.** This
+reorders nothing and ranks nothing new: it names the four things standing between
+today and a shop that trades, and points each at the step that owns it. A reader
+tomorrow must not have to assemble this from three files.
+
+**THE DISTINCTION THAT RUNS THROUGH ALL FOUR, and it is the only one that
+matters here: outstanding because something is UNWRITTEN, against outstanding
+because it waits on A HANDSET or on A DATABASE NOBODY HAS CREATED.** Those need
+different work from different people, and a list that blurs them reads as four
+coding tasks when two of them are not.
+
+**1. A shop can be issued a code — `P1.3`, Criterion B.**
+*Done:* the tool exists and has been run. `server/scripts/provision_shop.py`
+mints a code from the constraint's own alphabet and inserts it as the owner role,
+and the pilot shop on the dev database holds `R6VD7RAC`. Criterion A — the server
+resolves a code and the login chains off it — is satisfied and proven.
+*Outstanding:* it has never run against production. *Why:* **not unwritten.**
+Production does not exist, so there is nothing for it to run against; and who
+issues a code when a shop is onboarded is still the owner's decision rather than
+the schema's.
+
+**2. Real accounts — `P1.5`.**
+*Done:* **the server half is complete as of `cb11f6a`.** An admin creates an
+account, an admin resets a password, a person changes their own, all proven over
+real HTTP against a scratch database. D6–D9 decided the shape; the routes now
+implement it.
+*Outstanding:* nothing has signed in from a handset, and the accounts the DONE
+WHEN wants must exist in the production database. *Why:* **not unwritten** — it
+waits on step 3 for the phone and step 4 for the database. See P1.5 itself, where
+this split is argued at length.
+
+**3. A login screen on the phone — `P1.7`.**
+*Done:* nothing. *Outstanding:* the whole step. *Why:* **unwritten, and this is
+the one of the four that is.** The primitives are not new — `TextInput` is
+already used in three screens — so what is missing is the flow and the storage of
+a session, not the controls. It waits on step 1 for what identifies a shop and on
+step 2 for something real to sign in as; both of those are now answered on the
+server, so nothing blocks it but the work.
+
+**4. A reachable server — `P1.2`.**
+*Done:* nothing. *Outstanding:* the whole step. *Why:* **neither unwritten nor
+waiting on code — nothing has been chosen or paid for.** The API runs on a
+development box and `mobile/app.json` points at a LAN address over plain HTTP.
+This is the only step in this file with external lead time, which is why it sits
+in the head of the queue above, and HTTPS is part of it: on the public internet
+that plain address hands the bearer token and every money value to anyone on the
+path.
+
+**WHAT THIS LIST IS NOT.** It is not a fifth ranking and it does not move a bar.
+Each step's own entry below remains the authority on its DONE WHEN, its
+dependencies and its argument; this section only says which four to look at and
+what kind of outstanding each one is.
+
+---
+
 ## What the owner has settled
 
 Six decisions from a working session. They existed in no file. Recorded with their
@@ -583,6 +640,47 @@ length itself deliberately not chosen yet.
 **THIS STEP'S DONE WHEN IS UNTOUCHED BY ALL OF THAT.** The bar was always a first
 admin and a staff account existing and both signing in from a handset; deciding
 which routes get them there moves no bar, and a decision is not an account.
+
+**CORRECTED AGAIN 2026-08-10, LATER THE SAME DAY: THE SERVER HALF IS COMPLETE AND
+THE STEP IS NOT. Those are different facts and this step must say which is
+which**, so that "P1.5 is not done" has exactly one meaning to a reader with no
+memory of today. Same form as P1.3's split, and the same reason: that step was
+ambiguous while two different things could each be what "not done" meant, and it
+stopped being ambiguous when one of them landed.
+
+**~~MEASURED, not inferred: there is no endpoint by which an admin can create any
+account. The API declares 29 paths and the only ones under `/users` are
+`GET /users` and `POST /users/{user_id}` `activate` / `deactivate` /
+`revoke-sessions` — no create route and no password-change route.~~** Struck
+2026-08-10. All three routes exist as of `cb11f6a`: `POST /users` (`0241cc8`),
+`POST /users/me/password` and `POST /users/{user_id}/password` (`cb11f6a`). The
+API declares **31 paths and 37 operations**, read out of the schema it publishes.
+Everything the three paragraphs above say about the SHAPE — D6's three routes,
+D7, D8, D9 — is unchanged and is now built rather than decided.
+
+**IT CHANGED BECAUSE THE WORK LANDED, NOT BECAUSE IT TURNED OUT HARD**, which is
+the same sentence P1.3's rewrite needed and for the same reason: a step that
+changes wording is otherwise read as a step that ran into trouble. Nothing was
+attempted and abandoned, no bar moved, and no scope was cut.
+
+**WHAT IS OUTSTANDING, AND IT IS NOT THAT ANYTHING IS UNWRITTEN.** Two things,
+neither of them code:
+
+- **Nothing has signed in from a handset.** Every session this work has ever
+  minted was minted over loopback HTTP by a proof. The DONE WHEN asks for a
+  person on a phone, and that waits on **P1.7** (a login screen) and **P1.11**
+  (an installable build).
+- **The production database does not exist.** The DONE WHEN asks for accounts in
+  it. `recycle` is the DEV database, and where production runs has not been
+  chosen or paid for — **P1.2**.
+
+*(P-numbers, not R-numbers: the table at the head of this file maps the old `R5`
+onto this very step, so citing it here would point a reader back at what they are
+reading.)*
+
+So "P1.5 is not done" now means exactly one thing: **not a missing endpoint, but
+a missing phone and a missing server.** The DONE WHEN below is untouched and
+nothing here lowers it.
 
 **Depends on:** P1.3 and P1.4. A user exists only inside a tenant, so the identity
 question must be answered first; and per-person accounts are what make locking mean

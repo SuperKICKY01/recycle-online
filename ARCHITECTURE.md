@@ -893,6 +893,32 @@ and deliberately creates nobody else, and its second run against a shop that
 already has a code refuses and writes nothing
 (`PROJECT_STATUS.md § Current phase` "THE SECOND RUN REFUSED AND WROTE NOTHING").
 
+**THE SENTENCE ABOVE IS NOW FALSE IN ITS GENERAL FORM AND TRUE IN A MUCH
+NARROWER ONE. Appended 2026-08-10, not edited, per §13.** "There is no
+password-change route (D6), no reset path" was measured at `a73c264` and stopped
+being true at `cb11f6a`: both password routes exist —
+`POST /users/me/password` and `POST /users/{user_id}/password`.
+
+**WHAT ACTUALLY SURVIVES, AND IT IS SMALL:** *a shop whose ONLY admin forgets
+their own password has no recovery from inside the system.* Both routes are shut
+to that person and for different reasons — the reset route is `require_admin`, so
+it needs a SECOND admin who does not exist, and the self route requires the
+CURRENT password, which is the thing they have forgotten. Nothing else in the
+system issues a credential.
+
+**AND THE REST OF THE ORIGINAL CLAIM IS GONE, which is worth saying because it is
+what the new routes bought:** a STAFF member who forgets their password is now
+recoverable in one request by any admin; an admin who forgets theirs is
+recoverable by any OTHER admin; and "loses their handset" was always the weaker
+half, because a login is not bound to a device and that person could always sign
+in elsewhere with their password.
+
+**D7'S ARGUMENT IS UNAFFECTED AND NOW RESTS ON THE NARROW CONDITION ALONE** — and
+it is stronger for it. A second admin is precisely the thing that converts the
+surviving case into a one-request fix, so "a shop must be able to appoint a
+second keyholder without us" is the same conclusion reached from a smaller
+premise. The cost paragraph below is untouched.
+
 **What it costs, stated rather than glossed.** Admin is the tier that voids bills
 and moves prices (§3.1), so an admin who creates a second admin has handed over
 every capability they hold, permanently and with no audit trail — D3's log does not
@@ -1221,6 +1247,19 @@ its own length.
   decision it names. **That is the shape this whole section keeps recording:** an
   enumeration decays by the set growing under it, not by any of its sentences
   turning false.
+
+- **D7's reasoning said "there is no password-change route (D6), no reset path".
+  TRUE at `a73c264`, FALSE from `cb11f6a`, and corrected IN PLACE at D7 rather
+  than only here** — because unlike every bullet above it, this one is not a
+  count that grew: it is a REASON, and a reader who believes a false reason
+  decides wrongly rather than merely miscounting. The narrow condition that
+  survives is stated there: *a shop whose ONLY admin forgets their own password
+  has no recovery from inside the system*, because the reset route needs a second
+  admin and the self route needs the password they have forgotten. D7's
+  conclusion is unaffected and now rests on that smaller premise.
+  **THIS BULLET AND `§10 D6`'s FIRST PARAGRAPH ARE THE SAME FILE, THE SAME
+  SUBJECT, AND ONLY ONE OF THEM ROTTED**, which is the finding worth carrying out
+  of it — see `CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT".
 
 **Re-derive before resting a decision on any number in this file.** The count
 that decayed fastest was the migration count, and it decayed twice in one day.

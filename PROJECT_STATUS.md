@@ -57,6 +57,127 @@ not read the green as re-run.**
 
 ## Current phase
 
+**ACCOUNT PROVISIONING: THE SERVER HALF IS COMPLETE. 2026-08-10.** Three code
+commits landed with no status entry between them, and this is that entry. The
+API can now create an account, change a password and reset one, and every
+sentence in this file that said otherwise is corrected below.
+
+**THE ROTATION IS NOT DONE.** The block beneath this one is the PREVIOUS phase —
+the pilot shop on the dev database — left exactly where it was rather than moved
+into the log. It is superseded as "current" and unchanged as a record. Whoever
+rotates it should take this block with it.
+
+**FIVE COMMITS SINCE THE LAST ONE THIS FILE RECORDED (`a73c264`), NOT TWO**,
+measured with `git log a73c264..HEAD --name-only` rather than counted from
+memory. Three of them are code and none had a status entry:
+
+| sha | what it is | status entry before today |
+|---|---|---|
+| `685c817` | D6–D9 in `ARCHITECTURE.md`, one lesson | none — the decisions live in that file |
+| `0241cc8` | **`POST /users`** — an admin creates an account | **none** |
+| `a361e53` | the CRLF footgun re-measured; touched this file | not a phase record |
+| `c296738` | **the 422 handler** | **none** |
+| `cb11f6a` | **the two password routes** | **none** |
+
+**THE PATH COUNT IN THIS FILE IS WRONG AND IS CORRECTED HERE.** It said 29
+declared paths with no create-user or password route. Read out of the schema the
+app itself publishes, at `cb11f6a`: **31 declared paths, 37 operations**, and six
+under `/users` — `GET /users`, `POST /users`, and `POST` on
+`/users/me/password`, `/users/{user_id}/password`, `/users/{user_id}/activate`,
+`/users/{user_id}/deactivate`, `/users/{user_id}/revoke-sessions`.
+**THE COUNT MOVED BY TWO WHILE THREE ROUTES WERE ADDED, AND THAT IS ARITHMETIC
+RATHER THAN AN ERROR. DO NOT "CORRECT" IT TO 32.** OpenAPI keys `paths` by PATH,
+and `POST /users` shares its path with `GET /users` — it adds an OPERATION to a
+path that already existed. So three routes produced two new paths and three new
+operations: 29 → 31 paths, 34 → 37 operations. **A number that looks wrong and is
+right is the number somebody fixes into being wrong**, so whoever re-derives this
+must say which of the two they counted; both are recorded here for that reason.
+
+### The 422 handler — `c296738`
+
+**WHAT IT REMOVES.** FastAPI's default validation handler serialises pydantic's
+`input`, which holds the value that failed. So the refusal of a too-short
+password RETURNED THAT PASSWORD:
+`{"type":"string_too_short","loc":["body","password"],"input":"abc1234",…}`.
+`app/main.py::validation_error_handler` drops `input` from every error object and
+leaves `type`, `loc`, `msg` and `ctx` — which field, in what way, against what
+bound.
+
+**API-WIDE BY CONSTRUCTION, NOT BY A MAINTAINED LIST**, and the distinction is
+the whole decision. A list of secret-ish field names — password, new_password,
+pin, token — is the author guessing at what a thing may be CALLED, and it fails
+in the PERMISSIVE direction: **a field nobody thought to add is a field that
+leaks**. Removing one key unconditionally means there is nothing to classify, so
+a route written later is covered by a decision already taken. That is not a
+prediction: the two password routes in `cb11f6a` did not exist when the handler
+landed, and their 422s carry no value.
+
+**THE CONTROL THAT MAKES THE FIX READABLE.** A fix that emptied every validation
+error would satisfy "the value is gone" and be worse than the defect. So the
+proof asserts, on a NON-SECRET field, that the error still names the field
+(`loc`), the rule (`type`), the reason in words (`msg`) and the bound (`ctx`) —
+and it does that on `POST /uoms`, **an endpoint with nothing to do with users**,
+because a handler that only pleased the create route would be invisible from
+inside that route.
+
+**WHAT IT CANNOT REACH, recorded so nobody reads the fix as total:** a CUSTOM
+validator that interpolates the rejected value into its own message still echoes
+it through `msg`. No handler can tell that from a legitimate sentence, because
+the text is the author's. Every constraint in this API is declarative today, so
+no such message exists; the rule for the day one is written belongs at the
+validator, not here.
+
+### The two password routes — `cb11f6a`
+
+`POST /users/me/password` — guarded by the ordinary authenticated dependency,
+takes the current password and the new one, and is the only route in that module
+a staff phone may call. `POST /users/{user_id}/password` — admin-guarded, takes
+the new password only, names its target in the path.
+
+**BOTH WRITE THE HASH AND THE VERSION BUMP IN ONE STATEMENT**, and the reason is
+`deactivate_user`'s, in its own words: one UPDATE leaves *"no window — not even a
+transactional one a reader has to reason about — in which the account is locked
+and the sessions it holds are not"*. The same window is what a two-statement
+password change would open: a credential already replaced while the tokens it
+minted are still accepted.
+
+A wrong current password answers **400** — a new status and a new `kind` in the
+existing envelope, because none of the five kinds already in play means "the
+request is well formed and a value in it is wrong". 422 in this API is for a
+payload that can never be valid, and this one is valid with the right password.
+
+### The disproof, and the finding inside it
+
+**REMOVING THE BUMP REDDENED FIVE CELLS, AND THEY ARE NOT ALL THE SAME KIND OF
+EVIDENCE.** Three are the session cells — the token held before the change is
+re-issued and refused, on two different endpoints. The fourth is the DELTA cell
+beside them, which reads the `token_version` the response reports and requires it
+to be one higher than the token carried.
+
+**THE DELTA WAS MEASURING THE COLUMN ALL ALONG.** It would be satisfied by a bump
+that ended no session — by any statement that incremented the number, whatever
+the guard did with it afterwards. **NOBODY SHOULD CITE IT AS EVIDENCE A SESSION
+DIED.** The cell that carries that claim is the one that re-issues the
+pre-change token and is refused; the delta is a shape check standing next to it,
+and the two happened to redden together only because one statement moves both.
+
+The split that proves the session cells are pointed at the right fact: under that
+mutation the password genuinely changed — the new one signs in, the old one does
+not — and only the SESSION survived.
+
+### The route order is load-bearing
+
+`/users/me/password` is declared BEFORE `/users/{user_id}/password`. Starlette
+matches routes in registration order and `{user_id}` carries no converter in the
+path string, so the other order sends the literal `me` to the ADMIN route: 422
+for a malformed uuid, or 403 for a staff caller who is entitled to the route.
+Both are the wrong answer and neither looks like a routing fault.
+
+Verified from the committed blob at `cb11f6a` — self at line 805, admin at line
+901 — and the check does not stop at the order: **it requires the REASON to sit
+within twelve lines of the decorator**, so a later edit that moves the route away
+from its explanation fails rather than passing quietly.
+
 **THE PILOT SHOP IS PROVISIONED ON THE DEV DATABASE, AND THAI SURVIVED FOUR OF
 FIVE ENCODING LAYERS. 2026-08-10.** `provision_shop.py` was run against
 `recycle` for the first time. No R-number was issued; R-numbers are defined in
@@ -114,10 +235,15 @@ label, and proven restorable (`RESTORE_EXIT=0`, every want/got row matching).
 `recycle_20260810T093442Z_at-0009-post-provisioning` — taken after, 850 rows,
 and the source of layers three and four.
 
-**NO ENDPOINT CREATES A USER AND NONE CHANGES A PASSWORD.** The API declares 29
-paths; under `/users` there is only `GET /users` and `POST /users/{user_id}`
-`activate` / `deactivate` / `revoke-sessions`. **The bound belongs with the
-finding, not under it:** that negative is authoritative for ENDPOINTS because it
+**~~NO ENDPOINT CREATES A USER AND NONE CHANGES A PASSWORD.~~ — TRUE AT
+`a73c264`, FALSE FROM `cb11f6a`.** The measurement below stands as taken and is
+superseded rather than rewritten: at that commit the API declared 29 paths and
+under `/users` there was only `GET /users` and `POST /users/{user_id}`
+`activate` / `deactivate` / `revoke-sessions`. **It now declares 31 paths and 37
+operations**, and all three of the missing routes exist — see § Current phase for
+the re-measurement and for why the path count moved by two while three routes
+were added. **The bound belongs with the finding, not under it:** that negative
+is authoritative for ENDPOINTS because it
 comes from the schema the app itself publishes, but the companion survey — which
 writers reach `tenants` at all — was run over RAW-SQL SPELLINGS, so its answer is
 **three sites FOUND, not three sites proven to be all**; an ORM call or a
@@ -4302,11 +4428,15 @@ restored into the default scratch target for layer five.
 - **THE FIRST STEP TOWARD A PAYING SHOP IS NOT CLOSED BY THIS RUN.** It is a test
   of the script under the most realistic conditions available today. P1.3's
   Criterion B is still outstanding, because a real shop is one on production.
-- **P1.5 IS NOT SATISFIED.** One admin exists and no staff account does, nothing
-  signed in from a handset, and **there is no endpoint by which an admin could
-  create one** — 29 declared paths, none of them a create-user or password-change
-  route. `ROADMAP.md` P1.5 said an admin creates one account per staff member and
-  is corrected in this change.
+- **P1.5 IS NOT SATISFIED**, and as of `cb11f6a` that sentence means ONE thing
+  where it used to mean two. **~~there is no endpoint by which an admin could
+  create one — 29 declared paths, none of them a create-user or password-change
+  route~~ — FALSE FROM `cb11f6a`**: 31 paths, and all three routes exist. What is
+  outstanding is not an endpoint. It is that **nothing has signed in from a
+  handset and the production database does not exist** — P1.7 and P1.11 for the
+  phone, P1.2 for the server — rather than anything unwritten. The DONE WHEN is
+  untouched and still wants a first admin AND a staff account, both signing in
+  from a handset.
 - **The user-writer survey's bound travels with it:** the endpoint negative comes
   from the published schema and is authoritative for endpoints, but the survey of
   which writers reach `tenants` was run over raw-SQL spellings, so it is three

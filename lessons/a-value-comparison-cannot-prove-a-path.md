@@ -85,3 +85,74 @@ exists that could reach it.
 Ask, of any test that claims a chain: **what would this run do differently if I
 pasted the expected value in by hand?** If the answer is "nothing", it is not
 testing a chain.
+
+## AMENDED (2026-08-10) — the same rule where the claim is an EFFECT, and a reason it hides that no input can reach
+
+**The rule above is written about a ROUTE and it is not only about routes.** The
+general form is: **the claim is about a BEHAVIOUR, and the assertion you are about
+to write is about a VALUE that the behaviour happens to move.** A path is one
+instance. Here is another, and it is the one that will recur, because it is the
+shape every session-revocation check takes.
+
+**What was measured.** `cb11f6a` added `POST /users/me/password`, which writes the
+new hash and bumps `token_version` in ONE statement. `prove_user_create.py`
+asserts two things beside each other:
+
+| cell | what it reads | what it can support |
+|---|---|---|
+| S1's DELTA | the `token_version` in the 200 body, against the version in the token the server had minted | **the column moved** |
+| S2 | the pre-change token re-issued at two endpoints, and refused 401 `token_revoked` | **the session died** |
+
+Removing the bump reddened both, five cells in total. **That joint redness is
+evidence about the STATEMENT, not about which cell carries the claim.** The delta
+would be satisfied by any code that incremented the number — including code whose
+guard never compares it, or a route that bumped a different user's row and
+reported this one's. It is a shape check standing next to the claim, and it reads
+exactly like the claim.
+
+**WHY NO MUTATION CAN SEPARATE THEM HERE, which is the new part.** In the original
+case above, an input existed that would have exposed the difference and the proof
+simply did not supply it. Here **one statement moves both facts**, so every
+mutation that touches the bump moves the proxy and the behaviour together, and no
+input, fixture or control inside that proof can tell you which cell you are
+relying on. The separation is not discoverable by running the thing — it is
+discoverable only by asking what each cell would still detect if the two were
+split.
+
+**Nothing shipped wrong, and that is the point.** Both cells were present, so the
+route is correct and proven. What the disproof exposed is a failure that has not
+happened yet, and **this is the path it will take** — not an illustration of one:
+
+> The next session writes a route that must end a session. It looks for how the
+> last one was proven, finds `S1`'s delta, and copies **"assert the version
+> moved"** because that is the cell whose claim is easiest to state. It sees the
+> token re-issue below it and drops that as redundant — the version moved, so of
+> course the session died. **It ships a route whose sessions never die, and a
+> proof that is green about it**, and the green is truthful: the number really
+> did move.
+
+Nobody has to be careless for that to happen. The delta reads like the claim, it
+reddens when the claim breaks in the one case anyone tries, and it is shorter.
+**The only thing standing between that path and the tree is the cell labelling
+itself**, which is why the labelling is a rule below and not a nicety.
+
+**How to apply.**
+
+1. When two cells would redden from one cause, name which one carries the claim
+   and say so **in the cell's own text**, so a reader cannot cite the other.
+   S1's delta is labelled a shape check; S2 says it is the cell the disproof
+   targets.
+2. Ask of any assertion on a number: **if this number moved and the behaviour did
+   not, would this cell still pass?** For a version counter read out of a response
+   the answer is yes, always.
+3. Assert the behaviour by ATTEMPTING it — re-issue the credential and require the
+   refusal — and on more than one endpoint, so the refusal is a property of the
+   session rather than of one route.
+4. A status is not a code. The refusal here must name `token_revoked`, because a
+   401 also arrives from a locked account and from a malformed token, and an
+   outcome two mechanisms produce is evidence about neither
+   (`a-check-that-never-went-red-was-never-observed.md`, seventh mechanism).
+
+**Where recorded.** `PROJECT_STATUS.md § Current phase`, under the disproof, with
+the sentence that matters carried in full: nobody should cite the delta as
+evidence a session died.

@@ -665,6 +665,32 @@ false pass and a red run into a confidently wrong cause.
 - Python: async throughout (FastAPI), type hints required,
   Alembic for migrations.
 - TypeScript: strict mode on.
+- **PIN A CLAIM TO A COMMIT, OR EXPECT IT TO ROT.** A sentence anchored to a
+  sha — "nothing here is built at `a73c264`" — stays true for ever, because it
+  is a statement about a moment that has already happened. A sentence in the
+  present tense — "there is no password-change route" — is false the day the
+  work lands, and nothing announces that it turned. Write the anchored form
+  wherever the claim is about what EXISTS.
+  **THE EVIDENCE IS ONE FILE, ONE SUBJECT, TWO SENTENCES.**
+  `ARCHITECTURE.md:820` and `:888` were written the same day about the same
+  three routes; `:820` is anchored and is still true as written, `:888` was
+  present-tense and went false at `cb11f6a`, and it is the WORSE of the two to
+  get wrong because it is a REASON rather than a status — a reader believes a
+  reason and then builds on it, where a wrong status merely confuses.
+  This is a rule about how the project WRITES, so it lives here beside the
+  other writing conventions and NOT in Machine footguns, which is only for what
+  is true of this box; and not as a lesson, because a lesson is opened when its
+  index line touches the task, and "I am about to write a sentence about the
+  present" touches no task anybody names.
+  **Where the anchored form is impossible** — a status file's whole job is the
+  present — the fallback is the one
+  `ARCHITECTURE.md § 13. Corrections to THIS file`
+  and `PROJECT_STATUS.md` already follow: supersede rather than rewrite, and
+  date the supersession, so a reader can see the file was right when it was
+  written. **Keep a citation on ONE line.** This bullet's first draft wrapped
+  that handle across two and it resolved to nothing — the break was invisible
+  because CLAUDE.md is not in the checker's source list, and was found only by
+  pointing the checker at this file on purpose.
 - Commit messages and code comments in English. UI text in Thai.
 - Buddhist-era dates (พ.ศ.) in UI and printed slips only; store
   UTC ISO timestamps in the DB.
