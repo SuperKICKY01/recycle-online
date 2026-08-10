@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import socket
 import subprocess
@@ -87,6 +88,30 @@ ABSENT_CODE = "ZZ9ABSNT"       # well-formed, deliberately never created
 MALFORMED_CODE = "zzz"         # lowercase and too short: cannot match any row
 
 failures: list[str] = []
+
+
+class ResolvedTenant(str):
+    """A tenant identifier PARSED OUT OF A RESOLVE RESPONSE, never typed.
+
+    THIS TYPE IS THE ONLY THING THAT CAN TELL A CHAIN FROM A COINCIDENCE, and it
+    exists because no assertion over VALUES can. A hardcoded correct identifier
+    and one carried from A1's response are the same 36 bytes; every equality
+    check, every `/whoami` cross-check and every status code agrees with both.
+    Measured, not reasoned: replacing A2's input with the literal uuid leaves all
+    five criteria GREEN.
+
+    So provenance is carried by the TYPE rather than checked by the value. A1
+    wraps what it parsed; A2 refuses anything that is not that wrapper; a literal
+    is a plain `str` and fails before a request is sent.
+
+    ITS LIMIT, STATED RATHER THAN DISCOVERED: this proves the value FLOWED
+    through this process. It cannot stop an author who writes
+    `ResolvedTenant("1111-...")` by hand. It catches the lazy break and the
+    accidental one, which is what a regression looks like; it is not a defence
+    against someone determined to fake the chain.
+    """
+
+    __slots__ = ()
 
 
 def banner(title: str) -> None:
@@ -377,6 +402,114 @@ def main() -> int:
                   "other -- its collapse is unchanged")
             check("access_token" not in bad_pw.text,
                   "P5: the refused login body carries NO access_token")
+
+            # ============================================================
+            # CRITERION A, ROADMAP.md P1.3. The CHAIN is the point: A2 must
+            # CONSUME A1's response. Two requests fired independently and
+            # reconciled afterwards demonstrate two facts that happen to
+            # agree, which is not the same claim.
+            # ============================================================
+            banner("A1 - POST the shop code, receive a tenant identifier")
+            req1 = {"code": FIXTURE_CODE}
+            r1 = client.post(f"{BASE}/auth/shop-code", json=req1)
+            print(f"  REQUEST   POST {BASE}/auth/shop-code")
+            print(f"            {json.dumps(req1)}")
+            print(f"  RESPONSE  {r1.status_code} {r1.text.strip()}")
+            check(r1.status_code == 200, "A1: the code resolves, 200")
+            resolved = None
+            if r1.status_code == 200:
+                resolved = ResolvedTenant(r1.json()["tenant_id"])
+            check(resolved is not None,
+                  "A1: a tenant identifier was parsed out of the response")
+
+            banner("A2 - log in with the identifier TAKEN FROM A1's RESPONSE")
+            # THE REQUEST BODY CARRIES THE PARSED OBJECT ITSELF, not a copy of
+            # its text. ResolvedTenant subclasses str, so httpx serialises it as
+            # a plain JSON string -- the wire is unchanged and only the local
+            # object keeps its provenance.
+            req2 = {"tenant_id": resolved, "username": ADMIN_USERNAME,
+                    "password": TENANT_A_PASSWORD}
+            # THE PROVENANCE GATE, and MEASURED 2026-08-10 to be the only cell
+            # that can detect a broken chain. With A2 hardcoded to the correct
+            # literal and this check removed, ALL assertions passed and the run
+            # exited 0 -- including A3's "the chain closes" cross-check, because
+            # a correct hardcode and a chained value are the same 36 bytes. It
+            # asserts on the object IN THE REQUEST BODY, never on `resolved`:
+            # checking `resolved` would pass while a literal sat in req2 beside
+            # it, which is exactly the break this exists to catch.
+            check(isinstance(req2["tenant_id"], ResolvedTenant),
+                  "A2: the identifier IN THE REQUEST BODY is the OBJECT PARSED "
+                  "FROM A1, not a literal (checked by TYPE, because a correct "
+                  "literal is byte-identical to a chained value)")
+            shown2 = dict(req2)
+            shown2["password"] = "<REDACTED - a real password WAS sent>"
+            print(f"  REQUEST   POST {BASE}/auth/login")
+            print(f"            {json.dumps(shown2)}")
+            print("            (the password is REDACTED in this record, not "
+                  "omitted from the request)")
+            r2 = client.post(f"{BASE}/auth/login", json=req2)
+            token = r2.json().get("access_token") if r2.status_code == 200 else None
+            shown2r = dict(r2.json()) if r2.headers.get(
+                "content-type", "").startswith("application/json") else {}
+            if "access_token" in shown2r:
+                shown2r["access_token"] = (
+                    f"<REDACTED bearer token, {len(shown2r['access_token'])} chars>")
+            print(f"  RESPONSE  {r2.status_code} {json.dumps(shown2r)}")
+            print("            (the token is REDACTED in this record for the same "
+                  "reason as the password: it is a credential, and this output is "
+                  "read in transcripts. Its LENGTH and the field's presence are "
+                  "recorded so the response shape is still checkable.)")
+            check(r2.status_code == 200, "A2: login with the resolved id returns 200")
+            check(bool(token), "A2: a bearer token came back")
+
+            banner("A3 - USE the token against an endpoint requiring authentication")
+            print("  endpoint  : GET /whoami")
+            print("  why       : it depends on get_principal, which verifies the "
+                  "JWT signature, re-reads the user row and compares "
+                  "token_version -- a 200 here is not producible without a valid "
+                  "token. It also echoes the tenant the SERVER resolved, which "
+                  "closes the chain end to end.")
+            r3 = client.get(f"{BASE}/whoami",
+                            headers={"Authorization": f"Bearer {token}"})
+            print(f"  RESPONSE  {r3.status_code} {r3.text.strip()[:300]}")
+            check(r3.status_code == 200, "A3: the token is ACCEPTED, 200")
+            check(r3.json().get("tenant_id") == str(resolved),
+                  "A3: the tenant /whoami reports is the one A1 resolved -- the "
+                  "chain closes")
+
+            banner("A4 - CONTROL, refusing side: a code that does not exist")
+            r4 = client.post(f"{BASE}/auth/shop-code", json={"code": ABSENT_CODE})
+            print(f"  RESPONSE  {r4.status_code} {r4.text.strip()}")
+            check(r4.status_code == 404, "A4: an absent code returns 404")
+            check(r4.json().get("detail") == "unknown shop code",
+                  "A4: and it is THIS endpoint's refusal, not a routing 404")
+
+            banner("A5 - CONTROL, authentication side: no token, and a bad token")
+            r5a = client.get(f"{BASE}/whoami")
+            bad_token = ("A" if token[0] != "A" else "B") + token[1:]
+            r5b = client.get(f"{BASE}/whoami",
+                             headers={"Authorization": f"Bearer {bad_token}"})
+            print(f"  no token       {r5a.status_code} {r5a.text.strip()[:160]}")
+            print(f"  invalid token  {r5b.status_code} {r5b.text.strip()[:160]}")
+            check(r5a.status_code == 401, "A5: /whoami with NO token is refused 401")
+            check(r5b.status_code == 401,
+                  "A5: /whoami with an INVALID token is refused 401")
+            differ = (r5a.status_code, r5a.text) != (r5b.status_code, r5b.text)
+            # AN OBSERVATION, PRINTED -- deliberately NOT a check(). Whether the
+            # two refusals differ is a fact to record, not a bar to clear: this
+            # phase was asked to report it, and auth.py collapsing them is a
+            # design choice rather than a requirement. A check() here could only
+            # have been check(True, ...), which is a cell that can never go red
+            # sitting in a column of [ok] marks, and reads as an assertion to
+            # anyone scanning it.
+            print(f"  the two refusals DIFFER: {differ}")
+            print("  (recorded as an OBSERVATION, not asserted -- see the note "
+                  "in the source)")
+
+            print("\n  A POSITIVE WITH NO PAIRED NEGATIVE IN THE SAME RUN IS NOT")
+            print("  READABLE. A3's 200 means something only because A5 shows the")
+            print("  same endpoint refusing without a token and with a broken one,")
+            print("  in this process, against this server.")
     finally:
         proc.terminate()
         try:
