@@ -1560,11 +1560,20 @@ programs — see the boot check in CLAUDE.md.
   scale; one shop-time formatter (fixed UTC+7) with the พ.ศ. year
   derived after the timezone conversion; clock-sanity checks on
   stored stamps.
-- **Screens** (`App.tsx`, `app/`): login, cart entry with numpad,
+- **Screens** (`App.tsx`, `app/`): ~~login,~~ cart entry with numpad,
   per-bill seller picker, master-data strip with freshness state,
   status strip and operator notices, bills panel with the void flow,
   and the sign-out sheet (`app/SignOutSheet.tsx`), which can REFUSE —
   it will not end a session while bills are still queued unsent.
+
+  **~~login~~ — NOT A SCREEN. Struck 2026-08-11, measured at
+  `5e59894`.** With no token `App.tsx` renders one button, labelled
+  `เข้าสู่ระบบ (ร้าน A)`, calling `signIn()` with constants imported from
+  `app/config.ts`. It asks for nothing — `TextInput` appears in
+  `App.tsx` **0 times**. This file already said so, dated:
+  `§ 2026-08-07 — migration 0006 (server + proof)` "has no `TextInput`".
+  The struck word entered at `534f289` (2026-07-27), the commit that
+  created this file; whether it was true then is not measured here.
 - **The owner's screen** (`app/DailyScreen.tsx`, `src/reports/dailyView.ts`):
   the day's total, the permanent understatement caveat, voided bills, voids
   applied today against older bills, off-list payments, and the bill list. Read

@@ -727,8 +727,37 @@ control.
 
 **DONE WHEN:** a person types their own username and password on a handset and
 reaches the cart screen, with the bundle established beforehand
-(`CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING"), and
-`git grep -n "DEMO" -- mobile/` returns exit 1.
+(`CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING"); AND a sweep of
+disk finds the constant gone — ripgrep, with the flags written out because each
+one buys a blind spot back:
+`rg --no-ignore --hidden --text --count-matches "DEMO" mobile/`, which must exit
+**1**. `--no-ignore` defeats `.gitignore`, `--hidden` reaches dot-directories,
+`--text` reads a bundle as text; the count form is deliberate, so a RED run names
+paths and counts and never prints a matched line.
+
+**AND THE RUNNER REPORTS THE FILE COUNT OF `mobile/dist/` IN THE SAME
+OBSERVATION.** Not passes it — reports it. A criterion that requires a build
+output to be clean is satisfied by deleting the build output, and an empty
+directory sweeps clean for the wrong reason. The number is the only thing that
+tells those apart, and a run that does not carry it has not met this bar.
+
+**WHY THE COMMAND CHANGED — 2026-08-11, and the bar did not move.** It read
+`git grep -n "DEMO" -- mobile/` returns exit 1. **That searches TRACKED FILES
+ONLY**, so `mobile/dist/` — which git ignores — was structurally invisible to it:
+measured at `5e59894`, pointed at that directory alone the old command exits 1
+while the sweep above finds matches inside it. One path, one token, two tools,
+opposite answers. The human half above is untouched and nothing was made easier;
+a command was replaced because it could have gone green with the thing it looks
+for still sitting on disk.
+
+**WHAT THIS STILL CANNOT SEE, written in place rather than left to be found.**
+Absence of the token is not absence of the credential: a renamed or minified
+constant carries the value without carrying the word, which is what a bundler
+produces. The sweep's root is `mobile/`, so anything outside it is unseen.
+`node_modules/` sits inside that root, so an unrelated dependency can turn the
+sweep red for reasons that have nothing to do with this step. And none of it says
+anything about a bundle already installed on a handset — which is what the bundle
+clause above is for, and why it is not the optional half of this criterion.
 
 ### P1.8 — Seller creation from the phone
 
