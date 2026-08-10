@@ -22,6 +22,26 @@ so it would take up to an hour to mean anything.
 NOTHING HERE DELETES ANYTHING. There is no delete path for a user in this
 system and this module adds none.
 
+CREATING AN ACCOUNT IS A FOURTH THING, AND IT IS NEITHER OF THE TWO ABOVE
+-------------------------------------------------------------------------
+POST /users brings an account into existence. It is the only route in this
+module that names no existing row — the other three take a user_id in the path
+because they act on somebody who is already there. Until it existed an admin
+holding a valid token could not bring a staff account into being at all, and the
+only credentials a shop had were whatever seeded or installed it.
+
+IT IS ROUTE 1 OF THREE, and the other two are not built. ARCHITECTURE.md § 10.
+The three settled decisions D6 splits account provisioning into an admin creating
+a user, an admin setting another user's password, and a user changing their own —
+three ROUTES rather than one branching on who is calling, because the guard, the
+request body and whose session dies all differ, and a branch deciding all three
+from one inspection of the caller can be wrong in the permissive direction.
+
+So this does NOT weaken the paragraph below. There is still no way for anybody to
+CHANGE a password, their own or anyone else's; setting one at create is the only
+password write in this system, and an account whose password is lost is an
+account nothing in this product can recover.
+
 WHAT IS STILL A STOPGAP, AND WHAT NO LONGER IS
 -----------------------------------------------
 The design calls for `users.token_version` to be bumped on TWO events: a
@@ -68,13 +88,15 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal, get_args
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel, ConfigDict, StringConstraints
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
-from .auth import Principal, forbidden, require_admin
-from .db import tenant_connection
+from .auth import ADMIN_ROLE, STAFF_ROLE, Principal, forbidden, require_admin
+from .db import constraint_name_of, tenant_connection
 
 # The refusal vocabulary is master.py's and is IMPORTED rather than restated.
 # An error shape is a CONVENTION, and a second copy of a convention drifts at
@@ -89,7 +111,30 @@ from .db import tenant_connection
 # is for LIST endpoints, and row-level reads never use it. That bound is the
 # whole of what migration 0007's COMMENT ON COLUMN asks of this file, so it
 # should arrive with the code rather than be remembered beside it.
-from .master import _active_filter, _not_found
+#
+# _conflict and _TENANT arrive on that same argument, and they are the two the
+# create route below would otherwise have retyped:
+#
+#   _conflict is the 409 SHAPE — kind, code, entity, conflicting_code. A second
+#   spelling of it here would be a second convention, drifting at the boundary
+#   neither author tested. What is NOT imported is master's
+#   _DUPLICATE_CODE_CONSTRAINTS table: that maps a constraint name to an entity
+#   for master's own four tables, and teaching it about `users` would make
+#   master.py depend on this module. The dependency runs one way, so the SHAPE
+#   is imported and the one constraint name this file owns is named here.
+#
+#   _TENANT is the tenant_id every INSERT in this API writes: the same GUC
+#   expression the RLS policy's WITH CHECK reads, so the value written and the
+#   value tested are one thing and no handler passes a tenant_id at all. That is
+#   hard rule 2 made structural rather than remembered, and a hand-typed copy of
+#   it here is exactly the predicate that can be wrong.
+#
+# `Name` is imported rather than redeclared so a person's full name carries the
+# same bound as every other human-typed name in this API. `Username` and
+# `Password` are declared below instead, because their bounds are about a login
+# credential and nothing in master.py means that.
+from .master import Name, _TENANT, _active_filter, _conflict, _not_found
+from .security import hash_password
 
 router = APIRouter()
 
@@ -214,6 +259,235 @@ async def list_users(
             )
         ).mappings().all()
     return {"users": [_user_payload(r) for r in rows]}
+
+
+# ---------------------------------------------------------------------------
+# Creating an account
+# ---------------------------------------------------------------------------
+# CONSTRAINED HERE, AT THE EDGE, and here there is nothing underneath. master.py
+# constrains its fields because the database's own limits are not all refusals —
+# NUMERIC rounds an over-scale price instead of rejecting it
+# (lessons/edge-must-reject-what-the-column-rounds.md). `users` is the stronger
+# case: username, full_name and password_hash are bare `text` with NO length
+# limit, and the database has NO password rule of any kind. Whatever this model
+# admits is what gets stored, so a bound that is not declared here is not
+# declared anywhere.
+Username = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)
+]
+
+# A MINIMUM LENGTH AND NOTHING ELSE — no character class, no dictionary check,
+# no expiry, no reuse history. That is ARCHITECTURE.md § 10. The three settled
+# decisions D9, and its reasoning is not about cryptography: the person typing
+# this works a scrap yard with dirty hands, on their own phone, with a truck
+# waiting. A composition rule does not produce a complex password, it produces
+# one written on paper and taped to the scale — readable by everyone who walks
+# past, still there after that person leaves, and invisible to every control this
+# system has.
+#
+# THE NUMBER IS 8 AND IT CARRIES ITS PROVENANCE, because D9 chose the RULE and
+# explicitly did not choose the number: "a length invented in passing by whoever
+# writes D6's create route would be exactly the untraceable constant that ledger
+# exists to prevent". It is not invented here. It was set by the owner in the
+# brief for this phase, 2026-08-10, with no trial behind it — there is no
+# experiment that could choose it, only a judgement — and it is named rather than
+# inlined so the next reader finds one place to change and this sentence beside
+# it.
+PASSWORD_MIN_LENGTH = 8
+
+# NOT A PASSWORD RULE, and D9's "nothing else" is not being widened here. This is
+# a resource bound: argon2 hashing is deliberate CPU on a worker thread
+# (app/security.py) and an unbounded field lets one request occupy one for as
+# long as it likes. 128 is far above any passphrase a person types at a
+# weighbridge, so no credential a human chooses can meet it.
+PASSWORD_MAX_LENGTH = 128
+
+# NO strip_whitespace, and that is the one difference from every other string in
+# this API. Stripping a password SILENTLY CHANGES THE CREDENTIAL: the admin
+# types "hunter2 ", the row stores the hash of "hunter2", and /auth/login — which
+# strips nothing — refuses the password the person was given. Today that is
+# permanent: D6's routes 2 and 3 do not exist, so nothing can change a password
+# afterwards. A space is a character a password may contain.
+Password = Annotated[
+    str,
+    StringConstraints(
+        min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH
+    ),
+]
+
+# READ OFF THE DATABASE'S OWN CHECK, not from memory: migration 0001 creates
+# `role text NOT NULL CHECK (role IN ('admin', 'staff'))`. Declaring it here is
+# master.py's Grade convention — a bad value is a 422 from pydantic, never a
+# CheckViolation 500 from Postgres, and a 500 is `unavailable` to a client rather
+# than `rejected` (lessons/unavailable-is-not-rejected.md).
+Role = Literal["admin", "staff"]
+
+# The two strings now have THREE spellings: the migration's CHECK, auth.py's
+# ADMIN_ROLE/STAFF_ROLE, and the Literal above. auth.py's own comment binds its
+# pair to the migration. This binds the third, and the failure it closes is
+# silent: rename a constant in auth.py and this route would go on minting rows
+# whose role no gate recognises — accounts that authenticate and are refused
+# everything, with nothing anywhere reporting a fault.
+#
+# RuntimeError at import, never `assert`: `python -O` strips asserts, and this is
+# the same fail-closed-at-import shape config.py uses for an empty JWT_SECRET.
+if set(get_args(Role)) != {ADMIN_ROLE, STAFF_ROLE}:  # pragma: no cover
+    raise RuntimeError(
+        "users.Role and auth.ADMIN_ROLE/STAFF_ROLE have diverged:"
+        f" {sorted(get_args(Role))} != {sorted({ADMIN_ROLE, STAFF_ROLE})}."
+        " Both must equal migration 0001's CHECK (role IN ('admin','staff'))."
+    )
+
+
+class UserCreate(BaseModel):
+    """Everything the row needs that the database will not supply itself.
+
+    FOUR FIELDS, and the ones that are absent are the decisions:
+
+    NO tenant_id, and it is not an omission a caller may correct — extra="forbid"
+    refuses the field rather than ignoring it. The tenant comes from the caller's
+    own token by way of _TENANT, so "create this user in that shop" is not a
+    request this route can express, let alone honour.
+
+    NO is_active. A new account is active; that is migration 0007's DEFAULT true,
+    and an account born locked is a thing nothing asked for. /deactivate is one
+    request away for anyone who wants one.
+
+    NO token_version. Migration 0005's DEFAULT is 1 and its CHECK forbids 0, and
+    that pairing is load-bearing: no row may ever hold the value an absent claim
+    would default to. Writing a version here would make this route a second
+    author of that invariant.
+
+    NO user_id. The column defaults to gen_random_uuid(); a client-supplied id is
+    hard rule 3's rule for BILLS, which are written offline on a device that has
+    no server to ask. An account is created online, by an admin, or not at all.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    username: Username
+    full_name: Name
+    role: Role
+    password: Password
+
+
+@router.post("/users", status_code=status.HTTP_201_CREATED)
+async def create_user(
+    body: UserCreate, principal: Principal = Depends(require_admin)
+) -> dict:
+    """Bring an account into existence. ADMIN ONLY.
+
+    Same tier as every other route in this module, and for once that needs no
+    argument of its own: if a yard phone could create an account it could create
+    an ADMIN account, and every gate in this API would then be one request away
+    from being nobody's.
+
+    AN ADMIN MAY CREATE ANOTHER ADMIN — ARCHITECTURE.md § 10. The three settled
+    decisions D7. That is deliberate and it is the reason `role` is a caller's
+    choice rather than a constant. A shop whose single admin loses their handset
+    has nobody who can sign in as an admin: /activate, /revoke-sessions and this
+    route are all require_admin, and there is no password reset, no recovery
+    address and no support path that speaks HTTP — the only way back in today is
+    somebody running SQL on site. provision_shop.py is not a way back either: it
+    creates a shop's FIRST admin from an installer's shell and refuses a second
+    run. A second admin is the cheap version of that insurance, and the shop must
+    be able to make one without us. Without this paragraph the next reader sees a
+    hole.
+
+    THE COST, STATED AND NOT ARGUED AWAY, because D7 states it: admin is the tier
+    that voids bills and moves prices, so an admin who creates a second admin has
+    handed over every capability they hold, permanently and with NO AUDIT TRAIL —
+    D3's log does not exist. The role is a two-value CHECK, not a permission
+    system, so there is no weaker admin to create instead. The same capability
+    also lets a compromised admin session mint a persistent admin of its own,
+    which is not a new door — such a session can already void every bill and
+    re-price the shop — but it does change how long an intruder keeps access
+    after the original account is locked.
+
+    THE FIRST PASSWORD IS NOT FORCED TO CHANGE ON FIRST USE, and that absence is
+    a DECISION, not an omission — D8, which asks in its own text that a later
+    session not read it as an oversight. This route therefore issues no
+    provisional credential and records no "must change" state; there is no third
+    account state and no column for one.
+
+    WHAT D8 RESTS ON DOES NOT EXIST YET, and this is the sentence to carry out of
+    here: D8 is acceptable BECAUSE a staff member may change their own password
+    at any time (D6's route 3) — and route 3 is not built. Until it is, the first
+    password is known to two people permanently, and the only account state a
+    shop can reach for is /deactivate. That is a consequence of shipping route 1
+    first, not a defect of this route, and it is what makes the password routes
+    the next phase rather than a later one.
+
+    NO hand-written `WHERE tenant_id`, and NO tenant_id from the caller (hard
+    rule 2). tenant_connection issues SET LOCAL from the TOKEN's tenant; the
+    INSERT writes _TENANT, which is that same GUC read back; and the RLS policy's
+    WITH CHECK compares the new row against it. So an admin of tenant A creating
+    a user is structurally incapable of landing it anywhere but tenant A — there
+    is no predicate here to get wrong and no argument here to get wrong.
+
+    THE RESPONSE IS THE ROSTER'S FIVE KEYS, _user_payload unchanged, and the two
+    it withholds are the point. NO password (nothing echoes a credential), NO
+    password_hash, and NO token_version — that last one is the decision, because
+    the three routes below DO return it. They return it because their caller is
+    reading the effect of their own action ON SESSIONS: a bump moved the number,
+    a lock moved it in the same statement, an unlock deliberately did not. This
+    route ends no session and moves no version; the row is born at the column's
+    DEFAULT. There is nothing for a caller to observe, which leaves only the bad
+    use _user_payload names — a client re-deriving get_principal's equality check
+    for itself, stale and as an ordering comparison.
+
+    THE PASSWORD IS HASHED BEFORE THE CONNECTION IS OPENED. argon2 is deliberate
+    CPU and it runs in a worker thread; hashing inside the transaction would hold
+    a pooled connection open across it for no reason. It also means a duplicate
+    username costs exactly what a successful create costs, so nothing here times
+    differently for a name that is taken.
+
+    409 ON A DUPLICATE USERNAME, in master.py's existing shape, because
+    uq_users_tenant_username (migration 0001) is per TENANT: two shops may both
+    have a `somchai` and neither may have two. Anything else keeps its 500 —
+    _raise_for_integrity's rule, applied here: a name this file does not
+    recognise is a genuine surprise and must not be dressed up as a client error
+    we understood.
+
+    WHAT THIS ROUTE DOES NOT DO. It does not change a password — nobody can, in
+    this system, including the person who owns one. It does not delete, here or
+    anywhere. It issues no provisional or temporary credential: the password the
+    admin types is the password the person is given, and it is on the admin to
+    hand it over out of band.
+    """
+    # OUTSIDE the transaction — see the docstring.
+    password_hash = await hash_password(body.password)
+
+    async with tenant_connection(principal.tenant_id) as conn:
+        try:
+            row = (
+                await conn.execute(
+                    text(
+                        f"INSERT INTO users"
+                        f" (tenant_id, username, full_name, role, password_hash)"
+                        f" VALUES ({_TENANT}, :username, :full_name, :role, :ph)"
+                        f" RETURNING id, username, full_name, role, is_active"
+                    ),
+                    {
+                        "username": body.username,
+                        "full_name": body.full_name,
+                        "role": body.role,
+                        "ph": password_hash,
+                    },
+                )
+            ).mappings().one()
+        except IntegrityError as e:
+            # BY NAME, through db.constraint_name_of — never `exc.orig
+            # .constraint_name`, which is ABSENT on this stack and reads as ""
+            # for every violation
+            # (lessons/a-defaulted-getattr-is-a-silent-dead-branch.md). A blanket
+            # `except IntegrityError -> 409` would report "that username is
+            # taken" for a tenant_id FK violation or anything else that ever
+            # lands here, which is a confident lie about a cause.
+            if constraint_name_of(e) == "uq_users_tenant_username":
+                raise _conflict("user", body.username) from e
+            raise
+
+    return _user_payload(row)
 
 
 @router.post("/users/{user_id}/revoke-sessions")
