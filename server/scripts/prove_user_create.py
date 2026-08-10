@@ -58,6 +58,17 @@ TWICE IN A ROW, NO RESEED (lessons/proof-must-run-twice.md): every username
 carries a per-run uuid tag, so run 2 collides with nothing run 1 left behind, and
 nothing is normalised as setup -- the script creates everything it measures.
 
+IT ALSO CARRIES THE VALIDATION HANDLER'S PROOF, and that is deliberate rather
+than tidy. The defect was found here (P6 printed `the 422 body ECHOES the
+rejected password: True` as an observation and asserted nothing), the lesson
+written from here, and the fix is API-wide — so the cells that measure it belong
+in the file whose own gap they close. P6/H4 asserts the password case on this
+route; H1-H3 ask the question this route cannot answer about itself, namely
+whether the value is removed because it was a PASSWORD or removed from every
+validation error the API emits. H3 leaves this module entirely and refuses a
+`POST /uoms` with an empty code, because a handler that pleased POST /users and
+left every other route echoing would be invisible to P1-P8.
+
 NO USERNAME OR FULL NAME BELOW MAY CONTAIN THE TEXT "token_version" OR
 "password_hash". prove_revocation.py CASE 6b asserts those two strings are absent
 from the WHOLE roster body, on the raw bytes, and a user whose name carried one
@@ -116,7 +127,10 @@ NEW_PW = f"yard-pass-{RUN}"
 SHORT_PW = "abc1234"
 
 failures: list[str] = []
-observations: list[str] = []
+# A COUNT the reader must meet. A proof that fails by running FEWER cells is
+# indistinguishable from one that passed, which is this repository's oldest
+# failure shape, and "failures: 0" cannot tell the two apart on its own.
+passes: list[str] = []
 
 
 def banner(title: str) -> None:
@@ -129,8 +143,7 @@ def check(cond: bool, claim: str) -> None:
     """`claim` is what must be TRUE, printed either way, so the tag and the
     sentence can never disagree with each other."""
     print(f"  [{'OK  ' if cond else 'FAIL'}] {claim}")
-    if not cond:
-        failures.append(claim)
+    (passes if cond else failures).append(claim)
 
 
 def body_of(r: httpx.Response) -> dict:
@@ -657,23 +670,29 @@ def main() -> int:  # noqa: C901
                   " never a 500 the client would read as unavailable)")
             check(b"password_hash" not in r6.content,
                   "p6: the refusal carries no password_hash")
-            # AN OBSERVATION, PRINTED, DELIBERATELY NOT A CELL. FastAPI's default
-            # validation handler serialises pydantic's `input` field, so a 422
-            # about a password ECHOES THAT PASSWORD BACK to the caller who sent
-            # it. That is a property of the framework's shared handler, not of
-            # this route, and no contract in this repo says otherwise -- making
-            # it a cell would be asserting a decision nobody has taken. It is
-            # printed, and repeated in the summary when true, because an
-            # observation nobody reads is how a defect stays.
-            echoed = SHORT_PW.encode() in r6.content
-            print(f"  the 422 body ECHOES the rejected password: {echoed}"
-                  "  (observation, not asserted -- see the note in the source)")
-            if echoed:
-                observations.append(
-                    "the 422 for a too-short password ECHOES the password in"
-                    " `input` (FastAPI's default validation handler). It goes"
-                    " only to the caller who sent it, and a client that renders"
-                    " a raw error body would put it on a screen.")
+            # H4. THIS WAS AN OBSERVATION AND IS NOW A CELL, and that change is
+            # the whole point of the commit carrying it. It printed
+            # `the 422 body ECHOES the rejected password: True` and asserted
+            # NOTHING, because at the time no contract said a refusal body may
+            # not carry the value it refused, and a cell asserting a decision
+            # nobody had taken would have failed for being right too early. The
+            # decision is taken: app/main.py::validation_error_handler removes
+            # pydantic's `input` from every validation error this API emits.
+            #
+            # ON THE RAW BYTES, SEARCHING FOR THE VALUE ITSELF. Reading the
+            # parsed body is not the test: a key absent from a dict says nothing
+            # about the same string sitting elsewhere in the response.
+            check(SHORT_PW.encode() not in r6.content,
+                  "p6/H4: the 422 refusing a short password does NOT carry the"
+                  " password anywhere in its bytes")
+            # THE PRESENCE SIBLING, in the SAME response, through the SAME byte
+            # search. Without it the absence above is satisfied by an empty body,
+            # by a 500, or by a handler that returned nothing at all
+            # (lessons/a-check-that-never-went-red-was-never-observed.md, ninth).
+            check(b"password" in r6.content,
+                  "p6/H4 CONTROL: the same byte search DOES find the field name"
+                  " `password` in that body -- so the absence above is a working"
+                  " search over a body that exists")
             after_p6 = roster(client, admin_token)
             db_after_p6 = db_users(TENANT_A_ID)
             # COUNTED ON BOTH SIDES, and in the DATABASE as well as through the
@@ -767,6 +786,106 @@ def main() -> int:  # noqa: C901
                   " both sides of this comparison come off live responses")
 
             # ==============================================================
+            banner("H1-H3 - the validation handler, and that it is API-WIDE")
+            # ==============================================================
+            # P6/H4 above already asserts the password case on this route. These
+            # three ask the question the route cannot answer about itself: is the
+            # value removed BECAUSE IT WAS A PASSWORD, or removed from every
+            # validation error this API emits? A handler that pleased POST /users
+            # and left every other route echoing would be invisible to P1-P8.
+            print("  the handler is app/main.py::validation_error_handler,")
+            print("  registered against RequestValidationError on the app, so it")
+            print("  answers for every route -- including routes not yet written.")
+
+            # ---------------------------------------------------------- H1
+            r_h1 = create_user(client, admin_token, f"h1-{RUN}",
+                               "Refused by H1", "staff", SHORT_PW)
+            print(f"\n  H1  POST /users, short password   status={r_h1.status_code}")
+            print(f"      body={r_h1.text.strip()[:220]}")
+            h1_errors = body_of(r_h1).get("detail")
+            h1_errors = h1_errors if isinstance(h1_errors, list) else []
+            check(r_h1.status_code == 422, "H1: the refusal is a 422")
+            check(SHORT_PW.encode() not in r_h1.content,
+                  "H1: the submitted value is ABSENT from the raw bytes of the"
+                  " response")
+            check(all("input" not in e for e in h1_errors) and len(h1_errors) == 1,
+                  f"H1: the one error object carries no `input` key at all"
+                  f" (entries={len(h1_errors)},"
+                  f" keys={sorted(h1_errors[0]) if h1_errors else []})")
+            check(b"password" in r_h1.content and b"string_too_short" in r_h1.content,
+                  "H1 CONTROL: the same byte search finds `password` and"
+                  " `string_too_short` in that body -- the absence above is not"
+                  " an empty haystack")
+
+            # ---------------------------------------------------------- H2
+            # A NON-SECRET FIELD, and its value is searchable on purpose: 73
+            # characters against a 64 maximum, so the error is string_too_long and
+            # the value is distinctive enough that finding it could not be a
+            # coincidence. THIS IS THE CELL THAT SAYS THE RULE IS UNCONDITIONAL
+            # rather than a list of field names somebody maintains.
+            long_username = "h2-" + "u" * 70
+            r_h2 = create_user(client, admin_token, long_username,
+                               "Refused by H2", "staff", NEW_PW)
+            print(f"\n  H2  POST /users, username {len(long_username)} chars"
+                  f"   status={r_h2.status_code}")
+            print(f"      body={r_h2.text.strip()[:260]}")
+            h2_errors = body_of(r_h2).get("detail")
+            h2_errors = h2_errors if isinstance(h2_errors, list) else []
+            h2 = next((e for e in h2_errors
+                       if e.get("loc") == ["body", "username"]), None)
+            check(r_h2.status_code == 422, "H2: the refusal is a 422")
+            check(h2 is not None,
+                  "H2: the body still names WHICH field failed"
+                  " (loc == ['body','username'])")
+            check(h2 is not None and h2.get("type") == "string_too_long",
+                  f"H2: it still names WHY, machine-readably"
+                  f" (type == 'string_too_long', got"
+                  f" {h2.get('type') if h2 else None!r})")
+            check(h2 is not None and "at most 64" in str(h2.get("msg", "")),
+                  f"H2: it still says why in words, with the bound"
+                  f" (msg contains 'at most 64': {h2.get('msg') if h2 else None!r})")
+            check(h2 is not None and isinstance(h2.get("ctx"), dict)
+                  and h2["ctx"].get("max_length") == 64,
+                  f"H2: and it still carries the bound as data"
+                  f" (ctx.max_length == 64, got"
+                  f" {h2.get('ctx') if h2 else None!r})")
+            check(h2 is not None and "input" not in h2,
+                  "H2: the value is removed from a NON-SECRET field too -- the"
+                  " rule is one key removed unconditionally, not a list of field"
+                  " names somebody has to keep up to date")
+            check(long_username.encode() not in r_h2.content,
+                  "H2: and the submitted username is absent from the raw bytes")
+
+            # ---------------------------------------------------------- H3
+            # A DIFFERENT ENDPOINT ENTIRELY, and one that has nothing to do with
+            # passwords or with users: POST /uoms, whose `code` field has carried
+            # StringConstraints(min_length=1) since master.py was written. If the
+            # handler were scoped to this module, or to a field name, this cell is
+            # where that shows.
+            empty_code = {"code": "", "name": f"H3 unit {RUN}"}
+            r_h3 = client.post(f"{BASE}/uoms", headers=auth(admin_token),
+                               json=empty_code)
+            print(f"\n  H3  POST /uoms, empty code        status={r_h3.status_code}")
+            print(f"      body={r_h3.text.strip()[:260]}")
+            h3_errors = body_of(r_h3).get("detail")
+            h3_errors = h3_errors if isinstance(h3_errors, list) else []
+            h3 = next((e for e in h3_errors
+                       if e.get("loc") == ["body", "code"]), None)
+            check(r_h3.status_code == 422, "H3: POST /uoms still refuses 422")
+            check(h3 is not None and h3.get("type") == "string_too_short"
+                  and "at least 1" in str(h3.get("msg", "")),
+                  f"H3: an UNRELATED endpoint's validation error still names the"
+                  f" field and the reason (loc ['body','code'],"
+                  f" type 'string_too_short', msg carries 'at least 1'): {h3!r}")
+            check(h3 is not None and "input" not in h3,
+                  "H3: and the handler reached it -- no `input` key on an"
+                  " endpoint this commit did not touch")
+            check(isinstance(body_of(r_h3).get("detail"), list),
+                  "H3: `detail` is still a LIST, which is the shape"
+                  " prove_master_write.py uses to tell a pydantic 422 from this"
+                  " API's kind/code refusals")
+
+            # ==============================================================
             banner("P8 - the existing revocation proof still passes, UNCHANGED")
             # ==============================================================
             # This commit adds a route to a module prove_revocation.py already
@@ -819,14 +938,12 @@ def main() -> int:  # noqa: C901
           f" {ADMIN_NEW}) and 1 in tenant B ({STAFF_NEW}), plus whatever"
           " prove_revocation.py wrote. None of them can be deleted.")
     print(f"  uvicorn log: {log.name}")
-    if observations:
-        print("  OBSERVED, not asserted:")
-        for o in observations:
-            print(f"    - {o}")
     if failures:
         print("  THESE CLAIMS DID NOT HOLD:")
         for f in failures:
             print(f"    - {f}")
+    print(f"  cells: {len(passes)} OK, {len(failures)} FAIL"
+          f"  (total {len(passes) + len(failures)})")
     print(f"  failures: {len(failures)}")
     return 1 if failures else 0
 

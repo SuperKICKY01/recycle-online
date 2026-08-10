@@ -10,7 +10,9 @@ import contextlib
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -62,6 +64,79 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Recycle Online API (Phase 2c-2)", lifespan=lifespan)
+
+
+# The key pydantic puts the REJECTED VALUE in. Removed from every validation
+# error this API emits; see the handler below for why it is one key and not a
+# list of field names.
+_REJECTED_VALUE_KEY = "input"
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(
+    _: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """A 422 that says WHICH field and WHY, and never hands the value back.
+
+    THE DEFECT THIS EXISTS TO CLOSE. FastAPI's default handler is
+    `JSONResponse(status_code=422, content={"detail": jsonable_encoder(
+    exc.errors())})`, and pydantic's error objects carry an `input` key holding
+    the value that failed. So the refusal of a too-short password RETURNED THAT
+    PASSWORD: `{"type":"string_too_short","loc":["body","password"],"input":
+    "abc1234",...}`. Measured on POST /users, 2026-08-10
+    (lessons/a-refusal-hands-back-what-it-refused.md).
+
+    IT IS FIXED HERE, BEFORE THE TWO PASSWORD ROUTES, AND THAT ORDER IS THE
+    POINT. Those routes carry two secrets in one request — the password in use
+    and its replacement — and fixing it at them would leave an API that is safe
+    where somebody remembered and leaks where nobody did.
+
+    ONE KEY, REMOVED UNCONDITIONALLY, NEVER A LIST OF FIELD NAMES. A list of
+    secret-ish names — password, new_password, pin, secret, token — is the
+    author guessing at what a thing may be CALLED, which is exactly
+    lessons/a-gate-that-matches-a-keyword-misses-its-aliases.md, and it fails in
+    the PERMISSIVE direction: a field nobody thought to add is a field that
+    leaks. There is nothing here to classify and nothing to maintain, so a route
+    written next year is covered by a decision taken today.
+
+    API-WIDE BY CONSTRUCTION, not by anybody remembering. It is registered
+    against the EXCEPTION CLASS on the app, and every request-validation failure
+    on every route raises that class — including routes that do not exist yet.
+    FastAPI installs its own with `setdefault`, so registering here replaces it
+    rather than racing it.
+
+    WHAT IS DELIBERATELY UNCHANGED. `detail` stays a LIST of error objects, and
+    each object keeps `type`, `loc`, `msg` and `ctx`: WHICH field failed, in what
+    way, and against what bound. A handler that made every validation error
+    uninformative would have traded one defect for a worse one — and the shape
+    is load-bearing elsewhere, because prove_master_write.py distinguishes this
+    422 from the API's kind/code refusals by the fact that it carries a list and
+    no `kind`.
+
+    NOT THIS HANDLER'S PATH: HTTPException-based 422s (master._invalid) are
+    raised, not validated, so they go through http_exception_handler and keep
+    their kind/code envelope untouched.
+
+    THE ONE THING IT CANNOT REACH, stated rather than discovered later: a CUSTOM
+    validator that interpolates the rejected value into its own message would
+    still echo it through `msg`, because that text is the author's and no handler
+    can tell it from a legitimate sentence. Every constraint in this API today is
+    declarative, so there is no such message; if one is ever written, the rule is
+    at the validator, not here.
+
+    NOTHING IS LOGGED. Redacting a value from the response and then writing it to
+    the server's log would move the disclosure rather than close it.
+    """
+    scrubbed = [
+        {k: v for k, v in error.items() if k != _REJECTED_VALUE_KEY}
+        for error in exc.errors()
+    ]
+    # jsonable_encoder for the same reason the default handler uses it: `ctx` can
+    # hold objects that are not JSON-serialisable, and a handler that raised
+    # while reporting a 422 would turn a client's terminal rejection into a 500,
+    # which the mobile engine reads as `unavailable` and retries forever
+    # (lessons/unavailable-is-not-rejected.md).
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(scrubbed)})
 
 
 @app.middleware("http")

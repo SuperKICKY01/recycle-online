@@ -816,6 +816,18 @@ idea — only that it is unresolved.
   the same run; the expensive half is deciding what a refusal body is CONTRACTED
   to contain, which nothing states today and which the code-debt entry below
   cannot be closed without.
+  **PARTLY ANSWERED 2026-08-10, AND STILL OPEN — the two halves moved different
+  distances.** The cheap half is exercised in exactly ONE proof:
+  `prove_user_create.py` P6/H4 asserts on the raw bytes of a refusal body, with
+  a presence sibling in the same response, and H1-H3 do the same across two
+  routes. The expensive half is now answered FOR VALIDATION REFUSALS ONLY —
+  `app/main.py::validation_error_handler` states what a 422 carries and what it
+  never carries — and is untouched for every other refusal shape this API can
+  emit: 401, 403, 404, 409 and 424 still have no contract on their bodies and no
+  proof reads one back. **The inventory still does not exist**, so "which routes
+  constrain which fields at the edge" is as unanswered as it was; what changed is
+  that for one refusal species the answer no longer depends on the inventory,
+  because the removal is unconditional rather than per field.
 
 ## Code debt found and left in place
 
@@ -1694,8 +1706,27 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   treat an unexplained refusal as a finding to report, never as a reason to
   reach for a different spelling until one works.
 
-- **A 422 HANDS THE REJECTED PASSWORD BACK TO THE CALLER, KNOWN AND OPEN.
-  Measured 2026-08-10, shipped with the echo deliberately.** FastAPI's default
+- **~~A 422 HANDS THE REJECTED PASSWORD BACK TO THE CALLER, KNOWN AND OPEN.
+  Measured 2026-08-10, shipped with the echo deliberately.~~ — CLOSED
+  2026-08-10 by `app/main.py::validation_error_handler`, ONE COMMIT AFTER THE
+  ONE THAT RECORDED IT.** The *Not done:* clause below is left standing and is
+  now history rather than plan: it argued the fix was not the create route's
+  business, and that argument is exactly why the fix is a handler registered
+  against `RequestValidationError` on the app instead. **What was decided is
+  the thing that clause said was undecided** — a validation refusal carries
+  `type`, `loc`, `msg` and `ctx`, and never the submitted value; `detail`
+  stays a LIST; and `input` is removed UNCONDITIONALLY rather than for a list
+  of field names, so a field added later is covered by a decision already
+  taken. **The order was deliberate:** D6's two password routes carry two
+  secrets in one request, and fixing it at them would have left an API safe
+  where somebody remembered and leaking where nobody did. Asserted on the RAW
+  BYTES in `prove_user_create.py` P6/H4, with H1-H3 showing the removal is
+  API-wide — H3 on `POST /uoms`, a route that has nothing to do with
+  passwords. **One residual, and no handler can reach it:** a CUSTOM validator
+  that interpolates the rejected value into its own message would still echo
+  it through `msg`. Every constraint in this API is declarative today, so no
+  such message exists; the rule for the day one is written belongs at the
+  validator. **The record of the defect follows, unedited.** FastAPI's default
   validation handler serialises pydantic's `input`, so the value that failed the
   constraint comes back inside the error body. `POST /users` declares
   `min_length=8` on `password` at the edge — which is what
@@ -2685,11 +2716,11 @@ or from a plausible-sounding summary.
   **Nothing practical changes:** `build_all_lessons.py` reads the
   WORKING TREE from disk, which is CRLF and BOM'd, so both stated
   reasons for excluding `README.md` from `all-lessons.md` still hold.
-  *Done when:* `:188-215` is rewritten against these measurements — BOM
+  ~~*Done when:* `:188-215` is rewritten against these measurements — BOM
   claim kept, working-tree claims kept, blob claims corrected — each
   with the instrument named, because the last two attempts at this
   paragraph disagreed about the answer and neither recorded how it was
-  measured.
+  measured.~~
   **OWNER RULING 2026-08-08 ON HOW THIRD MUST DO IT, and it constrains
   the FORM rather than the content: the repair is NOT to write a third
   correction.** It is to state what was MEASURED — carrying the
@@ -2700,9 +2731,15 @@ or from a plausible-sounding summary.
   measurement attached would be the same failure a third time, and the
   paragraph would then read wrong, right, wrong, and unfalsifiable in
   turn.
-  **~~*Done when:* the passage is rewritten against these measurements~~ —
-  CLOSED 2026-08-10 by the commit that carries this line, with every clause
-  answered rather than waved at.** The passage is rewritten: BOM claim kept
+  **CLOSED 2026-08-10 by `a361e53`, with every clause answered rather than
+  waved at.** *(This line read "by the commit that carries this line" and
+  struck a PARAPHRASE — "the passage is rewritten against these measurements"
+  — while the sentence it paraphrased sat unstruck fifteen lines above, so the
+  file showed an OPEN done-condition and a struck sentence that appears
+  nowhere else in that form. The done-condition is now struck WHERE IT LIVES,
+  and the closing commit is NAMED: "the commit that carries this line" stops
+  being true the moment anything else edits the line, which is what just
+  happened.)* The passage is rewritten: BOM claim kept
   (`efbbbf` on both objects), working-tree claims kept and now LABELLED as
   working-tree, blob claims corrected to CR=0. The instruments are named in
   the entry itself — `git cat-file blob` captured as bytes, `git cat-file -s`

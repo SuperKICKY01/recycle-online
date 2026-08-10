@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 15 across 7 files, counted from the source headings and
+**Amendments:** 16 across 8 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -47,7 +47,7 @@ line instead of by heading depth.
 - `a-mutation-on-a-protected-write-path-needs-a-scratch-database.md` -- A mutation on a protected write path needs a scratch database
 - `a-proof-fixture-must-be-a-row-the-product-could-produce.md` -- A proof fixture must be a row the product could have produced
 - `a-proof-must-establish-what-it-is-talking-to.md` -- A proof must establish WHAT IT IS TALKING TO before it asserts anything about the answers
-- `a-refusal-hands-back-what-it-refused.md` -- A 422 is a MIRROR — the framework hands back the value it refused, and one of those values is a password
+- `a-refusal-hands-back-what-it-refused.md` *(1 amendment)* -- A 422 is a MIRROR — the framework hands back the value it refused, and one of those values is a password
 - `a-report-is-many-reads-that-must-agree.md` -- A report is many reads; under READ COMMITTED they are many moments
 - `a-round-trip-must-agree-on-its-key-space.md` -- A round trip must agree on its key space
 - `a-stored-future-instant-is-a-promise-about-a-clock.md` -- A stored future instant is a promise about a clock you do not control
@@ -2193,6 +2193,57 @@ being right too early.
 `recycle_restore_scratch`, 2026-08-10 — printed as
 `the 422 body ECHOES the rejected password: True`, and repeated in that run's
 summary so an observation nobody reads cannot be how it stays.
+
+## AMENDED (2026-08-10) — it is fixed, ONE COMMIT after this file was written
+
+**"The state this was left in" above is history now, and it is kept rather than
+edited because the ORDER is the part worth keeping.** The section said the route
+ships with the echo and that fixing it means a handler for the whole API. That is
+exactly what was then built: `server/app/main.py::validation_error_handler`,
+registered against `RequestValidationError` on the app, removing pydantic's
+`input` from every validation error this API emits.
+
+**WHY IT COULD NOT WAIT FOR THE ROUTES THAT MADE IT URGENT.** The next phase is
+D6's two password routes, and each carries TWO secrets in one request — the
+password in use and its replacement. Fixing the echo at those routes would have
+produced an API that is safe where somebody remembered and leaks where nobody
+did, while `POST /users` went on leaking regardless. A defect whose fix is a
+shared handler is fixed at the handler, before the callers that need it, or it
+is fixed once per author for ever.
+
+**ONE KEY, UNCONDITIONALLY — NOT A LIST OF SECRET-ISH FIELD NAMES.** `password`,
+`new_password`, `pin`, `secret`, `token` is the author guessing at what a thing
+may be CALLED ([[a-gate-that-matches-a-keyword-misses-its-aliases]]), and it
+fails in the permissive direction: the field nobody thought of is the field that
+leaks. Removing `input` from every error object means there is nothing to
+classify, so a route written next year is covered by a decision taken today.
+Measured on a NON-SECRET field in the same run, because a rule you cannot see
+working on an ordinary field is a rule you have not tested.
+
+**WHAT THE 422 STILL CARRIES, because the opposite mistake was available and is
+worse:** `detail` is still a LIST, and each error keeps `type`, `loc`, `msg` and
+`ctx` — which field, in what way, against what bound. A handler that made every
+validation error uninformative would have traded one defect for a bigger one,
+and the shape is load-bearing elsewhere: `prove_master_write.py` tells a pydantic
+422 from this API's kind/code refusals by the fact that it carries a list and no
+`kind`.
+
+**THE RESIDUAL IS UNCHANGED AND NO HANDLER CAN REACH IT.** A custom validator
+that interpolates the rejected value into its own message still echoes it through
+`msg`, because that text is the author's and nothing can tell it from a
+legitimate sentence. Every constraint in this API is declarative today, so no
+such message exists. **Rule 2 of "How to apply" above therefore still stands
+unchanged** — read the whole refusal body when you add a constraint — and rule 3
+is what the handler discharged.
+
+**Where measured.** `prove_user_create.py` P6/H4 asserts the password's absence
+on the RAW BYTES with a presence sibling in the same response; H1-H3 show the
+removal is API-wide, H3 on `POST /uoms`, a route with nothing to do with
+passwords. 83 cells, 0 failures, twice in a row with no reseed. **De-registering
+the handler turns exactly six cells red** — H4, two of H1's, two of H2's and one
+of H3's — while every cell asserting that the error still NAMES the field and the
+reason stays green. That pairing is the evidence: the informativeness cells are
+pointed at informativeness, not at the handler's existence.
 
 ---
 
