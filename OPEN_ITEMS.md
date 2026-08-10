@@ -27,8 +27,20 @@ idea — only that it is unresolved.
   the first admin of the pilot shop is the only credential that shop has.
   *Not done:* P1.5. Its text said an admin creates one account per staff member;
   that sentence is corrected in `ROADMAP.md` and its DONE WHEN is untouched.
-  *Unblocks:* a create-user endpoint under the admin gate, writing into `users`
-  under the caller's own tenant context, plus a way to set a first password.
+  *Unblocks:* **the SHAPE is now decided; at `a73c264` not one line of it is
+  built, and a parallel session had route 1 written but uncommitted in the
+  working tree while this was being recorded** (`server/app/users.py:380`,
+  `@router.post("/users")` behind `Depends(require_admin)` — written, not proven,
+  not committed; routes 2 and 3 absent). Three
+  endpoints, not two — an admin creates a user, an admin sets another user's
+  password, and a user changes their own — recorded with the reasoning for the
+  split at `ARCHITECTURE.md § 10. The three settled decisions` D6, together with
+  D7 (an admin may create another admin), D8 (no forced change on first use) and
+  D9 (minimum length, no composition rule). **What is outstanding is writing them,
+  not deciding them.** This entry read "a create-user endpoint under the admin
+  gate, writing into `users` under the caller's own tenant context, plus a way to
+  set a first password" until 2026-08-10: true as far as it went, and it named two
+  things where there are three.
   **THE BOUND TRAVELS WITH THE FINDING**: the endpoint negative is authoritative
   because it comes from the schema the app publishes, but the companion survey of
   which writers reach `tenants` at all was run over RAW-SQL SPELLINGS, so its
@@ -96,6 +108,18 @@ idea — only that it is unresolved.
   are the dev fixture from the seed script. *Not done:* no
   account-provisioning path exists at all. *Unblocks:* deciding who
   creates a shop's first admin, and how.
+  **CORRECTED 2026-08-10, AND THE TWO HALVES MOVED DIFFERENT DISTANCES.**
+  The first sentence is false: `server/scripts/provision_shop.py` created the
+  pilot shop's first admin on the dev database, so the seed fixture is no longer
+  the only credential in existence. The *Unblocks:* is now half-answered — a
+  shop's FIRST admin comes from an installer running that script at a shell, and
+  who may create the SECOND is decided (an admin may create another admin,
+  `ARCHITECTURE.md § 10. The three settled decisions` D7). What is still open is
+  neither of those: it is that no endpoint exists for any of it, which is the
+  first entry in this section and not this one. **This entry is kept rather than
+  deleted** because `R5` is cited from elsewhere and because a reader arriving at
+  "no account-provisioning path exists at all" should meet the correction beside
+  it, not instead of it.
 - **Master-data screens — `R4`, and the biggest fork on the path** — the
   whole master-data WRITE path exists and is proven over HTTP, and the
   only thing that can call it is `curl`. A shop cannot set up its own
@@ -769,6 +793,29 @@ idea — only that it is unresolved.
   green on a cluster where the schema is absent. What changed is that the
   condition is now satisfied on the one database that matters, by application
   rather than by any check noticing.
+
+- **EVERY ABSENCE ASSERTION IN THIS PROJECT SITS ON THE SUCCESS PATH, AND THE
+  REFUSAL PATH IS WHERE NOBODY LOOKS. Recorded 2026-08-10, and this is bigger
+  than the defect that exposed it.** The absence assertions here are sharp and
+  well-controlled — the create proof checks by NAME and on the RAW BYTES that a
+  201 body carries no `password`, no `password_hash` and no `token_version`, and
+  all three cells are green. **All three are about the 201.** A refusal, by
+  convention in this repository, is asserted on its STATUS and its `code`,
+  because that is what the contract names; **the BODY of a refusal is the thing
+  no proof reads back.** So every route that constrains a field at the edge has a
+  refusal shaped by the framework rather than by this repository, and not one of
+  them has ever been asserted on for what it CONTAINS. The defect that made this
+  visible is filed separately under code debt, and it is an instance rather than
+  the finding: what is unproven is the shape of every refusal body this API can
+  emit. **Not a positive-control failure** — the controls held and the cells
+  could have gone red; they were pointed at the wrong response, which is a
+  different miss and needs a different fix. *Not done:* no proof in the tree
+  asserts on a refusal body, and no inventory exists of which routes constrain
+  which fields at the edge. *Unblocks:* the cheap half is a rule — where a proof
+  asserts a body's contents, write the sibling assertion on the REFUSAL body in
+  the same run; the expensive half is deciding what a refusal body is CONTRACTED
+  to contain, which nothing states today and which the code-debt entry below
+  cannot be closed without.
 
 ## Code debt found and left in place
 
@@ -1647,6 +1694,36 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   treat an unexplained refusal as a finding to report, never as a reason to
   reach for a different spelling until one works.
 
+- **A 422 HANDS THE REJECTED PASSWORD BACK TO THE CALLER, KNOWN AND OPEN.
+  Measured 2026-08-10, shipped with the echo deliberately.** FastAPI's default
+  validation handler serialises pydantic's `input`, so the value that failed the
+  constraint comes back inside the error body. `POST /users` declares
+  `min_length=8` on `password` at the edge — which is what
+  `lessons/README.md § Lessons` "edge-must-reject-what-the-column-rounds.md"
+  prescribes and what `master.py` already does — and a seven-character password
+  returns `"input":"abc1234"` in the refusal that rejected it. The same run shows
+  the same mechanism on a different rule: an `extra_forbidden` refusal echoes its
+  field's value too. **Nothing in the route put it there**, and no line of this
+  repository asked for it.
+  **THE HAZARD IS THE BODY TRAVELLING, NOT THE ADMIN SEEING IT.** The disclosure
+  is to the caller who just typed the value, so it is not a breach on its own.
+  What makes it matter is that this project has already shipped a screen that
+  rendered a raw server error body verbatim with a uuid in it
+  (`lessons/README.md § Lessons` "correct-classification-can-still-render-as-an-error.md"),
+  and a client that does the same with this body puts a colleague's new password
+  on a screen at a weighbridge.
+  *Not done:* **the fix is not this route's business.** Redacting `input` means a
+  `RequestValidationError` handler for the WHOLE API — that is every endpoint's
+  refusal shape changing at once, which is not a change to slip into the commit
+  that found the defect, and it would land with no contract saying what a refusal
+  body may carry. The proof therefore prints the echo as a labelled OBSERVATION
+  and not as a cell, because a cell asserting a decision nobody has taken fails
+  for being right too early. *Unblocks:* the owner deciding whether refusal bodies
+  are contracted API surface; then one handler, and the sibling refusal-body
+  assertions the verification-gap entry above asks for. **The two password routes
+  D6 still owes will constrain a password the same way and echo it the same way
+  unless this is remembered when they are written.**
+
 ## Decisions open — the owner's, not the code's
 
 - **SHOULD A TYPED SHOP CODE BE CASE-NORMALISED? A PRODUCT DECISION, NOT A BUG,
@@ -2068,6 +2145,38 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   the owner's thinking, unhurried. Note for whoever picks it up: Nemesis
   found the defects anyway, so the leak degraded the pass without
   defeating it, and that is one data point rather than a general result.
+- **NOTHING ANYWHERE LIMITS REPEATED ATTEMPTS — A WHOLE-SYSTEM GAP, AND IT
+  IS FILED AS ONE ON PURPOSE. Recorded 2026-08-10.** No throttle, no
+  backoff, no attempt counter, no lockout-after-N and no record of a failed
+  attempt exists at any endpoint in this API. **Login is included, not
+  excepted** — it is simply the endpoint people think of first.
+  **WHY THIS IS AN ITEM RATHER THAN A LINE IN SOMEBODY ELSE'S ENTRY.** Until
+  today the absence was written down in three places and every one of them
+  framed it as a property of ONE endpoint or of one file's survey:
+  `SRS_MAP.md § 6. Security posture, per area`
+  "No rate limiting, no lockout, no failed-login record." records it as a
+  finding in a file that says in its own words that it decides nothing;
+  `ARCHITECTURE.md § 10. The three settled decisions` D4 carries it as a
+  bullet about `POST /auth/shop-code`; and
+  `ROADMAP.md § P1.3 — What identifies a shop at login` repeats that bullet
+  as one of the things still absent from that step. **Three per-endpoint
+  framings of a system-wide gap is how it gets closed once and believed
+  handled**: somebody adds a limiter to login, or to the shop-code lookup,
+  and every other route is still unguarded while three documents now read as
+  though the question were answered. The shape of the fix has to be decided
+  before any endpoint gets one — middleware, a dependency, or a store
+  outside the process — because those are not the same change.
+  **A KEYSPACE IS NOT A RATE LIMIT**, and the argument is already written
+  where it is most likely to be misread: migration `0009`'s
+  `31^8` arithmetic is a cost paid for legibility, not a defence, and it
+  bounds guessing per attempt while bounding nothing about the number of
+  attempts. D9's minimum-length rule has exactly the same limit for the same
+  reason. *Not done:* nothing has been decided, designed or built, and this
+  entry changes none of that — it moves WHERE the absence is recorded so
+  that fixing one endpoint cannot look like fixing the system. *Unblocks:*
+  the owner deciding whether attempt limiting is in scope before a shop
+  trades, which is also a hosting question (`R3`/P1.2 puts the API on the
+  public internet, and today it is on a LAN).
 
 ## Business questions — unanswered, and not answerable from the code
 
@@ -2550,4 +2659,11 @@ or from a plausible-sounding summary.
   changes); where master-data screens live; who creates a shop's first
   admin; and whether the second-hand goods act's answer needs to arrive
   before real data accumulates under the current schema.
+  **THE THIRD OF THOSE FOUR IS NOW PART-ANSWERED — 2026-08-10, and the count
+  above is left as written.** A shop's FIRST admin comes from an installer
+  running `server/scripts/provision_shop.py` at a shell, and who may create
+  the SECOND is settled: an admin may create another admin
+  (`ARCHITECTURE.md § 10. The three settled decisions` D7). What is still
+  open under that heading is the different question of who mints a SHOP
+  CODE when a shop is onboarded, which no decision touches.
   

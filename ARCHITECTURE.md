@@ -552,6 +552,47 @@ the reason is stated at D4 itself. **D5 is the exception to the sentence above:
 it is not an unbuilt design but a statement about which database this project is
 running on, and it is settled rather than proposed.**
 
+**THERE ARE NOW NINE. D6 through D9 were appended later on the same day,
+2026-08-10, and the heading still says "three" for the reason D4 gives.** The
+count in the sentence above is left exactly as it was written, for the reason §13
+gives about counts in preambles: **treat the LIST below as the authority on its
+own length, never this paragraph.** Re-measured when D6 was written, **THIRTEEN
+citations now resolve to this heading by name** — `ROADMAP.md` ×8,
+`PROJECT_STATUS.md` ×3, `OPEN_ITEMS.md` ×1, `SRS_MAP.md` ×1 — counted two ways
+that share no mechanism, `tools/verify_citations.ps1` over all six citing sources
+and a ripgrep count of the literal string, both returning 13. D4's "six" was true
+when D4 was written and is not edited.
+
+**D6 THROUGH D9 ARE ACCOUNT PROVISIONING, AND AT `a73c264` NOT ONE OF THEM IS
+BUILT** — no endpoint, no migration, no column, no line of code. The preamble's
+first sentence therefore covers them unchanged. They record a SHAPE and the
+reasoning behind it, the way D4 does; no implementation is designed here either.
+
+**THAT SENTENCE IS PINNED TO A COMMIT BECAUSE IT WAS ALREADY MOVING AS IT WAS
+WRITTEN**, which is the failure §13 records as a sentence false within the same day
+it was made. Observed here rather than reported: while D6 was being written,
+`git status --porcelain` carried ` M server/app/users.py` and
+`A server/scripts/prove_user_create.py` from a SECOND session working this same
+tree, and `server/app/users.py:380` holds
+`@router.post("/users", status_code=status.HTTP_201_CREATED)` behind
+`Depends(require_admin)` — **route 1 of the three, WRITTEN.** It is not committed,
+nothing here ran it, and routes 2 and 3 are absent. So, precisely: **unbuilt at
+HEAD; route 1 written in the working tree; none of the three proven.** Read the
+tree, never this paragraph.
+
+**THE D-NUMBERS IN THIS FILE ARE THIS FILE'S OWN, AND THEY NOW COLLIDE WITH
+`ROADMAP.md`'s.** That file has carried its own D1–D12 since 2026-08-07, and
+**its D6, D7 and D9 are OPEN questions about entirely different subjects** — what
+else goes in the shared package, what origin the desktop renderer presents to
+CORS, and which stage owns Android. The collision is not new: D1 through D5
+already meant different things in the two files. What D6 through D9 add is that a
+sentence naming bare numbers is now genuinely ambiguous —
+`ROADMAP.md § P2.6 — The decisions the pilot is the evidence for` requires
+"D6, D7, D9 and D11" to carry an answer, and it means ROADMAP's three, not these.
+**Never cite a bare D-number across files.** Neither space is renumbered, for the
+reason this file already gives about headings: renumbering orphans every reference
+to it.
+
 ### D1 — the provider gets a separate seat, not a third role
 
 A `provider_users` table outside the tenant model, and a separate service with its
@@ -724,6 +765,13 @@ separate argument, same shape by coincidence rather than by inheritance.
 - **Whether this endpoint is protected against repeated attempts.** Nothing anywhere
   in the tree addresses repeated attempts at any endpoint — see the 2026-08-10 entry
   in `PROJECT_STATUS.md`, which records that as a second-hand survey result.
+  **THIS BULLET IS THE WRONG SHAPE FOR THE PROBLEM AND IS KEPT ONLY AS THIS
+  ENDPOINT'S SHARE OF IT.** Appended 2026-08-10: the gap is not a property of
+  `POST /auth/shop-code`, it is a property of the whole API, and a bullet sitting
+  under one endpoint invites somebody to close it at that endpoint and believe it
+  handled. The system-level record is
+  `OPEN_ITEMS.md § Decisions open` "NOTHING ANYWHERE LIMITS REPEATED ATTEMPTS";
+  read that before doing anything about this one.
 - **The mechanics of the second connection**: a second engine, where its DSN comes
   from, and whether the API process holds it or a separate one does.
 - **Who issues a code when a shop is onboarded.**
@@ -763,6 +811,160 @@ the first real bill — is unchanged and unchallenged. What is clarified is WHIC
 database that sentence means: not the one running today. D10 is a constraint on
 the hosting choice; D5 is the statement that the choice has not been made and that
 today's database is not a candidate for it.
+
+### D6 — account provisioning is THREE endpoints, not two
+
+**Added 2026-08-10. Nothing here is built at `a73c264`** — see the preamble for
+what a second session had already put in the working tree while this was being
+written, which is route 1 and nothing else. The reader most likely to be misled is
+the one who goes looking for this in the committed tree: no create-user route and
+no password-change route exists there —
+`PROJECT_STATUS.md § Current phase` "NO ENDPOINT CREATES A USER AND NONE CHANGES A PASSWORD."
+records the measurement. What follows is the shape that work will take, decided in
+advance so that it is not designed under time pressure at P1.5.
+
+Three routes, in the tier vocabulary of §3.1:
+
+1. **An admin creates a user** — `require_admin`, writing into `users` under the
+   caller's own tenant context, with that user's first password set at creation.
+2. **An admin sets another user's password** — `require_admin`, naming the target
+   user.
+3. **A user changes their own password** — `get_principal`, naming no target at
+   all, because the caller IS the target.
+
+**THE TWO PASSWORD PATHS ARE SEPARATE ROUTES, NOT ONE ROUTE BRANCHING ON WHO IS
+CALLING, AND THIS IS THE PART WORTH ARGUING.** The obvious design is two endpoints:
+create, and one password route that reads the principal and decides whether it is
+an admin acting on somebody else or a person acting on themselves. That route would
+have to get three independent things right at once from one inspection of the
+caller:
+
+- **the GUARD differs** — `require_admin` against `get_principal`;
+- **the REQUEST BODY differs** — one carries a target user and the other must not
+  carry one at all;
+- **WHOSE SESSION DIES differs** — a password change ends the sessions of the user
+  whose password moved, which on the admin path is somebody else's phone and on the
+  self path is the caller's own.
+
+**AND THE THIRD OF THOSE IS A SECOND CALL SITE NOBODY HAS COUNTED YET.** Both
+password routes have to end the affected user's live sessions, and the mechanism
+that does it is `users.token_version` (0005), bumped and re-read by
+`get_principal` on every request. Two routes means **two bump sites**, on two
+different users — the target's on route 2 and the caller's own on route 3 — and
+every passage in this repository that names the trigger names it in the singular,
+as "bumped on password change or deactivation". A builder reading that sentence
+wires one call. Sessions surviving a password change is the whole failure the
+column exists to prevent.
+
+A branch deciding all three by inspecting the caller **can be wrong in the
+permissive direction**, and that is the asymmetry: a staff token that manages to
+supply a target user id is one missing `if` away from setting a colleague's
+password, and the failure returns 200. Two routes make that a refusal from the
+router — the same reasoning as
+`lessons/README.md § Lessons` "403-is-about-what-the-caller-may-do.md", which is
+that wording and behaviour are a function of (rule, call site) and a single call
+site cannot carry two.
+
+**NOT decided, named rather than assumed:**
+
+- **Whether route 3 requires the caller's CURRENT password.** It is the usual
+  defence against a borrowed unlocked handset, and it is not what the owner
+  decided here; assuming it would be inventing a requirement.
+- **What either password route does to the caller's own token.** Route 3 ends the
+  session it is issued from, so the phone needs an answer for the next request, and
+  `lessons/README.md § Lessons` "401-is-about-the-caller-not-the-bill.md" already
+  says what that answer must not look like.
+- **Whether an admin may set their OWN password through route 2 as well as route
+  3**, which is a question about overlap and not about privilege.
+
+### D7 — an admin may create another admin
+
+**Deliberate**, and recorded with its reasoning because without the reasoning an
+admin-creating-admins gate reads as a hole somebody left in the role check.
+
+**Reasoning — a shop with exactly one admin has a single point of failure that is
+a person.** The owner loses their handset, or forgets the password, and nobody in
+that shop can sign in as an admin again. Nothing in the running system recovers
+from that: there is no password-change route (D6), no reset path, and no support
+tier — **the only recovery that exists today is somebody running SQL on the shop's
+data**, on site or over a connection nobody has designed. `provision_shop.py` is
+not the way out either: it creates a shop's FIRST admin from an installer's shell
+and deliberately creates nobody else, and its second run against a shop that
+already has a code refuses and writes nothing
+(`PROJECT_STATUS.md § Current phase` "THE SECOND RUN REFUSED AND WROTE NOTHING").
+
+**What it costs, stated rather than glossed.** Admin is the tier that voids bills
+and moves prices (§3.1), so an admin who creates a second admin has handed over
+every capability they hold, permanently and with no audit trail — D3's log does not
+exist yet. The role is a two-value CHECK, not a permission system, so there is no
+weaker admin to create instead. **That cost is accepted**: a shop that cannot
+appoint a second keyholder is a shop one lost phone away from needing us, and S1's
+handover is explicitly a finished product rather than a support contract
+(`ROADMAP.md § What the owner has settled`).
+
+### D8 — a first password is NOT forced to change on first use
+
+**A DECISION, and this is the whole reason it is written down.** A later session
+will look for a force-change mechanism, find none, and must not read that absence
+as an oversight. There is nothing to build here; there is something already
+decided not to build.
+
+**Reasoning — the price is higher than what it buys.** Forcing the change needs a
+new column on `users` to record that the password is still the issued one. That
+means a migration, and D5 says the production database it would run on does not
+exist yet. Worse than the column, it introduces a **THIRD ACCOUNT STATE — usable
+but not yet ready** — and every endpoint written from that day on would have to
+know about it: the create route sets it, `get_principal` enforces it, and every
+other route decides whether it is reachable in that state. `users` already carries
+two pieces of state that every authenticated request re-reads (`token_version`,
+`is_active`), and a third whose only job is to refuse traffic on the first login is
+the expensive way to buy a nudge.
+
+**WHAT IT COSTS, AND IT IS NOT ARGUED AWAY.** The first password is known to TWO
+people — whoever set it and the staff member using it — until the staff member
+changes it. Nothing forces that to happen and nothing records whether it has.
+
+**WHAT MAKES THAT ACCEPTABLE IS WHO THE SECOND PERSON IS.** Not a stranger, not a
+support desk, not a shared installer account: the **shop owner who hired them and
+is standing in front of them**, handing over a phone login the way they hand over
+a key to the yard. The exposure is bounded by a relationship that already exists
+outside this system, which is not true of a password mailed to somebody.
+
+**A STAFF MEMBER MAY CHANGE THEIR OWN PASSWORD AT ANY TIME, AND THIS DECISION
+DEPENDS ON IT.** It is route 3 of D6, it is available from the first sign-in, and
+it needs no admin, no request and no waiting. Take it away and D8 stops being a
+decision about convenience and becomes a shop where the owner permanently knows
+every member of staff's password — so if route 3 is ever descoped, D8 is reopened
+in the same change and not left standing.
+
+**WHAT WOULD HAVE TO CHANGE TO REVERSE THIS**, recorded so that reversing it is
+costed rather than attempted: a column on `users`, the migration that adds it, and
+**every endpoint learning the third state** — which is cheapest on the day the
+create route is first written and grows more expensive with every route added
+after it.
+
+### D9 — the password rule is a MINIMUM LENGTH, and nothing else
+
+No character classes, no dictionary check, no expiry, no reuse history.
+
+**Reasoning.** The person typing it works a scrap yard with dirty hands, on their
+own phone, at a weighbridge with a truck waiting. **A composition rule does not
+produce a complex password; it produces one written on paper and taped to the
+scale** — readable by everyone who walks past, still there after that person
+leaves, and invisible to every control this system has. A short password an
+operator can actually type is the better failure.
+
+**NOT decided, named rather than assumed: the minimum length itself is a number,
+and no number was chosen here.** This project records a constant with the trial
+that chose it (`PROJECT_STATUS.md § Tuned constants — trial ledger`), and a length
+invented in passing by whoever writes D6's create route would be exactly the
+untraceable constant that ledger exists to prevent.
+
+**AND THIS DECISION IS ABOUT THE RULE, NOT ABOUT THE ATTACK.** A minimum length
+bounds guessing per attempt and bounds nothing about the NUMBER of attempts —
+which nothing in this system limits, at any endpoint. That is not a footnote to
+this decision, it is a system-level gap, and it is recorded as one at
+`OPEN_ITEMS.md § Decisions open` "NOTHING ANYWHERE LIMITS REPEATED ATTEMPTS".
 
 ---
 
@@ -999,6 +1201,26 @@ its own length.
   rather than redrawn: realigning the ASCII picture produces a diff no reviewer
   can read as a correction, and that is a change to propose on its own rather than
   to slip into this one.
+
+- **§9 says the settled decisions recorded here are "D1 through D4". There are
+  NINE, D1 through D9** — it was already short by one when D5 landed, and D6
+  through D9 (account provisioning, 2026-08-10) widened the gap to five.
+  **The bullet above names this exact failure and this is another instance of it:**
+  an enumeration that quietly stopped being exhaustive, not a false statement about
+  any decision it does name. Appended rather than edited, per this section's rule.
+  **§9's OTHER list is a different question and is untouched:** none of the four
+  entries under *Open, and named as open* is about accounts or passwords, so
+  nothing D6 through D9 settled was removed from it, and a reader must not take
+  this bullet as licence to prune that list.
+  **Two more sentences in §12 count the same collection and are now partial**, and
+  they are named here rather than edited because §12 is itself a dated correction:
+  "**D1 and D3 remain wholly unbuilt**" is a true statement that has stopped being
+  the whole list — D6 through D9 are also wholly unbuilt at `a73c264` — and the
+  per-number verdict beside it ("false about D2 and D4 and TRUE about D1 and D3")
+  partitions a set that has since gained four members. Neither is wrong about any
+  decision it names. **That is the shape this whole section keeps recording:** an
+  enumeration decays by the set growing under it, not by any of its sentences
+  turning false.
 
 **Re-derive before resting a decision on any number in this file.** The count
 that decayed fastest was the migration count, and it decayed twice in one day.

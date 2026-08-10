@@ -191,6 +191,17 @@ The spine could not be ordered without answering these. **Eight are settled**, w
 the owner's reasoning recorded; **four are open**, each with what would settle it.
 None of them is derivable from S1–S6.
 
+**THE D-NUMBERS BELOW ARE THIS FILE'S OWN, AND THEY COLLIDE WITH
+`ARCHITECTURE.md`'s. Noted 2026-08-10; nothing is renumbered.** That file has held
+its own D1–D5 since before this section was written and gained **D6 through D9**
+(account provisioning) on 2026-08-10, so **every number from D1 to D9 now names two
+unrelated things, and which one it means depends on the file you are reading.**
+Where this file cites the other's, it says so — D2 and D4 below both name
+`ARCHITECTURE.md` explicitly. **Where a sentence in this file gives a bare number
+it means THIS file's**, and that includes P2.6's DONE WHEN, which is untouched.
+Neither space is renumbered: doing so orphans every reference to it, which is the
+same argument that closed the A-numbers and the R-numbers rather than tidying them.
+
 ### Settled
 
 **D1 — `POST /sellers`'s gate changes so staff can create a seller. Staff do NOT
@@ -400,6 +411,16 @@ connection it requires does not exist** — no `recycle_directory` DSN is presen
 anywhere in the tree" until 2026-08-10; it exists, added in `f84b54d` and proven
 from the application's own stack.
 
+**THE "REPEATED ATTEMPTS" CLAUSE ABOVE IS NOT A PROPERTY OF THIS ENDPOINT, and
+leaving it here is how it gets closed at one route and believed handled.** Added
+2026-08-10: nothing anywhere in this API limits repeated attempts — **login
+included** — and D4 files it under the shop-code lookup only because that is the
+endpoint the question came up at. The system-level record is
+`OPEN_ITEMS.md § Decisions open` "NOTHING ANYWHERE LIMITS REPEATED ATTEMPTS", and
+it is the one to read before anything is built. The clause is left in place rather
+than removed, because it IS still true of this endpoint and deleting it would make
+this step look narrower than it is.
+
 **Unblocks:** P1.4, P1.5, P1.7, P1.14.
 
 **DONE WHEN — REWRITTEN 2026-08-10.** This read "a `POST /auth/login` whose body
@@ -540,6 +561,28 @@ exist come either from the dev fixture — `PROJECT_STATUS.md § What is NOT bui
 "Real per-shop login" — or from `server/scripts/provision_shop.py`, which creates a
 shop's FIRST admin from the installer's shell and deliberately does not create
 anyone else.
+
+**AND WHAT WOULD HAVE TO BE BUILT IS NOW DECIDED — later the same day, 2026-08-10.
+It is THREE endpoints, and the paragraph above names two.** The decision and its
+reasoning are at `ARCHITECTURE.md § 10. The three settled decisions` D6 and are
+deliberately not restated here: an admin creates a user; an admin sets another
+user's password; a user changes their own. The paragraph above is left standing
+because it was right about the GAP and merely short about the SHAPE — "a way to
+set that user's first password" is two routes wearing one phrase, and the two
+differ in guard, in request body and in whose session the change ends, which is
+why they are not one route branching on the caller.
+
+**Three further decisions land inside this step, and not one of them is built.**
+D7 — an admin may create another admin, so a shop is not one lost handset away
+from having nobody who can sign in. D8 — a first password is NOT forced to change
+on first use; **a later session finding no such mechanism is looking at a decision,
+not at an oversight**, and D8 records what that costs and what makes it
+acceptable. D9 — the password rule is a minimum length and nothing else, with the
+length itself deliberately not chosen yet.
+
+**THIS STEP'S DONE WHEN IS UNTOUCHED BY ALL OF THAT.** The bar was always a first
+admin and a staff account existing and both signing in from a handset; deciding
+which routes get them there moves no bar, and a decision is not an account.
 
 **Depends on:** P1.3 and P1.4. A user exists only inside a tenant, so the identity
 question must be answered first; and per-person accounts are what make locking mean
@@ -1082,6 +1125,16 @@ and that admin signs in from a phone.
 **What it is.** Add, edit, deactivate and change a password, from a screen.
 `SRS_MAP.md § 1. The map, item by item` records the current state at SRS 4.1: one
 route, whose own docstring calls itself a stopgap.
+
+**WHAT D6 SETTLES FOR THIS STEP — added 2026-08-10, and it changes nothing
+below.** Account provisioning is decided as THREE endpoints
+(`ARCHITECTURE.md § 10. The three settled decisions` D6), so this screen calls
+routes whose shape it no longer has to invent. Note that **"changes a password" in
+the DONE WHEN is TWO of those routes** — an admin setting somebody else's, and a
+person setting their own — and that wording is left exactly as it stands: it is a
+bar about what an admin is observed to do from a screen, and the admin path meets
+it. D8 also removes work this step might otherwise have assumed it owed: there is
+no first-use force-change screen to draw, **by decision rather than by omission.**
 
 **Depends on:** P1.4 — locking is the capability this screen exposes, and it is
 built there because S5 needed it at the pilot. A stranger's shop hires and fires
