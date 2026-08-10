@@ -215,45 +215,99 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   the BLOB clean is also wrong: the working tree and the blob are two
   different objects, and a checkout filter sits between them. Measure
   the one you actually mean. Working tree: read the file's bytes.
-  Blob: `git show HEAD:<path>` or `git cat-file -p`, and count there.
-  Never let one stand as evidence for the other.
+  Blob: `git cat-file blob <sha>` captured as BYTES, and count there.
+  Never let one stand as evidence for the other — and see the measured
+  warning below before taking that count through PowerShell, which hands
+  a native command's output back as an ARRAY OF LINES with every ending
+  already stripped, so the number you get describes the writer and not
+  the blob.
 
   Related, and load-bearing: **`lessons/README.md` is the one file in
-  `lessons/` that carries CRLF (41 of 41 lines, re-measured 2026-08-07;
-  it said 39 of 39 and the file had grown) AND a UTF-8 BOM.**
-  Excluding it from `all-lessons.md` is therefore not only because it
-  is the index rather than a lesson — it is also the only source that
-  would drag a BOM and CRLF into the generated file. Both reasons are
-  real; do not remove the exclusion on the strength of refuting one.
+  `lessons/` whose WORKING-TREE copy carries CRLF, and it carries a
+  UTF-8 BOM in both objects.** Excluding it from `all-lessons.md` is
+  therefore not only because it is the index rather than a lesson — it
+  is also the only source that would drag a BOM and CRLF into the
+  generated file, and a generator reads the working tree, which is the
+  CRLF one. Both reasons are real; do not remove the exclusion on the
+  strength of refuting one. **WHICH object is the whole difficulty here,
+  and the line count moves every time a lesson is added, so no figure is
+  quoted in this sentence.** They are in the table below, each labelled,
+  with the commit they were taken at.
 
-  **A CORRECTION WAS APPENDED HERE IN `9f929ad` AND WAS ITSELF WRONG.** It
-  claimed the blob committed by that commit would be LF, so the paragraph
-  above had gone half-false. **It did not, and the paragraph above is
-  correct and always was:** the blob at `9f929ad` is CRLF, 42 of 42. The
-  false version is not preserved — a wrong footgun misleads every session
-  that reads it — but what produced it is, because it is a new trap and a
-  sharp one.
+  **BOTH OBJECTS, EACH LABELLED. Measured at HEAD `0241cc8`, 2026-08-10:**
 
-  **`git add` PRINTS a normalisation warning that it does not act on.**
-  Appending one index line raised `warning: in the working copy of
+  | object | bytes | CR | LF | CRLF | BOM | ending |
+  |---|---|---|---|---|---|---|
+  | blob at HEAD | 51504 | **0** | 54 | 0 | `efbbbf` | **LF** |
+  | working tree | 51558 | 54 | 54 | 54 | `efbbbf` | **CRLF** |
+
+  The commands, one per invocation, bytes and never text.
+  `git rev-parse HEAD:lessons/README.md` for the blob sha, then
+  `git cat-file blob <sha>` captured as raw bytes with the CRs counted in
+  those bytes; the working tree by reading the file's bytes off disk. Two
+  independent instruments agreed with the capture: `git cat-file -s` returns
+  51504, equal to the length captured, so nothing in the path rewrote an
+  ending on the way; and `git ls-files --eol -- lessons/README.md` reports
+  `i/lf  w/crlf  attr/text=auto eol=lf`, which is git's own verdict — index
+  LF, working tree CRLF. The values above will go stale at the next lesson;
+  the METHOD will not, and the method is the part that belongs here.
+
+  **WHY THE TWO DIFFER, AND WHY NOTHING WILL EVER SHOW IT TO YOU.**
+  `text=auto` normalises CRLF to LF on the way INTO the index, so every
+  `git add` of this file has stored LF and the blob has never held a CR.
+  `git status` then compares the working tree NORMALISED, so a CRLF working
+  tree over an LF blob reads as CLEAN — measured clean at this commit, with
+  no uncommitted change to the path. There is no diff to notice and no state
+  in which the two agree. The working copy is CRLF because something other
+  than a checkout last wrote it: `eol=lf` makes a checkout write LF, so the
+  CRs arrived from an editor afterwards.
+
+  **`git add` PRINTS a normalisation warning, and it is about the OTHER
+  object.** Appending one index line raised `warning: in the working copy of
   'lessons/README.md', CRLF will be replaced by LF the next time Git touches
-  it`, and that was read as a statement about what the commit was doing.
-  It is not one. **`text=auto` does NOT renormalise a path already committed
-  with CRLF** — that needs an explicit `git add --renormalize` — so git
-  warns, converts nothing, and the blob keeps every CR it had. It lies in
+  it`, and that was read as a statement about what the commit was doing. It
+  is not one. It says *working copy*, and it is about a future CHECKOUT —
+  which `eol=lf` would indeed write as LF, and which nothing here has run.
+  What `text=auto` does not do on its own is renormalise a path that is NOT
+  being re-added; that needs an explicit `git add --renormalize`. It lies in
   the worst available direction for this section, because the reader is
   already thinking about line endings and the warning arrives looking like
-  the answer to the question they are holding. Note also that the warning
-  says *working copy*, not blob: it is about a future CHECKOUT, which
-  `eol=lf` would indeed write as LF, and which nothing here has run.
+  the answer to the question they are holding.
 
-  Measured at four points, all agreeing with the paragraph above: blob at
-  `62cee25` CRLF 41/41, working tree at `62cee25` CRLF 41/41, blob at
-  `9f929ad` CRLF 42/42, working tree CRLF 42/42 — BOM `efbbbf` on all four.
-  Both reasons for the exclusion therefore still stand, unrefuted. **Never
-  let git's warning be the observation.** `git show HEAD:<path>` AFTER the
-  commit, and count — which is the rule the paragraph above already gave,
-  disregarded by the person who appended to it.
+  **A VALUE HERE WAS BELIEVED, MEASURED, AND FOUND FALSE — TWICE, AND THE
+  SECOND OVERTURN RESTORED THE FIRST.** What stood in this passage read
+  "blob at `62cee25` CRLF 41/41 … blob at `9f929ad` CRLF 42/42", offered as
+  four agreeing points; and above it a paragraph announcing that an earlier
+  appended correction — which had claimed those blobs were LF — was itself
+  wrong. **The blob half of both was false, and the appended correction it
+  overturned was right.** Measured across every one of the 45 commits that
+  have ever touched this file: `CR=0` in all 45 blobs. It has not once been
+  committed with a CR. The two commits named measure blob `03224812`, 24531
+  bytes, CR=0, LF=41; and blob `dd4634ad`, 25619 bytes, CR=0, LF=42. **The
+  LINE COUNTS were right and the ENDING was wrong, at every point** — which
+  is why it survived two readings: the half anybody could check was correct.
+  The false figures are not kept as text, because a wrong footgun misleads
+  every session that reads it; the fact that they were held and refuted is
+  kept, because it is the only reason to trust the ones above.
+
+  **WHAT PRODUCED IT IS NOT ESTABLISHED HERE, AND IS NOT GUESSED.** No
+  record survives of the commands that were run, and a guessed cause in a
+  footgun is exactly how this passage went wrong the first time. Two things
+  are measured rather than supposed. The reported blob figure is IDENTICAL
+  to the working-tree figure at the same commit, which is the shape a
+  working-tree reading reported as a blob reading would have. And on this
+  box a native command's output never reaches PowerShell as bytes at all:
+  `$out = & git show HEAD:lessons/README.md` yields an `Object[]` of 54
+  strings holding **zero** CR and **zero** LF between them — the endings are
+  consumed and replaced by array structure, and whatever writes that array
+  back out chooses new ones. **A line ending measured through PowerShell is
+  therefore a property of the writer, never of the blob.**
+
+  **Never let git's warning be the observation.** Read the object itself:
+  `git cat-file blob <sha>` AFTER the commit, count in BYTES, and say which
+  of the two objects the number describes — which is the rule the paragraph
+  above already gave, and which everyone who has edited this passage since
+  has disregarded.
 
 - **`Measure-Object -Line` does not count blank lines, so it UNDERCOUNTS every
   file with a blank line in it.** `-Line` counts the lines *inside* each input
@@ -393,6 +447,71 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   and then READ `SOURCES=` and confirm it equals the number you passed, before
   reading `BROKEN`. A count you did not check is a corpus you did not check.
   → `lessons/a-check-that-never-went-red-was-never-observed.md`
+
+- **PowerShell's `>` puts a BOM on the front of the file it creates, and
+  everything that reads that file back gets bytes nobody put in the data.**
+  The redirect is not a byte copy. It is `Out-File`: it serialises objects to
+  TEXT, stamps the encoding's signature at the head, and terminates every line
+  CRLF. Measured on this box 2026-08-10, PowerShell 5.1.26100.8875 — two short
+  ASCII strings out, sixteen bytes on disk:
+
+      EF BB BF 61 6C 70 68 61 0D 0A 62 65 74 61 0D 0A
+      ^^^^^^^^ three bytes of signature, before the "a" of "alpha"
+
+  IT FAILS SILENTLY AND IN THE DIRECTION THAT LOOKS LIKE A RESULT, which is
+  what earns it an entry beside the codepage ones rather than a footnote in
+  them. Twice in one day here. A list of paths captured this way was
+  intersected with another set and came back **EMPTY** — read as "nothing to
+  do", and indistinguishable from a true empty answer, while the real
+  intersection was not empty: the first path carried U+FEFF in front of it and
+  equalled nothing. The second time a set DIFFERENCE reported a mismatch that
+  did not exist, the same bytes making one element unequal to its own twin.
+  Neither raised an error; both printed a plausible number. And only the FIRST
+  line of the file is affected, so the file opens correctly in an editor, prints
+  correctly, and agrees with expectation on every other line — the one line that
+  disagrees is the one nobody thinks to inspect, because the failure looks like
+  an answer about the DATA.
+
+  TWO BOUNDS, so this is not over-trusted. The `>` operator itself was NOT run:
+  the round that wrote this entry had banned it outright, and the bytes above
+  come from `Out-File`, the cmdlet `>` is the redirection form of. And this
+  session carries `$PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'`
+  with NO user profile on disk, so the UTF-8 signature is set by whatever
+  starts PowerShell here rather than being this build's own default — 5.1's
+  own default is `unicode`, a TWO-byte `FF FE` with every ASCII character
+  doubled. **A BOM either way; WHICH one is unverified.** The symptom seen both
+  times — one element silently unequal and everything else intact — is what
+  three bytes on the first line do, where UTF-16LE would have broken every
+  string at once and broken it loudly. Evidence for the three-byte branch, not
+  proof of it.
+
+  Instead: do not capture through the redirect at all. Write the file from the
+  program that owns the data — `Path.write_bytes`, or `.encode("utf-8")` with
+  `newline="\n"`, the way `build_paste_set.py` already does on both sides of
+  every comparison it makes. Where a shell must produce the file,
+  `Set-Content -Encoding utf8NoBOM` on 7+, or on 5.1
+  `[System.IO.File]::WriteAllText($p, $s, (New-Object System.Text.UTF8Encoding $false))`.
+
+  AND CHECK IT, because a fix believed is not a fix measured. Print the first
+  bytes and look at them:
+  `[System.BitConverter]::ToString([System.IO.File]::ReadAllBytes($p)[0..7])`,
+  and require the first byte to be the first byte of your DATA. `EF-BB-BF` or
+  `FF-FE` at the head IS the defect, and there is nothing else to see — which
+  is the whole reason this cannot be judged by eye.
+
+  CHECKED AGAINST THE ENTRIES IT MUST NOT RESTATE, and it extends all four.
+  The two codepage-874 entries are about 874 standing in for UTF-8 — the first
+  a READER that visibly corrupts text, the second a WRITER that transcodes a
+  whole payload and loses nothing; here nothing is transcoded and nothing is
+  corrupt, three bytes are PREPENDED and the payload stays UTF-8. The `.ps1`
+  SOURCE entry is the sharp one, because it points the OPPOSITE way: its remedy
+  is to save the file WITH a BOM. Both are correct. The same three bytes that
+  repair a program's source break a data file's first line, so "add a BOM" and
+  "strip the BOM" are not in conflict — they are about different KINDS of file,
+  and the question to ask is which of the two you are holding. The
+  CRLF-from-a-child-process entry is about endings ARRIVING in something you
+  read; this is about a signature and endings being WRITTEN into something you
+  create.
 
 ### Boot check — name the observable, don't assume the environment
 

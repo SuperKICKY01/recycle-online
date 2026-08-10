@@ -1922,11 +1922,29 @@ re-discovered as a mystery.
   working tree**, which is what `build_all_lessons.py` actually reads. **The
   exclusion of `lessons/README.md` from `all-lessons.md` is therefore
   unaffected**; what is wrong is only the claim about what is stored in the
-  object database. **NOT CORRECTED — `CLAUDE.md` was out of scope for this
+  object database. **~~NOT CORRECTED — `CLAUDE.md` was out of scope for this
   work, and a footgun edited in passing is how the last two wrong versions of
-  this one got written.** The irony is the point: that entry's own rule is
+  this one got written.~~** The irony is the point: that entry's own rule is
   "the working tree and the blob are two different objects… Measure the one you
   actually mean", and its numbers conflate exactly those two.
+
+  **CORRECTED 2026-08-10, in the commit that carries this line. The 2026-08-07
+  measurement above is left exactly as it was taken** — it was right, and a
+  dated measurement is superseded rather than rewritten. The footgun was
+  re-measured independently at HEAD `0241cc8`, and deliberately BEFORE this
+  note was read, so the two are corroborating rather than one copied forward.
+  They agree to the byte: blob `03224812` 24531 bytes CR=0 LF=41, blob
+  `dd4634ad` 25619 bytes CR=0 LF=42. **Extended rather than merely confirmed:
+  every one of the 45 commits that have ever touched `lessons/README.md` stored
+  a blob with CR=0**, so there was never a CRLF blob for anyone to have been
+  right about — at HEAD the blob is 51504 bytes CR=0 LF=54, against a working
+  tree of 51558 bytes CR=54 LF=54, BOM `efbbbf` on both. The entry now carries
+  both objects in a labelled table with the commit and the commands, and its
+  `git show` instruction is replaced: on this box a native command's output
+  reaches PowerShell as an array of lines with every ending already stripped,
+  so a line ending read that way describes the writer and not the blob. **What
+  is NOT established is which command produced the original wrong figure**, and
+  the entry records that as unestablished rather than guessing it.
 
 *(The `httpTransport.ts:18-23` entry that stood here — "403 stays, the server
 has no permission model in the MVP" — is CLOSED. The client was taught the 403

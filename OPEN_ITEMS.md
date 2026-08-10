@@ -2577,6 +2577,54 @@ or from a plausible-sounding summary.
   `& .\tools\verify_citations.ps1 -Source @('A.md','B.md',...)` — and
   READ `SOURCES=` and confirm it equals the number passed, before reading
   `BROKEN`.** A count nobody checked is a corpus nobody checked.
+  **RE-MEASURED 2026-08-10 AT HEAD `0241cc8`. THE SURVEY IS CLOSED — WHAT IS
+  LEFT IS REPAIR, NOT INVESTIGATION, AND NOBODY SHOULD SURVEY THESE A FOURTH
+  TIME.** Run with the call operator over the six root documents that actually
+  carry citations, `SOURCES=6` read and confirmed before anything else:
+  `CITATIONS=227  BROKEN=6`, both controls OK on every one of the six. The
+  2026-08-08 breakdown above HELD, and it was re-derived from the files
+  WITHOUT being read first, so the two measurements are independent rather
+  than one copied forward: **three wrapped strings, three the target
+  genuinely lacks.** Named below by IDENTITY and never by line, because every
+  line number in the paragraphs above has already rotted. Measured against the
+  coordinates recorded on 2026-08-08: the two wrap sites in this file have both
+  moved by **850** lines, the `RED_TEAM.md` one by 850, the one in this file
+  citing stage 1 by 85, and the `PROJECT_STATUS.md` one by 355. Not one of the
+  five still points at what it named.
+
+  - **WRAPPED — repair by putting the string on ONE line in the CITING file.**
+    In this file, the citation of the stage-3 step in `ROADMAP.md` whose
+    handle breaks after `User`, and the citation of the workflow rule in
+    `CLAUDE.md` whose handle breaks after `the owner`. In `SRS_MAP.md`, the
+    entry naming `tsconfig.device.json`, whose wrapped SECTION name breaks
+    after `Known stale`. All three targets hold the string intact; nothing is
+    wrong at the far end.
+  - **ABSENT FROM THE TARGET — repair by finding the heading or handle that
+    replaced what they name.** In this file and in `PROJECT_STATUS.md`, both
+    citing the stage-1 step in `ROADMAP.md` with the handle
+    `prove_reconcile.py back to green`: the checker reports `hits=0` from both
+    sites, and a search across the repository finds that string only in the
+    two lines that cite it. And in this file, the citation of `RED_TEAM.md`
+    with the handle `and nothing else` — **the one cause not visible from the
+    checker's output at all.** The target's line reads
+    `and **nothing else**:`, so the emphasis markers sit INSIDE the span the
+    handle quotes and no line carries the literal string. The checker can only
+    report a zero; it cannot say that the text is present and punctuated
+    differently. Repair at the citing end, in one line.
+
+  **THE DONE-CONDITION ABOVE IS WRONG FOR THIS SOURCE LIST AND MUST NOT BE
+  USED AS THE TARGET.** It names a ten-source run reporting `BROKEN=4`, those
+  four being non-empty controls fired by files that legitimately carry no
+  citations. Over the SIX sources that do carry them no control fires at all,
+  so the target is **`BROKEN=0`** and any non-zero is a real break. Which
+  number is correct depends entirely on the source list, so read `SOURCES=`
+  first and decide which of the two you are aiming at.
+
+  **AND DO NOT RENDER ANY OF THE SIX IN CITATION FORM WHILE WRITING ABOUT
+  THEM.** The paragraph above gives the reason and it is not a stylistic
+  preference: a broken citation written in citation form is parsed, counted,
+  and raises `BROKEN`, so describing the problem manufactures more of it.
+  Every handle in this entry is in backticks for that reason.
   **ALSO OWED, and NOT part of the nine — three MACHINE FOOTGUNS for
   `CLAUDE.md § Machine footguns`,** kept out of `lessons/` by the rule
   as amended today (`CLAUDE.md § Workflow` "Two homes, one test"): the
@@ -2652,6 +2700,23 @@ or from a plausible-sounding summary.
   measurement attached would be the same failure a third time, and the
   paragraph would then read wrong, right, wrong, and unfalsifiable in
   turn.
+  **~~*Done when:* the passage is rewritten against these measurements~~ —
+  CLOSED 2026-08-10 by the commit that carries this line, with every clause
+  answered rather than waved at.** The passage is rewritten: BOM claim kept
+  (`efbbbf` on both objects), working-tree claims kept and now LABELLED as
+  working-tree, blob claims corrected to CR=0. The instruments are named in
+  the entry itself — `git cat-file blob` captured as bytes, `git cat-file -s`
+  agreeing with that capture at 51504, `git ls-files --eol` reporting
+  `i/lf w/crlf`, and a counter controlled against a stream built to carry a
+  BOM, CRLF pairs, a lone CR, a lone LF, a blank line and no trailing newline
+  before any figure was read off it. The OWNER RULING is met in form as well
+  as in content: it is a measurement rather than a third correction, it
+  carries the stored-versus-streamed check that rules out an output filter,
+  and it says plainly that the blob half was false and that the appended
+  correction it overturned was right. **One thing was NOT established and is
+  written into the entry as unestablished:** which command produced the
+  original wrong figure. No record of it survives, and guessing is how that
+  paragraph went wrong the first time.
 - **Four open questions carried by `ROADMAP.md` rather than this list**,
   because each one moves a step rather than adding an item: does the
   pilot shop need a printed slip on day one (if yes, printing and the
