@@ -30,11 +30,15 @@ idea — only that it is unresolved.
   the provider service mints it, whether it is generated at tenant creation, and
   what happens if a shop loses its slip are all open, and none is settled by the
   schema. *Unblocks:* P1.3's Criterion B, and nothing else does. Bound to P1.5.
-  *Note the asymmetry a reader should not miss:* Criterion A (the server is
-  correct) is provable TODAY against a scratch database, and B is not provable at
-  all until this exists — so "P1.3 is not done" will mean two different things
-  depending on which is outstanding, which is why `ROADMAP.md` now names them
-  separately.
+  *Note the asymmetry a reader should not miss:* this read "Criterion A (the
+  server is correct) is provable TODAY against a scratch database, and B is not
+  provable at all until this exists — so 'P1.3 is not done' will mean two
+  different things depending on which is outstanding" until 2026-08-10.
+  **CRITERION A IS NOW SATISFIED (`b22d449`), so the ambiguity is gone and this
+  item is the whole of what remains**: "P1.3 is not done" means B, and B means
+  nobody can issue a code. It does not mean the server is wrong — the chain has
+  been run end to end and the evidence is the dated entry in
+  `PROJECT_STATUS.md`.
 - **A reachable server — `R3`** — the API runs on a development box and
   the app points at a LAN address. *Not done:* no hosting has been chosen
   or paid for. *Unblocks:* a decision on where it runs, then a deploy.
@@ -1496,13 +1500,53 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   DELETEs then INSERTs a fixture row in `directory.shop_codes` on every run.
   **The instrument is believed unharmed**, because what it measures is
   identifier SHAPES — relation names carrying a space or a dot — and rows inside
-  `shop_codes` are not part of that. **BELIEVED, NOT MEASURED:** this database
-  held one `shop_codes` row before that proof first ran, the proof's DELETE
-  clause would have removed it if it named tenant A, and the phase recording
-  this was forbidden to touch any database, so whether a pre-existing row was
-  displaced is UNKNOWN. *Not done:* re-point that proof at a database with no
-  other job, or measure what is in there and say so. *Unblocks:* an instrument
+  `shop_codes` are not part of that. This read "**BELIEVED, NOT MEASURED:** this
+  database held one `shop_codes` row before that proof first ran, the proof's
+  DELETE clause would have removed it if it named tenant A, and the phase
+  recording this was forbidden to touch any database, so whether a pre-existing
+  row was displaced is UNKNOWN" until 2026-08-10.
+  **MEASURED NOW, AND THE ROW WAS DISPLACED.** `directory.shop_codes` in that
+  database holds exactly one row and it is this proof's fixture
+  (tenant A, `ZZ9TEST4`). Established by pairing two readings rather than by one:
+  the survey taken BEFORE the proof first ran counted one row there, and
+  `ZZ9TEST4` is a code the proof invented — so the row that was there is gone,
+  and since the DELETE clause only removes a row matching that code OR tenant A,
+  the displaced row named tenant A. **The honest word is displaced, not
+  harmless.** *Not done:* re-point that proof at a database with no other job, so
+  a fixture and an instrument stop sharing one home. *Unblocks:* an instrument
   whose contents only one thing depends on.
+
+- **THE KEY-SPACE INSTRUMENT ITSELF WAS MEASURED INTACT, BEFORE AND AFTER, WITH
+  THE SAME TOOL BOTH TIMES — and this is a DIFFERENT QUESTION from the displaced
+  row above.** One is about the instrument; the other is about a row the
+  instrument does not look at, and collapsing them into a single reassuring
+  sentence is how a real loss gets filed as a non-event. Measured 2026-08-10
+  around `b22d449`: `backup_db.py --db recycle_keyshape_scratch` — the EXISTING
+  tool, identified as the source of the failure text this section quotes, rather
+  than a new one, because two instruments measuring one property is how two
+  disagreeing numbers get born. `BACKUP_EXIT=0` both times, 15 tables, identical
+  per-table counts including the decoy pair `Odd Name`=13 against `odd`=11, and
+  an identical manifest total of 3 files, 222995 bytes, 913 rows. "Intact" was
+  defined FIRST as a query — six relations whose names need quoting, a schema
+  whose name needs quoting, and the lowercase decoy — so the AFTER reading was
+  compared against a stated expectation rather than against an impression.
+  *Not done:* nothing is owed; this is a recorded measurement, kept because the
+  next person to write into that database will want to know it was checked and
+  how. *Unblocks:* nothing.
+
+- **DOES THE AUTHENTICATED ENDPOINT'S REFUSING HALF BELONG IN CRITERION A, OR
+  STAY AS EXTRA RIGOUR IN THE PROOF? THE OWNER'S TO DECIDE.** P1.3's Criterion A
+  requires that the token be USED against an endpoint requiring authentication
+  and that the request succeed. It does NOT require the negative half. The proof
+  asserts it anyway — A5 sends the same endpoint no token and a tampered token,
+  gets 401 for both, and records that the two refusals do not differ — on the
+  ground that a positive with no paired negative in the same run is not readable.
+  **So the proof is currently stricter than the criterion it satisfies**, which
+  is a good direction to be wrong in but should not stay unremarked: a later
+  reader comparing the two will otherwise think one of them is a mistake. *Not
+  done:* undecided. *Unblocks:* either one sentence added to Criterion A, or a
+  note in the proof saying A5 is deliberate surplus. Not this session's call —
+  a criterion is the owner's.
 - **THE MANIFEST KEY FORMAT CANNOT REPRESENT TWO IDENTIFIER SHAPES, AND THEY FAIL
   BY COLLIDING WITH A LEGITIMATE KEY RATHER THAN BY FAILING TO PARSE.** The
   reader partitions on the FIRST dot, so a dot inside a relation name in a

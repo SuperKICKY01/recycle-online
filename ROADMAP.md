@@ -440,10 +440,24 @@ issue a code, which is P1.5. Nothing writes to `directory.shop_codes` by any
 route, so in production this endpoint resolves nothing at all.
 
 **B DOES NOT GATE A, AND A DOES NOT SATISFY B.** A is about whether the server is
-right; B is about whether anyone can reach it. **Outstanding as of 2026-08-10:
-BOTH.** A is provable but NOT YET PROVEN — the proof that exists exercises the
-lookup and login separately and does not chain one into the other, and none of
-its assertions uses a token obtained from a resolved code. B waits on P1.5.
+right; B is about whether anyone can reach it.
+
+**CRITERION A IS SATISFIED — 2026-08-10, `b22d449`.** The chain ran in ONE
+execution: the identifier posted to login was the object parsed out of the
+resolve response, `GET /whoami` accepted the token that came back, and both
+controls ran in the same run as the positives. This passage read "**Outstanding
+as of 2026-08-10: BOTH.** A is provable but NOT YET PROVEN — the proof that
+exists exercises the lookup and login separately and does not chain one into the
+other, and none of its assertions uses a token obtained from a resolved code"
+until that commit. Evidence is the dated entry in `PROJECT_STATUS.md`; neither
+criterion's wording above is touched.
+
+**OUTSTANDING: CRITERION B, AND ONLY B.** It waits on P1.5 — nobody can issue a
+code, so nothing resolves in production. **"P1.3 is not done" therefore has
+exactly one meaning now**: not that the server is wrong, but that no shop has a
+code. That is what splitting the criteria was for, and a reader with no memory of
+either commit can tell which half is missing without asking. The queue item is
+`OPEN_ITEMS.md § Blocking one real paying shop` "NOBODY CAN ISSUE A SHOP CODE".
 
 ### P1.4 — An account that can be locked, not only signed out
 

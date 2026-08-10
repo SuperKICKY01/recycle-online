@@ -57,6 +57,63 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.3's CRITERION A IS SATISFIED: THE CHAIN CLOSED IN ONE EXECUTION.
+2026-08-10, `b22d449`.** Test-only — no endpoint, request model, login handler,
+schema or migration changed, and `recycle` was not written to. No R-number was
+issued; R-numbers are defined in `ROADMAP.md` and are the owner's to issue.
+
+**THE CHAIN, WHICH IS THE WHOLE CLAIM.** `POST /auth/shop-code` returned a
+tenant identifier; that identifier — the object parsed out of that response, in
+the same process, with no value typed anywhere — was posted to
+`POST /auth/login`; the token that came back was sent to **`GET /whoami`** and
+accepted. `/whoami` is the right endpoint and not merely a convenient one: it
+depends on `get_principal`, which verifies the JWT signature, re-reads the user
+row and compares `token_version`, so **a 200 there is not producible without a
+valid token**. An endpoint whose 200 could be obtained without one would have
+proven nothing. It also echoes the tenant the SERVER resolved, so the chain is
+closed at both ends rather than only at the client's.
+
+**BOTH CONTROLS RAN IN THE SAME EXECUTION AS THE POSITIVES**, and the run says so
+in its own output: an absent code returns 404 with this endpoint's own refusal,
+and the same authenticated endpoint refuses with no token and with a tampered
+one. **A positive with no paired negative in the same run is not readable** — a
+200 from `/whoami` means something only beside a 401 from `/whoami`, against the
+same server, in the same process. That is why the run was built this way rather
+than as two scripts whose greens are compared afterwards.
+
+**THE FINDING THAT MATTERS MOST, AND IT IS NOT "THE CHAIN IS TESTED".** A
+hardcoded correct identifier passes EVERY assertion a chained one passes.
+Measured, not reasoned: with A2 rewired to a literal — the chain genuinely
+broken — the run passed all five criteria and exited 0, **including the
+cross-check that `/whoami` reports the tenant A1 resolved**. A correct hardcode
+and a chained value are the same 36 bytes, so **no comparison of values can
+separate them**: not equality, not the cross-check, not any status code. What
+separated them was **provenance carried by a TYPE** — A1 wraps its parse in a
+`str` subclass, the request body carries that object, and the gate asserts the
+body's identifier IS that type. With the break in place and the gate present,
+exactly one cell reddened and the run exited 1.
+**ITS LIMIT, STATED SO A LATER READER DOES NOT CREDIT IT WITH MORE:** it proves
+the value FLOWED through the process. It cannot stop an author who hand-writes
+the wrapper. It catches an accidental or lazy break — which is what a regression
+looks like — and is not a defence against a deliberate forgery.
+
+**AN ASSERTION THAT COULD NEVER GO RED WAS FOUND BY READING THE DIFF BACK.** A5's
+"the two refusals differ" was written as `check(True, ...)` — a cell that cannot
+fail, sitting in a column of `[ok]` marks where it reads as an assertion. It is
+now a printed OBSERVATION with a note in the source saying why it is not a check:
+whether those two refusals differ is a fact to record, not a bar to clear.
+
+**THE FIXTURE INSTRUMENT WAS MEASURED BEFORE AND AFTER**, with the same tool both
+times, and one open question closed with an unwelcome answer. Both recorded in
+the dated entry.
+
+**OUTSTANDING: CRITERION B, AND ONLY B.** Nobody can issue a code, so nothing
+resolves in production. "P1.3 is not done" now has exactly one meaning.
+
+Full evidence in the dated entry `2026-08-10 — Criterion A satisfied: the chain,
+and what a hardcoded value cannot be told from` at the end of this file. **The
+paragraphs below describe the phases that PRECEDED this one**, newest first.
+
 **THE SHOP-CODE LOOKUP IS BUILT AND PROVEN, AND P1.3's DONE WHEN WAS REWRITTEN
 BECAUSE THE DECISION MADE IT UNREACHABLE. 2026-08-10.** No R-number was issued;
 R-numbers are defined in `ROADMAP.md` and are the owner's to issue.
@@ -3958,3 +4015,115 @@ differs from the current schema by exactly `/auth/shop-code`.
   decision owed to the owner.
 - **No proof script was run in the phase that wrote THIS entry**, and no database
   was touched by it.
+
+### 2026-08-10 — Criterion A satisfied: the chain, and what a hardcoded value cannot be told from
+
+**`b22d449`, one file, +133 lines, `server/scripts/prove_shop_code.py`.** No
+endpoint, request model, login handler, schema or migration changed. `recycle`
+was not written to. **This SUPERSEDES the bullet in the entry above that reads
+"Criterion A is provable but NOT PROVEN"** — that was true when written, and a
+dated measurement is superseded rather than edited.
+
+**A1..A5, one execution, `PROVE_SHOP_CODE_EXIT=0`, twice in a row with no reseed
+between; the only differences between the two runs are the ephemeral port and
+the child pid.**
+
+- **A1** `POST /auth/shop-code {"code": "ZZ9TEST4"}` -> `200
+  {"tenant_id":"11111111-1111-1111-1111-111111111111"}`.
+- **A2** `POST /auth/login` carrying THE OBJECT PARSED FROM A1 -> `200`, token
+  returned. Recorded with the password as
+  `<REDACTED - a real password WAS sent>` and the token as
+  `<REDACTED bearer token, 325 chars>`: both are credentials and this output is
+  read in transcripts, so they are redacted rather than omitted, and the field
+  names, the response shape and the token's length are still recorded.
+- **A3** `GET /whoami` with that token -> `200`, and its `tenant_id` equals the
+  one A1 resolved.
+- **A4** CONTROL, refusing side: an absent code -> `404 {"detail":"unknown shop
+  code"}`, pinned to this endpoint's own refusal rather than to the status.
+- **A5** CONTROL, accepting side's negative half: `/whoami` with NO token ->
+  401; with a tampered token -> 401; the two refusals do NOT differ.
+
+**WHY `/whoami` AND NOT SOMETHING EASIER.** It depends on `get_principal`, which
+verifies the JWT signature, re-reads the user row and compares `token_version` —
+so its 200 cannot be produced without a valid token. **An endpoint whose 200 is
+obtainable without one would have made A3 vacuous**, which is the trap the
+criterion's own wording warns about: a token is a string until something accepts
+it. It also echoes the tenant the server resolved, closing the chain at the
+server's end and not only at the client's.
+
+**BOTH CONTROLS IN THE SAME EXECUTION, AND THE SCRIPT SAYS WHY IN ITS OWN
+OUTPUT.** A positive with no paired negative in the same run is not readable: a
+200 from `/whoami` is evidence only beside a 401 from `/whoami`, same server,
+same process, same run. Two scripts whose greens are reconciled afterwards would
+demonstrate two facts that happen to agree.
+
+**THE FINDING: A HARDCODED CORRECT IDENTIFIER IS INDISTINGUISHABLE FROM A CHAINED
+ONE BY ANY ASSERTION OVER VALUES.** This is the part that must not compress into
+"the chain is tested". A2 was rewired to a literal — the chain genuinely broken —
+and the run **passed every assertion and exited 0**, including A3's cross-check
+that `/whoami` reports the tenant A1 resolved. The two are the same 36 bytes.
+Equality cannot separate them; the cross-check cannot; no status code can.
+
+**WHAT SEPARATED THEM WAS PROVENANCE CARRIED BY A TYPE.** A1 wraps what it parsed
+in `ResolvedTenant`, a `str` subclass; the request body carries that OBJECT (the
+wire is unchanged, since it serialises as a plain JSON string); and the gate
+asserts the body's identifier IS that type. A literal is a plain `str` and fails
+before a request is sent. With the break present and the gate present, **exactly
+one cell reddened and the run exited 1** — it is the only cell that can detect
+the break. Restored: green; residue search 0 with a presence control at 6.
+
+**THE GATE ASSERTS ON THE REQUEST BODY, NEVER ON THE PARSED VARIABLE**, and the
+first version got that wrong. Checking `resolved` passes while a hardcoded
+literal sits in the request beside it — the gate would have been green against
+the exact break it exists to catch. Found by reading the diff back.
+
+**THE LIMIT, STATED RATHER THAN DISCOVERED LATER.** This proves the value FLOWED
+through this process. It cannot stop an author who hand-writes
+`ResolvedTenant("...")`. It catches the accidental break and the lazy one, which
+is what a regression looks like; it is NOT a defence against a deliberate
+forgery, and it should not be cited as one.
+
+**AN ASSERTION THAT COULD NEVER GO RED, AND WHAT HAPPENED TO IT.** A5's
+"the two refusals differ" was first written `check(True, ...)`. That is a cell
+incapable of failing, printed among `[ok]` marks where a reader scanning the
+column takes it for an assertion. It is now a printed OBSERVATION, with a note in
+the source giving the reason: whether those two refusals differ is a fact to
+record, and `auth.py` collapsing them is a design choice rather than a bar. Found
+by reading the diff back, in the same pass as the gate defect above.
+
+**THE FIXTURE INSTRUMENT, BEFORE AND AFTER, SAME TOOL BOTH TIMES.**
+`recycle_keyshape_scratch` is recorded as the only instrument that can detect the
+manifest key-space defect, and this proof writes into that database. The EXISTING
+tool was used rather than a new one — `backup_db.py`, identified as the source of
+the failure text the queue entry quotes, because a second instrument measuring
+one property is how two disagreeing numbers get born. **BEFORE and AFTER are
+identical**: `BACKUP_EXIT=0` both times, 15 tables, the same per-table counts
+including the decoy pair `Odd Name`=13 against `odd`=11, and the same manifest
+total of 3 files, 222995 bytes, 913 rows. "Intact" was defined FIRST, as a query:
+six relations whose names need quoting, a schema whose name needs quoting, and
+the lowercase decoy. Nothing moved.
+
+**AND A ROW WAS DISPLACED, WHICH IS A DIFFERENT QUESTION FROM THE INSTRUMENT.**
+`OPEN_ITEMS.md` recorded as UNKNOWN whether this proof had overwritten a
+pre-existing `directory.shop_codes` row there. Measured: that relation now holds
+exactly one row and it is this proof's fixture. The survey taken before the proof
+first ran counted one row, and `ZZ9TEST4` is a code this proof invented — **so
+the pre-existing row WAS displaced, which means it named tenant A.** The honest
+word is displaced, not harmless. The instrument is unaffected because what it
+measures is identifier SHAPES in schema `public`, and `shop_codes` is not among
+the relations it looks at — which is exactly why the two questions are recorded
+separately rather than as one reassuring sentence.
+
+**WHAT THIS DOES NOT ESTABLISH.**
+
+- **CRITERION B IS UNTOUCHED and cannot be attempted.** It needs somebody able to
+  issue a code, which is P1.5. Nothing writes to `directory.shop_codes` by any
+  route; no shop has a code; in production the endpoint returns 404 for every
+  input. **"P1.3 is not done" now has exactly one meaning.**
+- **A fixture row in a scratch database is not an issued code**, and A pre-empts
+  nothing.
+- **No client sends either request.** Neither mobile nor desktop calls the
+  endpoint, and nothing ran on a handset.
+- **The proof asserts one thing Criterion A does not require** — A5, the
+  authenticated endpoint's refusing half. Whether that belongs in the criterion
+  or stays as extra rigour is the owner's call and is queued.
