@@ -57,6 +57,99 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.7 STEP 4 IS COMPLETE ON BOTH HALVES: THE SEND QUEUE AND THE VOID QUEUE EACH
+CARRY AN OWNER FILTER WITH ITS OWN ACCEPTANCE EVIDENCE. 2026-08-11, `cfb6633`.**
+This block SUPERSEDES the P1.7 STEP 3 entry below as the current phase; that
+entry is left exactly as written, and was true when written.
+
+**THE STACK IS NOW FOUR DEEP.** The note below already recorded three and called
+the rotation owed. Nothing here is merged or rotated — the queue item is
+unchanged, and this block makes it one deeper rather than settling it.
+
+**THE COMMITS, read from `git log --oneline a471dc2^..cfb6633` in this pass and
+not recalled.** Seven, of which six carry code and one is docs-only:
+
+| sha | what it landed |
+|---|---|
+| `a471dc2` | ownership columns, the identity store, a migration that cannot stop half-done |
+| `6b74b89` | docs only — 1 file, 80 insertions, no deletions |
+| `1f37888` | the login returns `user_id`; the device records who signed in |
+| `0ac09ef` | the owner STAMPED onto draft and bill rows at creation; nothing reads it yet |
+| `a57a648` | the SEND queue filter |
+| `869977a` | a permanently rejected void stops being re-sent |
+| `cfb6633` | the VOID queue filter |
+
+**WHERE THE OWNER CLAUSE LIVES — ONE PRODUCTION FILE, FIVE SITES.** Measured with
+`rg` over `mobile/src` excluding proofs:
+`mobile/src/adapters/sqlite/SqliteLocalStore.ts` only, at `:108`
+(`OWNED_BY_CURRENT`), `:146` (spliced into `QUEUED`, which reaches six send
+statements), `:796` (`requestVoid` capturing who asked), `:856`
+(`listVoidsToApply`) and `:946` (`clearVoidRefusals`). No other production file
+carries one.
+
+**EACH QUEUE HAS ITS OWN ACCEPTANCE EVIDENCE, which is what step 4 required.**
+`npm run prove:sendowner` for the send queue, `npm run prove:voidowner` for the
+void queue, `prove:owner` for the stamp and `prove:voidterminal` for the retry
+stop — declared at `mobile/package.json:29-32`, out of 19 `prove:*` scripts.
+
+**WHAT WAS NOT TOUCHED, measured with `git log -G` over the phase range rather
+than asserted.** The cache readers (`FROM cached_products|cached_sellers|
+master_cache`): no commit. The draft loader's selection (`ORDER BY updated_at
+DESC`): no commit. `SqliteMasterStore.ts` and `src/session/signOut.ts`: no
+commit. The identity is still NOT cleared on sign-out, deliberately, because the
+refusal that must guard the clearing does not exist.
+
+**THE TWO ON-SCREEN UNSENT COUNTS NOW DISAGREE BY DESIGN, AND THE ONE THE
+OPERATOR SEES IS THE WRONG ONE.** `pendingQueueSnapshot` counts what CAN send;
+`listByState` is `WHERE sync_state = ?` alone (`SqliteLocalStore.ts:351-355`) and
+never gained the filter, so it still totals every account's bills. `App.tsx:581`
+feeds the status strip and the sign-out refusal from the UNFILTERED one, while
+`:610` uses the filtered snapshot for queue health. WHAT THE PERSON AT THE SCALE
+EXPERIENCES: a count of unsent bills that includes other accounts' bills and will
+not go down however long they wait, because nothing they can do releases another
+person's rows; and a sign-out that can refuse over bills the person in front of
+it neither owns nor can send. Resolved by **P1.7 step 7, the status strip**,
+which splits the parked-for-another-account count from the ordinary unsent count.
+Not fixed here on purpose: that step decides what the operator is told, and
+changing the number inside a filter commit would settle the decision and
+implement it in one pass.
+
+**THE MIGRATION CAN NO LONGER STOP HALF-DONE ON THE DRIVER THE PROOFS RUN. IT IS
+NOT PROVED ON THE DRIVER THE HANDSET RUNS.** These two sentences must not be
+separated. The handset's mechanism is `expo-sqlite`'s
+`withExclusiveTransactionAsync` (`mobile/src/device/expoSqliteDriver.ts:73`), a
+different mechanism on a different connection; re-measured this pass, no proof
+imports that file — `rg expoSqliteDriver mobile/src/proof` returns two COMMENT
+mentions and nothing executable. If a way to run against the device driver ever
+exists, that is work to return to, not work already finished.
+
+**TWO UNSWEPT HAZARDS IN THE PROOF SUITE, both queued in `OPEN_ITEMS.md § Code
+debt found and left in place`.** Neither is a product defect; both make correct
+code look broken, which is what makes them expensive.
+(1) **A proof that requests a void BEFORE the other bills are synced takes a
+PERMANENT refusal.** A sync helper's `runUntilQuiescent` runs the void loop too,
+against a throwaway `FakeServer` that answers `not_found` for a bill it has never
+seen; that maps to `rejected`, which since `869977a` is terminal. The symptom is
+all-zero attempt counts, which reads as an over-strict owner filter or a stopped
+engine — both wrong. The discriminator is one column: `void_refused_at` non-null
+with code `void_rejected` means ownership never came into it. **UNSWEPT** — found
+by `prove:voidowner` W1 failing, not by looking.
+(2) **A proof that builds its own store outside the shared harness is not signed
+in**, so a strict filter reads as a gate stuck shut; it cost `prove:clock` a red
+sweep. **THAT ONE WAS SWEPT** and every site covered.
+
+**AND THE SWEEP'S OWN NUMBER HAS ALREADY ROTTED, WHICH IS RECORDED RATHER THAN
+CORRECTED IN PLACE.** That queue entry says THIRTEEN proof files build a store
+outside the harness. Thirteen was correct when measured at `a57a648`; re-measured
+in this pass the count is **FIFTEEN**, because `proveVoidTerminal.ts` and
+`proveVoidOwner.ts` were added by the two commits that followed. The entry's
+CLAIM still holds — both newcomers establish an identity
+(`proveVoidTerminal.ts:123`, and eight `identity.save` calls in
+`proveVoidOwner.ts`) — but its NUMBER did not survive two commits. It is the exact
+rot `CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT" describes, in a line
+written during this phase by the session that wrote the convention's newest
+example.
+
 **P1.7 STEP 3: THE OWNERSHIP SCHEMA, AND A MIGRATION THAT CANNOT STOP HALF-DONE.
 2026-08-11, `a471dc2`.** Schema and migration only. The owner filter, the cache
 readers, the sign-out refusal, the sync engine, the transport and `App.tsx` are
