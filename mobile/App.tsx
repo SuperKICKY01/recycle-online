@@ -548,6 +548,36 @@ export default function App() {
     const [pending, syncing, synced, failed] = await Promise.all(
       ALL_STATES.map((s) => store.listByState(s)),
     );
+    /*
+     * THIS COUNT INCLUDES OTHER ACCOUNTS' BILLS, AND AS OF THIS COMMIT THAT IS
+     * WRONG FOR THE PERSON READING IT. The behaviour is deliberately unchanged
+     * here; what follows is what they now experience, recorded where the number
+     * is made rather than only in a queue file.
+     *
+     * listByState carries its OWN predicate — `sync_state = ?` — and does not
+     * draw on the QUEUED constant, so it never gained the owner filter the send
+     * queue did. It therefore totals every owner's unsent bills. The send queue
+     * no longer selects another person's rows, so the two numbers on this screen
+     * now disagree by design: pendingQueueSnapshot counts what CAN send, this
+     * counts what EXISTS.
+     *
+     * WHAT THAT MEANS AT THE SCALE. The strip (see the `pending` prop below) and
+     * the sign-out refusal both read THIS number. So the operator is shown a
+     * count of unsent bills that includes bills belonging to someone else, and
+     * it will not go down however long they wait — there is nothing they can do
+     * to release another person's rows, and no connection will drain them. It
+     * reads as a bad signal or a stuck queue, and they will stand there
+     * expecting it to clear. The sign-out refusal inherits the same fault: it
+     * can refuse to sign out over bills the person in front of it does not own
+     * and cannot send.
+     *
+     * NOT FIXED HERE ON PURPOSE. The resolution is P1.7's status-strip step,
+     * which splits the parked-for-another-account count from the ordinary unsent
+     * count — ROADMAP.md section P1.7, "THE PARKED COUNT MUST BE SEPARATE FROM
+     * THE OWNER-MISMATCH COUNT". That step decides what the operator is told;
+     * changing the number here would settle that decision and implement it in
+     * the same pass, in a commit whose subject is a SQL predicate.
+     */
     setPendingCount((pending?.length ?? 0) + (syncing?.length ?? 0));
     setFailedCount(failed?.length ?? 0);
     // Read the last successful sync from storage rather than from a variable,

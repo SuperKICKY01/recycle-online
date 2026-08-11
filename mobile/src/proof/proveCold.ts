@@ -61,7 +61,8 @@ import { buildLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
 import { statusNotice } from "../sync/statusNotice.js";
 import { systemClock } from "../sync/systemClock.js";
-import { FakeClock, RejectingTransport, SeqIds } from "./fakes.js";
+import { FakeClock, PROOF_OWNER, RejectingTransport, SeqIds } from "./fakes.js";
+import { signInProofDevice } from "./proofDevice.js";
 
 let failures = 0;
 
@@ -764,6 +765,7 @@ async function c7DeletedSellerFailsVisibly(): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), "recycle-2c8-gone-"));
   const driver = NodeSqliteDriver.open(join(dir, "recycle.db"));
   const store = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const ids = new SeqIds("gone");
 
   const bill = buildLocalBill(
@@ -782,7 +784,7 @@ async function c7DeletedSellerFailsVisibly(): Promise<void> {
       master_as_of: ago(16 * HOUR),
     },
   );
-  await store.putBill(bill);
+  await store.putBill(bill, PROOF_OWNER);
 
   const engine = new SyncEngine({
     store,
@@ -867,6 +869,7 @@ async function c8ColdStartNoServer(): Promise<void> {
   /* ---- this morning: a genuine cold start. New process, new connection. */
   const driver = NodeSqliteDriver.open(file);
   const billStore = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const draftStore = await SqliteDraftStore.open(driver);
   const masterStore = await SqliteMasterStore.open(driver);
 
@@ -949,7 +952,7 @@ async function c8ColdStartNoServer(): Promise<void> {
       master_as_of: draft.master_as_of,
     },
   );
-  await draftStore.promoteToBill(draft, bill, null);
+  await draftStore.promoteToBill(draft, bill, PROOF_OWNER);
 
   const saved = await billStore.getBill(bill.id);
   console.log(`  saved offline: ${String(saved?.payload.total_amount)} บาท, state=${String(saved?.sync_state)}, doc_no=${String(saved?.doc_no)}`);
@@ -1014,6 +1017,7 @@ async function c8ColdStartNoServer(): Promise<void> {
   await driver.close();
   const driver2 = NodeSqliteDriver.open(file);
   const billStore2 = await SqliteLocalStore.open(driver2);
+  await signInProofDevice(driver2);
   const masterStore2 = await SqliteMasterStore.open(driver2);
   const survivor = await billStore2.getBill(bill.id);
   const snap2 = await masterStore2.load();
@@ -1039,6 +1043,7 @@ async function c9ProvenanceSurvives(): Promise<void> {
   let driver = NodeSqliteDriver.open(file);
   let draftStore = await SqliteDraftStore.open(driver);
   let billStore = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
 
   const lastNight = ago(16 * HOUR);
   const ids = new SeqIds("prov");
@@ -1058,6 +1063,7 @@ async function c9ProvenanceSurvives(): Promise<void> {
   driver = NodeSqliteDriver.open(file);
   draftStore = await SqliteDraftStore.open(driver);
   billStore = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const restored = await draftStore.load();
   check("the draft's stamp survives a restart", restored?.master_as_of === lastNight);
 
@@ -1090,7 +1096,7 @@ async function c9ProvenanceSurvives(): Promise<void> {
       master_as_of: afterRefresh!.master_as_of,
     },
   );
-  await draftStore.promoteToBill(afterRefresh!, bill, null);
+  await draftStore.promoteToBill(afterRefresh!, bill, PROOF_OWNER);
   const row = await billStore.getBill(bill.id);
 
   check("the stamp is carried onto the bill", row?.master_as_of === lastNight);

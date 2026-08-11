@@ -53,7 +53,9 @@ import {
   LegacyForbiddenTransport,
   OnlineTransport,
   SeqIds,
+  PROOF_OWNER,
 } from "./fakes.js";
+import { signInProofDevice } from "./proofDevice.js";
 
 let failures = 0;
 
@@ -128,6 +130,7 @@ async function makeBill(
       total_amount: "150.05",
       master_as_of: null,
     },
+    PROOF_OWNER,
   );
 }
 
@@ -162,6 +165,7 @@ async function f1VoidRefused(): Promise<void> {
   const dir = tempDir("void");
   const driver = NodeSqliteDriver.open(join(dir, "f1.db"));
   const store = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const clock = new FakeClock();
   const server = new FakeServer();
 
@@ -330,6 +334,7 @@ async function f2SignInRetracts(): Promise<void> {
   const dir = tempDir("signin");
   const driver = NodeSqliteDriver.open(join(dir, "f2.db"));
   const store = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const clock = new FakeClock();
   const server = new FakeServer();
   const transport = new ForbiddenTransport(server, { sends: false, voids: true });
@@ -398,6 +403,7 @@ async function f3SendRefused(): Promise<void> {
   const dir = tempDir("send");
   const driver = NodeSqliteDriver.open(join(dir, "f3.db"));
   const store = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const clock = new FakeClock();
   const server = new FakeServer();
   const transport = new ForbiddenTransport(server, { sends: true, voids: true });
@@ -576,6 +582,7 @@ async function f5Disproof(): Promise<void> {
   const dirV = tempDir("legacy-void");
   const driverV = NodeSqliteDriver.open(join(dirV, "f5v.db"));
   const storeV = await SqliteLocalStore.open(driverV);
+  await signInProofDevice(driverV);
   const clockV = new FakeClock();
   const serverV = new FakeServer();
   const legacyV = new LegacyForbiddenTransport();
@@ -632,6 +639,7 @@ async function f5Disproof(): Promise<void> {
   const dirS = tempDir("legacy-send");
   const driverS = NodeSqliteDriver.open(join(dirS, "f5s.db"));
   const storeS = await SqliteLocalStore.open(driverS);
+  await signInProofDevice(driverS);
   const clockS = new FakeClock();
   const legacyS = new LegacyForbiddenTransport();
   const engineS = new SyncEngine({

@@ -5,7 +5,7 @@
  * is local. Nothing here talks to the network — syncing is a separate concern
  * that happens later, possibly much later, possibly after a restart.
  */
-import type { BillItemPayload, Clock, IdSource, LocalBill, LocalStore } from "./types.js";
+import type { BillItemPayload, Clock, IdSource, LocalBill, LocalStore, RowOwner } from "./types.js";
 
 /** What building a bill needs. Deliberately no store — see buildLocalBill. */
 export interface BuildBillDeps {
@@ -96,11 +96,17 @@ export function buildLocalBill(deps: BuildBillDeps, draft: BillDraft): LocalBill
   };
 }
 
+/**
+ * Build and persist in one step. `owner` is passed straight through to the
+ * store and is required for the reason LocalStore.putBill gives: a bill that
+ * takes no owner by omission is excluded from the send queue for ever.
+ */
 export async function createLocalBill(
   deps: CreateBillDeps,
   draft: BillDraft,
+  owner: RowOwner | null,
 ): Promise<LocalBill> {
   const bill = buildLocalBill(deps, draft);
-  await deps.store.putBill(bill);
+  await deps.store.putBill(bill, owner);
   return bill;
 }

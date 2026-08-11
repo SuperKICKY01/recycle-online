@@ -9,9 +9,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { NodeSqliteDriver } from "../adapters/sqlite/nodeDriver.js";
+import { SqliteIdentityStore } from "../adapters/sqlite/SqliteIdentityStore.js";
 import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import type { LocalStore } from "../sync/types.js";
-import { InMemoryStore } from "./fakes.js";
+import { InMemoryStore, PROOF_OWNER } from "./fakes.js";
 
 export interface StoreSession {
   readonly store: LocalStore;
@@ -51,7 +52,15 @@ class MemorySession implements StoreSession {
 export const memoryHarness: StoreHarness = {
   name: "InMemoryStore",
   restartKind: "snapshot rebuild (rows copied, no file involved)",
-  open: () => Promise.resolve(new MemorySession(new InMemoryStore())),
+  open: () => {
+    const store = new InMemoryStore();
+    // SIGNED IN, because a device running any of these cases is one somebody
+    // signed in on. The send queue now filters by owner, so a harness that left
+    // the identity unset would park every bill in the suite and every case
+    // would go red for a reason that has nothing to do with what it tests.
+    store.setIdentity(PROOF_OWNER);
+    return Promise.resolve(new MemorySession(store));
+  },
 };
 
 /* ---------------------------------------------------------------- sqlite -- */
@@ -70,6 +79,12 @@ class SqliteSession implements StoreSession {
   static async open(file: string, dir: string): Promise<SqliteSession> {
     const driver = NodeSqliteDriver.open(file);
     const store = await SqliteLocalStore.open(driver);
+    // The same signed-in device the memory harness models, written to the real
+    // local_identity table so the store's own live read finds it. Idempotent by
+    // construction (the row's key is fixed), so a restart re-running this is
+    // harmless — and it must run on restart, because a reopened file is a
+    // reopened device that is still signed in.
+    await new SqliteIdentityStore(driver).save(PROOF_OWNER);
     return new SqliteSession(store, driver, file, dir);
   }
 

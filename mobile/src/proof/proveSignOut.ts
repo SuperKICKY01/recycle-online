@@ -73,7 +73,9 @@ import {
   FakeServer,
   OfflineTransport,
   SeqIds,
+  PROOF_OWNER,
 } from "./fakes.js";
+import { signInProofDevice } from "./proofDevice.js";
 import type { LocalBill, SendOutcome, Transport, VoidOutcome } from "../sync/types.js";
 
 let failures = 0;
@@ -486,6 +488,7 @@ async function s4NoRequestsAfterwards(): Promise<void> {
   const driver = await NodeSqliteDriver.open(join(dir, "recycle.db"));
   try {
     const store = await SqliteLocalStore.open(driver);
+    await signInProofDevice(driver);
     const transport = new CountingTransport();
     const clock = new FakeClock("2026-08-06T01:00:00.000Z");
     const engine = new SyncEngine({ store, transport, clock });
@@ -500,7 +503,8 @@ async function s4NoRequestsAfterwards(): Promise<void> {
         total_amount: "0.00",
         master_as_of: null,
       },
-    );
+    PROOF_OWNER,
+  );
     await engine.runOnce();
     check("the fixture drained before the sign-out", transport.sends === 1, `sends=${String(transport.sends)}`);
 
@@ -569,6 +573,7 @@ async function s4bInFlightPass(): Promise<void> {
   const driver = await NodeSqliteDriver.open(join(dir, "recycle.db"));
   try {
     const store = await SqliteLocalStore.open(driver);
+    await signInProofDevice(driver);
     const clock = new FakeClock("2026-08-06T02:00:00.000Z");
 
     // A transport whose send hangs until we let it go — a request on the wire
@@ -598,7 +603,8 @@ async function s4bInFlightPass(): Promise<void> {
         total_amount: "0.00",
         master_as_of: null,
       },
-    );
+    PROOF_OWNER,
+  );
 
     // The tick fires and reaches the wire. NOT awaited — this is the pass that
     // is in flight.
@@ -708,6 +714,7 @@ async function s8SendForbiddenCleared(): Promise<void> {
   const driver = await NodeSqliteDriver.open(join(dir, "recycle.db"));
   try {
     const store = await SqliteLocalStore.open(driver);
+    await signInProofDevice(driver);
     const clock = new FakeClock("2026-08-06T03:00:00.000Z");
 
     let attempts = 0;
@@ -735,7 +742,8 @@ async function s8SendForbiddenCleared(): Promise<void> {
           total_amount: "0.00",
           master_as_of: null,
         },
-      );
+    PROOF_OWNER,
+  );
     };
 
     await make("s8a");
@@ -1232,6 +1240,7 @@ async function s9SessionDrivesTheSheet(): Promise<void> {
     /* ---- THE DEAD HALF: the server answers, and refuses the caller ---- */
 
     const store = await SqliteLocalStore.open(deadDriver);
+    await signInProofDevice(deadDriver);
     const server = new FakeServer();
     const transport = new ExpiredSessionTransport(server);
     const clock = new FakeClock("2026-08-07T04:16:00.000Z");
@@ -1249,7 +1258,8 @@ async function s9SessionDrivesTheSheet(): Promise<void> {
           total_amount: "880.00",
           master_as_of: null,
         },
-      );
+    PROOF_OWNER,
+  );
       queued.push(bill.id);
     }
 
@@ -1400,6 +1410,7 @@ async function s9SessionDrivesTheSheet(): Promise<void> {
     /* ---- THE ACTIVE HALF: same rig, a phone that is merely offline ---- */
 
     const liveStore = await SqliteLocalStore.open(liveDriver);
+    await signInProofDevice(liveDriver);
     const liveClock = new FakeClock("2026-08-07T04:16:00.000Z");
     const liveEngine = new SyncEngine({
       store: liveStore,
@@ -1417,7 +1428,8 @@ async function s9SessionDrivesTheSheet(): Promise<void> {
           total_amount: "880.00",
           master_as_of: null,
         },
-      );
+    PROOF_OWNER,
+  );
     }
 
     const liveRun = await liveEngine.runOnce();

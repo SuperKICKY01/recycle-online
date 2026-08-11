@@ -1822,6 +1822,70 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   *Not done:* nothing.
   *Unblocks:* P1.7's requirement that a wrong password be distinguishable from
   an unreachable server.
+- **A CONTROL THAT ASSERTS TWO VALUES DIFFER CAN BE SATISFIED WITHOUT MEASURING
+  ANYTHING, AND BOTH MECHANISMS HAVE NOW BEEN SEEN HERE.** A check written as
+  "these two results must not be equal" reads like a control and is not one: it
+  passes on any pair that happens to be unequal, including pairs that are
+  unequal because the code is wrong. It ends as a check that does not check,
+  which is this repository's oldest failure shape, and it is worse than a
+  missing check because it is counted as evidence.
+  **(1) A WRONG NON-NULL VALUE PASSES IT.** Written in the owner-stamp commit
+  that precedes this one: a case required the bill row read back with an
+  identity signed in to DIFFER from the same row read back with none. Under a
+  deliberate mutation that wrote the tenant into the user column, the row was
+  wrong in exactly the way the case existed to catch — and the difference check
+  stayed **GREEN**, because a wrong non-null value still differs from null. What
+  caught it was a second check requiring the difference to run the right way
+  round: one side owned, the other unowned.
+  **(2) THE TYPE CHECKER DECIDES IT BEFORE IT EVER RUNS.** In this commit's
+  predecessor, a control asserting two identity constants genuinely differ would
+  not compile: `const` narrows each string to its own literal type, so
+  `TENANT_A !== TENANT_B` is a comparison between types with no overlap and
+  TypeScript rejects it as **TS2367**. The obvious repair — delete the check, it
+  is "obviously true" — removes the only thing standing between the case and a
+  fixture whose two identities are the same value, which every other assertion
+  in that case would pass.
+  **THE TWO FIXES, NAMED, because each addresses one mechanism and neither
+  addresses both.** Assert the DIRECTION of the difference, not its existence.
+  And widen the constants with an explicit `: string` annotation so the
+  comparison survives to runtime as a measurement instead of being settled at
+  compile time — an annotation that looks like noise and is load-bearing.
+  *Not done:* no sweep has been made of existing proofs for difference-checks
+  that assert no direction; the two instances above were found by mutating the
+  code, not by looking.
+  *Unblocks:* nothing. It is a rule about how controls are written, and it
+  applies to every proof in the tree.
+- **A PROOF THAT BUILDS ITS OWN STORE OUTSIDE THE HARNESS IS NOT SIGNED IN, AND
+  A STRICT OWNER FILTER READS TO IT AS A GATE STUCK SHUT.** Added in the commit
+  that introduced the send-queue owner filter, and it happened to this
+  repository's own suite within the first hour of that filter existing.
+  `prove:clock` builds its `InMemoryStore` in its own `rig()` helper rather than
+  through `harness.ts`, so nothing seeded a device identity into it. Its bills
+  were owned; its device was not signed in; the filter therefore selected
+  nothing, and the case output read `attempted=0`, `backoff=0ms`,
+  `serverErrorAttempts=undefined` — nine failures whose plain reading is that
+  the clock gate never opens.
+  **THE MISDIAGNOSIS SHAPE, WHICH IS THE REASON THIS IS WRITTEN DOWN.** The
+  filter can now make a CORRECT MECHANISM LOOK BROKEN, anywhere. Every symptom
+  it produces — nothing selected, nothing attempted, nothing sent — is
+  indistinguishable by eye from a gate that is genuinely stuck, a backoff that
+  never elapses, or an engine that has stopped. The accusation lands on the
+  mechanism under test, which is the expensive direction: the reading is taken
+  as evidence about code that is innocent, and every inspection of it comes back
+  clean.
+  **WHAT DISTINGUISHES THE TWO IS NOT THE GATE. IT IS WHETHER AN IDENTITY
+  EXISTS.** Before debugging any "nothing was selected" result, read the
+  identity — `SqliteIdentityStore.load()`, or the fake's own identity — and read
+  the row's owner columns. If the device has no identity, or the row's owner does
+  not match it, the queue is behaving exactly as designed and the mechanism under
+  test has not been exercised at all. Only once the identity is present and
+  matching does an empty selection say anything about the gate.
+  *Not done:* no sweep has been made for other proofs that construct a store
+  outside the harness; `prove:clock` was found by running the suite, not by
+  looking. The two harnesses and the 31 store-open sites are seeded, and
+  `prove:clock`'s rig now is too.
+  *Unblocks:* nothing — it is a debugging rule, and it applies to every proof
+  that touches the send queue from here on.
 
 ## Decisions open — the owner's, not the code's
 

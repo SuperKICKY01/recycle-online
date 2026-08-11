@@ -29,6 +29,7 @@ const ctl = new Int32Array(sab); // [0] = start gate, [1] = ready count
 
 const driver = NodeSqliteDriver.open(file);
 const store = await SqliteLocalStore.open(driver);
+await signInProofDevice(driver);
 
 // Announce readiness, then block until every worker is ready. Without this
 // barrier the threads never overlap: spawning a worker costs far more than
@@ -56,3 +57,4 @@ const lastAt = Date.now();
 await driver.close();
 const result: ClaimWorkerResult = { wins, losses, errors, firstAt, lastAt };
 parentPort?.postMessage(result);
+import { signInProofDevice } from "./proofDevice.js";

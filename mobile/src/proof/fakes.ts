@@ -10,6 +10,7 @@ import type {
   LocalBill,
   LocalStore,
   QueueSnapshot,
+  RowOwner,
   SendOutcome,
   SyncState,
   Transport,
@@ -17,6 +18,31 @@ import type {
 } from "../sync/types.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
+
+/**
+ * The identity every proof that is NOT about ownership runs as.
+ *
+ * Those proofs are about sending, backoff, voids, clocks and cold starts, and
+ * a real device running them is a device somebody has signed in on. Giving them
+ * one owner and matching the store's identity to it keeps them testing what
+ * they are named for; leaving their bills unowned would park every one of them
+ * and turn the whole suite red for a reason that has nothing to do with the
+ * case under test.
+ */
+export const PROOF_OWNER: RowOwner = {
+  tenant_id: "00000000-0000-4000-8000-00000000aaaa",
+  user_id: "00000000-0000-4000-8000-00000000bbbb",
+};
+
+const sameOwner = (a: RowOwner | null, b: RowOwner | null): boolean =>
+  a !== null && b !== null && a.tenant_id === b.tenant_id && a.user_id === b.user_id;
+
+/** Everything an InMemoryStore restart must carry across the "process death". */
+export interface MemorySnapshot {
+  rows: Map<string, LocalBill>;
+  owners: Map<string, RowOwner | null>;
+  identity: RowOwner | null;
+}
 
 /* -------------------------------------------------------------- clock ---- */
 
@@ -64,17 +90,59 @@ export class SeqIds implements IdSource {
  */
 export class InMemoryStore implements LocalStore {
   private readonly rows = new Map<string, LocalBill>();
+  /**
+   * Row ownership, held BESIDE the bill rather than on it. LocalBill carries no
+   * owner — the columns are written by the INSERT and are not in the SELECT
+   * list any read uses — so mirroring the real store means mirroring that split
+   * too, not inventing a field the SQLite store would not populate.
+   */
+  private readonly owners = new Map<string, RowOwner | null>();
+  /** Who this fake device is signed in as. The analogue of local_identity. */
+  private identity: RowOwner | null = null;
 
-  constructor(rows?: Map<string, LocalBill>) {
-    if (rows) for (const [id, bill] of rows) this.rows.set(id, clone(bill));
+  constructor(snap?: MemorySnapshot) {
+    if (!snap) return;
+    for (const [id, bill] of snap.rows) this.rows.set(id, clone(bill));
+    for (const [id, owner] of snap.owners) this.owners.set(id, clone(owner));
+    this.identity = clone(snap.identity);
   }
 
-  snapshot(): Map<string, LocalBill> {
-    return new Map([...this.rows].map(([id, b]) => [id, clone(b)]));
+  /**
+   * Everything a restart must carry. The identity is in it because on a real
+   * device it lives in the database and survives the process — a fake that lost
+   * it on restart would make every restarted case park its own bills.
+   */
+  snapshot(): MemorySnapshot {
+    return {
+      rows: new Map([...this.rows].map(([id, b]) => [id, clone(b)])),
+      owners: new Map([...this.owners].map(([id, o]) => [id, clone(o)])),
+      identity: clone(this.identity),
+    };
   }
 
-  putBill(bill: LocalBill): Promise<void> {
+  /** Sign this fake device in. Mirrors SqliteIdentityStore.save. */
+  setIdentity(owner: RowOwner | null): void {
+    this.identity = clone(owner);
+  }
+
+  /**
+   * "Queued to send": pending, not parked on master data, AND owned by whoever
+   * is signed in now. Mirrors the QUEUED constant in SqliteLocalStore, owner
+   * clause included — both stores must agree exactly on what the head-of-line
+   * queue contains, or a case would pass on one and fail on the other for
+   * reasons that have nothing to do with the engine.
+   *
+   * The null handling is SQL's, reproduced deliberately rather than reinvented:
+   * a row with no owner, and a device with no identity, both compare unequal
+   * and are excluded. That is what makes UNKNOWN park.
+   */
+  private isQueued(b: LocalBill): boolean {
+    return queuedIgnoringOwner(b) && sameOwner(this.owners.get(b.id) ?? null, this.identity);
+  }
+
+  putBill(bill: LocalBill, owner: RowOwner | null): Promise<void> {
     this.rows.set(bill.id, clone(bill));
+    this.owners.set(bill.id, clone(owner));
     return Promise.resolve();
   }
 
@@ -102,7 +170,7 @@ export class InMemoryStore implements LocalStore {
    */
   listReadyToSend(now: Date, limit: number): Promise<LocalBill[]> {
     const out = [...this.rows.values()]
-      .filter(queued)
+      .filter((b) => this.isQueued(b))
       .filter((b) => scheduledInstantIsDue(b.next_attempt_at, now.getTime()))
       .sort(byDeviceCreatedAt)
       .slice(0, limit)
@@ -112,7 +180,7 @@ export class InMemoryStore implements LocalStore {
 
   listPendingOldestFirst(limit: number): Promise<LocalBill[]> {
     const out = [...this.rows.values()]
-      .filter(queued)
+      .filter((b) => this.isQueued(b))
       .sort(byDeviceCreatedAt)
       .slice(0, limit)
       .map(clone);
@@ -122,7 +190,7 @@ export class InMemoryStore implements LocalStore {
   clearBackoffForPending(now: Date): Promise<number> {
     let freed = 0;
     for (const row of this.rows.values()) {
-      if (!queued(row)) continue;
+      if (!this.isQueued(row)) continue;
       if (new Date(row.next_attempt_at).getTime() <= now.getTime()) continue;
       row.next_attempt_at = now.toISOString();
       freed += 1;
@@ -132,7 +200,7 @@ export class InMemoryStore implements LocalStore {
 
   claimForSend(id: string, _now: Date): Promise<boolean> {
     const row = this.rows.get(id);
-    if (!row || !queued(row)) return Promise.resolve(false);
+    if (!row || !this.isQueued(row)) return Promise.resolve(false);
     row.sync_state = "syncing";
     return Promise.resolve(true);
   }
@@ -283,7 +351,7 @@ export class InMemoryStore implements LocalStore {
   }
 
   pendingQueueSnapshot(): Promise<QueueSnapshot> {
-    const pending = [...this.rows.values()].filter(queued).sort(byDeviceCreatedAt);
+    const pending = [...this.rows.values()].filter((b) => this.isQueued(b)).sort(byDeviceCreatedAt);
     const blocked = [...this.rows.values()].filter(
       (b) => b.sync_state === "pending" && b.master_data_missing_at !== null,
     );
@@ -410,7 +478,7 @@ export class InMemoryStore implements LocalStore {
  * the head-of-line queue contains, or the proofs would pass on one and not the
  * other for reasons that have nothing to do with the engine.
  */
-const queued = (b: LocalBill): boolean =>
+const queuedIgnoringOwner = (b: LocalBill): boolean =>
   b.sync_state === "pending" && b.master_data_missing_at === null;
 
 const byCreatedAt = (a: LocalBill, b: LocalBill): number =>

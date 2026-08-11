@@ -29,8 +29,10 @@ import {
   OnlineTransport,
   SeqIds,
   VoidLosesFirstAckTransport,
+  PROOF_OWNER,
 } from "./fakes.js";
 import { FileServer } from "./fileServer.js";
+import { signInProofDevice } from "./proofDevice.js";
 
 let failures = 0;
 
@@ -65,6 +67,7 @@ async function makeBill(store: SqliteLocalStore, clock: FakeClock, ids: SeqIds):
       seller_id: "sell-1", vehicle_no: null, items: [ITEM],
       total_amount: "150.05", master_as_of: null,
     },
+    PROOF_OWNER,
   );
 }
 
@@ -139,6 +142,7 @@ async function v0Migration(): Promise<void> {
   console.log(`  after:  ${String(after.length)} columns`);
 
   const store = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const survivor = await store.getBill("old-bill-1");
 
   // Asserted by NAME, not by count: a count is a magic number that goes stale
@@ -237,6 +241,7 @@ async function v1VoidSyncedBill(): Promise<void> {
   const dir = tempDir("synced");
   const driver = NodeSqliteDriver.open(join(dir, "v1.db"));
   const store = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const clock = new FakeClock();
   const server = new FakeServer();
   const transport = new CountingTransport(new OnlineTransport(server));
@@ -284,6 +289,7 @@ async function v2VoidNeverSyncedBill(): Promise<void> {
   const dir = tempDir("offline");
   const driver = NodeSqliteDriver.open(join(dir, "v2.db"));
   const store = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const clock = new FakeClock();
   const server = new FakeServer();
 
@@ -350,6 +356,7 @@ async function v3VoidRetryAfterLostAck(): Promise<void> {
   const dir = tempDir("lostack");
   const driver = NodeSqliteDriver.open(join(dir, "v3.db"));
   const store = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const clock = new FakeClock();
   const server = new FakeServer();
   const transport = new VoidLosesFirstAckTransport(server);
@@ -406,6 +413,7 @@ async function v4CrashBetweenSyncAndVoid(): Promise<void> {
 
   const driver = NodeSqliteDriver.open(dbFile);
   const store = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const clock = new FakeClock();
   const bill = await makeBill(store, clock, new SeqIds("v4"));
   await store.requestVoid(bill.id, "รถผิดคัน", clock.now());
@@ -434,6 +442,7 @@ async function v4CrashBetweenSyncAndVoid(): Promise<void> {
   // Restart: a fresh process, fresh connection, nothing carried in memory.
   const driver2 = NodeSqliteDriver.open(dbFile);
   const store2 = await SqliteLocalStore.open(driver2);
+  await signInProofDevice(driver2);
   const recovered = await store2.getBill(bill.id);
   console.log(`  on restart, local: sync_state=${String(recovered?.sync_state)} doc_no=${String(recovered?.doc_no)} voided(local)=${String(isVoided(recovered!))} voided_at=${String(recovered?.voided_at)}`);
 

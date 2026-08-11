@@ -71,7 +71,8 @@ import type {
 import { statusNotice } from "../sync/statusNotice.js";
 import type { StatusInput } from "../sync/statusNotice.js";
 import type { SyncState } from "../sync/types.js";
-import { FakeClock, RejectingTransport, SeqIds } from "./fakes.js";
+import { FakeClock, PROOF_OWNER, RejectingTransport, SeqIds } from "./fakes.js";
+import { signInProofDevice } from "./proofDevice.js";
 
 let failures = 0;
 
@@ -1133,6 +1134,7 @@ async function n5ReachableAndRendered(): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), "recycle-2c7-notice-"));
   const driver = NodeSqliteDriver.open(join(dir, "bills.db"));
   const store = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const clock = new FakeClock();
   const ids = new SeqIds("notice");
 
@@ -1151,6 +1153,7 @@ async function n5ReachableAndRendered(): Promise<void> {
         },
       ],
     },
+    PROOF_OWNER,
   );
 
   // The owner cancels it while it is still unsent — a real sequence, and the one

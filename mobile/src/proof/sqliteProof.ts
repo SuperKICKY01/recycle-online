@@ -15,7 +15,8 @@ import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
 import type { BillItemPayload, LocalBill } from "../sync/types.js";
 import type { ClaimWorkerData, ClaimWorkerResult } from "./claimWorker.js";
-import { FakeClock, FakeServer, OnlineTransport, SeqIds } from "./fakes.js";
+import { FakeClock, FakeServer, OnlineTransport, PROOF_OWNER, SeqIds } from "./fakes.js";
+import { signInProofDevice } from "./proofDevice.js";
 
 let failures = 0;
 
@@ -141,6 +142,7 @@ async function s2DecimalRoundTrip(): Promise<void> {
   const dir = tempDir("decimal");
   const driver = NodeSqliteDriver.open(join(dir, "d.db"));
   const store = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const clock = new FakeClock();
 
   const created = await createLocalBill(
@@ -152,6 +154,7 @@ async function s2DecimalRoundTrip(): Promise<void> {
       total_amount: "0.30",
       master_as_of: null,
     },
+    PROOF_OWNER,
   );
 
   const read = await store.getBill(created.id);
@@ -196,6 +199,7 @@ async function s3ConcurrentClaims(workers: number, bills: number): Promise<void>
   const file = join(dir, "race.db");
   const driver = NodeSqliteDriver.open(file);
   const store = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const clock = new FakeClock();
   const ids = new SeqIds("bill-race");
 
@@ -211,7 +215,8 @@ async function s3ConcurrentClaims(workers: number, bills: number): Promise<void>
           total_amount: "0.30",
           master_as_of: null,
         },
-      ),
+    PROOF_OWNER,
+  ),
     );
   }
   await driver.close(); // hand the file over to the workers entirely
@@ -298,6 +303,7 @@ async function s4DurabilityAcrossRestart(): Promise<void> {
 
   const driver1 = NodeSqliteDriver.open(file);
   const store1 = await SqliteLocalStore.open(driver1);
+  await signInProofDevice(driver1);
   const clock = new FakeClock();
   const ids = new SeqIds("bill-dur");
   const server = new FakeServer();
@@ -312,7 +318,8 @@ async function s4DurabilityAcrossRestart(): Promise<void> {
         total_amount: "0.30",
         master_as_of: null,
       },
-    );
+    PROOF_OWNER,
+  );
 
   const willStayPending = await mk();
   const willBeSyncing = await mk();
@@ -330,6 +337,7 @@ async function s4DurabilityAcrossRestart(): Promise<void> {
   // A brand new connection to the same file — nothing carried over in memory.
   const driver2 = NodeSqliteDriver.open(file);
   const store2 = await SqliteLocalStore.open(driver2);
+  await signInProofDevice(driver2);
 
   const after = {
     pending: (await store2.getBill(willStayPending.id))?.sync_state,

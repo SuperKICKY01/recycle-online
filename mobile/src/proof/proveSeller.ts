@@ -52,7 +52,8 @@ import {
 import type { NoticeInput } from "../sync/parkedReason.js";
 import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { buildLocalBill } from "../sync/createBill.js";
-import { FakeClock, SeqIds } from "./fakes.js";
+import { FakeClock, PROOF_OWNER, SeqIds } from "./fakes.js";
+import { signInProofDevice } from "./proofDevice.js";
 
 let failures = 0;
 
@@ -700,6 +701,7 @@ async function s8RetryWindowLeaksNothing(): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), "recycle-2c6-retry-"));
   const driver = NodeSqliteDriver.open(join(dir, "bills.db"));
   const store = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
 
   // Byte-exact what httpTransport builds for the seeded grade-less seller.
   const RAW =
@@ -781,7 +783,7 @@ async function s8RetryWindowLeaksNothing(): Promise<void> {
       ],
     },
   );
-  await store.putBill(bill);
+  await store.putBill(bill, PROOF_OWNER);
 
   const now = new Date("2026-07-26T10:00:00.000Z");
 

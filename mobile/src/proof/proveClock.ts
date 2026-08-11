@@ -67,6 +67,7 @@ import {
   OnlineTransport,
   FakeServer,
   SeqIds,
+  PROOF_OWNER,
 } from "./fakes.js";
 
 let failures = 0;
@@ -120,8 +121,14 @@ interface Rig {
 }
 
 function rig(tag: string): Rig {
+  const store = new InMemoryStore();
+  // Signed in, like the shared harness. Every bill this rig makes is owned by
+  // PROOF_OWNER, and the send queue now selects only rows whose owner matches
+  // the device — an unsigned-in rig would select nothing and every clock case
+  // would read as "the gate is stuck shut" when the gate is fine.
+  store.setIdentity(PROOF_OWNER);
   return {
-    store: new InMemoryStore(),
+    store,
     clock: new FakeClock(T0),
     server: new FakeServer(),
     billIds: new SeqIds(`${tag}-bill`),
@@ -139,6 +146,7 @@ async function makeBill(r: Rig): Promise<LocalBill> {
       total_amount: null,
       master_as_of: null,
     },
+    PROOF_OWNER,
   );
 }
 

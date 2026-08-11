@@ -18,6 +18,7 @@ import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { SyncEngine } from "../sync/engine.js";
 import { systemClock } from "../sync/systemClock.js";
 import { FileServer, FileServerTransport } from "./fileServer.js";
+import { signInProofDevice } from "./proofDevice.js";
 
 async function main(): Promise<void> {
   const [dbFile, serverFile] = process.argv.slice(2);
@@ -27,6 +28,7 @@ async function main(): Promise<void> {
 
   const driver = NodeSqliteDriver.open(dbFile);
   const store = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const server = new FileServer(serverFile);
 
   const engine = new SyncEngine({

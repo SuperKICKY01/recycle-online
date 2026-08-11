@@ -31,7 +31,8 @@ import { sumAmounts } from "../money/money.js";
 import { Decimal } from "decimal.js";
 import { buildLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
-import { FakeClock, FakeServer, OnlineTransport, SeqIds } from "./fakes.js";
+import { FakeClock, FakeServer, OnlineTransport, PROOF_OWNER, SeqIds } from "./fakes.js";
+import { signInProofDevice } from "./proofDevice.js";
 
 let failures = 0;
 
@@ -262,6 +263,7 @@ async function c4EngineNeverSeesADraft(): Promise<void> {
   const file = join(dir, "iso.db");
   const driver = NodeSqliteDriver.open(file);
   const billStore = await SqliteLocalStore.open(driver);
+  await signInProofDevice(driver);
   const draftStore = await SqliteDraftStore.open(driver);
   const clock = new FakeClock();
   const server = new FakeServer();
@@ -306,7 +308,7 @@ async function c4EngineNeverSeesADraft(): Promise<void> {
       master_as_of: loaded!.master_as_of,
     },
   );
-  await draftStore.promoteToBill(loaded!, bill, null);
+  await draftStore.promoteToBill(loaded!, bill, PROOF_OWNER);
   const run2 = await engine.runOnce();
   console.log(`  after promotion: runOnce -> ${JSON.stringify(run2)} billsOnServer=${String(server.billCount)}`);
   check(
@@ -372,6 +374,7 @@ async function c5CrashAtTheTransition(mode: "before-commit" | "after-commit"): P
   const driver = NodeSqliteDriver.open(file);
   const draftStore = await SqliteDraftStore.open(driver);
   await SqliteLocalStore.open(driver); // ensure the bills table exists too
+  await signInProofDevice(driver);
   await draftStore.save(draftWithSpecs(SPECS, new SeqIds("line")), null);
   await driver.close();
 

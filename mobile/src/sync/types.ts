@@ -8,6 +8,10 @@
  * on them; the server computes every amount.
  */
 
+import type { RowOwner } from "../session/rowOwner.js";
+
+export type { RowOwner };
+
 export type SyncState = "pending" | "syncing" | "synced" | "failed";
 
 export interface BillItemPayload {
@@ -417,8 +421,20 @@ export interface QueueSnapshot {
 }
 
 export interface LocalStore {
-  /** Local-first write. Once this resolves, the bill is saved from the user's view. */
-  putBill(bill: LocalBill): Promise<void>;
+  /**
+   * Local-first write. Once this resolves, the bill is saved from the user's view.
+   *
+   * `owner` is REQUIRED and nullable. Required because a bill that gets no owner
+   * by omission is the silent failure this whole step exists to prevent: the
+   * design reads an absent owner as UNKNOWN rather than as mine, so the row is
+   * excluded from the send queue and waits for the sign-in of whoever owns it —
+   * and if nobody does, it waits for a person who does not exist while the cash
+   * on it is already out of the drawer. Nullable because "this device does not
+   * know" is a real answer an offline morning genuinely produces, and inventing
+   * an identity there would manufacture provenance indistinguishable from a
+   * true one.
+   */
+  putBill(bill: LocalBill, owner: RowOwner | null): Promise<void>;
   getBill(id: string): Promise<LocalBill | null>;
   listByState(state: SyncState): Promise<LocalBill[]>;
   /**

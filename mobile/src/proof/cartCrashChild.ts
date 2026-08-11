@@ -18,7 +18,7 @@ import { SqliteDraftStore } from "../adapters/sqlite/SqliteDraftStore.js";
 import type { SqlDriver, SqlRunResult, SqlTx, SqlValue } from "../adapters/sqlite/driver.js";
 import { buildLocalBill } from "../sync/createBill.js";
 import { toBillItems, cartTotal } from "../cart/cart.js";
-import { FakeClock } from "./fakes.js";
+import { FakeClock, PROOF_OWNER } from "./fakes.js";
 import type { IdSource } from "../sync/types.js";
 
 /** Dies instantly and unconditionally. SIGKILL cannot be caught or deferred. */
@@ -149,8 +149,12 @@ async function main(): Promise<void> {
   );
 
   console.log(`CHILD: promoting draft ${draft.id} -> bill ${billId} (mode=${mode})`);
-  // No identity is stored in this child, so the owner is genuinely UNKNOWN.
-  await store.promoteToBill(draft, bill, null);
+  // The standard proof owner, because the PARENT reopens this file as a
+  // signed-in device and expects to send this bill. An unowned bill here would
+  // park in the parent, and C5 would report a crash-safety failure that is
+  // really an ownership mismatch — the diagnosis pointing at the transaction
+  // while the transaction was fine.
+  await store.promoteToBill(draft, bill, PROOF_OWNER);
 
   // Only reachable if the kill failed to happen.
   console.log("CHILD: STILL ALIVE AFTER PROMOTION — crash injection did not fire");

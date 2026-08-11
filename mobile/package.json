@@ -26,7 +26,8 @@
     "prove:daily": "npm run build && node dist/proof/proveDaily.js",
     "prove:signout": "npm run build && node dist/proof/proveSignOut.js",
     "prove:migration": "npm run build && node dist/proof/proveMigration.js",
-    "prove:owner": "npm run build && node dist/proof/proveOwner.js"
+    "prove:owner": "npm run build && node dist/proof/proveOwner.js",
+    "prove:sendowner": "npm run build && node dist/proof/proveSendOwner.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

@@ -24,8 +24,9 @@
  * See adapters/sqlite/mutex.ts.
  */
 import { SEND_SCHEDULE_HORIZON_MS } from "../../time/clockSanity.js";
-import type { LocalBill, LocalStore, QueueSnapshot, SyncState } from "../../sync/types.js";
+import type { LocalBill, LocalStore, QueueSnapshot, RowOwner, SyncState } from "../../sync/types.js";
 import type { SqlDriver, SqlValue } from "./driver.js";
+import { SqliteIdentityStore } from "./SqliteIdentityStore.js";
 import type { LocalIdentity } from "./SqliteIdentityStore.js";
 import { initConnection } from "./schema.js";
 
@@ -76,7 +77,72 @@ const COLUMNS =
  * because the bill is parked VISIBLY rather than silently skipped, which is the
  * distinction lessons/queue-jam-must-be-visible.md actually draws.
  */
-const QUEUED = "sync_state = 'pending' AND master_data_missing_at IS NULL";
+/*
+ * THE OWNER HALF, ADDED HERE AND NOT AT THE SIX CALL SITES.
+ *
+ * A bill may be sent only under the identity that took the goods. Across shops
+ * the wrong token is refused terminally (422) and the bill dies with the cash
+ * already paid out; within one shop it SUCCEEDS (201) and records the wrong
+ * person as the buyer, which nothing downstream can detect or correct. Both are
+ * blocked by never sending under the wrong identity in the first place.
+ *
+ * WHY IT IS IN THE CONSTANT. `QUEUED` is the definition of "queued to send",
+ * and ownership is now part of that definition rather than a check somebody
+ * remembers at each query — the same reasoning as hard rule 2's "enforce at the
+ * lowest layer". It also fails LOUD: a statement that uses this constant and
+ * forgets the two bound values gets a parameter-count error from the driver,
+ * not a silently wrong row set.
+ *
+ * NULL NEEDS NO SPECIAL CASE, and that is why the clause is written as a plain
+ * comparison. SQL three-valued logic does the whole job: a NULL owner column
+ * compared to anything yields NULL, NULL is not TRUE, and the row is excluded.
+ * So one clause covers all four states — owned by me (selected), owned by
+ * someone else (excluded), UNOWNED (excluded, which is what "null means UNKNOWN
+ * and parks" cashes out to), and no identity stored on the device at all, where
+ * the bound values are NULL and nothing is selected. That last case fails
+ * CLOSED, deliberately: after an upgrade the keystore still holds a dead token
+ * while no identity has ever been recorded, and ROADMAP.md section P1.7 says
+ * those bills must stop sending rather than keep trying.
+ */
+const OWNED_BY_CURRENT = "owner_tenant_id = ? AND owner_user_id = ?";
+
+/**
+ * The two bound values, in the order the clause names them. Expanded from the
+ * pair at one point, so the columns can never disagree about whether an owner
+ * is known.
+ */
+function ownerParams(owner: RowOwner | null): SqlValue[] {
+  return [owner === null ? null : owner.tenant_id, owner === null ? null : owner.user_id];
+}
+
+/*
+ * THE VOID PATH HAS NO OWNER FILTER AS OF THIS COMMIT, AND EDITING THIS
+ * CONSTANT DID NOT GIVE IT ONE. Read this before believing the work is done.
+ *
+ * `listVoidsToApply` draws on NEITHER shared constant — not this one, not
+ * DUE_OR_UNBELIEVABLE. It carries its own predicate (void_requested_at IS NOT
+ * NULL AND voided_at IS NULL AND void_refused_at IS NULL AND sync_state =
+ * 'synced' AND doc_no IS NOT NULL), so a filter added here does not reach it by
+ * any route. Whoever edits this line, runs the send proofs and sees green will
+ * believe another person's bills can no longer leave the device. A VOID for
+ * another person's bill still can.
+ *
+ * AND THIS CHANGE MAKES AN EXISTING HAZARD MORE LIKELY, WHICH IS THE PART THAT
+ * IS NOT OBVIOUS. The void path has no backoff column and no device-global
+ * gate, so a void the server refuses is re-POSTed on every pass — roughly every
+ * four seconds, indefinitely. That hazard is already recorded; what changes
+ * today is its RATE. A filter creates refusals that did not previously happen:
+ * bills that used to send under whatever identity was present now park, and the
+ * voids that follow them meet a server that has every reason to refuse. More
+ * refusals means more rows sitting in a queue that retries for ever.
+ *
+ * The queued item is `OPEN_ITEMS.md § Code debt found and left in place`,
+ * "A definitively refused void is re-sent on every pass". Someone reading this
+ * code will not open that file, which is why the hazard is stated here and not
+ * only pointed at.
+ */
+const QUEUED =
+  `sync_state = 'pending' AND master_data_missing_at IS NULL AND ${OWNED_BY_CURRENT}`;
 
 /**
  * "The scheduled time has come, OR the schedule is not believable."
@@ -210,47 +276,66 @@ function toBill(row: BillRow): LocalBill {
 }
 
 export class SqliteLocalStore implements LocalStore {
-  private constructor(private readonly db: SqlDriver) {}
+  private constructor(
+    private readonly db: SqlDriver,
+    private readonly identity: SqliteIdentityStore,
+  ) {}
+
+  /**
+   * WHO THIS DEVICE IS, READ FRESH FOR EVERY STATEMENT THAT FILTERS BY OWNER.
+   *
+   * Not cached on the instance, and the difference is the whole hazard. A value
+   * captured at open() would be a second copy of something the identity store
+   * already owns, and it goes stale at exactly the moment that matters: the
+   * operator signs in as somebody else and the store keeps filtering for the
+   * person who left, so the new person's bills park and the old person's send.
+   * Nothing would make that update mandatory and no proof that never let it go
+   * stale could catch it.
+   *
+   * The cost is one indexed single-row SELECT on a connection this call is
+   * about to use anyway.
+   */
+  private currentOwner(): Promise<RowOwner | null> {
+    return this.identity.load();
+  }
 
   /** Opens (or reopens) the store and ensures the schema exists. */
   static async open(db: SqlDriver): Promise<SqliteLocalStore> {
     await initConnection(db);
-    return new SqliteLocalStore(db);
+    // The SAME driver, so the identity is read on the connection the filtered
+    // statements run on — never a second connection that could see a different
+    // committed state.
+    return new SqliteLocalStore(db, new SqliteIdentityStore(db));
   }
 
   async close(): Promise<void> {
     await this.db.close();
   }
 
-  async putBill(bill: LocalBill): Promise<void> {
+  async putBill(bill: LocalBill, owner: RowOwner | null): Promise<void> {
     // Plain INSERT, not INSERT OR REPLACE: a duplicate bill id is a bug that
     // must surface, never silently overwrite a bill that may already be synced.
     //
-    // NULL OWNER, AND THE SIGNATURE IS NOT WIDENED TO TAKE ONE. Measured in the
-    // commit that added this: NOTHING IN PRODUCTION CALLS putBill. The only
-    // production bill INSERT is SqliteDraftStore.promoteToBill; the references
-    // to this method are sync/createBill.ts's createLocalBill (which itself has
-    // no production caller), src/proof/fakes.ts, proveCold.ts and proveSeller.ts.
-    // A bill written down this path therefore has no known owner and null is
-    // the TRUE value, not a placeholder standing in for one.
+    // THE OWNER IS NOW A REQUIRED ARGUMENT rather than a null written here.
+    // It had been null with a comment, on the measured ground that nothing in
+    // production called this method; the signature was widened because "no
+    // caller today" is a fact about today and the row it would write is
+    // permanent. The cost was 3 call sites and a cascade of 23 through
+    // createLocalBill, none of them production, none having to invent an
+    // identity.
     //
-    // WHAT WOULD HAPPEN IF A PRODUCTION CALLER APPEARED, which is the point —
-    // the absence of one today is only why it is not happening yet, not why it
-    // would be safe. The bill would be written with no owner. The design reads
-    // that as UNKNOWN rather than as mine, so the row is treated as another
-    // person's and PARKS: it stops being selected for sending, and it waits for
-    // the sign-in of whoever owns it. Nobody owns it. So it waits for a person
-    // who does not exist, and the money on that bill — cash already out of the
-    // drawer — sits on one handset with no server record and nothing on screen
-    // that anyone can act on, because the release condition can never be met.
-    //
-    // It fails in the direction nothing catches. An unowned bill is
-    // indistinguishable from one weighed before anyone signed in, which is a
-    // legitimate state this design deliberately produces, so the parked count
-    // looks ordinary and no alarm has grounds to fire. Any production caller
-    // added here must take an owner; this comment is what has to fail review,
-    // because the row will not.
-    await this.db.run(BILL_INSERT_SQL, billInsertParams(bill, null));
+    // WHAT PASSING null STILL MEANS, because it is a legitimate value and not a
+    // placeholder: the bill is written with no owner, the design reads that as
+    // UNKNOWN rather than as mine, and QUEUED therefore never selects it. It
+    // stops being sent and waits for the sign-in of whoever owns it. If nobody
+    // does, it waits for a person who does not exist, while the cash on it is
+    // already out of the drawer — one handset, no server record, and nothing on
+    // screen anyone can act on, because the release condition can never be met.
+    // It fails where nothing catches it: an unowned bill is indistinguishable
+    // from one weighed before anyone signed in, which this design deliberately
+    // produces, so the parked count looks ordinary and no alarm has grounds to
+    // fire.
+    await this.db.run(BILL_INSERT_SQL, billInsertParams(bill, owner));
   }
 
   async getBill(id: string): Promise<LocalBill | null> {
@@ -304,12 +389,16 @@ export class SqliteLocalStore implements LocalStore {
    * ------------------------------------------------------------------------
    */
   async listReadyToSend(now: Date, limit: number): Promise<LocalBill[]> {
+    // Params follow the TEXTUAL order of the ? marks: QUEUED's owner pair sits
+    // inside the WHERE, so it precedes DUE_OR_UNBELIEVABLE's pair, and LIMIT's
+    // marker comes after the whole WHERE. Getting this order wrong compares a
+    // uuid against a timestamp and silently selects nothing.
     const rows = await this.db.all<BillRow>(
       `SELECT ${COLUMNS} FROM local_bills
        WHERE ${QUEUED} AND ${DUE_OR_UNBELIEVABLE}
        ORDER BY device_created_at, created_at, id
        LIMIT ?`,
-      [...dueParams(now), limit],
+      [...ownerParams(await this.currentOwner()), ...dueParams(now), limit],
     );
     return rows.map(toBill);
   }
@@ -321,7 +410,7 @@ export class SqliteLocalStore implements LocalStore {
        WHERE ${QUEUED}
        ORDER BY device_created_at, created_at, id
        LIMIT ?`,
-      [limit],
+      [...ownerParams(await this.currentOwner()), limit],
     );
     return rows.map(toBill);
   }
@@ -346,9 +435,11 @@ export class SqliteLocalStore implements LocalStore {
       // Parked bills are excluded: their next_attempt_at is a slow master-data
       // cadence, not a network backoff, and a reachable server says nothing about
       // whether the office has added the price yet.
+      // The SET marker comes first, then QUEUED's owner pair inside the WHERE,
+      // then the backoff comparison.
       `UPDATE local_bills SET next_attempt_at = ?
        WHERE ${QUEUED} AND next_attempt_at > ?`,
-      [now.toISOString(), now.toISOString()],
+      [now.toISOString(), ...ownerParams(await this.currentOwner()), now.toISOString()],
     );
     return r.changes;
   }
@@ -365,7 +456,7 @@ export class SqliteLocalStore implements LocalStore {
     const r = await this.db.run(
       `UPDATE local_bills SET sync_state = 'syncing', next_attempt_at = ?
        WHERE id = ? AND ${QUEUED}`,
-      [now.toISOString(), id],
+      [now.toISOString(), id, ...ownerParams(await this.currentOwner())],
     );
     return r.changes === 1;
   }
@@ -632,8 +723,12 @@ export class SqliteLocalStore implements LocalStore {
    * row than the one actually holding up the queue.
    */
   async pendingQueueSnapshot(): Promise<QueueSnapshot> {
+    // Read ONCE and used by both QUEUED statements below, so the count and the
+    // head can never describe two different people's queues.
+    const owner = ownerParams(await this.currentOwner());
     const counts = await this.db.all<{ n: number }>(
       `SELECT COUNT(*) AS n FROM local_bills WHERE ${QUEUED}`,
+      owner,
     );
     const pendingCount = counts[0]?.n ?? 0;
     // Parked bills are counted separately and NEVER as "behind": they are not
@@ -648,6 +743,7 @@ export class SqliteLocalStore implements LocalStore {
        WHERE ${QUEUED}
        ORDER BY device_created_at, created_at, id
        LIMIT 1`,
+      owner,
     );
     const head = rows[0];
     return {
