@@ -438,6 +438,50 @@ export interface QueueHead {
 }
 
 /** A snapshot of the pending send queue for health assessment. */
+/**
+ * EVERY UNSENT BILL ON THE DEVICE, SPLIT BY WHAT IT IS WAITING FOR.
+ *
+ * Four counts over `sync_state IN ('pending','syncing')`, DISJOINT and COMPLETE:
+ * every unsent row is in exactly one, and the four sum to the old undivided
+ * total. That is the property that makes them safe to show side by side — a
+ * breakdown that double-counts or drops a row would put a number on the strip
+ * that no arithmetic reconciles.
+ *
+ * THE SPLIT IS BY REMEDY, NOT BY STATE, and that is the whole reason it exists.
+ * `ROADMAP.md` section P1.7: "One waits for a connection and the other waits for
+ * a person. A combined total makes the operator wait for the wrong thing: they
+ * see a number that looks like an outage, stand still expecting it to clear, and
+ * it never will."
+ */
+export interface UnsentBreakdown {
+  /** MINE and sendable. Waits on a CONNECTION. Goes down on its own. */
+  mine: number;
+  /**
+   * MINE, parked on master data the office has not set up. Waits on the OFFICE.
+   * No amount of network drains it; somebody has to add a price or a grade.
+   */
+  mineBlocked: number;
+  /**
+   * Owned by a KNOWN person who is not signed in here. Waits on that PERSON to
+   * sign in on this handset. Nothing the operator does releases it, and no
+   * connection drains it — which is exactly why it must not sit inside `mine`.
+   */
+  otherAccount: number;
+  /**
+   * Owner UNKNOWN — both columns null. Waits on NOBODY.
+   *
+   * Separate from `otherAccount` because the two differ in the one way that
+   * matters to the person reading the strip: another account's bill is released
+   * when that person signs in, and this one is released by no sign-in that can
+   * ever happen, because null matches no identity. Telling the operator to wait
+   * for somebody would be a wrong instruction about a row nobody can claim.
+   * Produced by an upgraded handset (rows written before the owner columns
+   * existed) and by a save in the boot window before the identity store opened.
+   * `OPEN_ITEMS.md` section Code debt carries the open question of disposal.
+   */
+  unknownOwner: number;
+}
+
 export interface QueueSnapshot {
   /**
    * Bills queued to send. EXCLUDES bills parked on missing master data — those

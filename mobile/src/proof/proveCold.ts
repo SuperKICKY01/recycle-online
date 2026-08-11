@@ -1042,6 +1042,8 @@ async function c8ColdStartNoServer(): Promise<void> {
     voidsRefused: 0,
     online: false,
     pending: 1,
+    parkedForAnother: 0,
+    parkedUnknownOwner: 0,
     failed: 0,
     blocked: null,
     waitingOnMasterData: 0,

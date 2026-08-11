@@ -1239,6 +1239,8 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
     voidsRefused: 0,
     online: true,
     pending: 1,
+    parkedForAnother: 0,
+    parkedUnknownOwner: 0,
     failed: 0,
     blocked: soloHealth.alarm
       ? { behind: soloHealth.behind, forMs: soloHealth.poisonedForMs, attempts: soloHealth.serverErrorAttempts }
@@ -1281,6 +1283,8 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
     voidsRefused: 0,
     online: false,
     pending: 1,
+    parkedForAnother: 0,
+    parkedUnknownOwner: 0,
     failed: 0,
     blocked: null,
     waitingOnMasterData: 0,
@@ -1367,6 +1371,8 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
     voidsRefused: 0,
     online: true,
     pending: 3,
+    parkedForAnother: 0,
+    parkedUnknownOwner: 0,
     failed: 0,
     blocked: manyHealth.alarm
       ? { behind: manyHealth.behind, forMs: manyHealth.poisonedForMs, attempts: manyHealth.serverErrorAttempts }
@@ -1415,6 +1421,8 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
     voidsRefused: 0,
     online: true,
     pending: 3,
+    parkedForAnother: 0,
+    parkedUnknownOwner: 0,
     failed: 0,
     blocked: legacyHealth.alarm
       ? { behind: legacyHealth.behind, forMs: legacyHealth.poisonedForMs, attempts: legacyHealth.serverErrorAttempts }

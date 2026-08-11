@@ -459,6 +459,8 @@ async function k3ForwardJumpRaisesNoFalseAlarm(): Promise<void> {
     voidsRefused: 0,
     online: true,
     pending: snap.pendingCount,
+    parkedForAnother: 0,
+    parkedUnknownOwner: 0,
     failed: 0,
     blocked: oldAlarm
       ? {
@@ -499,6 +501,8 @@ async function k3ForwardJumpRaisesNoFalseAlarm(): Promise<void> {
     voidsRefused: 0,
     online: true,
     pending: snap.pendingCount,
+    parkedForAnother: 0,
+    parkedUnknownOwner: 0,
     failed: 0,
     blocked: afterJump.alarm
       ? {

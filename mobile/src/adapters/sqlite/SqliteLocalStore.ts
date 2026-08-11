@@ -25,7 +25,14 @@
  */
 import { SEND_SCHEDULE_HORIZON_MS } from "../../time/clockSanity.js";
 import { VOID_REJECTED_CODE } from "../../sync/types.js";
-import type { LocalBill, LocalStore, QueueSnapshot, RowOwner, SyncState } from "../../sync/types.js";
+import type {
+  LocalBill,
+  LocalStore,
+  QueueSnapshot,
+  RowOwner,
+  SyncState,
+  UnsentBreakdown,
+} from "../../sync/types.js";
 import type { SqlDriver, SqlValue } from "./driver.js";
 import { SqliteIdentityStore } from "./SqliteIdentityStore.js";
 import type { LocalIdentity } from "./SqliteIdentityStore.js";
@@ -734,6 +741,70 @@ export class SqliteLocalStore implements LocalStore {
    * exactly the bill the engine is stuck on — the UI cannot point at a different
    * row than the one actually holding up the queue.
    */
+  /**
+   * EVERY UNSENT BILL, SPLIT BY WHAT IT IS WAITING FOR — in ONE statement.
+   *
+   * One statement because the four numbers are shown together and a reader will
+   * add them up: taken as four reads they could describe four moments, and the
+   * strip would then display a breakdown that does not reconcile with its own
+   * total on exactly the busy day rows are moving.
+   *
+   * ---------------------------------------------------------------------------
+   * THE THREE-VALUED LOGIC IS THE WHOLE DIFFICULTY, AND THE TWO COMPARISONS ARE
+   * DELIBERATELY NOT THE SAME OPERATOR
+   * ---------------------------------------------------------------------------
+   * `mine` uses `=`, so a device with NO identity stored matches nothing: the
+   * bound value is NULL, `col = NULL` is NULL, NULL is not TRUE. That is the
+   * same rule OWNED_BY_CURRENT relies on and it is what makes an unowned device
+   * fail closed.
+   *
+   * `otherAccount` uses SQLite's null-safe `IS` INSIDE a NOT, and it has to.
+   * Written with `=` the expression `NOT (col = ?)` is NULL whenever the bound
+   * identity is NULL — so on a device with no identity every KNOWN-owner row
+   * would fall out of all four counts and simply vanish from the strip. With
+   * `IS`, `NOT (col IS NULL)` is TRUE for a known owner, and those rows are
+   * correctly another account's. Checked in both directions: with an identity
+   * stored, `NOT (A IS A)` is FALSE, so my own rows stay out of it.
+   *
+   * COMPLETENESS IS A PROPERTY THIS FILE OWES ITS CALLER and proveStatusCounts
+   * asserts it: the four counts sum to the number of unsent rows on disk.
+   */
+  async unsentBreakdown(): Promise<UnsentBreakdown> {
+    // Read ONCE and bound four times, so the four counts cannot describe two
+    // different people.
+    const o = ownerParams(await this.currentOwner());
+    const rows = await this.db.all<{
+      mine: number;
+      mine_blocked: number;
+      other_account: number;
+      unknown_owner: number;
+    }>(
+      `SELECT
+         COALESCE(SUM(CASE WHEN ${OWNED_BY_CURRENT}
+                            AND master_data_missing_at IS NULL
+                       THEN 1 ELSE 0 END), 0) AS mine,
+         COALESCE(SUM(CASE WHEN ${OWNED_BY_CURRENT}
+                            AND master_data_missing_at IS NOT NULL
+                       THEN 1 ELSE 0 END), 0) AS mine_blocked,
+         COALESCE(SUM(CASE WHEN owner_tenant_id IS NOT NULL
+                            AND owner_user_id IS NOT NULL
+                            AND NOT (owner_tenant_id IS ? AND owner_user_id IS ?)
+                       THEN 1 ELSE 0 END), 0) AS other_account,
+         COALESCE(SUM(CASE WHEN owner_tenant_id IS NULL OR owner_user_id IS NULL
+                       THEN 1 ELSE 0 END), 0) AS unknown_owner
+       FROM local_bills
+       WHERE sync_state IN ('pending', 'syncing')`,
+      [...o, ...o, ...o],
+    );
+    const r = rows[0];
+    return {
+      mine: r?.mine ?? 0,
+      mineBlocked: r?.mine_blocked ?? 0,
+      otherAccount: r?.other_account ?? 0,
+      unknownOwner: r?.unknown_owner ?? 0,
+    };
+  }
+
   async pendingQueueSnapshot(): Promise<QueueSnapshot> {
     // Read ONCE and used by both QUEUED statements below, so the count and the
     // head can never describe two different people's queues.

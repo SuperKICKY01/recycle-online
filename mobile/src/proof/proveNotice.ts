@@ -765,6 +765,10 @@ const stripInput = (c: StripCell): StatusInput => ({
   voidsRefused: c.voidsRefused,
   online: c.online,
   pending: c.pending,
+  // This sweep is about the ordered branch, not about ownership: no cell here
+  // has another account's rows, so both are zero and stay out of the way.
+  parkedForAnother: 0,
+  parkedUnknownOwner: 0,
   failed: c.failed,
   blocked: c.blocked ? { behind: 2, forMs: 120_000, attempts: 6 } : null,
   waitingOnMasterData: c.masterData,

@@ -142,6 +142,8 @@ function strip(over: Partial<StatusInput>): string {
     voidsRefused: 0,
     online: true,
     pending: 0,
+    parkedForAnother: 0,
+    parkedUnknownOwner: 0,
     failed: 0,
     blocked: null,
     waitingOnMasterData: 0,
@@ -664,6 +666,8 @@ async function f5Disproof(): Promise<void> {
     voidsRefused: 0,
     online: true,
     pending: 3,
+    parkedForAnother: 0,
+    parkedUnknownOwner: 0,
     failed: 0,
     blocked: healthS.alarm
       ? {

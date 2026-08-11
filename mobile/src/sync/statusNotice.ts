@@ -54,8 +54,53 @@ export interface StatusInput {
   voidsRefused: number;
   /** null = nothing has been attempted since launch, so unknown, not assumed good. */
   online: boolean | null;
-  /** Bills queued to send (pending + syncing). Excludes parked ones. */
+  /**
+   * THIS PERSON'S bills waiting on a CONNECTION.
+   *
+   * EXCLUDES: every other account's bills, bills with an unknown owner (the two
+   * fields below carry those), and this person's bills parked on missing master
+   * data (`waitingOnMasterData` carries those). INCLUDES: nothing else — it is
+   * `UnsentBreakdown.mine`, and it goes down on its own when the network returns.
+   *
+   * ---------------------------------------------------------------------------
+   * THE PREVIOUS WORDING HERE WAS FALSE, AND IS RECORDED RATHER THAN REPLACED
+   * ---------------------------------------------------------------------------
+   * It read, in full: "Bills queued to send (pending + syncing). Excludes parked
+   * ones." The second sentence was untrue of every value this field ever
+   * received. `App.tsx` fed it `listByState('pending') + listByState('syncing')`,
+   * which excluded neither parked bills nor other accounts' — so the field
+   * documented a filter its caller did not apply, and the operator read a number
+   * including bills they did not own, could not send, and could not clear by any
+   * action. The sign-out refusal read the same number.
+   *
+   * IT STOOD BECAUSE NOTHING CHECKS A COMMENT AGAINST THE CODE BENEATH IT. Both
+   * typechecks passed, every proof was green, and the sentence was accurate about
+   * the value the field's AUTHOR intended rather than the one its caller passed.
+   * A wrong comment on a correct field is invisible to every instrument this
+   * repository owns; the only thing that finds it is somebody reading the caller
+   * and the callee in the same pass, which is what P1.7 step 7 forced.
+   *
+   * So the rule this leaves behind: a field whose docstring states a FILTER is
+   * making a claim about its CALLER, and nothing verifies it. State what the
+   * field means and let the type carry the rest — or give the filtered value its
+   * own name, which is what `UnsentBreakdown` now does.
+   *
+   * Not pinned to a sha: this ships in the commit that corrects it, and HEAD
+   * would name the commit that still carries the false wording — CLAUDE.md
+   * section Conventions "PIN A CLAIM TO A COMMIT". Written 2026-08-11.
+   */
   pending: number;
+  /**
+   * Bills belonging to a KNOWN person who is not signed in here. Waits on that
+   * PERSON, never on the network — see UnsentBreakdown.
+   */
+  parkedForAnother: number;
+  /**
+   * Bills whose owner is UNKNOWN. Waits on nobody: no sign-in releases them,
+   * because null matches no identity. Separate from the line above because the
+   * two need opposite instructions.
+   */
+  parkedUnknownOwner: number;
   /** Terminally failed bills — the server refused them and never will accept them. */
   failed: number;
   /**
@@ -229,6 +274,43 @@ export function statusNotice(s: StatusInput): StatusNotice {
 
   if (s.pending > 0) {
     return { tone: "busy", message: `กำลังส่ง ${String(s.pending)} ใบ`, action: null };
+  }
+
+  /*
+   * NOTHING OF THIS PERSON'S IS WAITING — BUT SOMEBODY ELSE'S IS.
+   *
+   * Placed BELOW every branch about this operator's own work, and that ordering
+   * is the content: their own queue, their own failures and their own session
+   * all outrank a row they cannot touch. It surfaces only once there is nothing
+   * of theirs left to say, so it can never displace a message they can act on.
+   *
+   * AND IT IS NOT AN ALARM. `idle`, the same tone as "พร้อมใช้งาน" — nothing is
+   * wrong, nothing is stuck for them, and the yard is working. A warn tone here
+   * would put an amber strip on the screen all day over somebody else's bill,
+   * which is how an operator learns to stop reading the strip.
+   *
+   * THE TWO SENTENCES NAME DIFFERENT WAITS, because they need different actions:
+   * a known owner's bills leave when that person signs in on this handset; an
+   * unknown owner's leave when somebody decides what to do with them, which is
+   * not a thing the operator can do at all. Saying "waiting for them to sign in"
+   * about a row nobody can claim would be a wrong instruction, and a wrong
+   * instruction is worse than a vague one.
+   */
+  if (s.parkedForAnother > 0 || s.parkedUnknownOwner > 0) {
+    const parts: string[] = [];
+    if (s.parkedForAnother > 0) {
+      parts.push(
+        `บิล ${String(s.parkedForAnother)} ใบเป็นของบัญชีอื่น` +
+          ` — จะส่งเมื่อเจ้าของบิลเข้าสู่ระบบในเครื่องนี้`,
+      );
+    }
+    if (s.parkedUnknownOwner > 0) {
+      parts.push(
+        `บิล ${String(s.parkedUnknownOwner)} ใบไม่ทราบว่าเป็นของใคร` +
+          ` — ยังส่งไม่ได้ และการเข้าสู่ระบบไม่ช่วย แจ้งเจ้าของร้าน`,
+      );
+    }
+    return { tone: "idle", message: `งานของคุณส่งครบแล้ว · ${parts.join(" · ")}`, action: null };
   }
 
   if (s.online === true) {

@@ -389,7 +389,36 @@ export default function App() {
   const [signOutFailure, setSignOutFailure] = useState<SignOutFailure | null>(null);
 
   const [online, setOnline] = useState<boolean | null>(null);
+  /**
+   * THIS PERSON'S unsent bills — what they are waiting on a connection for.
+   * Owner-filtered since P1.7 step 7; it used to be every account's.
+   */
   const [pendingCount, setPendingCount] = useState(0);
+  /**
+   * Bills belonging to a known person who is not signed in here. They leave when
+   * that person signs in on this handset, and never before — so this number is
+   * NOT part of `pendingCount` and must never be added to it.
+   */
+  const [parkedForAnother, setParkedForAnother] = useState(0);
+  /**
+   * Bills whose owner is unknown. No sign-in releases them; separate from the
+   * line above because the two need opposite instructions.
+   */
+  const [parkedUnknownOwner, setParkedUnknownOwner] = useState(0);
+  /**
+   * EVERY unsent bill OF THIS PERSON'S — sendable plus parked on master data.
+   * The number the SIGN-OUT REFUSAL reads, and deliberately not the one the
+   * strip reads.
+   *
+   * The refusal exists because an unsynced bill is cash already out of the till
+   * and a load already tipped on the pile, so the person who wrote it should not
+   * walk away from it. That argument reaches every bill THEY are responsible
+   * for, parked or not — which is why this includes `mineBlocked` while
+   * `pendingCount` above does not. It reaches no further: another account's
+   * bills cannot drain under this person and never could, so refusing over them
+   * would strand the device without protecting anything.
+   */
+  const [ownUnsentCount, setOwnUnsentCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
   /** Bills whose void the server refused (403). See refresh(). */
   const [voidsRefusedCount, setVoidsRefusedCount] = useState(0);
@@ -625,36 +654,33 @@ export default function App() {
       ALL_STATES.map((s) => store.listByState(s)),
     );
     /*
-     * THIS COUNT INCLUDES OTHER ACCOUNTS' BILLS, AND AS OF THIS COMMIT THAT IS
-     * WRONG FOR THE PERSON READING IT. The behaviour is deliberately unchanged
-     * here; what follows is what they now experience, recorded where the number
-     * is made rather than only in a queue file.
+     * THE UNSENT TOTAL IS NOW FOUR NUMBERS, AND THE ONE THE OPERATOR READS IS
+     * THEIRS ALONE — P1.7 step 7.
      *
-     * listByState carries its OWN predicate — `sync_state = ?` — and does not
-     * draw on the QUEUED constant, so it never gained the owner filter the send
-     * queue did. It therefore totals every owner's unsent bills. The send queue
-     * no longer selects another person's rows, so the two numbers on this screen
-     * now disagree by design: pendingQueueSnapshot counts what CAN send, this
-     * counts what EXISTS.
+     * It was `listByState('pending') + listByState('syncing')`, which carries
+     * its own `sync_state = ?` predicate and never gained the owner filter the
+     * send queue did. So the strip and the sign-out refusal both showed a count
+     * including bills belonging to somebody else: a number that would not go
+     * down however long the operator waited, because nothing they could do
+     * released another person's rows and no connection drained them. It read as
+     * a bad signal or a stuck queue and they stood there expecting it to clear.
      *
-     * WHAT THAT MEANS AT THE SCALE. The strip (see the `pending` prop below) and
-     * the sign-out refusal both read THIS number. So the operator is shown a
-     * count of unsent bills that includes bills belonging to someone else, and
-     * it will not go down however long they wait — there is nothing they can do
-     * to release another person's rows, and no connection will drain them. It
-     * reads as a bad signal or a stuck queue, and they will stand there
-     * expecting it to clear. The sign-out refusal inherits the same fault: it
-     * can refuse to sign out over bills the person in front of it does not own
-     * and cannot send.
+     * `unsentBreakdown` splits the same rows by WHAT EACH IS WAITING FOR, in one
+     * statement so the parts reconcile with the whole. `pendingCount` is now
+     * `mine` only. `mineBlocked` continues to be surfaced through
+     * waitingOnMasterData below, which already had its own sentence and its own
+     * retry.
      *
-     * NOT FIXED HERE ON PURPOSE. The resolution is P1.7's status-strip step,
-     * which splits the parked-for-another-account count from the ordinary unsent
-     * count — ROADMAP.md section P1.7, "THE PARKED COUNT MUST BE SEPARATE FROM
-     * THE OWNER-MISMATCH COUNT". That step decides what the operator is told;
-     * changing the number here would settle that decision and implement it in
-     * the same pass, in a commit whose subject is a SQL predicate.
+     * listByState is still called here, and now only for the LISTS — the bill
+     * cards, the latest bill, the void-refusal count. Those are about what
+     * EXISTS on the device and are correct unfiltered: a bill the operator can
+     * see on the card list is a bill they may need to look at, whoever owns it.
      */
-    setPendingCount((pending?.length ?? 0) + (syncing?.length ?? 0));
+    const unsent = await store.unsentBreakdown();
+    setPendingCount(unsent.mine);
+    setParkedForAnother(unsent.otherAccount);
+    setParkedUnknownOwner(unsent.unknownOwner);
+    setOwnUnsentCount(unsent.mine + unsent.mineBlocked);
     setFailedCount(failed?.length ?? 0);
     // Read the last successful sync from storage rather than from a variable,
     // so it survives a restart instead of resetting to "never".
@@ -1126,7 +1152,11 @@ export default function App() {
     setBusy(true);
     try {
       const outcome = await signOut({
-        pending: pendingCount,
+        // THIS PERSON'S unsent bills, not the device's. It was the unfiltered
+        // total, so a sign-out could be refused over bills the person in front
+        // of it neither owned nor could send — and no action of theirs would
+        // ever clear it, which is a device nobody can hand over.
+        pending: ownUnsentCount,
         failed: failedCount,
         setSyncPaused: (paused) => {
           syncPausedRef.current = paused;
@@ -1483,6 +1513,16 @@ export default function App() {
           pending={pendingCount}
           failed={failedCount}
           lastSyncedAt={lastSyncedAt}
+          /*
+           * THE TWO NUMBERS THAT ARE NOT `pending`, and they are separate props
+           * rather than one total for the reason ROADMAP.md section P1.7 gives:
+           * "One waits for a connection and the other waits for a person. A
+           * combined total makes the operator wait for the wrong thing."
+           * The third wait — for the OFFICE — already had its own line and its
+           * own retry button, and arrives as waitingOnMasterData below.
+           */
+          parkedForAnother={parkedForAnother}
+          parkedUnknownOwner={parkedUnknownOwner}
           /*
            * THE STRIP CAN NO LONGER SIGN ANYBODY IN, and that is the honest
            * change rather than a loss. Signing in now needs a username and a
