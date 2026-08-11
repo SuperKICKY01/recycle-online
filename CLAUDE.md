@@ -592,6 +592,27 @@ false pass and a red run into a confidently wrong cause.
   command later. The cost of measuring first is one command; the cost
   of measuring second is the whole row.
 - Read actual files before stating numbers or facts. Never guess.
+- **A REPORT IS A CLUE, NOT A SOURCE — INCLUDING ONE THIS SESSION WROTE
+  ITSELF.** The rule above says read the file; this says which things
+  are NOT files, because that is where it keeps failing. A subagent's
+  findings, a previous reply in this conversation, a phase record, a
+  line in `OPEN_ITEMS.md` — all four have exactly the standing of an
+  outstanding-queue line: they say where to LOOK, and they are evidence
+  of nothing else. `OPEN_ITEMS.md` is the clearest case because it is a
+  file and still is not a source: its whole content is claims about
+  OTHER files, every one of which may have been fixed, moved, or been
+  wrong when written. A finding is promoted to a fact by re-measuring it
+  against the artefact in the CURRENT pass, and by no other route.
+  **The failure mode is promotion into a prompt.** A report gets read,
+  believed, and written into the next brief as a premise, and from then
+  on nothing checks it — the brief is the authority and the artefact is
+  never opened. It happened twice in one day here: a stale "still open"
+  premise that `grep -c` refuted at 0 occurrences, and a phase criterion
+  built on a claim about what was on disk. Both were caught only because
+  the pass that inherited them measured instead of assuming.
+  **This is a WORKFLOW rule and not a lesson**, by the two-homes test
+  above: nothing about it is a property of this box, and it would not be
+  opened by an index line touching a task — it applies to every task.
 - Fix root causes, not symptoms.
 - For any debugging — device, build, or server misbehaviour — OPEN
   and follow `.claude/skills/debug-mantra/SKILL.md` (6,337 bytes).
@@ -671,6 +692,20 @@ false pass and a red run into a confidently wrong cause.
   present tense — "there is no password-change route" — is false the day the
   work lands, and nothing announces that it turned. Write the anchored form
   wherever the claim is about what EXISTS.
+  **THE COROLLARY, AND IT IS THE HALF THAT GETS SKIPPED: A CLAIM MAY BE PINNED
+  TO A SHA ONLY ONCE THE WORK CARRYING IT IS COMMITTED.** Before that there is
+  no sha that means what the sentence needs, and the temptation is to reach for
+  the nearest one — which is HEAD, which is always the commit that does NOT
+  contain the work. The result reads exactly like a correctly anchored claim,
+  and it is worse than an unanchored one: it survives every later rewrite, and a
+  reader who checks it finds a real commit and a real file, just not the pair
+  the sentence asserts. Measured 2026-08-11:
+  `mobile/src/adapters/sqlite/schema.ts` said its migration's atomicity was
+  proved at `7b4f22d`, whose stat over that path and over the proof's path is
+  EMPTY — the transaction and its proof both landed at `a471dc2`. So write the
+  sentence unanchored and anchor it in the next pass, or leave the sha blank and
+  fill it in after the commit. An unanchored sentence rots visibly; a wrongly
+  anchored one does not rot at all.
   **THE EVIDENCE IS ONE FILE, ONE SUBJECT, TWO SENTENCES.**
   `ARCHITECTURE.md:820` and `:888` were written the same day about the same
   three routes; `:820` is anchored and is still true as written, `:888` was

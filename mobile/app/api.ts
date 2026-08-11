@@ -61,19 +61,37 @@ async function getJson<T>(path: string, token: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * What a successful login hands back. TWO values, and the second is new.
+ *
+ * `userId` is the SERVER'S identifier for the person who signed in, returned in
+ * the login body since P1.7. It is not read out of the token's claims: the
+ * client holds no secret and cannot verify a signature, and being wrong on this
+ * field is invisible — a bill attributed to the wrong person looks exactly like
+ * one attributed to the right person.
+ *
+ * The USERNAME is deliberately absent. It is unique only within a shop
+ * (migration 0001, `uq_users_tenant_username`) and it can be changed, so a row
+ * that stored one would come to point at nobody.
+ */
+export interface LoginResult {
+  accessToken: string;
+  userId: string;
+}
+
 export async function login(
   tenantId: string,
   username: string,
   password: string,
-): Promise<string> {
+): Promise<LoginResult> {
   const res = await fetch(`${API_BASE_URL}/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ tenant_id: tenantId, username, password }),
   });
   if (!res.ok) throw new HttpStatusError(res.status, `login -> HTTP ${String(res.status)}`);
-  const body = (await res.json()) as { access_token: string };
-  return body.access_token;
+  const body = (await res.json()) as { access_token: string; user_id: string };
+  return { accessToken: body.access_token, userId: body.user_id };
 }
 
 export const fetchProducts = (token: string): Promise<Product[]> =>

@@ -38,6 +38,24 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    # THE SERVER'S OWN IDENTIFIER FOR THE USER WHO JUST SIGNED IN.
+    #
+    # Added for P1.7: the client has to stamp an owner on every local row, and
+    # until now a successful login handed it nothing that named the user. What
+    # it had was the username it typed — which is unique only WITHIN a shop
+    # (migration 0001, uq_users_tenant_username) and can be changed, so a row
+    # storing one would come to point at nobody.
+    #
+    # IT IS RETURNED HERE RATHER THAN READ OUT OF THE TOKEN, and that is the
+    # whole reason this field exists. A client cannot verify the token's
+    # signature — it holds no secret, by design — so a client that parsed its
+    # own claims would be trusting a document it cannot check, on a field whose
+    # wrongness is invisible: a bill attributed to the wrong person looks
+    # exactly like one attributed to the right person.
+    #
+    # It is the SAME value that goes into the token below, from the same row
+    # read in the same statement, so the two cannot drift.
+    user_id: uuid.UUID
 
 
 @asynccontextmanager
@@ -270,7 +288,10 @@ async def login(body: LoginRequest) -> LoginResponse:
         # that matters. See the window note in auth.get_principal.
         token_version=row["token_version"],
     )
-    return LoginResponse(access_token=token)
+    # `row["id"]` and nothing else: the SAME value handed to create_access_token
+    # above, out of the same `row` read in the same statement at :210-218. There
+    # is no second lookup here for the two to drift between.
+    return LoginResponse(access_token=token, user_id=row["id"])
 
 
 async def get_authed_conn(principal: Principal = Depends(get_principal)):

@@ -46,6 +46,7 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import { HttpTransport } from "./src/adapters/httpTransport";
 import { SqliteDraftStore } from "./src/adapters/sqlite/SqliteDraftStore";
+import { SqliteIdentityStore } from "./src/adapters/sqlite/SqliteIdentityStore";
 import { SqliteLocalStore } from "./src/adapters/sqlite/SqliteLocalStore";
 import { SqliteMasterStore } from "./src/adapters/sqlite/SqliteMasterStore";
 import {
@@ -79,6 +80,7 @@ import { dailyScreen } from "./src/reports/dailyView";
 import type { DailyScreen as DailyScreenModel } from "./src/reports/dailyView";
 import { readTokenRole } from "./src/session/deviceRole";
 import type { DeviceRole } from "./src/session/deviceRole";
+import { signInAndRecord } from "./src/session/signInIdentity";
 import { buildLocalBill } from "./src/sync/createBill";
 import { SyncEngine } from "./src/sync/engine";
 import type { AccountState, SessionState } from "./src/sync/parkedReason";
@@ -339,6 +341,14 @@ export default function App() {
 
   const billStoreRef = useRef<SqliteLocalStore | null>(null);
   const draftStoreRef = useRef<SqliteDraftStore | null>(null);
+  /*
+   * WHO THIS DEVICE IS SIGNED IN AS. Written by signIn below and by nothing
+   * else. Nothing READS it yet — the owner columns exist and are left NULL
+   * (P1.7 stamps them next pass), so this is the store filling ahead of the
+   * writers, deliberately, because an identity that starts being recorded only
+   * when the first stamp lands leaves every earlier bill unattributable.
+   */
+  const identityStoreRef = useRef<SqliteIdentityStore | null>(null);
   const masterStoreRef = useRef<SqliteMasterStore | null>(null);
   const engineRef = useRef<SyncEngine | null>(null);
   const tokenRef = useRef<string | null>(null);
@@ -453,10 +463,16 @@ export default function App() {
         const billStore = await SqliteLocalStore.open(driver);
         const draftStore = await SqliteDraftStore.open(driver);
         const masterStore = await SqliteMasterStore.open(driver);
+        // The SAME driver, so the identity shares the transaction boundary and
+        // the file lifetime of the bills it will one day be stamped onto. No
+        // open() of its own: the table is created by initConnection, which the
+        // three stores above have already run through this driver.
+        const identityStore = new SqliteIdentityStore(driver);
         if (cancelled) return;
         billStoreRef.current = billStore;
         draftStoreRef.current = draftStore;
         masterStoreRef.current = masterStore;
+        identityStoreRef.current = identityStore;
 
         engineRef.current = new SyncEngine({
           store: billStore,
@@ -790,9 +806,32 @@ export default function App() {
   /* -------------------------------------------------------------- actions -- */
 
   const signIn = useCallback(async () => {
+    /*
+     * A PRE-FLIGHT GUARD, BEFORE THE REQUEST — and the ordering is the point.
+     *
+     * The local database is opened by the boot effect, and every sign-in button
+     * on this screen is behind `ready`, which is set after it. StatusStrip's is
+     * not obviously behind it, so the race is reachable rather than merely
+     * theoretical. Refusing BEFORE the network call, instead of after, is what
+     * keeps a good token from being minted and then thrown away: nothing is
+     * asked of the server, so no login has failed, and pressing again a moment
+     * later works. The window is the few milliseconds a file open takes.
+     */
+    const identityStore = identityStoreRef.current;
+    if (identityStore === null) {
+      setStatus("กำลังเปิดฐานข้อมูลในเครื่อง — ลองอีกครั้ง");
+      return;
+    }
     setBusy(true);
     try {
-      const t = await login(DEMO.tenantId, DEMO.username, DEMO.password);
+      // signInAndRecord runs the attempt and, ONLY on success, records who
+      // signed in. The ordering lives in src/session/signInIdentity.ts because
+      // this file cannot be reached by a headless proof; see its header.
+      const { accessToken: t } = await signInAndRecord(
+        () => login(DEMO.tenantId, DEMO.username, DEMO.password),
+        DEMO.tenantId,
+        identityStore,
+      );
       tokenRef.current = t;
       setToken(t);
       setRole(readTokenRole(t));
@@ -855,6 +894,15 @@ export default function App() {
    * deliberately NOT cleared. That is shop data, and dropping it would strand
    * the next offline morning with nothing to weigh against — the same argument
    * this file already makes for keeping an expired token rather than deleting it.
+   *
+   * AND THE LOCAL IDENTITY IS NOT CLEARED EITHER — the one absence here that is
+   * NOT permanent, so it is written down rather than left to be inferred.
+   * SqliteIdentityStore.clear() exists, it belongs to a deliberate sign-out, and
+   * it is called from nowhere at this commit. Calling it now would strand rows:
+   * the refusal that has to guard the clearing — a sign-out that will not
+   * proceed while unsent bills carry an owner this device is about to forget —
+   * does not exist yet, and `refused_pending` above counts bills, not owners.
+   * So the identity outlives the session on purpose until that guard lands.
    */
   const onSignOut = useCallback(async () => {
     setBusy(true);

@@ -414,11 +414,21 @@ export const CONNECTION_PRAGMAS: readonly string[] = [
  * ---------------------------------------------------------------------------
  * WHAT IS PROVED, AND ON WHICH DRIVER — READ THIS BEFORE TRUSTING IT
  * ---------------------------------------------------------------------------
- * Atomicity here is proved at `7b4f22d` AGAINST node:sqlite ONLY, by
+ * Atomicity here is proved at `a471dc2` AGAINST node:sqlite ONLY, by
  * proveMigration's M2: a child process SIGKILLed at four points inside this
  * function, the database reopened, and asserted to hold either the complete old
  * shape with every row at its original value or the complete new shape, never a
  * partial column set.
+ *
+ * THE SHA ABOVE READ `7b4f22d` UNTIL P1.7's login pass, and it was wrong — kept
+ * here because the way it was wrong is the instructive part. `7b4f22d` is the
+ * DOCS commit that designed this ownership scheme; it touched neither this file
+ * nor the proof (`git show --stat 7b4f22d -- <either path>` is empty), so the
+ * sentence pinned a measurement to a commit at which nothing had been measured.
+ * It was written while the work was still uncommitted, when the only sha to hand
+ * was the previous one. A claim can be pinned to a sha only AFTER the work
+ * carrying it lands — before that there is no sha that means what the sentence
+ * needs, and the nearest one is always the one that does not contain the work.
  *
  * THE HANDSET IS NOT COVERED BY THAT. `src/device/expoSqliteDriver.ts` gets its
  * transaction from `withExclusiveTransactionAsync`, which its own header records

@@ -219,7 +219,7 @@ here only because "exactly ten tables" is a claim the next session re-derives wi
 | `purchase_bill_items` | the money lines | three weights, both prices, stored `amount`, `line_no` |
 | `doc_no_counters` | the gap-free document sequence | `PRIMARY KEY (tenant_id, be_year)`, one row per shop per Buddhist year (0002) |
 
-**Why the shape is this shape**, in three points that are not obvious from the
+**Why the shape is this shape**, in four points that are not obvious from the
 column list:
 
 1. **Every foreign key is composite and carries `tenant_id`.**
@@ -242,6 +242,27 @@ column list:
    (`0001_initial_schema.py:224-228`) requires `voided_at`, `voided_by` and
    `void_reason` to move together, and `voided_by` is a composite FK into `users`
    **in the same tenant**. There is no delete route anywhere.
+
+4. **`users.id` is the only permanent name a person has here; the username is
+   not one.** `0001_initial_schema.py:95-106` gives `users` a `uuid PRIMARY KEY`
+   and puts the username under `CONSTRAINT uq_users_tenant_username UNIQUE
+   (tenant_id, username)` — **per tenant, not global**. Two shops may each hold a
+   `somchai`, and they are different people. Nothing in the schema makes the
+   column immutable either: it is bare `text`, no trigger and no check, so an
+   `UPDATE` is available the moment anyone wants a rename. **No route performs
+   one at `a471dc2`** — the string `username` appears in `server/app/users.py` in
+   selects, an insert and returning-clauses only, never in a `SET`. That is the
+   state of the code, not a property of the design, and it is exactly the kind of
+   sentence that goes false without announcing it.
+
+   **The consequence is for anything that STORES an identity rather than
+   displaying one.** A username written into a row records who someone was called
+   at the moment of writing, and it survives a rename or a re-issue to a new
+   employee by pointing at whoever holds the string now — or at nobody. So the
+   pair that identifies an owner is `(tenant_id, user_id)` and never a username;
+   the phone's `local_identity` table stores exactly that pair, and the login
+   response returns `user_id` for this reason and not as a convenience. A
+   username belongs on a SCREEN, where a human resolves it in context.
 
 **Retirement, not deletion.** Four master-data tables carry `is_active` (0004).
 A row referenced by a bill can never be removed, so retirement is what "take it out

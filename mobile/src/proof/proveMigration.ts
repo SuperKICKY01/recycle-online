@@ -1,6 +1,6 @@
 /**
- * P1.7 step 3 proof: the schema migration is ATOMIC, and the identity store
- * outlives the token.
+ * P1.7 proof: the schema migration is ATOMIC, the identity store outlives the
+ * token, and a login records who signed in ONLY when the server accepted them.
  *
  * Run: npm run prove:migration
  *
@@ -24,6 +24,8 @@ import { fileURLToPath } from "node:url";
 import { NodeSqliteDriver } from "../adapters/sqlite/nodeDriver.js";
 import { SqliteIdentityStore } from "../adapters/sqlite/SqliteIdentityStore.js";
 import { initConnection } from "../adapters/sqlite/schema.js";
+import { signInAndRecord } from "../session/signInIdentity.js";
+import type { SignInOutcome } from "../session/signInIdentity.js";
 import { MemoryTokenStore } from "../session/tokenStore.js";
 
 let failures = 0;
@@ -379,10 +381,120 @@ async function m3IdentityOutlivesTheToken(): Promise<void> {
   rmSync(dir, { recursive: true, force: true });
 }
 
+/* ------------------------------------------------------------------ M4 ---- */
+
+/**
+ * THE SIGN-IN ORDERING: the identity is recorded on success and ONLY on success.
+ *
+ * Driven through the REAL SqliteIdentityStore against a real file, so what is
+ * checked is the row the device would actually hold — not a spy standing in for
+ * one. The login itself is injected, because app/api.ts cannot run under node
+ * (expo-constants), which is precisely why signInAndRecord takes the attempt as
+ * an argument rather than importing it.
+ *
+ * The failure case has a CONTROL that is easy to omit and worthless without: an
+ * identity is written BEFORE the failed attempt, so "untouched" is measured
+ * against a stored value rather than against an empty store — where a store that
+ * was never written and a store that was correctly left alone read identically.
+ */
+async function m4LoginRecordsOnlyOnSuccess(): Promise<void> {
+  header("M4 — a successful login records the identity; a failed one leaves it alone");
+  const dir = tempDir("m4");
+  const file = join(dir, "m4.db");
+
+  const d = NodeSqliteDriver.open(file);
+  await initConnection(d);
+  const identity = new SqliteIdentityStore(d);
+
+  const TENANT = "11111111-1111-4111-8111-111111111111";
+  const USER = "22222222-2222-4222-8222-222222222222";
+
+  // ---- the success path ---------------------------------------------------
+  check("CONTROL: nothing is stored before the first login", (await identity.load()) === null);
+
+  const ok = (): Promise<SignInOutcome> =>
+    Promise.resolve({ accessToken: "header.payload.signature", userId: USER });
+  const outcome = await signInAndRecord(ok, TENANT, identity);
+  const stored = await identity.load();
+  console.log(`  login returned: ${JSON.stringify(outcome)}`);
+  console.log(`  stored        : ${JSON.stringify(stored)}`);
+
+  check("a successful login WROTE an identity", stored !== null);
+  check(
+    "the stored user is the one the LOGIN RETURNED, not one derived locally",
+    stored?.user_id === outcome.userId,
+    `stored=${String(stored?.user_id)} returned=${outcome.userId}`,
+  );
+  check(
+    "the stored tenant is the one the login was made AGAINST",
+    stored?.tenant_id === TENANT,
+    `stored=${String(stored?.tenant_id)} sent=${TENANT}`,
+  );
+  check(
+    "the token is handed back to the caller and NOT stored here",
+    outcome.accessToken === "header.payload.signature" &&
+      !JSON.stringify(stored).includes("header.payload"),
+  );
+
+  // ---- the failure path, against a NON-EMPTY store ------------------------
+  const before = await identity.load();
+  check("CONTROL: an identity IS present before the failed attempt", before !== null);
+
+  let attempts = 0;
+  const refused = (): Promise<SignInOutcome> => {
+    attempts += 1;
+    // What app/api.ts throws on every non-2xx: HttpStatusError. Shape only —
+    // this proof does not import app/.
+    return Promise.reject(new Error("login -> HTTP 401"));
+  };
+
+  let threw = false;
+  try {
+    await signInAndRecord(refused, "33333333-3333-4333-8333-333333333333", identity);
+  } catch {
+    threw = true;
+  }
+  const after = await identity.load();
+  console.log(`  after refusal : ${JSON.stringify(after)}`);
+
+  check("CONTROL: the failing attempt really ran", attempts === 1, `attempts=${String(attempts)}`);
+  check("the refusal PROPAGATES to the caller", threw);
+  check(
+    "the stored identity is byte-for-byte what it was before the refusal",
+    JSON.stringify(after) === JSON.stringify(before),
+    `before=${JSON.stringify(before)} after=${JSON.stringify(after)}`,
+  );
+  check(
+    "the refused tenant was NOT adopted",
+    after?.tenant_id === TENANT,
+    `tenant=${String(after?.tenant_id)}`,
+  );
+
+  // ---- a second successful login REPLACES --------------------------------
+  const USER2 = "44444444-4444-4444-8444-444444444444";
+  const TENANT2 = "55555555-5555-4555-8555-555555555555";
+  await signInAndRecord(
+    () => Promise.resolve({ accessToken: "t2", userId: USER2 }),
+    TENANT2,
+    identity,
+  );
+  const swapped = await identity.load();
+  check(
+    "a later successful login replaces the identity outright",
+    swapped?.user_id === USER2 && swapped.tenant_id === TENANT2,
+    JSON.stringify(swapped),
+  );
+  const n = await d.all<{ n: number }>("SELECT count(*) AS n FROM local_identity");
+  check("still exactly one identity row", (n[0]?.n ?? -1) === 1, JSON.stringify(n));
+
+  await d.close();
+  rmSync(dir, { recursive: true, force: true });
+}
+
 /* ---------------------------------------------------------------- main --- */
 
 async function main(): Promise<number> {
-  console.log("P1.7 step 3 — atomic migration and the identity store, headless proof");
+  console.log("P1.7 — atomic migration, the identity store, and the sign-in ordering");
   console.log(`node ${process.version}, node:sqlite against real files in ${tmpdir()}`);
 
   const { ref, dir } = await m1MigrateAPopulatedTable();
@@ -393,6 +505,7 @@ async function main(): Promise<number> {
   rmSync(dir, { recursive: true, force: true });
 
   await m3IdentityOutlivesTheToken();
+  await m4LoginRecordsOnlyOnSuccess();
 
   console.log("");
   console.log(failures === 0 ? "ALL MIGRATION CASES PASSED" : `FAILED — ${failures} check(s)`);
