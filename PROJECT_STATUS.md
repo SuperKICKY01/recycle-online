@@ -57,6 +57,86 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.7 STEP 3: THE OWNERSHIP SCHEMA, AND A MIGRATION THAT CANNOT STOP HALF-DONE.
+2026-08-11, `a471dc2`.** Schema and migration only. The owner filter, the cache
+readers, the sign-out refusal, the sync engine, the transport and `App.tsx` are
+deliberately untouched: they READ what this commit writes, and if a reader moved
+in the same commit nobody could tell a wrong schema from a wrong reader.
+
+**THE STACK IS NOW THREE DEEP AND THE ROTATION IS STILL OWED.** This block sits
+above the 2026-08-10 account-provisioning entry, which already says the same
+thing about the one beneath it. Nothing here is merged and nothing is rotated;
+whoever rotates takes all of them. The queue item is unchanged.
+
+**WHAT LANDED — read from `git show --stat a471dc2`, not recalled.** Eight paths,
+851 insertions, 17 deletions. **Three are NEW:**
+`mobile/src/adapters/sqlite/SqliteIdentityStore.ts`,
+`mobile/src/proof/migrationCrashChild.ts` and
+`mobile/src/proof/proveMigration.ts`. Five were modified: `OPEN_ITEMS.md`,
+`ROADMAP.md`, `mobile/package.json`, `mobile/src/adapters/sqlite/schema.ts` and
+`mobile/src/proof/cartCrashChild.ts`.
+
+**THE COLUMNS — read from `schema.ts` on disk at this commit, line by line.**
+`local_bills` (`:92-93`) and `local_draft` (`:129-130`) each carry
+`owner_tenant_id` AND `owner_user_id`. `master_cache` (`:182`),
+`cached_products` (`:201`) and `cached_sellers` (`:211`) carry
+`owner_tenant_id` and NO user column, because prices belong to the shop and not
+to a person. `local_draft_lines` carries neither: it is reachable only through
+`draft_id`, which is `ON DELETE CASCADE` with `foreign_keys` ON, so a second
+copy of the owner could only ever disagree with the first. A new single-row
+table `local_identity` (`:228`). Every owner column is NULLABLE — `ADD COLUMN
+... NOT NULL` with no default is a hard engine error on a table that already
+holds rows, and NULL is the value that means UNKNOWN. Upgraded devices converge
+through the migration lists: `ADDED_BILL_COLUMNS` (`:301-302`),
+`ADDED_DRAFT_COLUMNS` (`:316-317`), and `ADDED_CACHE_TENANT_COLUMN` (`:333`)
+applied over `CACHE_TABLES` (`:337`).
+
+**THE SCHEMA PATH IS INSIDE A TRANSACTION** — `schema.ts:435-449`. The pragmas
+run first and OUTSIDE it (`:436`), because `journal_mode` cannot be changed
+inside a transaction and `busy_timeout` must be in force before anything can
+need a lock; then `return db.transaction(async (tx) => {` (`:437`), with every
+statement issued through `tx.run` (`:438`, `:446`) because `SqlTx` has no
+`exec`.
+
+**THE PROOF IS `npm run prove:migration`**, declared at `mobile/package.json:28`
+as `npm run build && node dist/proof/proveMigration.js`.
+
+**THE IDENTITY STORE IS WIRED INTO NO CALLER, and that is deliberate: this
+commit had to be provable without one.** Measured, not assumed — a search for
+`SqliteIdentityStore`, `LocalIdentity` and `local_identity` across `App.tsx`,
+`app/` and `src/` returns the class's own file, the schema's CREATE TABLE, and
+`proveMigration.ts`, and nothing else. The bound: the only source file outside
+those three roots is `mobile/index.ts`, which returns zero.
+
+**THE LIMIT, AND THESE TWO SENTENCES MUST NOT BE SEPARATED. The migration can no
+longer stop half-done on the driver the proofs run. It is NOT proved on the
+driver the handset runs**, which is a different mechanism on a different
+connection — `expo-sqlite`'s `withExclusiveTransactionAsync`, documented in
+`src/device/expoSqliteDriver.ts` as running on its own connection — and which
+cannot be exercised off-device at all. The first sentence must never appear in
+this file without the second. If a way to run this against the device driver
+ever exists, that is **work to return to, not work already finished.**
+
+**THE INJECTOR CHANGED TARGET WHEN THE CODE BENEATH IT CHANGED.** Making the
+migration transactional moved where `proveCart`'s crash injector fired: it
+attaches to the FIRST transaction it encounters, and that became the migration
+rather than the promotion it means to kill. One case went red. The other stayed
+GREEN — on a state produced by killing the migration's first statement, proving
+nothing about the transition it is named for, which is the worse half of the
+two. **An injector bound to a POSITION rather than to the THING it intends to
+kill will change target when the code beneath it changes, and nobody will edit
+it.** The fix arms the injector only once the store is open.
+`mobile/src/proof/cartCrashChild.ts` was outside the file scope that phase was
+given; the commit's own stat confirms it was changed (23 insertions), and the
+departure was declared at the time rather than buried.
+
+**A CORRECTION OWED IN THE CODE, FOUND WHILE VERIFYING THIS RECORD.**
+`schema.ts`'s own comment states that atomicity is proved at `7b4f22d`. That sha
+is the commit BEFORE this one and does not contain the transaction; what is
+proved is `a471dc2`. The comment was written while the work was uncommitted and
+HEAD still read `7b4f22d`. It is recorded here rather than corrected, because
+this pass may not edit `mobile/`.
+
 **ACCOUNT PROVISIONING: THE SERVER HALF IS COMPLETE. 2026-08-10.** Three code
 commits landed with no status entry between them, and this is that entry. The
 API can now create an account, change a password and reset one, and every
