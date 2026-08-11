@@ -66,6 +66,8 @@ This is the part that would be wrong if it were tidied up later:
   already paid, on one phone, with no server record. An early send costs nothing:
   same `idempotency_key`, so the server answers a repeat with the existing bill
   (hard rule 4).
+  The other half of this — that no one can look inside that phone to check — is
+  `ARCHITECTURE.md § 11`.
 
 Same rule, opposite responses. Folding them into one *decision* would be the
 mistake; folding the *question* into one module is what stops them drifting.

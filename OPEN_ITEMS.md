@@ -1783,6 +1783,25 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   assertions the verification-gap entry above asks for. **The two password routes
   D6 still owes will constrain a password the same way and echo it the same way
   unless this is remembered when they are written.**
+- **A LESSON THAT CLOSED 403 READS AS THOUGH IT CLOSED THE WHOLE CLASS, AND
+  THREE STATUSES ARE STILL OPEN.**
+  `lessons/403-is-about-what-the-caller-may-do.md` is accurate in every
+  sentence: a void refused with 403 is stamped `void_refused_at`, leaves
+  `listVoidsToApply`, and is never retried again. What it does not say is that
+  the identical hazard remains for every other definitive refusal. Measured at
+  `16a1938`: the transport maps 404, 400 and 422 on the void path to
+  `rejected`, the engine answers with `markVoidAttemptFailed`, and that touches
+  only `void_attempts` and `void_last_error` — neither of which appears in
+  `listVoidsToApply`'s predicate. That path has no backoff column, so a void the
+  server has refused for good is re-POSTed on every pass, indefinitely. The
+  shape of this defect matters more than its content: nothing here is false, and
+  a true statement that covers less than it appears to is more dangerous than a
+  false one, because a false statement gets contradicted and a narrow true one
+  does not.
+  *Not done:* nothing — no code has been changed for 404, 400 or 422 on the void
+  path.
+  *Unblocks:* an owner filter on the void queue, which lands on the same
+  predicate.
 
 ## Decisions open — the owner's, not the code's
 

@@ -759,6 +759,142 @@ sweep red for reasons that have nothing to do with this step. And none of it say
 anything about a bundle already installed on a handset — which is what the bundle
 clause above is for, and why it is not the optional half of this criterion.
 
+**THE DESIGN — OWNERSHIP BOUND TO EACH LOCAL ROW, KEYED BY TENANT AND USER.**
+Chosen 2026-08-11 over two alternatives, and the alternatives are recorded
+because the reasons are the design. REFUSING TO SIGN IN while bills are queued
+was rejected outright: a yard that opens at five in the morning cannot be stopped
+because whoever worked yesterday left something unsent. SIGNING IN FREELY AND
+HALTING THE WHOLE QUEUE was rejected too — it makes today's cash hostage to
+yesterday's, raises the number of bills that exist only on one phone, and hands
+the person at the scale a problem they cannot solve, which they will solve by
+reinstalling the app and losing the bills for real.
+
+**WHAT THE KEY IS FOR — TWO FAILURES, NOT ONE.** Across shops the failure is
+loud: measured at `16a1938`, a bill sent under another tenant's token returns
+**422** with a string `detail`, and 422 is the only terminal class on the send
+path, so the bill dies and cash that left the drawer never reaches the server.
+Within one shop the failure is silent: the same send returns **201**, and
+`created_by` is the principal who sent it, not the person who took the goods.
+Measured at `16a1938`, a payload naming a different principal under four
+different field names was ignored on all four, and the control send without any
+such field produced the identical `created_by` — the client cannot state who
+bought, and therefore cannot correct it either. The only remedy is not to send
+under the wrong token at all. Both halves of the key block a send; neither fails
+a bill.
+
+**THE CACHE IS THE HEAVIEST HALF, AND IT IS NOT ABOUT SYNC.** Prices are per
+tenant — measured at `16a1938`, a product belonging to one tenant is invisible to
+another under RLS — while the local cache carries no tenant column at all. So a
+device that changes shops keeps the old shop's prices, and the person at the
+scale sees numbers that look entirely normal, weighs, and pays out cash at
+another shop's rate. The wrong money leaves the drawer; nothing about the sync is
+wrong, and the bill that follows sends successfully. Worse, the bill carries a
+`master_as_of` pointing at the old shop's fetch, so the evidence agrees with
+itself and a later audit finds nothing out of place. Read this beside
+`ARCHITECTURE.md § 11`: if this happens on a real handset, no one will ever learn
+that it did — the bill sent, the price looked ordinary, and no party can open the
+device to check. The cache therefore binds to tenant only, not to user, and a
+tenant mismatch must mean ABSENT rather than STALE, because the freshness strip
+already teaches the operator that stale data is usable and this is the case where
+they must stop.
+
+**WHERE THE FILTER HAS TO REACH.** Measured at `16a1938`, fourteen statements in
+the local store select rows by predicate. Six draw theirs from the shared
+`QUEUED` constant, so one edit reaches six. The other eight carry their own.
+`listVoidsToApply` is one of the eight: THE VOID PATH DOES NOT USE `QUEUED` AND
+DOES NOT INHERIT THE FILTER. It has its own predicate, its own route, no backoff
+column, and no device-global gate — so whoever edits `QUEUED`, runs the send
+proofs and sees green will believe the work is done while a void for another
+person's bill still leaves the device. An owner filter needs its own acceptance
+evidence on the void queue, separate from the send queue. Add `getBill` if
+single-row reads are to be checked, and note that three of these statements are
+also called from `App.tsx`, outside `mobile/src/`, where a count scoped to
+`src/` will not see them.
+
+**PARKING, NOT A NEW STATE.** The send queue is strict head-of-line, so a filter
+alone would leave another person's bill blocking the head. The mechanism for
+lifting a row out of the queue while it is still owed already exists — it is what
+a 424 does when master data is missing. A row belonging to someone else uses that
+same path; only the release condition differs, being that person's sign-in rather
+than the passage of time. No third state is introduced, because every state must
+already answer what the status strip counts, what startup recovery touches, what
+the sign-out refusal counts and what the queue-health alarm reads, and the
+existing states answer all four and have been tested doing it.
+**`resumeAfterSignIn` NEEDS ITS OWN PROOF, NOT CARE.** Today it releases the
+queue immediately after a sign-in, which is right, because a 403 halts the loop
+in memory only. With a filter in place it becomes the thing most likely to
+release another person's rows. The proof must show, in ONE run, zero of the
+absent owner's bills selected and a non-zero count of the present owner's — a
+proof containing only the absent owner's bills goes green because nothing sends
+at all, which is indistinguishable from an engine that has stopped working.
+
+**THE MIGRATION HAS TO BE UNABLE TO FAIL, NOT REPAIRABLE AFTER FAILING.**
+Measured at `16a1938`: adding columns to a table that already holds rows works,
+and the values survive field by field, not merely in count. But the same
+measurement showed `initConnection` runs its statements one at a time with no
+enclosing transaction, and a deliberate mid-way failure left a half-migrated
+database on disk that the next launch resumes from wherever it stopped. HOW WOULD
+WE LEARN THAT THIS HAPPENED ON THE SHOP'S PHONE? WE WOULD NOT. The only signal
+would be someone saying the app will not open; which statement stopped it, which
+columns went in, which rows were backfilled — none of that is observable, for the
+reason recorded in `ARCHITECTURE.md § 11`. The worse case is quieter still: a
+statement that succeeds with a wrong result and an app that opens normally. So
+the requirement is a migration that cannot stop half-done — one transaction
+around the whole set, or, if the driver cannot give that, proof that every
+statement is idempotent and order-independent rather than an assumption that they
+are, plus a proof that kills the process mid-migration and reopens, and gets
+either a correct database or a refusal, never a half one.
+
+**ROWS THAT PREDATE OWNERSHIP GET `null`, WHICH MEANS UNKNOWN AND PARKS.** How
+many such rows exist on the shop's handset is unknown and will stay unknown —
+`ARCHITECTURE.md § 11`. So the migration must be correct for zero of them and for
+many. They are not attributed to the current session: a guess would manufacture
+false provenance that reads exactly like true provenance, which is the silent
+failure this design exists to prevent. `null` is treated as an owner mismatch and
+parks. If the shop's phone does hold queued bills at upgrade, they stop sending,
+and that is the correct outcome, because nobody knows whose they are.
+
+**WAITING HAS TO BE VISIBLE.** A bill that waits silently and unrecorded is a
+bill that disappears without anyone noticing. The status strip — already in front
+of the operator all day — shows how many bills are parked for another account and
+the age of the oldest. Not whose, and not their contents. Not a dialog: a dialog
+becomes a reflex to dismiss within two days. It must be a number that sits there
+and vanishes on its own when the owner returns. It must be counted SEPARATELY
+from the ordinary unsent count, because a single total reads as a poor
+connection, and the operator will wait for it to clear, and it never will.
+
+**WHAT THE LOGIN SCREEN OWES THE PERSON AT THE SCALE.** Four things. It must
+distinguish a wrong password from an unreachable server — at five in the morning
+with a truck waiting, that is the difference between typing again and going to
+look at the router. It must appear whenever there is no USABLE session, not when
+a token is `null`, since `null` is precisely false while a token sits expired. It
+must let a morning with no connection through, which forces the identity used for
+ownership to be read from stored session state rather than from a live token — a
+bill written while the token is dead must still know whose it is, or it inherits
+`null` and parks, which is the exact opposite of what is wanted. And when the
+identity signing in differs from the one before it on this device, it must say so
+THERE, with the count of bills parked for another account, before the first truck
+is weighed — and, if the tenant differs, that the previous shop's prices have
+been dropped and must be fetched, which needs a connection; a shop change with no
+connection must prevent weighing rather than permit it at yesterday's prices.
+
+**WHAT THIS DESIGN KNOWS IT HAS NOT ANSWERED.** A bill nobody ever returns to
+send. This is now certain rather than possible: keying ownership to a user means
+an employee who leaves with unsent bills leaves them unsent for good. The way out
+must be a deliberate one rather than one that happens by accident, and it does
+not exist yet.
+
+**THE ORDER, AND WHY.** (1) Confirm from disk the three items still only
+reported: that `signIn` discards a 401, that the button renders on
+`token === null`, and that a dead token is deliberately left in the keystore.
+(2) Correct the outstanding-items record for the void class — see
+`OPEN_ITEMS.md § Code debt found and left in place`. (3) Schema and migration,
+with the kill-mid-migration proof. (4) The owner filter, send queue and void
+queue, with separate acceptance evidence for each. (5) The cache bound to
+tenant. (6) The login screen and the stored identity. (7) The status strip.
+Steps 1 and 2 need no further decision and can start immediately; every step
+after them depends on 1 turning three reports into facts.
+
 ### P1.8 — Seller creation from the phone
 
 **What it is.** D1's gate change on `POST /sellers`, and a screen at the weighbridge

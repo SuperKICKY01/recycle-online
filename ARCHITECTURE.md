@@ -1018,6 +1018,20 @@ a purchase bill" carries the open question, which is *which* user a bill should
 name — a bill is created offline by one person and may be synced under another's
 session, and that divergence is the actual question, not the column.
 
+**The device's own database cannot be handed to anyone, so no party can establish
+that a record ever existed.** The application declares no export, no file-sharing
+capability, and no debug route by which its local store can leave the handset;
+measured at `16a1938`, six independent avenues were tried and none reached it.
+The consequence is not that we cannot count rows. It is that on the day a member
+of staff says a bill was recorded and the server has no such bill, no one on
+earth can establish whether it was ever written. The shop owner cannot. The
+distributor cannot. We cannot. The member of staff cannot. A dispute about money
+ends by believing one person rather than by evidence. This also means every
+on-device safeguard — the strict head-of-line queue, startup recovery, a bill
+that parks and waits — is unobservable from outside; we know they run because
+proofs run them on a development box, not because anyone has seen them run on a
+handset holding money.
+
 ---
 
 ## 12. Corrections owed elsewhere

@@ -121,6 +121,9 @@ time on this device changes a role:
   row" ON PURPOSE: an expired session says nothing about any bill, but this row is
   claiming something false about ITSELF, and a claim on a row must be corrected on
   the row, durably, across a restart.
+  This closed 403 and only 403 —
+  `OPEN_ITEMS.md § Code debt found and left in place` records the same hazard
+  still open for 404, 400 and 422.
 - **SEND** — an in-memory `sendForbidden` flag on the engine gates the send loop.
   Device-global, not persisted: it is a claim about what the server said LAST, and
   a stored one would be a guess about next. A relaunch costs exactly one refused
