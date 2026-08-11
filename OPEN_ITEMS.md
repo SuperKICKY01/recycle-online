@@ -1802,6 +1802,26 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   path.
   *Unblocks:* an owner filter on the void queue, which lands on the same
   predicate.
+- **A LOGIN THAT ANSWERS 200 WITHOUT A TOKEN PUTS THE APP INTO A SIGNED-IN
+  STATE WITH NO TOKEN.** Measured at `7b4f22d`: the login transport asserts the
+  response shape with `as` rather than checking it, and nothing anywhere
+  verifies that the access token is present. A 200 carrying any other body
+  returns `undefined`, sign-in takes the SUCCESS path, `undefined` is written to
+  the keystore, and the strip reports that the operator is signed in. The person
+  at the scale then weighs and pays out cash against a session that cannot send
+  a single bill, and finds out only after the money has left the drawer.
+  *Not done:* nothing.
+  *Unblocks:* nothing — it is a correctness fix on the path P1.7 rewrites.
+- **EVERY NON-2XX LOGIN RESPONSE REACHES ONE BRANCH, SO A REFUSAL IS SHOWN AS AN
+  OUTAGE.** Measured at `7b4f22d`: the transport throws one error type for every
+  non-2xx status and sign-in catches it without reading the status, marking the
+  app offline and showing one message. A wrong password, a locked account, a
+  tripped clock guard and a server fault are one code path distinguished only by
+  digits inside a string. The discriminator for this already exists and is
+  imported into that same file; it is called only from the master-data refresh.
+  *Not done:* nothing.
+  *Unblocks:* P1.7's requirement that a wrong password be distinguishable from
+  an unreachable server.
 
 ## Decisions open — the owner's, not the code's
 

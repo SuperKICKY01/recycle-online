@@ -34,12 +34,30 @@ function die(): never {
  * transaction, or straight after the COMMIT.
  */
 class CrashDriver implements SqlDriver {
+  /**
+   * OFF UNTIL THE STORE IS OPEN, and this is not a nicety.
+   *
+   * Opening the store runs schema.initConnection, which since P1.7 step 3 is
+   * ITSELF a transaction. Without this flag the injector kills inside the
+   * MIGRATION — the first transaction it sees — instead of inside
+   * promoteToBill. That turned `after-commit` red (it killed the moment the
+   * migration committed, so no bill was ever promoted) and, worse, left
+   * `before-commit` GREEN on a state produced by killing the migration's first
+   * statement: a pass that proved nothing about the transition it is named for.
+   */
+  private armed = false;
+
   constructor(
     private readonly inner: SqlDriver,
     private readonly mode: "before-commit" | "after-commit",
     /** Kill after this many statements have run inside the transaction. */
     private readonly killAfterStatements = 1,
   ) {}
+
+  /** Called once the store is open, so only promoteToBill can be interrupted. */
+  arm(): void {
+    this.armed = true;
+  }
 
   exec(sql: string): Promise<void> {
     return this.inner.exec(sql);
@@ -54,6 +72,8 @@ class CrashDriver implements SqlDriver {
   }
 
   async transaction<T>(fn: (tx: SqlTx) => Promise<T>): Promise<T> {
+    // The migration's own transaction passes through untouched.
+    if (!this.armed) return this.inner.transaction(fn);
     const out = await this.inner.transaction(async (tx) => {
       let n = 0;
       const watched: SqlTx = {
@@ -108,6 +128,9 @@ async function main(): Promise<void> {
   const inner = NodeSqliteDriver.open(dbFile);
   const driver = new CrashDriver(inner, mode);
   const store = await SqliteDraftStore.open(driver);
+  // Only now: the schema migration has run and committed, and the next
+  // transaction the driver sees is the promotion this proof is about.
+  driver.arm();
 
   const draft = await store.load();
   if (draft === null) throw new Error("child: no draft to promote");

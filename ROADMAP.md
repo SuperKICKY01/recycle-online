@@ -854,6 +854,32 @@ failure this design exists to prevent. `null` is treated as an owner mismatch an
 parks. If the shop's phone does hold queued bills at upgrade, they stop sending,
 and that is the correct outcome, because nobody knows whose they are.
 
+**THE UPGRADE GAP IS DECIDED — 2026-08-11, by the owner. DO NOTHING, PLUS A
+DISTINCT COUNT.** Nothing above is struck, because nothing above said this was
+open: the alternatives were argued in a phase report and never written into this
+file, which is the failure this paragraph exists to stop repeating. The gap is
+real — a dead token is deliberately kept in the keystore, so after an upgrade the
+app boots looking signed in while no identity has ever been stored, and a bill
+weighed that morning takes `null` and parks with no connection to sign in over.
+
+**WHY REFUSING TO WEIGH WAS REJECTED, AND IT IS NOT THAT A LOUD STOP IS WORSE
+THAN A SILENT PARK.** It is that a control the person at the scale can route
+around is not a control. Blocked from weighing, they will write the load on
+paper or reinstall the app, and both lose more than parking does — the paper
+bill never reaches the system at all, and the reinstall takes the queued bills
+with it. Backfilling the identity from the kept token was rejected separately:
+it makes the client interpret claims the server signed and it cannot verify, on
+the one field where being wrong is invisible, and the token may be expired or
+revoked. Parking leaves DELAY, which is visible and recoverable; every
+alternative leaves MISATTRIBUTION or LOSS, which are neither.
+
+**THE PARKED COUNT MUST BE SEPARATE FROM THE OWNER-MISMATCH COUNT, and that is
+the half of this decision most likely to be dropped as a detail.** One waits for
+a connection and the other waits for a person. A combined total makes the
+operator wait for the wrong thing: they see a number that looks like an outage,
+stand still expecting it to clear, and it never will, because what it is waiting
+for is somebody signing in.
+
 **WAITING HAS TO BE VISIBLE.** A bill that waits silently and unrecorded is a
 bill that disappears without anyone noticing. The status strip — already in front
 of the operator all day — shows how many bills are parked for another account and

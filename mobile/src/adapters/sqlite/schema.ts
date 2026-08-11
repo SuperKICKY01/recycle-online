@@ -27,7 +27,7 @@
  * STRICT is kept because it does protect the INTEGER columns and rejects
  * unknown types, not because it makes money safe.
  */
-import type { SqlDriver } from "./driver.js";
+import type { SqlDriver, SqlTx } from "./driver.js";
 
 export const SCHEMA_STATEMENTS: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS local_bills (
@@ -81,6 +81,16 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
         holding the shop's unsynced bills. */
      master_data_missing_at TEXT,
      master_data_code       TEXT,
+     /* WHOSE BILL THIS IS: the pair, and both NULLABLE.
+        Nullable is not a preference. ALTER TABLE ADD COLUMN ... NOT NULL with no
+        default is a hard engine error on a table that already holds rows, which
+        every upgraded handset does — and NULL is the value that means UNKNOWN,
+        which rows written before ownership existed must be able to carry. An
+        unknown owner is treated as a MISMATCH and parks; it is never assumed to
+        belong to whoever is signed in, because a guess here manufactures false
+        provenance that reads exactly like true provenance. */
+     owner_tenant_id TEXT,
+     owner_user_id   TEXT,
      CHECK (sync_state IN ('pending', 'syncing', 'synced', 'failed'))
    ) STRICT`,
 
@@ -111,7 +121,13 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
      /* Fetch time of the master data available when this draft was STARTED —
         the oldest data any line on it could have been priced from. Carried to
         the bill at promotion. See master/freshness.ts. */
-     master_as_of TEXT
+     master_as_of TEXT,
+     /* THE SAME PAIR AS local_bills, and for a reason that is not symmetry: a
+        draft BECOMES a bill through promoteToBill, so a draft carrying no owner
+        produces a bill carrying none. Catching it one step earlier is the whole
+        value. Nullable for the same two reasons as on local_bills. */
+     owner_tenant_id TEXT,
+     owner_user_id   TEXT
    ) STRICT`,
 
   // Money and weight are TEXT here for the same reason as in local_bills: a
@@ -147,9 +163,23 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
    * the product list had. The price default is gated on the OLDER of the two
    * (master/freshness.ts), which only means anything if they can differ.
    */
+  /*
+   * THE CACHE BINDS TO THE TENANT ONLY, NEVER TO A PERSON. Prices and the
+   * shop's people belong to the SHOP; two staff at one yard price identically,
+   * and keying this to a user would drop a perfectly good price list every time
+   * the phone changed hands.
+   *
+   * The reading rule that goes with the column, and it does not follow from the
+   * column: a tenant MISMATCH must read as ABSENT, not as STALE. freshness.ts
+   * already teaches the operator that stale data is usable — that is its whole
+   * job — and this is the one case where it is not, because another shop's
+   * price is not an old price, it is a wrong one, and the cash is paid against
+   * it. Wiring that rule into the readers is NOT this pass.
+   */
   `CREATE TABLE IF NOT EXISTS master_cache (
      kind       TEXT NOT NULL PRIMARY KEY,
-     fetched_at TEXT NOT NULL
+     fetched_at TEXT NOT NULL,
+     owner_tenant_id TEXT
    ) STRICT`,
 
   /*
@@ -166,7 +196,9 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
      name        TEXT NOT NULL,
      uom_code    TEXT NOT NULL,
      uom_name    TEXT NOT NULL,
-     prices_json TEXT NOT NULL
+     prices_json TEXT NOT NULL,
+     /* Tenant only. See the note above master_cache. */
+     owner_tenant_id TEXT
    ) STRICT`,
 
   `CREATE TABLE IF NOT EXISTS cached_sellers (
@@ -174,7 +206,30 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
      code  TEXT NOT NULL,
      name  TEXT NOT NULL,
      phone TEXT,
-     grade TEXT
+     grade TEXT,
+     /* Tenant only. See the note above master_cache. */
+     owner_tenant_id TEXT
+   ) STRICT`,
+
+  /*
+   * WHO THIS DEVICE IS SIGNED IN AS — one row, and deliberately NOT the OS
+   * keystore.
+   *
+   * It has to outlive the token. A token expires within the hour and is
+   * deliberately KEPT in the keystore when it does (App.tsx says why), and a
+   * sign-out DELETES the keystore entry. So keystore presence is already not a
+   * proxy for "signed in", and an identity living there would share the token's
+   * lifetime — which is the opposite of what ownership needs.
+   *
+   * There is no point at which this is reconciled against the token, and there
+   * must not be: it is written when a login succeeds, read when a row is
+   * written, and removed only by a deliberate sign-out.
+   */
+  `CREATE TABLE IF NOT EXISTS local_identity (
+     only_row   INTEGER NOT NULL PRIMARY KEY CHECK (only_row = 1),
+     tenant_id  TEXT    NOT NULL,
+     user_id    TEXT    NOT NULL,
+     updated_at TEXT    NOT NULL
    ) STRICT`,
 ];
 
@@ -240,6 +295,11 @@ const ADDED_BILL_COLUMNS: readonly { name: string; ddl: string }[] = [
   // already holds the shop's bills, including ones with a void owed.
   { name: "void_refused_at", ddl: "void_refused_at TEXT" },
   { name: "void_refused_code", ddl: "void_refused_code TEXT" },
+  // P1.7: whose bill this is. NULLABLE, and it must stay so — see the CREATE
+  // TABLE above. On an upgraded handset every existing row gets NULL, which
+  // means UNKNOWN and parks; nothing is attributed to whoever is signed in.
+  { name: "owner_tenant_id", ddl: "owner_tenant_id TEXT" },
+  { name: "owner_user_id", ddl: "owner_user_id TEXT" },
 ];
 
 /**
@@ -253,7 +313,28 @@ const ADDED_BILL_COLUMNS: readonly { name: string; ddl: string }[] = [
  */
 const ADDED_DRAFT_COLUMNS: readonly { name: string; ddl: string }[] = [
   { name: "master_as_of", ddl: "master_as_of TEXT" },
+  { name: "owner_tenant_id", ddl: "owner_tenant_id TEXT" },
+  { name: "owner_user_id", ddl: "owner_user_id TEXT" },
 ];
+
+/**
+ * Columns added to the three master-data cache tables.
+ *
+ * TENANT ONLY — no user column, on any of them. Prices belong to the shop.
+ *
+ * `local_draft_lines` is deliberately ABSENT from this file's migration lists
+ * and gains nothing. Every line is reachable only through `draft_id`, which is
+ * `REFERENCES local_draft(id) ON DELETE CASCADE` in the CREATE TABLE above with
+ * `PRAGMA foreign_keys = ON` in CONNECTION_PRAGMAS below — so a line cannot
+ * outlive its owned parent or be reached apart from it, and a second copy of
+ * the owner could only ever disagree with the first.
+ */
+const ADDED_CACHE_TENANT_COLUMN: readonly { name: string; ddl: string }[] = [
+  { name: "owner_tenant_id", ddl: "owner_tenant_id TEXT" },
+];
+
+/** The three tables that take the tenant column and nothing else. */
+const CACHE_TABLES: readonly string[] = ["master_cache", "cached_products", "cached_sellers"];
 
 /**
  * Adds any missing column, by asking the database what it actually has.
@@ -265,16 +346,19 @@ const ADDED_DRAFT_COLUMNS: readonly { name: string; ddl: string }[] = [
  * shop's existing bills remain readable.
  */
 async function migrateColumns(
-  db: SqlDriver,
+  tx: SqlTx,
   table: string,
   columns: readonly { name: string; ddl: string }[],
 ): Promise<string[]> {
-  const existing = await db.all<{ name: string }>(`PRAGMA table_info(${table})`);
+  const existing = await tx.all<{ name: string }>(`PRAGMA table_info(${table})`);
   const have = new Set(existing.map((c) => c.name));
   const added: string[] = [];
   for (const col of columns) {
     if (have.has(col.name)) continue;
-    await db.exec(`ALTER TABLE ${table} ADD COLUMN ${col.ddl}`);
+    // tx.run, not exec: SqlTx deliberately has no exec (driver.ts), because a
+    // statement inside a transaction must not re-enter the connection lock the
+    // transaction already holds.
+    await tx.run(`ALTER TABLE ${table} ADD COLUMN ${col.ddl}`);
     added.push(`${table}.${col.name}`);
   }
   return added;
@@ -297,20 +381,69 @@ export const CONNECTION_PRAGMAS: readonly string[] = [
 ];
 
 /**
- * Brings a fresh connection up: pragmas in order, then the schema.
+ * Brings a fresh connection up: pragmas in order, then the schema and every
+ * migration AS ONE TRANSACTION.
  *
  * Both stores share one connection and either may be opened first, so this is
  * idempotent (every statement is IF NOT EXISTS or a pragma) and lives in one
  * place — two copies of the pragma loop would be two chances to get the
  * busy_timeout ordering wrong.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE TRANSACTION, AND WHAT IT COSTS TO NOT HAVE ONE
+ * ---------------------------------------------------------------------------
+ * This ran as three bare loops of `exec` until P1.7 step 3. A process death
+ * part-way through therefore left a HALF-MIGRATED database on disk that the
+ * next launch resumed from wherever it had stopped — measured, not argued: a
+ * SIGKILL after the 12th statement left seven tables, two indexes and thirteen
+ * of twenty-six columns (proveMigration M2, which was written first and run
+ * against this function BEFORE the wrapper was added, precisely so the red was
+ * seen).
+ *
+ * On this box that is a bad afternoon. On the shop's handset it is unobservable:
+ * the only signal is somebody saying the app will not open, and which statement
+ * stopped it, which columns went in and which rows were backfilled cannot be
+ * read by anyone — see ARCHITECTURE.md section 11. The requirement is therefore
+ * a migration that CANNOT stop half-done, not one that can be repaired
+ * afterwards, because there is no afterwards in which anyone knows.
+ *
+ * THE PRAGMAS STAY OUTSIDE IT, and that is not an oversight. `journal_mode`
+ * cannot be changed inside a transaction at all, and `busy_timeout` must be in
+ * force before anything can need a lock — including the BEGIN itself.
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT IS PROVED, AND ON WHICH DRIVER — READ THIS BEFORE TRUSTING IT
+ * ---------------------------------------------------------------------------
+ * Atomicity here is proved at `7b4f22d` AGAINST node:sqlite ONLY, by
+ * proveMigration's M2: a child process SIGKILLed at four points inside this
+ * function, the database reopened, and asserted to hold either the complete old
+ * shape with every row at its original value or the complete new shape, never a
+ * partial column set.
+ *
+ * THE HANDSET IS NOT COVERED BY THAT. `src/device/expoSqliteDriver.ts` gets its
+ * transaction from `withExclusiveTransactionAsync`, which its own header records
+ * as running on a SEPARATE CONNECTION isolated by SQLite's file lock rather than
+ * by the JS mutex — a different mechanism, and that file cannot run under node
+ * at all, so no proof on this box reaches it.
+ *
+ * That gap is ACCEPTED for this step rather than closed, because the project has
+ * no route to a device pass today. It is WORK TO RETURN TO, not work that is
+ * finished: what is owed is a way to exercise this same kill-and-reopen against
+ * the expo driver on real hardware. Nobody should read the green above as
+ * covering the phone.
  */
 export async function initConnection(db: SqlDriver): Promise<string[]> {
   for (const pragma of CONNECTION_PRAGMAS) await db.exec(pragma);
-  for (const ddl of SCHEMA_STATEMENTS) await db.exec(ddl);
-  const added = [
-    ...(await migrateColumns(db, "local_bills", ADDED_BILL_COLUMNS)),
-    ...(await migrateColumns(db, "local_draft", ADDED_DRAFT_COLUMNS)),
-  ];
-  for (const ddl of POST_MIGRATION_STATEMENTS) await db.exec(ddl);
-  return added;
+  return db.transaction(async (tx) => {
+    for (const ddl of SCHEMA_STATEMENTS) await tx.run(ddl);
+    const added = [
+      ...(await migrateColumns(tx, "local_bills", ADDED_BILL_COLUMNS)),
+      ...(await migrateColumns(tx, "local_draft", ADDED_DRAFT_COLUMNS)),
+    ];
+    for (const t of CACHE_TABLES) {
+      added.push(...(await migrateColumns(tx, t, ADDED_CACHE_TENANT_COLUMN)));
+    }
+    for (const ddl of POST_MIGRATION_STATEMENTS) await tx.run(ddl);
+    return added;
+  });
 }
