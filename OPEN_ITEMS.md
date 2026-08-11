@@ -1911,6 +1911,44 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   enumerated, because neither reads the send queue and the filter cannot reach
   them.
   *Unblocks:* nothing. It closes the *Not done* clause of the entry above.
+- **A PROOF THAT REQUESTS A VOID BEFORE THE OTHER BILLS ARE SYNCED NOW EARNS A
+  PERMANENT REFUSAL, AND THE ROW LEAVES THE VOID QUEUE FOR GOOD.** New with the
+  commit that made a rejected void stop being re-sent; this entry is added by
+  the commit after it, which is where it bit.
+  **THE MECHANISM, WHICH IS NOT OBVIOUS FROM EITHER END.** A proof helper that
+  syncs a bill typically builds a real `SyncEngine` and calls
+  `runUntilQuiescent`, and that runs the VOID loop as well as the send loop —
+  against whatever transport the helper happens to construct, usually a fresh
+  `FakeServer`. That server has never heard of any OTHER bill, so it answers
+  `not_found` for a void already sitting on one; `toVoidOutcome` maps that to
+  `rejected`; and the engine now marks it PERMANENTLY REFUSED. Nothing is
+  wrong with the filter, the engine, or the void. The proof's own setup did it,
+  one helper call earlier, to rows it was about to test.
+  **THE SYMPTOM IS ALL-ZERO COUNTS, AND IT READS AS TWO THINGS IT IS NOT.**
+  Every void attempt count comes back 0 and the queue comes back empty, which
+  is exactly what an over-strict owner filter looks like, and exactly what an
+  engine that has stopped looks like. Both readings send the reader into code
+  that is correct. It is the same family as the entry above about a store built
+  outside the harness — an innocent mechanism wearing the symptoms of a broken
+  one — and it is worse here, because the poisoning happens in the SETUP and is
+  therefore invisible in the part of the case anybody reads.
+  **WHAT DISTINGUISHES IT: READ THE REFUSAL COLUMN ON THE ROW BEFORE CONCLUDING
+  ANYTHING ABOUT OWNERSHIP OR THE QUEUE.** `void_refused_at` non-null, with
+  `void_refused_code` = `void_rejected`, means the void was permanently refused
+  and ownership never came into it. Null there with a mismatched
+  `void_requested_by_*` is the ownership exclusion. Empty counts alone
+  distinguish neither, and neither does an empty queue.
+  **FOUND BY A PROOF FAILING, NOT BY ANYONE LOOKING.** `prove:voidowner`'s W1
+  went red with every count at zero on its first run, and the cause was read out
+  of the row dump it happened to print. It was fixed there by creating every
+  bill before any void is requested, with the reason written at that line.
+  *Not done:* NO SWEEP has been made for other proofs whose helpers sync a bill
+  after a void has been requested. Only the one case that failed is known to be
+  ordered safely; the rest are unexamined, and a proof that has never had a void
+  outstanding during a sync call would show no symptom today and acquire one the
+  moment a case is added.
+  *Unblocks:* nothing — it is a debugging rule and an ordering constraint on
+  proof setup, and it applies to every proof that touches the void queue.
 
 ## Decisions open — the owner's, not the code's
 

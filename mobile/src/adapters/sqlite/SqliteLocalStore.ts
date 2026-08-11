@@ -782,10 +782,20 @@ export class SqliteLocalStore implements LocalStore {
    * meant the first time.
    */
   async requestVoid(id: string, reason: string, now: Date): Promise<boolean> {
+    // WHO ASKED, captured in the SAME statement that records the asking. Read
+    // live rather than passed in, exactly as the send filter reads it, so the
+    // identity cannot be a stale copy of who was signed in some time earlier.
+    //
+    // Written under the same `WHERE void_requested_at IS NULL` guard as the
+    // reason, so a second press cannot reassign the request to whoever is
+    // signed in now. The first asker is the asker.
+    const requester = await this.currentOwner();
     const r = await this.db.run(
-      `UPDATE local_bills SET void_reason = ?, void_requested_at = ?
+      `UPDATE local_bills
+       SET void_reason = ?, void_requested_at = ?,
+           void_requested_by_tenant_id = ?, void_requested_by_user_id = ?
        WHERE id = ? AND void_requested_at IS NULL`,
-      [reason, now.toISOString(), id],
+      [reason, now.toISOString(), ...ownerParams(requester), id],
     );
     return r.changes === 1;
   }
@@ -800,19 +810,33 @@ export class SqliteLocalStore implements LocalStore {
    * of it silently never existing.
    *
    * ------------------------------------------------------------------------
-   * THIS PREDICATE HAS NO OWNER FILTER AS OF THIS COMMIT, AND THAT IS THE NEXT
-   * STEP, NOT AN OVERSIGHT. It draws on neither shared constant — not QUEUED,
-   * not DUE_OR_UNBELIEVABLE — so the send queue's owner clause does not reach
-   * it by any route. A void for another person's bill still leaves this device.
+   * TWO INDEPENDENT MECHANISMS NOW EXCLUDE ROWS FROM THIS ONE PREDICATE, AND A
+   * ROW MISSING FROM THIS QUEUE HAS TWO POSSIBLE CAUSES. TELL THEM APART BEFORE
+   * DEBUGGING EITHER — they look identical from outside (the void simply never
+   * goes) and the fixes point in opposite directions.
    *
-   * WHY THAT STEP WAITED FOR THIS ONE. The observable for an owner filter is an
-   * attempt count: zero attempts for another owner's void, a non-zero count for
-   * your own. On a line that re-POSTs the same request every four seconds for
-   * ever, that measurement cannot be made — a count that rises without bound
-   * cannot distinguish "the filter prevented a send" from "the filter delayed
-   * one", and a count that is still climbing when the proof ends says nothing
-   * either way. Making a permanently refused void STOP is what turns this path
-   * into something a filter can be measured on at all.
+   *   OWNERSHIP        columns: void_requested_by_tenant_id,
+   *                             void_requested_by_user_id
+   *                    The void was ordered by somebody other than whoever is
+   *                    signed in now, or by nobody this device can name. It is
+   *                    still owed and will go when that person signs in. NOTHING
+   *                    IS WRONG.
+   *
+   *   PERMANENT REFUSAL  column: void_refused_at (with void_refused_code)
+   *                    The server answered and the answer will not change by
+   *                    repeating. It will NEVER go, and the office has to act.
+   *
+   * The diagnostic is one SELECT: read those three columns on the row. A null
+   * void_refused_at with a mismatched requester is the first; a non-null
+   * void_refused_at is the second. Neither is inferable from the queue being
+   * empty, which is all an observer sees.
+   *
+   * WHY THE OWNER IS THE REQUESTER AND NOT THE BILL'S OWNER. The server records
+   * created_by for the sender and voided_by for the voider as two different
+   * columns, because they are two different acts by two different people.
+   * Keying this queue to the bill's owner would route an admin-only action to
+   * whoever weighed the load — usually staff, who cannot perform it — and the
+   * cancellation would be refused on every attempt for ever.
    * ------------------------------------------------------------------------
    */
   async listVoidsToApply(limit: number): Promise<LocalBill[]> {
@@ -822,13 +846,18 @@ export class SqliteLocalStore implements LocalStore {
       // pass — and unlike the send queue there is no backoff column on this path
       // at all, so "retry" means every 4 seconds, forever, against a role no
       // device action can change.
+      // The requester clause is a plain comparison for the same reason the send
+      // queue's is: SQL three-valued logic excludes a NULL requester without a
+      // special case, which is exactly "nobody knows who ordered this, so it
+      // waits" — and it waits for ever rather than going under the wrong name.
       `SELECT ${COLUMNS} FROM local_bills
        WHERE void_requested_at IS NOT NULL AND voided_at IS NULL
          AND void_refused_at IS NULL
+         AND void_requested_by_tenant_id = ? AND void_requested_by_user_id = ?
          AND sync_state = 'synced' AND doc_no IS NOT NULL
        ORDER BY void_requested_at, id
        LIMIT ?`,
-      [limit],
+      [...ownerParams(await this.currentOwner()), limit],
     );
     return rows.map(toBill);
   }
@@ -898,11 +927,24 @@ export class SqliteLocalStore implements LocalStore {
        * for ever and is harder to notice than the original because it only
        * misbehaves after somebody signs in.
        */
+      /*
+       * AND ONLY THE SIGNED-IN PERSON'S OWN VOIDS, added with the void owner
+       * filter. A sign-in retracts a refusal because the next attempt may get a
+       * different answer — but the next attempt is made by whoever ORDERED the
+       * reversal, so somebody else signing in changes nothing about it. Without
+       * this clause this statement writes to rows belonging to a person who is
+       * not here, clearing the error text their card is displaying.
+       *
+       * The permanent-refusal exclusion above is untouched by that addition:
+       * the two conditions are independent, and a rejected void stays rejected
+       * for its own requester too.
+       */
       `UPDATE local_bills
        SET void_refused_at = NULL, void_refused_code = NULL, void_last_error = NULL
        WHERE void_refused_at IS NOT NULL
-         AND (void_refused_code IS NULL OR void_refused_code <> ?)`,
-      [VOID_REJECTED_CODE],
+         AND (void_refused_code IS NULL OR void_refused_code <> ?)
+         AND void_requested_by_tenant_id = ? AND void_requested_by_user_id = ?`,
+      [VOID_REJECTED_CODE, ...ownerParams(await this.currentOwner())],
     );
     return r.changes;
   }

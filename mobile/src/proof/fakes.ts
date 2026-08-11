@@ -42,6 +42,7 @@ const sameOwner = (a: RowOwner | null, b: RowOwner | null): boolean =>
 export interface MemorySnapshot {
   rows: Map<string, LocalBill>;
   owners: Map<string, RowOwner | null>;
+  voidRequesters: Map<string, RowOwner | null>;
   identity: RowOwner | null;
 }
 
@@ -98,6 +99,11 @@ export class InMemoryStore implements LocalStore {
    * too, not inventing a field the SQLite store would not populate.
    */
   private readonly owners = new Map<string, RowOwner | null>();
+  /**
+   * Who ORDERED each void — a different question from who owns the bill, and
+   * held separately for the same reason the SQL store keeps separate columns.
+   */
+  private readonly voidRequesters = new Map<string, RowOwner | null>();
   /** Who this fake device is signed in as. The analogue of local_identity. */
   private identity: RowOwner | null = null;
 
@@ -105,6 +111,7 @@ export class InMemoryStore implements LocalStore {
     if (!snap) return;
     for (const [id, bill] of snap.rows) this.rows.set(id, clone(bill));
     for (const [id, owner] of snap.owners) this.owners.set(id, clone(owner));
+    for (const [id, who] of snap.voidRequesters) this.voidRequesters.set(id, clone(who));
     this.identity = clone(snap.identity);
   }
 
@@ -117,6 +124,7 @@ export class InMemoryStore implements LocalStore {
     return {
       rows: new Map([...this.rows].map(([id, b]) => [id, clone(b)])),
       owners: new Map([...this.owners].map(([id, o]) => [id, clone(o)])),
+      voidRequesters: new Map([...this.voidRequesters].map(([id, o]) => [id, clone(o)])),
       identity: clone(this.identity),
     };
   }
@@ -393,6 +401,10 @@ export class InMemoryStore implements LocalStore {
     if (row.void_requested_at !== null) return Promise.resolve(false);
     row.void_reason = reason;
     row.void_requested_at = now.toISOString();
+    // WHO ASKED, recorded in the same breath and under the same guard, so a
+    // second press cannot reassign the request. Mirrors the SQL statement,
+    // including that this is the CURRENT identity rather than the bill's owner.
+    this.voidRequesters.set(id, clone(this.identity));
     return Promise.resolve(true);
   }
 
@@ -406,6 +418,9 @@ export class InMemoryStore implements LocalStore {
           // this queue in BOTH stores or the same proof case would pass on one
           // and hammer the server on the other.
           b.void_refused_at === null &&
+          // Mirrors the requester clause: a void goes under the identity that
+          // ORDERED it, and an unrecorded requester matches nobody and waits.
+          sameOwner(this.voidRequesters.get(b.id) ?? null, this.identity) &&
           b.sync_state === "synced" &&
           b.doc_no !== null,
       )
@@ -458,6 +473,10 @@ export class InMemoryStore implements LocalStore {
       // can change. Both stores must agree or the same case passes on one and
       // resumes an endless retry on the other.
       if (row.void_refused_code === VOID_REJECTED_CODE) continue;
+      // Mirrors the requester clause: a sign-in retracts only the refusals on
+      // voids this person ordered. Somebody else signing in changes nothing
+      // about a reversal they did not ask for.
+      if (!sameOwner(this.voidRequesters.get(row.id) ?? null, this.identity)) continue;
       row.void_refused_at = null;
       row.void_refused_code = null;
       row.void_last_error = null;

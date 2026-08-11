@@ -50,6 +50,23 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
      device_created_at TEXT,
      void_reason       TEXT,
      void_requested_at TEXT,
+     /* WHO ORDERED THE REVERSAL — and deliberately NOT the same question as the
+        owner columns below, which record whose GOODS these were.
+
+        The server models the two separately: created_by is the principal who
+        sent the bill, voided_by is the principal who sent the void
+        (server/app/bills.py). A void is a separate act by a separate person, so
+        keying it to the bill's owner would route it to whoever weighed the
+        load — and voiding is admin-only (require_admin) while weighing is not,
+        so in the ordinary shop that is a staff member who structurally cannot
+        perform it. The cancellation would be refused for ever.
+
+        NULL means the requester is unknown: a void recorded before this column
+        existed, or one requested with no identity stored. Those park, for the
+        same reason an unowned bill parks — nobody knows who ordered money to
+        move back, and a guess would be indistinguishable from a record. */
+     void_requested_by_tenant_id TEXT,
+     void_requested_by_user_id   TEXT,
      voided_at         TEXT,
      void_attempts     INTEGER NOT NULL DEFAULT 0,
      void_last_error   TEXT,
@@ -302,6 +319,14 @@ const ADDED_BILL_COLUMNS: readonly { name: string; ddl: string }[] = [
   // already holds the shop's bills, including ones with a void owed.
   { name: "void_refused_at", ddl: "void_refused_at TEXT" },
   { name: "void_refused_code", ddl: "void_refused_code TEXT" },
+  // P1.7: who ORDERED the reversal. An upgraded handset must gain these for the
+  // same reason as void_refused_at — listVoidsToApply now filters on them, so a
+  // database that already holds the shop's bills would fail to read its own void
+  // queue without them. Every existing row gets NULL, which means "nobody knows
+  // who asked" and parks the void rather than sending it under whoever happens
+  // to be signed in next.
+  { name: "void_requested_by_tenant_id", ddl: "void_requested_by_tenant_id TEXT" },
+  { name: "void_requested_by_user_id", ddl: "void_requested_by_user_id TEXT" },
   // P1.7: whose bill this is. NULLABLE, and it must stay so — see the CREATE
   // TABLE above. On an upgraded handset every existing row gets NULL, which
   // means UNKNOWN and parks; nothing is attributed to whoever is signed in.

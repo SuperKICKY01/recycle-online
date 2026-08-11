@@ -28,7 +28,8 @@
     "prove:migration": "npm run build && node dist/proof/proveMigration.js",
     "prove:owner": "npm run build && node dist/proof/proveOwner.js",
     "prove:sendowner": "npm run build && node dist/proof/proveSendOwner.js",
-    "prove:voidterminal": "npm run build && node dist/proof/proveVoidTerminal.js"
+    "prove:voidterminal": "npm run build && node dist/proof/proveVoidTerminal.js",
+    "prove:voidowner": "npm run build && node dist/proof/proveVoidOwner.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",
