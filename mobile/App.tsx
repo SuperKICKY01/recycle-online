@@ -1139,6 +1139,18 @@ export default function App() {
    * the next offline morning with nothing to weigh against — the same argument
    * this file already makes for keeping an expired token rather than deleting it.
    *
+   * CONFIRMED ON A HANDSET 2026-08-12 — Android only, on this project's own
+   * DEBUG build (`9d2eb22`, `dev.chutipon.recycle`), one vivo 1938, never Expo
+   * Go. After a real sign-out and a cold start, `master_cache` still held its
+   * two stamps and the screen still carried them: the strip read
+   * `อัปเดตล่าสุด 12/08/2569 01:21`, a timestamp older than the sign-out. The
+   * whole local database was byte-identical across the sign-out, so this
+   * handler wrote to the keystore and to nothing else — which is also the
+   * measurement behind the local_identity sentence below. The product and
+   * seller LISTS were empty on that tenant, so what was observed surviving is
+   * the CACHE STAMP; a non-empty list has not been through a device sign-out.
+   * NOT confirmed on iOS, and no release build exists on either platform.
+   *
    * AND THE LOCAL IDENTITY IS NOT CLEARED EITHER — the one absence here that is
    * NOT permanent, so it is written down rather than left to be inferred.
    * SqliteIdentityStore.clear() exists, it belongs to a deliberate sign-out, and

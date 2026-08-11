@@ -12,11 +12,11 @@ lesson file; anything written here is destroyed by the next run.
 byte for byte, with line endings normalised to LF on both sides first. It exits
 1 on any difference. That is how a lesson edited without regenerating is caught.
 
-**Sources:** 47 lesson files, `lessons/*.md`, ASCII filename order.
+**Sources:** 51 lesson files, `lessons/*.md`, ASCII filename order.
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 17 across 9 files, counted from the source headings and
+**Amendments:** 18 across 10 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -38,11 +38,14 @@ line instead of by heading depth.
 - `a-backup-is-a-claim-until-it-is-restored.md` -- A backup is a claim until it has been restored
 - `a-check-that-never-went-red-was-never-observed.md` *(2 amendments)* -- A check that has never gone red has not been observed
 - `a-checker-must-not-share-the-code-it-checks.md` *(1 amendment)* -- A checker must not share the code it checks — and must not reach past it
-- `a-control-must-contain-what-fooled-you.md` -- A control must contain the thing that fools the counter
+- `a-column-that-describes-content-must-follow-a-rewrite.md` -- A column that describes the row's CONTENT must follow a rewrite; one that records its ORIGIN never may
+- `a-control-must-contain-what-fooled-you.md` *(1 amendment)* -- A control must contain the thing that fools the counter
 - `a-defaulted-getattr-is-a-silent-dead-branch.md` -- A defaulted `getattr` is a silent dead branch
 - `a-differential-control-is-only-as-good-as-its-weaker-side.md` -- A differential control is only as good as its weaker side
+- `a-docstring-that-states-a-filter-is-a-claim-about-its-caller.md` -- A docstring that states a FILTER is a claim about its CALLER, and nothing checks it
 - `a-gate-that-matches-a-keyword-misses-its-aliases.md` -- A gate that matches a keyword misses the engine's aliases for it
 - `a-grant-boundary-belongs-to-a-database-not-a-role.md` -- A grant boundary belongs to a DATABASE, not to a role
+- `a-green-cell-is-evidence-about-the-assertion-not-the-claim.md` -- A green cell is evidence about the assertion, not about the claim
 - `a-label-is-a-reference-with-no-checker.md` -- A label is a reference, and nothing in this repository checks one
 - `a-mutation-on-a-protected-write-path-needs-a-scratch-database.md` -- A mutation on a protected write path needs a scratch database
 - `a-proof-fixture-must-be-a-row-the-product-could-produce.md` -- A proof fixture must be a row the product could have produced
@@ -67,6 +70,7 @@ line instead of by heading depth.
 - `fallback-default-is-a-wrong-number.md` -- A fallback default the server will refuse is a wrong number, not a convenience
 - `login-resolves-under-tenant.md` -- Login resolves the user INSIDE tenant context
 - `metro-file-map-nesting.md` -- When a resolver says a file is missing, ask the resolver — not the OS
+- `opening-a-copy-is-a-write.md` -- Opening a copy is a write to it
 - `proof-must-run-twice.md` *(5 amendments)* -- A proof that passes only once proves the environment, not the code
 - `queue-jam-must-be-visible.md` *(1 amendment)* -- A strict ordered queue CAN deadlock. Don't skip the head — make the jam visible.
 - `render-in-shop-time-not-device-time.md` *(1 amendment)* -- Store UTC, render in the SHOP's timezone — and never slice an ISO string
@@ -332,6 +336,9 @@ time on this device changes a role:
   row" ON PURPOSE: an expired session says nothing about any bill, but this row is
   claiming something false about ITSELF, and a claim on a row must be corrected on
   the row, durably, across a restart.
+  This closed 403 and only 403 —
+  `OPEN_ITEMS.md § Code debt found and left in place` records the same hazard
+  still open for 404, 400 and 422.
 - **SEND** — an in-memory `sendForbidden` flag on the engine gates the send loop.
   Device-global, not persisted: it is a claim about what the server said LAST, and
   a stored one would be a guess about next. A relaunch costs exactly one refused
@@ -1210,6 +1217,97 @@ to enter, for the same reason a cell nothing was ever seen to redden.
 
 ---
 
+**SOURCE:** `a-column-that-describes-content-must-follow-a-rewrite.md`
+
+# A column that describes the row's CONTENT must follow a rewrite; one that records its ORIGIN never may
+
+**Applies to** every `ON CONFLICT ... DO UPDATE` list, and to every other place a
+row is rewritten in part — an upsert, a partial UPDATE, a merge, a sync that
+reconciles a local row against a server one. The question is always the same and
+it is never "which columns changed": **does this column describe WHAT THE ROW NOW
+HOLDS, or WHERE THE ROW CAME FROM?** Content follows a rewrite. Origin never does.
+
+Getting it backwards is silent in both directions, and the two failures look
+nothing alike, which is why the rule has to be stated as one rule rather than
+learned twice.
+
+## Three upserts, one directory, and they do not agree
+
+`mobile/src/adapters/sqlite/` holds three `DO UPDATE` lists. All three carry a
+tenant or a user id. Two must carry it forward and one must not. Nothing about
+their shape says which is which.
+
+| statement | the identity columns | why |
+|---|---|---|
+| `master_cache` ON CONFLICT (kind) — `SqliteMasterStore.ts` | **carried forward** | the row describes WHICH SHOP the cached list currently belongs to |
+| `local_identity` ON CONFLICT (only_row) — `SqliteIdentityStore.ts` | **carried forward** | the row describes WHO IS SIGNED IN NOW |
+| `local_draft` ON CONFLICT (id) — `SqliteDraftStore.ts` | **deliberately absent** | the pair records WHO OPENED this cart, a fact about the past |
+
+Read as "the owner columns", the third looks like an oversight beside the other
+two. Read as "the origin of the row", it is the only one that is right.
+
+## Both failures, and neither raises anything
+
+**OMITTING IT WHERE IT IS CONTENT.** `master_cache` is keyed on `kind`, so a
+handset that changes shops UPDATES the existing `'products'` row rather than
+inserting one. Set only `fetched_at` and the OLD shop's tenant stays on a stamp
+that now describes the NEW shop's rows. The reader compares the stamp's tenant
+against the signed-in one, they differ, and a refresh that has just succeeded
+reports the cache as ABSENT — blocking a yard whose data is perfectly good. The
+opposite of the failure the column was added for, reached by the same line.
+Caught by reading while writing `8ec784e`, not by a green.
+
+**INCLUDING IT WHERE IT IS ORIGIN.** `local_draft` saves on a keystroke. List the
+owner in the DO UPDATE and the next character typed after a shift change
+silently reattributes the cart to whoever is signed in now, erasing the fact that
+somebody else opened it — and nothing on the device would ever show that it
+happened (`ARCHITECTURE.md` section 11). `proveOwner.ts` O4 exists for this and
+asserts the row still records the opener after a later save under another
+identity; recorded at `0ac09ef`.
+
+Note what the two have in common: **no error, no exception, no failed write.**
+One quietly withholds good data, the other quietly rewrites provenance. Both are
+one line in a list that reviewers read as a formality.
+
+## The test
+
+Ask of the column: **if this row's DATA were rewritten wholesale tomorrow, would
+this value still be true of it?**
+
+- A tenant on a cached price list: no — the list would be another shop's, and the
+  column must move with it. CONTENT.
+- The pair on a draft: yes — somebody opened that cart, and no later edit makes
+  that untrue. ORIGIN.
+- `master_as_of` on a draft: yes, and it is the same rule again — the column
+  records which master data the lines were priced from, which a later refresh
+  cannot change retroactively. Already absent from that DO UPDATE list for
+  exactly this reason, written up before the owner columns joined it.
+
+The wrong question, and the one that produces both defects, is "does this column
+belong to the same feature as the ones above it". `owner_tenant_id` belongs to
+the same FEATURE in all three statements and needs opposite treatment in one of
+them.
+
+## How to apply
+
+1. **Classify every column in a DO UPDATE list as content or origin, out loud,
+   before writing the list.** Not the ones you are adding — all of them.
+2. **Write the classification at the statement**, because the next author meets
+   the statement and not this file. All three sites above now say which they are
+   and name at least one of the others, so a reader comparing them lands on the
+   distinction rather than on the apparent inconsistency.
+3. **Never copy a DO UPDATE list between tables.** It is the one construct where
+   two tables that model the same idea want different answers, and copying
+   carries the source's classification silently.
+4. **Where the column is ORIGIN, expect a proof that a later write does not move
+   it** — a write under a DIFFERENT identity, then a read of the column. A proof
+   that only checks the value after the first insert cannot see the defect.
+5. **Where the column is CONTENT, expect a proof that a rewrite under a NEW value
+   is readable afterwards.** The omission's symptom is a correct write that reads
+   back as absent, which no assertion about the write itself will catch.
+
+---
+
 **SOURCE:** `a-control-must-contain-what-fooled-you.md`
 
 # A control must contain the thing that fools the counter
@@ -1310,6 +1408,37 @@ countable, and had the table held ninety the discrepancy would have shipped. So
 where the real answer is not eyeball-checkable, get a SECOND instrument on it: the
 same phase counted `COPY` headers with both `grep` and a Python parser and
 required them to agree, which they did at 11 and at 13.
+
+## AMENDED — the contaminant can be a RECORD OF A PAST FAILURE
+
+Same mechanism, and the contaminant is the thing hardest to anticipate: **the
+artefact's own written account of a previous red.**
+
+Scanning proof output for failures with `$o -match "\[FAIL\]"` reported five
+failures from `prove:signout` — beside `EXIT=0`. Both readings were correct.
+`proveSignOut.ts:1569-1573` is a prose block recording what a PAST disproof run
+printed, verbatim, `[FAIL]` markers and all, kept deliberately because it is the
+evidence that a mutation reddens the right cells. The scan matched five lines of
+documentation about a failure that had already been fixed. Measured at
+`fde2b0c`.
+
+This repository will keep producing that contaminant, because writing a
+disproof's output into the file is the practice these lessons ask for. **Any text
+scan over a proof's source or output is scanning a medium that deliberately
+contains examples of the thing being searched for.**
+
+WHAT CAUGHT IT WAS RULE 5 BELOW — a second instrument. The exit code disagreed
+with the scan, and the exit code is the authority: it is written by the proof's
+own `main()` from its own failure counter, so it cannot be confused by prose. The
+scan is a convenience for LOCATING a failure once the exit code says there is
+one; it is not evidence that there is one. Reading them the other way round —
+believing the scan, doubting the zero — is what turns a green suite into an
+afternoon of hunting a defect that was repaired in a previous commit.
+
+Sibling of [[the-observer-is-a-writer-to-what-it-observes]], separated by who
+wrote the contaminant: there the instrument writes its own query into the medium
+it is measuring; here the medium already held the text, put there on purpose by a
+previous author, and the reader adds nothing.
 
 ## How to apply
 
@@ -1496,6 +1625,107 @@ the literal. A paired control does not inherit strength from the stronger half;
 it is bounded by the weaker one. And when a proof measures one input off a real
 run and hand-types another beside it, the hand-typed one is where the next
 defect hides — the measured neighbour makes the whole cell look measured.
+
+---
+
+**SOURCE:** `a-docstring-that-states-a-filter-is-a-claim-about-its-caller.md`
+
+# A docstring that states a FILTER is a claim about its CALLER, and nothing checks it
+
+**Applies to** every comment that says what a value EXCLUDES, CONTAINS, is
+ALREADY VALIDATED for, is SORTED by, or has had done to it before arrival — on a
+function parameter, an interface field, a config key, a queue message. Those
+sentences are not about the code they sit on. They are about code somewhere else
+that the reader cannot see and no tool will compare them against.
+
+**The rule:** a field's docstring may describe what the field MEANS. The moment
+it describes what has been done to the value before it arrives, it has become an
+unverified assertion about every call site, and it will outlive the one that made
+it true.
+
+## The instance
+
+`mobile/src/sync/statusNotice.ts`, the field the status strip's whole sentence is
+built from. At `4bde6e1` its documentation read, in full:
+
+    /** Bills queued to send (pending + syncing). Excludes parked ones. */
+    pending: number;
+
+**The second sentence was untrue of every value the field ever received.**
+`App.tsx` fed it `listByState('pending') + listByState('syncing')`, which carries
+its own `sync_state = ?` predicate and excluded neither parked bills nor other
+accounts'. So the operator read a count that included bills they did not own,
+could not send, and could not clear by any action available to them — and the
+sign-out refusal read the same number, so a device could refuse to be handed over
+because of somebody else's work.
+
+Corrected at `959f22d`, which is also the commit whose `git log -S` shows the
+false sentence leaving the tree.
+
+## Why every instrument in this repository is blind to it
+
+This is the part that generalises, and it is uncomfortable:
+
+- **Both typechecks passed.** `pending: number` was always a correct type. A
+  comment carries no type.
+- **Every proof was green**, including proofs that drove `statusNotice` directly.
+  They passed the field whatever the sentence claimed, so the sentence could not
+  make a cell move.
+- **The diff was read** — more than once, across several passes that touched this
+  file — and the sentence reads as *true* in isolation. It describes a sensible
+  field. Nothing about it looks like a defect.
+- **A control cannot reach it.** A positive control proves an instrument works on
+  the inputs it contains; there is no instrument here at all, so there is nothing
+  for a control to be about.
+
+What finally found it was somebody reading the CALLER and the CALLEE in the same
+pass, for an unrelated reason — the strip's numbers were being rewritten. That is
+not a method. It is luck with a deadline.
+
+## The discriminator
+
+**Ask of any sentence in a docstring: could this become false without this file
+changing?**
+
+If yes, it is a claim about somebody else's code and nothing will tell you when
+it turns. "Excludes parked ones" goes false the day a caller passes an unfiltered
+number, in a commit that never opens this file — and there is no diff on which
+the two appear together.
+
+Contrast with a sentence that cannot rot that way: "the count the operator reads"
+is about meaning, and only an edit here can falsify it.
+
+## How to apply
+
+1. **Do not state a filter in a docstring. Name the filtered value instead.** The
+   repair here was not better wording — it was `UnsentBreakdown`, a type with four
+   named fields, so "this person's, waiting on a connection" is carried by the
+   NAME and the caller cannot supply the wrong thing without saying so.
+2. **Where a precondition genuinely must be stated, make it a type or a check.**
+   A branded string, a narrow interface, an assertion at the boundary — anything
+   that fails when the claim does. A comment is the one form that cannot.
+3. **When you do write one anyway, write it as an obligation and not a fact.**
+   "CALLERS MUST pass the owner-filtered count" tells the next reader where to
+   look; "Excludes parked ones" tells them the question is already settled.
+4. **Keep the false version when you correct one.** It is the only evidence of
+   how long it stood and of what it looked like while it was believed —
+   `ARCHITECTURE.md § 13` and `PROJECT_STATUS.md` follow the same rule for the
+   same reason. Silently replacing it leaves a file that has always been right.
+5. **When a phase rewrites what a number MEANS, re-read every docstring on the
+   path it travels.** This one survived four commits that changed the number's
+   value and none that changed its description.
+
+## Where this sits among the others
+
+Sibling of [[a-warning-in-one-file-does-not-protect-the-next]], and the opposite
+failure: there the note was TRUE and did not travel to the next site; here the
+note travelled perfectly and was FALSE. Both are about prose that no instrument
+reads, and neither is fixed by writing more of it.
+
+Not [[a-green-cell-is-evidence-about-the-assertion-not-the-claim]]. Every
+mechanism in that file is an ASSERTION that fires and measures something
+adjacent to what you meant. This is not an assertion at all — nothing executes a
+docstring, so there was never a cell to be green.
 
 ---
 
@@ -1736,6 +1966,159 @@ every database the role can reach found it.** The widening cost one extra
 Sibling of `a-round-trip-must-agree-on-its-key-space.md`: there, two sides of a
 check disagreed about their DOMAIN. Here a claim and its evidence disagree about
 their domain, and the claim's domain is the wider one.
+
+---
+
+**SOURCE:** `a-green-cell-is-evidence-about-the-assertion-not-the-claim.md`
+
+# A green cell is evidence about the assertion, not about the claim
+
+**Applies to** every assertion you are about to cite as having established
+something — and hardest when the suite is green and the change felt small. A
+cell tests exactly the sentence it contains. The CLAIM in your head is a
+different object, and the gap between them gets filled by whatever else happened
+to be true. FIVE mechanisms produced that gap in ONE phase (P1.7's ownership
+work, `a471dc2`..`fde2b0c`), and they are five different mechanisms with one end.
+
+Sibling of `a-check-that-never-went-red-was-never-observed.md`, separated by
+where the failure sits: there the instrument is structurally incapable of
+firing. Here it fires, correctly, about something adjacent to what you meant.
+
+## 1. A difference-check is satisfied by a wrong non-null value
+
+`proveOwner.ts:297` asserts the bill row read back with an identity signed in
+DIFFERS from the same row read back with none. Under a deliberate mutation that
+wrote the tenant into the user column — the row wrong in exactly the way the case
+exists to catch — **that cell stayed green**, because a wrong non-null value
+still differs from null.
+
+What caught it is the cell beside it, `:305`, requiring the difference to run the
+right way round: one side owned, the other unowned. Recorded in `0ac09ef`.
+
+**Assert the DIRECTION of a difference, never its existence.**
+
+## 2. A comparison of two literal-typed constants never runs at all
+
+The same file's O4 needed a control that its two identities genuinely differ.
+Written the obvious way it would not compile: `const` narrows each string to its
+own literal type, so `TENANT_A !== TENANT_B` is a comparison between types with
+no overlap and TypeScript rejects it as **TS2367**.
+
+The dangerous repair is the natural one — delete the check, it is "obviously
+true". That leaves the case with no defence against a fixture whose two
+identities are the same value, which every other assertion in it would pass. The
+four constants now carry `: string` annotations for no reason but this, and
+`proveOwner.ts:70` says so, because an annotation that looks like noise gets
+tidied away. Recorded in `0ac09ef`.
+
+**A widening annotation can be load-bearing. Say why, at the constant.**
+
+## 3. A downstream observable is kept correct by a second mechanism
+
+`proveVoidOwner.ts:387` asserts that after another person signs in, A's void was
+not handed back to the queue. `:374` asserts the same event on the ROW: A's
+refusal survives B's sign-in.
+
+The sign-in routine was then unfiltered on purpose. **The queue cell stayed
+green** — `listVoidsToApply` still filters by requester, so the queue was right
+even though the routine had written to a person who was not there. Only the row
+cell went red. Recorded in `cfb6633`.
+
+Two mechanisms guarded one observable, so a green there was evidence about
+whichever still worked. **Assert on the state the code under test WRITES, not on
+what a later reader returns.**
+
+## 4. Reusing a shape carries its assumptions with it
+
+The odd one out: caught by reading, not by a green — which is why it is worth
+keeping, because it shows what the green would have been worth.
+
+A permanently rejected void had to leave the void queue. A 403 already did
+exactly that, via `void_refused_at`, and reusing it looked free. It is not the
+same situation, and the source said so in two places: `clearVoidRefusals`
+retracts refusals on every sign-in, so the infinite retry would have RESUMED each
+shift — stopped every four seconds, restarted every morning, which is harder to
+notice than never stopping; and `billNotice` routes that column through
+`forbiddenReason`, whose text is about permission, so the card would have told
+the operator their account may not cancel bills, on a bill the server still holds
+as live money.
+
+**The attempt-count proof would have passed either way.** The void does stop
+being re-sent. `proveVoidTerminal.ts:288`'s V2 exists only because the hazard was
+found by reading first. Recorded in `869977a`, and written out at the code in
+`engine.ts:463`.
+
+**Before reusing a mechanism, ask whether the SITUATION is the same — not whether
+the code fits.** Then look at what already consumes the thing you are reusing.
+
+## 5. A comparison whose fixture is empty holds by arithmetic
+
+`proveDraftOwner.ts` C2 asserts that a draft refused to the wrong person keeps
+its LINES — the sharpest half of "nothing was destroyed", because
+`local_draft_lines.draft_id` is `REFERENCES local_draft(id) ON DELETE CASCADE`
+with `foreign_keys` ON, so deleting the header takes the lines silently and
+nothing else in the case would notice.
+
+The fixture came from `newDraft()`, which builds a cart with **no lines**. So the
+cell compared 0 with 0 and printed `its LINES survive too — 0 of 0`. **Green, and
+incapable of anything else** — no mutation, no defect, no input could have moved
+it, because the relation held by arithmetic rather than by the code under test.
+
+Giving the fixture one real line turned the SAME cell red under a mutation that
+deletes the refused row: `its LINES survive too — 0 of 1`. Recorded in
+`fde2b0c`, and the fixture now carries its own guard at `proveDraftOwner.ts:241`
+— `CONTROL: the draft HAS a line to lose — otherwise 'its lines survive' is 0 of
+0` — because the next person to simplify that fixture would re-create this
+exactly.
+
+**Not mechanism 1 with different words.** There the value was wrong and non-null,
+so the cell had two real operands and compared them badly. Here there are no
+operands: both sides are empty, and the assertion is true of every universe.
+
+Siblings in the other direction, and worth reading together:
+[[a-check-that-never-went-red-was-never-observed]]'s ninth mechanism is the
+needle fine and the HAYSTACK empty, and
+[[a-control-must-contain-what-fooled-you]] is a control that omits a shape the
+real input holds. This is neither — the control contains nothing at all on
+EITHER side of the comparison.
+
+**Count the fixture before trusting a relation over it.** A cell asserting that
+a collection survived must first assert the collection was non-empty.
+
+## The discriminator
+
+When a cell is green and you are not certain it looked at anything, do not read
+the cell. **Break the claim in the smallest way you can and check that THIS cell
+moves** — not that the suite goes red, which any of its neighbours can do.
+
+Four questions, in order, and each caught one of the above:
+
+1. Could this have come out the other way, given the inputs I supplied?
+   (Catches 1 and 2.)
+2. What else, still working, would keep this observable correct if the thing I
+   am testing were broken? (Catches 3.)
+3. What does the code I am reusing already assume, and who else reads it?
+   (Catches 4.)
+4. How many things is this cell actually comparing? Print the count, not the
+   verdict. (Catches 5 — and it is the cheapest of the four, because `0 of 0`
+   and `1 of 1` are the same word until the numbers are on the screen.)
+
+**WHAT TO LOOK AT FIRST when a cell is green and you are not sure it looked at
+anything: the OPERANDS, printed, before the verdict.** Not the assertion, which
+reads correctly in all five mechanisms above; not the suite, which any neighbour
+can redden. Make the cell print what it compared — the two values, the two
+counts, the two identities — and read those. Every one of the five was found the
+moment its operands were visible: a wrong non-null value beside a null, two
+constants the compiler had already resolved, a queue answered by a different
+statement, a column reused from a situation with other assumptions, and a
+comparison with nothing on either side.
+
+## The rule
+
+An assertion is a sentence, and a green is evidence about that sentence and
+nothing more. Name in the cell's own text WHICH claim it carries, and when two
+cells can both go green for different reasons, keep both — the pair is the
+evidence, not either half.
 
 ---
 
@@ -2583,6 +2966,8 @@ This is the part that would be wrong if it were tidied up later:
   already paid, on one phone, with no server record. An early send costs nothing:
   same `idempotency_key`, so the server answers a repeat with the existing bill
   (hard rule 4).
+  The other half of this — that no one can look inside that phone to check — is
+  `ARCHITECTURE.md § 11`.
 
 Same rule, opposite responses. Folding them into one *decision* would be the
 mistake; folding the *question* into one module is what stops them drifting.
@@ -4588,6 +4973,120 @@ nesting warning; `mobile/tsconfig.json` and `mobile/tsconfig.node.json` are the
 two programs sharing `src/`; `mobile/tools/finish-build.mjs` marks `dist/` as
 ESM. Verified by `npx expo export --platform ios` bundling clean and both node
 proofs still passing, then by the slice running on a real iPhone.
+
+---
+
+**SOURCE:** `opening-a-copy-is-a-write.md`
+
+# Opening a copy is a write to it
+
+**Applies to** every artefact you copy in order to measure it — a database pulled
+off a device, a snapshot taken before and after a change, a control fixture built
+to validate a read route — and hardest to SQLite in WAL mode, where the data is
+TWO files and only the pair is the data.
+
+**The rule:** a reader can MUTATE the artefact it reads. SQLite checkpoints the
+`-wal` into the `.db` and DELETES the `-wal` when the last connection closes, so
+the moment you open a copy to check it, the bytes on disk stop being the bytes
+you just measured. Every size and hash printed before that open is CORRECT, and
+describes a state that no longer exists. **Copy every artefact before opening any
+of them, and never open the copy that will be used.**
+
+## Instance 1 — the control that certified a pair and shipped a single file
+
+Building a control to prove a device read-route before trusting it on real data.
+One db+wal pair was created with rows committed but deliberately not
+checkpointed, so that reading the db WITHOUT its wal would visibly fail — the
+negative half that makes the control a control:
+
+    known_pair.db       4096 bytes
+    known_pair.db-wal  24752 bytes
+    with wal    -> 2 tables, 7 rows and 3 rows      (correct)
+    without wal -> NO TABLES AT ALL                 (the mistake, visibly)
+
+Both halves passed, and both numbers were true when printed. The script then
+closed, and the *verification itself* — opening the pair to read those numbers —
+checkpointed the wal into the db and deleted it. On disk afterwards:
+
+    known_pair.db      12288 bytes
+    known_pair.db-wal  ABSENT
+
+**The bytes that would have been pushed to the device were a checkpointed single
+file, not the pair the log had just certified.** The control would have been
+measuring an artefact nobody had checked, and it would have passed — a
+checkpointed database reads correctly. The whole point of the negative half, that
+a missing wal fails loudly, could not fire, because the wal was not missing: it
+had been absorbed.
+
+Caught by `ls` disagreeing with the script's own output one command later. The
+repair is not "check afterwards": it is to take every copy while the writer is
+still open, and to keep the copy that will be used SEPARATE from the copy that
+gets read.
+
+## Instance 2 — the comparison that could no longer be made
+
+A different pass, two device snapshots taken either side of a sign-out, to
+establish whether the sign-out wrote to the local database at all. Both were
+pulled correctly, db and wal each:
+
+    signedin.db  98304   signedin.db-wal  41232
+    signedout.db 98304   signedout.db-wal 41232
+
+The inspector was then run on the first. That opened it, checkpointed it, and
+deleted `signedin.db-wal` — so when the comparison came to run, one side's wal
+did not exist and the raw pair could never be compared at all. What survived was
+weaker than what had been planned: the pre-open hashes (identical), the wal
+SIZES (identical), and the post-recovery content (identical, `ed92840b…`). The
+conclusion held, but by a narrower argument than the one designed, and only
+because three weaker facts happened to agree.
+
+**Twice, in two separate passes, by two different routes.** The first destroyed a
+fixture before it was used; the second destroyed evidence after it was gathered.
+
+## Why nothing catches it
+
+There is no error, no exit code and no red. The reader succeeds, the numbers it
+prints are accurate, and `PRAGMA integrity_check` returns `ok` on both the pair
+and the checkpointed file — because both are valid databases. The artefact simply
+becomes a DIFFERENT valid database between the measurement and its use, and the
+only tell is a file listing nobody takes twice.
+
+It is also invisible to the discipline that would normally catch it. Hashing the
+artefact does not help if the hash is taken before the open and used after it,
+which is the natural order. And "verify the control before trusting it" — the
+right instinct, and the one this repository teaches — is the very act that breaks
+it.
+
+## What to do
+
+- **Copy every artefact BEFORE opening any of them.** If two snapshots are to be
+  compared, both copies exist before either is read.
+- **Never open the copy that will be used.** Take a separate copy to read from;
+  they are cheap.
+- **Where the copies come from a live writer, take them all while that writer is
+  still open**, and hash them at that moment.
+- **Say WHICH object a number describes** — the raw copy, or the file after WAL
+  recovery. They are different bytes with different hashes, and only the first is
+  what was on the device. Same discipline `CLAUDE.md § Machine footguns`
+  "`core.autocrlf`" demands for blob versus working tree, arriving from the other
+  direction: there two objects are confused for one, here one object becomes two
+  over time.
+- **Read the artefact back after the run, not only before it**, when a fixture is
+  going to be handed to something else.
+
+## Why it is a lesson and not a machine footgun
+
+It was first written into `CLAUDE.md`'s footgun section and moved here, by that
+section's own test. A footgun is what would cause a WRONG DIAGNOSIS on this
+Windows box; this is SQLite's documented close behaviour and would happen on any
+machine, in any language, with any reader. `CLAUDE.md § Workflow`
+"Two homes, one test" puts it here.
+
+**Sibling of `the-observer-is-a-writer-to-what-it-observes.md`**, separated by
+direction. There the instrument writes into the MEDIUM it is measuring — a scan
+whose own command lands in the log it greps. Here the instrument rewrites the
+ARTEFACT it opens, and the medium is untouched. Both end the same way: a reading
+that describes something other than the thing you meant to measure.
 
 ---
 

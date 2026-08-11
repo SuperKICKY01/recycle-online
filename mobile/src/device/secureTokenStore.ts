@@ -1,12 +1,34 @@
 /**
  * TokenStore over expo-secure-store — the DEVICE path.
  *
- * ============================ NOT EXECUTED ============================
+ * ====================== NOT EXECUTED UNDER NODE =======================
  * Same situation as ExpoSqliteDriver in this directory: expo-secure-store is
  * `requireNativeModule('ExpoSecureStore')`, which exists only inside an Expo app
- * runtime, so nothing here runs under node and no proof reaches it. The proof
- * exercises the TokenStore CONTRACT through MemoryTokenStore; that this file
- * honours the contract is UNVERIFIED until it runs on a phone.
+ * runtime, so nothing here runs under node and no proof on this box reaches it.
+ * The proof exercises the TokenStore CONTRACT through MemoryTokenStore. All of
+ * that is unchanged.
+ *
+ * SUPERSEDED 2026-08-12 — the sentence that closed this block said "that this
+ * file honours the contract is UNVERIFIED until it runs on a phone". It has run
+ * on two, and `clear()` in particular is covered by BOTH of them:
+ *
+ *   iOS, 2026-08-06, real iPhone, the R1b pass. Evidence at the SCREEN: after a
+ *     sign-out it read ยังไม่ได้เข้าสู่ระบบ, wording distinct from
+ *     หมดเวลาเข้าใช้งาน, so the two states are distinguishable on the device.
+ *     Recorded in PROJECT_STATUS.md § Known device gaps.
+ *   Android, 2026-08-12, one vivo 1938, on THIS PROJECT'S OWN DEBUG BUILD
+ *     (`9d2eb22`, applicationId `dev.chutipon.recycle`) — never Expo Go, which
+ *     runs a third party's package and whose storage nothing may read. Evidence
+ *     at the STORE and at a NEW PROCESS, which is what iOS did not have: the
+ *     SharedPreferences entry `key_v1-recycle.session.token` counted 1 while
+ *     signed in and 0 after the sign-out, in a file that still exists and holds
+ *     zero entries; then a force-stop and cold start whose `load()` returned
+ *     null and drew the login screen.
+ *
+ * STILL UNPROVED ON EITHER: the FAILING path — a keystore that refuses — has
+ * never been executed anywhere; `AFTER_FIRST_UNLOCK` has never been tested on a
+ * device that has not been unlocked since power-on; and NO RELEASE BUILD EXISTS,
+ * so nothing above describes the artefact a shop would install.
  * ======================================================================
  *
  * WHY THE KEYSTORE AND NOT SQLITE. See src/session/tokenStore.ts for the full
@@ -71,10 +93,22 @@ export class SecureTokenStore implements TokenStore {
    * resolves. So `cleared` genuinely means "no token remains", not merely "a
    * delete was attempted".
    *
-   * STILL UNVERIFIED OFF-DEVICE, like everything in this directory: nothing here
-   * runs under node, so the headless proof exercises this CONTRACT through
-   * MemoryTokenStore and a throwing fake. That the Keychain delete itself works
-   * is a DEVICE observation and nothing else can stand in for it.
+   * STILL UNVERIFIABLE OFF-DEVICE, like everything in this directory: nothing
+   * here runs under node, so the headless proof exercises this CONTRACT through
+   * MemoryTokenStore and a throwing fake. That the delete itself works is a
+   * DEVICE observation and nothing else can stand in for it.
+   *
+   * THAT OBSERVATION NOW EXISTS, on both platforms, and the file header above
+   * carries it in full. In one line each: iOS 2026-08-06 (real iPhone, R1b),
+   * evidence at the screen; Android 2026-08-12 (one vivo 1938, this project's
+   * own debug build at `9d2eb22`, NOT Expo Go), evidence at the store — the
+   * entry counted 1 then 0 — and at a cold start whose `load()` returned null.
+   *
+   * WHAT IS STILL A CONTRACT AND NOT A MEASUREMENT is the `failed` branch
+   * BELOW. Every device reading so far is of the happy path. No pass anywhere
+   * has made a keystore refuse, so the one outcome this function exists to
+   * report honestly — that the token is still there — has never been produced by
+   * a real store. iOS and Android both, and no release build exists on either.
    */
   async clear(): Promise<ClearOutcome> {
     try {

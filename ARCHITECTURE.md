@@ -1053,6 +1053,47 @@ that parks and waits — is unobservable from outside; we know they run because
 proofs run them on a development box, not because anyone has seen them run on a
 handset holding money.
 
+**ADDED 2026-08-12 — WHAT A DEVICE PASS ESTABLISHED, AND WHAT IT DID NOT. Nothing
+above is narrowed by this; the claim about a shop's handset stands exactly as
+written.**
+
+**What was established.** On an Android DEBUG build of this project — built at
+`9d2eb22`, applicationId `dev.chutipon.recycle`, installed on one vivo 1938 —
+the app's private storage DOES open from a development box and the local database
+CAN be read out of it whole: `adb exec-out run-as dev.chutipon.recycle cat
+files/SQLite/recycle.db`, byte-exact against the device's own `sha256sum`, with
+`PRAGMA integrity_check` returning `ok`. So the barrier this section describes is
+**a property of the ARTEFACT, not of the platform and not of the application's
+design.** Android hands that power to `run-as` on a package whose manifest carries
+`DEBUGGABLE`, and to nothing else. The six avenues measured at `16a1938` were
+avenues through the APPLICATION — an export, a share sheet, a debug route — and
+this was not one of them: it went round the application entirely, which is why it
+refutes none of that measurement.
+
+**What remains unestablished, and WHY it is not merely untested.** **NO RELEASE
+BUILD OF THIS APP HAS EVER EXISTED.** A shop's artefact would be release-signed
+and would carry no `DEBUGGABLE` flag, and `run-as` refuses such a package outright
+— measured on this same handset, where Expo Go (a third-party release-signed app)
+answered `package not debuggable`. So the question this section actually turns on
+— *can anyone get a record off the phone in the shop's hands?* — **has never been
+measurable, because the artefact it asks about has never been built.** That is a
+stronger statement than "unproved": there is nothing yet to point the measurement
+at. Until a release build exists, every reading above describes a development
+artefact and no shop's device.
+
+**THE GROUND UNDER THIS SECTION HAS MOVED TWICE, and both moves changed the
+REASON rather than the conclusion.** First, an earlier pass reported that this box
+has no `adb` at all; it had measured `PATH`, not the disk, and `adb` was present
+in the Android SDK the whole time — a property of the search reported as a
+property of the machine. Second, the read that later succeeded succeeded *only*
+because the artefact was debuggable, which was not understood at the time it was
+attempted. **Neither changes what this section claims about a shop's device.**
+What both changed is what was believed about *why* the database could not be
+reached: it was taken to be a property of the platform or of the app's design,
+and it is a property of how the artefact was signed. Anyone reasoning from "we
+proved it cannot be read" should read this paragraph first — that is not what was
+proved, and it was twice not what was proved for different reasons.
+
 ---
 
 ## 12. Corrections owed elsewhere

@@ -610,6 +610,23 @@ false pass and a red run into a confidently wrong cause.
   premise that `grep -c` refuted at 0 occurrences, and a phase criterion
   built on a claim about what was on disk. Both were caught only because
   the pass that inherited them measured instead of assuming.
+  **THE THIRD INSTANCE RAN FOR A FULL DAY AND STEERED REAL WORK, 2026-08-12.**
+  The claim was that `SecureTokenStore.clear()` "has never been executed
+  anywhere — not by any proof, on any machine". The advising session
+  asserted it all day; a session report repeated it; and it arrived back
+  as the premise of a brief. `PROJECT_STATUS.md` had recorded the
+  opposite since **2026-08-06** — the R1b pass exercised `clear()` on a
+  real iPhone and the Keychain really did clear — in two separate
+  passages, in the file whose whole job is to hold that answer. **Nobody
+  opened it for six days.** What makes this one worth the space is the
+  SIZE of what was built on it: an Android build was produced, a device
+  pass was designed, and a commit was drafted, all on a premise one
+  `git grep` refutes. It was caught only because the brief ordered a
+  SWEEP BEFORE the edits it authorised — had the order been reversed, the
+  word "first" would have gone into permanent files at twelve sites, and
+  a wrong claim in a code comment does not rot visibly. **Order the sweep
+  before the edit, and treat "never/always/first" as the words that
+  demand a search rather than a memory.**
   **This is a WORKFLOW rule and not a lesson**, by the two-homes test
   above: nothing about it is a property of this box, and it would not be
   opened by an index line touching a task — it applies to every task.

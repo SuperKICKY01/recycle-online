@@ -15,12 +15,25 @@
  * gets attributed to the wrong thing.
  *
  * WHAT THIS PROOF CANNOT DO, STATED FIRST SO IT IS NOT READ AS COVERED:
- * SecureTokenStore.clear() — the Keychain delete itself — CANNOT RUN HERE.
+ * SecureTokenStore.clear() — the platform delete itself — CANNOT RUN HERE.
  * expo-secure-store is `requireNativeModule('ExpoSecureStore')` and exists only
  * inside an Expo runtime. Everything below exercises the CONTRACT through
  * MemoryTokenStore and a throwing fake. When this proof is green, the real
- * delete is still unverified, and R1b is NOT done: it is done after a device
- * pass — sign out, force-quit, cold start, and the login screen is what appears.
+ * delete is untouched by it. That remains true and is why this block is first.
+ *
+ * THE DEVICE PASS THIS BLOCK ONCE NAMED AS OWED HAS BEEN RUN. The sentence here
+ * read "R1b is NOT done: it is done after a device pass — sign out, force-quit,
+ * cold start, and the login screen is what appears". That is now a description
+ * of something executed, not of something owed:
+ *   iOS 2026-08-06, real iPhone (R1b) — evidence read off the SCREEN.
+ *   Android 2026-08-12, one vivo 1938, on this project's own DEBUG BUILD
+ *     (`9d2eb22`, applicationId `dev.chutipon.recycle`) and never through Expo
+ *     Go — sign out, force-stop, cold start, login screen; plus the stored entry
+ *     itself counted 1 before and 0 after, which the iOS pass never looked at.
+ *
+ * STILL NOT COVERED ANYWHERE: the FAILING delete. S3 below is the only thing
+ * that exercises it, and it does so with a throwing fake — no real keystore has
+ * ever been made to refuse, on either platform. And no release build exists.
  *
  * THE CASES
  *   S1  a non-empty queue refuses the sign-out, and the count is on the screen
@@ -1608,10 +1621,28 @@ async function main(): Promise<number> {
     "  NOT PROVEN HERE: SecureTokenStore.clear() itself. expo-secure-store cannot",
   );
   console.log(
-    "  run under node, so the Keychain delete is exercised only by a DEVICE pass —",
+    "  run under node, so the real delete is exercised only by a DEVICE pass.",
   );
   console.log(
-    "  sign out, force-quit, cold start, and the login screen is what appears.",
+    "  THAT PASS HAS BEEN RUN, on both platforms, and this proof is unchanged by",
+  );
+  console.log(
+    "  it: iOS 2026-08-06 (real iPhone, R1b, evidence off the screen); Android",
+  );
+  console.log(
+    "  2026-08-12 (one vivo 1938, this project's DEBUG build at 9d2eb22, NOT Expo",
+  );
+  console.log(
+    "  Go) — the stored entry counted 1 then 0, then a cold start drew the login",
+  );
+  console.log(
+    "  screen. STILL UNPROVEN EVERYWHERE: a keystore that REFUSES to delete. S3",
+  );
+  console.log(
+    "  above uses a throwing fake; no real store has been made to fail, on either",
+  );
+  console.log(
+    "  platform, and no release build of this app exists on either.",
   );
   if (failures > 0) {
     console.log(`\n  ${String(failures)} CHECK(S) FAILED`);

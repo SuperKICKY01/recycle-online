@@ -12,8 +12,18 @@
  *
  * WHAT THIS PROOF DOES NOT ESTABLISH. It runs against node:sqlite. The handset
  * runs expo-sqlite, whose transaction is a different mechanism on a different
- * connection (src/device/expoSqliteDriver.ts). Atomicity is proved for the
- * driver the proofs run and for no other.
+ * connection (src/device/expoSqliteDriver.ts). THIS FILE proves atomicity for
+ * the driver the proofs run and for no other, and that has not changed.
+ *
+ * WHAT NOW COVERS THE OTHER DRIVER, so this header is not read as the whole
+ * story: a DEVICE pass on 2026-08-12, Android only, on this project's own debug
+ * build (`9d2eb22`, applicationId `dev.chutipon.recycle`) on one handset — never
+ * through Expo Go, which runs a third party's package. It force-stopped the app
+ * twice inside a widened migration window and got the complete old shape both
+ * times, rows intact. STILL UNPROVED THERE: iOS has never run it, no release
+ * build exists, and the kill could not be aimed at a NAMED statement the way M2
+ * aims here. The two are complements: M2 has statement-level precision on the
+ * wrong driver, the device pass has the right driver at coarse resolution.
  */
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";

@@ -40,8 +40,24 @@
  *     debounced draft save BEFORE promoting (see App.tsx submitBill).
  *
  * Hand-rolling BEGIN/COMMIT through execAsync instead would fight expo-sqlite's
- * internal queueing rather than cooperate with it. All of this is UNVERIFIED
- * here until it runs on a device.
+ * internal queueing rather than cooperate with it.
+ *
+ * SUPERSEDED 2026-08-12 — this paragraph ended "All of this is UNVERIFIED here
+ * until it runs on a device." The ALL-OR-NOTHING half has now run.
+ *
+ * PROVED ON Android, on THIS PROJECT'S OWN DEBUG BUILD (built at `9d2eb22`,
+ * applicationId `dev.chutipon.recycle`), on ONE handset — not through Expo Go,
+ * which runs a third party's package and could not have answered it.
+ * HOW: this transaction, driving `initConnection` over a 150,000-row pre-P1.7
+ * database, force-stopped TWICE mid-flight (4.5 MB and 64.7 MB of WAL, both past
+ * the 32-byte header so both after BEGIN, the second ~4 s before the commit a
+ * no-kill control had timed). Both reopens held the COMPLETE OLD SHAPE with
+ * every row at its original value. See `src/adapters/sqlite/schema.ts`.
+ * STILL UNPROVED: iOS has never run it, and NO RELEASE BUILD EXISTS. The
+ * `changes` assumption above is a SEPARATE claim and was not isolated by that
+ * pass. And the CONTENTION half of this header — a concurrent write on this
+ * connection waiting out busy_timeout rather than queueing on a mutex — was not
+ * exercised at all: the migration ran with nothing else writing.
  * ======================================================================
  */
 import * as SQLite from "expo-sqlite";

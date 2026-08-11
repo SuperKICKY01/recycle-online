@@ -271,6 +271,18 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
    * for a shop code they were never given, at five in the morning, to sign in to
    * the yard they are standing in.
    *
+   * CONFIRMED ON A HANDSET 2026-08-12, and this is the sentence above being
+   * measured rather than argued. Android only, on this project's own DEBUG build
+   * (`9d2eb22`, `dev.chutipon.recycle`), one vivo 1938, never Expo Go. After a
+   * real sign-out performed on the device and a force-stop and cold start,
+   * `local_shop` still held its ONE row and `LoginScreen` drew the USERNAME AND
+   * PASSWORD state — not `ตั้งค่าเครื่องนี้`. Nobody was asked for a shop code.
+   * `local_identity` also still held its row, which is the other half of this
+   * design and is stated at App.tsx's onSignOut. The database was byte-identical
+   * across the sign-out: it wrote to the keystore and to nothing else.
+   * NOT confirmed on iOS, which has never been asked, and no release build
+   * exists on either platform.
+   *
    * NO `local_shop` CLEAR EXISTS, deliberately. Leaving a shop is its own act
    * with its own refusal — it must not proceed while rows belonging to this shop
    * are unsent, and nothing counts that yet. When it is written it clears THIS
@@ -492,17 +504,48 @@ export const CONNECTION_PRAGMAS: readonly string[] = [
  * carrying it lands — before that there is no sha that means what the sentence
  * needs, and the nearest one is always the one that does not contain the work.
  *
- * THE HANDSET IS NOT COVERED BY THAT. `src/device/expoSqliteDriver.ts` gets its
- * transaction from `withExclusiveTransactionAsync`, which its own header records
- * as running on a SEPARATE CONNECTION isolated by SQLite's file lock rather than
- * by the JS mutex — a different mechanism, and that file cannot run under node
- * at all, so no proof on this box reaches it.
+ * THE HANDSET IS NOT COVERED BY THAT PROOF. `src/device/expoSqliteDriver.ts`
+ * gets its transaction from `withExclusiveTransactionAsync`, which its own
+ * header records as running on a SEPARATE CONNECTION isolated by SQLite's file
+ * lock rather than by the JS mutex — a different mechanism, and that file cannot
+ * run under node at all, so no proof on this box reaches it. That sentence is
+ * about the PROOFS and is still true. What changed is below.
  *
- * That gap is ACCEPTED for this step rather than closed, because the project has
- * no route to a device pass today. It is WORK TO RETURN TO, not work that is
- * finished: what is owed is a way to exercise this same kill-and-reopen against
- * the expo driver on real hardware. Nobody should read the green above as
- * covering the phone.
+ * SUPERSEDED 2026-08-12. The paragraph that stood here said the gap was
+ * ACCEPTED "because the project has no route to a device pass today", and that
+ * what was owed was a way to exercise this kill-and-reopen against the expo
+ * driver on real hardware. Both were true when written and are now false. The
+ * wording is recorded rather than deleted, because that owed thing is the entire
+ * reason this project has a native build at all.
+ *
+ * PROVED ON — Android only. THIS PROJECT'S OWN DEBUG BUILD, the artefact built
+ * at `9d2eb22` with applicationId `dev.chutipon.recycle`, on ONE handset (vivo
+ * 1938). NOT through Expo Go, which could not have answered this: Expo Go is a
+ * third-party release-signed app, so it runs neither our package nor a private
+ * storage anything can read.
+ *
+ * HOW — a database seeded into the app's own storage in the pre-P1.7 shape
+ * (local_bills at its original 10 columns, no local_identity, no local_shop, no
+ * indexes) carrying 150,000 rows, so the O(N) statements INSIDE this transaction
+ * — three index builds and the json_extract backfill — take tens of seconds and
+ * open a window wide enough to aim at. The process was force-stopped TWICE, at
+ * 4.5 MB and at 64.7 MB of WAL. A WAL only grows past its 32-byte header when a
+ * transaction writes, so both kills were provably after BEGIN; the second landed
+ * about four seconds before the commit that a no-kill control had timed. BOTH
+ * reopens gave the COMPLETE OLD SHAPE — 6 tables, 0 indexes, 10 columns — with
+ * all 150,000 rows at their original values, compared by SHA256 over
+ * (id, payload_json, sync_state) fixed before the file ever left the box. The
+ * no-kill control proved the same seed migrates fully, and a killed database
+ * relaunched reached a file byte-identical to that control's.
+ *
+ * STILL NOT PROVED, and this half is not a formality:
+ *   iOS HAS NEVER RUN THIS. A different SQLite build on a different filesystem,
+ *     and no iOS pass has ever killed a migration. Nothing above reaches it.
+ *   NO RELEASE BUILD EXISTS, so none of this is a statement about the artefact a
+ *     shop would install.
+ *   Two kill points in one window is not M2's four-point statement-level sweep,
+ *     and `am force-stop` is not a SIGKILL between two named statements: WHICH
+ *     statement was executing was never controlled, only that one was.
  */
 export async function initConnection(db: SqlDriver): Promise<string[]> {
   for (const pragma of CONNECTION_PRAGMAS) await db.exec(pragma);

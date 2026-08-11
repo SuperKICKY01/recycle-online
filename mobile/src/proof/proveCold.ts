@@ -1193,11 +1193,18 @@ async function c10TokenContract(): Promise<void> {
   check("clearing really clears", (await store.load()) === null);
 
   console.log("");
-  console.log("  NOT PROVEN HERE, and it must be checked on the phone:");
+  console.log("  NOT PROVEN HERE:");
   console.log("    expo-secure-store is a native module and cannot run under node, so");
-  console.log("    src/device/secureTokenStore.ts is UNVERIFIED. What node can show is");
-  console.log("    that the app only ever uses the contract above — that the value");
-  console.log("    survives a real process death is the device step.");
+  console.log("    src/device/secureTokenStore.ts is untouched by this file. What node");
+  console.log("    can show is that the app only ever uses the contract above — that a");
+  console.log("    value survives, or does not survive, a real process death is the");
+  console.log("    device step.");
+  console.log("  THAT DEVICE STEP HAS BEEN RUN, and this proof does not change with it:");
+  console.log("    Android 2026-08-12, one vivo 1938, on this project's own DEBUG build");
+  console.log("    (9d2eb22, dev.chutipon.recycle) and NOT through Expo Go — a token was");
+  console.log("    stored, cleared by a sign-out, and a COLD START's load() returned null");
+  console.log("    and drew the login screen. iOS 2026-08-06 saw the same at the screen.");
+  console.log("  STILL UNPROVEN: a keystore that REFUSES; and no release build exists.");
 }
 
 /* ---------------------------------------------------------------- main --- */

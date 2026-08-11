@@ -390,6 +390,26 @@ imports that file — `rg expoSqliteDriver mobile/src/proof` returns two COMMENT
 mentions and nothing executable. If a way to run against the device driver ever
 exists, that is work to return to, not work already finished.
 
+**SUPERSEDED 2026-08-12 — THAT WAY NOW EXISTS AND WAS RUN. The second sentence
+above is no longer true for Android.** The route is this project's own Android
+DEBUG BUILD, which did not exist when the paragraph was written; it was built at
+`9d2eb22` with applicationId `dev.chutipon.recycle` and installed on one handset,
+a vivo 1938. **NOT Expo Go** — Expo Go is a third-party release-signed app, runs
+neither our package nor a readable private storage, and could not have answered
+this, which is why the build exists at all. HOW: a pre-P1.7 database of 150,000
+rows was seeded into the app's storage so the O(N) statements inside the
+transaction take tens of seconds; the process was force-stopped TWICE, at 4.5 MB
+and 64.7 MB of WAL — both past the 32-byte header, so both after BEGIN, the
+second about four seconds before the commit a no-kill control had timed — and
+both reopens held the COMPLETE OLD SHAPE (6 tables, 0 indexes, 10 columns) with
+all 150,000 rows at their original values by SHA256 fixed before the file left
+this box. A no-kill control proved the seed migrates fully; a killed database
+relaunched reached a file byte-identical to it. **STILL NOT PROVED: iOS has never
+run this at all, and NO RELEASE BUILD EXISTS on either platform, so none of it
+describes the artefact a shop would install.** The kill also could not be aimed at
+a NAMED statement the way `proveMigration` M2 aims under node — two coarse points
+inside one window, not a statement-level sweep.
+
 **TWO UNSWEPT HAZARDS IN THE PROOF SUITE, both queued in `OPEN_ITEMS.md § Code
 debt found and left in place`.** Neither is a product defect; both make correct
 code look broken, which is what makes them expensive.
@@ -476,6 +496,15 @@ connection — `expo-sqlite`'s `withExclusiveTransactionAsync`, documented in
 cannot be exercised off-device at all. The first sentence must never appear in
 this file without the second. If a way to run this against the device driver
 ever exists, that is **work to return to, not work already finished.**
+
+**SUPERSEDED 2026-08-12.** That way exists and was run: Android only, on this
+project's own DEBUG build (`9d2eb22`, `dev.chutipon.recycle`), one vivo 1938,
+never Expo Go. Two force-stops inside a window widened to tens of seconds by a
+150,000-row pre-P1.7 seed, both leaving the complete OLD shape with every row
+intact; controls both ways. The full measurement is recorded once, under
+*Current phase*, and is deliberately not restated here. **iOS has never run it
+and no release build exists**, so the pairing rule above still binds — it is now
+"proved on the driver the handset runs, on ANDROID, on a debuggable build".
 
 **THE INJECTOR CHANGED TARGET WHEN THE CODE BENEATH IT CHANGED.** Making the
 migration transactional moved where `proveCart`'s crash injector fired: it
@@ -2215,6 +2244,19 @@ reports it as proven.
   {draft, bill} survives. That is proven under `node:sqlite` only
   (`proveCart` C5, both sides of the commit, with a real SIGKILL). A
   successful save says nothing about it.
+  **NARROWED 2026-08-12, and read the narrowing precisely — it is smaller
+  than it looks.** The driver's `transaction()` MECHANISM has now been
+  killed mid-flight on real hardware and held: Android only, on this
+  project's own DEBUG build (`9d2eb22`, `dev.chutipon.recycle`), one
+  vivo 1938, never Expo Go; two force-stops inside a migration window
+  widened to tens of seconds by a 150,000-row seed, complete old shape
+  both times, rows intact, controls both ways. **What that covers is
+  `initConnection`. It does NOT cover `promoteToBill`**, which is a
+  different call site with a different failure question — exactly one of
+  {draft, bill} — and which no device pass has ever killed. The bullet
+  above stands unchanged for that path. **iOS has never run either, and
+  no release build exists.** `changes` being reported honestly was not
+  isolated by that pass either.
 - **`src/device/secureTokenStore.ts`**: that SecureStore honours the
   contract is unverified off-device. **NARROWED, not closed, 2026-08-06.**
   The R1b pass exercised `clear()` on a real handset and the Keychain really
@@ -2225,6 +2267,26 @@ reports it as proven.
   nothing about the store's behaviour when the Keychain itself refuses — a
   locked device, a restore from backup, or a `deleteItemAsync` that throws —
   and those remain unverified off-device.
+  **NARROWED AGAIN 2026-08-12 — ANDROID, and with evidence of a kind the iOS
+  pass did not have.** On this project's own DEBUG build (`9d2eb22`,
+  applicationId `dev.chutipon.recycle`), one vivo 1938, **never through Expo
+  Go** — Expo Go is a third party's release-signed package and refuses
+  `run-as`, so it could not have produced any of this. Two readings the 2026-08-06
+  pass never took. AT THE STORE: `shared_prefs/SecureStore.xml` held the entry
+  `key_v1-recycle.session.token` with count **1** while signed in, and count
+  **0** after the sign-out — the file still present, 840 bytes down to 65, zero
+  entries, which is a different and stronger outcome than the file being gone.
+  AT A NEW PROCESS: force-stop, cold start, and `App.tsx:606`'s `load()`
+  returned null and drew the login screen — the exact observable
+  `src/session/tokenStore.ts` names as the failure it is guarding against.
+  Method controlled in the same run: a key known to be absent counted 0, and a
+  string known to be present counted 1, on the same file.
+  **STILL UNVERIFIED, and this is the whole of what is left**: the REFUSING
+  keystore, on either platform — no real store has ever been made to fail, so
+  the `failed` branch is still a contract; `AFTER_FIRST_UNLOCK` on a device not
+  unlocked since power-on; and **NO RELEASE BUILD EXISTS on either platform**,
+  so `run-as` would not work on a shop's artefact and this reading method does
+  not transfer to it.
 - **The daily money screen: TWO passes — 2026-08-02 (real iPhone, ADMIN) and
   2026-08-06 (real iPhone, STAFF; R2).** Rendering, day stepping and the
   offline path were observed on the first (see Previous phase). What that pass
