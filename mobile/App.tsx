@@ -88,7 +88,7 @@ import { dailyScreen } from "./src/reports/dailyView";
 import type { DailyScreen as DailyScreenModel } from "./src/reports/dailyView";
 import { readTokenRole } from "./src/session/deviceRole";
 import type { DeviceRole } from "./src/session/deviceRole";
-import { signInAndRecord } from "./src/session/signInIdentity";
+import { signInAndRecord, signInNotice } from "./src/session/signInIdentity";
 import { buildLocalBill } from "./src/sync/createBill";
 import { SyncEngine } from "./src/sync/engine";
 import type { AccountState, SessionState } from "./src/sync/parkedReason";
@@ -940,11 +940,34 @@ export default function App() {
       // signInAndRecord runs the attempt and, ONLY on success, records who
       // signed in. The ordering lives in src/session/signInIdentity.ts because
       // this file cannot be reached by a headless proof; see its header.
-      const { accessToken: t } = await signInAndRecord(
+      const result = await signInAndRecord(
         () => login(DEMO.tenantId, DEMO.username, DEMO.password),
         DEMO.tenantId,
         identityStore,
       );
+      /*
+       * THE FOUR OUTCOMES ARE NOW FOUR, AND THEY USED TO BE ONE.
+       *
+       * Every failure — a refused password, an unreachable server, a 503 from
+       * the clock guard, a 200 with no token — arrived in a single `catch` that
+       * set `online = false` and printed the raw error. So the operator was told
+       * they were offline when the server had just answered them in
+       * milliseconds, and at five in the morning that sends them to the router
+       * instead of to the keyboard. The decision now comes from
+       * src/session/signInIdentity.ts, where a proof can drive it; this only
+       * routes it.
+       *
+       * `online` is set from whether the SERVER ANSWERED, not from whether the
+       * login succeeded — a refusal is an answer, and the same rule
+       * lessons/401-is-about-the-caller-not-the-bill.md already applies on the
+       * send path.
+       */
+      if (result.kind !== "ok") {
+        setOnline(result.kind !== "unreachable");
+        setStatus(signInNotice(result) ?? "");
+        return;
+      }
+      const t = result.accessToken;
       tokenRef.current = t;
       setToken(t);
       setRole(readTokenRole(t));
@@ -980,8 +1003,16 @@ export default function App() {
       // come back first from /sellers.
       setStatus(`${API_BASE_URL} · เข้าสู่ระบบแล้ว`);
     } catch (err) {
-      setOnline(false);
-      setStatus(`เข้าสู่ระบบไม่สำเร็จ: ${describe(err)}`);
+      /*
+       * STILL HERE, AND IT NO LONGER CARRIES THE REFUSALS. `login()` returns
+       * every transport outcome as a value, so what can still land here is a
+       * fault in the steps AFTER the token arrives — the keystore, the master
+       * refresh, the engine. Those are not the credentials and not the network,
+       * so this says neither; it keeps `describe(err)` because at this point the
+       * cause genuinely is unclassified, and inventing a class for it would be
+       * the defect this commit removed, pointed the other way.
+       */
+      setStatus(`เข้าสู่ระบบไม่สำเร็จหลังรับสิทธิ์แล้ว: ${describe(err)}`);
     } finally {
       setBusy(false);
     }

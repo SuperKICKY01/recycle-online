@@ -25,7 +25,7 @@ import { NodeSqliteDriver } from "../adapters/sqlite/nodeDriver.js";
 import { SqliteIdentityStore } from "../adapters/sqlite/SqliteIdentityStore.js";
 import { initConnection } from "../adapters/sqlite/schema.js";
 import { signInAndRecord } from "../session/signInIdentity.js";
-import type { SignInOutcome } from "../session/signInIdentity.js";
+import type { SignInResult } from "../session/signInIdentity.js";
 import { MemoryTokenStore } from "../session/tokenStore.js";
 
 let failures = 0;
@@ -412,18 +412,20 @@ async function m4LoginRecordsOnlyOnSuccess(): Promise<void> {
   // ---- the success path ---------------------------------------------------
   check("CONTROL: nothing is stored before the first login", (await identity.load()) === null);
 
-  const ok = (): Promise<SignInOutcome> =>
-    Promise.resolve({ accessToken: "header.payload.signature", userId: USER });
+  const ok = (): Promise<SignInResult> =>
+    Promise.resolve({ kind: "ok", accessToken: "header.payload.signature", userId: USER });
   const outcome = await signInAndRecord(ok, TENANT, identity);
   const stored = await identity.load();
   console.log(`  login returned: ${JSON.stringify(outcome)}`);
   console.log(`  stored        : ${JSON.stringify(stored)}`);
 
+  check("CONTROL: the success path reported ok", outcome.kind === "ok", outcome.kind);
+  const okOutcome = outcome.kind === "ok" ? outcome : null;
   check("a successful login WROTE an identity", stored !== null);
   check(
     "the stored user is the one the LOGIN RETURNED, not one derived locally",
-    stored?.user_id === outcome.userId,
-    `stored=${String(stored?.user_id)} returned=${outcome.userId}`,
+    stored?.user_id === okOutcome?.userId,
+    `stored=${String(stored?.user_id)} returned=${String(okOutcome?.userId)}`,
   );
   check(
     "the stored tenant is the one the login was made AGAINST",
@@ -432,7 +434,7 @@ async function m4LoginRecordsOnlyOnSuccess(): Promise<void> {
   );
   check(
     "the token is handed back to the caller and NOT stored here",
-    outcome.accessToken === "header.payload.signature" &&
+    okOutcome?.accessToken === "header.payload.signature" &&
       !JSON.stringify(stored).includes("header.payload"),
   );
 
@@ -441,10 +443,11 @@ async function m4LoginRecordsOnlyOnSuccess(): Promise<void> {
   check("CONTROL: an identity IS present before the failed attempt", before !== null);
 
   let attempts = 0;
-  const refused = (): Promise<SignInOutcome> => {
+  const refused = (): Promise<SignInResult> => {
     attempts += 1;
-    // What app/api.ts throws on every non-2xx: HttpStatusError. Shape only —
-    // this proof does not import app/.
+    // A THROWN failure. login() no longer throws on a refusal, but the throw
+    // path is still reachable from anything the attempt does, and the guarantee
+    // that nothing is recorded when it fires must keep holding.
     return Promise.reject(new Error("login -> HTTP 401"));
   };
 
@@ -470,11 +473,40 @@ async function m4LoginRecordsOnlyOnSuccess(): Promise<void> {
     `tenant=${String(after?.tenant_id)}`,
   );
 
+  /*
+   * THE SAME GUARANTEE FOR A REFUSAL THAT DOES NOT THROW, which is what
+   * login() now produces. The throw above is no longer the only way to fail, so
+   * asserting only on it would leave the new and ordinary path unproven — the
+   * seam two-green-proofs-do-not-cover-the-seam.md names.
+   */
+  let valueAttempts = 0;
+  const refusedByValue = (): Promise<SignInResult> => {
+    valueAttempts += 1;
+    return Promise.resolve({ kind: "refused" });
+  };
+  const refusalResult = await signInAndRecord(
+    refusedByValue,
+    "66666666-6666-4666-8666-666666666666",
+    identity,
+  );
+  const afterValue = await identity.load();
+  check("CONTROL: the value-refusal attempt really ran", valueAttempts === 1);
+  check(
+    "a refusal RETURNED (not thrown) is handed back to the caller as refused",
+    refusalResult.kind === "refused",
+    refusalResult.kind,
+  );
+  check(
+    "and it records NOTHING — the stored identity is byte-for-byte unchanged",
+    JSON.stringify(afterValue) === JSON.stringify(after),
+    `before=${JSON.stringify(after)} after=${JSON.stringify(afterValue)}`,
+  );
+
   // ---- a second successful login REPLACES --------------------------------
   const USER2 = "44444444-4444-4444-8444-444444444444";
   const TENANT2 = "55555555-5555-4555-8555-555555555555";
   await signInAndRecord(
-    () => Promise.resolve({ accessToken: "t2", userId: USER2 }),
+    () => Promise.resolve({ kind: "ok", accessToken: "t2", userId: USER2 }),
     TENANT2,
     identity,
   );

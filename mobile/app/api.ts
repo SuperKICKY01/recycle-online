@@ -6,6 +6,8 @@
  * parses money into a number.
  */
 import type { DailyFetch } from "../src/reports/dailyView";
+import { attemptLogin, isUnauthorizedStatus } from "../src/session/signInIdentity";
+import type { SignInResult } from "../src/session/signInIdentity";
 import { API_BASE_URL } from "./config";
 
 export interface Product {
@@ -47,9 +49,18 @@ export class HttpStatusError extends Error {
   }
 }
 
-/** The caller is no longer anyone. Nothing to do with the network. */
+/**
+ * The caller is no longer anyone. Nothing to do with the network.
+ *
+ * The `401` itself is NOT written here: `isUnauthorizedStatus` in
+ * src/session/signInIdentity.ts is the single statement of that rule, and this
+ * is the entry point for callers holding a caught ERROR rather than a response.
+ * One definition, two doors — a second `=== 401` in the tree is how the two
+ * would come to disagree.
+ */
 export const isUnauthorized = (err: unknown): boolean =>
-  err instanceof HttpStatusError && err.status === 401;
+  err instanceof HttpStatusError && isUnauthorizedStatus(err.status);
+
 
 async function getJson<T>(path: string, token: string): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
@@ -62,36 +73,54 @@ async function getJson<T>(path: string, token: string): Promise<T> {
 }
 
 /**
- * What a successful login hands back. TWO values, and the second is new.
+ * TRANSPORT ONLY. It returns every outcome as a VALUE and throws nothing.
  *
- * `userId` is the SERVER'S identifier for the person who signed in, returned in
- * the login body since P1.7. It is not read out of the token's claims: the
- * client holds no secret and cannot verify a signature, and being wrong on this
- * field is invisible — a bill attributed to the wrong person looks exactly like
- * one attributed to the right person.
+ * ---------------------------------------------------------------------------
+ * WHAT THIS REPLACED, AND WHAT THAT COST THE PERSON AT THE SCALE
+ * ---------------------------------------------------------------------------
+ * Until this commit the body of this function was four lines: throw
+ * `HttpStatusError` on any non-2xx, and cast the parsed body. Two defects came
+ * out of it and both reached the operator.
  *
- * The USERNAME is deliberately absent. It is unique only within a shop
- * (migration 0001, `uq_users_tenant_username`) and it can be changed, so a row
- * that stored one would come to point at nobody.
+ * EVERY FAILURE ARRIVED AS ONE BRANCH. A thrown status and a thrown fetch are
+ * both just exceptions, and `App.tsx`'s single `catch` set `online = false` for
+ * all of them. A WRONG PASSWORD therefore rendered the device offline — the
+ * server had answered in milliseconds — and at five in the morning that sends
+ * somebody to the router while the fix is to type the password again. The
+ * reverse cost the same: a genuine outage read as a failed login, and a correct
+ * password retyped at a server that was never going to answer.
+ *
+ * A 200 WITH NO TOKEN WAS A SUCCESS. `as { access_token: string }` is a cast,
+ * not a check, so an absent field became `undefined` typed as `string`, and the
+ * app entered a signed-in state holding no token: `sessionStateOf` reads
+ * `token === null`, which `undefined` is not, so the screen said active. The
+ * operator could weigh a full truck against a session incapable of sending one
+ * bill. lessons/a-defaulted-getattr-is-a-silent-dead-branch.md is the shape —
+ * an absent field read as a confident value.
+ *
+ * NOTHING IS CLASSIFIED HERE. The mapping lives in
+ * src/session/signInIdentity.ts, which a headless proof can load; this file
+ * cannot be (it reaches expo-constants through ./config), and a classification
+ * no proof can drive is one no assertion can redden. Same rule, and the same
+ * reason, as fetchDailyReport below.
+ *
+ * "Until this commit" is deliberately not a sha. This paragraph ships in the
+ * commit that removes what it describes, so no sha yet means what it would need
+ * to mean and HEAD would name the commit that still HAS the defect —
+ * CLAUDE.md section Conventions "PIN A CLAIM TO A COMMIT". Written 2026-08-11.
  */
-export interface LoginResult {
-  accessToken: string;
-  userId: string;
-}
-
-export async function login(
+export function login(
   tenantId: string,
   username: string,
   password: string,
-): Promise<LoginResult> {
-  const res = await fetch(`${API_BASE_URL}/auth/login`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ tenant_id: tenantId, username, password }),
-  });
-  if (!res.ok) throw new HttpStatusError(res.status, `login -> HTTP ${String(res.status)}`);
-  const body = (await res.json()) as { access_token: string; user_id: string };
-  return { accessToken: body.access_token, userId: body.user_id };
+): Promise<SignInResult> {
+  return attemptLogin(() =>
+    fetch(`${API_BASE_URL}/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tenant_id: tenantId, username, password }),
+    }),
+  );
 }
 
 export const fetchProducts = (token: string): Promise<Product[]> =>

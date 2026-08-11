@@ -39,7 +39,7 @@ import { newDraft } from "../cart/cart.js";
 import type { Draft } from "../cart/types.js";
 import { ownerForNewRow } from "../session/rowOwner.js";
 import { signInAndRecord } from "../session/signInIdentity.js";
-import type { SignInOutcome } from "../session/signInIdentity.js";
+import type { SignInResult } from "../session/signInIdentity.js";
 import { buildLocalBill } from "../sync/createBill.js";
 import type { Clock, IdSource, LocalBill } from "../sync/types.js";
 
@@ -120,8 +120,9 @@ function isUnowned(cols: OwnerCols | null): boolean {
  * tenant is the one the request was made under, which is why signInAndRecord
  * takes it separately and this helper does not carry it.
  */
-function login(user: string): () => Promise<SignInOutcome> {
-  return () => Promise.resolve({ accessToken: `token-for-${user}`, userId: user });
+function login(user: string): () => Promise<SignInResult> {
+  return () =>
+    Promise.resolve({ kind: "ok", accessToken: `token-for-${user}`, userId: user });
 }
 
 interface Bench {

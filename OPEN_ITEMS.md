@@ -890,6 +890,39 @@ idea — only that it is unresolved.
   `/health` stops being reachable. **Its own piece of work, not a footnote to the
   endpoint that happened to find it.**
 
+  **SUPERSEDED 2026-08-11 — THE PROCESSES ARE GONE, AND NOBODY HERE STOPPED
+  THEM. THIS IS NOT THE ITEM BEING DEALT WITH.** The entry above is left exactly
+  as written, and was true when written: it stood for days describing a pair
+  that was genuinely running. Measured at `171f6d3`: **56 listening sockets on
+  this box across 21 distinct process names**, and **nothing on 8137** — nor on
+  8000, nor 8211. The enumeration is shown capable of finding processes by those
+  21 names, so the silence about 8137 is a fact about the box rather than about
+  the command.
+
+  **WHAT IS NOT KNOWN IS WHY THEY WENT, and that is the part worth keeping.** No
+  session in this project killed them; the entry forbade doing so without the
+  owner's decision, and no such decision was taken or acted on. They were not
+  stopped as a piece of work, they simply stopped being there — a reboot, a
+  parent exiting, a cleanup by something outside this repository; none of it
+  established, and none of it recoverable now. So the resolution is an ABSENCE,
+  not an action.
+
+  **THE THING THAT REPLACES THIS ITEM IS THE PROPERTY IT REVEALED: this box can
+  lose a long-running process without anybody noticing.** That cuts both ways
+  and the second way is the dangerous one. It ran for days unnoticed serving
+  stale code with a `/health` that could not go red — and it then vanished
+  unnoticed too. Nothing here watches process lifetime, so the same silence
+  covers a server that should not be running and one that should. A future
+  session finding a port empty must not read that as "the queue item was
+  handled": it is the same instrument reporting nothing in both directions.
+
+  *Not done:* nothing was fixed. The three properties recorded above — that it
+  was our own API, that its `/health` was structurally incapable of reporting a
+  clock fault, and that it had held a database connection since 2026-08-07 —
+  were never acted on; the process holding them left on its own. *Unblocks:*
+  nothing, and the owner decision the entry asked for is now moot for THESE
+  processes and unanswered for the next ones.
+
 *The five entries immediately below were all measured on 2026-08-10, read-only, on
 the live cluster, as part of the `recycle_directory` privilege pass. Each is a
 capability or a location that **no file in this repository asserts**. They are kept
