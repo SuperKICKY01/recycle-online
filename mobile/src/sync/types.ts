@@ -355,6 +355,36 @@ export type VoidOutcome =
   | { kind: "forbidden"; code: string; reason: string }
   | { kind: "unavailable"; reason: string };
 
+/**
+ * The refusal code written when the SERVER REJECTED THE VOID ITSELF — 404, 400
+ * or 422 — as opposed to refusing the caller.
+ *
+ * WHY A CODE AND NOT A NEW COLUMN. The row's STATE is already exactly right:
+ * refused, no longer owed, the owner's request and reason preserved. Every
+ * question a state has to answer — what the status strip counts, what startup
+ * recovery touches, what the sign-out refusal counts, what the queue-health
+ * alarm reads — already has an answer for a refused void, so a second column
+ * would add a state that answers nothing new. What genuinely differs between a
+ * 403 and a 404 is only WHY, and `void_refused_code` is already the field that
+ * carries why.
+ *
+ * TWO THINGS DEPEND ON THIS EXACT VALUE, and both would fail silently if it
+ * drifted:
+ *   - SqliteLocalStore.clearVoidRefusals must NOT retract it. A 403 is retracted
+ *     on sign-in because signing in can change who is asking; signing in cannot
+ *     make a missing bill exist or an invalid payload valid, so retracting this
+ *     one would restart the infinite retry at every sign-in.
+ *   - parkedReason must give it its own sentence. The fallback for an unknown
+ *     refusal code says the account lacks permission, which is FALSE here and
+ *     would send the operator to the shop owner about a problem that does not
+ *     exist.
+ *
+ * It is not a server code and never arrives over the wire — VoidOutcome's
+ * `rejected` member carries no code, because the three statuses are one class
+ * to this client and telling them apart would mean parsing the reason string.
+ */
+export const VOID_REJECTED_CODE = "void_rejected";
+
 export interface Transport {
   /**
    * May reject (throw). A throw carries NO information about whether the

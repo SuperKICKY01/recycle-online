@@ -3,6 +3,7 @@
  * production adapters are expo-sqlite (Phase 2b) and HttpTransport.
  */
 import { scheduledInstantIsDue } from "../time/clockSanity.js";
+import { VOID_REJECTED_CODE } from "../sync/types.js";
 import type {
   BillPayload,
   Clock,
@@ -452,6 +453,11 @@ export class InMemoryStore implements LocalStore {
     let cleared = 0;
     for (const row of this.rows.values()) {
       if (row.void_refused_at === null) continue;
+      // Mirrors the SQL exclusion: a sign-in retracts a refusal of the CALLER
+      // (403), never a rejection of the REQUEST (404/400/422), which no sign-in
+      // can change. Both stores must agree or the same case passes on one and
+      // resumes an endless retry on the other.
+      if (row.void_refused_code === VOID_REJECTED_CODE) continue;
       row.void_refused_at = null;
       row.void_refused_code = null;
       row.void_last_error = null;

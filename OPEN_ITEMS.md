@@ -1886,6 +1886,31 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   `prove:clock`'s rig now is too.
   *Unblocks:* nothing — it is a debugging rule, and it applies to every proof
   that touches the send queue from here on.
+- **THE SWEEP THE ENTRY ABOVE ASKED FOR HAS NOW BEEN RUN, AND IT FOUND NOTHING
+  FURTHER. THIRTEEN PROOF FILES BUILD A STORE OUTSIDE THE SHARED HARNESS AND
+  EVERY ONE OF THEM ESTABLISHES A DEVICE IDENTITY.** Recorded because a zero
+  nobody wrote down is a zero nobody can trust later — the next session would
+  have no way to tell "swept and clean" from "never looked".
+  **THE SEARCHES, NAMED, so the result can be re-derived rather than believed.**
+  `rg -n "new InMemoryStore\(" mobile/src mobile/App.tsx mobile/app` returns 3
+  hits — two in `harness.ts` (the harness itself) and `proveClock.ts:124`.
+  `rg -n "SqliteLocalStore\.open\(" mobile/src mobile/App.tsx` returns 35 — one
+  in `harness.ts`, one in `App.tsx` (production), and 33 across twelve proof
+  files. **CONTROL:** the first search was shown finding `proveClock.ts`, the
+  case already known to have had this defect, BEFORE its silence about any other
+  file was believed.
+  **THE TWELVE, and how each is covered.** `claimWorker` 1, `proveCart` 2,
+  `proveCold` 5, `proveForbidden` 5, `proveNotice` 1, `proveSeller` 1,
+  `proveSignOut` 5, `proveVoid` 6, `sqliteProof` 4, `voidCrashChild` 1 — 31
+  sites, each paired with a `signInProofDevice` call, counts matching per file.
+  `proveOwner` and `proveSendOwner` manage their own identities deliberately and
+  are the two that MUST be able to reach the no-identity state, since that state
+  is their subject. `proveClock` seeds its own rig with `setIdentity`.
+  *Not done:* nothing outstanding. The sweep covers files that build a
+  **LocalStore**; proofs that open only a draft or master store were not
+  enumerated, because neither reads the send queue and the filter cannot reach
+  them.
+  *Unblocks:* nothing. It closes the *Not done* clause of the entry above.
 
 ## Decisions open — the owner's, not the code's
 

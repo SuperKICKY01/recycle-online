@@ -33,6 +33,7 @@
  */
 import { mayVoid } from "../session/deviceRole.js";
 import type { DeviceRole } from "../session/deviceRole.js";
+import { VOID_REJECTED_CODE } from "./types.js";
 import type { SyncState } from "./types.js";
 
 /** The codes the server currently emits. See server/app/bills.py. */
@@ -99,7 +100,23 @@ const isKnown = (code: string): code is MasterDataCode =>
  * a mapping with no unknown case is a blank card the first time the server names
  * a cause this build has not heard of.
  */
-export const FORBIDDEN_CODES = ["admin_required"] as const;
+/*
+ * VOID_REJECTED_CODE IS IN THIS LIST AND IS NOT A 403, WHICH IS DELIBERATE AND
+ * IS THE ONE THING TO UNDERSTAND BEFORE EDITING IT.
+ *
+ * This table's job is not "what did a 403 say" — it is "what does a refused
+ * void say to the yard", which is what `void_refused_at` records and what
+ * billNotice routes through forbiddenReason. A void the SERVER rejected (404,
+ * 400, 422) sets the same column and reaches the same branch, so it needs an
+ * entry here or it lands on the unknown fallback.
+ *
+ * AND THAT FALLBACK WOULD BE A LIE. It says this account lacks permission and
+ * to ask the shop owner. For a rejected void that is false twice over: the
+ * account's permissions are not the problem, and the shop owner cannot fix it
+ * either. The operator would be sent to the wrong person about a problem that
+ * does not exist, on a bill the server still holds as live money.
+ */
+export const FORBIDDEN_CODES = ["admin_required", VOID_REJECTED_CODE] as const;
 
 export type ForbiddenCode = (typeof FORBIDDEN_CODES)[number];
 
@@ -162,15 +179,40 @@ interface ForbiddenText {
   what: string;
 }
 
+/*
+ * `known` is PARTIAL, and that changed when a code arrived that belongs to one
+ * action only. A code is not a property of the whole API: void_rejected can
+ * happen when cancelling a bill and cannot happen when reading the day's total,
+ * and requiring every action to carry every code would force daily_report to
+ * invent a sentence for a situation it has no way of reaching. An invented
+ * sentence is exactly the wrong instruction this table exists to prevent.
+ *
+ * The cost is that a missing entry no longer fails to compile, so it falls to
+ * the action's own `unknown` text — which is the correct behaviour for a code
+ * that action cannot produce, and is the same path an unrecognised server code
+ * takes. forbiddenReason below reports `unknown: true` for it either way, so
+ * the card still names the raw code rather than pretending to explain it.
+ */
 const FORBIDDEN_BY_ACTION: Record<
   ForbiddenAction,
-  { known: Record<ForbiddenCode, ForbiddenText>; unknown: ForbiddenText }
+  { known: Partial<Record<ForbiddenCode, ForbiddenText>>; unknown: ForbiddenText }
 > = {
   void_bill: {
     known: {
       admin_required: {
         badge: "ไม่มีสิทธิ์ยกเลิกบิล",
         what: `บัญชีนี้ไม่มีสิทธิ์ยกเลิกบิล ระบบจึงยังไม่ได้ยกเลิกบิลใบนี้ — ${ASK_THE_OWNER}`,
+      },
+      /*
+       * The server refused the CANCELLATION, not the account. So this sentence
+       * must not mention permission and must not tell the operator to sign in
+       * or wait — neither would change the answer, and both would be an
+       * instruction that cannot work. It says what is true and who can act:
+       * the system did not cancel it, and the office has to.
+       */
+      [VOID_REJECTED_CODE]: {
+        badge: "ยกเลิกไม่สำเร็จ",
+        what: `ระบบไม่รับคำสั่งยกเลิกบิลใบนี้ และจะไม่ลองใหม่ให้ — ${ASK_THE_OWNER}`,
       },
     },
     unknown: {
@@ -203,7 +245,11 @@ const FORBIDDEN_BY_ACTION: Record<
 export function forbiddenReason(code: string | null, action: ForbiddenAction): ForbiddenReason {
   const texts = FORBIDDEN_BY_ACTION[action];
   if (code !== null && isKnownForbidden(code)) {
-    return { ...texts.known[code], unknown: false };
+    // A code this ACTION has no text for is treated as unrecognised rather than
+    // rendered blank: `known` is partial because a code can belong to one action
+    // and be unreachable from another.
+    const text = texts.known[code];
+    if (text !== undefined) return { ...text, unknown: false };
   }
   return { ...texts.unknown, unknown: true };
 }

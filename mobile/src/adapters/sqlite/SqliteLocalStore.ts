@@ -24,6 +24,7 @@
  * See adapters/sqlite/mutex.ts.
  */
 import { SEND_SCHEDULE_HORIZON_MS } from "../../time/clockSanity.js";
+import { VOID_REJECTED_CODE } from "../../sync/types.js";
 import type { LocalBill, LocalStore, QueueSnapshot, RowOwner, SyncState } from "../../sync/types.js";
 import type { SqlDriver, SqlValue } from "./driver.js";
 import { SqliteIdentityStore } from "./SqliteIdentityStore.js";
@@ -797,6 +798,22 @@ export class SqliteLocalStore implements LocalStore {
    * first and acquires its doc_no. The void then applies to a bill that exists,
    * which is what lets the owner see it was created and then cancelled instead
    * of it silently never existing.
+   *
+   * ------------------------------------------------------------------------
+   * THIS PREDICATE HAS NO OWNER FILTER AS OF THIS COMMIT, AND THAT IS THE NEXT
+   * STEP, NOT AN OVERSIGHT. It draws on neither shared constant — not QUEUED,
+   * not DUE_OR_UNBELIEVABLE — so the send queue's owner clause does not reach
+   * it by any route. A void for another person's bill still leaves this device.
+   *
+   * WHY THAT STEP WAITED FOR THIS ONE. The observable for an owner filter is an
+   * attempt count: zero attempts for another owner's void, a non-zero count for
+   * your own. On a line that re-POSTs the same request every four seconds for
+   * ever, that measurement cannot be made — a count that rises without bound
+   * cannot distinguish "the filter prevented a send" from "the filter delayed
+   * one", and a count that is still climbing when the proof ends says nothing
+   * either way. Making a permanently refused void STOP is what turns this path
+   * into something a filter can be measured on at all.
+   * ------------------------------------------------------------------------
    */
   async listVoidsToApply(limit: number): Promise<LocalBill[]> {
     const rows = await this.db.all<BillRow>(
@@ -866,9 +883,26 @@ export class SqliteLocalStore implements LocalStore {
    */
   async clearVoidRefusals(_now: Date): Promise<number> {
     const r = await this.db.run(
+      /*
+       * A REJECTED VOID IS EXCLUDED, AND THIS IS THE HALF OF THE FIX THAT IS
+       * EASY TO LEAVE OUT.
+       *
+       * A 403 is retracted here because a sign-in can change WHO IS ASKING, and
+       * the next attempt may therefore get a different answer. A 404, 400 or 422
+       * was the server refusing WHAT WAS ASKED: signing in as anybody at all
+       * cannot make a missing bill exist or an invalid payload valid, and the
+       * body is identical on every attempt (see the engine's `rejected` case).
+       *
+       * Without this clause the whole fix would degrade rather than fail —
+       * stopped every four seconds, restarted at every sign-in, which is still
+       * for ever and is harder to notice than the original because it only
+       * misbehaves after somebody signs in.
+       */
       `UPDATE local_bills
        SET void_refused_at = NULL, void_refused_code = NULL, void_last_error = NULL
-       WHERE void_refused_at IS NOT NULL`,
+       WHERE void_refused_at IS NOT NULL
+         AND (void_refused_code IS NULL OR void_refused_code <> ?)`,
+      [VOID_REJECTED_CODE],
     );
     return r.changes;
   }

@@ -7,6 +7,7 @@
  * exactly why it can be proven headless.
  */
 import { SEND_SCHEDULE_HORIZON_MS, scheduledInstantIsDue } from "../time/clockSanity.js";
+import { VOID_REJECTED_CODE } from "./types.js";
 import type {
   Clock,
   LocalBill,
@@ -431,7 +432,80 @@ export class SyncEngine {
             break;
 
           case "rejected":
-            await this.store.markVoidAttemptFailed(bill.id, outcome.reason, attempt);
+            /*
+             * THE SERVER REFUSED THE VOID ITSELF — 404, 400 or 422.
+             *
+             * markVoidRefused, NOT markVoidAttemptFailed, and that one-word
+             * change is the whole fix. markVoidAttemptFailed writes only
+             * void_attempts and void_last_error; neither is in
+             * listVoidsToApply's predicate, so the row stayed owed and this
+             * path has no backoff column and no time gate — the device
+             * re-POSTed a request that could never succeed on every pass,
+             * about every four seconds, for ever.
+             *
+             * PERMANENT IS MEANT LITERALLY, and it is a property of what gets
+             * sent rather than of the status number's reputation. The engine
+             * only reaches this line for a bill that already synced
+             * (listVoidsToApply requires sync_state='synced' AND doc_no), so a
+             * 404 says the bill is not there for this caller and repeating
+             * cannot make it appear. And the body is `reason`, read from
+             * bill.void_reason, which requestVoid writes exactly once under
+             * `WHERE void_requested_at IS NULL` — so it cannot change between
+             * attempts. Every retry is byte-identical to the one the server
+             * just refused.
+             *
+             * What is KEPT is what a refusal must never erase: void_requested_at
+             * and the owner's own words. The office needs to know a cancellation
+             * was attempted on a bill the system still shows as live. What stops
+             * is only the claim that it is on its way.
+             *
+             * ================================================================
+             * IT DOES NOT REUSE THE 403's MARKER, AND THAT IS THE PART TO READ
+             * BEFORE CHANGING ANY OF THIS.
+             *
+             * The two look interchangeable and are not. Both write the SAME
+             * COLUMN — void_refused_at — and both leave listVoidsToApply, which
+             * is why the state is shared and no new column was added. What is
+             * deliberately different is the CODE, and the code is not a label:
+             * two separate mechanisms read it, and copying `admin_required`
+             * here would have broken both, in the two directions that are
+             * hardest to notice.
+             *
+             * ONE — THE RETRY WOULD HAVE COME BACK EVERY SHIFT.
+             * clearVoidRefusals retracts refusals on every sign-in, because a
+             * sign-in can change WHO IS ASKING and the next attempt may get a
+             * different answer. Nothing about signing in makes a missing bill
+             * exist or an invalid payload valid, so under the 403 code this
+             * void would be handed back to the queue at each sign-in and hammer
+             * the server again until the next one. That is WORSE THAN NEVER
+             * STOPPING, not better: a line that retries forever is at least
+             * visible in one sitting, while one that goes quiet and resumes
+             * tomorrow morning looks like a fresh problem every time and is
+             * never traced to this.
+             *
+             * TWO — THE OPERATOR WOULD HAVE BEEN TOLD SOMETHING FALSE.
+             * billNotice routes void_refused_at through forbiddenReason, whose
+             * void_bill texts are about permission. Under the 403 code the card
+             * would read that this account may not cancel bills and to ask the
+             * shop owner. Both halves are wrong — the account's permissions are
+             * not the problem, and the shop owner cannot fix it either — and it
+             * is wrong ON A BILL THE SERVER STILL HOLDS AS LIVE MONEY, sending
+             * the person at the scale to the wrong human about a problem that
+             * does not exist while a real one goes unreported.
+             *
+             * So: same state, distinct code, and both consumers know the
+             * difference. See VOID_REJECTED_CODE in sync/types.ts, the
+             * exclusion in SqliteLocalStore.clearVoidRefusals and its mirror in
+             * the in-memory fake, and the sentence in parkedReason.
+             * ================================================================
+             */
+            await this.store.markVoidRefused(
+              bill.id,
+              VOID_REJECTED_CODE,
+              outcome.reason,
+              attempt,
+              this.clock.now(),
+            );
             result.voidsRejected += 1;
             break;
 
