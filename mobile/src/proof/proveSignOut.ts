@@ -805,6 +805,22 @@ async function s5DraftSurvives(): Promise<void> {
     const master = await SqliteMasterStore.open(driver);
 
     /*
+     * SIGNED IN FIRST, because this case builds its own driver rather than
+     * taking the shared harness's — the known shape recorded in OPEN_ITEMS.md,
+     * met here for the first time on the MASTER store. Since P1.7 the cache is
+     * stamped with the signed-in tenant, so a list saved with no identity
+     * carries NULL and reads back as not-this-shop: this case would then be
+     * asserting that sign-out preserved a cache that was never readable, which
+     * is a green about the wrong thing.
+     *
+     * It also makes the case HARDER rather than easier. The sign-out under test
+     * must now leave BOTH the rows and the identity that makes them legible —
+     * and the identity is deliberately not cleared on sign-out today, which is
+     * exactly the property the assertions below depend on.
+     */
+    await signInProofDevice(driver);
+
+    /*
      * THE SHOP'S MASTER DATA. This is the direction that strands an offline
      * morning: a device that signs out and loses its products and sellers cannot
      * weigh anything at 07:00 with the server unreachable, and signing in — the

@@ -164,6 +164,10 @@ const freshnessAt = (productsAgeMs: number | null, sellersAgeMs: number | null):
   assessFreshness({
     productsFetchedAt: productsAgeMs === null ? null : ago(productsAgeMs),
     sellersFetchedAt: sellersAgeMs === null ? null : ago(sellersAgeMs),
+    // This helper is about AGE. Tenancy has its own proof (proveCacheTenant), and
+    // a list that is not this shop's never reaches here with a stamp anyway.
+    productsNotThisShop: false,
+    sellersNotThisShop: false,
     now: NOW,
   });
 
@@ -448,6 +452,12 @@ async function c3CacheOnDisk(): Promise<void> {
   let driver = NodeSqliteDriver.open(file);
   let master = await SqliteMasterStore.open(driver);
 
+  // Signed in BEFORE the cache is written: since P1.7 the cache is stamped with
+  // the tenant of whoever is signed in, and a list saved with no identity
+  // carries NULL and reads back as not-this-shop. A device cannot hold cached
+  // master data without having signed in — refreshMaster needs a token — so an
+  // unsigned save is a fixture the product could never produce.
+  await signInProofDevice(driver);
   await master.saveProducts(PRODUCTS, ago(3 * HOUR));
   await master.saveSellers(SELLERS, ago(90 * 60 * 1000));
 
@@ -543,6 +553,10 @@ async function c4ColdStartEmpty(): Promise<void> {
   const f = assessFreshness({
     productsFetchedAt: snap.productsFetchedAt,
     sellersFetchedAt: snap.sellersFetchedAt,
+    // Carried from the STORE rather than hardcoded, so if the reader ever starts
+    // reporting a tenant mismatch here this case sees it instead of hiding it.
+    productsNotThisShop: snap.productsNotThisShop,
+    sellersNotThisShop: snap.sellersNotThisShop,
     now: NOW,
   });
   const notice = masterNotice(f);
@@ -569,11 +583,23 @@ async function c4ColdStartEmpty(): Promise<void> {
   check("and it leaks nothing", leaks(notice?.message ?? "").length === 0);
 
   // Only ONE list missing must name only that list. Same screen, different fix.
+  //
+  // SIGNED IN FIRST, and that is not decoration: since P1.7 the cache is stamped
+  // with the tenant of whoever is signed in, and a list written with no identity
+  // carries NULL and reads as NOT THIS SHOP'S. A device cannot hold cached
+  // products without having signed in — refreshMaster needs a token — so an
+  // unsigned save is a row the product could never have produced
+  // (lessons/a-proof-fixture-must-be-a-row-the-product-could-produce.md). The
+  // half above is untouched: nothing is cached there, so there is no stamp to
+  // disagree with anybody.
+  await signInProofDevice(driver);
   await master.saveProducts(PRODUCTS, ago(HOUR));
   const half = await master.load();
   const hf = assessFreshness({
     productsFetchedAt: half.productsFetchedAt,
     sellersFetchedAt: half.sellersFetchedAt,
+    productsNotThisShop: half.productsNotThisShop,
+    sellersNotThisShop: half.sellersNotThisShop,
     now: NOW,
   });
   const hm = masterNotice(hf);
@@ -599,6 +625,10 @@ async function c5ColdStartStale(): Promise<void> {
   let master = await SqliteMasterStore.open(driver);
 
   // Yesterday evening, 17:00 Bangkok. The yard opens at 09:00 with no server.
+  // Signed in, because the person who fetched this data last night was: an
+  // unsigned save would stamp a NULL tenant and this cache would read as not
+  // this shop's, which is a different case and has its own proof.
+  await signInProofDevice(driver);
   const lastNight = ago(16 * HOUR);
   await master.saveProducts(PRODUCTS, lastNight);
   await master.saveSellers(SELLERS, lastNight);
@@ -610,6 +640,8 @@ async function c5ColdStartStale(): Promise<void> {
   const f = assessFreshness({
     productsFetchedAt: snap.productsFetchedAt,
     sellersFetchedAt: snap.sellersFetchedAt,
+    productsNotThisShop: snap.productsNotThisShop,
+    sellersNotThisShop: snap.sellersNotThisShop,
     now: NOW,
   });
   const notice = masterNotice(f);
@@ -671,6 +703,8 @@ async function c6RefetchReplaces(): Promise<void> {
   const driver = NodeSqliteDriver.open(join(dir, "recycle.db"));
   const master = await SqliteMasterStore.open(driver);
 
+  // See C3: the cache carries the signed-in tenant, so the fixture needs one.
+  await signInProofDevice(driver);
   await master.saveSellers(SELLERS, ago(3 * HOUR));
   await master.saveProducts(PRODUCTS, ago(3 * HOUR));
 
@@ -860,6 +894,11 @@ async function c8ColdStartNoServer(): Promise<void> {
   {
     const d = NodeSqliteDriver.open(file);
     const m = await SqliteMasterStore.open(d);
+    // Yesterday's session, recorded yesterday. The identity lives in the same
+    // FILE, so this morning's cold start below reopens a device that is still
+    // signed in as the same person — which is what makes the cached lists this
+    // shop's, and the whole point of the case.
+    await signInProofDevice(d);
     await m.saveProducts(PRODUCTS, ago(16 * HOUR));
     await m.saveSellers(SELLERS, ago(16 * HOUR));
     await d.close();
@@ -878,6 +917,8 @@ async function c8ColdStartNoServer(): Promise<void> {
   const f = assessFreshness({
     productsFetchedAt: snap.productsFetchedAt,
     sellersFetchedAt: snap.sellersFetchedAt,
+    productsNotThisShop: snap.productsNotThisShop,
+    sellersNotThisShop: snap.sellersNotThisShop,
     now: NOW,
   });
 

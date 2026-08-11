@@ -660,6 +660,9 @@ function k4ProvenanceSurvivesABackwardsJump(): void {
   const suspect = assessFreshness({
     productsFetchedAt: new Date(draftStartedMs + SKEW).toISOString(),
     sellersFetchedAt: new Date(draftStartedMs - HOUR).toISOString(),
+    // Both lists ARE this shop's — the subject here is the clock, not tenancy.
+    productsNotThisShop: false,
+    sellersNotThisShop: false,
     now: T0,
   });
   check(
@@ -692,6 +695,8 @@ function k5TheBannerDoesNotAssertAnAgeItCannotKnow(): void {
   const f = assessFreshness({
     productsFetchedAt: T0,
     sellersFetchedAt: T0,
+    productsNotThisShop: false,
+    sellersNotThisShop: false,
     now: jumpedNow,
   });
 
@@ -731,6 +736,8 @@ function k5TheBannerDoesNotAssertAnAgeItCannotKnow(): void {
   const aging = assessFreshness({
     productsFetchedAt: new Date(new Date(T0).getTime() - 2 * HOUR).toISOString(),
     sellersFetchedAt: new Date(new Date(T0).getTime() - 2 * HOUR).toISOString(),
+    productsNotThisShop: false,
+    sellersNotThisShop: false,
     now: T0,
   });
   const agingMessage = masterNotice(aging)?.message ?? "";

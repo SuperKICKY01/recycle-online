@@ -77,7 +77,12 @@ import type { SignOutFailure } from "./src/session/signOut";
 import { signOutCard } from "./src/session/signOutNotice";
 import type { SignOutAction } from "./src/session/signOutNotice";
 import { SignOutSheet } from "./app/SignOutSheet";
-import { assessFreshness, defaultUnitPrice, masterNotice } from "./src/master/freshness";
+import {
+  assessFreshness,
+  defaultUnitPrice,
+  masterNotice,
+  mayStartBill,
+} from "./src/master/freshness";
 import { dailyScreen } from "./src/reports/dailyView";
 import type { DailyScreen as DailyScreenModel } from "./src/reports/dailyView";
 import { readTokenRole } from "./src/session/deviceRole";
@@ -156,6 +161,15 @@ export default function App() {
    */
   const [productsFetchedAt, setProductsFetchedAt] = useState<string | null>(null);
   const [sellersFetchedAt, setSellersFetchedAt] = useState<string | null>(null);
+  /*
+   * THE LIST ON DISK BELONGS TO ANOTHER SHOP. Separate from the two stamps above
+   * because it answers a different question: those say WHEN, this says WHOSE, and
+   * the screen needs both to tell the operator which remedy to reach for.
+   * Decided in SqliteMasterStore and carried here untouched — App computes
+   * nothing about tenancy, and must not start.
+   */
+  const [productsNotThisShop, setProductsFromOtherShop] = useState(false);
+  const [sellersNotThisShop, setSellersFromOtherShop] = useState(false);
   /** Minute-granular clock driving the cache ages. See nowMinuteIso. */
   const [nowMinute, setNowMinute] = useState(nowMinuteIso);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -209,8 +223,21 @@ export default function App() {
    * reach — this file only routes the answer.
    */
   const freshness = useMemo(
-    () => assessFreshness({ productsFetchedAt, sellersFetchedAt, now: nowMinute }),
-    [productsFetchedAt, sellersFetchedAt, nowMinute],
+    () =>
+      assessFreshness({
+        productsFetchedAt,
+        sellersFetchedAt,
+        productsNotThisShop,
+        sellersNotThisShop,
+        now: nowMinute,
+      }),
+    [
+      productsFetchedAt,
+      sellersFetchedAt,
+      productsNotThisShop,
+      sellersNotThisShop,
+      nowMinute,
+    ],
   );
   const masterMessage = useMemo(() => masterNotice(freshness), [freshness]);
 
@@ -421,6 +448,11 @@ export default function App() {
         await store.saveProducts(ps, at);
         setProducts(ps);
         setProductsFetchedAt(at);
+        // These rows were just written under the CURRENT identity, so whatever
+        // shop the previous ones belonged to is no longer on disk. Cleared per
+        // LIST and not for the pair: the other fetch may still fail below,
+        // leaving that list another shop's — which is the half-refresh case.
+        setProductsFromOtherShop(false);
         answered = true;
       } catch (err) {
         if (isUnauthorized(err)) expired = true;
@@ -432,6 +464,8 @@ export default function App() {
         await store.saveSellers(ss, at);
         setSellers(ss);
         setSellersFetchedAt(at);
+        // Per list — see the note on the product half above.
+        setSellersFromOtherShop(false);
         answered = true;
       } catch (err) {
         if (isUnauthorized(err)) expired = true;
@@ -511,6 +545,8 @@ export default function App() {
         setSellers(cache.sellers);
         setProductsFetchedAt(cache.productsFetchedAt);
         setSellersFetchedAt(cache.sellersFetchedAt);
+        setProductsFromOtherShop(cache.productsNotThisShop);
+        setSellersFromOtherShop(cache.sellersNotThisShop);
         tokenRef.current = token;
         setToken(token);
         // Read off the RESTORED token, before any network call — the whole point
@@ -1394,17 +1430,23 @@ export default function App() {
           <View style={styles.center}>
             <Text style={styles.startHint}>ยังไม่มีบิลที่กำลังทำอยู่</Text>
             {/*
-              THE COLD START WITH AN EMPTY CACHE. A device that has never
-              fetched master data cannot begin a bill — there is no customer to
-              file it to and no product to weigh. The button is disabled rather
-              than opening an empty picker, because a picker that says "no
-              sellers" reads as "this shop has no customers", which is a
-              different and alarming claim. The strip above already says what is
-              missing and what fixes it; this only stops the dead end.
+              NO USABLE MASTER DATA, SO NO BILL. Two ways to get here and the
+              button cannot tell them apart, which is correct — a device that has
+              never fetched, and a device whose cached lists are not this shop's
+              (P1.7). Either way there is no customer to file the bill to and no
+              product to weigh. The DECISION is mayStartBill in
+              src/master/freshness.ts, where a proof can reach it; this is only
+              its render.
+
+              The button is disabled rather than opening an empty picker, because
+              a picker that says "no sellers" reads as "this shop has no
+              customers", which is a different and alarming claim. The strip above
+              already says which list is missing and what fixes it — and says it
+              differently for the two cases; this only stops the dead end.
             */}
             <Pressable
-              style={[styles.loginBtn, (busy || freshness.state === "empty") && styles.dim]}
-              disabled={busy || freshness.state === "empty"}
+              style={[styles.loginBtn, (busy || !mayStartBill(freshness)) && styles.dim]}
+              disabled={busy || !mayStartBill(freshness)}
               onPress={openPicker}
             >
               <Text style={styles.loginText}>เลือกผู้ขาย เพื่อเริ่มบิลใหม่</Text>

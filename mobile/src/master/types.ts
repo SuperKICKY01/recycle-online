@@ -50,6 +50,25 @@ export interface MasterSnapshot {
   sellers: MasterSeller[];
   productsFetchedAt: string | null;
   sellersFetchedAt: string | null;
+  /**
+   * THE LIST IS ABSENT *BECAUSE IT IS NOT THIS SHOP'S* — not because it was
+   * never fetched. Both are absences and both stop a bill; they are separated
+   * only so the operator can be told which one they are in, because the remedies
+   * differ (fetch this shop's list, versus fetch a list at all).
+   *
+   * NOT NAMED "fromOtherShop", and the difference is a claim the screen makes.
+   * It covers two rows: one stamped with a DIFFERENT tenant, and one stamped with
+   * NO tenant — a list cached before the column existed, on an upgraded handset.
+   * The second is probably this shop's own data; we simply cannot confirm it. So
+   * the honest predicate, and the one the operator is told, is "not confirmed to
+   * be this shop's", never "belongs to somebody else".
+   *
+   * INVARIANT, and the proof asserts it: this is never true beside a non-null
+   * fetch stamp. A tenant mismatch clears the stamp — that IS the absent rule —
+   * so "not this shop's" and "we have a usable list" cannot both hold.
+   */
+  productsNotThisShop: boolean;
+  sellersNotThisShop: boolean;
 }
 
 /**

@@ -167,6 +167,19 @@ export interface Freshness {
   haveProducts: boolean;
   haveSellers: boolean;
   /**
+   * WHY the list is missing, when it is: the device holds one, and it belongs to
+   * ANOTHER SHOP. Carried through untouched from the store, which is the only
+   * layer that can know it.
+   *
+   * It changes the SENTENCE and never the STATE. A tenant mismatch is `empty`
+   * exactly like a list that was never fetched — same block, same stopped
+   * button — because the cash consequence is identical. What differs is the
+   * remedy the operator is given, and telling them the wrong one at five in the
+   * morning is the whole cost of folding these together.
+   */
+  productsNotThisShop: boolean;
+  sellersNotThisShop: boolean;
+  /**
    * The last fetch is dated in the FUTURE by more than the fresh window, so the
    * device clock has moved and the age cannot be believed. Device clocks are
    * untrusted (hard rule 7); the money answer is to fail closed, not to render a
@@ -178,6 +191,13 @@ export interface Freshness {
 export interface FreshnessInput {
   productsFetchedAt: string | null;
   sellersFetchedAt: string | null;
+  /**
+   * From MasterSnapshot, unchanged. REQUIRED rather than optional-with-a-default:
+   * a caller that forgets is a compile error, not a screen that silently reverts
+   * to the never-fetched sentence on a device holding another shop's prices.
+   */
+  productsNotThisShop: boolean;
+  sellersNotThisShop: boolean;
   /** Now, as an ISO instant. Injected so the proof owns the clock. */
   now: string;
 }
@@ -201,6 +221,9 @@ export function assessFreshness(input: FreshnessInput): Freshness {
   const s = input.sellersFetchedAt === null ? null : msOf(input.sellersFetchedAt);
   const haveProducts = p !== null;
   const haveSellers = s !== null;
+  // Carried, never recomputed: only the store can know whose rows these are.
+  const productsNotThisShop = input.productsNotThisShop;
+  const sellersNotThisShop = input.sellersNotThisShop;
 
   if (p === null || s === null || now === null) {
     return {
@@ -210,6 +233,8 @@ export function assessFreshness(input: FreshnessInput): Freshness {
       mayDefaultPrice: false,
       haveProducts,
       haveSellers,
+      productsNotThisShop,
+      sellersNotThisShop,
       clockSuspect: false,
     };
   }
@@ -263,6 +288,8 @@ export function assessFreshness(input: FreshnessInput): Freshness {
       mayDefaultPrice: false,
       haveProducts,
       haveSellers,
+      productsNotThisShop,
+      sellersNotThisShop,
       clockSuspect: true,
     };
   }
@@ -274,6 +301,8 @@ export function assessFreshness(input: FreshnessInput): Freshness {
       mayDefaultPrice: false,
       haveProducts,
       haveSellers,
+      productsNotThisShop,
+      sellersNotThisShop,
       clockSuspect: false,
     };
   }
@@ -284,6 +313,8 @@ export function assessFreshness(input: FreshnessInput): Freshness {
     mayDefaultPrice: true,
     haveProducts,
     haveSellers,
+    productsNotThisShop,
+    sellersNotThisShop,
     clockSuspect: false,
   };
 }
@@ -306,6 +337,35 @@ export function defaultUnitPrice(
   freshness: Pick<Freshness, "mayDefaultPrice">,
 ): string | null {
   return freshness.mayDefaultPrice ? tier : null;
+}
+
+/**
+ * MAY A BILL BE STARTED AT ALL? The stop, and the only expression that decides it.
+ *
+ * A STOP AT THE POINT OF OPENING, NOT A FAILURE AT THE POINT OF SAVING. Without
+ * a seller list there is nobody to file the bill to, and that is structural
+ * rather than a policy: `local_draft.seller_id` is NOT NULL (schema.ts), so a
+ * draft cannot even be created; `purchase_bills.seller_id` is NOT NULL with a
+ * composite FK into the tenant's own sellers (migration 0001); and a bill naming
+ * a seller this tenant cannot see comes back 422 — the one TERMINAL class on the
+ * send path, so the load dies with the cash already out of the drawer. The
+ * alternative to stopping here is the operator weighing a full truck with the
+ * seller standing in front of them and being told at the END that none of it can
+ * be recorded.
+ *
+ * EXTRACTED FROM App.tsx, and for the reason sessionStateOf and maySync were:
+ * files under app/ are outside the node proof program entirely, so this
+ * expression previously existed only at a render site no assertion could reach.
+ * A gate proven against a COPY of itself is a claim about the copy.
+ *
+ * It reads `state` alone and deliberately not the two "not this shop" flags: a
+ * tenant mismatch already produces `empty` in the store, and a second condition
+ * here would be a second mechanism that could disagree with the first — a green
+ * then being evidence about whichever still worked
+ * (lessons/a-green-cell-is-evidence-about-the-assertion-not-the-claim.md, 3).
+ */
+export function mayStartBill(f: Pick<Freshness, "state">): boolean {
+  return f.state !== "empty";
 }
 
 /* -------------------------------------------------------------- wording -- */
@@ -334,6 +394,19 @@ const CONNECT_ONCE =
   "ต้องต่อเน็ตและเข้าสู่ระบบสักครั้งก่อน จึงจะเริ่มบันทึกบิลได้";
 
 /**
+ * WHICH list is missing, as the noun phrase both empty-state sentences build on.
+ *
+ * "No data" sends someone hunting; "no seller list" tells the office exactly
+ * what to check. Extracted so the two sentences below cannot drift into naming
+ * different lists for the same state.
+ */
+function missingLists(f: Freshness): string {
+  if (!f.haveProducts && !f.haveSellers) return "รายชื่อผู้ขายและรายการสินค้า";
+  if (!f.haveSellers) return "รายชื่อผู้ขาย";
+  return "รายการสินค้า";
+}
+
+/**
  * What the operator reads about the data underneath them, or null when there is
  * nothing worth saying.
  *
@@ -345,15 +418,40 @@ const CONNECT_ONCE =
  */
 export function masterNotice(f: Freshness): MasterNotice | null {
   if (f.state === "empty") {
-    // Name WHICH list is missing. "No data" sends someone hunting; "no seller
-    // list" tells the office exactly what to check.
-    const what =
-      !f.haveProducts && !f.haveSellers
-        ? "ยังไม่มีรายชื่อผู้ขายและรายการสินค้าในเครื่องนี้"
-        : !f.haveSellers
-          ? "ยังไม่มีรายชื่อผู้ขายในเครื่องนี้"
-          : "ยังไม่มีรายการสินค้าในเครื่องนี้";
-    return { tone: "block", message: `${what} — ${CONNECT_ONCE}` };
+    const what = missingLists(f);
+    /*
+     * TWO ABSENCES, TWO SENTENCES, ONE STOP.
+     *
+     * Both are `block` and both stop the same button. They are separated because
+     * the REMEDIES are different and an operator acts on the remedy: a device
+     * that never fetched needs a first sign-in, a device holding a list that is
+     * not this shop's needs a fetch it can retry the moment the signal returns.
+     *
+     * THIS SENTENCE DELIBERATELY NEVER SAYS "เข้าสู่ระบบ", and that is a
+     * requirement rather than a style choice. There is NO identity-based weighing
+     * block in this app today — nothing anywhere refuses to start a bill for want
+     * of a signed-in person; an absent identity parks ROWS, it does not stop the
+     * scale. When one is written it will say "sign in", and the two must not be
+     * confusable: one waits for a CONNECTION and the other waits for a PERSON,
+     * and an operator sent to find the wrong one waits for something that is
+     * never going to arrive. Whoever adds that block: keep it off this sentence,
+     * and keep "ต่อเน็ต"/"ลองใหม่" off theirs.
+     *
+     * If ANY missing list is not this shop's, this wording wins even when the
+     * other list was merely never fetched — its remedy (connect, fetch this
+     * shop's data) resolves both, while CONNECT_ONCE's "sign in once" is simply
+     * false about a device that is already signed in.
+     */
+    if (f.productsNotThisShop || f.sellersNotThisShop) {
+      return {
+        tone: "block",
+        message:
+          `${what}ที่เก็บไว้ในเครื่องนี้ไม่ใช่ของร้านนี้ จึงใช้ไม่ได้` +
+          ` — ต้องต่อเน็ตเพื่อดึง${what}ของร้านนี้มาก่อน จึงจะเริ่มบันทึกบิลได้` +
+          ` ลองใหม่ได้เมื่อเน็ตกลับมา`,
+      };
+    }
+    return { tone: "block", message: `ยังไม่มี${what}ในเครื่องนี้ — ${CONNECT_ONCE}` };
   }
 
   if (f.state === "fresh") return null;
