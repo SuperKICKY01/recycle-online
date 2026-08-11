@@ -57,6 +57,144 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.7 IS COMPLETE. ALL SEVEN STEPS. 2026-08-11, `959f22d`.** This block
+SUPERSEDES every P1.7 entry below as the current phase; each is left exactly as
+written and was true when written.
+
+**THE STACK IS NOW SIX DEEP, AND IT IS DEEPER THAN WHEN THE ROTATION WAS
+QUEUED.** Five blocks sit under this heading — this one, steps 5-and-the-draft,
+step 4, step 3, account provisioning — and `## Previous phase` beneath them. The
+rotation was owed at three and is owed at six; nothing here is merged or moved,
+because deciding what stops being current is a separate judgement and taking it
+inside a phase record would settle it silently.
+
+**THE PHASE IS FOURTEEN COMMITS**, from `git rev-list --count a471dc2^..959f22d`
+in this pass — a figure worth stating as measured, because the reply that
+preceded this block said sixteen and was wrong. Eleven carry code, three are
+docs-only (`6b74b89`, `1b94a0c`, `171f6d3`).
+
+| sha | what it landed |
+|---|---|
+| `a471dc2` | ownership columns, the identity STORE, a migration that cannot stop half-done |
+| `6b74b89` | docs — the ownership schema recorded |
+| `1f37888` | the login returns `user_id`; the device RECORDS who signed in |
+| `0ac09ef` | the owner stamped onto draft and bill rows at creation |
+| `a57a648` | the SEND queue filter |
+| `869977a` | a permanently rejected void stops being re-sent |
+| `cfb6633` | the VOID queue filter |
+| `1b94a0c` | docs — step 4, and four ways a green meant nothing |
+| `8ec784e` | the master-data cache bound to a TENANT; a mismatch reads ABSENT |
+| `fde2b0c` | the draft loader hands back only the current person's cart |
+| `171f6d3` | docs — the first phase-close, and a fifth green-cell mechanism |
+| `acea1ac` | the login path: a refusal is not an outage, a 200 is not a session |
+| `4bde6e1` | the login SCREEN, the shop code, and the end of the hardcoded account |
+| `959f22d` | the status strip: three numbers that mean what they say |
+
+**THE SEVEN STEPS AGAINST THE COMMITS THAT CLOSED THEM**, read from
+`ROADMAP.md § P1.7` "THE ORDER, AND WHY" and from the commit subjects and
+contents in this pass:
+
+| step | closed by |
+|---|---|
+| (1) confirm three reported items from disk | the pass that produced `a471dc2`; recorded in `6b74b89` |
+| (2) correct the void-class outstanding record | `869977a` and `cfb6633`, both of which touched `OPEN_ITEMS.md` |
+| (3) schema and migration, kill-mid-migration proof | `a471dc2` (`prove:migration`) |
+| (4) owner filter, send AND void, separate evidence each | `a57a648` (`prove:sendowner`) and `cfb6633` (`prove:voidowner`) |
+| (5) the cache bound to tenant | `8ec784e` (`prove:cachetenant`) |
+| (6) the login screen and the stored identity | the store at `a471dc2`, the recording at `1f37888`, the screen at `4bde6e1` (`prove:loginscreen`) |
+| (7) the status strip | `959f22d` (`prove:statuscounts`) |
+
+**TWO COMMITS ARE NOT ANY OF THE SEVEN, and both came out of measuring rather
+than from the plan.** `fde2b0c`, the draft loader — the plan never listed it,
+and a survey found the loader returned the newest cart to whoever asked.
+`acea1ac`, the login path — repaired BEFORE the screen was built so that when
+the screen was tested neither defect could be a suspect.
+
+### What an operator can now do that they could not before
+
+They can sign in as themselves. Before this phase every device was the same
+person in the same shop, because `app/config.ts` held one tenant, one username
+and one password, and every ownership mechanism in the system was driven only by
+identities a proof had invented. A handset is now set up ONCE with the shop's
+eight-character code, which the SERVER resolves — never typed as an identifier,
+never guessed — and from then on the screen asks for a username and a password.
+The person who weighs a load owns the bill; the next person to pick the handset
+up gets their own queue, their own draft, the same shop's prices, and a number on
+the strip that counts their own work. A wrong password says so instead of
+claiming the yard is offline.
+
+### Refused, withheld, waiting — three different things, not degrees of one
+
+**REFUSED** is the cache. A tenant mismatch reads as ABSENT rather than stale and
+`mayStartBill` stops weighing, because the numbers on the screen would be another
+shop's prices and the cash is paid against them. Nothing else in the phase stops
+the yard working.
+
+**WITHHELD** is the draft. A cart belonging to somebody else is not handed over,
+and it is kept, not adopted and not destroyed — but nothing is blocked, because a
+draft says nothing about prices and `ROADMAP.md § P1.7` already rejected controls
+the person at the scale can route around: blocked from weighing they use paper or
+reinstall, and both lose more.
+
+**WAITING** is the queue. Another account's bills are not selected, not deleted
+and not touched; they sit until their owner signs in here. The difference from
+the two above is what the operator is asked to do: stop, carry on, or nothing at
+all.
+
+### The three numbers, and one of them waits for nobody
+
+`unsentBreakdown` splits every unsent bill in ONE statement, disjoint and
+complete, so the parts reconcile with the device. **mine** waits on a CONNECTION
+and falls on its own. **otherAccount** waits on a PERSON who exists — the owner
+signing in on this handset. **unknownOwner** waits on NOBODY: both columns are
+null, null matches no identity, and no sign-in anyone can perform releases it.
+Those rows come from a handset upgraded across `a471dc2` and from a save in the
+boot window before the identity store opened. The strip says so — that signing in
+does not help — rather than telling the operator to wait for somebody who is
+never coming. Disposal is undecided and is queued in
+`OPEN_ITEMS.md § Code debt`. A fourth, **mineBlocked**, waits on the OFFICE and
+already had its own line and its own retry.
+
+### The device-driver limit and the device-pass fact — neither stands alone
+
+**Every mechanism in this phase is proved on the driver the PROOFS run:
+`node:sqlite`, against real files on disk. NONE of it is proved on the driver the
+HANDSET runs**, which is `expo-sqlite`'s own connection
+(`mobile/src/device/expoSqliteDriver.ts`) and cannot be exercised off-device at
+all.
+
+**AND NO DEVICE PASS WAS TAKEN FOR ANY OF THE FOURTEEN COMMITS.** Every
+observation in this block is a headless proof, an HTTP request to a throwaway
+server on this box, or a file read. Nothing has been seen on a handset — not the
+login screen, not the setup screen, not the strip's new sentences, not a shift
+change. `CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING" applies in
+full to whoever takes the first one, and until then the screens are unobserved
+rather than working.
+
+### The DONE WHEN sweep does not pass, and the reason it cannot
+
+Run as written in `ROADMAP.md § P1.7` in this pass:
+`rg --no-ignore --hidden --text --count-matches "DEMO" mobile/` exits **0** where
+the criterion requires **1**. Five matches. `mobile/dist` holds **210 files** and
+nothing was cleaned, which the criterion requires reporting so an emptied
+directory cannot sweep clean for the wrong reason.
+
+**FOUR OF THE FIVE ARE PROSE ABOUT THE REMOVAL ITSELF** — the note in
+`app/config.ts` saying what was taken out, a pre-existing sentence in
+`session/signOut.ts`, and two compiled copies of the latter under `dist/`. The
+fifth is a stale Hermes bundle built while the constants still existed, and it is
+the only match that could carry a credential.
+
+**REWORDING THE PROSE TO MAKE THE SWEEP PASS WOULD BE WORSE THAN REPORTING IT.**
+The criterion cannot tell a token used as a credential from the same token
+written down in an explanation of its deletion, and a check made green by
+deleting the words that explain a removal buys a passing sweep at the cost of the
+record. The bundle is the owner's call; the prose is not a defect.
+
+**THIS FILE IS 4754 LINES**, measured by `wc -l` and a raw LF count that agree,
+against its own "Revisit at 2000 lines" trigger. `START_HERE.md` still tells a
+booting session it is 1940. Both stale, neither corrected here.
+
 **P1.7 STEPS 5 AND THE DRAFT HALF ARE COMPLETE: EVERY LOCAL READ OF A ROW THAT
 BELONGS TO SOMEBODY NOW ASKS WHOSE IT IS. 2026-08-11, `fde2b0c`.** This block
 SUPERSEDES the P1.7 STEP 4 entry below as the current phase; that entry is left
