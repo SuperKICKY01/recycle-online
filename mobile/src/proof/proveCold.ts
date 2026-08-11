@@ -963,7 +963,7 @@ async function c8ColdStartNoServer(): Promise<void> {
   check("a seller can be picked from the cache", chosen !== undefined);
   const ids = new SeqIds("cold");
   let draft = newDraft(ids.newId(), "sell-001", NOW, f.asOf);
-  await draftStore.save(draft, null);
+  await draftStore.save(draft, PROOF_OWNER);
 
   const tiers = tiersFor(snap.products, chosen?.grade ?? null, f);
   check("no price is offered for it", tiers.pendingDefault("prod-FE") === null);
@@ -981,7 +981,7 @@ async function c8ColdStartNoServer(): Promise<void> {
   });
   if (!line.ok) throw new Error("the cold-start line must build");
   draft = addLine(draft, line.line, NOW);
-  await draftStore.save(draft, null);
+  await draftStore.save(draft, PROOF_OWNER);
 
   const bill = buildLocalBill(
     { clock: systemClock, ids },
@@ -1003,7 +1003,8 @@ async function c8ColdStartNoServer(): Promise<void> {
     "it has no doc_no yet, and the UI must say so (hard rule 3)",
     saved?.doc_no === null,
   );
-  check("the draft is gone — exactly one of {draft, bill} exists", (await draftStore.load()) === null);
+  check("the draft is gone — exactly one of {draft, bill} exists",
+    (await draftStore.load()).draft === null);
 
   /* ---- the engine tries, against the dead port. */
   const engine = new SyncEngine({
@@ -1096,7 +1097,7 @@ async function c9ProvenanceSurvives(): Promise<void> {
   });
   if (!line.ok) throw new Error("line must build");
   draft = addLine(draft, line.line, NOW);
-  await draftStore.save(draft, null);
+  await draftStore.save(draft, PROOF_OWNER);
 
   // A real restart before promotion: the stamp has to be on DISK, not in a
   // React state that a force-quit takes with it.
@@ -1105,7 +1106,7 @@ async function c9ProvenanceSurvives(): Promise<void> {
   draftStore = await SqliteDraftStore.open(driver);
   billStore = await SqliteLocalStore.open(driver);
   await signInProofDevice(driver);
-  const restored = await draftStore.load();
+  const restored = (await draftStore.load()).draft;
   check("the draft's stamp survives a restart", restored?.master_as_of === lastNight);
 
   /*
@@ -1116,8 +1117,8 @@ async function c9ProvenanceSurvives(): Promise<void> {
   const masterStore = await SqliteMasterStore.open(driver);
   await masterStore.saveProducts(PRODUCTS, NOW);
   await masterStore.saveSellers(SELLERS, NOW);
-  if (restored !== null) await draftStore.save({ ...restored, updated_at: NOW }, null);
-  const afterRefresh = await draftStore.load();
+  if (restored !== null) await draftStore.save({ ...restored, updated_at: NOW }, PROOF_OWNER);
+  const afterRefresh = (await draftStore.load()).draft;
   check(
     "a refresh mid-cart does NOT move it — the lines were priced before that",
     afterRefresh?.master_as_of === lastNight,

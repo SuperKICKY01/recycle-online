@@ -132,7 +132,7 @@ async function main(): Promise<void> {
   // transaction the driver sees is the promotion this proof is about.
   driver.arm();
 
-  const draft = await store.load();
+  const draft = (await store.load()).draft;
   if (draft === null) throw new Error("child: no draft to promote");
 
   // The bill id and idempotency key are minted HERE, at promotion — exactly as

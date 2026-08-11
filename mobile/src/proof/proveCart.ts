@@ -205,6 +205,10 @@ async function c3DraftSurvivesReopen(): Promise<void> {
 
   const driver1 = NodeSqliteDriver.open(file);
   const store1 = await SqliteDraftStore.open(driver1);
+  // The app cannot write a cart with nobody signed in, and since P1.7 the loader
+  // hands back only the current person's draft — so an unsigned fixture would
+  // make this reopen case report a lost draft for a tenancy reason.
+  await signInProofDevice(driver1);
 
   let draft = draftWithSpecs(SPECS, new SeqIds("line"));
   // Entered but NOT yet added: raw, unvalidated text, including junk the parser
@@ -213,13 +217,13 @@ async function c3DraftSurvivesReopen(): Promise<void> {
     ...draft,
     form: { product_id: "prod-CU-WIRE", gross: "7.7", tare: "0.2", price: "3.5abc" },
   };
-  await store1.save(draft, null);
+  await store1.save(draft, PROOF_OWNER);
   await driver1.close();
   console.log("  connection closed; process-level state discarded");
 
   const driver2 = NodeSqliteDriver.open(file);
   const store2 = await SqliteDraftStore.open(driver2);
-  const back = await store2.load();
+  const back = (await store2.load()).draft;
   const lines = back ? orderedLines(back) : [];
 
   console.log(`  reloaded draft ${String(back?.id)} with ${String(lines.length)} line(s)`);
@@ -274,7 +278,7 @@ async function c4EngineNeverSeesADraft(): Promise<void> {
   });
 
   const draft = draftWithSpecs(SPECS, new SeqIds("line"));
-  await draftStore.save(draft, null);
+  await draftStore.save(draft, PROOF_OWNER);
 
   const draftLineCount = (
     await driver.all<{ c: number }>("SELECT COUNT(*) c FROM local_draft_lines")
@@ -297,7 +301,7 @@ async function c4EngineNeverSeesADraft(): Promise<void> {
   check("nothing reached the server", server.billCount === 0);
 
   // Not a vacuous pass: promote, and the SAME engine sends it immediately.
-  const loaded = await draftStore.load();
+  const loaded = (await draftStore.load()).draft;
   const bill = buildLocalBill(
     { clock, ids: new SeqIds("promoted") },
     {
@@ -375,7 +379,7 @@ async function c5CrashAtTheTransition(mode: "before-commit" | "after-commit"): P
   const draftStore = await SqliteDraftStore.open(driver);
   await SqliteLocalStore.open(driver); // ensure the bills table exists too
   await signInProofDevice(driver);
-  await draftStore.save(draftWithSpecs(SPECS, new SeqIds("line")), null);
+  await draftStore.save(draftWithSpecs(SPECS, new SeqIds("line")), PROOF_OWNER);
   await driver.close();
 
   const billId = "bill-crash-0001";

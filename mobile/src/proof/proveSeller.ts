@@ -491,7 +491,7 @@ async function s6DraftSurvivesForceQuit(): Promise<void> {
   // A brand new connection to the file the dead process left behind.
   const driver = NodeSqliteDriver.open(file);
   const store = await SqliteDraftStore.open(driver);
-  const restored = await store.load();
+  const restored = (await store.load()).draft;
   console.log(
     `  restored: seller=${String(restored?.seller_id)}` +
       ` vehicle=${JSON.stringify(restored?.vehicle_no)}` +
@@ -520,13 +520,13 @@ async function s6DraftSurvivesForceQuit(): Promise<void> {
       tierForGrade("A"),
       LATER,
     ).draft;
-    await store.save(normaliseVehicleNo(moved, LATER), null);
+    await store.save(normaliseVehicleNo(moved, LATER), PROOF_OWNER);
   }
   await driver.close();
 
   const driver2 = NodeSqliteDriver.open(file);
   const reopened = await SqliteDraftStore.open(driver2);
-  const again = await reopened.load();
+  const again = (await reopened.load()).draft;
   console.log(
     `  after change + reopen: seller=${String(again?.seller_id)} vehicle=${JSON.stringify(again?.vehicle_no)}`,
   );

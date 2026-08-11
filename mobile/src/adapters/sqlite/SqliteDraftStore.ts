@@ -9,8 +9,14 @@ import type { Draft, DraftForm, DraftLine } from "../../cart/types.js";
 import type { LocalBill } from "../../sync/types.js";
 import type { SqlDriver } from "./driver.js";
 import { initConnection } from "./schema.js";
+import { SqliteIdentityStore } from "./SqliteIdentityStore.js";
 import type { LocalIdentity } from "./SqliteIdentityStore.js";
-import { BILL_INSERT_SQL, billInsertParams } from "./SqliteLocalStore.js";
+import {
+  BILL_INSERT_SQL,
+  billInsertParams,
+  OWNED_BY_CURRENT,
+  ownerParams,
+} from "./SqliteLocalStore.js";
 
 interface DraftRow {
   id: string;
@@ -42,12 +48,47 @@ const LINE_COLUMNS =
   "id, draft_id, seq, product_id, product_code, product_name, uom_code," +
   " gross_weight, tare_weight, net_weight, unit_price, list_price, amount";
 
+/**
+ * What a load found: the draft this person may continue, and how many were kept
+ * back from them.
+ *
+ * `withheld` is a COUNT and never the rows. The operator is told that unfinished
+ * work exists and is being kept; they are not shown whose it is or what is on
+ * it, for the same reason ROADMAP.md section P1.7 gives about parked bills —
+ * "Not whose, and not their contents."
+ */
+export interface DraftLoad {
+  draft: Draft | null;
+  withheld: number;
+}
+
 export class SqliteDraftStore {
-  private constructor(private readonly db: SqlDriver) {}
+  private constructor(
+    private readonly db: SqlDriver,
+    private readonly identity: SqliteIdentityStore,
+  ) {}
+
+  /**
+   * Who this device is signed in as, read fresh for the statement that filters.
+   * Mirrors SqliteLocalStore.currentOwner and SqliteMasterStore.currentTenant,
+   * and is not cached for the same reason: a value captured at open() goes stale
+   * at the one moment that matters, when somebody else signs in.
+   *
+   * SAFE HERE BECAUSE `load` OPENS NO TRANSACTION. driver.ts states that a
+   * statement issued on the driver from inside a transaction body re-enters the
+   * connection lock and deadlocks — so this must never be called from within
+   * `save` or `promoteToBill`, which are transactional and take their owner as
+   * an argument from the caller instead.
+   */
+  private currentOwner(): Promise<LocalIdentity | null> {
+    return this.identity.load();
+  }
 
   static async open(db: SqlDriver): Promise<SqliteDraftStore> {
     await initConnection(db);
-    return new SqliteDraftStore(db);
+    // The SAME driver, so the identity is read on the connection the filtered
+    // statement runs on.
+    return new SqliteDraftStore(db, new SqliteIdentityStore(db));
   }
 
   /**
@@ -120,14 +161,103 @@ export class SqliteDraftStore {
     });
   }
 
-  /** The single active draft, or null. Lines come back in seq order. */
-  async load(): Promise<Draft | null> {
+  /**
+   * The active draft THIS PERSON MAY CONTINUE, plus a count of the ones kept
+   * back. Lines come back in seq order.
+   *
+   * ---------------------------------------------------------------------------
+   * A DRAFT IS WITHHELD FOR TWO DISTINCT REASONS, DOWN ONE CODE PATH
+   * ---------------------------------------------------------------------------
+   * The predicate treats them identically and they are not the same situation:
+   *
+   *   A DIFFERENT OWNER. Somebody else started this cart. It returns to them the
+   *   moment they sign in on this handset, and to nobody else.
+   *
+   *   AN UNKNOWN OWNER (both columns NULL). A cart written before the owner
+   *   columns existed, or one saved in the boot window before the identity store
+   *   was open. On an upgraded handset this is PROBABLY THE SHOP'S OWN WORK —
+   *   very likely the work of the person now standing at the scale — and it is
+   *   still withheld, because "probably" is exactly the guess that manufactures
+   *   false provenance (ROADMAP.md section P1.7, "a guess would manufacture false
+   *   provenance that reads exactly like true provenance"). Unlike the first
+   *   case, NO sign-in will ever release it: null matches nobody, so it waits for
+   *   a person who does not exist.
+   *
+   * WHAT A READER SHOULD LOOK AT FIRST when a draft does not appear: the ROW'S
+   * OWNER COLUMNS beside the local_identity row —
+   *   SELECT owner_tenant_id, owner_user_id FROM local_draft;
+   *   SELECT tenant_id, user_id FROM local_identity WHERE only_row = 1;
+   * Two NULLs is the second case; two different values is the first; no identity
+   * row at all withholds EVERYTHING and is a device that has not signed in. Do
+   * not start from the loader or the screen — an empty start screen looks
+   * identical on an ordinary morning, and `withheld` is the only thing that
+   * separates them.
+   *
+   * On why the owner clause is part of the SELECT rather than a check on its
+   * result, see the note at the statement itself — it is a hazard, not a
+   * stylistic preference, and it is recorded where the change would be made.
+   */
+  async load(): Promise<DraftLoad> {
+    const owner = await this.currentOwner();
+    /*
+     * THE OWNER CLAUSE IS PART OF THIS SELECT. DO NOT LIFT IT OUT AND CHECK THE
+     * RESULT INSTEAD — THAT LOSES THE OPERATOR'S OWN WORK.
+     *
+     * The tempting simplification is to keep the old statement and reject
+     * afterwards: read `ORDER BY updated_at DESC LIMIT 1`, compare the row's
+     * owner, return null if it is not this person's. It reads as the same rule
+     * expressed more plainly. It is not the same rule.
+     *
+     * TWO DRAFT ROWS SIDE BY SIDE IS THE ORDINARY STATE THIS CHANGE PRODUCES,
+     * not an edge case to be discounted. A withheld cart is deliberately KEPT on
+     * disk, and the operator then starts their own — so from the first shift
+     * change onward the table normally holds one row for each of them. Reject-
+     * after-the-fact then finds the OTHER person's row whenever theirs is the
+     * newer one, refuses it, and reports NOTHING: the operator's own unfinished
+     * cart is sitting on disk, was never in question, and is invisible behind a
+     * row they are not allowed to see. They lose a cart to a bug whose whole
+     * purpose was to protect one. Filtering inside the selection cannot produce
+     * that, because `LIMIT 1` is then applied to rows that are already theirs.
+     *
+     * WHAT WATCHES FOR IT: `proveDraftOwner.ts` case C4, "B's own draft is not
+     * hidden behind A's NEWER one" — which exists for this and nothing else, and
+     * whose control asserts that theirs really is the newer row, since with the
+     * timestamps the other way round the case would pass under both forms and
+     * measure nothing. Measured under the reject-after-the-fact mutation: C4
+     * returns `draft-c4-theirs` where it must return `draft-c4-mine`.
+     *
+     * Not pinned to a sha: this ships in the commit that introduces it, and HEAD
+     * would name the commit that does not contain it — CLAUDE.md section
+     * Conventions "PIN A CLAIM TO A COMMIT". Written 2026-08-11.
+     */
     const heads = await this.db.all<DraftRow>(
       "SELECT id, seller_id, vehicle_no, next_seq, form_json, updated_at, master_as_of" +
-        " FROM local_draft ORDER BY updated_at DESC LIMIT 1",
+        ` FROM local_draft WHERE ${OWNED_BY_CURRENT} ORDER BY updated_at DESC LIMIT 1`,
+      ownerParams(owner),
     );
+
+    /*
+     * THE COUNT OF WHAT WAS KEPT BACK, in ONE statement with the selection's own
+     * predicate, so the two can never describe different moments or disagree
+     * about what "mine" means.
+     *
+     * CASE WHEN, not `NOT (...)`. The complement of this predicate cannot be
+     * written by negating it: `NOT (owner_tenant_id = ? AND ...)` is NULL for a
+     * null-owner row, NULL is not TRUE, and the rows most needing to be counted
+     * would be counted as zero — the same three-valued-logic trap that makes the
+     * positive form correct, sprung in the opposite direction. CASE WHEN sends a
+     * NULL condition to ELSE, which is the answer wanted here.
+     */
+    const totals = await this.db.all<{ total: number; owned: number }>(
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(CASE WHEN ${OWNED_BY_CURRENT} THEN 1 ELSE 0 END), 0) AS owned
+         FROM local_draft`,
+      ownerParams(owner),
+    );
+    const withheld = (totals[0]?.total ?? 0) - (totals[0]?.owned ?? 0);
+
     const head = heads[0];
-    if (head === undefined) return null;
+    if (head === undefined) return { draft: null, withheld };
 
     const rows = await this.db.all<LineRow>(
       `SELECT id, seq, product_id, product_code, product_name, uom_code,
@@ -136,7 +266,7 @@ export class SqliteDraftStore {
       [head.id],
     );
 
-    return {
+    const draft: Draft = {
       id: head.id,
       seller_id: head.seller_id,
       vehicle_no: head.vehicle_no,
@@ -161,6 +291,7 @@ export class SqliteDraftStore {
         }),
       ),
     };
+    return { draft, withheld };
   }
 
   async deleteDraft(id: string): Promise<void> {

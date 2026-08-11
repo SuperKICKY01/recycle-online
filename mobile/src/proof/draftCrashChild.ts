@@ -14,6 +14,8 @@
 import { NodeSqliteDriver } from "../adapters/sqlite/nodeDriver.js";
 import { SqliteDraftStore } from "../adapters/sqlite/SqliteDraftStore.js";
 import { addLine, buildLine, newDraft, setVehicleNo } from "../cart/cart.js";
+import { PROOF_OWNER } from "./fakes.js";
+import { signInProofDevice } from "./proofDevice.js";
 
 /** Dies instantly and unconditionally. SIGKILL cannot be caught or deferred. */
 function die(): never {
@@ -32,7 +34,8 @@ async function main(): Promise<void> {
     throw new Error("usage: draftCrashChild <dbFile> <draftId> <sellerId> <vehicleNo>");
   }
 
-  const store = await SqliteDraftStore.open(NodeSqliteDriver.open(dbFile));
+  const driver = NodeSqliteDriver.open(dbFile);
+  const store = await SqliteDraftStore.open(driver);
 
   const now = "2026-07-26T09:00:00.000Z";
   // The master data this draft was priced against. Any fixed instant does;
@@ -53,8 +56,20 @@ async function main(): Promise<void> {
   if (!line.ok) throw new Error(`child: fixture line failed: ${line.field}/${line.error}`);
   draft = addLine(draft, line.line, now);
 
-  // No identity is stored in this child, so the owner is genuinely UNKNOWN.
-  await store.save(draft, null);
+  /*
+   * SIGNED IN, AND THE DRAFT IS OWNED. This child stands in for the app, and the
+   * app cannot write a cart without somebody signed in — the identity is
+   * recorded at login and read live at every save. Since P1.7 the loader hands
+   * back only the draft the current person owns, so a null owner here would make
+   * the PARENT's crash-survival case find nothing and read as a lost draft: a
+   * tenancy result wearing a crash-safety label.
+   *
+   * The identity goes into the same FILE, so the parent reopening it is the same
+   * device with the same person still signed in — which is what a force-quit
+   * leaves behind.
+   */
+  await signInProofDevice(driver);
+  await store.save(draft, PROOF_OWNER);
   console.log(`CHILD: draft saved (seller=${sellerId} vehicle=${vehicleNo}); killing now`);
   die();
 }

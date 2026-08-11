@@ -30,7 +30,8 @@
     "prove:sendowner": "npm run build && node dist/proof/proveSendOwner.js",
     "prove:voidterminal": "npm run build && node dist/proof/proveVoidTerminal.js",
     "prove:voidowner": "npm run build && node dist/proof/proveVoidOwner.js",
-    "prove:cachetenant": "npm run build && node dist/proof/proveCacheTenant.js"
+    "prove:cachetenant": "npm run build && node dist/proof/proveCacheTenant.js",
+    "prove:draftowner": "npm run build && node dist/proof/proveDraftOwner.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

@@ -60,6 +60,7 @@ import {
   toBillItems,
 } from "./src/cart/cart";
 import type { GradeTiers, SellerChangeImpact } from "./src/cart/cart";
+import { withheldDraftNotice } from "./src/cart/draftNotice";
 import { NO_LOCKS, releaseOnSave } from "./src/cart/entry";
 import type { Locks } from "./src/cart/entry";
 import { cleanVehicleNo, gradePrice, indexPlates } from "./src/cart/sellers";
@@ -178,6 +179,14 @@ export default function App() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [billsOpen, setBillsOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  /*
+   * CARTS ON THIS DEVICE THAT THIS PERSON MAY NOT CONTINUE — a count, from the
+   * loader, never computed here. Read once at boot: nothing on this screen can
+   * change whose a draft is, so there is no event that would move it. It goes
+   * back to zero at the next boot after the owner signs in, which is the only
+   * thing that releases one.
+   */
+  const [draftsWithheld, setDraftsWithheld] = useState(0);
 
   /*
    * THE DAY'S MONEY. Three pieces of state and no more.
@@ -523,7 +532,10 @@ export default function App() {
         });
 
         const recovered = await engineRef.current.recoverInterrupted();
-        const restored = await draftStore.load();
+        // The loader now decides WHETHER this person may have the draft; what
+        // comes back is the one they own, plus how many were kept back.
+        const loaded = await draftStore.load();
+        const restored = loaded.draft;
 
         /*
          * THE COLD START, in the order that matters.
@@ -556,6 +568,7 @@ export default function App() {
         setRole(readTokenRole(token));
 
         setDraft(restored);
+        setDraftsWithheld(loaded.withheld);
         setReady(true);
         setStatus(
           API_BASE_URL +
@@ -1430,6 +1443,19 @@ export default function App() {
           <View style={styles.center}>
             <Text style={styles.startHint}>ยังไม่มีบิลที่กำลังทำอยู่</Text>
             {/*
+              A CART IS BEING KEPT THAT THIS PERSON MAY NOT CONTINUE. Without
+              this line the screen above is byte-identical to an ordinary morning
+              with nothing in progress, so somebody who left half a cart last
+              night would read "it is gone". The sentence and the decision to
+              show nothing about WHOSE it is live in src/cart/draftNotice.ts,
+              where a proof can reach them; this is only its render.
+            */}
+            {withheldDraftNotice(draftsWithheld) !== null && (
+              <Text style={styles.withheldDraft}>
+                {withheldDraftNotice(draftsWithheld)}
+              </Text>
+            )}
+            {/*
               NO USABLE MASTER DATA, SO NO BILL. Two ways to get here and the
               button cannot tell them apart, which is correct — a device that has
               never fetched, and a device whose cached lists are not this shop's
@@ -1671,6 +1697,18 @@ const styles = StyleSheet.create({
   startHint: {
     fontSize: 15, color: "#64748b", textAlign: "center", marginBottom: 14,
     fontWeight: "600",
+  },
+  /*
+   * Amber, and NOT the red `block` tone the master strip uses. Nothing is
+   * broken and nothing is stopped — a bill can be started normally — so this
+   * must not read as a refusal. It is information about work being held.
+   * Not numberOfLines-clamped: a truncated "it has not been deleted" is the
+   * half of the sentence that matters going missing.
+   */
+  withheldDraft: {
+    fontSize: 13, color: "#78350f", backgroundColor: "#fef3c7",
+    textAlign: "center", fontWeight: "700", marginBottom: 14,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8,
   },
   dim: { opacity: 0.4 },
 });

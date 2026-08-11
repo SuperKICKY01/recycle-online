@@ -105,14 +105,25 @@ const COLUMNS =
  * while no identity has ever been recorded, and ROADMAP.md section P1.7 says
  * those bills must stop sending rather than keep trying.
  */
-const OWNED_BY_CURRENT = "owner_tenant_id = ? AND owner_user_id = ?";
+/*
+ * EXPORTED FOR SqliteDraftStore, which asks the same question of a different
+ * table. "This row is mine" is a CONVENTION, not arithmetic — a second author
+ * given only the sentence could reasonably write `IS NOT DISTINCT FROM`, or
+ * compare one column, or forget that NULL must fail — so it has ONE definition
+ * and is imported, never retyped (lessons/a-checker-must-not-share-the-code-it-
+ * checks.md: duplicate arithmetic, never duplicate a convention).
+ *
+ * EXPORTING IT CHANGES NOTHING ABOUT THE SEND QUEUE. The text, the statements
+ * that splice it, and QUEUED below are all untouched; only the visibility moved.
+ */
+export const OWNED_BY_CURRENT = "owner_tenant_id = ? AND owner_user_id = ?";
 
 /**
  * The two bound values, in the order the clause names them. Expanded from the
  * pair at one point, so the columns can never disagree about whether an owner
  * is known.
  */
-function ownerParams(owner: RowOwner | null): SqlValue[] {
+export function ownerParams(owner: RowOwner | null): SqlValue[] {
   return [owner === null ? null : owner.tenant_id, owner === null ? null : owner.user_id];
 }
 

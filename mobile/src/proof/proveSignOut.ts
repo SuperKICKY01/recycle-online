@@ -900,7 +900,7 @@ async function s5DraftSurvives(): Promise<void> {
       updated_at: "2026-08-06T01:00:00.000Z",
       master_as_of: null,
     };
-    await drafts.save(draft, null);
+    await drafts.save(draft, PROOF_OWNER);
 
     const outcome = await signOut({
       pending: 0,
@@ -912,7 +912,7 @@ async function s5DraftSurvives(): Promise<void> {
     check("signed out", outcome.kind === "signed_out", outcome.kind);
 
     // Read it BACK OUT of the database. Not "we did not call delete" — the row.
-    const after = await drafts.load();
+    const after = (await drafts.load()).draft;
     check("a draft is still there", after !== null);
     check("it is the SAME draft", after?.id === "d-s5", after?.id ?? "null");
     check("with its line intact", after?.lines.length === 1, String(after?.lines.length));
