@@ -1950,6 +1950,44 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   *Unblocks:* nothing — it is a debugging rule and an ordering constraint on
   proof setup, and it applies to every proof that touches the void queue.
 
+- **TWO KINDS OF ROW CAN NOW NEVER BE RELEASED, AND NEITHER IS A DEFECT — THEY
+  ARE WHAT THE DECIDED RULES PRODUCE. Measured at `fde2b0c`.** Both follow from
+  "an owner this device cannot match is not mine", which is deliberate, and both
+  end in the same place: a row that waits for a person who will never arrive.
+  **(1) A BILL OWNED BY SOMEBODY WHO HAS LEFT.** `QUEUED` selects only rows whose
+  owner pair equals the stored identity, so an unsent bill written by an employee
+  who never signs in on this handset again is owed for ever and sends never. The
+  cash left the drawer; the server has no record; the bill exists on one device.
+  `ROADMAP.md § P1.7` states this outcome as certain rather than possible —
+  "keying ownership to a user means an employee who leaves with unsent bills
+  leaves them unsent for good" — and says the way out must be deliberate and does
+  not exist yet.
+  **(2) A DRAFT WHOSE OWNER IS UNKNOWN.** Since `fde2b0c` the loader hands back
+  only the current person's cart and counts the rest as withheld. A different
+  owner is released when that person signs in here; a NULL owner is released by
+  nobody, because null matches no identity — so a cart written before the columns
+  existed, or in the boot window before the identity store opened, is kept for
+  ever and shown to nobody.
+  **WHY THEY ARE ONE ENTRY.** Same cause, same absence of a remedy, and the same
+  trap for whoever writes one: a fix aimed at either that works by ATTACHING the
+  present user solves it by manufacturing provenance, which is the exact failure
+  the owner pair exists to prevent and which no later audit could detect. Any
+  remedy must move the row to a state that says NOBODY KNOWS rather than to a
+  state that names somebody.
+  **WHAT IS VISIBLE TODAY, and it differs between them.** The draft half is
+  surfaced — a count on the start screen, wording that says the work was kept and
+  its owner unchanged. The bill half is NOT: the count the operator reads is the
+  unfiltered `listByState` total, so an unreleasable bill is inside a number that
+  looks like an ordinary backlog. That half is P1.7 step 7's to fix, and it is
+  named in the current-phase entry of `PROJECT_STATUS.md`.
+  *Not done:* disposal is UNDECIDED for both — whether such a row is ever
+  discarded, after how long, on whose authority, and what evidence survives it.
+  No count of affected rows on any real handset exists or can exist
+  (`ARCHITECTURE.md § 11`), so the size of this is unknown and will stay unknown;
+  no number is quoted here for that reason.
+  *Unblocks:* an owner decision. Until it is taken the rows accumulate silently,
+  which is the correct behaviour and is also the reason nobody will notice them.
+
 ## Decisions open — the owner's, not the code's
 
 - **SHOULD A TYPED SHOP CODE BE CASE-NORMALISED? A PRODUCT DECISION, NOT A BUG,

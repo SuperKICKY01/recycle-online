@@ -97,6 +97,37 @@ where the real answer is not eyeball-checkable, get a SECOND instrument on it: t
 same phase counted `COPY` headers with both `grep` and a Python parser and
 required them to agree, which they did at 11 and at 13.
 
+## AMENDED — the contaminant can be a RECORD OF A PAST FAILURE
+
+Same mechanism, and the contaminant is the thing hardest to anticipate: **the
+artefact's own written account of a previous red.**
+
+Scanning proof output for failures with `$o -match "\[FAIL\]"` reported five
+failures from `prove:signout` — beside `EXIT=0`. Both readings were correct.
+`proveSignOut.ts:1569-1573` is a prose block recording what a PAST disproof run
+printed, verbatim, `[FAIL]` markers and all, kept deliberately because it is the
+evidence that a mutation reddens the right cells. The scan matched five lines of
+documentation about a failure that had already been fixed. Measured at
+`fde2b0c`.
+
+This repository will keep producing that contaminant, because writing a
+disproof's output into the file is the practice these lessons ask for. **Any text
+scan over a proof's source or output is scanning a medium that deliberately
+contains examples of the thing being searched for.**
+
+WHAT CAUGHT IT WAS RULE 5 BELOW — a second instrument. The exit code disagreed
+with the scan, and the exit code is the authority: it is written by the proof's
+own `main()` from its own failure counter, so it cannot be confused by prose. The
+scan is a convenience for LOCATING a failure once the exit code says there is
+one; it is not evidence that there is one. Reading them the other way round —
+believing the scan, doubting the zero — is what turns a green suite into an
+afternoon of hunting a defect that was repaired in a previous commit.
+
+Sibling of [[the-observer-is-a-writer-to-what-it-observes]], separated by who
+wrote the contaminant: there the instrument writes its own query into the medium
+it is measuring; here the medium already held the text, put there on purpose by a
+previous author, and the reader adds nothing.
+
 ## How to apply
 
 1. **Read the real input before writing the control.** Not the shape you have in

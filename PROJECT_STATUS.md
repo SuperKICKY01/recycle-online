@@ -57,6 +57,135 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.7 STEPS 5 AND THE DRAFT HALF ARE COMPLETE: EVERY LOCAL READ OF A ROW THAT
+BELONGS TO SOMEBODY NOW ASKS WHOSE IT IS. 2026-08-11, `fde2b0c`.** This block
+SUPERSEDES the P1.7 STEP 4 entry below as the current phase; that entry is left
+exactly as written, and was true when written.
+
+**THE STACK IS NOW FIVE DEEP AND NOTHING HERE IS ROTATED.** Three blocks sit
+under this heading (this one, STEP 4, STEP 3) and a fourth — account
+provisioning — below them, with `## Previous phase` beneath that. The rotation
+was owed at three, is owed at five, and is deliberately not done here: merging
+them is a separate judgement about what stops being current, and doing it inside
+a phase record would settle it silently.
+
+**THE PHASE IS TEN COMMITS, read from `git log --oneline a471dc2^..fde2b0c` in
+this pass.** Eight carry code, two are docs-only (`6b74b89`, `1b94a0c`):
+
+| sha | what it landed |
+|---|---|
+| `a471dc2` | ownership columns, the identity store, a migration that cannot stop half-done |
+| `6b74b89` | docs only — the ownership schema recorded |
+| `1f37888` | the login returns `user_id`; the device records who signed in |
+| `0ac09ef` | the owner STAMPED onto draft and bill rows at creation; nothing read it yet |
+| `a57a648` | the SEND queue filter |
+| `869977a` | a permanently rejected void stops being re-sent |
+| `cfb6633` | the VOID queue filter |
+| `1b94a0c` | docs only — step 4 recorded, and the four ways a green meant nothing |
+| `8ec784e` | the master-data cache bound to a TENANT; a mismatch reads as ABSENT |
+| `fde2b0c` | the draft loader hands back only the current person's cart |
+
+**WHERE THE COMPARISON LIVES — THREE PRODUCTION FILES, measured this pass with
+`rg` over `mobile/` excluding `dist/`.** `SqliteLocalStore.ts` owns the
+definition (`OWNED_BY_CURRENT` at `:119`, `ownerParams` at `:126`, spliced into
+`QUEUED` at `:157` and bound at eight statement sites); `SqliteMasterStore.ts`
+carries its own tenant-only clause (`CACHE_TENANT_MATCHES` at `:44`) and the
+TypeScript half `sameTenant` at `:108`; `SqliteDraftStore.ts` IMPORTS the first
+file's two symbols rather than retyping them (`:17-18`, used at `:235` and
+`:253`). Both symbols were exported for that import and nothing else changed
+about the send queue.
+
+**FOUR AREAS, FOUR SEPARATE ACCEPTANCE SCRIPTS, verified in `mobile/package.json`
+this pass — 21 `prove:*` scripts in total.** The send queue: `prove:sendowner`.
+The void queue: `prove:voidowner`. The cache: `prove:cachetenant`. The draft
+loader: `prove:draftowner`. Each was required to have its own evidence because
+none of the four inherits another's filter — the void path draws on neither
+shared constant, the cache has no user half, and the draft loader is reached from
+`App.tsx` only.
+
+**THE IDENTITY IS STILL NOT CLEARED ON SIGN-OUT, and this was re-measured rather
+than carried forward.** A search for `.clear()` across `mobile/` excluding
+`dist/` returns one production call — `deps.tokens.clear()` in
+`session/signOut.ts:335`, which is the KEYSTORE. `SqliteIdentityStore.clear()`
+has no production caller; the only mentions are `App.tsx:1013` explaining its
+absence and three proof files. The reason is unchanged: the refusal that must
+guard the clearing — a sign-out that will not proceed while unsent bills carry an
+owner this device is about to forget — does not exist, and `refused_pending`
+counts bills rather than owners.
+
+### What is REFUSED and what is merely WITHHELD — and they are not the same call
+
+**A CACHE MISMATCH STOPS WEIGHING. A FOREIGN DRAFT STOPS NOTHING.** Both are
+"this is not yours", and the opposite treatment is deliberate.
+
+The cache decides the NUMBERS ON THE SCREEN. Another shop's price list is not an
+old price list, it is a wrong one, and the operator pays cash against it — so a
+tenant mismatch reports the fetch stamp as NULL, which every existing reader
+already treats as never-fetched, and `mayStartBill` refuses. The stop is
+inherited from machinery that was already proven rather than built a second time
+where the two could disagree.
+
+A draft says NOTHING about prices. Withholding one costs the next person a cart
+they never had; blocking the yard over it would be a control the person at the
+scale can route around, and `ROADMAP.md § P1.7` already rejected that class of
+control on the ground that they will use paper or reinstall, and both lose more.
+So the draft is withheld, kept, not adopted, not destroyed, and SAID OUT LOUD —
+a count on the start screen, because withholding otherwise leaves a screen
+byte-identical to an ordinary empty morning.
+
+### The upgrade cost, and it is not softened anywhere
+
+**A HANDSET WHOSE CACHE PREDATES THE TENANT COLUMN CANNOT TRADE UNTIL A REFRESH
+SUCCEEDS, AND A REFRESH NEEDS A CONNECTION.** Those rows carry NULL, NULL is not
+this shop's, so every cached list reads as ABSENT and weighing is refused: not a
+degraded mode, not stale prices, no bills. The first offline morning after an
+upgrade cannot trade at all.
+
+It follows from the decided rule that an unknown tenant is a mismatch, and the
+alternative is worse in the direction that cannot be recovered: treating unknown
+as ours hands the scale another shop's prices to pay against, on a device nobody
+can open afterwards (`ARCHITECTURE.md § 11`). A lost morning is visible and
+recoverable; a mispriced load is neither. Recorded at the reader itself, in
+`SqliteMasterStore.ts`'s `readStamp`, so it is met by whoever would relax it.
+
+### The two on-screen unsent counts still disagree, and the operator still sees the wrong one
+
+**UNCHANGED BY THIS PHASE AND STILL OWED.** `pendingQueueSnapshot` counts what
+CAN send and carries the owner filter; `listByState` is `WHERE sync_state = ?`
+alone and never gained one, so it still totals EVERY account's bills. `App.tsx`
+feeds the status strip and the sign-out refusal from the UNFILTERED one and queue
+health from the filtered one. What the person at the scale experiences: a count
+of unsent bills that includes other accounts' and will not go down however long
+they wait, and a sign-out that can refuse over bills they neither own nor can
+send. **Resolved by P1.7 step 7, the status strip**, which splits the
+parked-for-another-account count from the ordinary unsent count. Not fixed in
+this phase on purpose: that step decides what the operator is TOLD, and changing
+the number inside a filter commit would settle the decision and implement it in
+one pass.
+
+### The device-driver limit — these two sentences must not be separated
+
+**The migration, the owner filters, the cache binding and the draft loader are
+proved on the driver the PROOFS run: `node:sqlite`, against real files on disk.
+NONE of it is proved on the driver the HANDSET runs**, which is `expo-sqlite`'s
+own connection (`mobile/src/device/expoSqliteDriver.ts`) and cannot be exercised
+off-device at all. Re-measured this pass: `rg expoSqliteDriver mobile/src/proof`
+returns comment mentions and nothing executable. If a way to run against the
+device driver ever exists, that is work to return to, not work already finished.
+
+**AND NO DEVICE PASS WAS TAKEN FOR ANY OF THIS PHASE.** Every observation in this
+block is a headless proof or a file read on this box. Nothing here has been seen
+on a handset, and `CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING"
+applies in full to whoever takes the first one.
+
+**THIS FILE HAS PASSED ITS OWN SPLIT TRIGGER BY MORE THAN TWICE OVER.** Measured
+this pass by two instruments that agree: `wc -l` returns **4625**, and a raw
+LF-byte count returns **4625** with CR=0. Its own trigger at the head of this
+file reads "Revisit at 2000 lines", and `START_HERE.md` still tells a booting
+session this file is "1940 lines: budget two reads". Both are stale by a wide
+margin; neither is corrected here, because this pass may not edit `START_HERE.md`
+and the split decision is not a phase record's to take.
+
 **P1.7 STEP 4 IS COMPLETE ON BOTH HALVES: THE SEND QUEUE AND THE VOID QUEUE EACH
 CARRY AN OWNER FILTER WITH ITS OWN ACCEPTANCE EVIDENCE. 2026-08-11, `cfb6633`.**
 This block SUPERSEDES the P1.7 STEP 3 entry below as the current phase; that
