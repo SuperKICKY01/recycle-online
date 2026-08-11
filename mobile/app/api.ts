@@ -6,6 +6,8 @@
  * parses money into a number.
  */
 import type { DailyFetch } from "../src/reports/dailyView";
+import { exchangeShopCode } from "../src/session/shopCode";
+import type { ShopCodeResult } from "../src/session/shopCode";
 import { attemptLogin, isUnauthorizedStatus } from "../src/session/signInIdentity";
 import type { SignInResult } from "../src/session/signInIdentity";
 import { API_BASE_URL } from "./config";
@@ -109,6 +111,25 @@ async function getJson<T>(path: string, token: string): Promise<T> {
  * to mean and HEAD would name the commit that still HAS the defect —
  * CLAUDE.md section Conventions "PIN A CLAIM TO A COMMIT". Written 2026-08-11.
  */
+/**
+ * STEP ONE OF SETUP: a typed shop code for the shop's identifier. Transport
+ * only; every outcome is a value and the classification lives in
+ * src/session/shopCode.ts for the reason login's does.
+ *
+ * UNAUTHENTICATED, and the only request this app makes before any principal
+ * exists — see server/app/directory.py, which explains why its single refusal
+ * covers unknown, malformed and over-long alike.
+ */
+export function resolveShopCode(code: string): Promise<ShopCodeResult> {
+  return exchangeShopCode(() =>
+    fetch(`${API_BASE_URL}/auth/shop-code`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code }),
+    }),
+  );
+}
+
 export function login(
   tenantId: string,
   username: string,

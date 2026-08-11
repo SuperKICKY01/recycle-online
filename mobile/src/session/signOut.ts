@@ -65,6 +65,34 @@ export function sessionStateOf(s: {
 }
 
 /**
+ * MUST THE LOGIN SCREEN BE ON SCREEN? Asked of the SESSION, never of the token.
+ *
+ * ---------------------------------------------------------------------------
+ * THIS WAS `token === null` IN App.tsx UNTIL P1.7 STEP 6, AND THAT IS THE BUG
+ * ---------------------------------------------------------------------------
+ * A token that EXISTS and has EXPIRED is not null. So the app went on drawing
+ * the cart over a session the server would refuse: the operator could pick a
+ * seller, weigh a full load and save a bill, while the one control that fixes
+ * it — signing in again — was not on the screen at all. The bill was not lost
+ * (it queues), but the person had no way to learn why nothing was leaving, and
+ * lessons/401-is-about-the-caller-not-the-bill.md already records the same
+ * mistake from the other end: "the login screen renders on token === null,
+ * which is exactly false when a token EXPIRED".
+ *
+ * Extracted from the render site so it can be driven headlessly — App.tsx is
+ * outside the node proof program, so while this expression lived there no
+ * assertion could reach it, which is why it survived being written down as a
+ * known defect in a lesson.
+ *
+ * DERIVED FROM sessionStateOf rather than re-testing the two fields: one
+ * definition of what "signed in" means, and a fourth opinion about it is how
+ * the screen and the sync gate would come to disagree.
+ */
+export function mustShowSignIn(s: { token: string | null; sessionEnded: boolean }): boolean {
+  return sessionStateOf(s) !== "active";
+}
+
+/**
  * May the sync tick issue a request right now?
  *
  * ALSO EXTRACTED FROM App.tsx, and for a sharper reason than the above: "after a

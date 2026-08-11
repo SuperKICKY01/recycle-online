@@ -51,6 +51,7 @@ import type { LocalIdentity } from "./src/adapters/sqlite/SqliteIdentityStore";
 import { ownerForNewRow } from "./src/session/rowOwner";
 import { SqliteLocalStore } from "./src/adapters/sqlite/SqliteLocalStore";
 import { SqliteMasterStore } from "./src/adapters/sqlite/SqliteMasterStore";
+import { SqliteShopStore } from "./src/adapters/sqlite/SqliteShopStore";
 import {
   cartTotal,
   changeSeller,
@@ -71,6 +72,7 @@ import {
   applyClearedSession,
   maySync,
   sessionEndedAfterPass,
+  mustShowSignIn,
   sessionStateOf,
   signOut,
 } from "./src/session/signOut";
@@ -88,6 +90,7 @@ import { dailyScreen } from "./src/reports/dailyView";
 import type { DailyScreen as DailyScreenModel } from "./src/reports/dailyView";
 import { readTokenRole } from "./src/session/deviceRole";
 import type { DeviceRole } from "./src/session/deviceRole";
+import { shopCodeNotice } from "./src/session/shopCode";
 import { signInAndRecord, signInNotice } from "./src/session/signInIdentity";
 import { buildLocalBill } from "./src/sync/createBill";
 import { SyncEngine } from "./src/sync/engine";
@@ -98,13 +101,21 @@ import { systemClock } from "./src/sync/systemClock";
 import type { LocalBill, SyncState } from "./src/sync/types";
 import { isMasterDataBlocked, isVoided, isVoidRefused } from "./src/sync/types";
 import type { Product, Seller } from "./app/api";
-import { fetchDailyReport, fetchProducts, fetchSellers, isUnauthorized, login } from "./app/api";
+import {
+  fetchDailyReport,
+  fetchProducts,
+  fetchSellers,
+  isUnauthorized,
+  login,
+  resolveShopCode,
+} from "./app/api";
 import { BillsPanel } from "./app/BillsPanel";
 import { CartScreen } from "./app/CartScreen";
 import { DailyScreen } from "./app/DailyScreen";
 import { ConfirmSaveDialog } from "./app/ConfirmSaveDialog";
 import { ConfirmSellerChangeDialog } from "./app/ConfirmSellerChangeDialog";
-import { API_BASE_URL, DEMO } from "./app/config";
+import { API_BASE_URL } from "./app/config";
+import { LoginScreen } from "./app/LoginScreen";
 import { deviceIds } from "./app/ids";
 import { MasterDataStrip } from "./app/MasterDataStrip";
 import { SellerPicker } from "./app/SellerPicker";
@@ -187,6 +198,14 @@ export default function App() {
    * thing that releases one.
    */
   const [draftsWithheld, setDraftsWithheld] = useState(0);
+  /*
+   * WHICH SHOP THIS DEVICE IS. Null until setup. Read once at boot from
+   * local_shop and changed only by a successful code exchange — it outlives the
+   * token and every sign-out, because the device stays with the yard.
+   */
+  const [shop, setShop] = useState<string | null>(null);
+  /** The last setup or sign-in failure, already worded. Cleared on success. */
+  const [signInNoticeText, setSignInNotice] = useState<string | null>(null);
 
   /*
    * THE DAY'S MONEY. Three pieces of state and no more.
@@ -387,6 +406,8 @@ export default function App() {
    * when the first stamp lands leaves every earlier bill unattributable.
    */
   const identityStoreRef = useRef<SqliteIdentityStore | null>(null);
+  /** Which shop this device belongs to. A different lifetime — see the store. */
+  const shopStoreRef = useRef<SqliteShopStore | null>(null);
   const masterStoreRef = useRef<SqliteMasterStore | null>(null);
   const engineRef = useRef<SyncEngine | null>(null);
   const tokenRef = useRef<string | null>(null);
@@ -513,11 +534,13 @@ export default function App() {
         // open() of its own: the table is created by initConnection, which the
         // three stores above have already run through this driver.
         const identityStore = new SqliteIdentityStore(driver);
+        const shopStore = new SqliteShopStore(driver);
         if (cancelled) return;
         billStoreRef.current = billStore;
         draftStoreRef.current = draftStore;
         masterStoreRef.current = masterStore;
         identityStoreRef.current = identityStore;
+        shopStoreRef.current = shopStore;
 
         engineRef.current = new SyncEngine({
           store: billStore,
@@ -559,6 +582,10 @@ export default function App() {
         setSellersFetchedAt(cache.sellersFetchedAt);
         setProductsFromOtherShop(cache.productsNotThisShop);
         setSellersFromOtherShop(cache.sellersNotThisShop);
+        // Which shop this device is. Read before the token, because with no
+        // shop there is nothing to sign in TO and the setup screen is what the
+        // operator must be shown.
+        setShop((await shopStore.load())?.tenant_id ?? null);
         tokenRef.current = token;
         setToken(token);
         // Read off the RESTORED token, before any network call — the whole point
@@ -918,7 +945,7 @@ export default function App() {
 
   /* -------------------------------------------------------------- actions -- */
 
-  const signIn = useCallback(async () => {
+  const signIn = useCallback(async (username: string, password: string) => {
     /*
      * A PRE-FLIGHT GUARD, BEFORE THE REQUEST — and the ordering is the point.
      *
@@ -940,9 +967,21 @@ export default function App() {
       // signInAndRecord runs the attempt and, ONLY on success, records who
       // signed in. The ordering lives in src/session/signInIdentity.ts because
       // this file cannot be reached by a headless proof; see its header.
+      /*
+       * THE SHOP COMES FROM THE DEVICE, THE ACCOUNT FROM THE PERSON. Neither is
+       * a constant any more. The tenant is what the SERVER resolved from a code
+       * typed once at setup — never typed here, never guessed — and it is the
+       * value the identity is recorded against, so a bill's owner names a shop
+       * this device was admitted to rather than one it asserted.
+       */
+      const shopTenantId = shop;
+      if (shopTenantId === null) {
+        setSignInNotice("ยังไม่ได้ตั้งค่าร้านในเครื่องนี้");
+        return;
+      }
       const result = await signInAndRecord(
-        () => login(DEMO.tenantId, DEMO.username, DEMO.password),
-        DEMO.tenantId,
+        () => login(shopTenantId, username, password),
+        shopTenantId,
         identityStore,
       );
       /*
@@ -964,9 +1003,10 @@ export default function App() {
        */
       if (result.kind !== "ok") {
         setOnline(result.kind !== "unreachable");
-        setStatus(signInNotice(result) ?? "");
+        setSignInNotice(signInNotice(result));
         return;
       }
+      setSignInNotice(null);
       const t = result.accessToken;
       tokenRef.current = t;
       setToken(t);
@@ -1012,11 +1052,45 @@ export default function App() {
        * cause genuinely is unclassified, and inventing a class for it would be
        * the defect this commit removed, pointed the other way.
        */
-      setStatus(`เข้าสู่ระบบไม่สำเร็จหลังรับสิทธิ์แล้ว: ${describe(err)}`);
+      setSignInNotice(`เข้าสู่ระบบไม่สำเร็จหลังรับสิทธิ์แล้ว: ${describe(err)}`);
     } finally {
       setBusy(false);
     }
-  }, [refreshMaster, syncOnce]);
+  }, [refreshMaster, shop, syncOnce]);
+
+  /**
+   * SETUP: a typed shop code exchanged for the shop, once.
+   *
+   * The identifier stored is the SERVER'S answer and never anything typed. A
+   * device that took a tenant from the keyboard would stamp every row it writes
+   * with a shop nobody admitted it to — and on a handset nobody can open
+   * afterwards (ARCHITECTURE.md section 11) that is invisible for ever.
+   *
+   * A failure here NEVER speaks about credentials: no account has been named
+   * yet, and the operator has not been asked for one.
+   */
+  const setupShop = useCallback(async (code: string) => {
+    const shopStore = shopStoreRef.current;
+    if (shopStore === null) {
+      setSignInNotice("กำลังเปิดฐานข้อมูลในเครื่อง — ลองอีกครั้ง");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await resolveShopCode(code);
+      if (result.kind !== "ok") {
+        setOnline(result.kind !== "unreachable");
+        setSignInNotice(shopCodeNotice(result));
+        return;
+      }
+      await shopStore.save({ tenant_id: result.tenant_id });
+      setShop(result.tenant_id);
+      setSignInNotice(null);
+      setOnline(true);
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
   /**
    * END THE SESSION ON THIS DEVICE (R1b).
@@ -1409,7 +1483,23 @@ export default function App() {
           pending={pendingCount}
           failed={failedCount}
           lastSyncedAt={lastSyncedAt}
-          onSignIn={() => void signIn()}
+          /*
+           * THE STRIP CAN NO LONGER SIGN ANYBODY IN, and that is the honest
+           * change rather than a loss. Signing in now needs a username and a
+           * password from a person; a button that called signIn() with nothing
+           * would either fail or, worse, invite a caller to pass a constant.
+           * What it does instead is SURFACE the screen that can: with no usable
+           * session the login screen is already the body of the app, so the
+           * only thing standing between the operator and it is whatever sheet
+           * is open on top. lessons/401-is-about-the-caller-not-the-bill.md
+           * requires the sign-in route to be reachable from here; it still is,
+           * it is simply one tap of dismissal rather than a silent login.
+           */
+          onSignIn={() => {
+            setSignOutOpen(false);
+            setDailyOpen(false);
+            setBillsOpen(false);
+          }}
           blocked={
             health?.alarm
               ? {
@@ -1459,16 +1549,31 @@ export default function App() {
 
         {!ready ? (
           <ActivityIndicator style={styles.spinner} size="large" />
-        ) : token === null ? (
-          <View style={styles.center}>
-            <Pressable
-              style={[styles.loginBtn, busy && styles.dim]}
-              disabled={busy}
-              onPress={() => void signIn()}
-            >
-              <Text style={styles.loginText}>เข้าสู่ระบบ (ร้าน A)</Text>
-            </Pressable>
-          </View>
+        ) : mustShowSignIn({ token, sessionEnded }) ? (
+          /*
+           * NO USABLE SESSION — and that is NOT the same test as "no token".
+           *
+           * This read `token === null` until P1.7 step 6. A token that EXISTS
+           * and has EXPIRED is not null, so the screen carried on drawing the
+           * cart: the operator could weigh a full load against a session the
+           * server would refuse, and the one control that fixes it — signing in
+           * again — was not on the screen at all. `sessionStateOf` already
+           * distinguishes the three states and is proven in
+           * src/session/signOut.ts; this uses it rather than re-deriving a
+           * fourth opinion about what "signed in" means.
+           *
+           * lessons/401-is-about-the-caller-not-the-bill.md states the same
+           * rule from the other end: the sign-in control must be reachable on
+           * exactly the states where signing in is what fixes things, and
+           * `token === null` is precisely false when a token has expired.
+           */
+          <LoginScreen
+            shopTenantId={shop}
+            busy={busy}
+            notice={signInNoticeText}
+            onSetup={(code) => void setupShop(code)}
+            onSignIn={(u, p) => void signIn(u, p)}
+          />
         ) : draft === null ? (
           /* No bill in progress. It starts with WHO, not with what. */
           <View style={styles.center}>
@@ -1567,8 +1672,10 @@ export default function App() {
                 phase is removing.
               */
               case "sign_in":
+                // Closing the sheet IS the action now: with no usable session
+                // the login screen is the body underneath it. See the strip's
+                // onSignIn above — nothing here can supply credentials.
                 setSignOutOpen(false);
-                void signIn();
                 return;
 
               // confirm_sign_out and retry_sign_out are the same act; they differ
@@ -1660,12 +1767,14 @@ export default function App() {
           /* Retry means the SAME day again — not "go back to today", which would
              quietly change which number the owner is looking at. */
           onRetry={() => void loadDaily(dailyDate)}
-          onSignIn={() => {
-            void (async () => {
-              await signIn();
-              await loadDaily(dailyDate);
-            })();
-          }}
+          /*
+           * Closes the report to reveal the login screen. It cannot sign in
+           * itself any more, and it deliberately does NOT re-request the day
+           * afterwards: the operator may sign in as somebody else, and a report
+           * that reloaded on its own would put one person's takings on screen
+           * because a different person had just opened the app.
+           */
+          onSignIn={() => setDailyOpen(false)}
           onPickDay={pickDay}
         />
 

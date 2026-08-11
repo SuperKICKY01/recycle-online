@@ -32,7 +32,8 @@
     "prove:voidowner": "npm run build && node dist/proof/proveVoidOwner.js",
     "prove:cachetenant": "npm run build && node dist/proof/proveCacheTenant.js",
     "prove:draftowner": "npm run build && node dist/proof/proveDraftOwner.js",
-    "prove:login": "npm run build && node dist/proof/proveLogin.js"
+    "prove:login": "npm run build && node dist/proof/proveLogin.js",
+    "prove:loginscreen": "npm run build && node dist/proof/proveLoginScreen.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

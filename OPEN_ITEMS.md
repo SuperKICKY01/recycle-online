@@ -923,6 +923,37 @@ idea — only that it is unresolved.
   nothing, and the owner decision the entry asked for is now moot for THESE
   processes and unanswered for the next ones.
 
+- **`prove:forbidden` DEFAULTS TO THE PORT A DEVELOPMENT API LISTENS ON, AND THAT
+  API IS BOUND TO THE LIVE DEV DATABASE. A SUITE RUN WITH NO EXPLICIT TARGET
+  WRITES BILLS INTO `recycle`.** `mobile/src/proof/proveForbidden.ts:710` reads
+  `process.env.RECYCLE_API_BASE ?? "http://127.0.0.1:8000"`, and that proof POSTs
+  bills. Nothing about running `npm run prove:forbidden` announces which database
+  is about to receive them.
+  **MEASURED AT `acea1ac`, during the P1.7 step 6 pass:** 58 listening sockets
+  across 23 distinct process names, and on port 8000 a `python3.12`, PID 4620,
+  started 2026-08-11 20:12:04, command line
+  `…\server\.venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8000`.
+  Asked of the cluster rather than inferred, `pg_stat_activity` showed its one
+  `recycle_app` connection on database **`recycle`**. It was started outside this
+  project, and was left running and untouched.
+  **THE DEFAULT IS THE DEFECT, NOT THE PERSON WHO STARTED THE SERVER.** Running a
+  development API on 8000 against the dev database is the ordinary thing to do,
+  and `mobile/app.json` points the handset at that host. What is wrong is that a
+  proof silently ADOPTS that address when no target is given, so the safe command
+  and the destructive one are the same keystrokes. The pass that found it set
+  `RECYCLE_API_BASE` explicitly for every API-touching proof and pointed them at a
+  throwaway — a discipline held by whoever remembers, which is what
+  `lessons/a-proof-must-establish-what-it-is-talking-to.md` says not to rely on.
+  There, a hardcoded port was answered by a different server and two refusal
+  assertions passed against a route that did not exist; the same shape here is
+  worse, because this one WRITES.
+  *Not done:* the default is unchanged. Candidates, none chosen: refuse to run
+  with no `RECYCLE_API_BASE` set; refuse a target whose database resolves to the
+  live one; or ask the server which database it is on and abort unless it is a
+  scratch. All three change a proof's contract and belong with the owner.
+  *Unblocks:* nothing, but it removes a way to lose live money data to a
+  correctly-typed command.
+
 *The five entries immediately below were all measured on 2026-08-10, read-only, on
 the live cluster, as part of the `recycle_directory` privilege pass. Each is a
 capability or a location that **no file in this repository asserts**. They are kept

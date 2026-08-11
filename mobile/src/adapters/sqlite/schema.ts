@@ -255,6 +255,36 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
      user_id    TEXT    NOT NULL,
      updated_at TEXT    NOT NULL
    ) STRICT`,
+
+  /*
+   * WHICH SHOP THIS DEVICE BELONGS TO — set once at setup, from a typed code.
+   *
+   * A SEPARATE TABLE FROM local_identity, AND NOT A COLUMN ON IT. The two look
+   * alike and their LIFETIMES are the argument, which is the same argument
+   * local_identity uses against the keystore rather than a resemblance to it.
+   *
+   * The identity's lifetime ends at a deliberate SIGN-OUT: a person leaves, the
+   * device stays. The shop's lifetime ends when the DEVICE LEAVES THE SHOP,
+   * which is a different event, happens far more rarely, and is not built at
+   * all yet. Sharing a row would fuse them, so the sign-out clearing that P1.7
+   * still owes would take the shop with it — and the next person would be asked
+   * for a shop code they were never given, at five in the morning, to sign in to
+   * the yard they are standing in.
+   *
+   * NO `local_shop` CLEAR EXISTS, deliberately. Leaving a shop is its own act
+   * with its own refusal — it must not proceed while rows belonging to this shop
+   * are unsent, and nothing counts that yet. When it is written it clears THIS
+   * table and not local_identity; the two are already separate so that change
+   * unpicks nothing.
+   *
+   * Needs no migration list entry: a table that never existed is created by this
+   * statement on an upgraded device exactly as on a fresh one.
+   */
+  `CREATE TABLE IF NOT EXISTS local_shop (
+     only_row   INTEGER NOT NULL PRIMARY KEY CHECK (only_row = 1),
+     tenant_id  TEXT    NOT NULL,
+     updated_at TEXT    NOT NULL
+   ) STRICT`,
 ];
 
 /**

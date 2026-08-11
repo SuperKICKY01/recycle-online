@@ -23,16 +23,21 @@ if (!extra.apiBaseUrl) {
 
 export const API_BASE_URL: string = extra.apiBaseUrl;
 
-/**
- * Seeded tenant-A login, still hardcoded because there is no login form yet.
+/*
+ * THE HARDCODED SHOP AND CREDENTIALS ARE GONE — P1.7 step 6.
  *
- * The product and seller UUIDs that used to live here are GONE as of Phase
- * 2c-2: the app fetches them from /products and /sellers under the token, so
- * the yard sees this tenant's real master data and nothing is baked into the
- * binary. A real login screen and customer selection come later.
+ * This module exported a `DEMO` constant holding a tenant uuid, a username and
+ * a real password for a seeded account. Everything that signed in read it, so
+ * every device ran as the same person in the same shop and no ownership
+ * mechanism built in this phase was ever exercised by a real identity.
+ *
+ * The shop now comes from a code typed once at setup and resolved BY THE SERVER
+ * (src/session/shopCode.ts), and is remembered in `local_shop`. The account
+ * comes from a person typing a username and password on the login screen. This
+ * module is left holding the one thing it was always for: the server URL.
+ *
+ * NOTHING MAY PUT CREDENTIALS BACK HERE. A value in this file is compiled into
+ * the bundle, is readable by anyone who has the app, and cannot be changed
+ * without a release — and the last one sat in a tracked file for months.
  */
-export const DEMO = {
-  tenantId: "11111111-1111-1111-1111-111111111111",
-  username: "admin",
-  password: "tenantA-pw-123",
-} as const;
+
