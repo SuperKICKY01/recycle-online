@@ -7,3 +7,12 @@ dist-export/
 # Runtime logs from the local dev servers (never part of the product)
 .expo-start.log
 .expo-start.err.log
+
+# The GENERATED native project. Regenerated from app.json by `expo prebuild`.
+# It is not committed because an Expo upgrade rewrites a hundred files at once,
+# and a diff nobody reads is where an unintended change hides.
+# WHY IT MUST NOT BE HAND-EDITED, and how to regenerate it: app.json, which is
+# the config it is generated FROM. Do not duplicate that note here — it would
+# drift from the one that matters.
+android/
+ios/

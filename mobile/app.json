@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "device",
+    "name": "ไม่ใช่ตัวจริง — ทดสอบ",
     "slug": "device",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,6 +10,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "dev.chutipon.recycle",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -26,6 +27,7 @@
       "expo-secure-store"
     ],
     "extra": {
+      "_comment_native": "THIS FILE GENERATES mobile/android/ AND mobile/ios/. Produce them with `npx expo prebuild --platform android` (add --clean to start over). Both are gitignored and NEITHER MAY BE HAND-EDITED: the next prebuild overwrites them without warning, so an edit made there is destroyed silently and the person who made it will not be told. Anything that must change in the native project changes HERE, or in a config plugin listed under `plugins` below. That is also why `android.package` and `name` live in this file — the applicationId and the launcher label are generated from them.",
       "_comment": "apiBaseUrl is THE server address for the whole app. Change it HERE and nowhere else; device/src/config.ts is the single reader. Swap in a cloud URL later with no code edits.",
       "apiBaseUrl": "http://192.168.1.238:8000"
     }
