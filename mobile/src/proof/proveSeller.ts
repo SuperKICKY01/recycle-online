@@ -519,7 +519,7 @@ async function s6DraftSurvivesForceQuit(): Promise<void> {
       tierForGrade("A"),
       LATER,
     ).draft;
-    await store.save(normaliseVehicleNo(moved, LATER));
+    await store.save(normaliseVehicleNo(moved, LATER), null);
   }
   await driver.close();
 

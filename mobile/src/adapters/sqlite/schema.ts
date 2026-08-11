@@ -122,10 +122,17 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
         the oldest data any line on it could have been priced from. Carried to
         the bill at promotion. See master/freshness.ts. */
      master_as_of TEXT,
-     /* THE SAME PAIR AS local_bills, and for a reason that is not symmetry: a
-        draft BECOMES a bill through promoteToBill, so a draft carrying no owner
-        produces a bill carrying none. Catching it one step earlier is the whole
-        value. Nullable for the same two reasons as on local_bills. */
+     /* THE SAME PAIR AS local_bills, and for a reason that is not symmetry.
+        SUPERSEDED — this comment previously read that a draft BECOMES a bill
+        through promoteToBill, so a draft carrying no owner produces a bill
+        carrying none. THE BILL DOES NOT INHERIT THIS PAIR. It is stamped from
+        the identity read live at the moment of saving, because the pair here
+        records who OPENED the cart and a bill must be owned by whoever CLOSED
+        it and handed over the cash — across a shift change those are different
+        people, and the server records the sender as a bill's creator.
+        What these two columns are for is therefore the draft in its own right:
+        a cart abandoned half-typed still says whose it was. Nullable for the
+        same two reasons as on local_bills. See SqliteDraftStore.promoteToBill. */
      owner_tenant_id TEXT,
      owner_user_id   TEXT
    ) STRICT`,

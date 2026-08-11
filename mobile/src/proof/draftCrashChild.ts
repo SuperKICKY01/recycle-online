@@ -53,7 +53,8 @@ async function main(): Promise<void> {
   if (!line.ok) throw new Error(`child: fixture line failed: ${line.field}/${line.error}`);
   draft = addLine(draft, line.line, now);
 
-  await store.save(draft);
+  // No identity is stored in this child, so the owner is genuinely UNKNOWN.
+  await store.save(draft, null);
   console.log(`CHILD: draft saved (seller=${sellerId} vehicle=${vehicleNo}); killing now`);
   die();
 }

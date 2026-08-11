@@ -212,7 +212,7 @@ async function c3DraftSurvivesReopen(): Promise<void> {
     ...draft,
     form: { product_id: "prod-CU-WIRE", gross: "7.7", tare: "0.2", price: "3.5abc" },
   };
-  await store1.save(draft);
+  await store1.save(draft, null);
   await driver1.close();
   console.log("  connection closed; process-level state discarded");
 
@@ -272,7 +272,7 @@ async function c4EngineNeverSeesADraft(): Promise<void> {
   });
 
   const draft = draftWithSpecs(SPECS, new SeqIds("line"));
-  await draftStore.save(draft);
+  await draftStore.save(draft, null);
 
   const draftLineCount = (
     await driver.all<{ c: number }>("SELECT COUNT(*) c FROM local_draft_lines")
@@ -306,7 +306,7 @@ async function c4EngineNeverSeesADraft(): Promise<void> {
       master_as_of: loaded!.master_as_of,
     },
   );
-  await draftStore.promoteToBill(loaded!, bill);
+  await draftStore.promoteToBill(loaded!, bill, null);
   const run2 = await engine.runOnce();
   console.log(`  after promotion: runOnce -> ${JSON.stringify(run2)} billsOnServer=${String(server.billCount)}`);
   check(
@@ -372,7 +372,7 @@ async function c5CrashAtTheTransition(mode: "before-commit" | "after-commit"): P
   const driver = NodeSqliteDriver.open(file);
   const draftStore = await SqliteDraftStore.open(driver);
   await SqliteLocalStore.open(driver); // ensure the bills table exists too
-  await draftStore.save(draftWithSpecs(SPECS, new SeqIds("line")));
+  await draftStore.save(draftWithSpecs(SPECS, new SeqIds("line")), null);
   await driver.close();
 
   const billId = "bill-crash-0001";

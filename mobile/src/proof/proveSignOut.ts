@@ -876,7 +876,7 @@ async function s5DraftSurvives(): Promise<void> {
       updated_at: "2026-08-06T01:00:00.000Z",
       master_as_of: null,
     };
-    await drafts.save(draft);
+    await drafts.save(draft, null);
 
     const outcome = await signOut({
       pending: 0,

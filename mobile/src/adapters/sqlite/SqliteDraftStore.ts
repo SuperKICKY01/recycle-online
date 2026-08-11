@@ -9,6 +9,7 @@ import type { Draft, DraftForm, DraftLine } from "../../cart/types.js";
 import type { LocalBill } from "../../sync/types.js";
 import type { SqlDriver } from "./driver.js";
 import { initConnection } from "./schema.js";
+import type { LocalIdentity } from "./SqliteIdentityStore.js";
 import { BILL_INSERT_SQL, billInsertParams } from "./SqliteLocalStore.js";
 
 interface DraftRow {
@@ -57,12 +58,20 @@ export class SqliteDraftStore {
    * to drift. The transaction means a crash mid-save rolls back to the PREVIOUS
    * complete draft — never a half-written cart with a line missing.
    */
-  async save(draft: Draft): Promise<void> {
+  /**
+   * `owner` is who is signed in AT THIS MOMENT, or null when the device does not
+   * know. It is recorded only if this call INSERTS — see the DO UPDATE note
+   * below — so on every later save of the same draft it is read and discarded,
+   * which is correct and is not a wasted read: the caller cannot know which of
+   * the two this call will be.
+   */
+  async save(draft: Draft, owner: LocalIdentity | null): Promise<void> {
     await this.db.transaction(async (tx) => {
       await tx.run(
         `INSERT INTO local_draft
-           (id, seller_id, vehicle_no, next_seq, form_json, updated_at, master_as_of)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+           (id, seller_id, vehicle_no, next_seq, form_json, updated_at, master_as_of,
+            owner_tenant_id, owner_user_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET
            seller_id = excluded.seller_id,
            vehicle_no = excluded.vehicle_no,
@@ -74,6 +83,16 @@ export class SqliteDraftStore {
         // refresh that lands mid-cart would otherwise overwrite the age of the
         // data the lines were actually priced from — the false negative that
         // makes the marker worthless. See master/freshness.ts.
+        //
+        // THE OWNER COLUMNS ARE ABSENT FROM IT FOR A DIFFERENT REASON, and the
+        // two must not be collapsed into one rule. master_as_of must not move
+        // because a later value would be WRONG. The owner must not move because
+        // a later value would be RIGHT ABOUT THE WRONG QUESTION: this pair
+        // records who STARTED the cart, and every save after the first happens
+        // on a keystroke. Listing them here would mean that at a shift change
+        // the next character typed silently reattributes the cart to whoever is
+        // signed in now, erasing the fact that somebody else opened it — and
+        // nothing on the device would ever show that it happened.
         [
           draft.id,
           draft.seller_id,
@@ -82,6 +101,8 @@ export class SqliteDraftStore {
           JSON.stringify(draft.form),
           draft.updated_at,
           draft.master_as_of,
+          owner === null ? null : owner.tenant_id,
+          owner === null ? null : owner.user_id,
         ],
       );
       await tx.run("DELETE FROM local_draft_lines WHERE draft_id = ?", [draft.id]);
@@ -167,9 +188,23 @@ export class SqliteDraftStore {
    * one of {draft, bill}. Proven against a real process kill on both sides of
    * the COMMIT in src/proof/proveCart.ts C5.
    */
-  async promoteToBill(draft: Draft, bill: LocalBill): Promise<void> {
+  /**
+   * `owner` is read LIVE at the moment of saving and is NOT inherited from the
+   * draft row, which carries an owner of its own. That is the decision, not an
+   * oversight: the draft's pair records who opened the cart, and this one
+   * records who closed it and handed over the cash. Across a shift change they
+   * differ, and the bill must carry the second — the server records the
+   * principal who SENDS a bill as its creator and the client cannot override
+   * that, so gating the send on whoever merely picked the seller would post the
+   * money under a person who never touched it.
+   */
+  async promoteToBill(
+    draft: Draft,
+    bill: LocalBill,
+    owner: LocalIdentity | null,
+  ): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await tx.run(BILL_INSERT_SQL, billInsertParams(bill));
+      await tx.run(BILL_INSERT_SQL, billInsertParams(bill, owner));
       await tx.run("DELETE FROM local_draft_lines WHERE draft_id = ?", [draft.id]);
       await tx.run("DELETE FROM local_draft WHERE id = ?", [draft.id]);
     });

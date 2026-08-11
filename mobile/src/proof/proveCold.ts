@@ -919,7 +919,7 @@ async function c8ColdStartNoServer(): Promise<void> {
   check("a seller can be picked from the cache", chosen !== undefined);
   const ids = new SeqIds("cold");
   let draft = newDraft(ids.newId(), "sell-001", NOW, f.asOf);
-  await draftStore.save(draft);
+  await draftStore.save(draft, null);
 
   const tiers = tiersFor(snap.products, chosen?.grade ?? null, f);
   check("no price is offered for it", tiers.pendingDefault("prod-FE") === null);
@@ -937,7 +937,7 @@ async function c8ColdStartNoServer(): Promise<void> {
   });
   if (!line.ok) throw new Error("the cold-start line must build");
   draft = addLine(draft, line.line, NOW);
-  await draftStore.save(draft);
+  await draftStore.save(draft, null);
 
   const bill = buildLocalBill(
     { clock: systemClock, ids },
@@ -949,7 +949,7 @@ async function c8ColdStartNoServer(): Promise<void> {
       master_as_of: draft.master_as_of,
     },
   );
-  await draftStore.promoteToBill(draft, bill);
+  await draftStore.promoteToBill(draft, bill, null);
 
   const saved = await billStore.getBill(bill.id);
   console.log(`  saved offline: ${String(saved?.payload.total_amount)} บาท, state=${String(saved?.sync_state)}, doc_no=${String(saved?.doc_no)}`);
@@ -1050,7 +1050,7 @@ async function c9ProvenanceSurvives(): Promise<void> {
   });
   if (!line.ok) throw new Error("line must build");
   draft = addLine(draft, line.line, NOW);
-  await draftStore.save(draft);
+  await draftStore.save(draft, null);
 
   // A real restart before promotion: the stamp has to be on DISK, not in a
   // React state that a force-quit takes with it.
@@ -1069,7 +1069,7 @@ async function c9ProvenanceSurvives(): Promise<void> {
   const masterStore = await SqliteMasterStore.open(driver);
   await masterStore.saveProducts(PRODUCTS, NOW);
   await masterStore.saveSellers(SELLERS, NOW);
-  if (restored !== null) await draftStore.save({ ...restored, updated_at: NOW });
+  if (restored !== null) await draftStore.save({ ...restored, updated_at: NOW }, null);
   const afterRefresh = await draftStore.load();
   check(
     "a refresh mid-cart does NOT move it — the lines were priced before that",
@@ -1090,7 +1090,7 @@ async function c9ProvenanceSurvives(): Promise<void> {
       master_as_of: afterRefresh!.master_as_of,
     },
   );
-  await draftStore.promoteToBill(afterRefresh!, bill);
+  await draftStore.promoteToBill(afterRefresh!, bill, null);
   const row = await billStore.getBill(bill.id);
 
   check("the stamp is carried onto the bill", row?.master_as_of === lastNight);

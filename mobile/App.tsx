@@ -47,6 +47,8 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { HttpTransport } from "./src/adapters/httpTransport";
 import { SqliteDraftStore } from "./src/adapters/sqlite/SqliteDraftStore";
 import { SqliteIdentityStore } from "./src/adapters/sqlite/SqliteIdentityStore";
+import type { LocalIdentity } from "./src/adapters/sqlite/SqliteIdentityStore";
+import { ownerForNewRow } from "./src/session/rowOwner";
 import { SqliteLocalStore } from "./src/adapters/sqlite/SqliteLocalStore";
 import { SqliteMasterStore } from "./src/adapters/sqlite/SqliteMasterStore";
 import {
@@ -777,6 +779,36 @@ export default function App() {
     })();
   }, [refresh, syncOnce]);
 
+  /* ----------------------------------------------------------- row owner -- */
+
+  /**
+   * WHO THIS DEVICE IS SIGNED IN AS, read from the store at the moment a row is
+   * written. Every local write that records ownership goes through this.
+   *
+   * READ LIVE, NOT CACHED IN A REF. The store is the only thing that knows, and
+   * a ref would be a second copy that can disagree with it — stale after a
+   * sign-in, or holding a person who has since been replaced. The read is one
+   * indexed single-row SELECT on a connection this call is about to write to
+   * anyway.
+   *
+   * NOT DERIVED FROM THE TOKEN, and this is the part that looks like a missing
+   * step rather than a decision. A token can be expired, revoked, or simply
+   * absent on an offline morning while the person at the scale is exactly who
+   * they were yesterday — and the claims inside it are the server's, signed
+   * with a key this client cannot verify. Ownership has to survive all of that,
+   * so it comes from what a successful login RECORDED and from nothing else.
+   *
+   * NULL MEANS UNKNOWN AND IS NEVER A GUESS. It is returned when no login has
+   * ever been recorded on this device, and when the store is not open yet — a
+   * boot race the sign-in path already guards at its own call site. The one
+   * thing it must never become is "probably the last person", which would
+   * manufacture provenance that reads exactly like the real thing.
+   */
+  const currentOwner = useCallback(
+    async (): Promise<LocalIdentity | null> => ownerForNewRow(identityStoreRef.current),
+    [],
+  );
+
   /* ------------------------------------------------------ draft persistence */
 
   const flushDraft = useCallback(async () => {
@@ -786,8 +818,10 @@ export default function App() {
     }
     const d = pendingDraft.current;
     pendingDraft.current = null;
-    if (d && draftStoreRef.current) await draftStoreRef.current.save(d);
-  }, []);
+    if (d && draftStoreRef.current) {
+      await draftStoreRef.current.save(d, await currentOwner());
+    }
+  }, [currentOwner]);
 
   const onDraftChange = useCallback(
     (next: Draft, immediate: boolean) => {
@@ -1043,7 +1077,11 @@ export default function App() {
           // from — see src/master/freshness.ts on why stamping it at save time
           // would be the false negative that makes the marker worthless.
           const fresh = newDraft(deviceIds.newId(), s.id, nowIso(), freshness.asOf);
-          await draftStore.save(fresh);
+          // The one save of this draft that INSERTS, so the one that records an
+          // owner — every later save updates and the columns are excluded from
+          // the DO UPDATE list. This pair therefore means "who opened the cart",
+          // and it is stamped here because here is where the cart opens.
+          await draftStore.save(fresh, await currentOwner());
           setDraft(fresh);
           setStatus(`เริ่มบิลใหม่ · ผู้ขาย ${s.name}`);
         })();
@@ -1065,7 +1103,7 @@ export default function App() {
       const preview = changeSeller(draft, s.id, locks, tierResolver(s.grade), nowIso());
       setPendingChange({ to: s, impact: preview.impact });
     },
-    [applySellerChange, draft, freshness.asOf, locks, tierResolver],
+    [applySellerChange, currentOwner, draft, freshness.asOf, locks, tierResolver],
   );
 
   /* ------------------------------------------------------------ vehicle -- */
@@ -1153,7 +1191,11 @@ export default function App() {
         const lineCount = draft.lines.length;
         const total = cartTotal(draft);
 
-        await draftStore.promoteToBill(draft, bill);
+        // Read HERE, at the save, and not inherited from the draft row. This is
+        // the person who handed over the cash, and the server records whoever
+        // SENDS a bill as its creator — so the owner that gates the send has to
+        // be this one, not whoever happened to pick the seller hours earlier.
+        await draftStore.promoteToBill(draft, bill, await currentOwner());
 
         // NO replacement draft. The next bill starts at the seller picker, so
         // this customer cannot be inherited by the next load — see the header.
@@ -1171,7 +1213,7 @@ export default function App() {
         setBusy(false);
       }
     })();
-  }, [draft, refresh, seller, syncOnce]);
+  }, [currentOwner, draft, refresh, seller, syncOnce]);
 
   /* ----------------------------------------------------------------- view -- */
 

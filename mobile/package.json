@@ -25,7 +25,8 @@
     "prove:forbidden": "npm run build && node dist/proof/proveForbidden.js",
     "prove:daily": "npm run build && node dist/proof/proveDaily.js",
     "prove:signout": "npm run build && node dist/proof/proveSignOut.js",
-    "prove:migration": "npm run build && node dist/proof/proveMigration.js"
+    "prove:migration": "npm run build && node dist/proof/proveMigration.js",
+    "prove:owner": "npm run build && node dist/proof/proveOwner.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

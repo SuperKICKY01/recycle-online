@@ -26,6 +26,7 @@
 import { SEND_SCHEDULE_HORIZON_MS } from "../../time/clockSanity.js";
 import type { LocalBill, LocalStore, QueueSnapshot, SyncState } from "../../sync/types.js";
 import type { SqlDriver, SqlValue } from "./driver.js";
+import type { LocalIdentity } from "./SqliteIdentityStore.js";
 import { initConnection } from "./schema.js";
 
 interface BillRow {
@@ -115,12 +116,35 @@ function dueParams(now: Date): [string, string] {
  * transaction. Writing it out a second time there would be a column list free
  * to drift from this one — silently, since both would still compile and only
  * the promoted bills would be wrong. One definition, two call sites.
+ *
+ * THE OWNER COLUMNS ARE APPENDED HERE AND ARE DELIBERATELY NOT IN `COLUMNS`.
+ * `COLUMNS` is the SELECT list every read in this file shares, so putting them
+ * there would change what eight existing queries return in the same commit that
+ * first writes them — and a wrong value could then not be told apart from a
+ * wrong reader. They are WRITTEN now and READ in the commit that has a use for
+ * them. Nothing between here and there may treat their absence from a read as
+ * evidence the row has no owner.
  */
 export const BILL_INSERT_SQL =
-  `INSERT INTO local_bills (${COLUMNS})` +
-  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  `INSERT INTO local_bills (${COLUMNS}, owner_tenant_id, owner_user_id)` +
+  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-export function billInsertParams(bill: LocalBill): SqlValue[] {
+/**
+ * `owner` is REQUIRED and nullable — never optional, and never two loose
+ * strings. Both halves of that are load-bearing.
+ *
+ * Required, because a default would hand UNKNOWN ownership to any caller who
+ * says nothing, and an unowned bill is the exact silent outcome this step
+ * exists to prevent. Null is a legitimate answer with a precise meaning — this
+ * device does not know whose row this is — and it is what an offline morning
+ * before any sign-in genuinely produces.
+ *
+ * One nullable OBJECT rather than two nullable fields, so "tenant set, user
+ * missing" is unrepresentable rather than merely discouraged. A half-owner
+ * would pass a tenant check and fail a user check, which is the shape that
+ * sends a bill under the wrong person inside the right shop.
+ */
+export function billInsertParams(bill: LocalBill, owner: LocalIdentity | null): SqlValue[] {
   return [
     bill.id,
     bill.idempotency_key,
@@ -146,6 +170,10 @@ export function billInsertParams(bill: LocalBill): SqlValue[] {
     bill.master_data_missing_at,
     bill.master_data_code,
     bill.master_as_of,
+    // Expanded from the pair at exactly ONE point in the codebase, which is why
+    // the two columns can never disagree about whether an owner is known.
+    owner === null ? null : owner.tenant_id,
+    owner === null ? null : owner.user_id,
   ];
 }
 
@@ -197,7 +225,32 @@ export class SqliteLocalStore implements LocalStore {
   async putBill(bill: LocalBill): Promise<void> {
     // Plain INSERT, not INSERT OR REPLACE: a duplicate bill id is a bug that
     // must surface, never silently overwrite a bill that may already be synced.
-    await this.db.run(BILL_INSERT_SQL, billInsertParams(bill));
+    //
+    // NULL OWNER, AND THE SIGNATURE IS NOT WIDENED TO TAKE ONE. Measured in the
+    // commit that added this: NOTHING IN PRODUCTION CALLS putBill. The only
+    // production bill INSERT is SqliteDraftStore.promoteToBill; the references
+    // to this method are sync/createBill.ts's createLocalBill (which itself has
+    // no production caller), src/proof/fakes.ts, proveCold.ts and proveSeller.ts.
+    // A bill written down this path therefore has no known owner and null is
+    // the TRUE value, not a placeholder standing in for one.
+    //
+    // WHAT WOULD HAPPEN IF A PRODUCTION CALLER APPEARED, which is the point —
+    // the absence of one today is only why it is not happening yet, not why it
+    // would be safe. The bill would be written with no owner. The design reads
+    // that as UNKNOWN rather than as mine, so the row is treated as another
+    // person's and PARKS: it stops being selected for sending, and it waits for
+    // the sign-in of whoever owns it. Nobody owns it. So it waits for a person
+    // who does not exist, and the money on that bill — cash already out of the
+    // drawer — sits on one handset with no server record and nothing on screen
+    // that anyone can act on, because the release condition can never be met.
+    //
+    // It fails in the direction nothing catches. An unowned bill is
+    // indistinguishable from one weighed before anyone signed in, which is a
+    // legitimate state this design deliberately produces, so the parked count
+    // looks ordinary and no alarm has grounds to fire. Any production caller
+    // added here must take an owner; this comment is what has to fail review,
+    // because the row will not.
+    await this.db.run(BILL_INSERT_SQL, billInsertParams(bill, null));
   }
 
   async getBill(id: string): Promise<LocalBill | null> {
@@ -231,6 +284,24 @@ export class SqliteLocalStore implements LocalStore {
    *
    * `id` remains the tiebreaker so the order is total, never arbitrary, when
    * two bills share a timestamp.
+   *
+   * ------------------------------------------------------------------------
+   * NO PRODUCTION CALLER. Measured across the whole mobile tree in this commit:
+   * every reference outside src/proof is either a COMMENT (engine.ts, schema.ts
+   * twice, and this file's own header) or the LocalStore interface declaration
+   * in sync/types.ts. The callers are proveSync, proveCart, sqliteProof and the
+   * in-memory fake in src/proof/fakes.ts, and nothing else. The engine reads
+   * listPendingOldestFirst and applies the due rule in TypeScript instead —
+   * this file's header says so at the DUE_OR_UNBELIEVABLE constant.
+   *
+   * WHAT THAT MEANS FOR THE OWNER FILTER COMING NEXT. An owner clause added
+   * here would be exercised by no code a handset runs. The proofs above would
+   * go green over it, and that green would be about this statement only —
+   * evidence for the semantics of a query the app never issues, and evidence
+   * for nothing the operator's phone does. The statement the send loop actually
+   * uses is listPendingOldestFirst; the filter has to be correct THERE, and a
+   * suite passing here is not a substitute for measuring it there.
+   * ------------------------------------------------------------------------
    */
   async listReadyToSend(now: Date, limit: number): Promise<LocalBill[]> {
     const rows = await this.db.all<BillRow>(
@@ -398,6 +469,29 @@ export class SqliteLocalStore implements LocalStore {
     );
   }
 
+  /**
+   * The parked bills themselves, oldest weighed first.
+   *
+   * NO PRODUCTION CALLER. Measured across the whole mobile tree in this commit:
+   * the only references outside src/proof is the LocalStore interface
+   * declaration in sync/types.ts — there is not even a comment elsewhere. Its
+   * callers are proveSync and the in-memory fake in src/proof/fakes.ts, and
+   * nothing else.
+   *
+   * The app reaches parked bills by two OTHER routes, which is why nothing has
+   * missed this one: pendingQueueSnapshot returns masterDataBlockedCount from
+   * its own COUNT (a separate statement with the same predicate), and App.tsx
+   * lists bills through listByState and classifies them in TypeScript.
+   *
+   * WHAT THAT MEANS FOR THE OWNER FILTER COMING NEXT. Parking is the mechanism
+   * a row belonging to someone else will be lifted out of the queue with, so
+   * this method reads like the natural place to prove that behaviour — and it
+   * is not one. An owner clause added here would be exercised by no code a
+   * handset runs, and a proof driving it would establish the semantics of a
+   * query the app never issues. The counts the operator actually sees come from
+   * pendingQueueSnapshot and from listByState; those are where a parked-owner
+   * count has to be correct, and where it has to be measured.
+   */
   async listMasterDataBlocked(limit: number): Promise<LocalBill[]> {
     const rows = await this.db.all<BillRow>(
       `SELECT ${COLUMNS} FROM local_bills

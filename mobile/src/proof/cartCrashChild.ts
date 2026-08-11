@@ -149,7 +149,8 @@ async function main(): Promise<void> {
   );
 
   console.log(`CHILD: promoting draft ${draft.id} -> bill ${billId} (mode=${mode})`);
-  await store.promoteToBill(draft, bill);
+  // No identity is stored in this child, so the owner is genuinely UNKNOWN.
+  await store.promoteToBill(draft, bill, null);
 
   // Only reachable if the kill failed to happen.
   console.log("CHILD: STILL ALIVE AFTER PROMOTION — crash injection did not fire");
