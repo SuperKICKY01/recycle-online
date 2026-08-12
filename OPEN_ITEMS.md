@@ -15,6 +15,30 @@ in `PROJECT_STATUS.md`; architecture and invariants are in
 `BRIEFING.md`. Nothing on this list is a claim that the item is a good
 idea — only that it is unresolved.
 
+**BEFORE BELIEVING ANY LINE HERE THAT SAYS SOMETHING IS ABSENT.** This file is
+full of negative claims — not built, never done, no such thing — and **most have
+never been checked against the repository.** Measured 2026-08-12, AFTER that
+day's four corrections and the new verification entry landed, and BEFORE this
+block was written, so none of these figures counts this block's own words:
+**64 of this file's 109 entries carry a negative claim; 12 of those 64 have been
+checked against source; 5 of the 12 were FALSE** — the thing they said was
+missing was already built, and each was refuted by a single grep. **52 are
+unchecked.** (Four of the five were corrected that day; the fifth already
+carried its own correction.)
+
+**52 IS A FLOOR, NOT A TOTAL, and the reason is not modesty.** The sweep that
+produced it is known to be incomplete — it did not match the headlines of two of
+the three entries already known to be stale, and caught them only through
+unrelated lines inside them. A sweep that misses known cases will silently miss
+unknown ones. The mechanism, and what widening it requires, is the last entry
+under `OPEN_ITEMS.md § Documentation`.
+
+**THE OPERATING RULE UNTIL THAT WORK IS DONE: every line here saying something is
+absent, not built, or never done is a CLUE, and confirming it against the
+repository is one grep.** A false negative in this file sends a session to build
+what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
+`CLAUDE.md § Workflow` "A REPORT IS A CLUE".
+
 ---
 
 ## Blocking one real paying shop
@@ -155,6 +179,19 @@ idea — only that it is unresolved.
   deleted** because `R5` is cited from elsewhere and because a reader arriving at
   "no account-provisioning path exists at all" should meet the correction beside
   it, not instead of it.
+  **CORRECTED AGAIN 2026-08-12, AND IT IS THE CORRECTION ABOVE THAT WENT STALE,
+  not the original.** That block ends "it is that no endpoint exists for any of
+  it" — false since `cb11f6a`, the same day it was written. **In source, read
+  this pass:** `server/app/users.py:390` is `@router.post("/users")`, `:805` is
+  `@router.post("/users/me/password")` and `:901` is
+  `@router.post("/users/{user_id}/password")` — the three routes D6 specifies.
+  Found by `git log -S "users/me/password"` over that file rather than by reading
+  commit subjects.
+  **WORTH NAMING BECAUSE IT IS THE SHAPE THIS FILE KEEPS PRODUCING: a dated
+  correction is not permanently true either.** This one was outlived by a commit
+  on its own date. What is still outstanding is the ORIGINAL bar and nothing
+  smaller — accounts in a production database that does not exist. *Not done:*
+  unchanged. *Unblocks:* unchanged.
 - **Master-data screens — `R4`, and the biggest fork on the path** — the
   whole master-data WRITE path exists and is proven over HTTP, and the
   only thing that can call it is `curl`. A shop cannot set up its own
@@ -187,6 +224,20 @@ idea — only that it is unresolved.
   change or deactivation, checked where the role is already re-read on
   every request). Exposure is bounded — tokens expire in an hour and
   there is no refresh token — but bounded is not closed.
+  **CORRECTED 2026-08-12 — THE HEADLINE IS FALSE: BOTH HALVES ARE BUILT.** The
+  *Unblocks:* above describes the mechanism as if it were owed, and it names it
+  exactly: "a token version on the user row, bumped on password change or
+  deactivation, checked where the role is already re-read on every request".
+  That is what exists. **In source, read this pass:** `server/app/auth.py:217`
+  calls `_require_live_session(token_version, row["token_version"])`, on the
+  same query that re-reads the role. Built by `19a6b63`, with the account-lock
+  guard added at `c9356a2` — both found by `git log -S "_require_live_session"`
+  over the source, not by reading commit subjects. The client half exists too:
+  `PROJECT_STATUS.md § What is NOT built` "SIGN-OUT — CLOSED by R1" records both
+  halves observed on a real handset on 2026-08-06.
+  **What is still true in the paragraph above:** there is no refresh token, and
+  the one-hour expiry is the bound. **Nothing else in it is.** *Not done:*
+  nothing. *Unblocks:* nothing.
 - **No author on a purchase bill — a SCHEMA and audit question, and NOT
   part of `R1`** — `purchase_bills` has no `created_by` column, so
   nobody can say which staff member bought a load. The only user
@@ -204,6 +255,28 @@ idea — only that it is unresolved.
   divergence is the actual open question, not the column.** Keep it out
   of `R1`: R1 is about refusing a live token, and no column added there
   would make a single already-written bill traceable.
+  **CORRECTED 2026-08-12 — "`purchase_bills` has no `created_by` column" IS
+  FALSE, and the open question it framed has been answered.** **In source, read
+  this pass:** migration `0006` line 159 is
+  `ALTER TABLE purchase_bills ADD COLUMN created_by uuid`, and
+  `server/app/bills.py:541` names `created_by` in the INSERT's column list, so
+  the API writes it. Built by `9673171`, found by
+  `git log -S "ADD COLUMN created_by"` over the migrations rather than by
+  reading commit subjects. The divergence this entry called "the actual open
+  question" was decided rather than left: the column records **the session that
+  SUBMITTED the bill**, which `0006`'s own docstring states in its first lines
+  and distinguishes from whoever weighed the load.
+  **WHAT REMAINS TRUE IS THE PART THAT CANNOT BE REPAIRED**, and it is why this
+  entry is not simply closed: every bill written before `0006` is authorless
+  permanently, and the entry counting ten of them sits under
+  `OPEN_ITEMS.md § Code debt found and left in place` — named by section only,
+  because a citation whose target is its own file counts its own line and cannot
+  resolve. **A SECOND SITE CARRIES THE SAME
+  FALSE SENTENCE AND IS NOT CORRECTED HERE:**
+  `ARCHITECTURE.md § 11. A known absence, stated as true rather than as a gap`
+  opens with it, and correcting another file's section is not this entry's to do
+  — it is named so the next pass does not have to rediscover it. *Not done:* the
+  ARCHITECTURE correction. *Unblocks:* nothing.
 - **A half-finished cart surviving a change of USER — `R5`'s question,
   not `R1b`'s** — sign-out deliberately LEAVES the open draft in SQLite
   (`local_draft`), and R1b proves it is still there afterwards rather
@@ -2180,6 +2253,29 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   whether a session held to these rules actually finds anything, and
   whether an empty report from it can be trusted. That is only
   answerable by running it a few times.
+  **CORRECTED 2026-08-12 — IT HAS RUN, AND IT FOUND SOMETHING. Deleting the word
+  "never" would not be enough here**, because a reader who met this entry
+  corrected but bare would conclude the instrument has no track record, which is
+  the opposite of what the record says.
+  **WHEN: 2026-08-07**, on the sign-out work — which is the very candidate the
+  *Unblocks:* above nominates. **WHAT IT FOUND**, recorded at
+  `PROJECT_STATUS.md § Previous phase` "The finding, in its own terms": `session`
+  was a **hand-typed literal at all 21** of `proveSignOut.ts`'s `session:` call
+  sites, S9's two included. S9 measured `pending` off a real `SqliteLocalStore`
+  and then typed the session in beside it — so the one link R2b created, the
+  sheet depending on session state, **was exercised by nothing**, and S9's own
+  label claiming the halves differ in the ENGINE was the claim not established.
+  **THE DISPROOF IS WHAT MAKES IT A FINDING RATHER THAN AN OPINION:** delete
+  `setSessionEnded(true)` at `App.tsx:618` and `prove:signout`, `typecheck` and
+  `typecheck:app` all stay green. The repair landed at `9f929ad`, found by
+  `git log -S "sessionEndedAfterPass"` over the source rather than by reading
+  commit subjects.
+  **SO THE FIRST OF THE TWO OPEN QUESTIONS IS ANSWERED AND THE SECOND IS NOT.**
+  A session held to these rules does find things, and what it found was a green
+  proof measuring nothing — one of the three shapes `RED_TEAM.md` says the pass
+  hunts first. Whether an EMPTY report from it can be trusted is still unknown,
+  and still needs several runs. *Not done:* the trial is one run deep, not none.
+  *Unblocks:* unchanged — more diffs through it.
 - **No retention rule exists for scratch databases or backup directories,
   and the inventory is accumulating.** `server/scripts/BACKUP.md` states
   "No scheduling, no cloud or off-site upload, no retention or pruning",
@@ -3197,4 +3293,39 @@ or from a plausible-sounding summary.
   `START_HERE.md § 2` points at it instead of recording its absence; if it does
   not, the standing instruction is that whoever opens an advising chat sends it
   with them, and that instruction has no home here either.
+
+- **MOST NEGATIVE CLAIMS IN THIS FILE HAVE NEVER BEEN CHECKED AGAINST SOURCE, and
+  the sweep that measured that is KNOWN TO BE INCOMPLETE — 2026-08-12.** The
+  figures and the operating rule are at the head of this file and are not
+  repeated here. What belongs here is the WORK and the MECHANISM.
+  **HOW THE INSTRUMENT FAILED, which is the part that must not be lost.** The
+  sweep was a regex list over this file: existence phrasings in entry bodies,
+  plus any negative word in an entry HEADLINE. Of the three entries already known
+  to be stale, **two matched only through unrelated lines inside them** — the
+  sign-out entry matched on "there is no refresh token" and the bill-author entry
+  on "never designed" and "no column added there". **Their headlines did not
+  match at all**, because the noun list contained `endpoint|route|screen|column|
+  proof|test|client|mechanism|index|migration|scheduler|policy|middleware` and
+  did not contain `sign-out` or `author` — the two subjects those entries are
+  about. They were caught by luck, not by the instrument.
+  **A SWEEP THAT MISSES KNOWN CASES WILL SILENTLY MISS UNKNOWN ONES**, and it
+  fails in the direction that reads as completion: it returns a number, the
+  number looks like a total, and whoever runs it closes the item. That is this
+  repository's oldest failure shape and the reason this entry exists rather than
+  a line saying "verify the rest".
+  *Not done:* the remaining entries have not been checked, and the instrument has
+  not been widened. *Unblocks:* widening it in three ways before it is trusted —
+  the noun list must be open-ended rather than enumerated (any `no <word>` in a
+  headline, triaged by hand); the phrasing list must cover the negatives the
+  enumeration missed (`lacks`, `without`, `has yet to`, `is owed`, `stopgap`);
+  and every entry it returns needs the same treatment the four corrected on
+  2026-08-12 got — grep the artefact, and where it exists, `git log -S` the
+  source text for the commit. **The count of corrected entries is four, not five:**
+  the Android-coverage entry was found stale by the same sweep and already
+  carried its correction from 2026-08-12, which is itself evidence that this file
+  is maintained faster than any one sweep can describe it. **Its name is written
+  hyphenated on purpose** — the unhyphenated form is a live citation HANDLE
+  elsewhere in the tree, and reproducing it verbatim here makes it match twice
+  and breaks every citation pointing at it. That happened in the first draft of
+  this very entry.
   
