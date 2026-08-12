@@ -627,6 +627,38 @@ false pass and a red run into a confidently wrong cause.
   a wrong claim in a code comment does not rot visibly. **Order the sweep
   before the edit, and treat "never/always/first" as the words that
   demand a search rather than a memory.**
+  **FOUR MORE LANDED IN ONE DAY, 2026-08-12, AND THE POINT IS NOT A FOURTH
+  ANECDOTE — IT IS THAT THE RULE HAS NO CHECKPOINT WHERE IT FAILS.** Four
+  negative claims were made by the ADVISING session in a single day, each
+  answered out of the conversation rather than out of the files that session
+  holds: that the seller table lacked identity fields, when migration `0004`
+  added `id_number`, `address` and `vehicle_no` on 2026-07-28; that master data
+  would have to be seeded before a handset could weigh, when `seed_dev.py`
+  already creates uoms, categories, products, prices and sellers; that the void
+  queue's owner filter was unbuilt, when `cfb6633` had put it in
+  `listVoidsToApply`'s predicate; and the `clear()` claim recorded above.
+  **ALL FOUR WERE NEGATIVE CLAIMS** — there is no, it is not, nothing does —
+  and each was refuted by one grep.
+  **WHY THE RULE ABOVE DID NOT CATCH THEM, which is the whole finding.** It is
+  enforced entirely on the IMPLEMENTING session's path: a reading order, a boot
+  check, a `Prove:` block, a brief that can be checked part by part against
+  `START_HERE.md § 3`. **The advising session has no such path.** It reads the
+  same files and nothing requires it to open one before it answers. So the rule
+  was applied to the role that was not making the error — which is why three
+  instances were recorded here and the rate did not change.
+  **WHERE THE CHECKPOINT IS NOW.** A ninth item in the advising session's
+  pre-send checklist: for any claim that something does not exist, has never
+  been done, or is not supported — name the sentence relied on, name the WORDS
+  searched for, and where nothing was found say **"not found with these words"**
+  rather than "there is none". A search with the wrong word and an absent fact
+  produce an identical result, and only the first phrasing keeps them apart.
+  **THE LIMITATION, STATED RATHER THAN HIDDEN: that checklist lives in the
+  advising chat's own instructions and NOT in this repository.** Nothing here
+  enforces it, and nothing here can even see it. **A new advising chat opened
+  without it has no checkpoint at all**, so whoever opens one must send the
+  checklist with it. `START_HERE.md § 2` records that it exists and that the
+  repo does not hold it; the gap itself is queued in
+  `OPEN_ITEMS.md § Documentation`.
   **This is a WORKFLOW rule and not a lesson**, by the two-homes test
   above: nothing about it is a property of this box, and it would not be
   opened by an index line touching a task — it applies to every task.

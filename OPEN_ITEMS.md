@@ -1953,8 +1953,16 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   does not.
   *Not done:* nothing — no code has been changed for 404, 400 or 422 on the void
   path.
-  *Unblocks:* an owner filter on the void queue, which lands on the same
-  predicate.
+  *Unblocks:* ~~an owner filter on the void queue, which lands on the same
+  predicate.~~ **CORRECTED 2026-08-12 — THAT FILTER IS BUILT, and only this field
+  changes; everything above it is still true and is untouched.** `cfb6633` put
+  the owner into `listVoidsToApply`'s OWN predicate —
+  `AND void_requested_by_tenant_id = ? AND void_requested_by_user_id = ?`, bound
+  by `ownerParams(await this.currentOwner())` — **read out of
+  `mobile/src/adapters/sqlite/SqliteLocalStore.ts` in this pass, not out of a
+  commit message.** So this entry waits on nothing and is not a dependency of
+  anything: the 404/400/422 hazard its body describes is unchanged, still open,
+  and is now the WHOLE of what this entry is. *Unblocks:* nothing.
 - **A LOGIN THAT ANSWERS 200 WITHOUT A TOKEN PUTS THE APP INTO A SIGNED-IN
   STATE WITH NO TOKEN.** Measured at `7b4f22d`: the login transport asserts the
   response shape with `as` rather than checking it, and nothing anywhere
@@ -3167,4 +3175,26 @@ or from a plausible-sounding summary.
   (`ARCHITECTURE.md § 10. The three settled decisions` D7). What is still
   open under that heading is the different question of who mints a SHOP
   CODE when a shop is onboarded, which no decision touches.
+
+- **THE ADVISING SESSION'S PRE-SEND CHECKLIST IS NOT IN THIS REPOSITORY, so a
+  new advising chat has no checkpoint at all — recorded 2026-08-12.** That
+  session is the one role with no enforced path: this session has a reading
+  order, a boot check and a `Prove:` block, and the advisor has none of them
+  while reading the same files. On 2026-08-12 it made **four negative claims in
+  one day**, each answered from the conversation rather than from a file, each
+  refuted by one grep — the case is written up once, at
+  `CLAUDE.md § Workflow` "A REPORT IS A CLUE", and is not restated here.
+  *Not done:* the checklist lives in that chat's own instructions and nothing in
+  this tree can see it, so nothing here can enforce it, verify it, or notice
+  when it is missing. **Searched for with `pre-send`, `presend`, `checklist`,
+  `before sending`, `before it answers`, `ninth item` and `nine items` over
+  every tracked `*.md`: NOT FOUND WITH THESE WORDS** — which is the phrasing the
+  ninth item itself requires, and is not the same claim as "it is not there".
+  Only that ninth item is known in the tree; **the other eight have not been
+  seen by anyone here and must not be invented**, which is why this is an entry
+  and not a transcription. *Unblocks:* the owner deciding whether the checklist
+  belongs in this repository at all — if it does, it is pasted in and
+  `START_HERE.md § 2` points at it instead of recording its absence; if it does
+  not, the standing instruction is that whoever opens an advising chat sends it
+  with them, and that instruction has no home here either.
   

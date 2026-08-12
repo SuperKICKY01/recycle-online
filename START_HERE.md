@@ -96,6 +96,21 @@ Not in the boot path. Open when the task reaches them:
     pass. Then `--write`, and re-paste only the files it named. Nothing
     surfaces this on its own: the copy lives in a Claude project the repo
     cannot see, and a copy cannot know what changed after it was made.
+
+  **A PRE-SEND CHECKLIST GOVERNS THAT SESSION, AND THIS REPOSITORY DOES NOT
+  HOLD IT. Recorded 2026-08-12.** It lives in the advising chat's own
+  instructions. Searched for here with `pre-send`, `presend`, `checklist`,
+  `before sending`, `before it answers`, `ninth item` and `nine items`, case
+  insensitive over every tracked `*.md`: **not found with these words.** Only
+  its NINTH item can be named from inside this tree, because
+  `CLAUDE.md § Workflow` "A REPORT IS A CLUE" records the failure that produced
+  it — a claim that something does not exist must name the sentence relied on
+  and the words searched for. **The other eight are deliberately NOT transcribed
+  here: nobody in this repository has seen them, and inventing them would be the
+  exact failure that bullet is about.** **An advising chat opened without the
+  checklist has NO checkpoint** — nothing in the tree fires when that session
+  answers from memory instead of from a file. Whoever opens one must send it
+  with them. The gap is queued at `OPEN_ITEMS.md § Documentation`.
 - **You, this session, write the production code**, run the proofs, and
   report what was observed.
 - **A red-team session** is a fourth role, run separately, and is never
