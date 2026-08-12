@@ -1548,3 +1548,76 @@ than being a late edit.
 **No connection string in the tree carries a TLS option.** The three DSNs in
 `server/.env.example` are plain, so a host that requires TLS to Postgres needs
 all three changed.
+
+### 14.8 The checklist — what to ask a host's documentation
+
+**WHY IT IS IN THIS SECTION rather than in a file of its own.** Every question
+below points at a subsection ABOVE it. From another file each pointer would be a
+cross-file citation that a renamed subsection breaks silently; from three lines
+below, whoever renames one sees the questions on the same screen. It has no
+content of its own — delete 14.1–14.7 and nothing here means anything — so a
+separate home would be a second copy to keep in step, which is
+`CLAUDE.md § Scope and status` "Do not restate any of it here" applied to a
+procedure instead of a status. **The subsections are referenced by number and
+heading and NOT in the
+`file § Section` "handle" citation form**, because a citation whose target is its
+own file counts its own line and cannot resolve —
+`lessons/README.md § Lessons` "a citation whose TARGET is its own file".
+
+**HOW TO USE IT.** Every question is yes or no, answered from the host's own
+documentation. **None of them restates why the requirement exists** — read the
+subsection named beside each one before deciding that a "no" is survivable.
+Record the answer with the date and where it was read; an answer remembered from
+a previous sitting is not an answer.
+
+**A — DISQUALIFIERS. A "no" to ANY of these ends the evaluation, and the rest
+need not be read.** They are ordered cheapest first: A1 is usually one page of a
+host's documentation, and A2 is usually the next.
+
+| # | Question | Comes from |
+|---|---|---|
+| **A1** | Can we create our own database roles — three of them, with attributes and privileges we choose? | *14.2 Role creation — a host that forbids it cannot run this system at all* |
+| **A2** | Can we obtain a superuser connection, or a role that FORCE row-level security does not bind? | *14.4 Without a superuser the dump SUCCEEDS AND IS EMPTY*, and *14.3 Where a superuser is required, and where it deliberately is not* |
+| **A3** | Can we create and drop databases on the same cluster? | *14.2*, and the restore path in *14.3* |
+| **A4** | Can we run a `psql` script against the cluster — one using meta-commands, not a driver? | *14.1 The conclusion, and it does not stand without 14.2 and 14.4*, and *14.2* |
+| **A5** | Do we get shell access on the machine, with the database credentials? | *14.3* |
+
+**B — TRADES. A "no" costs something NAMED and does not end the evaluation.**
+Every question is written so that **"no" is the costly answer**, so a column of
+yeses is the cheap outcome and no question has to be read backwards.
+
+| # | Question | Comes from | What a "no" costs |
+|---|---|---|---|
+| **B1** | Is PostgreSQL 15 or later available? | *14.5 The version floor is 15, and ONE column sets it* | exactly what 14.5 records under "WHAT LOWERING IT WOULD COST" — read it there, and take it as a decision |
+| **B2** | Is the database created with the libc locale provider rather than ICU? | *14.5* | the backup and the restore both refuse to run at all until the guard named in 14.5 is removed, which is B1's trade arriving by another route |
+| **B3** | Is the application reached at the path it is served on, with nothing in front rewriting it? | *14.6 What is NOT required — stated on purpose* | the fix is one setting, applied in the SAME change — 14.6 names it and names what breaks if it is not |
+| **B4** | Do our connection strings work as written, with no TLS parameters required? | *14.7 What the client requires, and what it costs to change* | three strings change; 14.7 says which |
+
+**C — NOT QUESTIONS FOR A HOST. Two gaps of OURS, and no provider can answer
+them.** Writing them as criteria would let a host's answer look like a
+resolution.
+
+1. **Nothing schedules a backup. It runs when a person runs it.**
+2. **The dumps land on the same disk as the database.**
+
+Both are already recorded and are not restated here:
+`OPEN_ITEMS.md § Blocking one real paying shop` "Scheduled and off-site backup",
+and `server/scripts/BACKUP.md` "Deliberately not built".
+**BOTH OPEN AT THE FIRST REAL BILL AND NEITHER CLOSES ON ITS OWN.** Choosing a
+host does not close them, and a host that offers its own backups does not close
+them either — an unverified copy nobody has restored is the thing
+`lessons/README.md § Lessons` "a-backup-is-a-claim-until-it-is-restored.md" is
+about. They are P1.2's to close, and P1.2's DONE WHEN already asks for the
+scheduled dump and the off-box restore.
+
+**D — THE ONE PEOPLE FORGET WHEN COMPARING HOSTS, and it belongs at the end
+because it is not a question about the database at all.**
+
+**HOW A HOST GIVES ACCESS TO THE MACHINE DECIDES WHAT TOOLING MUST BE WRITTEN,
+not merely configured.** The backup and restore scripts reach the database by
+shelling into a container and carry no DSN path at all, so the access model is
+not a comfort question — it sets the SIZE of the work that follows the move. The
+work is already counted at
+`OPEN_ITEMS.md § Blocking one real paying shop` "THE BACKUP TOOLING CANNOT REACH A REMOTE DATABASE AT ALL"
+and is not restated here. **Ask it while comparing, not after choosing:** two
+hosts that answer A1–A5 identically can still differ by that whole item.
