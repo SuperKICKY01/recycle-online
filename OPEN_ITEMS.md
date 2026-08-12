@@ -242,6 +242,40 @@ idea — only that it is unresolved.
   encryption at rest become real questions rather than deferred ones.
   **Not separable from the hosting step:** the moment the server holds
   one real bill, an unscheduled backup is a single copy.
+
+- **THE BACKUP TOOLING CANNOT REACH A REMOTE DATABASE AT ALL, AND THIS IS
+  UNBUILT WORK NOBODY HAS COUNTED — `R3`/P1.2. Measured 2026-08-12 at
+  `94ad325`.** Both scripts reach Postgres by shelling into a CONTAINER, never
+  over the network: `backup_db.py:116` and `restore_db.py:56` name a container,
+  `backup_db.py:148` and `restore_db.py:75` are the `docker exec` wrappers every
+  statement goes through, and `backup_db.py:615` / `restore_db.py:318` move
+  files with `docker cp`. `restore_db.py:105` states it outright — it "does not
+  use a database driver at all: it shells out to `psql -c` through docker exec".
+  **There is no DSN path in either script**, and `BACKUP.md` records the scope
+  that made that reasonable: the local docker-compose Postgres is "the only
+  deployment that exists — there is no cloud host to back up yet".
+  *Why it isn't done:* nothing was wrong with it. It was correct for the only
+  deployment there has ever been, and the assumption is invisible until the
+  database moves.
+  **WHY THIS IS SIZED RATHER THAN NOTED, and it is the whole reason for this
+  entry.** The day the database moves to a host, the backup tooling **stops
+  working** — and a backup is HALF of that step's own acceptance criterion
+  (`ROADMAP.md § P1.2` wants a scheduled dump fetched off-box and restored into
+  a scratch database). So this surfaces at the moment the step looks nearly
+  done: the server is reachable, the phone gets its 200, and the other half of
+  the criterion cannot be attempted at all. **A step that is half-met and looks
+  finished is worse than one that has not started.**
+  *What the work actually is, so it can be counted rather than discovered:* a
+  connection path that is not `docker exec` for every `psql`, `pg_dump` and
+  `pg_dumpall` invocation in both scripts, plus a replacement for `docker cp`,
+  which moves the dump files off the machine and has no network equivalent in
+  the current design. The row-count and role-attribute verification either
+  survives that change or the backup stops being verified — and
+  `lessons/README.md § Lessons` "a-backup-is-a-claim-until-it-is-restored.md"
+  is the reason it must survive.
+  *Unblocks:* nothing else waits on it, which is exactly why it will be reached
+  last. It is bounded by the hosting choice only in that the choice decides what
+  the new path must speak.
 - **A day view on the desktop — `R7`, after a shop is running** — the
   daily money screen exists on the phone only, so an owner who works
   from a PC cannot see the day's takings there. *Not done:* `desktop/`

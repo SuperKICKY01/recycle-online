@@ -100,6 +100,19 @@ conversion; the other order is correct-by-luck most of the day and wrong across
 Bangkok midnight. พ.ศ. appears in the UI and on printed slips only. Code and
 commits in English, UI text in Thai.
 
+**This cannot run on a managed database service; it needs a machine the project
+controls.** Two independent reasons, either one sufficient: three database roles
+with different privileges have to be CREATED at setup, and a service that hands
+over one database and one login cannot make them; and a dump taken without a
+superuser **succeeds and is empty** — a green backup with no data in it, because
+the row-level security described above hides every row from it. Neither is a
+preference and neither can be configured around. What a host must allow, with
+the file and line behind each requirement and the form a refutation would have
+to take, is
+`ARCHITECTURE.md § 14. What this system requires of a host` "THIS SYSTEM NEEDS A MACHINE THE PROJECT CONTROLS"
+— not repeated here, because two copies drift and a reader believes whichever
+they meet first.
+
 ## 3. Built and proven, versus built and unverified
 
 **This distinction is the project's entire discipline, so be pedantic about it.**

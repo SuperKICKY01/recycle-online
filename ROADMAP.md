@@ -414,11 +414,33 @@ than this machine. Substantially the old R3, and the backup half is not new work
 and restore scripts, the proven round trip, and the disaster-recovery rehearsal.
 What is missing is a schedule and an off-box destination.
 
+**THAT LAST SENTENCE NAMES TWO THINGS WHERE THERE ARE THREE — corrected
+2026-08-12, and the sentence is left standing because it was written before
+anyone looked.** Also missing is **a way for the backup tooling to reach a
+database it cannot `docker exec` into**: both scripts shell into a container and
+neither has a DSN path, so on the day the database moves they stop working. The
+sized entry is `OPEN_ITEMS.md § Blocking one real paying shop` "THE BACKUP
+TOOLING CANNOT REACH A REMOTE DATABASE AT ALL". It matters to the ORDER, which
+is this file's job: the backup is half this step's DONE WHEN, and this half
+surfaces only once the server half looks finished.
+
 **Depends on:** nothing technical. It is a spend decision, and it is the only step
 in this file with external lead time, so its clock starts independently of every
 software step and should start now. **D10 constrains the choice**: after the first
 real bill the box cannot be rebuilt, so whatever is chosen must survive migration,
 backup and restore without being emptied.
+
+**AND D10 IS NO LONGER THE ONLY CONSTRAINT ON THE CHOICE — added 2026-08-12.**
+The requirements this system places on a host were read out of the tree and
+written down at
+`ARCHITECTURE.md § 14. What this system requires of a host` "THIS SYSTEM NEEDS A MACHINE THE PROJECT CONTROLS".
+They are not restated here — two copies drift — but the conclusion bears on the
+ordering argument above, so it is named: the system needs shell access, a
+superuser, role creation and database creation, because the migration chain
+raises without a role no migration creates, and because a dump taken without a
+superuser SUCCEEDS AND IS EMPTY under FORCE row-level security. **Read that
+section BEFORE the choice, not after it.** A requirement discovered after
+procurement is a requirement paid for twice.
 
 **Why the two halves are one step.** The moment the API is reachable from outside a
 LAN it is reachable by everyone else; the moment it holds one real bill, an

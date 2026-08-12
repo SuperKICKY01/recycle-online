@@ -1339,3 +1339,212 @@ its own length.
 
 **Re-derive before resting a decision on any number in this file.** The count
 that decayed fastest was the migration count, and it decayed twice in one day.
+
+---
+
+## 14. What this system requires of a host
+
+**Added 2026-08-12, from a full read of the tree at `94ad325`.** Every line
+number below was measured in that pass. This section is APPENDED rather than
+inserted: `ARCHITECTURE.md § 11` is cited by name from other files, and a
+numbered insert would renumber it and orphan those citations — the argument that
+closed the A-, R- and D-numbers rather than tidying them.
+
+**What this section is for.** The hosting step (`ROADMAP.md § P1.2`) is a spend
+decision with external lead time, and a choice made before the requirements are
+known is one that gets discovered to be wrong after it is paid for. These are
+requirements, not a recommendation: no host, product or price is named here, and
+the choice remains the owner's.
+
+### 14.1 The conclusion, and it does not stand without 14.2 and 14.4
+
+**THIS SYSTEM NEEDS A MACHINE THE PROJECT CONTROLS — shell access, a superuser,
+role creation and database creation. A service that hands over a database and
+nothing else cannot run it.** The two reasons are independent, and either alone
+is sufficient; both are measured below.
+
+1. **Role creation is not optional and not deferrable** — the migration chain
+   HALTS AND RAISES without a role no migration creates, and the API will not
+   boot without three separate connection strings that have no defaults (14.2).
+2. **Without a superuser the backup SUCCEEDS AND IS EMPTY** — a green run
+   producing a schema-shaped file with no rows in it (14.4).
+
+**Whoever later finds a cheaper arrangement will come back to this paragraph,
+so the refutable form is written out.** To overturn this conclusion, show ONE
+of: a way to create three roles with distinct privileges; a way to run
+`server/db/init/00_init_roles.sql`, which needs `psql` meta-commands
+(`00_init_roles.sql:22` — "PSQL ONLY … cannot be fed to a generic SQL executor,
+a migration runner, or a driver like asyncpg"); or a dump that captures rows
+under FORCE row-level security without a superuser. Anything less does not
+answer it. **It is a claim about what is written today**, not a law: 14.5 names
+what would have to be built to change it, and that work is queued at
+`OPEN_ITEMS.md § Blocking one real paying shop` rather than hidden here.
+
+### 14.2 Role creation — a host that forbids it cannot run this system at all
+
+Not an inconvenience, and not a thing to work around later. Two independent
+halves:
+
+**THE MIGRATION CHAIN HALTS AND RAISES.** `0009_directory_shop_codes.py:349`
+reads `pg_roles` for `recycle_directory` **before writing anything** and
+`:351` raises `RuntimeError` when it is absent. `:359` states the cause in the
+error text itself — "no migration creates it either". `alembic upgrade head`
+therefore stops at 0009, and the migration runner wraps the run in one
+transaction, so nothing lands and the database stays at 0008.
+
+**THE API WILL NOT BOOT.** Three environment variables, each read with
+`os.environ[...]` and no default, so a missing one fails at import rather than
+at request time: `config.py:51` (`APP_DATABASE_URL`, the RLS-bound app role),
+`config.py:67` (`DIRECTORY_DATABASE_URL`), `config.py:75` (`JWT_SECRET`, which
+`:76` also rejects when empty). The first two are **two different roles, not two
+spellings of one**: the directory reader holds SELECT on one relation and no
+privilege on schema `public`, which is what lets a shop code be resolved before
+any principal exists. A single-role host cannot satisfy that by configuration.
+
+**What the host must permit ONCE, at first setup, and need not permit
+afterwards** — all in `server/db/init/00_init_roles.sql`:
+
+| statement | line |
+|---|---|
+| `CREATE ROLE recycle_owner` / `recycle_app` / `recycle_directory` | `:46`, `:55`, `:64` |
+| `ALTER ROLE recycle_directory SET search_path` | `:87` |
+| `CREATE DATABASE recycle OWNER recycle_owner` (via `\gexec`) | `:89` |
+| `GRANT CONNECT ON DATABASE` ×2 | `:92`, `:93` |
+| `ALTER SCHEMA public OWNER TO recycle_owner` | `:100` |
+| `REVOKE ALL ON SCHEMA public FROM PUBLIC` | `:101` |
+| `ALTER DEFAULT PRIVILEGES FOR ROLE recycle_owner` | `:106` |
+
+Afterwards the runtime needs none of it: all three roles are created
+`NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`, and migration 0009 grants the
+directory role its two privileges (`:407`, `:408`) rather than the bootstrap
+doing it.
+
+### 14.3 Where a superuser is required, and where it deliberately is not
+
+**The API runtime never holds one**, and that is a designed property rather than
+an accident: `config.py:51` and `:67` are the only two connections it opens, and
+both roles are `NOSUPERUSER NOBYPASSRLS`. What needs elevation is the tooling
+around it:
+
+| what | where | what breaks without it |
+|---|---|---|
+| Reconciliation's tenant listing | `reconcile.py:661` requires `current_setting('is_superuser')` to be `on`; `:626` declares the DSN | reconcile exits **2 = could-not-run**; the money checker cannot run |
+| Taking the dump | `backup_db.py:564` refuses unless `rolsuper` is true | see 14.4 — the dump succeeds and is empty |
+| Dumping cluster roles | `backup_db.py:595` `pg_dumpall --globals-only`; `:593` records why — it reads password hashes from `pg_authid` | no roles captured, so a disaster restore cannot rebuild them |
+| Restoring | `restore_db.py:58`; `:377` `DROP DATABASE … WITH (FORCE)`; role attributes re-checked afterwards | roles come back unverified — a `recycle_app` restored with `BYPASSRLS` reads every tenant while the policies still look correct |
+
+**One requirement here is not a database privilege at all.** `main.py:183` —
+clearing a tripped clock guard needs "DATABASE CREDENTIALS AND SHELL ACCESS ON
+THE HOST, not an admin account in the product. A support path that only speaks
+HTTP cannot clear this guard."
+
+### 14.4 Without a superuser the dump SUCCEEDS AND IS EMPTY
+
+**A green backup with no data in it.** Those are the words, because every
+weaker phrasing rounds this down to a permissions nuisance.
+
+**WHY.** Every business table carries FORCE row-level security, so a
+non-superuser `pg_dump` sees no rows. It then goes one of two ways, and the
+second is the dangerous one: `backup_db.py:561` records that such a dump gives
+"either a hard pg_dump error or, with `--enable-row-security`, an empty
+backup", and `:33` spells the trap out — that flag "makes the dump SUCCEED with
+whatever rows the policy admits", which for an unset tenant context is **zero
+rows**. Exit 0. A file of the right shape. Nothing to see.
+
+**THIS IS THE MOST EXPENSIVE MEMBER OF A FAMILY THIS PROJECT ALREADY
+COLLECTS** — a check that fails by measuring LESS, which is indistinguishable
+from a pass. It is the worst of them because the artefact is the one nobody
+opens until the day the disk is dead, and by then the window it was supposed to
+cover has closed. The defence is already built and must not be removed:
+`backup_db.py:564` refuses to run as a non-superuser at all, and the dump is
+compared table by table against live counts so a zero against a non-zero is a
+hard failure.
+
+**So a host requirement follows directly:** the backup identity must be able to
+read every tenant's rows — a superuser, or a role that FORCE RLS does not bind —
+and `--enable-row-security` must never be added to make an error go away.
+
+### 14.5 The version floor is 15, and ONE column sets it
+
+| what the code uses | where | floor | whose property |
+|---|---|---|---|
+| a non-volatile `DEFAULT` recorded in the catalogue, no table rewrite | `0004:21`, `0005:48`, `0007:54` | 11 | the repo states it |
+| `gen_random_uuid()` in core | `0001:19` | 13 | the repo states it |
+| `DROP DATABASE … WITH (FORCE)` | `restore_db.py:377` | 13 | PostgreSQL |
+| **`pg_database.datlocprovider`** | **`backup_db.py:294`** | **15** | **PostgreSQL — the column does not exist on earlier majors, so the SELECT errors outright** |
+
+**THE BINDING CONSTRAINT IS `datlocprovider`, AND THE SPLIT MATTERS: the API
+runs on 13; it is the BACKUP TOOLING that requires 15.** Anyone reading "15"
+as a property of the application will over-constrain the choice; anyone reading
+"13" will find the backup broken, and the backup is half of P1.2's own
+acceptance criterion.
+
+**WHAT LOWERING IT WOULD COST, written here so a future decision is made with
+the price visible rather than as a cleanup.** That column is read for exactly
+one purpose: to be compared against `'c'` at `backup_db.py:341` and again at
+`restore_db.py:368`. **That comparison is a GUARD — it refuses to back up, or
+restore into, a database whose collation provider is not libc.** Removing the
+column and both guards lowers the floor to 13 and trades away the only thing
+standing between this system and a silently mismatched collation, on a host that
+creates the database for you and chooses the provider itself. The shop code's
+own CHECK constraint was reasoned against a measured collation, so this is not
+hypothetical tidiness. **Lower it as a decision with this cost recorded, never
+as a cleanup.**
+
+### 14.6 What is NOT required — stated on purpose
+
+A requirements list that lists only requirements makes every absence look
+unexamined. Each of these was searched for and not found, with a control.
+
+**NO POSTGRESQL EXTENSION, AND THE NEGATIVE IS CONTROLLED.** Measured at
+`94ad325`: `git grep -i -c -E "create extension" -- server/` exits **1** with
+zero hits, while the same instrument over `server/migrations/` finds
+`create table` **13 times across 4 files** and exits 0 — and `server/` contains
+that path, so the search that found the one reaches everywhere the other could
+live. Nothing needs `pgcrypto`, `uuid-ossp`, `citext` or `btree_gist`; there is
+no `EXCLUDE USING` constraint to demand one. The reason is recorded at
+`0001:19` — the one function that would otherwise have required an extension is
+core from 13.
+
+**A TLS TERMINATOR IN FRONT IS SAFE, WITH ONE EXCEPTION.** The server builds no
+absolute URLs: no redirect response, no `url_for`, no cookie, no trusted-host
+middleware, and the only middleware in the tree is the clock guard at
+`main.py:160`. Authentication is a bearer token, not a cookie, so no
+`Secure`/`SameSite` behaviour changes. Client paths carry no trailing slash and
+the transport strips them at `httpTransport.ts:82`, so no framework
+slash-redirect is reachable.
+
+**THE EXCEPTION, AND IT IS THE ROUTE YOU LOSE WHEN YOU MOST NEED IT.**
+`main.py:186` compares `request.url.path != "/health"` as an EXACT STRING, and
+`main.py:172` makes `/health` the designated way back in when the clock guard
+trips. Mount the application under a path prefix without setting `root_path` and
+the guard sees `/api/health`, refuses that too, and the one route designed to
+stay reachable during a clock trip returns 503. **TLS termination alone does not
+cause this; a PATH-REWRITING proxy does.** A host requirement follows: terminate
+TLS freely, do not rewrite the path — or set `root_path` in the same change.
+
+**CORS IS NOT NEEDED BY THE HANDSET, AND IS NEEDED BY CALLERS THAT DO NOT
+EXIST.** The mobile client is not a browser origin and sends `Authorization`
+rather than cookies, so no policy affects it and no preflight is issued. The
+callers that would need one are both browsers and neither is built —
+`ROADMAP.md § Findings this file carries because no other file records them`
+"CORS is a prerequisite" argues it, and `git ls-files desktop/` returns
+`desktop/.gitkeep` alone. Mixed content is the coupling that matters: an HTTPS
+page cannot call a plain-HTTP API.
+
+**NO SIZING REQUIREMENT IS RECORDED ANYWHERE.** This file fixes no CPU, memory,
+disk, connection-count or uptime figure, and this pass found none elsewhere. An
+absence, stated so it is not mistaken for a small number.
+
+### 14.7 What the client requires, and what it costs to change
+
+One string, one reader: `mobile/app.json:32` holds `apiBaseUrl`, and
+`mobile/app/config.ts:24` is the only thing that reads it (`:18` throws when it
+is missing). Nothing pins a certificate. **But the value is baked in at build
+time**, so moving to an `https://` host costs a rebuild and a redistribution,
+not a setting on the device — which is why it couples to the build step rather
+than being a late edit.
+
+**No connection string in the tree carries a TLS option.** The three DSNs in
+`server/.env.example` are plain, so a host that requires TLS to Postgres needs
+all three changed.
