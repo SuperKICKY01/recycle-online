@@ -171,6 +171,41 @@ change. `CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING" applies 
 full to whoever takes the first one, and until then the screens are unobserved
 rather than working.
 
+**SUPERSEDED 2026-08-12 — A DEVICE PASS HAS SINCE BEEN TAKEN. The paragraph above
+is left exactly as written and was true on 2026-08-11.** The correction sits here
+because this is the sentence a reader meets first under this heading, and a file
+that disagrees with itself is believed at whichever half is met first.
+
+**THE ARTEFACT, AND IT IS A TEST ARTEFACT — every sentence below is bounded by
+it.** This project's own Android DEBUG build, built at `9d2eb22`, applicationId
+`dev.chutipon.recycle`, on ONE handset, a vivo 1938. Never Expo Go. Its API
+address is a plain-HTTP LAN address baked in at build time (`mobile/app.json`
+`extra.apiBaseUrl`), so it reaches a server only on this network and cannot be
+given to a shop. **NO RELEASE BUILD EXISTS on either platform.**
+
+**WHAT WAS OBSERVED.** The LOGIN SCREEN drawn: after a real sign-out and a cold
+start, `LoginScreen` drew the username and password state and nobody was asked
+for a shop code. A SESSION established and cleared: `SecureStore.xml` held
+`key_v1-recycle.session.token` at count 1 while signed in and count 0 after the
+sign-out, while `local_shop` and `local_identity` each still held their one row.
+The MIGRATION interrupted: force-stopped twice inside a window widened to tens of
+seconds by a 150,000-row pre-P1.7 seed, the complete old shape both times, with
+controls both ways. Recorded in full further down
+`PROJECT_STATUS.md § Current phase`, in the block superseding the device-driver
+limit, and again in `PROJECT_STATUS.md § Known device gaps`; not restated here.
+**A self-citation carries no quoted handle on purpose**, for the reason
+`lessons/README.md § Lessons` "a citation whose TARGET is its own file"
+already gives; re-measured here 2026-08-12 at `hits=2`.
+
+**WHAT WAS NOT.** **Nobody signed in through that screen to reach the cart
+screen, and nothing was weighed** — the product and seller lists were empty on
+that tenant, so the screen had no goods to offer. The strip's new sentences and a
+shift change were not staged. **iOS ran the secure store's clear in the
+2026-08-06 pass and has never run the migration.** So this does not meet the
+`ROADMAP.md § P1.7` DONE WHEN, which wants a person reaching the cart screen; and
+a sentence saying a device pass happened, without these bounds, is the same error
+in the other direction.
+
 ### The DONE WHEN sweep does not pass, and the reason it cannot
 
 Run as written in `ROADMAP.md § P1.7` in this pass:
@@ -2043,6 +2078,20 @@ programs — see the boot check in CLAUDE.md.
   `§ 2026-08-07 — migration 0006 (server + proof)` "has no `TextInput`".
   The struck word entered at `534f289` (2026-07-27), the commit that
   created this file; whether it was true then is not measured here.
+
+  **REINSTATED 2026-08-12 — LOGIN IS A SCREEN AGAIN. The strike above is left
+  exactly as taken, because it was true at `5e59894`.**
+  `mobile/app/LoginScreen.tsx` landed at `4bde6e1` with username and password
+  fields; the shop is an eight-character code typed once at setup and resolved
+  BY THE SERVER, and `app/config.ts` now holds only the server URL.
+  **OBSERVED ON A HANDSET:** after a real sign-out and a cold start it drew the
+  username and password state, and nobody was asked for a shop code. **The
+  artefact is a TEST artefact** — this project's own Android DEBUG build
+  (`9d2eb22`, `dev.chutipon.recycle`), one vivo 1938, never Expo Go, its API
+  address a plain-HTTP LAN address baked in at build time. **NOT OBSERVED:**
+  nobody signed in through it to reach the cart screen and nothing was weighed,
+  the product and seller lists being empty on that tenant; iOS has never drawn
+  it; and no release build exists on either platform.
 - **The owner's screen** (`app/DailyScreen.tsx`, `src/reports/dailyView.ts`):
   the day's total, the permanent understatement caveat, voided bills, voids
   applied today against older bills, off-list payments, and the bill list. Read
@@ -2218,6 +2267,25 @@ reports it as proven.
   including the 403 refusal path this phase built, which has only ever
   been seen on iOS — and sync while backgrounded. One handset, one
   OS version, one screen size.
+
+  **A SECOND ANDROID PASS, 2026-08-12 — and it closes none of the list
+  above.** The bullet's opening count is now two, not one; the rest of it
+  stands. **The artefact was a TEST artefact:** this project's own Android
+  DEBUG build (`9d2eb22`, applicationId `dev.chutipon.recycle`), a second
+  handset, a vivo 1938, never Expo Go, its API address a plain-HTTP LAN
+  address baked in at build time, so it reaches a server only on this
+  network. **WHAT IT OBSERVED:** the login screen drawn after a real
+  sign-out and a cold start; a session established and cleared, read at
+  `shared_prefs/SecureStore.xml` (count 1 signed in, count 0 after) and at
+  a new process; and the migration force-stopped twice mid-transaction
+  with the complete old shape surviving both times, controls both ways.
+  **WHAT IT DID NOT:** nobody signed in through that screen to reach the
+  cart screen and nothing was weighed — the product and seller lists were
+  empty on that tenant — so the void flow, the offline behaviours, draft
+  recovery, the stale-cache price gate and background sync are untouched
+  and remain exactly as listed above. **iOS ran the secure store's clear
+  in the 2026-08-06 pass and has never run the migration**, and **no
+  release build exists on either platform.**
 - **Two devices RACING is still unproven on real hardware.** Two phones
   writing to one tenant is now observed (below), but they reconnected
   158 ms apart. That is "near-simultaneous", not "inside the same
@@ -4948,6 +5016,18 @@ restored into the default scratch target for layer five.
   phone, P1.2 for the server — rather than anything unwritten. The DONE WHEN is
   untouched and still wants a first admin AND a staff account, both signing in
   from a handset.
+  **CORRECTED 2026-08-12 — "nothing has signed in from a handset" is no longer
+  true as written, and the bar does not move.** A sign-in and a sign-out have
+  since happened on a handset: the login screen drawn, a session established and
+  cleared. **The artefact is a TEST artefact** — this project's own Android DEBUG
+  build (`9d2eb22`, `dev.chutipon.recycle`), one vivo 1938, never Expo Go, its
+  API address a plain-HTTP LAN address baked in at build time, reaching only this
+  network's dev server. **What did NOT happen:** nobody signed in through that
+  screen to reach the cart screen and nothing was weighed; iOS ran the secure
+  store's clear on 2026-08-06 and has never run the migration; and no release
+  build exists on either platform. The production database still does not exist,
+  so the DONE WHEN — a first admin AND a staff account, in production, both
+  signing in from a handset — is untouched by this.
 - **The user-writer survey's bound travels with it:** the endpoint negative comes
   from the published schema and is authoritative for endpoints, but the survey of
   which writers reach `tenants` was run over raw-SQL spellings, so it is three

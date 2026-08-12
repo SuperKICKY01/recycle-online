@@ -64,6 +64,20 @@ idea — only that it is unresolved.
   not by a device. *Not done:* no device pass has been run against the provisioned
   shop. *Unblocks:* nothing until there is an installable build and a reachable
   server, so this is bounded by R3 and R5 rather than by the accounts.
+  **CORRECTED 2026-08-12 — THE HEADING IS NO LONGER TRUE AS WRITTEN, AND THIS
+  ITEM DOES NOT CLOSE.** A handset has now presented a shop code and credentials:
+  `local_shop` and `local_identity` each held their one row, the login screen was
+  drawn after a real sign-out and a cold start, and `SecureStore.xml` went from
+  count 1 while signed in to count 0 after. **The artefact is a TEST artefact** —
+  this project's own Android DEBUG build (`9d2eb22`, `dev.chutipon.recycle`), one
+  vivo 1938, never Expo Go, its API address a plain-HTTP LAN address baked in at
+  build time. **What that does NOT establish:** nobody signed in through that
+  screen to reach the cart screen and nothing was weighed, the product and seller
+  lists being empty on that tenant; which tenant it was is not recorded in any
+  tracked file, so whether the shop signed into was the PILOT shop is
+  unestablished; iOS ran the secure store's clear on 2026-08-06 and has never run
+  the migration; and no release build exists on either platform. P1.5's DONE WHEN
+  wants a first admin and a staff account in PRODUCTION, which does not exist.
 
 - **THE BELOW-LINE VOWEL CLASS IS UNTESTED BY THE ENCODING MEASUREMENT.** The
   2026-08-10 five-layer check used a name carrying above-line vowels (U+0E34,
@@ -114,6 +128,17 @@ idea — only that it is unresolved.
   attempted. *Unblocks:* an Expo build/distribution route, plus `R3`
   (the API address is baked in — but it is one string in `app.json` with
   a single reader, so the coupling is shallow).
+  **CORRECTED 2026-08-12 — "never attempted" is false; the item stands.** It was
+  attempted and it worked: an Android DEBUG artefact built at `9d2eb22`,
+  applicationId `dev.chutipon.recycle`, installed on one handset, a vivo 1938,
+  and used to draw the login screen and to interrupt the migration. **It is a
+  TEST artefact and cannot go to a shop** — no signing key was created, its
+  launcher label says it is not real, and its API address is a plain-HTTP LAN
+  address baked in at build time, so installed at a yard it would fail with no
+  obvious cause. **NO RELEASE BUILD EXISTS on either platform, and no
+  distribution route exists**, which is the whole of what this item asked for;
+  nobody signed in through that build to reach the cart screen and nothing was
+  weighed on it. So *Not done* now reads: **attempted, debug only, undistributed.**
 - **Real per-shop accounts — `R5`** — the only credentials that exist
   are the dev fixture from the seed script. *Not done:* no
   account-provisioning path exists at all. *Unblocks:* deciding who
@@ -188,7 +213,23 @@ idea — only that it is unresolved.
   question only becomes real when a DIFFERENT person can sign in, and
   today they cannot — `signIn()` uses the hardcoded DEMO credentials in
   `mobile/app/config.ts`, so signing out and back in returns the same
-  account. *Unblocks:* `R5` (real per-shop accounts) deciding whether a
+  account.
+  **CORRECTED 2026-08-12 — "today they cannot" is false at `4bde6e1`, and the
+  question this item deferred is now live.** `app/config.ts` holds no tenant, no
+  username and no password; a person signs in on `app/LoginScreen.tsx` with
+  their own credentials, against a shop code the SERVER resolves, so a DIFFERENT
+  person can sign in and signing out and back in no longer returns the same
+  account. **Part of it is already answered:** `fde2b0c` made the draft loader
+  hand back only the current person's cart — withheld, kept, not adopted, not
+  destroyed, with a count on the start screen. **What is still open** is what
+  SHOULD become of that withheld cart, which is the decision this item exists
+  for. **Not observed on a device:** a shift change was never staged. The one
+  Android pass ran on this project's own DEBUG build (`9d2eb22`,
+  `dev.chutipon.recycle`, one vivo 1938) — **a TEST artefact** with a plain-HTTP
+  LAN address baked in at build time — and it drew the login screen and cleared
+  a session, but nobody reached the cart screen through it and nothing was
+  weighed. iOS has never drawn that screen; no release build exists.
+  *Unblocks:* `R5` (real per-shop accounts) deciding whether a
   cart left open by the departing shift should be offered to the next
   one, discarded, or shown with its author named — which is also the
   point at which "who wrote this" becomes answerable at all (see the
@@ -414,6 +455,20 @@ idea — only that it is unresolved.
   The void flow, the offline behaviours, draft recovery, the stale-cache
   price gate and background sync have never run there. *Not done:* no
   Android device on hand. *Unblocks:* a handset.
+  **CORRECTED 2026-08-12 — the count is two and "no Android device on hand" is
+  false; NOT ONE of the five named behaviours moved.** The second pass ran on
+  this project's own Android DEBUG build (`9d2eb22`, `dev.chutipon.recycle`), a
+  vivo 1938, never Expo Go — **a TEST artefact**, its API address a plain-HTTP
+  LAN address baked in at build time. **It observed** the login screen drawn
+  after a real sign-out and a cold start, a session established and cleared at
+  the secure store and at a new process, and the migration force-stopped twice
+  mid-transaction with the old shape intact. **It did not weigh anything and
+  nobody reached the cart screen through it** — the product and seller lists were
+  empty on that tenant — so the void flow, the offline behaviours, draft
+  recovery, the price gate and background sync are untouched and this item stays
+  open on every one of them. iOS has never run the migration; no release build
+  exists on either platform. *Unblocks:* unchanged — a pass that exercises those
+  five.
 - **The on-device SQLite crash window** — the multi-statement path
   (write the bill and clear the draft, indivisibly) is proven under
   Node's SQLite with a real kill, but the Expo driver's transaction

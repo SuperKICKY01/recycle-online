@@ -122,12 +122,19 @@ Three mechanisms hold the line; ask which one a claim comes from:
   server log and the database, never off the screen.
 
 **Standing unverified items** (dated list: `PROJECT_STATUS.md`, *Known device
-gaps*): Android has had one pass on one borrowed handset; the crash window of the
-on-device SQLite transaction path has no headless proof; two devices writing
-inside the same millisecond is proven headless only; and one reconciler check is
-deliberately **unproven by execution**, because the only way to fire it would
-disable tenant isolation cluster-wide while it ran — so it is labelled rather than
-quietly counted green. **Read the dates, not the achievements.**
+gaps*): Android has had two passes on two handsets, and the second was on a DEBUG
+build of this project that is a TEST artefact — its API address is a plain-HTTP
+LAN address baked in at build time, and **no release build exists on either
+platform**, so nothing has run on the artefact a shop would install; the crash
+window of the on-device SQLite transaction path has no headless proof, and the
+device kill that has been done was `initConnection`, not that path; two devices
+writing inside the same millisecond is proven headless only; and one reconciler
+check is deliberately **unproven by execution**, because the only way to fire it
+would disable tenant isolation cluster-wide while it ran — so it is labelled
+rather than quietly counted green. A login screen has been drawn and a session
+cleared on a handset; **nobody has signed in through it to reach the cart screen
+and nothing has been weighed on a device since the accounts became real.**
+**Read the dates, not the achievements.**
 
 ## 4. The invariants, in plain language
 

@@ -20,7 +20,12 @@ In this order. Each line says what that file OWNS.
    an individual lesson only when its index line touches the task.
    (`CLAUDE.md § Workflow` "At the start of every session")
 3. **`PROJECT_STATUS.md`** — where the work has got to, and the dated
-   observation behind every claim of it. **1940 lines: budget two reads.**
+   observation behind every claim of it. **5031 lines — measured 2026-08-12 by
+   `wc -l` and a raw LF-byte count that agree, CR=0. Budget several reads, not
+   two.** This said **1940** until then and was stale by a factor of two and a
+   half, with nothing to announce it: **a line count in a file that grows every
+   phase rots silently, so read this as an order of magnitude and never as a
+   fact.** Whether it belongs here at all is the owner's call.
    Start at `PROJECT_STATUS.md § Current phase`.
    (`CLAUDE.md § Scope and status` "Both live in")
 4. **`ROADMAP.md`** — the ORDER of what is not done, and the argument for

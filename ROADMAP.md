@@ -113,6 +113,16 @@ WHEN wants must exist in the production database. *Why:* **not unwritten** — i
 waits on step 3 for the phone and step 4 for the database. See P1.5 itself, where
 this split is argued at length.
 
+**CORRECTED 2026-08-12 — the first clause is no longer true as written; the KIND
+is unchanged.** A sign-in and a sign-out have happened on a handset: the login
+screen drawn, a session established and cleared, on Android, on this project's
+own DEBUG build — **a TEST artefact**, its API address a plain-HTTP LAN address
+baked in at build time. Nobody signed in through that screen to reach the cart
+screen and nothing was weighed; iOS has never run the migration; no release build
+exists on either platform. The accounts this step wants must still exist in **a
+production database nobody has created**, so step 2 remains outstanding of the
+second kind, not the first.
+
 **3. A login screen on the phone — `P1.7`.**
 *Done:* nothing. *Outstanding:* the whole step. *Why:* **unwritten, and this is
 the one of the four that is.** The primitives are not new — `TextInput` is
@@ -120,6 +130,17 @@ already used in three screens — so what is missing is the flow and the storage
 a session, not the controls. It waits on step 1 for what identifies a shop and on
 step 2 for something real to sign in as; both of those are now answered on the
 server, so nothing blocks it but the work.
+
+**CORRECTED 2026-08-12 — THIS IS THE ENTRY THAT WENT STALE, AND WHAT CHANGED IS
+THE KIND.** The paragraph above is left as written and was true on 2026-08-10.
+The work landed in the commits from `a471dc2` to `959f22d`, so step 3 is **no
+longer outstanding-because-unwritten** — which is the one distinction this
+section exists to draw. It is now the SECOND kind: **it waits on a handset.** The
+login screen has been drawn on one, on Android, on this project's own DEBUG build
+— **a TEST artefact**, its API address a plain-HTTP LAN address baked in at build
+time — but nobody signed in through it to reach the cart screen and nothing was
+weighed. iOS has never drawn it, and no release build exists on either platform.
+Whether the DONE WHEN is met is P1.7's own entry to say; this section does not.
 
 **4. A reachable server — `P1.2`.**
 *Done:* nothing. *Outstanding:* the whole step. *Why:* **neither unwritten nor
@@ -239,6 +260,7 @@ five behaviours the yard depends on that have never run there. When the shop
 supplied the phones, "we have not tested Android" was a gap to close at leisure.
 When staff bring their own, it is a question about which handsets the product runs
 on at all, and it is answered at P1.11 or recorded as accepted.
+**Overtaken as to the COUNT, 2026-08-12; the finding above is left exactly as the survey took it —** `PROJECT_STATUS.md § Known device gaps` "A SECOND ANDROID PASS".
 
 ---
 
@@ -670,6 +692,19 @@ neither of them code:
   minted was minted over loopback HTTP by a proof. The DONE WHEN asks for a
   person on a phone, and that waits on **P1.7** (a login screen) and **P1.11**
   (an installable build).
+  **CORRECTED 2026-08-12 — the first sentence is false as written, and the bar
+  does not move.** A session has been minted on a handset and cleared there: the
+  login screen drawn after a cold start, `SecureStore.xml` at count 1 while
+  signed in and count 0 after a real sign-out. **The artefact is a TEST
+  artefact** — this project's own Android DEBUG build (`9d2eb22`,
+  `dev.chutipon.recycle`), one vivo 1938, never Expo Go, its API address a
+  plain-HTTP LAN address baked in at build time, so the server behind it was this
+  network's dev server. **What did NOT happen:** nobody signed in through that
+  screen to reach the cart screen, and nothing was weighed — the product and
+  seller lists were empty on that tenant. iOS ran the secure store's clear on
+  2026-08-06 and has never run the migration; **no release build exists on either
+  platform.** The DONE WHEN below is untouched: a first admin AND a staff
+  account, in the production database, both signing in from a handset.
 - **The production database does not exist.** The DONE WHEN asks for accounts in
   it. `recycle` is the DEV database, and where production runs has not been
   chosen or paid for — **P1.2**.
