@@ -20,9 +20,11 @@ In this order. Each line says what that file OWNS.
    an individual lesson only when its index line touches the task.
    (`CLAUDE.md § Workflow` "At the start of every session")
 3. **`PROJECT_STATUS.md`** — where the work has got to, and the dated
-   observation behind every claim of it. **5031 lines — measured 2026-08-12 by
-   `wc -l` and a raw LF-byte count that agree, CR=0. Budget several reads, not
-   two.** This said **1940** until then and was stale by a factor of two and a
+   observation behind every claim of it. **5034 lines at `c5eca4f` — measured
+   2026-08-12 evening by `wc -l` and a raw LF-byte count that agree, CR=0, on
+   a clean tree, so the count names the committed blob. Budget several reads,
+   not two.** This said **5031** for part of that same day — three lines stale
+   within hours — and **1940** before that, stale by a factor of two and a
    half, with nothing to announce it: **a line count in a file that grows every
    phase rots silently, so read this as an order of magnitude and never as a
    fact.** Whether it belongs here at all is the owner's call.
@@ -40,9 +42,14 @@ Not in the boot path. Open when the task reaches them:
   opens the code; you are not that reader (see §2).
 - **`RED_TEAM.md`** — the definition of a red-team pass. Read it only when
   running one. (`CLAUDE.md § Workflow` "A RED-TEAM pass is defined")
-- **`.claude/`** — nine Claude skills and a permission file. Their
-  descriptions enter every session on this box; their contents are NOT
-  reviewed, and git cannot see them.
+- **`.claude/`** — nine skills, four agent roles, two gate hooks, and a
+  permission file. Skill and agent descriptions enter every session on this
+  box. **Superseded 2026-08-12:** this bullet said "their contents are NOT
+  reviewed, and git cannot see them" — false since `79b1e75` (2026-08-08),
+  which tracked `agents/`, `skills/`, `hooks/` and `settings.json`:
+  `git ls-files .claude` returns 21 files, so diffs and blame reach them.
+  Only the gate logs and `settings.local.json` stay outside git, and the
+  contents were surveyed against this repo's rules on 2026-08-07/08.
   (`OPEN_ITEMS.md § Decisions open` "holds nine skills")
 - **`server/README.md`** — local server setup and the DB role table.
 - **`server/scripts/BACKUP.md`** — the backup/restore runbook.
