@@ -36,8 +36,22 @@ import type { DeviceRole } from "../session/deviceRole.js";
 import { VOID_REJECTED_CODE } from "./types.js";
 import type { SyncState } from "./types.js";
 
-/** The codes the server currently emits. See server/app/bills.py. */
-export const MASTER_DATA_CODES = ["seller_grade_unset", "product_price_unset"] as const;
+/**
+ * The codes the server currently emits — one per `_master_data_missing` call
+ * site in server/app/bills.py (four sites as of P1.7). Nothing mechanical ties
+ * this list to that file: a code added there and not here reaches the yard
+ * through the unknown fallback below, which cannot name the fix. That already
+ * happened once — `seller_inactive` and `product_inactive` shipped server-side
+ * with retirement and this list stayed at two, so a bill parked on a retired
+ * seller told the office to set a price or a grade, neither of which would
+ * have released it.
+ */
+export const MASTER_DATA_CODES = [
+  "seller_grade_unset",
+  "product_price_unset",
+  "seller_inactive",
+  "product_inactive",
+] as const;
 
 export type MasterDataCode = (typeof MASTER_DATA_CODES)[number];
 
@@ -72,6 +86,21 @@ const BY_CODE: Record<MasterDataCode, { badge: string; what: string }> = {
   product_price_unset: {
     badge: "รอสำนักงานตั้งราคาสินค้า",
     what: "ยังไม่ได้ตั้งราคาสินค้าสำหรับเกรดของผู้ขายรายนี้ — ให้สำนักงานตั้งราคาสินค้าตามเกรดนั้น",
+  },
+  /*
+   * The two retirement causes. The fix is one reactivate click at the office —
+   * NOT a price and NOT a grade, and the server says so itself (bills.py: a
+   * grade set on a retired seller "would not let the bill through anyway"). So
+   * these sentences must not mention price or grade at all: that was the exact
+   * wrong instruction the office received while these codes were unmapped.
+   */
+  seller_inactive: {
+    badge: "รอสำนักงานเปิดใช้งานผู้ขาย",
+    what: "ผู้ขายรายนี้ถูกปิดใช้งานไว้ — ให้สำนักงานเปิดใช้งานผู้ขายรายนี้อีกครั้ง",
+  },
+  product_inactive: {
+    badge: "รอสำนักงานเปิดใช้งานสินค้า",
+    what: "สินค้าในบิลนี้ถูกปิดใช้งานไว้ — ให้สำนักงานเปิดใช้งานสินค้านั้นอีกครั้ง",
   },
 };
 
@@ -258,9 +287,12 @@ export function parkedReason(code: string | null): ParkedReason {
   if (code !== null && isKnown(code)) {
     return { ...BY_CODE[code], reassure: REASSURE, unknown: false };
   }
+  // CAUSE-NEUTRAL on purpose: this branch is only reached by a code this build
+  // has never heard of, so any named fix ("a price or a grade" stood here) is a
+  // guess that reads as an instruction. Say who owns it and nothing more.
   return {
     badge: "รอข้อมูลจากสำนักงาน",
-    what: "บิลนี้ต้องรอสำนักงานตั้งข้อมูลหลักให้ก่อน (ราคาสินค้าหรือเกรดผู้ขาย)",
+    what: "บิลนี้ต้องรอสำนักงานแก้ไขข้อมูลหลักให้ก่อน",
     reassure: REASSURE,
     unknown: true,
   };
@@ -640,5 +672,8 @@ export function parkedSummary(count: number, codes: readonly string[]): string {
   const head = `${String(count)} ใบรอข้อมูลจากสำนักงาน`;
   const only = distinct.length === 1 ? distinct[0] : undefined;
   if (only !== undefined) return `${head} — ${parkedReason(only).what}`;
-  return `${head} — ต้องให้สำนักงานตั้งราคาสินค้าและกำหนดเกรดผู้ขายให้ครบก่อน`;
+  // Mixed causes: CAUSE-NEUTRAL, same rule as parkedReason's unknown branch.
+  // This sentence used to enumerate "prices and grades" — right while those
+  // were the only two causes, wrong the day a retirement code joined the mix.
+  return `${head} — ต้องให้สำนักงานแก้ไขข้อมูลหลักให้ครบทุกรายการก่อน`;
 }

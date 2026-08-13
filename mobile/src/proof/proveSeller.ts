@@ -645,9 +645,36 @@ function s7ParkedIsNotAnError(): void {
     price.what.includes("ราคาสินค้า"),
     price.what,
   );
+  /*
+   * The two retirement causes. The fix is REACTIVATION — one click at the
+   * office — so the sentence must name it, and must NOT mention a price or a
+   * grade: those were the wrong instructions the office received while these
+   * codes were unmapped (the audit's band-A finding), and bills.py itself says
+   * a grade set on a retired seller would not release the bill.
+   */
+  const sellerOff = parkedReason("seller_inactive");
+  const productOff = parkedReason("product_inactive");
   check(
-    "the two causes do not share wording — the wrong instruction is not reachable",
-    grade.what !== price.what && grade.badge !== price.badge,
+    "seller_inactive tells the office to REACTIVATE the seller — never a price or a grade",
+    sellerOff.what.includes("เปิดใช้งาน") &&
+      sellerOff.what.includes("ผู้ขาย") &&
+      !sellerOff.what.includes("ราคา") &&
+      !sellerOff.what.includes("เกรด"),
+    sellerOff.what,
+  );
+  check(
+    "product_inactive tells the office to REACTIVATE the product — never a price or a grade",
+    productOff.what.includes("เปิดใช้งาน") &&
+      productOff.what.includes("สินค้า") &&
+      !productOff.what.includes("ราคา") &&
+      !productOff.what.includes("เกรด"),
+    productOff.what,
+  );
+  const four = [grade, price, sellerOff, productOff];
+  check(
+    "no two causes share wording — the wrong instruction is not reachable from any code",
+    new Set(four.map((r) => r.what)).size === 4 &&
+      new Set(four.map((r) => r.badge)).size === 4,
   );
 
   // The strip's one-liner, which must not pick a cause when there are two.
@@ -665,10 +692,26 @@ function s7ParkedIsNotAnError(): void {
     parkedSummary(1, ["seller_grade_unset"]),
   );
   check(
-    "mixed causes -> the strip names BOTH rather than guessing one",
-    parkedSummary(3, ["seller_grade_unset", "product_price_unset"]).includes("ราคาสินค้า") &&
-      parkedSummary(3, ["seller_grade_unset", "product_price_unset"]).includes("เกรดผู้ขาย"),
-    parkedSummary(3, ["seller_grade_unset", "product_price_unset"]),
+    "one retirement cause -> the strip names REACTIVATION, not a price or a grade",
+    parkedSummary(1, ["seller_inactive"]).includes("เปิดใช้งาน") &&
+      !parkedSummary(1, ["seller_inactive"]).includes("ราคา"),
+    parkedSummary(1, ["seller_inactive"]),
+  );
+  /*
+   * Mixed causes: the strip must stay CAUSE-NEUTRAL. It used to enumerate
+   * "prices and grades" — right while those were the only two causes, and the
+   * wrong instruction for any mixture holding a retirement code. Neutral means
+   * naming no specific fix at all, so the assertion is the ABSENCE of every
+   * cause-specific word, not the presence of two of them.
+   */
+  const mixed = parkedSummary(3, ["seller_grade_unset", "product_inactive"]);
+  check(
+    "mixed causes -> the strip picks no cause's fix and stays neutral",
+    mixed.includes("ข้อมูลหลัก") &&
+      !mixed.includes("ราคา") &&
+      !mixed.includes("เกรด") &&
+      !mixed.includes("เปิดใช้งาน"),
+    mixed,
   );
   check(
     "the strip never says ผิดพลาด either",
