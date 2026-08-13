@@ -356,6 +356,34 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Verification gaps — built, not proven
 
+- **NOTHING NOTICES A FIFTH `master_data_missing` CODE. The client mapping is
+  complete at `e836073` and nothing keeps it complete — recorded 2026-08-13,
+  the mechanism chosen by the owner over a server-side census.** The seam:
+  `server/app/bills.py` emits one code per `_master_data_missing(` call site
+  (four at `e836073`), and `mobile/src/sync/parkedReason.ts` must list every
+  one in `MASTER_DATA_CODES` or a parked bill degrades to the cause-neutral
+  fallback — safe wording since `e836073`, but the office is no longer told
+  the actual fix, and only `proveSeller` S7's per-code cells would notice,
+  which cover only codes already in the list. That drift has happened once:
+  the two retirement codes shipped server-side and the list stayed at two,
+  which was the audit's band-A finding.
+  **THE MECHANISM TO BUILD, in the manner of `tools/verify_citations.ps1` —
+  a checker that reads BOTH SIDES:** (1) the emitted set: the first string
+  argument of every `_master_data_missing(` call, found by grepping for the
+  HELPER'S NAME repo-wide under `server/`, never a hardcoded file list — the
+  citation checker's first hole was a hardcoded source that let 37 citations
+  go unchecked; (2) the mapped set: the string literals of the
+  `MASTER_DATA_CODES` array in `parkedReason.ts`; (3) RED on any set
+  difference in EITHER direction (an unmapped server code is the band-A
+  shape again; a client code the server never emits is dead wording), and
+  print BOTH counts, neither of which may be zero — a parser that quietly
+  matches nothing is indistinguishable from a pass
+  (`CLAUDE.md § Machine footguns` "give any parser that can quietly stop").
+  *Not done:* the checker does not exist and nothing runs it. *Unblocks:*
+  writing it (Python, per the `.ps1`-source footgun), and the owner deciding
+  where it runs — beside the citation checker in the doc pass, or as a cell
+  a proof executes.
+
 - **NOTHING PROVES WHAT TWO SIMULTANEOUS PASSWORD WRITES DO. Recorded 2026-08-10,
   and it is a GAP IN THE PROOF rather than a known defect.** `cb11f6a`'s proof
   drives both password routes sequentially, in one process, one request at a

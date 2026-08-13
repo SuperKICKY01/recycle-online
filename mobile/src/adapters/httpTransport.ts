@@ -5,6 +5,7 @@
  * The status mapping mirrors the server contract proven in Phase 1c:
  *   201 -> created                                          (accepted)
  *   200 -> idempotency key already seen, same bill returned (duplicate)
+ *   201/200 with no readable doc_no -> retry it   (unavailable, reachable: true)
  *   400/422 -> validation refusal                           (rejected: terminal)
  *   424     -> master data not set up yet                  (rejected_resolvable)
  *   401     -> the session ended, sign in again            (session_expired)
@@ -114,8 +115,8 @@ export class HttpTransport implements Transport {
       clearTimeout(timer);
     }
 
-    // A body we cannot parse must not invent a doc_no; null means "unknown",
-    // and the status still tells us whether the bill landed.
+    // A body we cannot parse must not invent a doc_no; null means "unknown".
+    // What "unknown" MEANS on a success status changed — see the guard below.
     let body: BillResponseBody = {};
     try {
       body = (await response.json()) as BillResponseBody;
@@ -123,6 +124,36 @@ export class HttpTransport implements Transport {
       body = {};
     }
     const docNo = typeof body.doc_no === "string" ? body.doc_no : null;
+
+    /*
+     * A 2xx WHOSE BODY LOST THE doc_no IS A RETRY, NEVER A SUCCESS.
+     *
+     * This used to fall through to accepted/duplicate with doc_no null, and
+     * markSynced wrote that null PERMANENTLY: nothing in the app re-fetches a
+     * doc_no after sync, and listVoidsToApply requires `doc_no IS NOT NULL`,
+     * so a later void of that bill was never sent, never refused and never
+     * retried — while voidProgressLine promised it would happen automatically.
+     * The server, meanwhile, holds the bill WITH its doc_no (assigned in the
+     * same transaction that created it), so money the owner cancelled stayed
+     * live. The trigger is ordinary: a connection that died after the status
+     * line but before the body finished.
+     *
+     * Retrying converges BY THE SERVER'S OWN CONTRACT (hard rule 4): the
+     * re-POST carries the same idempotency_key, the server answers 200 with
+     * the same bill, and that response's doc_no lands here as a string.
+     * reachable: true because the server answered — and if something between
+     * us mangles every body forever, the poison alarm escalating is the
+     * correct outcome, not a silently stranded cancellation.
+     */
+    if ((response.status === 201 || response.status === 200) && docNo === null) {
+      return {
+        kind: "unavailable",
+        reason:
+          `HTTP ${String(response.status)}: the bill landed but the response` +
+          " carried no readable doc_no — retrying so the idempotent replay can deliver it",
+        reachable: true,
+      };
+    }
 
     if (response.status === 201) return { kind: "accepted", doc_no: docNo };
     if (response.status === 200) return { kind: "duplicate", doc_no: docNo };
