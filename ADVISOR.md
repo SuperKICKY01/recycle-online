@@ -84,28 +84,53 @@ The brief body has five required parts — `START_HERE.md § 3`.
 
 ## 4. The pre-send checklist
 
-Nine items govern what the advisor sends. **All nine EXIST and are in
-force: they currently live only in the opening prompt the owner pastes
-into the advising chat, and this section is where they belong.** Eight are
-not yet on this machine in any file. That is a KNOWN GAP WITH A HOME, not
-an absence of rules — an empty slot below means "not yet transcribed",
-never "no rule exists"; absence and not-yet-copied must not look the same.
+Nine items govern what the advisor sends. **Rebuilt 2026-08-16 from the
+three-set measurement**: the checklist the advising prompt ran and the
+coder's rules in `CLAUDE.md` had drifted apart — four items were shared
+in concept, the rest belonged to one role only
+(`lessons/README.md § Lessons` "a-rule-outside-the-repo-cannot-be-seen-to-drift.md").
+The four advisor-only items are below and live nowhere else; items 5–8
+are the shared checks in § 5; the ninth is the negative-claim rule, by
+pointer.
 
-1. — to be filled from the opening prompt on next paste —
-2. — to be filled from the opening prompt on next paste —
-3. — to be filled from the opening prompt on next paste —
-4. — to be filled from the opening prompt on next paste —
-5. — to be filled from the opening prompt on next paste —
-6. — to be filled from the opening prompt on next paste —
-7. — to be filled from the opening prompt on next paste —
-8. — to be filled from the opening prompt on next paste —
-9. The negative-claim rule — the ONE item recoverable from this tree,
-   defined at `CLAUDE.md § Workflow` "A REPORT IS A CLUE" and deliberately
-   not copied here: two copies drift, and `CLAUDE.md`'s is the copy that
-   loads every session.
+1. Does the read-list include CLAUDE.md and START_HERE.md? Always
+   include them.
+2. Does this task need commands run? If yes, argus cannot do it — split
+   the read part from the run part.
+3. Is each prohibition a mechanism or prose? If it cannot be made a
+   mechanism, say plainly it is prose.
+4. Walk the full list of commands and flag what each one carries — do
+   not answer "none". Every shell is logged verbatim to
+   .claude/hooks/*.log; a password or DSN on a command line lands
+   there.
 
-The eight are real and known; their WORDING has never been seen on this
-machine, so it is not invented here — the owner fills the slots verbatim
-from the opening prompt. Until then an advising chat opened with only this
-file has one checkpoint, not nine. The gap is queued at
-`OPEN_ITEMS.md § Documentation`.
+Item 9, kept at its historic number because `CLAUDE.md` names it "a
+ninth item": any negative claim ("ยังไม่มี / ยังไม่เคย / never / always /
+first") requires a search first, naming the search terms and reporting
+found/not-found — and this binds the advisor's own answers, not only
+prompts. The full rule is `CLAUDE.md § Workflow` "A REPORT IS A CLUE" —
+a pointer, not a copy: two copies drift, and `CLAUDE.md`'s is the copy
+that loads every session.
+
+## 5. Shared checks — mirrored from CLAUDE.md
+
+Items 5–8 of the pre-send checklist, run by BOTH roles on everything
+they produce. This list is a VERBATIM mirror; the canonical copy is
+`CLAUDE.md § Shared checks`, which loads into every coding session
+unconditionally — if the two copies ever differ, CLAUDE.md wins and
+this one is the stale copy. `tools/verify_shared_checks.py` goes red on
+any difference.
+
+<!-- shared-checks:begin -->
+- Does every counting name its tool, and its definition of what it
+  counts?
+- Does every negative result carry a control — a case the instrument is
+  known to catch — so "found nothing" is distinguishable from an
+  instrument that never looked?
+- Does the text contradict itself: its own declarations, its own MUST
+  NOTs, its SCOPE against its TASK?
+- Is a measurement being carried as a fact? A measurement is true at
+  the moment it was taken and rots afterwards — re-measure it, or pin
+  it to the commit it was taken at (the pin-a-claim convention in
+  CLAUDE.md's Conventions).
+<!-- shared-checks:end -->

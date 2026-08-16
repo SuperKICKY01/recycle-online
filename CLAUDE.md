@@ -552,6 +552,32 @@ The incidents behind three of these observables are in
   parent directory — is still a footgun, and gets no lesson.
   → `EVIDENCE.md § Two homes: the widening`
 
+### Shared checks — both roles, every session
+
+Four checks the coding session AND the advising chat run on everything
+they produce. The list is mirrored VERBATIM in `ADVISOR.md § 5`, and
+`tools/verify_shared_checks.py` goes red the moment the two copies
+differ — run it at every phase boundary (`START_HERE.md § 4`). THIS
+copy is the canonical one: on any difference, this file wins and
+`ADVISOR.md` holds the stale copy. The duplication is deliberate and
+licensed by that check — a third file both roles must open is a file
+that measurably goes unopened, and these four must not sit behind a
+pointer. Remove the check and the licence dies with it.
+
+<!-- shared-checks:begin -->
+- Does every counting name its tool, and its definition of what it
+  counts?
+- Does every negative result carry a control — a case the instrument is
+  known to catch — so "found nothing" is distinguishable from an
+  instrument that never looked?
+- Does the text contradict itself: its own declarations, its own MUST
+  NOTs, its SCOPE against its TASK?
+- Is a measurement being carried as a fact? A measurement is true at
+  the moment it was taken and rots afterwards — re-measure it, or pin
+  it to the commit it was taken at (the pin-a-claim convention in
+  CLAUDE.md's Conventions).
+<!-- shared-checks:end -->
+
 ## Conventions
 
 - Python: async throughout (FastAPI), type hints required,

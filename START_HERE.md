@@ -130,6 +130,7 @@ exit".
 | `uv run python scripts/prove_<name>.py` (`server/`); scripts in `server/scripts/` | exit 0 twice in a row, no reseed | `prove_reconcile.py` and `prove_docno_clock.py` refuse the live database — pass `--database <scratch>` (`PROJECT_STATUS.md § What is built` "require a SCRATCH DATABASE") |
 | `uv run python scripts/reconcile.py` (`server/`) | exit 0; 1 = violations, 2 = could not run (`PROJECT_STATUS.md § What is built` "clean / violations / could-not-run") | the limits it prints as What this checker CANNOT see, on every run |
 | `node dist/proof/<name>.js` run by hand | **not a green** — a red build still writes `dist/` (`OPEN_ITEMS.md § Code debt` "A red build still overwrites") | use the `npm run prove:*` script instead |
+| `server\.venv\Scripts\python.exe tools\verify_shared_checks.py` (repo root) | exit 0 | the checks' CONTENT — it proves the two copies identical, not that either role ran them (`CLAUDE.md § Shared checks`) |
 
 **Before the phase closes**
 
