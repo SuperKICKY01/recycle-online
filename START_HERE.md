@@ -32,6 +32,9 @@ In this order. Each line says what that file OWNS.
    (`CLAUDE.md § Scope and status` "Both live in")
 4. **`ROADMAP.md`** — the ORDER of what is not done, and the argument for
    that order. R-numbers are defined here and nowhere else.
+   **Superseded 2026-08-16:** the R-numbers are a closed log since 2026-08-07;
+   forward steps are P-numbers, defined in `ROADMAP.md § Numbering` and
+   nowhere else.
    (`CLAUDE.md § Scope and status` "Phase numbering")
 5. **`OPEN_ITEMS.md`** — the queue: everything outstanding, one line each,
    unranked.
@@ -60,64 +63,14 @@ Not in the boot path. Open when the task reaches them:
   one who confirms a commit — `CLAUDE.md § Workflow`. Items under
   `OPEN_ITEMS.md § Decisions open` are not yours to settle.
 - **The advising chat** is a separate conversation that reads `BRIEFING.md`
-  and NOT the codebase (`BRIEFING.md` "Who this is for"). It advises on
-  sequence and on whether an argument is sound. **It does not write
-  production code.** What arrives from it is an argument, never an
-  observation — `CLAUDE.md § Workflow` "Read actual files before stating"
-  and `CLAUDE.md § Workflow` "For any debugging" apply to it unchanged.
-  **Two duties it performs UNPROMPTED. Being asked is not the trigger —
-  the phase ending is, and the commit landing is.** It holds them because
-  it is the only role positioned to notice: this session sees one phase,
-  and nothing in the tree fires when a copy outside it goes stale.
-  - **At a phase boundary it NAMES the documents the work made stale and
-    instructs the update.** Not "consider updating the docs" — the files,
-    by name. Always `PROJECT_STATUS.md`, the only record of what is BUILT
-    versus merely written
-    (`PROJECT_STATUS.md` "Update this file at every phase boundary").
-    Then, where the work touched them:
-    (`OPEN_ITEMS.md` "Everything outstanding, one line each") for a queue
-    item cleared or raised;
-    (`ROADMAP.md` "the ORDER, and the argument for it") if an R-number
-    landed or the order changed;
-    (`SRS_MAP.md` "re-derive it, do not cite it") if what is PROVEN
-    changed. NOT `BRIEFING.md` and NOT `ARCHITECTURE.md` unless
-    architecture or a hard rule moved —
-    `CLAUDE.md § Scope and status` "Update it when ARCHITECTURE or a HARD RULE changes".
-    **The failure this prevents happened on 2026-08-09.** Three commits
-    changed `server/scripts/reconcile.py` and its proofs; nothing
-    instructed a status update; and the advisor answered status questions
-    all day out of a file that predated the work. **A stale status file
-    never looks stale. It looks like an answer.**
-  - **When a commit touches a file in the paste set, it tells the owner to
-    rebuild and re-paste — in the same message that reports the commit.**
-    The set is the nine paths in `SET_FILES` in `tools/build_paste_set.py`,
-    and the three a boundary most often updates — `PROJECT_STATUS.md`,
-    `OPEN_ITEMS.md`, `ROADMAP.md` — are all in it, so a phase boundary
-    that updates status almost always makes the pasted copy stale.
-    (`SRS_MAP.md` is named above but is NOT in the set, deliberately.) The
-    mechanism, run in the repo (the advisor cannot run it — it names it,
-    and this session or the owner runs it):
-    `server\.venv\Scripts\python.exe tools\build_paste_set.py --check`
-    — exit 0 the paste is current; exit 1 it names every stale file and
-    the commit that moved it; exit 2 it could not run, which is not a
-    pass. Then `--write`, and re-paste only the files it named. Nothing
-    surfaces this on its own: the copy lives in a Claude project the repo
-    cannot see, and a copy cannot know what changed after it was made.
-
-  **A PRE-SEND CHECKLIST GOVERNS THAT SESSION, AND THIS REPOSITORY DOES NOT
-  HOLD IT. Recorded 2026-08-12.** It lives in the advising chat's own
-  instructions. Searched for here with `pre-send`, `presend`, `checklist`,
-  `before sending`, `before it answers`, `ninth item` and `nine items`, case
-  insensitive over every tracked `*.md`: **not found with these words.** Only
-  its NINTH item can be named from inside this tree, because
-  `CLAUDE.md § Workflow` "A REPORT IS A CLUE" records the failure that produced
-  it — a claim that something does not exist must name the sentence relied on
-  and the words searched for. **The other eight are deliberately NOT transcribed
-  here: nobody in this repository has seen them, and inventing them would be the
-  exact failure that bullet is about.** **An advising chat opened without the
-  checklist has NO checkpoint** — nothing in the tree fires when that session
-  answers from memory instead of from a file. Whoever opens one must send it
-  with them. The gap is queued at `OPEN_ITEMS.md § Documentation`.
+  and the paste set, and NOT the codebase. **Its rules live in `ADVISOR.md`
+  and nowhere else** — the role bounds, the two unprompted duties, the
+  brief-header conventions, and the pre-send checklist, one home so two
+  copies cannot drift. Of that checklist the repo has seen only the NINTH
+  item; the other eight are an owner-pastes-here placeholder in
+  `ADVISOR.md`, and an advising chat opened without them still has one
+  checkpoint, not nine. The gap stays queued at
+  `OPEN_ITEMS.md § Documentation`.
 - **You, this session, write the production code**, run the proofs, and
   report what was observed.
 - **A red-team session** is a fourth role, run separately, and is never

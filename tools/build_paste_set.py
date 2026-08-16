@@ -126,6 +126,8 @@ SET_FILES: list[tuple[str, str, str]] = [
      "reading order, the role split, the phase-brief shape, the done-checklist"),
     ("RED_TEAM.md", "RED_TEAM.md",
      "the definition of a red-team pass, and the three shapes it hunts first"),
+    ("ADVISOR.md", "ADVISOR.md",
+     "the advising chat's rules: role bounds, unprompted duties, the checklist"),
     ("lessons/README.md", "lessons_README.md",
      "the lesson index: one line per lesson, enough to ask for one by name"),
 ]
@@ -378,8 +380,13 @@ def mode_write(out_dir: Path) -> int:
         if entry["crlf_normalised"]:
             flags.append("CRLF -> LF")
         note = f"   [{', '.join(flags)}]" if flags else ""
+        # An UNTRACKED set file has no last commit: last_commit_for() returns
+        # sha None, and None[:7] crashed this loop mid-report once, after the
+        # manifest was already written -- a truthful value the printer refused.
+        commit_sha = entry["last_commit"]["sha"]
+        commit_label = commit_sha[:7] if commit_sha else "uncommitted"
         print(f"  {entry['set_name']:<22} {entry['bytes']:>7} bytes  "
-              f"{entry['sha256'][:12]}  {entry['last_commit']['sha'][:7]}{note}")
+              f"{entry['sha256'][:12]}  {commit_label}{note}")
     for name in removed:
         print(f"  removed (no longer in the set): {name}")
 

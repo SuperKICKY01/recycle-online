@@ -12,6 +12,10 @@ built, and the known device gaps live in `PROJECT_STATUS.md`.
 New session: `START_HERE.md` holds the reading order, the role split,
 the phase-brief shape, and the done-checklist as observables.
 
+Route by the ask, not by a label: asked to build or change code, start
+at `START_HERE.md`; asked to advise on sequence or soundness (no code),
+read `ADVISOR.md` before answering; handed a diff to attack, `RED_TEAM.md`.
+
 ## Architecture (LOCKED — do not propose alternatives)
 
 - `server/`  — FastAPI + PostgreSQL, cloud, single source of truth.
@@ -66,6 +70,9 @@ stays in `PROJECT_STATUS.md`, the outstanding queue in
 Phase numbering: **A-numbers are a closed log** in `PROJECT_STATUS.md`
 and no new one is issued. Forward steps are **R-numbers**, defined in
 `ROADMAP.md` and nowhere else.
+**Superseded 2026-08-16:** the R-numbers were closed as a log on
+2026-08-07; forward steps are **P-numbers**, issued in
+`ROADMAP.md § Numbering` and nowhere else.
 
 ## Machine footguns (this Windows box)
 
@@ -101,18 +108,6 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   no mojibake, and it renders perfectly wherever you look at it. It
   breaks only when something downstream decodes that stream as UTF-8.
 
-  IT LIES BY BEING CORRECT ON THE ONE LAYER ANYONE INSPECTS. Measured
-  across five layers of the provisioning path the same day — the
-  command-line argv hop, the row written to and read back from
-  Postgres, the `COPY` block inside the `pg_dump` body, and that row
-  again after a restore — **all four layers that PERSIST the name were
-  byte-exact UTF-8, and the only layer that re-encoded was stdout.**
-  The layer that mangles is the one a person checks by eye; the four
-  that matter are ones nobody sees. Judging by the console would have
-  given the opposite of the truth in BOTH directions: the output
-  looked right, and there would have been no reason to check the four
-  that were.
-
   Instead: never compare a name by what a program PRINTED. Take hex
   from the authority — `encode(convert_to(col,'UTF8'),'hex')` computed
   server-side, or the dump read in binary — against an expected value
@@ -120,13 +115,8 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   shell. Pair it with an ASCII control down the identical path: the
   ASCII name matched at every layer INCLUDING stdout, and that is the
   only reason the Thai mismatch there reads as a property of
-  non-ASCII text rather than of a broken comparison. Two bounds, so
-  the measurement is not over-trusted: the stdout figure is a PROXY,
-  the same interpreter writing the same string to a redirected stream
-  rather than the captured bytes of the original run, which cannot be
-  recovered from where the reader sits; and the name carried
-  above-line vowels and a thanthakhat but NO below-line vowel, so that
-  class is untested.
+  non-ASCII text rather than of a broken comparison.
+  → `EVIDENCE.md § CP874 writer: the five-layer measurement`
 
 - **A non-ASCII character in `.ps1` SOURCE breaks the program before
   it runs, and the 874 entry above does NOT cover this.** That one is
@@ -231,26 +221,9 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   CRLF one. Both reasons are real; do not remove the exclusion on the
   strength of refuting one. **WHICH object is the whole difficulty here,
   and the line count moves every time a lesson is added, so no figure is
-  quoted in this sentence.** They are in the table below, each labelled,
-  with the commit they were taken at.
-
-  **BOTH OBJECTS, EACH LABELLED. Measured at HEAD `0241cc8`, 2026-08-10:**
-
-  | object | bytes | CR | LF | CRLF | BOM | ending |
-  |---|---|---|---|---|---|---|
-  | blob at HEAD | 51504 | **0** | 54 | 0 | `efbbbf` | **LF** |
-  | working tree | 51558 | 54 | 54 | 54 | `efbbbf` | **CRLF** |
-
-  The commands, one per invocation, bytes and never text.
-  `git rev-parse HEAD:lessons/README.md` for the blob sha, then
-  `git cat-file blob <sha>` captured as raw bytes with the CRs counted in
-  those bytes; the working tree by reading the file's bytes off disk. Two
-  independent instruments agreed with the capture: `git cat-file -s` returns
-  51504, equal to the length captured, so nothing in the path rewrote an
-  ending on the way; and `git ls-files --eol -- lessons/README.md` reports
-  `i/lf  w/crlf  attr/text=auto eol=lf`, which is git's own verdict — index
-  LF, working tree CRLF. The values above will go stale at the next lesson;
-  the METHOD will not, and the method is the part that belongs here.
+  quoted in this sentence.** The measured table, each object labelled with
+  the commit it was taken at, is in
+  `EVIDENCE.md § core.autocrlf: the measured table and its history`.
 
   **WHY THE TWO DIFFER, AND WHY NOTHING WILL EVER SHOW IT TO YOU.**
   `text=auto` normalises CRLF to LF on the way INTO the index, so every
@@ -274,35 +247,6 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   already thinking about line endings and the warning arrives looking like
   the answer to the question they are holding.
 
-  **A VALUE HERE WAS BELIEVED, MEASURED, AND FOUND FALSE — TWICE, AND THE
-  SECOND OVERTURN RESTORED THE FIRST.** What stood in this passage read
-  "blob at `62cee25` CRLF 41/41 … blob at `9f929ad` CRLF 42/42", offered as
-  four agreeing points; and above it a paragraph announcing that an earlier
-  appended correction — which had claimed those blobs were LF — was itself
-  wrong. **The blob half of both was false, and the appended correction it
-  overturned was right.** Measured across every one of the 45 commits that
-  have ever touched this file: `CR=0` in all 45 blobs. It has not once been
-  committed with a CR. The two commits named measure blob `03224812`, 24531
-  bytes, CR=0, LF=41; and blob `dd4634ad`, 25619 bytes, CR=0, LF=42. **The
-  LINE COUNTS were right and the ENDING was wrong, at every point** — which
-  is why it survived two readings: the half anybody could check was correct.
-  The false figures are not kept as text, because a wrong footgun misleads
-  every session that reads it; the fact that they were held and refuted is
-  kept, because it is the only reason to trust the ones above.
-
-  **WHAT PRODUCED IT IS NOT ESTABLISHED HERE, AND IS NOT GUESSED.** No
-  record survives of the commands that were run, and a guessed cause in a
-  footgun is exactly how this passage went wrong the first time. Two things
-  are measured rather than supposed. The reported blob figure is IDENTICAL
-  to the working-tree figure at the same commit, which is the shape a
-  working-tree reading reported as a blob reading would have. And on this
-  box a native command's output never reaches PowerShell as bytes at all:
-  `$out = & git show HEAD:lessons/README.md` yields an `Object[]` of 54
-  strings holding **zero** CR and **zero** LF between them — the endings are
-  consumed and replaced by array structure, and whatever writes that array
-  back out chooses new ones. **A line ending measured through PowerShell is
-  therefore a property of the writer, never of the blob.**
-
   **Never let git's warning be the observation.** Read the object itself:
   `git cat-file blob <sha>` AFTER the commit, count in BYTES, and say which
   of the two objects the number describes — which is the rule the paragraph
@@ -312,19 +256,8 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
 - **`Measure-Object -Line` does not count blank lines, so it UNDERCOUNTS every
   file with a blank line in it.** `-Line` counts the lines *inside* each input
   string, and `Get-Content` yields one string per line, so an EMPTY string
-  contributes **zero**. `Get-Content -Encoding UTF8 PROJECT_STATUS.md |
-  Measure-Object -Line` returned **1823** where `wc -l` and a raw LF-byte count
-  both return **2053** — 230 blank lines silently dropped. `lessons/README.md`
-  came back 40 against an actual 42, by the same mechanism.
-
-  **It lies in the direction that refutes a TRUE claim, which is the opposite of
-  most entries here and is why it gets its own.** The number it produced was not
-  merely wrong, it was wrong across a THRESHOLD: `PROJECT_STATUS.md` sets its own
-  split-review trigger at "Revisit at 2000 lines" in its own text, so 1823 reads
-  as comfortably under while the file is 53 lines past it. A stale reference that
-  had been correctly identified would have been dismissed as already fixed, and
-  nothing would have looked wrong — there is no error, no red, and the command is
-  the obvious PowerShell one to reach for.
+  contributes **zero**. **It lies in the direction that refutes a TRUE claim,
+  which is the opposite of most entries here and is why it gets its own.**
 
   It also cannot be caught by agreement, because **both** natural PowerShell
   spellings share the flaw's neighbourhood: `(Get-Content $p).Count` is right for
@@ -337,6 +270,7 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   SECOND, independent measurement — the same rule the `.ps1` entry above gives,
   for the same reason: a checker that fails by finding LESS is indistinguishable
   from one that passed.
+  → `EVIDENCE.md § Measure-Object -Line: the measured undercounts`
 
 - **`git commit -F <path>` exits 128 because the message was drafted in a REPLY
   and never written to the file.** The text is `fatal: could not read log file
@@ -347,18 +281,11 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   was drafted, reviewed and approved, and every one of those passed. The absent
   artefact is the one thing nobody looked at.
 
-  **It has happened TWICE in one session** — before `12d16a2` and again before
-  `fc9cd5c`, the second time after the first had already been noticed and
-  reported out loud, which is what makes it a footgun and not a slip. Nothing is
-  committed and the staged tree survives, so the cost is a wasted round trip
-  rather than a bad commit. The real cost is subtler: the recovery is to write
-  the file and re-run, and the reply then has to claim the message is "verbatim
-  as drafted" with nothing checking that it is.
-
   Instead: WRITE THE FILE FIRST, then show it, then commit from it. The file is
   the artefact and the reply is a copy of it, never the other way round — and a
   message shown from a file that already exists cannot disagree with the one
   that lands.
+  → `EVIDENCE.md § git commit -F: the two occurrences`
 
 - **An exit code cannot be read by a SEPARATE tool invocation on this box, and
   the attempt comes back EMPTY rather than failing.** Shell state does not
@@ -393,21 +320,14 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   FAILED restore emits no exit line at all. THE ABSENCE IS THE SIGNAL, and it
   is the one an eye scanning for a number does not register — a reader looking
   for `RESTORE_EXIT=1` finds nothing and can take that for output not yet
-  read. Observed twice on 2026-08-09, both runs exit 1 with no exit line.
+  read.
   `prove_reconcile.py` already encodes the rule: its restore check reports
   `RESTORE_EXIT=none` when the pattern matches nothing, and treats the absence
   as the failure rather than as a missing field.
+  → `EVIDENCE.md § Exit-line absence: the observed restores`
 
 - **`powershell -File <script>.ps1 -Source A B C` binds the FIRST value and
   silently discards the rest, then exits 0 over the sources it never opened.**
-  Measured 2026-08-09, six sources named on one command line:
-
-      powershell -File tools\verify_citations.ps1 -Source START_HERE.md
-        ARCHITECTURE.md ROADMAP.md OPEN_ITEMS.md SRS_MAP.md PROJECT_STATUS.md
-
-      SOURCES=1  CITATIONS=42  BROKEN=0          EXIT=0
-
-  One file was read. Five were named and never opened, and nothing said so.
   The mechanism is PowerShell's, not the script's: a non-advanced script binds
   the first positional value to `[string[]]$Source` and swallows the remaining
   arguments into `$args`, where nothing looks at them. Both of the script's
@@ -422,18 +342,6 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   result over a corpus it never read, and both leave the reader believing more
   was observed than was.
 
-  AND THIS IS THE SECOND HOLE OF THIS KIND IN ONE TOOL. The first is already
-  recorded: `verify_citations.ps1` once hardcoded `START_HERE.md` as its only
-  source and printed `BROKEN=0` over `ARCHITECTURE.md`'s 37 citations without
-  opening the file — a green structurally incapable of turning red, written up
-  at
-  `lessons/a-check-that-never-went-red-was-never-observed.md § a fifth mechanism`.
-  That hole was closed by adding `-Source`; this one is in `-Source` itself.
-  **Two holes, one tool, both ending in exit 0.** The `§ a sixth mechanism`
-  amendment in the same file already records that the tool's DEFAULT source
-  list is stale, so a session choosing between "type the sources by hand" and
-  "run it bare" has now been wrong in three different ways.
-
   THE SAFE-FAILURE CONTRAST, and it is the reason this went unnoticed. The
   COMMA spelling — `-Source A,B,C` — degrades into a single filename, takes the
   `SOURCE MISSING` branch and exits 1 (measured the same day:
@@ -447,6 +355,7 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   and then READ `SOURCES=` and confirm it equals the number you passed, before
   reading `BROKEN`. A count you did not check is a corpus you did not check.
   → `lessons/a-check-that-never-went-red-was-never-observed.md`
+  → `EVIDENCE.md § -Source binding: the measured run and the second hole`
 
 - **PowerShell's `>` puts a BOM on the front of the file it creates, and
   everything that reads that file back gets bytes nobody put in the data.**
@@ -460,30 +369,10 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
 
   IT FAILS SILENTLY AND IN THE DIRECTION THAT LOOKS LIKE A RESULT, which is
   what earns it an entry beside the codepage ones rather than a footnote in
-  them. Twice in one day here. A list of paths captured this way was
-  intersected with another set and came back **EMPTY** — read as "nothing to
-  do", and indistinguishable from a true empty answer, while the real
-  intersection was not empty: the first path carried U+FEFF in front of it and
-  equalled nothing. The second time a set DIFFERENCE reported a mismatch that
-  did not exist, the same bytes making one element unequal to its own twin.
-  Neither raised an error; both printed a plausible number. And only the FIRST
-  line of the file is affected, so the file opens correctly in an editor, prints
-  correctly, and agrees with expectation on every other line — the one line that
-  disagrees is the one nobody thinks to inspect, because the failure looks like
-  an answer about the DATA.
-
-  TWO BOUNDS, so this is not over-trusted. The `>` operator itself was NOT run:
-  the round that wrote this entry had banned it outright, and the bytes above
-  come from `Out-File`, the cmdlet `>` is the redirection form of. And this
-  session carries `$PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'`
-  with NO user profile on disk, so the UTF-8 signature is set by whatever
-  starts PowerShell here rather than being this build's own default — 5.1's
-  own default is `unicode`, a TWO-byte `FF FE` with every ASCII character
-  doubled. **A BOM either way; WHICH one is unverified.** The symptom seen both
-  times — one element silently unequal and everything else intact — is what
-  three bytes on the first line do, where UTF-16LE would have broken every
-  string at once and broken it loudly. Evidence for the three-byte branch, not
-  proof of it.
+  them. And only the FIRST line of the file is affected, so the file opens
+  correctly in an editor, prints correctly, and agrees with expectation on
+  every other line — the one line that disagrees is the one nobody thinks to
+  inspect, because the failure looks like an answer about the DATA.
 
   Instead: do not capture through the redirect at all. Write the file from the
   program that owns the data — `Path.write_bytes`, or `.encode("utf-8")` with
@@ -512,27 +401,25 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   CRLF-from-a-child-process entry is about endings ARRIVING in something you
   read; this is about a signature and endings being WRITTEN into something you
   create.
+  → `EVIDENCE.md § Out-File BOM: the incidents and the bounds`
 
 ### Boot check — name the observable, don't assume the environment
 
 Before judging any result, name the observation that proves the
 environment is real. An assumed environment turns a green run into a
 false pass and a red run into a confidently wrong cause.
+The incidents behind three of these observables are in
+`EVIDENCE.md § Boot check: the incidents behind three observables`.
 
 - **Both TypeScript programs must be run.** `mobile/` holds two
   DISJOINT programs: `npm run typecheck` (tsconfig.node.json —
   engine, adapters, proofs; excludes `src/device`) and
   `npm run typecheck:app` (tsconfig.json — the Expo app; excludes
-  `src/proof` and the node driver). The app program has twice
-  caught defects the node program cannot see: a shadowed `reason`
-  that would have detached the void TextInput from its state, and a
-  narrowing lost across a closure. Observable: two commands, each
+  `src/proof` and the node driver). Observable: two commands, each
   run bare, each exiting 0. One green program is not a green tree.
 - **Postgres must be up before login is judged.** Observable:
-  `docker ps` shows `recycle_pg` `(healthy)` on `5544->5432`. A 500
-  from `/auth/login` with the container down has already been
-  misdiagnosed once as a schema fault — blamed on a migration that
-  did not exist. Check the container and read the real traceback
+  `docker ps` shows `recycle_pg` `(healthy)` on `5544->5432`.
+  Check the container and read the real traceback
   before naming any cause.
   → `lessons/diagnosis-must-precede-the-fix.md`
 - **The phone can actually reach this box.** `mobile/app.json`
@@ -548,12 +435,7 @@ false pass and a red run into a confidently wrong cause.
   TRANSFORM CACHE, which survives all three. It lies in the most
   expensive direction available — the screen becomes evidence about
   source that is not running, so the diagnosis is aimed at correct code
-  and every reading of it comes back innocent. It has already cost two
-  days here: a sync-strip defect was hunted through `engine.ts`,
-  `queueHealth.ts` and `statusNotice.ts`, all three correct, and the
-  `ออฟไลน์` that started it did not reproduce once the bundle was
-  current. Worse, the phantom was written down as an observation in a
-  lessons file and in `PROJECT_STATUS.md` before anyone doubted it.
+  and every reading of it comes back innocent.
   Observable: `npx expo start -c` (`-c` clears the transform cache) AND
   a full reload on the handset, both done BEFORE the staging that
   produces the reading — not afterwards to check, because by then the
@@ -583,14 +465,7 @@ false pass and a red run into a confidently wrong cause.
   written into a database somebody else is about to depend on is not
   yours to take back. For those, a wrong value is permanent, so the
   measurement has to come first or it is only an autopsy.
-  EARNED 2026-08-10: the shop name for the pilot is Thai, and the
-  command-line hop into the script was measured — argv hexed and
-  compared against an expected value fixed from a file — BEFORE the
-  provisioning ran. It matched, so nothing came of it. Had it not, the
-  alternative was a permanently mangled name in a row that cannot be
-  deleted, discovered by the check that would otherwise have run one
-  command later. The cost of measuring first is one command; the cost
-  of measuring second is the whole row.
+  → `EVIDENCE.md § Measure-before-the-write: the provisioning argv check`
 - Read actual files before stating numbers or facts. Never guess.
 - **A REPORT IS A CLUE, NOT A SOURCE — INCLUDING ONE THIS SESSION WROTE
   ITSELF.** The rule above says read the file; this says which things
@@ -606,46 +481,14 @@ false pass and a red run into a confidently wrong cause.
   **The failure mode is promotion into a prompt.** A report gets read,
   believed, and written into the next brief as a premise, and from then
   on nothing checks it — the brief is the authority and the artefact is
-  never opened. It happened twice in one day here: a stale "still open"
-  premise that `grep -c` refuted at 0 occurrences, and a phase criterion
-  built on a claim about what was on disk. Both were caught only because
-  the pass that inherited them measured instead of assuming.
+  never opened.
   **THE THIRD INSTANCE RAN FOR A FULL DAY AND STEERED REAL WORK, 2026-08-12.**
-  The claim was that `SecureTokenStore.clear()` "has never been executed
-  anywhere — not by any proof, on any machine". The advising session
-  asserted it all day; a session report repeated it; and it arrived back
-  as the premise of a brief. `PROJECT_STATUS.md` had recorded the
-  opposite since **2026-08-06** — the R1b pass exercised `clear()` on a
-  real iPhone and the Keychain really did clear — in two separate
-  passages, in the file whose whole job is to hold that answer. **Nobody
-  opened it for six days.** What makes this one worth the space is the
-  SIZE of what was built on it: an Android build was produced, a device
-  pass was designed, and a commit was drafted, all on a premise one
-  `git grep` refutes. It was caught only because the brief ordered a
+  It was caught only because the brief ordered a
   SWEEP BEFORE the edits it authorised — had the order been reversed, the
   word "first" would have gone into permanent files at twelve sites, and
   a wrong claim in a code comment does not rot visibly. **Order the sweep
   before the edit, and treat "never/always/first" as the words that
   demand a search rather than a memory.**
-  **FOUR MORE LANDED IN ONE DAY, 2026-08-12, AND THE POINT IS NOT A FOURTH
-  ANECDOTE — IT IS THAT THE RULE HAS NO CHECKPOINT WHERE IT FAILS.** Four
-  negative claims were made by the ADVISING session in a single day, each
-  answered out of the conversation rather than out of the files that session
-  holds: that the seller table lacked identity fields, when migration `0004`
-  added `id_number`, `address` and `vehicle_no` on 2026-07-28; that master data
-  would have to be seeded before a handset could weigh, when `seed_dev.py`
-  already creates uoms, categories, products, prices and sellers; that the void
-  queue's owner filter was unbuilt, when `cfb6633` had put it in
-  `listVoidsToApply`'s predicate; and the `clear()` claim recorded above.
-  **ALL FOUR WERE NEGATIVE CLAIMS** — there is no, it is not, nothing does —
-  and each was refuted by one grep.
-  **WHY THE RULE ABOVE DID NOT CATCH THEM, which is the whole finding.** It is
-  enforced entirely on the IMPLEMENTING session's path: a reading order, a boot
-  check, a `Prove:` block, a brief that can be checked part by part against
-  `START_HERE.md § 3`. **The advising session has no such path.** It reads the
-  same files and nothing requires it to open one before it answers. So the rule
-  was applied to the role that was not making the error — which is why three
-  instances were recorded here and the rate did not change.
   **WHERE THE CHECKPOINT IS NOW.** A ninth item in the advising session's
   pre-send checklist: for any claim that something does not exist, has never
   been done, or is not supported — name the sentence relied on, name the WORDS
@@ -662,33 +505,22 @@ false pass and a red run into a confidently wrong cause.
   **This is a WORKFLOW rule and not a lesson**, by the two-homes test
   above: nothing about it is a property of this box, and it would not be
   opened by an index line touching a task — it applies to every task.
+  → `EVIDENCE.md § A-report-is-a-clue: the recorded instances`
 - Fix root causes, not symptoms.
 - For any debugging — device, build, or server misbehaviour — OPEN
-  and follow `.claude/skills/debug-mantra/SKILL.md` (6,337 bytes).
+  and follow `.claude/skills/debug-mantra/SKILL.md`.
   Before asserting what the device or server did, OPEN and follow
-  Kalāma in `.claude/skills/buddhist-method/SKILL.md`
-  (13,096 bytes). **Paths, not a summary, and that is the whole
-  point of this entry.** Five lines of paraphrase stood here in
-  place of both bodies; a measured session made 204 tool calls and
-  opened neither file, so the paraphrase is what got acted on — and
-  it omitted the step ordering, the escalation inside step 2, and
-  five of the six principles. Same rule as `Scope and status`
+  Kalāma in `.claude/skills/buddhist-method/SKILL.md`.
+  **Paths, not a summary, and that is the whole
+  point of this entry.** Same rule as `Scope and status`
   above: two copies drift, and a session believes whichever it
   reads first. Both files are NOW TRACKED — `.gitignore` admits
   `.claude/agents/` and `.claude/skills/` — so a diff can finally
   see them change, which it could not when this entry was written.
   The byte counts are a second and cheaper tripwire, not a fact to
   rely on: if one differs, this line is the stale copy and the file
-  wins. **Know which kind of number you are holding.** These are RAW
-  bytes of the working-tree file, and both files are CR=0 today — so
-  raw and LF-normalised sizes are IDENTICAL, and no measurement taken
-  now can tell you which definition this line used. That makes the
-  numbers worth less than ones whose definition can be checked; they
-  diverge by exactly 90 and 161 the moment either file carries CRLF
-  again, which is what tracking normalised away. The check HAS been
-  seen to fire: on 2026-08-08 one byte appended to debug-mantra
-  reddened that file's cell alone while its neighbour stayed green,
-  and restoring returned the committed blob byte for byte.
+  wins.
+  → `EVIDENCE.md § Skills are paths: the paraphrase and the tripwire firing`
 - If something doesn't work, say so plainly. Negative results are
   valuable.
 - A RED-TEAM pass is defined in `RED_TEAM.md`: a session that reads
@@ -713,22 +545,12 @@ false pass and a red run into a confidently wrong cause.
   Environment traps go to footguns and do NOT also get a lesson;
   writing both is ceremony, and it dilutes an index whose value is
   that every line in it bites.
-  **WIDENED 2026-08-08, and the wording it replaces is the reason.**
-  This read "a LESSON is for what would cause a bug in the PRODUCT",
-  which was true of every lesson in the index — until that date a
-  product bug was the only thing this project operated on. It now
-  operates on a SECOND thing: an agent layer under `.claude/` that it
-  writes, dispatches, and believes the output of. A finding about how
-  we run our own instruments — a scan that read its own command, a
-  gate that logged the search into the medium being searched, a role
-  definition asserting something the files refute — costs the same to
-  relearn as a product bug, and is a LESSON. Under the old wording it
-  was homeless: not a product bug, and not a property of this box.
   **The footgun line does NOT move.** A footgun is still only what is
   true of THIS BOX; widening one home is not licence to blur the
   other. An agent-layer finding that IS a property of this machine —
   ripgrep skipping a gitignored path when the search root is the
   parent directory — is still a footgun, and gets no lesson.
+  → `EVIDENCE.md § Two homes: the widening`
 
 ## Conventions
 
@@ -748,19 +570,10 @@ false pass and a red run into a confidently wrong cause.
   contain the work. The result reads exactly like a correctly anchored claim,
   and it is worse than an unanchored one: it survives every later rewrite, and a
   reader who checks it finds a real commit and a real file, just not the pair
-  the sentence asserts. Measured 2026-08-11:
-  `mobile/src/adapters/sqlite/schema.ts` said its migration's atomicity was
-  proved at `7b4f22d`, whose stat over that path and over the proof's path is
-  EMPTY — the transaction and its proof both landed at `a471dc2`. So write the
+  the sentence asserts. So write the
   sentence unanchored and anchor it in the next pass, or leave the sha blank and
   fill it in after the commit. An unanchored sentence rots visibly; a wrongly
   anchored one does not rot at all.
-  **THE EVIDENCE IS ONE FILE, ONE SUBJECT, TWO SENTENCES.**
-  `ARCHITECTURE.md:820` and `:888` were written the same day about the same
-  three routes; `:820` is anchored and is still true as written, `:888` was
-  present-tense and went false at `cb11f6a`, and it is the WORSE of the two to
-  get wrong because it is a REASON rather than a status — a reader believes a
-  reason and then builds on it, where a wrong status merely confuses.
   This is a rule about how the project WRITES, so it lives here beside the
   other writing conventions and NOT in Machine footguns, which is only for what
   is true of this box; and not as a lesson, because a lesson is opened when its
@@ -775,6 +588,7 @@ false pass and a red run into a confidently wrong cause.
   that handle across two and it resolved to nothing — the break was invisible
   because CLAUDE.md is not in the checker's source list, and was found only by
   pointing the checker at this file on purpose.
+  → `EVIDENCE.md § Pin-a-claim-to-a-commit: the measured evidence`
 - Commit messages and code comments in English. UI text in Thai.
 - Buddhist-era dates (พ.ศ.) in UI and printed slips only; store
   UTC ISO timestamps in the DB.

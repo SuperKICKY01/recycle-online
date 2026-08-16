@@ -1577,6 +1577,12 @@ know they are known rather than undiscovered.
   never let git's warning be the observation — is exactly what produced the correct
   measurement. It is wrong in one number and right in its method, which is why it is
   a correction rather than a removal.
+  **Cleared 2026-08-16:** the correction predates this restructure —
+  `CLAUDE.md` already carried the corrected figures at `742ff65`, the false
+  ones surviving only quoted as refuted history, and they were re-measured
+  this day against the objects: CR=0 in every one of the 50 blobs that have
+  ever held the path. The history block itself now lives at
+  `EVIDENCE.md § core.autocrlf: the measured table and its history`.
 - **`CLAUDE.md § Scope and status` still says forward steps are R-numbers**, and
   this file's own *Numbering* section closed them as a log on 2026-08-07 and
   issues P-numbers instead. The exact sentence is "Forward steps are R-numbers,
