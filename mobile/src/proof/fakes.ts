@@ -309,6 +309,20 @@ export class InMemoryStore implements LocalStore {
   }
 
   markSynced(id: string, docNo: string | null, attempt: number, now: Date): Promise<void> {
+    // The same refusal as SqliteLocalStore.markSynced, and for the reason the
+    // comment in releaseMasterDataBlocked above already states: the two stores
+    // must not diverge. This fake accepting a null the real store throws on
+    // would let an engine proof go green over a scenario the device refuses.
+    // proveDocNo D7 pins this mirror; the full reasoning lives on the real
+    // store's gate.
+    if (docNo === null) {
+      return Promise.reject(
+        new Error(
+          `markSynced(${id}): refusing sync_state='synced' with doc_no null — ` +
+            "a 2xx that lost its doc_no is a retry, never a synced-null",
+        ),
+      );
+    }
     const row = this.require(id);
     row.sync_state = "synced";
     row.doc_no = docNo;

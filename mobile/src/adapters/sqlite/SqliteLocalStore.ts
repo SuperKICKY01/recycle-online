@@ -661,6 +661,34 @@ export class SqliteLocalStore implements LocalStore {
     attempt: number,
     now: Date,
   ): Promise<void> {
+    /*
+     * THE LAST GATE BEFORE THE WRITE: synced-with-null is unwritable.
+     *
+     * This UPDATE is the only writer of sync_state='synced' in the codebase,
+     * which makes it the one place the audit's band-A state — synced AND
+     * doc_no IS NULL — can come into being. That state is permanent (nothing
+     * re-fetches a doc_no after sync) and it strands any later void for ever:
+     * listVoidsToApply requires doc_no IS NOT NULL, so money the owner
+     * cancelled would stay live while the card promised automatic action.
+     *
+     * The transport already refuses to classify a 2xx-without-doc_no as a
+     * success (httpTransport.sendBill), so reaching this throw takes TWO
+     * independent failures — that guard regressed AND a body that lost its
+     * number. That is the point: a single gate can be missed, and this is
+     * the second one, at the layer that actually writes.
+     *
+     * On refusal the row is untouched — still pending, still queued. The
+     * throw escapes the engine's pass (sendOne catches only the transport
+     * call), the 4-second tick retries, and the idempotent re-POST (hard
+     * rule 4) delivers the doc_no the server has held all along — the same
+     * convergence as the transport guard, one layer later and louder.
+     */
+    if (docNo === null) {
+      throw new Error(
+        `markSynced(${id}): refusing sync_state='synced' with doc_no null — ` +
+          "a 2xx that lost its doc_no is a retry, never a synced-null",
+      );
+    }
     await this.db.run(
       `UPDATE local_bills
        SET sync_state = 'synced', doc_no = ?, attempt_count = ?,
