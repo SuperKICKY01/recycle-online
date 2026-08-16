@@ -265,6 +265,20 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   newline (`OPEN_ITEMS.md` is exactly that: `wc -l` 603, content 604). Decide
   which of the two you mean before reading either.
 
+  **Superseded 2026-08-17 — THE PROPERTY HOLDS, ONLY THE FIGURES ROTTED, and
+  the two are worth separating because the figures are the disposable half.**
+  `OPEN_ITEMS.md` still ends without a newline — last byte measured `0x20`,
+  not `0x0A` — so the two spellings still disagree by exactly one, which is
+  the whole of what the paragraph above rests on. The numbers are no longer
+  603/604 and have not been for a long time: measured 2026-08-17, `wc -l`
+  from the Bash tool reads **3428** and `(Get-Content $p).Count` reads
+  **3429**. NO SHA IS GIVEN, deliberately — the work carrying this correction
+  was uncommitted at the moment the sentence was written, so the only sha
+  available is the one that does NOT contain it, which is the corollary a few
+  sections down under the pin-a-claim convention. And these figures will rot
+  in their turn: this file grows every phase, and it grew by more than fifty
+  lines inside the very commit that corrected them.
+
   Instead: count LF bytes, or use `wc -l` from the Bash tool, and say which
   definition you used. And give any count you are about to rest a decision on a
   SECOND, independent measurement — the same rule the `.ps1` entry above gives,
@@ -632,5 +646,34 @@ pointer. Remove the check and the licence dies with it.
   pointing the checker at this file on purpose.
   → `EVIDENCE.md § Pin-a-claim-to-a-commit: the measured evidence`
 - Commit messages and code comments in English. UI text in Thai.
+- **A CODING SESSION REPORTS IN ENGLISH — its own prose, all of it.**
+  Every reply, every phase report, every subagent's findings, every
+  commit body, every explanation of a diff. The bullet above is not
+  wrong, it is SILENT: it names three artefacts and a report to the
+  owner is none of them, so this could not be inferred from it. It is
+  written for the first time on 2026-08-17, the day a CLI coding
+  session returned a survey written in Thai — the work was good, the
+  language was wrong, and nothing in the tree said otherwise.
+  **QUOTED MATERIAL IS EXEMPT, AND THAT IS NOT A SOFTENING.** The rule
+  governs the session's OWN prose and never what the session is
+  QUOTING. A Thai UI string, a Thai error message, a Thai line of a
+  document, a Thai commit body: reproduce it VERBATIM, in Thai,
+  unchanged. **NEVER TRANSLATE A QUOTED ARTEFACT.** A translated
+  string is no longer evidence, and it is the one thing the reader
+  needed; this project already treats Thai text as a measurement
+  problem rather than a display one (Machine footguns above, the two
+  codepage-874 entries). A report that renders `ยังไม่มีผู้ขายในระบบ` into
+  English has destroyed the observation and kept an opinion about it.
+  **THE ADVISING SESSION IS EXEMPT, AND IT IS THE ONLY EXEMPT ROLE.**
+  It replies to the owner in Thai and writes in English everything it
+  dispatches. That rule is NOT restated here — it lives in
+  `ADVISOR.md § 1. Role bounds` "It replies to the owner in THAI", the
+  file that role loads. Two copies drift; a pointer cannot. Do NOT
+  mirror these two into the shared checks above: that duplication is
+  licensed by a checker that reddens when its copies differ, and these
+  two are MEANT to differ.
+  **This bullet is prose, not a mechanism.** Nothing can grep a reply.
+  The only mechanism is the `REPORTS IN:` field at the head of a
+  dispatched brief, which travels with the work to the point of use.
 - Buddhist-era dates (พ.ศ.) in UI and printed slips only; store
   UTC ISO timestamps in the DB.

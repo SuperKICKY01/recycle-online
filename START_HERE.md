@@ -28,6 +28,15 @@ In this order. Each line says what that file OWNS.
    half, with nothing to announce it: **a line count in a file that grows every
    phase rots silently, so read this as an order of magnitude and never as a
    fact.** Whether it belongs here at all is the owner's call.
+   **Superseded 2026-08-17: 5111 lines**, measured by `wc -l` from the Bash
+   tool, agreeing with `(Get-Content).Count` because this file DOES end in a
+   newline. No sha, deliberately: the edit carrying the figure was final but
+   UNCOMMITTED when it was written, so the only sha available is the commit
+   that does not contain it. The bullet above is right about what to do with
+   this number, and nothing about that changed — it read 5034, the advising
+   session measured 5065 immediately before this phase (its figure, not one
+   re-taken here), and this phase's own edit to that file took it to 5111.
+   Three values inside five days. Order of magnitude, never a fact.
    Start at `PROJECT_STATUS.md § Current phase`.
    (`CLAUDE.md § Scope and status` "Both live in")
 4. **`ROADMAP.md`** — the ORDER of what is not done, and the argument for

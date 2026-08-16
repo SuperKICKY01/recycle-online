@@ -88,6 +88,52 @@ commits hold, each figure from that pass's own measurements:
 - Citation checker at `5ac22c3`: eight sources, 307 citations,
   BROKEN=6, all six pre-existing before the restructure began.
 
+**THAT RESTRUCTURE RAN TO FOUR COMMITS, NOT TWO — recorded 2026-08-17.**
+The block above names `1d58899` and `5ac22c3`. Two more landed the SAME
+day, 2026-08-16, and appeared in no phase record until this line; found
+by `git log --stat 5ac22c3..HEAD` in this pass, not from a document:
+
+- `78d3c02` — four sentences the restructure had made false, each
+  SUPERSEDED with its date rather than rewritten. `CLAUDE.md` +16,
+  `OPEN_ITEMS.md` +20, `PROJECT_STATUS.md` +31, `START_HERE.md` +5:
+  72 insertions, no deletions.
+- `e6a25dd` — shape A, the boundary rule and the read-list at the top of
+  `ADVISOR.md`. 122 insertions, that file alone.
+
+**THE REPORT-LANGUAGE RULE — 2026-08-17. Docs only: no code path
+changed, and the P1.7 record below stays the current CODE phase exactly
+as written.** A CLI coding session had returned a survey written in Thai.
+The tree's only language rule named commit messages, code comments and UI
+text; a report to the owner is none of the three, so the rule was ABSENT
+rather than ambiguous, and was written for the first time.
+
+- `CLAUDE.md § Conventions` gained a bullet beside the existing one,
+  which was not rewritten: a coding session reports in English, QUOTED
+  material exempt and reproduced verbatim in Thai, and the advising
+  session named as the only exempt role — by pointer, not by copy.
+- `ADVISOR.md § 1. Role bounds` gained the advisor's half: it replies to
+  the owner in Thai and writes in English everything it dispatches,
+  reproduced VERBATIM rather than re-drafted when the owner asks to see a
+  brief again. The two are deliberately NOT mirrored: they are different
+  rules for different roles, so no checker could ever hold them.
+- Measured either side of the edit, both sides in the same pass: the
+  citation checker over FIVE sources (a narrower list than the eight
+  above, so the totals are not comparable with that line) read 226 then
+  229 citations, BROKEN=0 both times; `tools/verify_shared_checks.py`
+  exit 0, the mirrored four undisturbed.
+- The lesson it produced was written in the NEXT phase, 2026-08-17, as an
+  amendment rather than a new file:
+  `lessons/README.md § Lessons` "PUT THE SCOPE IN THE LINE THAT LOADS".
+
+**WHAT THAT PHASE DID NOT ESTABLISH, stated because nothing else will.**
+The text is in the file. No session's BEHAVIOUR was observed to change,
+and applied is not verified. The deferred observable belongs to whoever
+runs the next fresh coding session: ask it what language instructions it
+holds and see whether it names `CLAUDE.md`. Until then the rule is
+WRITTEN, NOT WORKING. It is also prose and not a mechanism — nothing can
+grep a reply, and the only mechanism in play is the `REPORTS IN:` field
+at the head of a dispatched brief, which travels with the work.
+
 **P1.7 IS COMPLETE. ALL SEVEN STEPS. 2026-08-11, `959f22d`.** This block
 SUPERSEDES every P1.7 entry below as the current phase; each is left exactly as
 written and was true when written.

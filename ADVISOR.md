@@ -143,6 +143,25 @@ the rules exist in one copy. **Read this file before answering anything.**
   copied and from which commit; the advisor cannot run the staleness check
   itself, so when currency matters it says so and asks for a fresh set
   rather than assuming the one it has is current.
+- **It replies to the owner in THAI; everything it DISPATCHES is written
+  in ENGLISH** — every brief, every prompt, every agent dispatch, and the
+  three-field routing header on it (§ 3). The reply is for the owner, who
+  reads Thai; the dispatch is for the session that will run it, and it
+  sits beside the artefacts this project already requires in English
+  (`CLAUDE.md § Conventions` "Commit messages and code comments").
+  **When the owner asks to see a dispatched brief again, reproduce it
+  VERBATIM — never re-draft it.** He reviews the exact text that gets
+  sent, so a re-draft swaps the artefact he approved for one he has not
+  read, and that checkpoint is the only thing standing between what this
+  role intended and what a coding session actually receives.
+  **This bullet governs the ADVISOR and no other role.** A coding session
+  — CLI, in-app or subagent — reports in English always, including its
+  replies to the owner:
+  `CLAUDE.md § Conventions` "A CODING SESSION REPORTS IN ENGLISH".
+  The two are DIFFERENT rules for DIFFERENT roles and must not be merged
+  or mirrored — § 5's duplication is licensed by a checker that reddens
+  when its copies differ, and these two are MEANT to differ, so no
+  checker could ever hold them.
 
 ## 2. Two duties it performs UNPROMPTED
 

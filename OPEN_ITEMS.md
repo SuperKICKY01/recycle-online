@@ -3341,6 +3341,56 @@ or from a plausible-sounding summary.
   preconditions are met at `5ac22c3`: `ADVISOR.md` exists, the preamble's
   router routes the role by the ask, and the shared-four check holds the
   mirrored copies identical.
+  **CLOSED 2026-08-17 — the move happened, and this entry is superseded
+  rather than deleted.** The advising role has run as an in-project Claude
+  Code session since 2026-08-16, the day the owner decided it: the decision
+  and the boundary it runs under are written at
+  `ADVISOR.md § 0. The boundary` "Decided by the owner 2026-08-16", and
+  `e6a25dd` is the commit that landed them. What the role has since done in
+  that shape is the evidence — it reads the tree live rather than a paste
+  set, it dispatched the endpoint-versus-screen survey, and it wrote the
+  briefs behind the 2026-08-17 report-language phase and this closure. The
+  residual this entry was raised for is therefore gone by exactly the route
+  it proposed: `ADVISOR.md` now loads the way a coding session's files
+  load, instead of on demand. Kept in place because the argument for the
+  move is also the record of why on-demand delivery was a risk at all.
+
+- **`build_paste_set.py --check` ANSWERS A DIFFERENT QUESTION FROM THE ONE
+  ITS READER IS ASKING — found 2026-08-17 by a coding session running the
+  checker.** `mode_check` (`tools/build_paste_set.py:440`) prints at
+  `:453-454` a line of the form `built from head : <sha>  (DIRTY tree)`.
+  **The TIME in that line is honest** — it is labelled `built from head`,
+  and the flag is the manifest's, so it describes the moment the set was
+  built. **The SCOPE is the defect.** The flag is `working_tree_dirty`,
+  whose own docstring at `:257` says in as many words: `Repo-WIDE dirty
+  state. Context only -- it does NOT say the set is dirty.` The
+  set-scoped answer, `dirty_set_files`, is computed in the same pass and
+  written into the manifest at `:361` — and `mode_check` never reads it.
+  So the reader learns that SOMETHING in this repository was uncommitted
+  and cannot learn whether any of it was IN THE SET, which is the only
+  form of the fact that decides whether the paste can be trusted.
+  **The tool already knows better everywhere else**, which is what makes
+  this an oversight and not a design: `--write`'s summary branches on the
+  two properly at `:398-404`, and `MANIFEST.txt` does the same at
+  `:586-594`, under a comment at `:584-585` recording that conflating them
+  "once put a false claim in front of a reader who cannot check it". The
+  distinction was learned, written down, and then not applied in the third
+  place — `a-warning-in-one-file-does-not-protect-the-next.md`, in the same
+  file this time.
+  **It fails toward false alarm rather than false calm.** The tree is
+  dirty far more often than the set is, so a reader is trained to see
+  `DIRTY tree` and shrug — which is the condition under which the one
+  occasion it mattered gets shrugged at too.
+  *Not done:* nothing is changed. The tool was not touched in the pass
+  that found this, and it is reported rather than repaired.
+  *Unblocks:* one print in `mode_check` for the `dirty_set_files` already
+  sitting in the manifest, in `--write`'s vocabulary, so the two commands
+  answer the same question the same way. **Do not let that print inherit
+  the wrong time:** the manifest's copy is as-of BUILD, so a set built
+  clean and edited afterwards carries an empty list. Either re-ask git in
+  `mode_check` — which is the fact a reader of `--check` actually wants —
+  or label the figure as of the build, but not silently one while reading
+  as the other.
 
 - **MOST NEGATIVE CLAIMS IN THIS FILE HAVE NEVER BEEN CHECKED AGAINST SOURCE, and
   the sweep that measured that is KNOWN TO BE INCOMPLETE — 2026-08-12.** The
