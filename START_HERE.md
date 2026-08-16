@@ -71,6 +71,11 @@ Not in the boot path. Open when the task reaches them:
   `ADVISOR.md`, and an advising chat opened without them still has one
   checkpoint, not nine. The gap stays queued at
   `OPEN_ITEMS.md § Documentation`.
+  **Superseded 2026-08-16 (`5ac22c3`):** the checklist is complete in
+  the repo — four advisor-only items, four shared checks mirrored with
+  `CLAUDE.md § Shared checks` under `tools/verify_shared_checks.py`,
+  and the ninth by pointer: 4+4+1. The placeholder is gone, and the
+  queue entry carries its own dated closure.
 - **You, this session, write the production code**, run the proofs, and
   report what was observed.
 - **A red-team session** is a fourth role, run separately, and is never

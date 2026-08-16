@@ -57,6 +57,37 @@ not read the green as re-run.**
 
 ## Current phase
 
+**A DOCUMENTATION RESTRUCTURE CLOSED 2026-08-16, at `1d58899` and
+`5ac22c3`.** Not a P-step: no code path changed, and the P1.7 record
+below stays the current CODE phase exactly as written. What the two
+commits hold, each figure from that pass's own measurements:
+
+- `CLAUDE.md` went 780 to 620 lines with every removed line accounted
+  for (13 blank, 189 moved whole, 6 kept re-wrapped, 21 split at a word
+  boundary, 0 dropped — a classifier with a planted-line control): the
+  dated incidents, refutation history and measurement provenance moved
+  verbatim to `EVIDENCE.md` (new, 345 lines), every rule kept, each cut
+  site pointing at the section backing it. The first four sections are
+  byte-identical to `742ff65` except two approved insertions: the
+  P-number supersession and a role router that routes by the ask.
+- `ADVISOR.md` (new) is the advising role's first in-repo home — role
+  bounds, the two unprompted duties, the brief-header conventions
+  recorded for the first time, and the pre-send checklist. It is in the
+  paste set (`SET_FILES` 9 to 10).
+- The checklist landed MEASURED, not pasted, and the measurement found
+  real drift: the two roles had run different rule-sets for the
+  project's whole life, overlapping in four concepts. The shared four
+  now live inline in BOTH `CLAUDE.md` and `ADVISOR.md`, held identical
+  by `tools/verify_shared_checks.py` (seen red on a planted
+  one-character divergence and green on restore, both in the record);
+  the finding is written at
+  `lessons/README.md § Lessons` "a-rule-outside-the-repo-cannot-be-seen-to-drift.md".
+- `ROADMAP.md`'s corrections-owed entry for the CRLF figures was
+  cleared with a dated note — the correction predated the work, and the
+  git objects were re-measured to confirm it (CR=0 in all 50 blobs).
+- Citation checker at `5ac22c3`: eight sources, 307 citations,
+  BROKEN=6, all six pre-existing before the restructure began.
+
 **P1.7 IS COMPLETE. ALL SEVEN STEPS. 2026-08-11, `959f22d`.** This block
 SUPERSEDES every P1.7 entry below as the current phase; each is left exactly as
 written and was true when written.

@@ -502,6 +502,22 @@ The incidents behind three of these observables are in
   checklist with it. `START_HERE.md § 2` records that it exists and that the
   repo does not hold it; the gap itself is queued in
   `OPEN_ITEMS.md § Documentation`.
+  **Superseded 2026-08-16 (`5ac22c3`), and half of it survives.** FALSE
+  now: the checklist IS in this repository — all nine items, four
+  advisor-only and the ninth-by-pointer in `ADVISOR.md`, four shared
+  checks mirrored between that file and the Shared checks subsection
+  below, held identical by `tools/verify_shared_checks.py` — so an
+  advising chat no longer has "no checkpoint at all". STILL TRUE, and
+  the more important half: the advisor gets them only when `ADVISOR.md`
+  is actually loaded, and that file is ON-DEMAND — the same delivery
+  mechanism measured unopened 56% of the time. The checkpoint now
+  EXISTS but is CONDITIONAL on a read; it is not unconditional the way
+  this file's own load is, and only the shared four ride that load.
+  That residual is the MEASURED argument — not a preference — for
+  moving the advisor into a terminal, where these files load the way a
+  coding session's do; the on-demand risk on `ADVISOR.md` does not
+  exist for an in-terminal advisor the way it does for a pasted-file
+  one.
   **This is a WORKFLOW rule and not a lesson**, by the two-homes test
   above: nothing about it is a property of this box, and it would not be
   opened by an index line touching a task — it applies to every task.

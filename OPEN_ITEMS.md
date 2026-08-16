@@ -3321,6 +3321,26 @@ or from a plausible-sounding summary.
   `START_HERE.md § 2` points at it instead of recording its absence; if it does
   not, the standing instruction is that whoever opens an advising chat sends it
   with them, and that instruction has no home here either.
+  **CLOSED 2026-08-16:** the owner decided it belongs in the repository,
+  and it landed MEASURED rather than pasted — the remembered eight were
+  treated as a clue and measured against the tree, and the drift that
+  comparison surfaced is the finding
+  (`lessons/README.md § Lessons` "a-rule-outside-the-repo-cannot-be-seen-to-drift.md").
+  At `5ac22c3` the checklist is complete: four advisor-only items in
+  `ADVISOR.md`, four shared checks mirrored with `CLAUDE.md` under
+  `tools/verify_shared_checks.py`, the ninth by pointer — and it travels
+  with the paste set, so the send-it-with-them instruction now has a
+  mechanism instead of a memory.
+
+- **MOVE THE ADVISING ROLE INTO AN IN-PROJECT TERMINAL SESSION — queued
+  2026-08-16 by the owner, READY, not blocked.** It closes the residual the
+  checklist work left: `ADVISOR.md` is on-demand delivery, and an
+  in-terminal advisor loads it the way a coding session loads its files.
+  The rationale is NOT restated here — it lives, measured, at
+  `CLAUDE.md § Workflow` "moving the advisor into a terminal". The
+  preconditions are met at `5ac22c3`: `ADVISOR.md` exists, the preamble's
+  router routes the role by the ask, and the shared-four check holds the
+  mirrored copies identical.
 
 - **MOST NEGATIVE CLAIMS IN THIS FILE HAVE NEVER BEEN CHECKED AGAINST SOURCE, and
   the sweep that measured that is KNOWN TO BE INCOMPLETE — 2026-08-12.** The
