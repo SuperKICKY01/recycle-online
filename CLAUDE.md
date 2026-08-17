@@ -673,6 +673,17 @@ pointer. Remove the check and the licence dies with it.
   that handle across two and it resolved to nothing — the break was invisible
   because CLAUDE.md is not in the checker's source list, and was found only by
   pointing the checker at this file on purpose.
+  **AND THE RULE HAS TWO ENDS, WHICH THE SENTENCE ABOVE DOES NOT SAY.** The
+  handle must sit on one line in the CITATION *and* on one line in the TARGET,
+  because the checker matches a literal string against a single line at each
+  end. Measured 2026-08-17 while minting P1.18: the citation itself was on one
+  line and correct, and it still returned `hits=0`, because the sentence it
+  quotes had wrapped mid-phrase in prose written moments earlier — `BROKEN` went
+  7 to 8 and back to 7 once the handle was re-pointed at an unwrapped line.
+  **The target end is the harder one**, because the wrap is invisible in the
+  rendered document and the author is usually looking at the citation. When you
+  cite text you have just written, re-read the TARGET as raw lines and pick a
+  handle that survives the wrap.
   → `EVIDENCE.md § Pin-a-claim-to-a-commit: the measured evidence`
 - Commit messages and code comments in English. UI text in Thai.
 - **A CODING SESSION REPORTS IN ENGLISH — its own prose, all of it.**
