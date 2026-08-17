@@ -7,7 +7,7 @@ to the instrument you are about to cite as evidence for something else.
 case, run in the same pass, that makes it fire. A check nobody has watched go red
 is a claim about the code, not a measurement of it.
 
-**ELEVEN MECHANISMS, and this line is the ONLY place in this file that says how
+**TWELVE MECHANISMS, and this line is the ONLY place in this file that says how
 many.** Every heading below names its own mechanism and never the running total,
 so appending another is a one-number edit, here. This line exists because the
 count used to live in three headings and in this file's index line, and all four
@@ -792,3 +792,139 @@ failing state on today's fixture?*, 9 *how many different states satisfy this?*,
 the same nothing?*. This one asks the mirror of the ninth, and it is the only one
 in the file addressed to a RED: **how many different states produce this
 FAILURE, and does the word in front of me name the one I have?**
+
+---
+
+## A TWELFTH MECHANISM (2026-08-17) — THE CELL WAS SOUND AND THE PREDICTION ABOUT IT WAS WRONG
+
+Every mechanism above is a DEFECTIVE CELL: vacuous, unreachable, intercepted,
+pointed at the wrong artifact, starved of its stimulus, or ambiguous in its red.
+**This one is a sound cell, correctly written, capable of firing — and an author
+who predicted it would move under a particular break, ran the break, and did not
+notice it had stayed green.** The mutation was applied, it reached the cell, the
+cell ran and printed. It could not move, because **the property it compares is
+COARSER than the property the mutation damaged.**
+
+**The shape.** `proveSheets.ts` cell S1 compares two independent walks of one
+transition table: the module's own `reachableSheetStacks()`, and the proof
+script's `walk()`, which is the same breadth-first search with the break wrappers
+inside it. Agreement is a real cell — two implementations of one traversal, and
+if they disagree one of them is wrong.
+
+Two of the five breaks damage the reducer:
+
+    --break=always_push   `open` pushes unconditionally, making the duplicate
+                          the real `open` refuses to make
+    --break=pop_all       `close` empties the stack instead of popping one
+
+The cell was written asserting **the two walks must DISAGREE under either**, on
+the reasoning that a damaged reducer must move differently.
+
+**MEASURED. It went red under BOTH, saying `module walked 8, this script 8`.**
+The reachable SET is unchanged by either damage, because each transition's
+declared `from` keeps the damaged move off the frontier where it would show:
+
+| break | what it damages | why the SET does not move |
+|---|---|---|
+| `always_push` | `open` stacks a second copy | `open_add_seller` is reachable only `from: ["seller_picker"]`, and pushing `add_seller` onto `[seller_picker]` is where the real `open` puts it anyway |
+| `pop_all` | `close` empties instead of popping | `close_top` from `[seller_picker>add_seller]` lands on `-` instead of `[seller_picker]` — and `[seller_picker]` is still reached from `-` by `open_seller_picker` |
+
+**A set is not a transition table.** Eight stacks is a quotient of the table; both
+damages live in which transition leads where, which the quotient cannot express.
+
+**And the damage WAS caught, four cells away, which is the whole reason this is
+about prediction and not about coverage.** Under `pop_all`: S4
+`seller_picker>add_seller -> -` where `seller_picker` was expected, S5
+`--close--> -` must land back on `seller_picker`, and S6's count cell reporting
+`3 moves` where four are required. Under `always_push`: S7 `72 pairs checked,
+7 bad` and S8 `got seller_picker>add_seller>add_seller`. Three red cells per
+break, in both cases.
+
+### THE TRAP, and it is a counting habit rather than a reasoning error
+
+**Three cells went red, so the disproof looked successful.** A run that goes red
+under a deliberate break is exactly what this file asks for, and both runs did.
+Had the reds been counted rather than READ, the conclusion would have been "the
+break reddens the proof, S1 is validated" — about a cell that was never asserted
+correctly and had just contradicted its author twice.
+
+That is the same false assurance as the FIFTH mechanism's, arriving from the
+other side. There a true green was about the wrong object; here a true red is
+about the wrong CELL. In both, nothing is faked, the number is real, and the
+reader's question is not the one the number answers.
+
+### Why it is none of the eleven
+
+**Not 1–2.** Both operands are genuinely computed lists of eight strings.
+Nothing is vacuously true, and the same cell reddens correctly whenever the two
+walks really do differ.
+
+**Not 3, and this is the closest.** That one's failing state is unreachable *from
+the inputs supplied*, and its remedy is better inputs — a literal `pending: 3`
+becomes a derived value. Here the failing state is perfectly reachable: a
+transition with a wider `from`, or a damage that pushes a kind not otherwise
+reachable, moves this cell. **No input was withheld. The mutation was aimed at a
+level of description the assertion does not resolve.**
+
+**Not 4.** The break was not intercepted. It reached the cell, and the cell
+printed its verdict.
+
+**Not 5–7.** The right artifact was read — the module's own walk, the thing S1
+exists to compare — and through the right field. No sibling guard answered first;
+nothing is competing with this cell.
+
+**Not 8.** The fixture is the transition table, and it was current. Nothing
+lapsed with no diff; the table was written in the same commit.
+
+**Not 9.** Neither collection was empty. Eight against eight.
+
+**Not 10.** The two sides are two DIFFERENT traversals of one table, not two
+readings of one event. They agree because the property is coarse — not because
+an operation failed to happen and both derivations returned the same null.
+
+**Not 11.** That one is about a RED whose word covers two conditions. This is a
+GREEN under a deliberate break, which is this file's original subject.
+
+### The half that makes it evidence
+
+**The prediction was wrong, not the code.** The reducer break was real, the
+reachable set genuinely does not move, and the app is not defective in any way
+this uncovered.
+
+What was done, and it matters more than the finding: the expectation was
+corrected rather than the cell deleted. S1 now asserts agreement only when the
+reducer is undamaged, and under those two breaks it **prints `[skip]` with the
+reason in the run output** — a reader of that run is told, in the run, that this
+cell is not being asserted and where the damage does show. Deleting the cell
+would have removed a working check to hide a wrong guess; leaving the wrong
+assertion in place would have left a cell that reddens for a false reason, which
+is worse than either.
+
+**A control that corrects its author is the strongest form this file has.** Every
+instance above was found because a green was doubted. This one was found because
+a RED said something the author had not predicted, and the author read it instead
+of counting it.
+
+### Two more, appended to How to apply
+
+20. **Name the cell you expect to move BEFORE running the break, and check that
+    cell specifically afterwards.** Rule 1 says make it fail once on purpose;
+    that is necessary and not sufficient, because *something* failing is not
+    *the thing you were validating* failing. A break with three reds and one
+    unexpected green is a finding, and the green is the finding.
+21. **Match the granularity of the assertion to the granularity of the damage.**
+    Ask what LEVEL OF DESCRIPTION each speaks at: a SET cannot see a damaged
+    transition, a COUNT cannot see a reordering, a STATUS cannot see which guard
+    answered (the seventh mechanism, one level down), a TOTAL cannot see a
+    misallocation. When a cell stays green under a deliberate break, that is
+    information about THE CELL and not about the code — resolve it before
+    reporting either.
+
+**The question this adds.** Mechanisms 1–4 ask *could this have failed given my
+inputs?*, 5–7 *was it looking at the right thing?*, 8 *does it still reach its
+failing state on today's fixture?*, 9 *how many different states satisfy this?*,
+10 *do both sides become the same nothing?*, 11 *how many states produce this
+failure?*. This one asks the question that outranks all of them, because it is
+about the pass that validates the others: **which cell did I predict would move,
+did THAT cell move, and if it did not, is my model of the cell wrong or my model
+of the damage?**

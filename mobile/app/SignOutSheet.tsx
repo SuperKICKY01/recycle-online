@@ -13,12 +13,17 @@
  * lessons/403-is-about-what-the-caller-may-do.md is about: one card, two
  * renderers, each internally correct, contradicting each other on screen.
  */
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { SignOutAction, SignOutCard } from "../src/session/signOutNotice";
 
+/**
+ * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
+ * — and the sheet stack decides which sheet is inside it. A second one anywhere
+ * reintroduces the presentation defect SheetHost's header describes, and
+ * `npm run prove:sheets` goes red the moment one appears in this directory.
+ */
 interface Props {
-  visible: boolean;
   card: SignOutCard;
   busy: boolean;
   onAction: (action: SignOutAction) => void;
@@ -30,56 +35,42 @@ const TONE_COLOR: Record<SignOutCard["tone"], string> = {
   bad: "#b91c1c",
 };
 
-export function SignOutSheet({ visible, card, busy, onAction }: Props) {
-  const dismiss = card.actions.find((a) => a.kind === "dismiss");
+export function SignOutSheet({ card, busy, onAction }: Props) {
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      // Android's back gesture must land on the same handler as the button, not
-      // on a silent close that leaves the caller believing the sheet is open.
-      onRequestClose={() => {
-        if (dismiss) onAction(dismiss);
-      }}
-    >
-      <View style={styles.backdrop}>
-        <View style={styles.card}>
-          <Text style={[styles.title, { color: TONE_COLOR[card.tone] }]}>{card.title}</Text>
+    <View style={styles.backdrop}>
+      <View style={styles.card}>
+        <Text style={[styles.title, { color: TONE_COLOR[card.tone] }]}>{card.title}</Text>
 
-          <ScrollView style={styles.scroll}>
-            {card.lines.map((line, i) => (
-              // Index keys: the list is a fixed, ordered rendering of one value,
-              // never reordered or filtered in place.
-              <Text key={i} style={styles.line}>
-                {line}
+        <ScrollView style={styles.scroll}>
+          {card.lines.map((line, i) => (
+            // Index keys: the list is a fixed, ordered rendering of one value,
+            // never reordered or filtered in place.
+            <Text key={i} style={styles.line}>
+              {line}
+            </Text>
+          ))}
+        </ScrollView>
+
+        <View style={styles.buttons}>
+          {card.actions.map((action) => (
+            <Pressable
+              key={action.kind}
+              style={[
+                styles.btn,
+                action.kind === "dismiss" ? styles.cancel : styles.confirm,
+                busy && styles.dim,
+              ]}
+              disabled={busy}
+              onPress={() => onAction(action)}
+            >
+              <Text style={action.kind === "dismiss" ? styles.cancelText : styles.confirmText}>
+                {action.label}
               </Text>
-            ))}
-          </ScrollView>
-
-          <View style={styles.buttons}>
-            {card.actions.map((action) => (
-              <Pressable
-                key={action.kind}
-                style={[
-                  styles.btn,
-                  action.kind === "dismiss" ? styles.cancel : styles.confirm,
-                  busy && styles.dim,
-                ]}
-                disabled={busy}
-                onPress={() => onAction(action)}
-              >
-                <Text
-                  style={action.kind === "dismiss" ? styles.cancelText : styles.confirmText}
-                >
-                  {action.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+            </Pressable>
+          ))}
         </View>
       </View>
-    </Modal>
+    </View>
   );
 }
 

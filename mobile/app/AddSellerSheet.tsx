@@ -45,7 +45,6 @@
 import { useCallback, useState } from "react";
 import {
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -63,8 +62,13 @@ import type { SellerFormFields } from "../src/master/sellerForm";
 
 const TAP_MIN = 56;
 
+/**
+ * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
+ * — and the sheet stack decides which sheet is inside it. A second one anywhere
+ * reintroduces the presentation defect SheetHost's header describes, and
+ * `npm run prove:sheets` goes red the moment one appears in this directory.
+ */
 interface Props {
-  visible: boolean;
   /**
    * The real create. It returns a classified outcome and NEVER THROWS — that is
    * the documented contract of `SellerApi.createSeller`, and it is why this
@@ -99,7 +103,6 @@ const TONES: Record<SellerCreateTone, { bg: string; fg: string; border: string }
 };
 
 export function AddSellerSheet({
-  visible,
   create,
   onPick,
   onSignIn,
@@ -202,82 +205,80 @@ export function AddSellerSheet({
   );
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={close}>
-      <KeyboardAvoidingView
-        style={styles.fill}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <View style={styles.head}>
-          <Text style={styles.title}>เพิ่มผู้ขายใหม่</Text>
-          <Pressable style={styles.closeBtn} onPress={close}>
-            <Text style={styles.closeText}>ปิด</Text>
-          </Pressable>
-        </View>
+    <KeyboardAvoidingView
+      style={styles.fill}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <View style={styles.head}>
+        <Text style={styles.title}>เพิ่มผู้ขายใหม่</Text>
+        <Pressable style={styles.closeBtn} onPress={close}>
+          <Text style={styles.closeText}>ปิด</Text>
+        </Pressable>
+      </View>
 
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-          {/*
-            THE NOTICE, IN DRAW ORDER: headline, then every line, then the button.
-            proveSellerNotice asserts this concatenation; see the header.
-          */}
-          {notice !== null ? (
-            <View
-              style={[
-                styles.notice,
-                { backgroundColor: TONES[notice.tone].bg, borderColor: TONES[notice.tone].border },
-              ]}
-            >
-              <Text style={[styles.noticeHead, { color: TONES[notice.tone].fg }]}>
-                {notice.headline}
-              </Text>
-              {notice.lines.map((line, i) => (
-                <Text key={i} style={[styles.noticeLine, { color: TONES[notice.tone].fg }]}>
-                  {line}
-                </Text>
-              ))}
-              {notice.action !== null ? (
-                <Pressable
-                  style={[styles.noticeBtn, { backgroundColor: TONES[notice.tone].border }]}
-                  onPress={() => {
-                    if (notice.action !== null) act(notice.action.kind);
-                  }}
-                >
-                  <Text style={styles.noticeBtnText}>{notice.action.label}</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
-
-          {field("name", "ชื่อผู้ขาย (จำเป็น)", null)}
-          {/*
-            THE HINT PROMISES NOTHING. It says the box may be left empty, and not
-            that the system will succeed in assigning a code — because
-            `code_assignment_failed` is exactly the outcome where it does not, and
-            a form line insisting otherwise two centimetres under that refusal
-            would be one screen holding two opposite claims.
-          */}
-          {field("code", "รหัสผู้ขาย", "เว้นว่างได้ ถ้าร้านไม่ได้ใช้ระบบรหัสของตัวเอง")}
-          {field("phone", "เบอร์โทร", null, { keyboardType: "phone-pad" })}
-          {field("id_number", "เลขบัตรประชาชนหรือเลขที่เอกสาร", null)}
-          {field("address", "ที่อยู่", null, { multiline: true })}
-          {/*
-            NOT the plate on this bill. A seller's vehicle_no is the truck they
-            usually arrive in; purchase_bills.vehicle_no is the one that turned up
-            today, and SRS 1.6 keeps them apart. Collapsing them is how a seller's
-            master record ends up rewritten by one day's delivery.
-          */}
-          {field("vehicle_no", "ทะเบียนรถที่ใช้ประจำ", "ไม่ใช่ทะเบียนรถของบิลใบนี้")}
-
-          <Pressable
-            style={[styles.save, (!ready || busy) && styles.saveOff]}
-            disabled={!ready || busy}
-            onPress={() => void submit()}
+      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        {/*
+          THE NOTICE, IN DRAW ORDER: headline, then every line, then the button.
+          proveSellerNotice asserts this concatenation; see the header.
+        */}
+        {notice !== null ? (
+          <View
+            style={[
+              styles.notice,
+              { backgroundColor: TONES[notice.tone].bg, borderColor: TONES[notice.tone].border },
+            ]}
           >
-            <Text style={styles.saveText}>{busy ? "กำลังบันทึก…" : "บันทึกผู้ขาย"}</Text>
-          </Pressable>
-          {!ready ? <Text style={styles.gate}>ต้องกรอกชื่อผู้ขายก่อนจึงจะบันทึกได้</Text> : null}
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </Modal>
+            <Text style={[styles.noticeHead, { color: TONES[notice.tone].fg }]}>
+              {notice.headline}
+            </Text>
+            {notice.lines.map((line, i) => (
+              <Text key={i} style={[styles.noticeLine, { color: TONES[notice.tone].fg }]}>
+                {line}
+              </Text>
+            ))}
+            {notice.action !== null ? (
+              <Pressable
+                style={[styles.noticeBtn, { backgroundColor: TONES[notice.tone].border }]}
+                onPress={() => {
+                  if (notice.action !== null) act(notice.action.kind);
+                }}
+              >
+                <Text style={styles.noticeBtnText}>{notice.action.label}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
+        {field("name", "ชื่อผู้ขาย (จำเป็น)", null)}
+        {/*
+          THE HINT PROMISES NOTHING. It says the box may be left empty, and not
+          that the system will succeed in assigning a code — because
+          `code_assignment_failed` is exactly the outcome where it does not, and
+          a form line insisting otherwise two centimetres under that refusal
+          would be one screen holding two opposite claims.
+        */}
+        {field("code", "รหัสผู้ขาย", "เว้นว่างได้ ถ้าร้านไม่ได้ใช้ระบบรหัสของตัวเอง")}
+        {field("phone", "เบอร์โทร", null, { keyboardType: "phone-pad" })}
+        {field("id_number", "เลขบัตรประชาชนหรือเลขที่เอกสาร", null)}
+        {field("address", "ที่อยู่", null, { multiline: true })}
+        {/*
+          NOT the plate on this bill. A seller's vehicle_no is the truck they
+          usually arrive in; purchase_bills.vehicle_no is the one that turned up
+          today, and SRS 1.6 keeps them apart. Collapsing them is how a seller's
+          master record ends up rewritten by one day's delivery.
+        */}
+        {field("vehicle_no", "ทะเบียนรถที่ใช้ประจำ", "ไม่ใช่ทะเบียนรถของบิลใบนี้")}
+
+        <Pressable
+          style={[styles.save, (!ready || busy) && styles.saveOff]}
+          disabled={!ready || busy}
+          onPress={() => void submit()}
+        >
+          <Text style={styles.saveText}>{busy ? "กำลังบันทึก…" : "บันทึกผู้ขาย"}</Text>
+        </Pressable>
+        {!ready ? <Text style={styles.gate}>ต้องกรอกชื่อผู้ขายก่อนจึงจะบันทึกได้</Text> : null}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

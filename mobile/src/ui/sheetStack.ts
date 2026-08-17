@@ -1,0 +1,290 @@
+/**
+ * WHICH SHEET IS ON SCREEN. One value, so the app cannot ask for two.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THE DEFECT THIS EXISTS TO MAKE IMPOSSIBLE
+ * ─────────────────────────────────────────────────────────────────────────────
+ * App.tsx used to render seven `<Modal>` components as SIBLINGS, each with its
+ * own `visible` boolean. On iOS every one of them presents a view controller
+ * from the SAME parent — the app's root controller — and
+ * `RCTModalHostViewComponentView.ensurePresentedOnlyIfNeeded`
+ * (react-native 0.81.5, React/Fabric/Mounting/ComponentViews/Modal) calls
+ * `[[self reactViewController] presentViewController:...]` with NO check for a
+ * controller that is already presenting, and sets its own `_isPresented = YES`
+ * BEFORE the call. A second presentation from one parent is therefore refused by
+ * UIKit and recorded by React Native as a success, and neither
+ * `didMoveToWindow` nor `didMoveToSuperview` will retry it — both are gated on
+ * `!_isPresented`.
+ *
+ * The observed symptom, on a real handset, was `+ เพิ่มผู้ขาย` inside the seller
+ * picker doing nothing.
+ *
+ * TWO SHAPES OF THE SAME DEFECT, and only the first is what people look for:
+ *
+ *   OVERLAP     — two `visible` booleans true in one committed render.
+ *                 App.tsx set `addSellerOpen` from inside the picker and left
+ *                 `pickerOpen` true.
+ *   SAME-COMMIT — one goes false and another goes true in the SAME render, so
+ *   SWAP          the platform is asked to dismiss and present in one turn.
+ *                 `chooseSeller` did exactly this: picker false, seller-change
+ *                 dialog true, one handler, one commit.
+ *
+ * A single `openSheet: SheetKind | null` state kills the first and RENAMES the
+ * second — which is why this module is a STACK feeding ONE Modal host that
+ * stays presented while its children change. Nothing is dismissed and nothing
+ * is presented when the sheet on screen changes, so neither shape has anywhere
+ * to happen.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHY THE TRANSITIONS ARE DATA
+ * ─────────────────────────────────────────────────────────────────────────────
+ * `SHEET_TRANSITIONS` is the whole list, and App.tsx dispatches BY NAME. It
+ * cannot build an action of its own, so the reachable-state enumeration in
+ * `src/proof/proveSheets.ts` is a statement about the app rather than about a
+ * copy of it. Adding a transition here changes that enumeration and reddens a
+ * cell until the expectation is rewritten deliberately.
+ *
+ * THE HONEST LIMIT, stated here rather than discovered later: `from` is a claim
+ * about WHERE App.tsx dispatches each transition, and nothing in the node
+ * program can check it — App.tsx is not in `tsconfig.node.json`. So the proof
+ * carries a cell that holds even if every `from` is wrong: over the reachable
+ * states crossed with EVERY transition, ignoring `from` entirely, the reducer
+ * still cannot produce a stack with two sheets on screen. The invariant does
+ * not rest on this table being accurate.
+ */
+
+/**
+ * Every sheet the app can put over itself. A member added here is a compile
+ * error at the host's switch in App.tsx until it is rendered.
+ */
+export const SHEET_KINDS = [
+  "sign_out",
+  "seller_picker",
+  "add_seller",
+  "confirm_seller_change",
+  "confirm_save",
+  "daily",
+  "bills",
+] as const;
+
+export type SheetKind = (typeof SHEET_KINDS)[number];
+
+/**
+ * Bottom to top. The LAST element is what the operator is looking at; the ones
+ * beneath it are what closing returns to.
+ */
+export type SheetStack = readonly SheetKind[];
+
+/** The app's own screen, with nothing over it. */
+export const NO_SHEETS: SheetStack = [];
+
+export type SheetAction =
+  /** Put `sheet` over whatever is open. Closing it comes back here. */
+  | { readonly kind: "open"; readonly sheet: SheetKind }
+  /** `sheet` alone: closing it returns to the app, not to what was open. */
+  | { readonly kind: "replace"; readonly sheet: SheetKind }
+  /** Close the top one and reveal what was under it. */
+  | { readonly kind: "close" }
+  /** Nothing over the app at all. */
+  | { readonly kind: "close_all" };
+
+/** The one sheet on screen, or null. */
+export function topSheet(stack: SheetStack): SheetKind | null {
+  return stack[stack.length - 1] ?? null;
+}
+
+/**
+ * IS THIS SHEET ON SCREEN — the function App.tsx's host asks, and the one the
+ * proof measures. It is deliberately `top ===` and not `includes`: a stack of
+ * two exists on purpose (the add-seller form over the picker), and only the top
+ * of it is rendered. Widen this to `includes` and two sheets are asked for at
+ * once, which is the defect this module removes.
+ */
+export function sheetOnScreen(stack: SheetStack, kind: SheetKind): boolean {
+  return topSheet(stack) === kind;
+}
+
+/** No sheet twice, and nothing in the stack that is not a declared kind. */
+export function sheetStackValid(stack: SheetStack): boolean {
+  const known: readonly string[] = SHEET_KINDS;
+  return new Set(stack).size === stack.length && stack.every((k) => known.includes(k));
+}
+
+export function reduceSheets(stack: SheetStack, action: SheetAction): SheetStack {
+  switch (action.kind) {
+    case "open": {
+      /*
+       * ALREADY OPEN SOMEWHERE BELOW: come back DOWN to it rather than pushing a
+       * second copy. A duplicate would make `close` return to the same sheet it
+       * just closed, which on a screen with a truck waiting reads as a button
+       * that does nothing — the symptom this whole module is about.
+       */
+      const at = stack.indexOf(action.sheet);
+      if (at !== -1) return stack.slice(0, at + 1);
+      return [...stack, action.sheet];
+    }
+    case "replace":
+      // The sheets underneath are FINISHED, not suspended. See ask_seller_change.
+      return [action.sheet];
+    case "close":
+      // slice(0, -1) of an empty array is an empty array: closing nothing is
+      // not an error, because a stale handler firing after a close is normal.
+      return stack.slice(0, -1);
+    case "close_all":
+      return NO_SHEETS;
+    default: {
+      const never: never = action;
+      throw new Error(`unhandled sheet action: ${JSON.stringify(never)}`);
+    }
+  }
+}
+
+/**
+ * ONE TRANSITION THE APP CAN MAKE.
+ *
+ * `from` names the tops it is reachable FROM — `null` meaning the app's own
+ * screen, with no sheet over it. It is not enforcement; it is the declaration
+ * the reachable-state enumeration walks. The physical enforcement is that a
+ * sheet fills the screen, so a control in the body cannot be pressed while one
+ * is open.
+ */
+export interface SheetTransitionSpec {
+  readonly action: SheetAction;
+  readonly from: readonly (SheetKind | null)[];
+  /** Where App.tsx dispatches it, so the table can be checked by eye. */
+  readonly site: string;
+}
+
+/**
+ * EVERY SHEET TRANSITION IN THE APP. App.tsx dispatches these by name and has
+ * no other way to move the stack.
+ */
+export const SHEET_TRANSITIONS = {
+  /** Header ออกจากระบบ. Under every sheet, so only reachable from the app. */
+  open_sign_out: {
+    action: { kind: "open", sheet: "sign_out" },
+    from: [null],
+    site: "App.tsx header, the ออกจากระบบ Pressable",
+  },
+  /** Start or change the bill's seller. Both callers are in the body. */
+  open_seller_picker: {
+    action: { kind: "open", sheet: "seller_picker" },
+    from: [null],
+    site: "App.tsx openPicker, from the start-bill button and CartScreen",
+  },
+  /** `+ เพิ่มผู้ขาย`, INSIDE the picker. The pair that was observed broken. */
+  open_add_seller: {
+    action: { kind: "open", sheet: "add_seller" },
+    from: ["seller_picker"],
+    site: "App.tsx SellerPicker onAddSeller",
+  },
+  /** CartScreen's save button, in the body. */
+  open_confirm_save: {
+    action: { kind: "open", sheet: "confirm_save" },
+    from: [null],
+    site: "App.tsx CartScreen onSubmit",
+  },
+  /** Header ยอดวันนี้. */
+  open_daily: {
+    action: { kind: "open", sheet: "daily" },
+    from: [null],
+    site: "App.tsx openDaily, from the ยอดวันนี้ Pressable",
+  },
+  /** The บิลล่าสุด strip. */
+  open_bills: {
+    action: { kind: "open", sheet: "bills" },
+    from: [null],
+    site: "App.tsx the latest-bill Pressable",
+  },
+  /**
+   * A DIFFERENT SELLER WAS PICKED FOR A CART THAT ALREADY HAS LINES.
+   *
+   * `replace`, and that is a product decision rather than a convenience:
+   * cancelling this dialog returns the operator to the CART with the seller
+   * they already had, NOT to the picker. Picking a seller is finished — they
+   * picked one — and what is being asked is whether to move the lines. Popping
+   * back to the picker would make ยกเลิก look like it did nothing, and a person
+   * with a truck on the weighbridge would tap it again.
+   *
+   * Reachable from the add-seller form as well as the picker: creating a seller
+   * ends in `onSellerCreated`, which picks that seller through the same
+   * function.
+   */
+  ask_seller_change: {
+    action: { kind: "replace", sheet: "confirm_seller_change" },
+    from: ["seller_picker", "add_seller"],
+    site: "App.tsx chooseSeller, the draft.lines.length > 0 branch",
+  },
+  /** Every sheet's own close, and Android's back gesture. */
+  close_top: {
+    action: { kind: "close" },
+    from: [...SHEET_KINDS],
+    site: "App.tsx sheetBack and every sheet's onClose/onCancel",
+  },
+  /**
+   * THE SESSION ENDED, OR A SELLER WAS CHOSEN. Both mean nothing that was open
+   * is still the right thing to look at: after a sign-out the login screen is
+   * the body of the app, and after a pick the cart is.
+   */
+  close_every_sheet: {
+    action: { kind: "close_all" },
+    from: [null, "sign_out", "seller_picker", "add_seller"],
+    site: "App.tsx chooseSeller, onSignOut via applyClearedSession, StatusStrip onSignIn, AddSellerSheet onSignIn",
+  },
+} as const satisfies Record<string, SheetTransitionSpec>;
+
+export type SheetTransition = keyof typeof SHEET_TRANSITIONS;
+
+export const SHEET_TRANSITION_NAMES = Object.keys(SHEET_TRANSITIONS) as readonly SheetTransition[];
+
+/**
+ * ONE TRANSITION, WIDENED.
+ *
+ * `SHEET_TRANSITIONS` is `as const`, which is what keeps `SheetTransition` a
+ * union of the nine names — and it also makes every `from` a fixed-length tuple
+ * of literals, so `from.includes(someKind)` is a type error and `from.length ===
+ * 0` is "these types have no overlap". Read a spec through here and it is a
+ * `SheetTransitionSpec`, which is what a caller walking the table needs.
+ */
+export function sheetTransition(name: SheetTransition): SheetTransitionSpec {
+  return SHEET_TRANSITIONS[name];
+}
+
+/** Apply a named transition. The only way App.tsx moves the stack. */
+export function applySheetTransition(stack: SheetStack, name: SheetTransition): SheetStack {
+  return reduceSheets(stack, sheetTransition(name).action);
+}
+
+/**
+ * EVERY STACK THE APP CAN REACH, breadth-first from `NO_SHEETS` over the
+ * transitions ABOVE, honouring each one's `from`.
+ *
+ * Returned as sorted `a>b` strings so the proof can compare sets without
+ * caring what order the walk found them in.
+ */
+export function reachableSheetStacks(): readonly string[] {
+  const seen = new Set<string>();
+  const queue: SheetStack[] = [NO_SHEETS];
+  seen.add(stackKey(NO_SHEETS));
+
+  while (queue.length > 0) {
+    const stack = queue.shift();
+    if (stack === undefined) break;
+    const top = topSheet(stack);
+    for (const name of SHEET_TRANSITION_NAMES) {
+      const spec = sheetTransition(name);
+      if (!spec.from.includes(top)) continue;
+      const next = reduceSheets(stack, spec.action);
+      const key = stackKey(next);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      queue.push(next);
+    }
+  }
+  return [...seen].sort();
+}
+
+/** A stack as one comparable string. `-` is the empty stack, never "". */
+export function stackKey(stack: SheetStack): string {
+  return stack.length === 0 ? "-" : stack.join(">");
+}

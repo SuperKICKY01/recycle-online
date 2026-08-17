@@ -41,6 +41,7 @@
  */
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
@@ -123,7 +124,16 @@ import { LoginScreen } from "./app/LoginScreen";
 import { deviceIds } from "./app/ids";
 import { MasterDataStrip } from "./app/MasterDataStrip";
 import { SellerPicker } from "./app/SellerPicker";
+/*
+ * THE ONE MODAL. Every sheet below is a plain view now and none of them presents
+ * itself; the stack in src/ui/sheetStack.ts says which one is inside this host.
+ * See app/SheetHost.tsx for why a second Modal anywhere is the defect returning.
+ */
+import { SheetHost } from "./app/SheetHost";
+import type { SheetAnimation } from "./app/SheetHost";
 import { StatusStrip } from "./app/StatusStrip";
+import { applySheetTransition, NO_SHEETS, topSheet } from "./src/ui/sheetStack";
+import type { SheetStack, SheetTransition } from "./src/ui/sheetStack";
 
 const ALL_STATES: SyncState[] = ["pending", "syncing", "synced", "failed"];
 
@@ -191,11 +201,32 @@ export default function App() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [bills, setBills] = useState<LocalBill[]>([]);
   const [latest, setLatest] = useState<LocalBill | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [billsOpen, setBillsOpen] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  /** The add-seller form, stacked over the picker (P1.8a phase 3). */
-  const [addSellerOpen, setAddSellerOpen] = useState(false);
+  /*
+   * WHICH SHEET IS OVER THE APP — ONE VALUE FOR ALL SEVEN.
+   *
+   * This replaced seven independent booleans (confirmOpen, billsOpen,
+   * pickerOpen, addSellerOpen, dailyOpen, signOutOpen, and pendingChange's
+   * null-ness), each of which drove its own Modal. Two of them could be true at
+   * once and the platform cannot present two modals from one parent, so the
+   * add-seller button did nothing on a real handset. With one stack there is
+   * nothing to be inconsistent: `topSheet` returns one value or null, and
+   * app/SheetHost renders that and nothing else.
+   *
+   * It is a STACK and not a single slot because closing a sheet has to return to
+   * what was under it — the add-seller form sits over the picker, and cancelling
+   * it must put the operator back on the search box rather than on the cart.
+   * `src/ui/sheetStack.ts` holds the transitions and the reasons.
+   */
+  const [sheets, setSheets] = useState<SheetStack>(NO_SHEETS);
+  /**
+   * THE ONLY WAY THE STACK MOVES. Named transitions, declared in
+   * `src/ui/sheetStack.ts` and nowhere else — so `npm run prove:sheets` walks the
+   * table this app actually dispatches rather than a copy of it, and a new
+   * transition cannot be invented at a call site.
+   */
+  const sheet = useCallback((name: SheetTransition): void => {
+    setSheets((s) => applySheetTransition(s, name));
+  }, []);
   /*
    * CARTS ON THIS DEVICE THAT THIS PERSON MAY NOT CONTINUE — a count, from the
    * loader, never computed here. Read once at boot: nothing on this screen can
@@ -229,13 +260,46 @@ export default function App() {
    * openings: a stale total on a money screen is the same class of mistake as a
    * stale price, and this one has no marker to show its age.
    */
-  const [dailyOpen, setDailyOpen] = useState(false);
+  // `dailyOpen` is gone: whether the report is on screen is `topSheet(sheets) ===
+  // "daily"`, one value with the other six sheets, for the reason the stack's own
+  // comment gives.
   const [dailyDate, setDailyDate] = useState<string | null>(null);
   const [daily, setDaily] = useState<DailyScreenModel | null>(null);
-  /** A seller change the operator has been warned about but not yet confirmed. */
+  /**
+   * A seller change the operator has been warned about but not yet confirmed.
+   *
+   * THIS IS PAYLOAD, NOT VISIBILITY. Whether the dialog is on screen is the
+   * stack's business; this only carries what it says. The two are written
+   * TOGETHER by `askSellerChange` and `dropSellerChange` below and by nothing
+   * else, because a stack asking for the dialog while this is null would render a
+   * seller change from "-" to "-".
+   */
   const [pendingChange, setPendingChange] = useState<
     { to: Seller; impact: SellerChangeImpact } | null
   >(null);
+
+  /** Show the seller-change warning. The ONE writer that sets it non-null. */
+  const askSellerChange = useCallback(
+    (to: Seller, impact: SellerChangeImpact): void => {
+      setPendingChange({ to, impact });
+      sheet("ask_seller_change");
+    },
+    [sheet],
+  );
+
+  /**
+   * Put the warning away, confirmed or cancelled. The ONE writer that clears it.
+   *
+   * `ask_seller_change` is a REPLACE, so the stack under this dialog is empty and
+   * closing it lands on the cart — not back on the picker. That is the product
+   * decision: the operator has already chosen somebody, and what is being asked
+   * is whether to move the lines. Popping back to the picker would make ยกเลิก
+   * look like it did nothing to a person with a truck on the weighbridge.
+   */
+  const dropSellerChange = useCallback((): void => {
+    setPendingChange(null);
+    sheet("close_top");
+  }, [sheet]);
 
   /*
    * THE bill's seller — derived, never stored twice. draft.seller_id is the
@@ -391,7 +455,8 @@ export default function App() {
    * thing they must not have to guess about while handing over a phone. Cleared
    * when the sheet is opened afresh and on a sign-in.
    */
-  const [signOutOpen, setSignOutOpen] = useState(false);
+  // `signOutOpen` is gone for the reason the sheet stack's comment gives: it is
+  // `topSheet(sheets) === "sign_out"` now, one value with the other six.
   const [signOutFailure, setSignOutFailure] = useState<SignOutFailure | null>(null);
 
   const [online, setOnline] = useState<boolean | null>(null);
@@ -884,12 +949,12 @@ export default function App() {
   );
 
   const openDaily = useCallback(() => {
-    setDailyOpen(true);
+    sheet("open_daily");
     // Always the server's own today when the screen is opened. A day the owner
     // stepped to twenty minutes ago is not what they mean by "open the takings".
     setDailyDate(null);
     void loadDaily(null);
-  }, [loadDaily]);
+  }, [loadDaily, sheet]);
 
   const pickDay = useCallback(
     (wireDate: string | null) => {
@@ -1204,15 +1269,29 @@ export default function App() {
         health: setHealth,
         daily: setDaily,
         dailyDate: setDailyDate,
-        dailyOpen: setDailyOpen,
+        /*
+         * THE APP NO LONGER HOLDS A `dailyOpen` BOOLEAN, so this field's setter is
+         * the stack's. It closes EVERY sheet and not only the report, which is
+         * wider than the field's name and is the correct act: with no token the
+         * login screen is the body of the app, and any sheet left on top of it is
+         * one the operator cannot get out of — the sign-out sheet they are
+         * standing in included.
+         *
+         * The field keeps its name because renaming it reaches `ClearedSession`
+         * and `proveSignOut`'s EXPECTED map, which is not this phase's change.
+         * `applyClearedSession` still calls it exactly once, and the mapped type
+         * still makes an ELEVENTH value a compile error here.
+         */
+        dailyOpen: () => sheet("close_every_sheet"),
       });
       setSignOutFailure(null);
-      setSignOutOpen(false);
+      // No separate close for the sign-out sheet: the setter above emptied the
+      // whole stack, and this sheet was in it.
       setStatus(`${API_BASE_URL} · ออกจากระบบแล้ว`);
     } finally {
       setBusy(false);
     }
-  }, [failedCount, pendingCount]);
+  }, [failedCount, pendingCount, sheet]);
 
   /**
    * THE POST /sellers CALLER (P1.8a). One instance for the app's lifetime:
@@ -1249,10 +1328,10 @@ export default function App() {
    * offline — which is the case this phase exists for.
    */
   const openPicker = useCallback(() => {
-    setPickerOpen(true);
+    sheet("open_seller_picker");
     const t = tokenRef.current;
     if (t !== null) void refreshMaster(t);
-  }, [refreshMaster]);
+  }, [refreshMaster, sheet]);
 
   /*
    * A CART WAS OPENED, so the product list is on screen — re-read it.
@@ -1322,7 +1401,17 @@ export default function App() {
 
   const chooseSeller = useCallback(
     (s: Seller) => {
-      setPickerOpen(false);
+      /*
+       * THE PICKER'S JOB IS DONE, and so is the add-seller form if it was over it:
+       * the operator has chosen somebody. This is where the same-commit
+       * dismiss-and-present used to be — the old code set `pickerOpen` false and
+       * `pendingChange` non-null in one render, which asks iOS to dismiss one
+       * modal and present another in a single turn. Both calls still happen in
+       * this handler; what changed is that they move ONE stack behind ONE Modal
+       * that is already presented, so nothing is dismissed and nothing is
+       * presented at that moment.
+       */
+      sheet("close_every_sheet");
       const draftStore = draftStoreRef.current;
       if (!draftStore) return;
 
@@ -1358,9 +1447,18 @@ export default function App() {
       // touching the draft. The preview comes from the same function that will
       // apply it, so the dialog cannot describe something else.
       const preview = changeSeller(draft, s.id, locks, tierResolver(s.grade), nowIso());
-      setPendingChange({ to: s, impact: preview.impact });
+      askSellerChange(s, preview.impact);
     },
-    [applySellerChange, currentOwner, draft, freshness.asOf, locks, tierResolver],
+    [
+      applySellerChange,
+      askSellerChange,
+      currentOwner,
+      draft,
+      freshness.asOf,
+      locks,
+      sheet,
+      tierResolver,
+    ],
   );
 
   /**
@@ -1392,7 +1490,9 @@ export default function App() {
    */
   const onSellerCreated = useCallback(
     (created: CreatedSeller) => {
-      setAddSellerOpen(false);
+      // No close of this form here any more. `chooseSeller` below empties the
+      // whole stack — this form AND the picker under it — in one act, so there is
+      // no ordering between two closes to get wrong.
       // FIVE FIELDS, named one by one. `CreatedSeller` also carries id_number,
       // address and vehicle_no, and structural typing would let all three into
       // this list and then into saveSellers — see src/master/sellerForm.ts.
@@ -1459,7 +1559,7 @@ export default function App() {
     const draftStore = draftStoreRef.current;
     const engine = engineRef.current;
     if (!draftStore || !engine || !seller || !draft || draft.lines.length === 0) return;
-    setConfirmOpen(false);
+    sheet("close_top");
     setBusy(true);
     void (async () => {
       try {
@@ -1514,9 +1614,319 @@ export default function App() {
         setBusy(false);
       }
     })();
-  }, [currentOwner, draft, refresh, seller, syncOnce]);
+  }, [currentOwner, draft, refresh, seller, sheet, syncOnce]);
+
+  /**
+   * WHAT THE SIGN-OUT SHEET'S BUTTONS DO. Hoisted out of the JSX so the sheet and
+   * Android's back gesture reach one function rather than two copies of it.
+   */
+  const onSignOutAction = useCallback(
+    (action: SignOutAction): void => {
+      switch (action.kind) {
+        case "dismiss":
+          sheet("close_top");
+          setSignOutFailure(null);
+          return;
+
+        /*
+          R2b. THE SAME FUNCTION THE STRIP'S BUTTON REACHES. `signIn` is the one
+          act on this device that ends an expired session, and it already clears
+          the sync pause, the failure notice and the 403, then resumes the queue
+          and kicks a pass. A second sign-in path written here would be a copy of
+          that, free to drift from it.
+
+          The sheet closes first: the operator pressed sign in, not sign out, and
+          leaving a refusal on screen over a session that is about to work would
+          be the same class of defect as the sentence R2b removed.
+        */
+        case "sign_in":
+          // Closing the sheet IS the action now: with no usable session the login
+          // screen is the body underneath it. See the strip's onSignIn — nothing
+          // here can supply credentials.
+          sheet("close_top");
+          return;
+
+        // confirm_sign_out and retry_sign_out are the same act; they differ only
+        // in the label, because the second one follows a failure.
+        case "confirm_sign_out":
+        case "retry_sign_out":
+          void onSignOut();
+          return;
+
+        /*
+          A FIFTH MEMBER IS A COMPILE ERROR HERE, and that is the whole reason this
+          is a switch. It was `if (dismiss) ... else onSignOut()`, which would have
+          taken `sign_in` silently down the sign-out path — where the gate refuses
+          it — producing a green button that does nothing. Worse than the defect
+          being fixed.
+        */
+        default: {
+          const never: never = action;
+          throw new Error(`unhandled sign-out action: ${JSON.stringify(never)}`);
+        }
+      }
+    },
+    [onSignOut, sheet],
+  );
 
   /* ----------------------------------------------------------------- view -- */
+
+  /*
+   * THE SIGN-OUT CARD, hoisted out of the JSX because two things read it: the
+   * sheet, and the back-gesture handler below, which has to reach the same
+   * `dismiss` action the button does.
+   *
+   * Rendered from the CURRENT counts every time, not from a value captured when
+   * it opened: a queue that drains while it is on screen turns the refusal into
+   * the confirmation by itself, with no tap.
+   */
+  const signOutSheetCard = signOutCard({
+    pending: pendingCount,
+    failed: failedCount,
+    failure: signOutFailure,
+    /*
+      R2b: WHY the queue is stuck, not merely that it is. Already derived at the
+      top of this component and already handed to StatusStrip and BillsPanel, so
+      the three renderers of one fact read one value.
+    */
+    session,
+  });
+
+  /*
+   * ─────────────────────────────────────────────────────────────────────────
+   * THE ONE SHEET ON SCREEN.
+   * ─────────────────────────────────────────────────────────────────────────
+   * Seven components used to render seven sibling Modals here, each with its own
+   * `visible`. That is the defect: iOS presents every Modal from the same parent
+   * view controller and will not present a second one, so `+ เพิ่มผู้ขาย` inside
+   * the picker did nothing on a real handset. Now there is one host and this
+   * switch says what is inside it.
+   *
+   * EXHAUSTIVE ON `SheetKind`, and that is the guard rather than a convention: a
+   * member added to `SHEET_KINDS` is a COMPILE ERROR in the `never` arm below
+   * until it is rendered here. Somebody adding an eighth screen the obvious way
+   * — a component with no Modal of its own, a kind, and a transition — cannot
+   * reintroduce this. Somebody adding a Modal instead can, and that is what
+   * `npm run prove:sheets` scans this directory for.
+   *
+   * `animation` is the sheet's own presentation style, and it matters only for
+   * the presentation that OPENS the host and the dismissal that CLOSES it — a
+   * switch from one sheet to another does not animate any more, because there is
+   * no longer a presentation to animate. See app/SheetHost.tsx.
+   *
+   * `back` is Android's back gesture, routed to the same handler as the sheet's
+   * own close control. The default is "close the top one"; the sign-out sheet
+   * overrides it because its dismissal is one of the card's own actions and the
+   * caller must not close it behind the notice's back.
+   */
+  const closeTopSheet = (): void => {
+    sheet("close_top");
+  };
+  // Read ONCE into a const: the `never` arm below narrows a variable, and a second
+  // call to topSheet() in that position narrows nothing — the exhaustiveness check
+  // would compile while proving nothing.
+  const onScreen = topSheet(sheets);
+  const sheetSlot: { content: ReactNode; animation: SheetAnimation; back: () => void } = ((): {
+    content: ReactNode;
+    animation: SheetAnimation;
+    back: () => void;
+  } => {
+    switch (onScreen) {
+      case null:
+        return { content: null, animation: "fade", back: closeTopSheet };
+
+      case "sign_out": {
+        const dismiss = signOutSheetCard.actions.find((a) => a.kind === "dismiss");
+        return {
+          animation: "fade",
+          back: () => {
+            if (dismiss) onSignOutAction(dismiss);
+          },
+          content: (
+            <SignOutSheet busy={busy} card={signOutSheetCard} onAction={onSignOutAction} />
+          ),
+        };
+      }
+
+      case "seller_picker":
+        return {
+          animation: "slide",
+          back: closeTopSheet,
+          content: (
+            <SellerPicker
+              sellers={sellers}
+              platesBySeller={platesBySeller}
+              currentSellerId={draft?.seller_id ?? null}
+              changing={draft !== null}
+              /* Tells "this device has never downloaded the list" apart from "the
+                 office has not added anyone" — same empty screen, opposite fixes. */
+              neverFetched={!freshness.haveSellers}
+              onAddSeller={() => sheet("open_add_seller")}
+              onClose={closeTopSheet}
+              onPick={chooseSeller}
+            />
+          ),
+        };
+
+      /*
+        OVER THE PICKER — the pair that was observed broken, and the reason this
+        host exists. It no longer carries its own sign-in exit for the old reason
+        (that the status strip was physically under two Modals); it carries one
+        because the strip is under the HOST, which is just as unreachable.
+      */
+      case "add_seller":
+        return {
+          animation: "slide",
+          back: closeTopSheet,
+          content: (
+            <AddSellerSheet
+              create={createSeller}
+              onPick={onSellerCreated}
+              onSignIn={() => {
+                // With no usable session the login screen is already the body of
+                // the app, so surfacing it is the whole action. Nothing here can
+                // supply credentials.
+                sheet("close_every_sheet");
+              }}
+              onRefreshList={() => {
+                // `ambiguous`: the server may or may not have created the seller.
+                // Re-read the list and put the operator back on the picker, where
+                // the search box is, so they can LOOK before adding again — which
+                // is what closing THIS sheet does, because the picker is the frame
+                // underneath it in the stack.
+                sheet("close_top");
+                const t = tokenRef.current;
+                if (t !== null) void refreshMaster(t);
+              }}
+              onClose={closeTopSheet}
+            />
+          ),
+        };
+
+      /*
+        PAYLOAD GUARD, not belt-and-braces: `pendingChange` and this stack entry
+        are written together by askSellerChange, and if they ever disagree the
+        honest thing on screen is nothing at all — a dialog offering to change the
+        seller from "-" to "-" is worse than a closed sheet.
+      */
+      case "confirm_seller_change":
+        return pendingChange === null
+          ? { content: null, animation: "fade", back: closeTopSheet }
+          : {
+              animation: "fade",
+              back: dropSellerChange,
+              content: (
+                <ConfirmSellerChangeDialog
+                  from={seller}
+                  to={pendingChange.to}
+                  impact={pendingChange.impact}
+                  onCancel={dropSellerChange}
+                  onConfirm={() => {
+                    applySellerChange(pendingChange.to);
+                    dropSellerChange();
+                  }}
+                />
+              ),
+            };
+
+      /*
+        THE SAME GUARD THE OLD `visible` EXPRESSION CARRIED — it read
+        `confirmOpen && draft !== null && seller !== null`. Kept exactly: a
+        confirm dialog quoting a total for a bill that no longer has a draft, or
+        a seller this device cannot resolve, is a screen about nothing.
+      */
+      case "confirm_save":
+        return draft === null || seller === null
+          ? { content: null, animation: "fade", back: closeTopSheet }
+          : {
+              animation: "fade",
+              back: closeTopSheet,
+              content: (
+                <ConfirmSaveDialog
+                  lineCount={draft.lines.length}
+                  total={cartTotal(draft)}
+                  sellerName={seller.name}
+                  sellerGrade={seller.grade}
+                  vehicleNo={cleanVehicleNo(draft.vehicle_no)}
+                  busy={busy}
+                  /*
+                    The last screen before cash leaves the drawer, so it is the
+                    last chance to say the prices came from data this old.
+                    Computed from the DRAFT's stamp, not from the current
+                    freshness: what matters is the data these numbers were priced
+                    against.
+
+                    NOT nowMinute. That value is rounded DOWN to the minute for
+                    the freshness strip (see nowMinuteIso), so it sits up to 59
+                    seconds behind the truth — which UNDERSTATES the age by up to
+                    a minute and, within a minute of the JUST_FETCHED_WINDOW_MS
+                    boundary (5 min, the BANNER threshold — not
+                    PRICE_DEFAULT_CUTOFF_MS, which is 12 h and gates the money),
+                    suppresses this line entirely. Understating is the direction
+                    that hides things on a money marker
+                    (lessons/cached-master-data-is-a-price-claim.md Rule 4), and
+                    this is the screen where it matters most. The honest value is
+                    the real instant the operator is deciding at, which is also
+                    what the bill's own device_created_at will be stamped with a
+                    moment later.
+                  */
+                  pricedFrom={{ master_as_of: draft.master_as_of, device_created_at: nowIso() }}
+                  onCancel={closeTopSheet}
+                  onConfirm={doSaveBill}
+                />
+              ),
+            };
+
+      case "daily":
+        return {
+          animation: "slide",
+          back: closeTopSheet,
+          content: (
+            <DailyScreen
+              screen={daily}
+              onClose={closeTopSheet}
+              /* Retry means the SAME day again — not "go back to today", which would
+                 quietly change which number the owner is looking at. */
+              onRetry={() => void loadDaily(dailyDate)}
+              /*
+               * Closes the report to reveal the login screen. It cannot sign in
+               * itself any more, and it deliberately does NOT re-request the day
+               * afterwards: the operator may sign in as somebody else, and a report
+               * that reloaded on its own would put one person's takings on screen
+               * because a different person had just opened the app.
+               */
+              onSignIn={closeTopSheet}
+              onPickDay={pickDay}
+            />
+          ),
+        };
+
+      case "bills":
+        return {
+          animation: "slide",
+          back: closeTopSheet,
+          content: (
+            <BillsPanel
+              bills={bills}
+              busy={busy}
+              session={session}
+              account={account}
+              // Courtesy only: it decides whether ยกเลิกบิลนี้ is offered. The server
+              // re-reads the role on every request and refuses regardless.
+              role={role}
+              blockerId={health?.blockerId ?? null}
+              onClose={closeTopSheet}
+              onVoid={voidBill}
+            />
+          ),
+        };
+
+      default: {
+        const never: never = onScreen;
+        throw new Error(`unrendered sheet: ${JSON.stringify(never)}`);
+      }
+    }
+  })();
 
   return (
     <SafeAreaProvider>
@@ -1568,7 +1978,7 @@ export default function App() {
                 style={styles.dailyBtn}
                 onPress={() => {
                   setSignOutFailure(null);
-                  setSignOutOpen(true);
+                  sheet("open_sign_out");
                 }}
               >
                 <Text style={styles.dailyBtnText}>ออกจากระบบ</Text>
@@ -1622,11 +2032,7 @@ export default function App() {
            * requires the sign-in route to be reachable from here; it still is,
            * it is simply one tap of dismissal rather than a silent login.
            */
-          onSignIn={() => {
-            setSignOutOpen(false);
-            setDailyOpen(false);
-            setBillsOpen(false);
-          }}
+          onSignIn={() => sheet("close_every_sheet")}
           blocked={
             health?.alarm
               ? {
@@ -1652,7 +2058,7 @@ export default function App() {
         <MasterDataStrip notice={masterMessage} />
 
         {bills.length > 0 ? (
-          <Pressable style={styles.latest} onPress={() => setBillsOpen(true)}>
+          <Pressable style={styles.latest} onPress={() => sheet("open_bills")}>
             {latest !== null ? (
               <>
                 <Text
@@ -1756,196 +2162,20 @@ export default function App() {
             onPickSeller={openPicker}
             onVehicleChange={onVehicleChange}
             onVehicleBlur={onVehicleBlur}
-            onSubmit={() => setConfirmOpen(true)}
+            onSubmit={() => sheet("open_confirm_save")}
           />
         )}
 
         {/*
-          The sheet is rendered from the CURRENT counts every time, not from a
-          value captured when it opened: a queue that drains while it is on
-          screen turns the refusal into the confirmation by itself, with no tap.
+          THE ONE MODAL IN THIS APP. Seven sibling Modals stood here, each with
+          its own `visible`; iOS presents them all from the same parent view
+          controller and refuses the second, which is why the add-seller button did
+          nothing on a handset. `sheetSlot` above chooses what is inside this one.
         */}
-        <SignOutSheet
-          visible={signOutOpen}
-          busy={busy}
-          card={signOutCard({
-            pending: pendingCount,
-            failed: failedCount,
-            failure: signOutFailure,
-            /*
-              R2b: WHY the queue is stuck, not merely that it is. Already derived
-              at the top of this component and already handed to StatusStrip and
-              BillsPanel, so the three renderers of one fact read one value.
-            */
-            session,
-          })}
-          onAction={(action: SignOutAction) => {
-            switch (action.kind) {
-              case "dismiss":
-                setSignOutOpen(false);
-                setSignOutFailure(null);
-                return;
-
-              /*
-                R2b. THE SAME FUNCTION THE STRIP'S BUTTON REACHES. `signIn` is the
-                one act on this device that ends an expired session, and it
-                already clears the sync pause, the failure notice and the 403,
-                then resumes the queue and kicks a pass. A second sign-in path
-                written here would be a copy of that, free to drift from it.
-
-                The sheet closes first: the operator pressed sign in, not sign
-                out, and leaving a refusal on screen over a session that is about
-                to work would be the same class of defect as the sentence this
-                phase is removing.
-              */
-              case "sign_in":
-                // Closing the sheet IS the action now: with no usable session
-                // the login screen is the body underneath it. See the strip's
-                // onSignIn above — nothing here can supply credentials.
-                setSignOutOpen(false);
-                return;
-
-              // confirm_sign_out and retry_sign_out are the same act; they differ
-              // only in the label, because the second one follows a failure.
-              case "confirm_sign_out":
-              case "retry_sign_out":
-                void onSignOut();
-                return;
-
-              /*
-                A FIFTH MEMBER IS A COMPILE ERROR HERE, and that is the whole
-                reason this is a switch. It was `if (dismiss) ... else
-                onSignOut()`, which would have taken `sign_in` silently down the
-                sign-out path — where the gate refuses it — producing a green
-                button that does nothing. Worse than the defect being fixed.
-              */
-              default: {
-                const never: never = action;
-                throw new Error(`unhandled sign-out action: ${JSON.stringify(never)}`);
-              }
-            }
-          }}
-        />
-
-        <SellerPicker
-          visible={pickerOpen}
-          sellers={sellers}
-          platesBySeller={platesBySeller}
-          currentSellerId={draft?.seller_id ?? null}
-          changing={draft !== null}
-          /* Tells "this device has never downloaded the list" apart from "the
-             office has not added anyone" — same empty screen, opposite fixes. */
-          neverFetched={!freshness.haveSellers}
-          onAddSeller={() => setAddSellerOpen(true)}
-          onClose={() => setPickerOpen(false)}
-          onPick={chooseSeller}
-        />
-
-        {/*
-          STACKED OVER THE PICKER, which is itself a Modal. That is why this
-          sheet carries its own sign-in exit: the status strip's button — the
-          app's usual answer to an expired session — is physically underneath
-          both and cannot be reached from here.
-        */}
-        <AddSellerSheet
-          visible={addSellerOpen}
-          create={createSeller}
-          onPick={onSellerCreated}
-          onSignIn={() => {
-            // Same shape as the strip's onSignIn: close what is on top, and the
-            // login screen is already the body of the app for a session that has
-            // ended. Nothing here can supply credentials.
-            setAddSellerOpen(false);
-            setPickerOpen(false);
-          }}
-          onRefreshList={() => {
-            // `ambiguous`: the server may or may not have created the seller.
-            // Re-read the list and put the operator back on the picker, where
-            // the search box is, so they can LOOK before adding again.
-            setAddSellerOpen(false);
-            const t = tokenRef.current;
-            if (t !== null) void refreshMaster(t);
-          }}
-          onClose={() => setAddSellerOpen(false)}
-        />
-
-        <ConfirmSellerChangeDialog
-          visible={pendingChange !== null}
-          from={seller}
-          to={pendingChange?.to ?? null}
-          impact={pendingChange?.impact ?? null}
-          onCancel={() => setPendingChange(null)}
-          onConfirm={() => {
-            if (pendingChange !== null) applySellerChange(pendingChange.to);
-            setPendingChange(null);
-          }}
-        />
-
-        <ConfirmSaveDialog
-          visible={confirmOpen && draft !== null && seller !== null}
-          lineCount={draft?.lines.length ?? 0}
-          total={draft ? cartTotal(draft) : "0.00"}
-          sellerName={seller?.name ?? "-"}
-          sellerGrade={seller?.grade ?? null}
-          vehicleNo={cleanVehicleNo(draft?.vehicle_no ?? null)}
-          busy={busy}
-          /*
-            The last screen before cash leaves the drawer, so it is the last
-            chance to say the prices came from data this old. Computed from the
-            DRAFT's stamp, not from the current freshness: what matters is the
-            data these numbers were priced against.
-
-            NOT nowMinute. That value is rounded DOWN to the minute for the
-            freshness strip (see nowMinuteIso), so it sits up to 59 seconds
-            behind the truth — which UNDERSTATES the age by up to a minute and,
-            within a minute of the JUST_FETCHED_WINDOW_MS boundary (5 min, the
-            BANNER threshold — not PRICE_DEFAULT_CUTOFF_MS, which is 12 h and
-            gates the money), suppresses this line entirely. Understating is the
-            direction that hides things on a
-            money marker (lessons/cached-master-data-is-a-price-claim.md Rule 4),
-            and this is the screen where it matters most. The honest value is the
-            real instant the operator is deciding at, which is also what the
-            bill's own device_created_at will be stamped with a moment later.
-          */
-          pricedFrom={
-            draft === null
-              ? null
-              : { master_as_of: draft.master_as_of, device_created_at: nowIso() }
-          }
-          onCancel={() => setConfirmOpen(false)}
-          onConfirm={doSaveBill}
-        />
-
-        <DailyScreen
-          visible={dailyOpen}
-          screen={daily}
-          onClose={() => setDailyOpen(false)}
-          /* Retry means the SAME day again — not "go back to today", which would
-             quietly change which number the owner is looking at. */
-          onRetry={() => void loadDaily(dailyDate)}
-          /*
-           * Closes the report to reveal the login screen. It cannot sign in
-           * itself any more, and it deliberately does NOT re-request the day
-           * afterwards: the operator may sign in as somebody else, and a report
-           * that reloaded on its own would put one person's takings on screen
-           * because a different person had just opened the app.
-           */
-          onSignIn={() => setDailyOpen(false)}
-          onPickDay={pickDay}
-        />
-
-        <BillsPanel
-          visible={billsOpen}
-          bills={bills}
-          busy={busy}
-          session={session}
-          account={account}
-          // Courtesy only: it decides whether ยกเลิกบิลนี้ is offered. The server
-          // re-reads the role on every request and refuses regardless.
-          role={role}
-          blockerId={health?.blockerId ?? null}
-          onClose={() => setBillsOpen(false)}
-          onVoid={voidBill}
+        <SheetHost
+          content={sheetSlot.content}
+          animationType={sheetSlot.animation}
+          onRequestClose={sheetSlot.back}
         />
       </SafeAreaView>
     </SafeAreaProvider>

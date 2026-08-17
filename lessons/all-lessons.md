@@ -12,7 +12,7 @@ lesson file; anything written here is destroyed by the next run.
 byte for byte, with line endings normalised to LF on both sides first. It exits
 1 on any difference. That is how a lesson edited without regenerating is caught.
 
-**Sources:** 53 lesson files, `lessons/*.md`, ASCII filename order.
+**Sources:** 54 lesson files, `lessons/*.md`, ASCII filename order.
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
@@ -49,6 +49,7 @@ line instead of by heading depth.
 - `a-label-is-a-reference-with-no-checker.md` -- A label is a reference, and nothing in this repository checks one
 - `a-mutation-on-a-protected-write-path-needs-a-scratch-database.md` -- A mutation on a protected write path needs a scratch database
 - `a-narrowing-type-is-not-a-barrier-to-the-object.md` -- A narrowing type stops the FIELD being named, not the OBJECT being passed
+- `a-platform-can-refuse-an-effect-and-record-it-as-done.md` -- A platform can refuse an effect and record it as done
 - `a-proof-fixture-must-be-a-row-the-product-could-produce.md` -- A proof fixture must be a row the product could have produced
 - `a-proof-must-establish-what-it-is-talking-to.md` -- A proof must establish WHAT IT IS TALKING TO before it asserts anything about the answers
 - `a-refusal-hands-back-what-it-refused.md` *(1 amendment)* -- A 422 is a MIRROR — the framework hands back the value it refused, and one of those values is a password
@@ -488,7 +489,7 @@ to the instrument you are about to cite as evidence for something else.
 case, run in the same pass, that makes it fire. A check nobody has watched go red
 is a claim about the code, not a measurement of it.
 
-**ELEVEN MECHANISMS, and this line is the ONLY place in this file that says how
+**TWELVE MECHANISMS, and this line is the ONLY place in this file that says how
 many.** Every heading below names its own mechanism and never the running total,
 so appending another is a one-number edit, here. This line exists because the
 count used to live in three headings and in this file's index line, and all four
@@ -1273,6 +1274,142 @@ failing state on today's fixture?*, 9 *how many different states satisfy this?*,
 the same nothing?*. This one asks the mirror of the ninth, and it is the only one
 in the file addressed to a RED: **how many different states produce this
 FAILURE, and does the word in front of me name the one I have?**
+
+---
+
+## A TWELFTH MECHANISM (2026-08-17) — THE CELL WAS SOUND AND THE PREDICTION ABOUT IT WAS WRONG
+
+Every mechanism above is a DEFECTIVE CELL: vacuous, unreachable, intercepted,
+pointed at the wrong artifact, starved of its stimulus, or ambiguous in its red.
+**This one is a sound cell, correctly written, capable of firing — and an author
+who predicted it would move under a particular break, ran the break, and did not
+notice it had stayed green.** The mutation was applied, it reached the cell, the
+cell ran and printed. It could not move, because **the property it compares is
+COARSER than the property the mutation damaged.**
+
+**The shape.** `proveSheets.ts` cell S1 compares two independent walks of one
+transition table: the module's own `reachableSheetStacks()`, and the proof
+script's `walk()`, which is the same breadth-first search with the break wrappers
+inside it. Agreement is a real cell — two implementations of one traversal, and
+if they disagree one of them is wrong.
+
+Two of the five breaks damage the reducer:
+
+    --break=always_push   `open` pushes unconditionally, making the duplicate
+                          the real `open` refuses to make
+    --break=pop_all       `close` empties the stack instead of popping one
+
+The cell was written asserting **the two walks must DISAGREE under either**, on
+the reasoning that a damaged reducer must move differently.
+
+**MEASURED. It went red under BOTH, saying `module walked 8, this script 8`.**
+The reachable SET is unchanged by either damage, because each transition's
+declared `from` keeps the damaged move off the frontier where it would show:
+
+| break | what it damages | why the SET does not move |
+|---|---|---|
+| `always_push` | `open` stacks a second copy | `open_add_seller` is reachable only `from: ["seller_picker"]`, and pushing `add_seller` onto `[seller_picker]` is where the real `open` puts it anyway |
+| `pop_all` | `close` empties instead of popping | `close_top` from `[seller_picker>add_seller]` lands on `-` instead of `[seller_picker]` — and `[seller_picker]` is still reached from `-` by `open_seller_picker` |
+
+**A set is not a transition table.** Eight stacks is a quotient of the table; both
+damages live in which transition leads where, which the quotient cannot express.
+
+**And the damage WAS caught, four cells away, which is the whole reason this is
+about prediction and not about coverage.** Under `pop_all`: S4
+`seller_picker>add_seller -> -` where `seller_picker` was expected, S5
+`--close--> -` must land back on `seller_picker`, and S6's count cell reporting
+`3 moves` where four are required. Under `always_push`: S7 `72 pairs checked,
+7 bad` and S8 `got seller_picker>add_seller>add_seller`. Three red cells per
+break, in both cases.
+
+### THE TRAP, and it is a counting habit rather than a reasoning error
+
+**Three cells went red, so the disproof looked successful.** A run that goes red
+under a deliberate break is exactly what this file asks for, and both runs did.
+Had the reds been counted rather than READ, the conclusion would have been "the
+break reddens the proof, S1 is validated" — about a cell that was never asserted
+correctly and had just contradicted its author twice.
+
+That is the same false assurance as the FIFTH mechanism's, arriving from the
+other side. There a true green was about the wrong object; here a true red is
+about the wrong CELL. In both, nothing is faked, the number is real, and the
+reader's question is not the one the number answers.
+
+### Why it is none of the eleven
+
+**Not 1–2.** Both operands are genuinely computed lists of eight strings.
+Nothing is vacuously true, and the same cell reddens correctly whenever the two
+walks really do differ.
+
+**Not 3, and this is the closest.** That one's failing state is unreachable *from
+the inputs supplied*, and its remedy is better inputs — a literal `pending: 3`
+becomes a derived value. Here the failing state is perfectly reachable: a
+transition with a wider `from`, or a damage that pushes a kind not otherwise
+reachable, moves this cell. **No input was withheld. The mutation was aimed at a
+level of description the assertion does not resolve.**
+
+**Not 4.** The break was not intercepted. It reached the cell, and the cell
+printed its verdict.
+
+**Not 5–7.** The right artifact was read — the module's own walk, the thing S1
+exists to compare — and through the right field. No sibling guard answered first;
+nothing is competing with this cell.
+
+**Not 8.** The fixture is the transition table, and it was current. Nothing
+lapsed with no diff; the table was written in the same commit.
+
+**Not 9.** Neither collection was empty. Eight against eight.
+
+**Not 10.** The two sides are two DIFFERENT traversals of one table, not two
+readings of one event. They agree because the property is coarse — not because
+an operation failed to happen and both derivations returned the same null.
+
+**Not 11.** That one is about a RED whose word covers two conditions. This is a
+GREEN under a deliberate break, which is this file's original subject.
+
+### The half that makes it evidence
+
+**The prediction was wrong, not the code.** The reducer break was real, the
+reachable set genuinely does not move, and the app is not defective in any way
+this uncovered.
+
+What was done, and it matters more than the finding: the expectation was
+corrected rather than the cell deleted. S1 now asserts agreement only when the
+reducer is undamaged, and under those two breaks it **prints `[skip]` with the
+reason in the run output** — a reader of that run is told, in the run, that this
+cell is not being asserted and where the damage does show. Deleting the cell
+would have removed a working check to hide a wrong guess; leaving the wrong
+assertion in place would have left a cell that reddens for a false reason, which
+is worse than either.
+
+**A control that corrects its author is the strongest form this file has.** Every
+instance above was found because a green was doubted. This one was found because
+a RED said something the author had not predicted, and the author read it instead
+of counting it.
+
+### Two more, appended to How to apply
+
+20. **Name the cell you expect to move BEFORE running the break, and check that
+    cell specifically afterwards.** Rule 1 says make it fail once on purpose;
+    that is necessary and not sufficient, because *something* failing is not
+    *the thing you were validating* failing. A break with three reds and one
+    unexpected green is a finding, and the green is the finding.
+21. **Match the granularity of the assertion to the granularity of the damage.**
+    Ask what LEVEL OF DESCRIPTION each speaks at: a SET cannot see a damaged
+    transition, a COUNT cannot see a reordering, a STATUS cannot see which guard
+    answered (the seventh mechanism, one level down), a TOTAL cannot see a
+    misallocation. When a cell stays green under a deliberate break, that is
+    information about THE CELL and not about the code — resolve it before
+    reporting either.
+
+**The question this adds.** Mechanisms 1–4 ask *could this have failed given my
+inputs?*, 5–7 *was it looking at the right thing?*, 8 *does it still reach its
+failing state on today's fixture?*, 9 *how many different states satisfy this?*,
+10 *do both sides become the same nothing?*, 11 *how many states produce this
+failure?*. This one asks the question that outranks all of them, because it is
+about the pass that validates the others: **which cell did I predict would move,
+did THAT cell move, and if it did not, is my model of the cell wrong or my model
+of the damage?**
 
 ---
 
@@ -2677,6 +2814,155 @@ Nothing has been observed leaking: no code path in the tree today hands a
 `pickableSeller` was written before one existed. What is measured is the
 compiler's behaviour and the falseness of the sentence, not a defect in shipped
 code.
+
+---
+
+**SOURCE:** `a-platform-can-refuse-an-effect-and-record-it-as-done.md`
+
+# A platform can refuse an effect and record it as done
+
+**Applies to** every effect your code asks a layer below it to perform and cannot
+itself observe — a native presentation, a permission prompt, a notification, a
+clipboard write, a file picker, a keystore entry, a background task registration.
+And hardest when the symptom is *a control that does nothing*.
+
+**The rule:** when an effect silently does not happen, ask whether the layer below
+records **INTENT** or **OUTCOME** — and answer it by READING THAT LAYER'S SOURCE,
+not by reasoning about what it probably does. If it stores intent, then "asked
+for" and "happened" are the same bit, every reading above it agrees, and no
+amount of care in your own state will ever disagree with the screen.
+
+## The instance
+
+`+ เพิ่มผู้ขาย`, the add-seller control inside the seller picker, did nothing on
+first press. Consistently, on a real handset, observed by the owner on
+2026-08-17. Pressing `ปิด` — which dismisses the picker — made the sheet appear.
+
+**The state was right and the component rendered.** `App.tsx` set
+`addSellerOpen` from the picker's own header, `AddSellerSheet` was mounted as a
+sibling with `visible={addSellerOpen}`, and nothing in the app cleared it. Every
+JavaScript-visible fact said the sheet was open. **The effect was dropped one
+layer below anything a JavaScript reading can reach.**
+
+## What the source says, and it is six lines
+
+react-native **0.81.5**, `node_modules/react-native/React/Fabric/Mounting/ComponentViews/Modal/RCTModalHostViewComponentView.mm`:
+
+```objc
+107:  BOOL _shouldPresent;
+108:  BOOL _isPresented;
+
+151:  BOOL shouldBePresented = !_isPresented && _shouldPresent && self.window;
+156:    _isPresented = YES;
+157:    [self presentViewController:self.viewController
+139:  [controller presentViewController:modalViewController animated:animated completion:completion];
+```
+
+At `:139` `controller` is `[self reactViewController]` — the app's root view
+controller, **shared by every Modal in the tree**. There is no check for a
+controller that is already presenting, and no queue across instances: each host
+view knows only its own `_isPresented`.
+
+**`_isPresented = YES` is set at `:156`, BEFORE the call at `:157`.** So a
+presentation UIKit refuses is recorded as one that succeeded. And nothing
+retries: `:203 didMoveToWindow` and `:209 didMoveToSuperview` both call
+`ensurePresentedOnlyIfNeeded`, and `:151` gates it on `!_isPresented`, which is
+now false for ever. `:282` `_shouldPresent = newProps.visible;` is the only other
+input, and it is unchanged.
+
+**A refused presentation is therefore indistinguishable from a successful one at
+every layer JavaScript can read.** `onShow` does not fire, which is the one
+available signal, and nothing in the app was listening for it — nor would a
+listener have helped, because absence of an event is not an event.
+
+## What it cost
+
+**A device pass, spent on a state hypothesis**, because the only visible evidence
+pointed at the app. That is the whole price of this lesson: the search was
+conducted in the correct file, on correct code, and every reading of it came back
+innocent — the same shape as `CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS
+RUNNING" and its server-side twin, where the screen becomes evidence about source
+that is not running.
+
+## Why this is a file and not a note at the site
+
+It is not about modals. It is about any SDK boundary where **the recording of an
+operation happens on the near side of the operation**, which is an ordinary way
+to write a wrapper: set the flag, then do the thing, because the flag is what
+stops you doing it twice. That is correct when the call cannot fail and silent
+when it can.
+
+The generalisation is a question to ask of a wrapper, not a fact to remember:
+**if this call were refused, what in this object would be different?** Here the
+answer is *nothing*, and the answer was available in six lines of a file already
+on disk.
+
+## And what reading it BOUGHT, which is the part worth the file
+
+The defect was located without reading any of this — the owner's observation that
+`ปิด` reveals the sheet is already a disproof of a state bug, since state that
+was never set would not produce a sheet later either. Reading the source did not
+find the bug. **It decided the fix, and it eliminated the one that looks
+cleverest.**
+
+Three shapes were on the table: nest the inner sheet inside the outer one's
+Modal; hold ONE `openSheet` state so two cannot be true; or one Modal host whose
+CONTENT is selected by state. `:282` is what refutes the second — `_shouldPresent
+= newProps.visible` is evaluated **per instance**, so two instances flipping in
+one commit is still one dismissal and one presentation, and iOS is still being
+asked to dismiss-then-present in a single turn. **A single state variable renames
+that failure without removing it, and no headless proof can see the difference.**
+The same six lines are what prove the third shape works: with one host
+`_isPresented` stays YES and `_shouldPresent` does not change, so at `:151`
+`shouldBePresented` is false and the dismiss branch's condition is false too —
+neither fires, and only the children swap.
+
+**Choosing between fixes is the thing source-reading is for.** All three shapes
+are defensible from the symptom alone; only the source says which two leave the
+mechanism in place.
+
+## A second finding in the same file, which is why "it worked before" is not evidence
+
+`node_modules/react-native/Libraries/Modal/Modal.js:280`:
+
+```js
+return this.props.visible === true || this.state.isRendered === true;
+```
+
+`isRendered` is set true on a false→true transition and cleared only by the
+`modalDismissed` event or by unmount — and `:243` says in its own comment that
+the event is *"for the old renderer in iOS only"*. Under the new renderer it
+therefore never clears, so **on iOS a Modal's host view, once opened, stays
+mounted for the rest of the app's life** while `:287-288` returns null for one
+that has never been opened. Component state inside a closed sheet survives, which
+looks like a feature and is a side effect of a latch. One real behaviour in this
+app rested on it: `BillsPanel` kept a half-typed void reason across a close.
+
+**Read the version you have.** All of the above is 0.81.5. Every line number here
+will move, and the `modalDismissed` comment describes a renderer being removed —
+if these citations do not resolve, that is the lesson working, not failing.
+
+## How to apply
+
+1. **Ask INTENT or OUTCOME of any effect you cannot observe**, and get the answer
+   from the source. "It probably checks" is the assumption this lesson exists to
+   remove.
+2. **Prefer a fix that makes the refusable call happen once.** One presentation
+   that stays up cannot be refused a second time. Two of anything sharing one
+   parent is the shape to design out, not to sequence more carefully.
+3. **Do not accept a fix whose proof cannot distinguish it from the defect.** If
+   a headless test would be equally green before and after, the fix is a
+   preference. Here that test names the second shape exactly.
+4. **When the symptom is "nothing happened", the state layer is the wrong place
+   to look second.** Look there once; when it is clean, go DOWN, not sideways.
+
+Sibling of [[a-value-comparison-cannot-prove-a-path]] pointed at effects instead
+of data — there a correct value proves nothing about the route it took, here a
+correct state proves nothing about the effect it asked for. And the near miss
+worth naming: this is NOT
+[[a-check-that-never-went-red-was-never-observed]]. Nothing here is an
+instrument, no assertion was vacuous, and there was no check to control. The flag
+that lied is production code doing its ordinary job.
 
 ---
 

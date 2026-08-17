@@ -15,13 +15,18 @@
  * lines already entered. It never says "prices will update"; it says what does
  * and does not move.
  */
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { SellerChangeImpact } from "../src/cart/cart";
 import type { Seller } from "./api";
 
+/**
+ * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
+ * — and the sheet stack decides which sheet is inside it. A second one anywhere
+ * reintroduces the presentation defect SheetHost's header describes, and
+ * `npm run prove:sheets` goes red the moment one appears in this directory.
+ */
 interface Props {
-  visible: boolean;
   from: Seller | null;
   to: Seller | null;
   impact: SellerChangeImpact | null;
@@ -33,7 +38,6 @@ const gradeText = (s: Seller | null): string =>
   s === null ? "-" : s.grade === null ? "ไม่มีเกรด" : `เกรด ${s.grade}`;
 
 export function ConfirmSellerChangeDialog({
-  visible,
   from,
   to,
   impact,
@@ -41,81 +45,79 @@ export function ConfirmSellerChangeDialog({
   onConfirm,
 }: Props) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={styles.backdrop}>
-        <View style={styles.card}>
-          <Text style={styles.title}>เปลี่ยนผู้ขายของบิลนี้?</Text>
+    <View style={styles.backdrop}>
+      <View style={styles.card}>
+        <Text style={styles.title}>เปลี่ยนผู้ขายของบิลนี้?</Text>
 
-          <View style={styles.fromTo}>
-            <Text style={styles.label}>จาก</Text>
-            <Text style={styles.who}>
-              {from?.name ?? "-"} ({gradeText(from)})
+        <View style={styles.fromTo}>
+          <Text style={styles.label}>จาก</Text>
+          <Text style={styles.who}>
+            {from?.name ?? "-"} ({gradeText(from)})
+          </Text>
+          <Text style={styles.label}>เป็น</Text>
+          <Text style={styles.whoNew}>
+            {to?.name ?? "-"} ({gradeText(to)})
+          </Text>
+        </View>
+
+        <ScrollView style={styles.scroll}>
+          <Text style={styles.headline}>
+            มีรายการในบิลแล้ว {impact?.keptLines ?? 0} รายการ
+          </Text>
+
+          {/* The money answer first, because it is the only one that matters. */}
+          <Text style={styles.keep}>
+            ✓ รายการที่บันทึกไว้แล้ว ยังใช้ราคาเดิมที่กรอกไว้ ยอดเงินรวมไม่เปลี่ยน
+          </Text>
+
+          {impact !== null && impact.rereferenced > 0 ? (
+            <Text style={styles.note}>
+              • {impact.rereferenced} รายการจะเทียบกับราคาตามเกรดใหม่แทน (ใช้ดูว่าจ่ายต่างจาก
+              ราคาตั้งไว้เท่าไร ไม่ใช่ราคาที่จ่ายจริง)
             </Text>
-            <Text style={styles.label}>เป็น</Text>
-            <Text style={styles.whoNew}>
-              {to?.name ?? "-"} ({gradeText(to)})
+          ) : null}
+
+          {impact !== null && impact.withoutTier > 0 ? (
+            <Text style={styles.warnLine}>
+              • {impact.withoutTier} รายการ ยังไม่มีราคาสำหรับ{gradeText(to)} — บิลจะค้างรอ
+              สำนักงานตั้งราคาก่อนจึงจะส่งได้
             </Text>
-          </View>
+          ) : null}
 
-          <ScrollView style={styles.scroll}>
-            <Text style={styles.headline}>
-              มีรายการในบิลแล้ว {impact?.keptLines ?? 0} รายการ
+          {to?.grade === null ? (
+            <Text style={styles.warnLine}>
+              • ผู้ขายรายนี้ยังไม่ได้จัดเกรด — บิลจะค้างรอสำนักงานกำหนดเกรดก่อนจึงจะส่งได้
             </Text>
+          ) : null}
 
-            {/* The money answer first, because it is the only one that matters. */}
-            <Text style={styles.keep}>
-              ✓ รายการที่บันทึกไว้แล้ว ยังใช้ราคาเดิมที่กรอกไว้ ยอดเงินรวมไม่เปลี่ยน
+          <Text style={styles.headline}>รายการที่กำลังกรอก (ยังไม่ได้กด “เพิ่มลงบิล”)</Text>
+          {impact?.priceLockHeld === true ? (
+            <Text style={styles.warnLine}>
+              • ราคาถูก “ค้างค่า” ไว้ จึงไม่เปลี่ยนตามเกรดใหม่ — ปลดล็อกก่อนถ้าต้องการราคาตามเกรด
             </Text>
+          ) : (
+            <Text style={styles.note}>
+              • ราคาจะเปลี่ยนเป็นราคาตามเกรดใหม่{" "}
+              {impact === null
+                ? ""
+                : `(${impact.pendingPriceWas === "" ? "ว่าง" : impact.pendingPriceWas} → ${
+                    impact.pendingPriceNow === "" ? "ว่าง" : impact.pendingPriceNow
+                  })`}
+            </Text>
+          )}
+          <Text style={styles.note}>• น้ำหนักที่ชั่งไว้ไม่ถูกล้าง — ของยังอยู่บนตาชั่งเหมือนเดิม</Text>
+        </ScrollView>
 
-            {impact !== null && impact.rereferenced > 0 ? (
-              <Text style={styles.note}>
-                • {impact.rereferenced} รายการจะเทียบกับราคาตามเกรดใหม่แทน (ใช้ดูว่าจ่ายต่างจาก
-                ราคาตั้งไว้เท่าไร ไม่ใช่ราคาที่จ่ายจริง)
-              </Text>
-            ) : null}
-
-            {impact !== null && impact.withoutTier > 0 ? (
-              <Text style={styles.warnLine}>
-                • {impact.withoutTier} รายการ ยังไม่มีราคาสำหรับ{gradeText(to)} — บิลจะค้างรอ
-                สำนักงานตั้งราคาก่อนจึงจะส่งได้
-              </Text>
-            ) : null}
-
-            {to?.grade === null ? (
-              <Text style={styles.warnLine}>
-                • ผู้ขายรายนี้ยังไม่ได้จัดเกรด — บิลจะค้างรอสำนักงานกำหนดเกรดก่อนจึงจะส่งได้
-              </Text>
-            ) : null}
-
-            <Text style={styles.headline}>รายการที่กำลังกรอก (ยังไม่ได้กด “เพิ่มลงบิล”)</Text>
-            {impact?.priceLockHeld === true ? (
-              <Text style={styles.warnLine}>
-                • ราคาถูก “ค้างค่า” ไว้ จึงไม่เปลี่ยนตามเกรดใหม่ — ปลดล็อกก่อนถ้าต้องการราคาตามเกรด
-              </Text>
-            ) : (
-              <Text style={styles.note}>
-                • ราคาจะเปลี่ยนเป็นราคาตามเกรดใหม่{" "}
-                {impact === null
-                  ? ""
-                  : `(${impact.pendingPriceWas === "" ? "ว่าง" : impact.pendingPriceWas} → ${
-                      impact.pendingPriceNow === "" ? "ว่าง" : impact.pendingPriceNow
-                    })`}
-              </Text>
-            )}
-            <Text style={styles.note}>• น้ำหนักที่ชั่งไว้ไม่ถูกล้าง — ของยังอยู่บนตาชั่งเหมือนเดิม</Text>
-          </ScrollView>
-
-          <View style={styles.buttons}>
-            <Pressable style={[styles.btn, styles.cancel]} onPress={onCancel}>
-              <Text style={styles.cancelText}>ไม่เปลี่ยน</Text>
-            </Pressable>
-            <Pressable style={[styles.btn, styles.confirm]} onPress={onConfirm}>
-              <Text style={styles.confirmText}>เปลี่ยนผู้ขาย</Text>
-            </Pressable>
-          </View>
+        <View style={styles.buttons}>
+          <Pressable style={[styles.btn, styles.cancel]} onPress={onCancel}>
+            <Text style={styles.cancelText}>ไม่เปลี่ยน</Text>
+          </Pressable>
+          <Pressable style={[styles.btn, styles.confirm]} onPress={onConfirm}>
+            <Text style={styles.confirmText}>เปลี่ยนผู้ขาย</Text>
+          </Pressable>
         </View>
       </View>
-    </Modal>
+    </View>
   );
 }
 

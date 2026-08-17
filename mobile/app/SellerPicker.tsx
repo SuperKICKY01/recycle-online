@@ -21,7 +21,6 @@ import { useMemo, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -36,8 +35,13 @@ import type { Seller } from "./api";
 
 const TAP_MIN = 56;
 
+/**
+ * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
+ * — and the sheet stack decides which sheet is inside it. A second one anywhere
+ * reintroduces the presentation defect SheetHost's header describes, and
+ * `npm run prove:sheets` goes red the moment one appears in this directory.
+ */
 interface Props {
-  visible: boolean;
   sellers: Seller[];
   /** Plates this device has seen per seller, newest first. */
   platesBySeller: ReadonlyMap<string, readonly string[]>;
@@ -70,7 +74,6 @@ interface Props {
 }
 
 export function SellerPicker({
-  visible,
   sellers,
   platesBySeller,
   currentSellerId,
@@ -102,106 +105,104 @@ export function SellerPicker({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={close}>
-      <KeyboardAvoidingView
-        style={styles.fill}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <View style={styles.head}>
-          <Text style={styles.title}>{changing ? "เปลี่ยนผู้ขาย" : "เลือกผู้ขาย"}</Text>
-          <View style={styles.headActions}>
-            <Pressable style={styles.addBtn} onPress={onAddSeller}>
-              <Text style={styles.addText}>+ เพิ่มผู้ขาย</Text>
-            </Pressable>
-            <Pressable style={styles.closeBtn} onPress={close}>
-              <Text style={styles.closeText}>ปิด</Text>
-            </Pressable>
-          </View>
+    <KeyboardAvoidingView
+      style={styles.fill}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <View style={styles.head}>
+        <Text style={styles.title}>{changing ? "เปลี่ยนผู้ขาย" : "เลือกผู้ขาย"}</Text>
+        <View style={styles.headActions}>
+          <Pressable style={styles.addBtn} onPress={onAddSeller}>
+            <Text style={styles.addText}>+ เพิ่มผู้ขาย</Text>
+          </Pressable>
+          <Pressable style={styles.closeBtn} onPress={close}>
+            <Text style={styles.closeText}>ปิด</Text>
+          </Pressable>
         </View>
+      </View>
 
-        <View style={styles.searchWrap}>
-          <TextInput
-            style={styles.search}
-            value={query}
-            onChangeText={setQuery}
-            placeholder="ค้นหา: ชื่อ / รหัส / ทะเบียนรถ"
-            placeholderTextColor="#94a3b8"
-            autoFocus
-            autoCorrect={false}
-            autoCapitalize="none"
-            returnKeyType="search"
-            clearButtonMode="while-editing"
-          />
-          <Text style={styles.searchHint}>
-            {anyPlatesKnown
-              ? "ค้นทะเบียนได้จากบิลที่เคยบันทึกในเครื่องนี้"
-              : "เครื่องนี้ยังไม่มีบิล จึงยังค้นด้วยทะเบียนรถไม่ได้"}
-          </Text>
-        </View>
-
-        <FlatList
-          data={matches}
-          keyExtractor={(m) => m.seller.id}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.body}
-          ListEmptyComponent={
-            <Text style={styles.empty}>
-              {sellers.length > 0
-                ? `ไม่พบผู้ขายที่ตรงกับ “${query}”`
-                : neverFetched
-                  ? "เครื่องนี้ยังไม่เคยดึงรายชื่อผู้ขายมาเก็บไว้ — ต้องต่อเน็ตและเข้าสู่ระบบสักครั้งก่อน"
-                  : /*
-                       CHANGED IN P1.8a phase 3. This read "ยังไม่มีผู้ขายในระบบ —
-                       ต้องเพิ่มที่สำนักงานก่อน", which became FALSE the moment
-                       staff could add one from the phone: it sent the yard to the
-                       office over something the button in this header now does.
-                       The grade warning further down is NOT changed and stays
-                       true — grades remain admin-only and the add form offers no
-                       grade field.
-                    */
-                    "ยังไม่มีผู้ขายในระบบ — กดปุ่ม เพิ่มผู้ขาย ด้านบนเพื่อเพิ่มจากหน้าลานได้เลย"}
-            </Text>
-          }
-          renderItem={({ item }) => {
-            const s = item.seller;
-            const isCurrent = s.id === currentSellerId;
-            const noGrade = s.grade === null;
-            return (
-              <Pressable
-                style={[styles.row, isCurrent && styles.rowCurrent]}
-                onPress={() => pick(item)}
-              >
-                <View style={styles.rowTop}>
-                  <Text style={styles.name} numberOfLines={1}>
-                    {s.name}
-                  </Text>
-                  <Text style={[styles.grade, noGrade && styles.gradeNone]}>
-                    {noGrade ? "ไม่มีเกรด" : `เกรด ${s.grade}`}
-                  </Text>
-                </View>
-                <Text style={styles.meta} numberOfLines={1}>
-                  {s.code}
-                  {item.plates.length > 0 ? ` · ทะเบียน ${item.plates.join(", ")}` : ""}
-                </Text>
-                {/*
-                  Said HERE, before the pick, not after the bill is refused: a
-                  seller with no grade has no price tier, so the server parks the
-                  bill (424 seller_grade_unset) until the office sets one. The
-                  purchase can still be recorded — that is the whole point of
-                  parking — but the operator should know before typing weights.
-                */}
-                {noGrade ? (
-                  <Text style={styles.warn}>
-                    ยังไม่ได้จัดเกรด — ไม่มีราคาตั้งต้น และบิลจะค้างรอสำนักงานกำหนดเกรดก่อนจึงจะส่งได้
-                  </Text>
-                ) : null}
-                {isCurrent ? <Text style={styles.current}>ผู้ขายของบิลนี้</Text> : null}
-              </Pressable>
-            );
-          }}
+      <View style={styles.searchWrap}>
+        <TextInput
+          style={styles.search}
+          value={query}
+          onChangeText={setQuery}
+          placeholder="ค้นหา: ชื่อ / รหัส / ทะเบียนรถ"
+          placeholderTextColor="#94a3b8"
+          autoFocus
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
+          clearButtonMode="while-editing"
         />
-      </KeyboardAvoidingView>
-    </Modal>
+        <Text style={styles.searchHint}>
+          {anyPlatesKnown
+            ? "ค้นทะเบียนได้จากบิลที่เคยบันทึกในเครื่องนี้"
+            : "เครื่องนี้ยังไม่มีบิล จึงยังค้นด้วยทะเบียนรถไม่ได้"}
+        </Text>
+      </View>
+
+      <FlatList
+        data={matches}
+        keyExtractor={(m) => m.seller.id}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.body}
+        ListEmptyComponent={
+          <Text style={styles.empty}>
+            {sellers.length > 0
+              ? `ไม่พบผู้ขายที่ตรงกับ “${query}”`
+              : neverFetched
+                ? "เครื่องนี้ยังไม่เคยดึงรายชื่อผู้ขายมาเก็บไว้ — ต้องต่อเน็ตและเข้าสู่ระบบสักครั้งก่อน"
+                : /*
+                     CHANGED IN P1.8a phase 3. This read "ยังไม่มีผู้ขายในระบบ —
+                     ต้องเพิ่มที่สำนักงานก่อน", which became FALSE the moment
+                     staff could add one from the phone: it sent the yard to the
+                     office over something the button in this header now does.
+                     The grade warning further down is NOT changed and stays
+                     true — grades remain admin-only and the add form offers no
+                     grade field.
+                  */
+                  "ยังไม่มีผู้ขายในระบบ — กดปุ่ม เพิ่มผู้ขาย ด้านบนเพื่อเพิ่มจากหน้าลานได้เลย"}
+          </Text>
+        }
+        renderItem={({ item }) => {
+          const s = item.seller;
+          const isCurrent = s.id === currentSellerId;
+          const noGrade = s.grade === null;
+          return (
+            <Pressable
+              style={[styles.row, isCurrent && styles.rowCurrent]}
+              onPress={() => pick(item)}
+            >
+              <View style={styles.rowTop}>
+                <Text style={styles.name} numberOfLines={1}>
+                  {s.name}
+                </Text>
+                <Text style={[styles.grade, noGrade && styles.gradeNone]}>
+                  {noGrade ? "ไม่มีเกรด" : `เกรด ${s.grade}`}
+                </Text>
+              </View>
+              <Text style={styles.meta} numberOfLines={1}>
+                {s.code}
+                {item.plates.length > 0 ? ` · ทะเบียน ${item.plates.join(", ")}` : ""}
+              </Text>
+              {/*
+                Said HERE, before the pick, not after the bill is refused: a
+                seller with no grade has no price tier, so the server parks the
+                bill (424 seller_grade_unset) until the office sets one. The
+                purchase can still be recorded — that is the whole point of
+                parking — but the operator should know before typing weights.
+              */}
+              {noGrade ? (
+                <Text style={styles.warn}>
+                  ยังไม่ได้จัดเกรด — ไม่มีราคาตั้งต้น และบิลจะค้างรอสำนักงานกำหนดเกรดก่อนจึงจะส่งได้
+                </Text>
+              ) : null}
+              {isCurrent ? <Text style={styles.current}>ผู้ขายของบิลนี้</Text> : null}
+            </Pressable>
+          );
+        }}
+      />
+    </KeyboardAvoidingView>
   );
 }
 

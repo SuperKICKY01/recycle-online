@@ -12,13 +12,18 @@
  * confirming a sentence rather than checking a figure — and the figure is the
  * entire point of asking.
  */
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { pricingProvenanceLine } from "../src/master/freshness";
 import type { PricingProvenance } from "../src/master/freshness";
 
+/**
+ * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
+ * — and the sheet stack decides which sheet is inside it. A second one anywhere
+ * reintroduces the presentation defect SheetHost's header describes, and
+ * `npm run prove:sheets` goes red the moment one appears in this directory.
+ */
 interface Props {
-  visible: boolean;
   lineCount: number;
   total: string;
   sellerName: string;
@@ -39,7 +44,6 @@ interface Props {
 }
 
 export function ConfirmSaveDialog({
-  visible,
   lineCount,
   total,
   sellerName,
@@ -52,69 +56,67 @@ export function ConfirmSaveDialog({
 }: Props) {
   const pricedLine = pricedFrom === null ? null : pricingProvenanceLine(pricedFrom);
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={styles.backdrop}>
-        <View style={styles.card}>
-          <Text style={styles.title}>ยืนยันบันทึกบิล</Text>
+    <View style={styles.backdrop}>
+      <View style={styles.card}>
+        <Text style={styles.title}>ยืนยันบันทึกบิล</Text>
 
-          <View style={styles.figures}>
-            <Text style={styles.label}>จำนวนรายการ</Text>
-            <Text style={styles.lines}>{lineCount}</Text>
+        <View style={styles.figures}>
+          <Text style={styles.label}>จำนวนรายการ</Text>
+          <Text style={styles.lines}>{lineCount}</Text>
 
-            <Text style={styles.label}>รวมทั้งสิ้น (บาท)</Text>
-            <Text style={styles.total}>{total}</Text>
-
-            {/*
-              Seller and plate are shown HERE, at the last irreversible step,
-              because both are now per-bill choices: a bill filed to the wrong
-              customer is only recoverable by a void, which stays on the record
-              forever.
-            */}
-            <Text style={styles.label}>ผู้ขาย</Text>
-            <Text style={styles.seller}>{sellerName}</Text>
-            <Text style={sellerGrade === null ? styles.gradeNone : styles.grade}>
-              {sellerGrade === null ? "ยังไม่ได้จัดเกรด" : `เกรด ${sellerGrade}`}
-            </Text>
-
-            <Text style={styles.label}>ทะเบียนรถ</Text>
-            <Text style={vehicleNo === null ? styles.vehicleNone : styles.vehicle}>
-              {vehicleNo ?? "ไม่ได้ระบุ"}
-            </Text>
-          </View>
-
-          {sellerGrade === null ? (
-            <Text style={styles.park}>
-              ผู้ขายรายนี้ยังไม่มีเกรด — บันทึกได้ แต่บิลจะค้างรอสำนักงานกำหนดเกรดก่อนจึงจะส่งเข้าระบบ
-            </Text>
-          ) : null}
+          <Text style={styles.label}>รวมทั้งสิ้น (บาท)</Text>
+          <Text style={styles.total}>{total}</Text>
 
           {/*
-            The prices on this bill came from data that was not current. Said
-            HERE, at the last irreversible step, because this is the moment the
-            cash is about to be counted out — and because a strip at the top of
-            the screen has been there all morning and stopped being read.
+            Seller and plate are shown HERE, at the last irreversible step,
+            because both are now per-bill choices: a bill filed to the wrong
+            customer is only recoverable by a void, which stays on the record
+            forever.
           */}
-          {pricedLine !== null ? <Text style={styles.priced}>{pricedLine}</Text> : null}
-
-          <Text style={styles.warn}>
-            บันทึกแล้วจะส่งเข้าระบบทันที แก้ไขไม่ได้ — หากผิดต้องยกเลิกบิลและออกใบใหม่
+          <Text style={styles.label}>ผู้ขาย</Text>
+          <Text style={styles.seller}>{sellerName}</Text>
+          <Text style={sellerGrade === null ? styles.gradeNone : styles.grade}>
+            {sellerGrade === null ? "ยังไม่ได้จัดเกรด" : `เกรด ${sellerGrade}`}
           </Text>
 
-          <View style={styles.buttons}>
-            <Pressable style={[styles.btn, styles.cancel]} onPress={onCancel} disabled={busy}>
-              <Text style={styles.cancelText}>ยกเลิก</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.btn, styles.confirm, busy && styles.dim]}
-              onPress={onConfirm}
-              disabled={busy}
-            >
-              <Text style={styles.confirmText}>ยืนยันบันทึก</Text>
-            </Pressable>
-          </View>
+          <Text style={styles.label}>ทะเบียนรถ</Text>
+          <Text style={vehicleNo === null ? styles.vehicleNone : styles.vehicle}>
+            {vehicleNo ?? "ไม่ได้ระบุ"}
+          </Text>
+        </View>
+
+        {sellerGrade === null ? (
+          <Text style={styles.park}>
+            ผู้ขายรายนี้ยังไม่มีเกรด — บันทึกได้ แต่บิลจะค้างรอสำนักงานกำหนดเกรดก่อนจึงจะส่งเข้าระบบ
+          </Text>
+        ) : null}
+
+        {/*
+          The prices on this bill came from data that was not current. Said
+          HERE, at the last irreversible step, because this is the moment the
+          cash is about to be counted out — and because a strip at the top of
+          the screen has been there all morning and stopped being read.
+        */}
+        {pricedLine !== null ? <Text style={styles.priced}>{pricedLine}</Text> : null}
+
+        <Text style={styles.warn}>
+          บันทึกแล้วจะส่งเข้าระบบทันที แก้ไขไม่ได้ — หากผิดต้องยกเลิกบิลและออกใบใหม่
+        </Text>
+
+        <View style={styles.buttons}>
+          <Pressable style={[styles.btn, styles.cancel]} onPress={onCancel} disabled={busy}>
+            <Text style={styles.cancelText}>ยกเลิก</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.btn, styles.confirm, busy && styles.dim]}
+            onPress={onConfirm}
+            disabled={busy}
+          >
+            <Text style={styles.confirmText}>ยืนยันบันทึก</Text>
+          </Pressable>
         </View>
       </View>
-    </Modal>
+    </View>
   );
 }
 

@@ -29,7 +29,6 @@
  */
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -53,8 +52,13 @@ const TONE: Record<DailyMessageTone, { bg: string; fg: string; badge: string }> 
   invalid: { bg: "#fef3c7", fg: "#78350f", badge: "#b45309" },
 };
 
+/**
+ * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
+ * — and the sheet stack decides which sheet is inside it. A second one anywhere
+ * reintroduces the presentation defect SheetHost's header describes, and
+ * `npm run prove:sheets` goes red the moment one appears in this directory.
+ */
 interface Props {
-  visible: boolean;
   /** null while a request is in flight, so a spinner is a state and not a guess. */
   screen: DailyScreenModel | null;
   onClose: () => void;
@@ -64,34 +68,32 @@ interface Props {
   onPickDay: (wireDate: string | null) => void;
 }
 
-export function DailyScreen({ visible, screen, onClose, onRetry, onSignIn, onPickDay }: Props) {
+export function DailyScreen({ screen, onClose, onRetry, onSignIn, onPickDay }: Props) {
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.fill}>
-        <View style={styles.head}>
-          <Text style={styles.title}>ยอดประจำวัน</Text>
-          <Pressable style={styles.closeBtn} onPress={onClose}>
-            <Text style={styles.closeText}>ปิด</Text>
-          </Pressable>
-        </View>
-
-        {screen === null ? (
-          <View style={styles.center}>
-            <ActivityIndicator size="large" />
-            <Text style={styles.loading}>กำลังอ่านยอดจากระบบ…</Text>
-          </View>
-        ) : screen.kind === "message" ? (
-          <MessageBody
-            screen={screen}
-            onRetry={onRetry}
-            onSignIn={onSignIn}
-            onToday={() => onPickDay(null)}
-          />
-        ) : (
-          <ReportBody screen={screen} onPickDay={onPickDay} />
-        )}
+    <View style={styles.fill}>
+      <View style={styles.head}>
+        <Text style={styles.title}>ยอดประจำวัน</Text>
+        <Pressable style={styles.closeBtn} onPress={onClose}>
+          <Text style={styles.closeText}>ปิด</Text>
+        </Pressable>
       </View>
-    </Modal>
+
+      {screen === null ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" />
+          <Text style={styles.loading}>กำลังอ่านยอดจากระบบ…</Text>
+        </View>
+      ) : screen.kind === "message" ? (
+        <MessageBody
+          screen={screen}
+          onRetry={onRetry}
+          onSignIn={onSignIn}
+          onToday={() => onPickDay(null)}
+        />
+      ) : (
+        <ReportBody screen={screen} onPickDay={onPickDay} />
+      )}
+    </View>
   );
 }
 
