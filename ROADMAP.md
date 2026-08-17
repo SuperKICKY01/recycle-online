@@ -816,6 +816,76 @@ sweep red for reasons that have nothing to do with this step. And none of it say
 anything about a bundle already installed on a handset — which is what the bundle
 clause above is for, and why it is not the optional half of this criterion.
 
+**DONE WHEN — CLAUSE 1 MET, CLAUSE 2 REWRITTEN, 2026-08-17.** Everything above
+this line is the criterion as it stood and is kept rather than deleted: the
+ripgrep command, the 2026-08-11 note on why the command changed, and the
+"WHAT THIS STILL CANNOT SEE" paragraph all stay readable as written. What
+follows supersedes the DONE WHEN itself.
+
+**CLAUSE 1 IS MET — 2026-08-17.** A person typed their own username and
+password on the handset and reached the cart screen, with the bundle
+established beforehand (`npx expo start -c` and a full reload, both BEFORE the
+reading that is being relied on, not afterwards to check —
+`CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING"). It exceeded
+the bar rather than merely meeting it: on that session a bill was weighed and
+synced, `B-2569-381`. The observation is recorded in
+`PROJECT_STATUS.md § Current phase`.
+
+**CLAUSE 2 — THE DISK SWEEP — IS REWRITTEN. IT WAS NOT REWRITTEN BECAUSE THE
+WORK TURNED OUT TO BE HARD**, and that is the part a later reader should check
+rather than take. It is P1.3's rule applied here: a criterion is rewritten when
+a documented decision or a MEASUREMENT changed what it was measuring, never for
+difficulty. Nothing about removing the constant was hard and no work is avoided
+by this change — the constant is gone from source. **THE CRITERION MEASURED THE
+WRONG THING, IN BOTH DIRECTIONS**, and both directions were measured
+2026-08-17:
+
+- **FALSE POSITIVE.** The sweep exits **0** with **5 matches**, and **four of
+  the five are prose EXPLAINING that the constant was removed** — including
+  this file's own paragraphs above. A token that appears in the explanation of
+  its own deletion cannot be the needle, and rewording that prose so a sweep
+  passes is exactly what this repository forbids.
+- **FALSE NEGATIVE, and this is the half that matters.** The criterion's own
+  "WHAT THIS STILL CANNOT SEE" paragraph above states it: "a renamed or
+  minified constant carries the value without carrying the word, which is what
+  a bundler produces". So the old command could exit **1** — its PASSING
+  result — with the credential still sitting on disk. A bar that can go green
+  over the thing it is looking for is not a bar.
+
+Measured in the same pass: `mobile/dist/` held **213 files**, so the sweep's
+root was not empty and the false positive is not an artefact of a missing
+build.
+
+**THE NEW CLAUSE 2 — THREE PARTS.**
+
+1. **HUMAN, UNCHANGED.** A person types their own username and password on a
+   handset and reaches the cart screen, with the bundle established
+   beforehand. **MET 2026-08-17**, as above.
+2. **SOURCE.** No credential VALUE, and no constant DECLARATION as distinct
+   from a MENTION, anywhere under `mobile/` excluding `dist/` and
+   `node_modules/`. Checked by a SCRIPT that reads the secret out of
+   `server/app/seeddata.py` ITSELF and never lets it reach a command line:
+   every shell on this box lands verbatim in `.claude/hooks/*.log`, so a
+   checker taking the credential as an argument would CREATE the exposure it
+   exists to test for.
+3. **BUILD OUTPUT.** `mobile/dist/` **REBUILT** after the removal — not
+   deleted — with the file count AND the newest file's timestamp reported in
+   the same observation, and the same script finding no credential value in
+   the rebuilt bundle. Deleting the directory satisfies any absence check for
+   the wrong reason, and the timestamp is the only thing that says the bundle
+   post-dates the removal.
+
+**THE POSITIVE CONTROL IS PART OF THE CRITERION, not of the runner's
+discretion.** In the same run the script must also search for a string KNOWN to
+be present — the seed USERNAME will do — and report finding it. Without it
+"found nothing" is indistinguishable from an instrument that never looked
+(`lessons/README.md § Lessons` "a-check-that-never-went-red-was-never-observed.md").
+
+**THE LIMIT, AND NO SWEEP ON THIS BOX CAN CLOSE IT.** None of this says
+anything about a bundle already installed on a handset. The old criterion said
+so too; it is repeated here rather than assumed inherited, because a rewritten
+bar is where an inherited caveat goes missing.
+
 **THE DESIGN — OWNERSHIP BOUND TO EACH LOCAL ROW, KEYED BY TENANT AND USER.**
 Chosen 2026-08-11 over two alternatives, and the alternatives are recorded
 because the reasons are the design. REFUSING TO SIGN IN while bills are queued
@@ -996,6 +1066,41 @@ a pilot, is most of the first week.
 a bill for that seller posts and comes back with a doc_no, AND a staff token is
 still refused on a price write in the same pass — the second half being the control
 that D1 narrowed the gate rather than opened it.
+
+**THE STEP IS SPLIT — 2026-08-17. P1.8a IS ONLINE, P1.8b IS OFFLINE.** The DONE
+WHEN above is UNTOUCHED and says nothing about offline; **P1.8a closes it as
+written**. Sub-lettering is this file's own existing convention — R1b and R2b
+are already in the closed R log — so this mints **no new P-number** and
+`ROADMAP.md § Numbering` is not touched.
+
+**P1.8a — ONLINE SELLER CREATION.** Four phases, each with its own evidence:
+the server route (landed `2f88403`), the client wire (landed `826e4ee`), the
+screen, the handset.
+
+**P1.8b — OFFLINE SELLER CREATION, AND IT IS A SUBSYSTEM RATHER THAN A
+FOLLOW-UP.** Measured 2026-08-17 by a read-only survey. The split is not
+arbitrary, and the reason is that every item below is a change to something the
+EXISTING send path already depends on:
+
+- **`cached_sellers` has six columns and NO ORIGIN MARKER**, so a locally
+  created seller is indistinguishable from one the server sent.
+- **`saveSellers` runs an UNCONDITIONAL `DELETE FROM cached_sellers`** before
+  inserting, so a local row is DESTROYED by the next successful refresh.
+- **The send queue has ONE row type over ONE table**, and voids are COLUMNS on
+  that row rather than a second kind of work. A seller is a third thing to
+  send, and the queue has no shape for it.
+- **`sync_state` carries a CHECK constraint**, which SQLite cannot alter
+  without rebuilding the table.
+- **EIGHTEEN sites hand-parallel the send and void paths, and only TWO of them
+  are compiler-enforced.** A third path inherits that arithmetic.
+- **The server REFUSES a client-minted seller id.** `SellerCreate` sets
+  `extra="forbid"` and `sellers.id` defaults to `gen_random_uuid()`, where
+  `purchase_bills.id` has NO default. The offline boundary was drawn at the
+  BILL deliberately (hard rule 3), so moving it is a server change and not a
+  client one.
+- **`sellers` has no idempotency key**, so a re-sent create is recognisable
+  only by a code collision — and a 409 on the send path classifies as
+  retry-forever, which would dam the queue behind a seller that already exists.
 
 ### P1.9 — Price editing on the phone
 

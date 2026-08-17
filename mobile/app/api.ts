@@ -22,6 +22,20 @@ export interface Product {
   prices: Record<string, string>;
 }
 
+/**
+ * FIVE FIELDS, AND THE WIRE NOW CARRIES NINE. THE OMISSION IS DELIBERATE.
+ *
+ * `GET /sellers` returns `id_number`, `address` and `vehicle_no` as well. They
+ * are left out of this type on purpose, and this is NOT an inaccuracy waiting
+ * to be tidied: a structural type describing a subset is a NARROWING, and here
+ * the narrowing is a SECURITY PROPERTY. With no `id_number` on the type, no
+ * screen can render one and no code can hand one to `saveSellers` by accident
+ * — the compiler's half of the guarantee that proveSellerCreate's C6 proves at
+ * the cache layer. Widen this and only the runtime proof is left.
+ *
+ * A form sends those three through `SellerDraft` in `src/master/createSeller.ts`,
+ * which has them. Nothing on the app side needs them back.
+ */
 export interface Seller {
   id: string;
   code: string;

@@ -2765,6 +2765,83 @@ or from a plausible-sounding summary.
   invoice must show and how payment is reconciled — a billing design
   question, and there is no billing anywhere in this system yet.
 
+## Schema requirements raised by the 2026-08-17 legal research round
+
+**THE SOURCE IS A CLUE, NOT A SOURCE, AND ITS LIMITS TRAVEL WITH EVERY LINE
+BELOW.** These came from one research round on Thai statutory obligations. Four
+things are wrong with it as evidence, and none of them is a reason to discard
+it — they are the reason nothing here may be built from it without a second
+opinion:
+
+- **(i) Its confidence column measured nothing.** All eleven of its answers are
+  rated "high confidence", including one whose own text says it rests on
+  interpretation. A rating with no variance carries no information.
+- **(ii) Its most architecture-changing conclusion carries no direct
+  citation.** That after five years the duty FLIPS from keeping the record to
+  deleting it is a SYNTHESIS of two statutes, not a quotation from either.
+- **(iii) Its source list includes documents with no apparent relation to the
+  subject**, so citations were keyword-matched rather than all resolved.
+- **(iv) IT NAMES A DISTRICT AND PROVINCE THAT WERE NOT IN THE QUESTION PUT TO
+  IT**, and cites a local ordinance for that place. Whether the owner supplied
+  the location separately is **UNCONFIRMED** — he was asked and has not
+  answered. **The local-ordinance material is therefore UNVERIFIED and is
+  recorded as unverified, never as fact.**
+
+**THE CLASSIFICATION BELOW IS THE POINT**, because the report itself grouped
+all five as if equally binding, and they are not: two are asserted as legally
+required, one is a business capability with no legal force, one is a foundation
+with no feature of its own.
+
+- **SHOP IDENTITY FOR THE SLIP — tax id, address, licence number.** `tenants`
+  is `(id, name, created_at)` and nothing reads it. **LEGALLY REQUIRED** per
+  the cited revenue-code section. *Not done:* there is no column, no route and
+  no screen for any of the three. *Unblocks:* it EXTENDS P1.16, whose scope was
+  previously understood to be name and address only — so P1.16 is wider than
+  its own entry says. **Why it matters here:** a slip that must carry a tax id
+  cannot be printed from a table that has no field for one, and P1.17 prints
+  from P1.16.
+- **ITEM TRACKING ID / SERIAL PER BILL LINE.** **LEGALLY REQUIRED** per the
+  cited second-hand goods act section — **BUT whether it binds BULK SCRAP SOLD
+  BY WEIGHT, as opposed to identifiable second-hand items, is OPEN.** *Not
+  done:* `purchase_bill_items` has no such column, and the question of whether
+  the duty even reaches this business is unanswered. *Unblocks:* the licensing
+  officer. **Why it matters here:** if it binds, it is a per-line column on the
+  one table hard rule 5 forbids rewriting, so it is cheaper before the pilot
+  than after it.
+- **PDPA RETENTION — deleting a seller's personal data without touching the
+  money.** *Not done:* the mechanism does not exist. **The STRUCTURE already
+  permits it**, and that is worth stating plainly because it is the expensive
+  half: `sellers` is a separate table and `purchase_bills` holds only
+  `seller_id`, so the personal data can be removed while every bill keeps its
+  amounts, its doc_no and its history. What is missing is the mechanism, not
+  the shape. *Unblocks:* **confirming the five-year synthesis with a
+  professional before anything is built** — see (ii) above; a deletion
+  mechanism built to a wrong deadline destroys records it was required to keep.
+- **LUMP-SUM PURCHASE — NOT LEGALLY REQUIRED.** The report found no
+  prohibition. It is a **BUSINESS CAPABILITY** the product must offer because
+  the system is sold to many shops and each runs differently (S6). *Not done:*
+  every bill line is weight × price. *Unblocks:* the per-tenant settings home
+  below, since this is a mode a shop turns on. **THE CONSEQUENCE, AND IT IS THE
+  part that will be missed:** `reconcile.py` recomputes
+  `round(net × price, 2)` and compares it to `amount`, so a lump-sum line would
+  be reported as a **violation on every run** unless the checker learns the
+  mode — and teaching it must duplicate the ARITHMETIC without duplicating the
+  CONVENTION (`lessons/README.md § Lessons` "DUPLICATE ARITHMETIC").
+- **A PER-TENANT SETTINGS HOME — the FOUNDATION the other four hang from, not a
+  fifth feature.** Measured 2026-08-17: **thirteen tables, none of them a
+  settings table**, and `tenants` has three columns. *Not done:* there is
+  nowhere to store what a shop has toggled. *Unblocks:* nothing else can start
+  properly — the owner's directive is that every capability SHIPS and each shop
+  toggles it, which is a claim about storage before it is a claim about
+  features. **Why it matters here:** built late, every capability added before
+  it invents its own private place to keep a flag.
+- **`sellers` HAS NO `created_by`, while `purchase_bills` has carried one since
+  migration 0006.** NOT from the research round — found by P1.8a, the phase
+  that widened it. After P1.8a a shop can add sellers from the yard floor and
+  **nothing records who did it**. *Not done:* reported, not fixed. *Unblocks:*
+  a migration and one column; the gate change that made it reachable has
+  already landed.
+
 ## Documentation
 
 - **The cluster inventory in `PROJECT_STATUS.md`'s `2026-08-09 — the directory role`

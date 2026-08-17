@@ -134,6 +134,78 @@ WRITTEN, NOT WORKING. It is also prose and not a mechanism — nothing can
 grep a reply, and the only mechanism in play is the `REPORTS IN:` field
 at the head of a dispatched brief, which travels with the work.
 
+**THE FIRST BILL EVER TO TRAVEL DEVICE → SERVER — 2026-08-17.** It is
+recorded here because it is in no tracked file at all: the row is in the
+DEV database and the observation existed only in a conversation. This is
+the event every hard rule was written for, and it is the first time
+seven of the eight were exercised end to end by a real person on a real
+handset rather than by a proof.
+
+- Shop code **`53R42Z7S`**, issued to Shop A
+  (`11111111-1111-1111-1111-111111111111`) by `provision_shop.py`
+  against the DEV database `recycle`.
+- Bill **`dd25043b-0538-43c7-97f8-7da6912d3751`**, doc_no
+  **`B-2569-381`**, counter **380 → 381**.
+- **`created_by` is the STAFF account, not an admin** — the person who
+  took the goods is the person the row names.
+- `device_created_at` **2026-08-17 03:34:59.092+00**,
+  `server_received_at` **03:36:07.809+00**: **68.7 seconds apart,
+  because airplane mode was on while the bill was weighed.** That gap is
+  the observation, not a defect — it is hard rule 7 and hard rule 8
+  visible in two columns.
+- Money and weight columns **NUMERIC(14,2) / NUMERIC(14,3)**; `amount`
+  **150.00**, recomputed IN POSTGRES and agreeing.
+
+**SEVEN OF THE EIGHT HARD RULES EXERCISED END TO END FOR THE FIRST
+TIME — 1, 2, 3, 4, 6, 7 and 8. RULE 5 WAS NOT**, because nothing was
+voided; the void path's device evidence is still the one from 2c-9 and
+this run adds nothing to it.
+
+**THE LIMITS TRAVEL WITH IT, and they are what stops this being read as
+more than it is:**
+
+- `tare_weight` was **0.000**, so the tare path is stored-correct and
+  **UNEXERCISED** — a bill with a real tare has still never crossed the
+  wire from a device.
+- `unit_price` **equalled** `list_price`, so **no override path was
+  tested**. Hard rule 6 keeps both columns precisely so they can
+  differ, and they did not.
+- The artefact was **this project's own Android DEBUG build**, on **one
+  handset**, over a **LAN address**. Nothing here is about a release
+  build, a second device, or a route off this network.
+- **The queued-state screen was observed by the OWNER, not by the
+  session that read the row.** Two different observers, two different
+  artefacts; the database row is this session's evidence and the screen
+  is not.
+
+**P1.8a — PHASES 1 AND 2 LANDED, 2026-08-17.** The step was split the
+same day (`ROADMAP.md § P1.8 — Seller creation from the phone`): P1.8a
+is ONLINE seller creation and closes P1.8's DONE WHEN as written, P1.8b
+is OFFLINE and is a subsystem.
+
+- **Phase 1, `2f88403` — the server route.** `POST /sellers` moves from
+  `require_admin` to `get_principal`, and `code` becomes optional with
+  the server assigning one by generate-then-retry.
+  `prove_seller_create.py` exit 0 twice with no reseed, against
+  `recycle_p18a_scratch`. **WHAT IT DID NOT ESTABLISH:** that any
+  client could call the route — nothing under `mobile/` was touched or
+  executed — that any operator could reach it, and the retry was never
+  exercised by a real race.
+- **Phase 2, `826e4ee` — the client wire.**
+  `mobile/src/master/createSeller.ts` and its proof; the deliverable is
+  an eight-member outcome union carrying no raw body, no `detail`, no
+  `message` and no status number. `npm run prove:sellercreate` exit 0
+  twice with no reseed, both typecheck programs green, run bare.
+  **WHAT IT DID NOT ESTABLISH:** there is no screen, so no operator can
+  reach it; nothing ran on a handset (every cell runs on `node:sqlite`,
+  the phone uses `expo-sqlite`'s own connection); `forbidden` cannot
+  fire today because the route is behind `get_principal`; `invalid` was
+  never driven against a real 422, deliberately, because the honest way
+  to reach it is to violate `id_number` and that refusal body is the
+  one this route must not read; `ambiguous` is constructed and typed
+  and has never been seen; and every call is sequential, so
+  `code_assignment_failed` has never been produced by a real race.
+
 **P1.7 IS COMPLETE. ALL SEVEN STEPS. 2026-08-11, `959f22d`.** This block
 SUPERSEDES every P1.7 entry below as the current phase; each is left exactly as
 written and was true when written.
