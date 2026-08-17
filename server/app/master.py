@@ -108,8 +108,14 @@ Code = Annotated[
 ]
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 Phone = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
-# Mirrors ck_sellers_grade and product_prices' CHECK. A bad grade is a 422 from
-# pydantic, never a CheckViolation 500 from Postgres.
+# Mirrors ck_sellers_grade, product_prices' CHECK, and ck_tenants_default_grade.
+# A bad grade is a 422 from pydantic, never a CheckViolation 500 from Postgres.
+#
+# FIVE SITES NOW ENCODE THIS SET, and S16 opens all of them: the two CHECKs in
+# 0001, ck_sellers_grade in 0003, ck_tenants_default_grade in 0010, and this
+# line. A Literal is a COMPILE-TIME type, so a set a shop chooses at run time
+# cannot be one at all -- S16 does not merely invalidate a count here, it
+# removes the form this constraint is written in.
 Grade = Literal["A", "B", "C", "D"]
 # Mirrors product_prices.price: NUMERIC(14,2), CHECK (price >= 0).
 Price = Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=2)]
@@ -1051,3 +1057,81 @@ async def activate_seller(
     async with tenant_connection(principal.tenant_id) as conn:
         await _set_active(conn, "sellers", "seller", seller_id, True)
         return await _read_seller(conn, seller_id)
+
+
+# ---------------------------------------------------------------------------
+# The shop itself
+#
+# THE FIRST ROUTE IN THIS API THAT READS OR WRITES `tenants`. Until now that
+# table was written once by provision_shop.py and never touched again, which is
+# why there is no existing pattern here to follow -- these two are it.
+#
+# NO `code` AND NO `name` HERE ON PURPOSE. A shop's name is on printed slips and
+# its code is immutable by decision, so changing either is a provisioning act
+# rather than a setting; this route exposes only what a shop is meant to decide
+# for itself day to day.
+# ---------------------------------------------------------------------------
+class ShopUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # Explicit null CLEARS it, which must be possible: a shop that starts
+    # grading its sellers takes the default away, and its bills go back to the
+    # resolvable 424 rather than being priced off a stale shop-wide tier.
+    default_grade: Grade | None = None
+
+
+_SHOP_NULLABLE = frozenset({"default_grade"})
+
+
+async def _read_shop(conn: Any) -> dict:
+    # No WHERE and no tenant_id: the tenants policy is FORCED and this connection
+    # carries SET LOCAL app.tenant_id, so exactly one row is visible.
+    row = (
+        await conn.execute(text("SELECT id, name, default_grade FROM tenants"))
+    ).mappings().one()
+    return {
+        "id": str(row["id"]),
+        "name": row["name"],
+        "default_grade": row["default_grade"],
+    }
+
+
+@router.get("/shop")
+async def get_shop(principal: Principal = Depends(get_principal)) -> dict:
+    """The shop's own settings.
+
+    Readable by STAFF as well as admin, deliberately: the yard app needs to know
+    whether a default grade exists to explain a 424 it might otherwise present
+    as the seller's fault. Nothing here is sensitive -- it is the shop's own
+    name and its own choice.
+    """
+    async with tenant_connection(principal.tenant_id) as conn:
+        return await _read_shop(conn)
+
+
+@router.patch("/shop")
+async def update_shop(
+    body: ShopUpdate, principal: Principal = Depends(require_admin)
+) -> dict:
+    """Set the shop's default grade, or clear it.
+
+    ADMIN ONLY, where GET is not: this decides how every ungraded seller's bill
+    is priced, for the whole shop, and it is exactly the kind of standing choice
+    the yard must not be able to make while a load is on the scale.
+    """
+    changes = _changes(body, nullable=_SHOP_NULLABLE)
+    async with tenant_connection(principal.tenant_id) as conn:
+        # UPDATE with no WHERE, for the same reason _read_shop has none: RLS
+        # scopes it to the caller's single row. Asserting the rowcount is what
+        # turns "the policy is doing its job" from an assumption into a check --
+        # 0 would mean no tenant context and 2 would mean the policy is gone.
+        result = await conn.execute(
+            text("UPDATE tenants SET default_grade = :g"),
+            {"g": changes["default_grade"]},
+        )
+        if result.rowcount != 1:
+            raise _invalid(
+                "shop_not_scoped",
+                "ไม่พบร้านของผู้ใช้นี้",
+                rowcount=str(result.rowcount),
+            )
+        return await _read_shop(conn)

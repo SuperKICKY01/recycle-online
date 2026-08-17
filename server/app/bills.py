@@ -348,8 +348,27 @@ async def create_bill(
                 )
             grade = seller["grade"]
             if grade is None:
-                # RESOLVABLE: the back office sets the seller's grade and this
-                # exact bill goes through, unchanged.
+                # THE SHOP'S OWN DEFAULT, before refusing. A yard that does not
+                # grade its sellers has no answer to give the 424 below: every
+                # walk-in would send someone back to the office to set a grade
+                # the shop does not believe in, and the bill cannot be priced
+                # without one because product_prices is keyed by grade.
+                #
+                # No tenant_id in the WHERE clause, and that is not an omission:
+                # the tenants policy is FORCED and this connection carries
+                # SET LOCAL app.tenant_id, so this SELECT returns exactly the one
+                # row for the caller's shop -- the same reason the seller lookup
+                # above matches on id alone.
+                #
+                # NULL here means the shop has not decided, which is every shop
+                # that existed before this column, so the refusal below is
+                # NARROWED and never removed.
+                grade = (
+                    await conn.execute(text("SELECT default_grade FROM tenants"))
+                ).scalar_one_or_none()
+            if grade is None:
+                # RESOLVABLE: the back office sets the seller's grade -- or the
+                # shop's default -- and this exact bill goes through, unchanged.
                 raise _master_data_missing(
                     "seller_grade_unset",
                     "ผู้ขายรายนี้ยังไม่ได้กำหนดเกรด จึงยังไม่มีราคาตั้งต้น",
