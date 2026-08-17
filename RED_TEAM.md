@@ -28,6 +28,32 @@ given away by a single paragraph of context.
 The session may read the repository freely — it *should*, since a diff cannot be
 judged from a diff. What it must not read is the argument for the change.
 
+**AND THOSE TWO SENTENCES CAN CONTRADICT EACH OTHER, WHICH THEY COULD NOT WHEN
+THIS FILE WAS WRITTEN.** The prohibition above names a conversation, a phase
+brief, a plan and a commit message — four things that all live OUTSIDE the tree,
+so "read the repository freely" never reached any of them. That stopped being
+true on 2026-08-17. `ROADMAP.md § P1.18 — One outbox, several kinds of work` now
+carries the argument for its own step IN FULL: the measurement of the two drains
+in `mobile/src/sync/engine.ts`, the device incident behind the ordering, and a
+sentence telling the reader in advance which design would be a misreading. **A
+session told to read the repository freely reads that and inherits the author's
+model wholesale** — which is the one thing this pass exists to avoid, arriving
+through the permission rather than around it.
+
+**So the dispatch must name what is EXCLUDED, not only what is included**, and it
+must do so whenever the step's reasoning has been written into a tracked file.
+State the exclusions beside the four inputs: the phase brief, and the named
+sections that argue for the change. Scope the reading to where the diff lives —
+for a change under `mobile/`, that is `mobile/` — and say so explicitly, because
+a reviewer who has not been told a file is off limits will open it and will be
+right to.
+
+**This is a permission that has to be re-scoped per pass, not a list that can be
+maintained here.** Which sections argue for a change depends on the change, and
+a fixed exclusion list in this file would rot in the way this repository already
+documents. The obligation is on whoever dispatches: before sending, ask which
+tracked file now contains the reasoning, and exclude it by name.
+
 ## The stance
 
 Assume the change is wrong and go looking for the case that proves it. The

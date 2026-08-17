@@ -1260,6 +1260,18 @@ the FIFTH mechanism, still live, in the same instrument this amendment is about.
     covers the check failing and the harness failing. Ask of any red: *how many
     different states print this, and which one am I looking at?* — the same
     question the ninth mechanism asks of greens, and it is owed to reds too.
+    **AND `BROKEN` COVERS A THIRD STATE, MEASURED 2026-08-17: a SOURCE that
+    yielded no citations at all.** `verify_citations.ps1` adds 1 to `BROKEN` when
+    its own non-empty control fires —
+    `CONTROL FAILED (non-empty): RED_TEAM.md yielded ZERO citations. It was named
+    as a source and nothing in it was checked.` — which is this file's whole
+    subject working correctly, and it is invisible in the total. `BROKEN=7` was
+    reported repeatedly across one day, in replies and in two permanent commit
+    bodies, as "seven broken citations, all pre-existing". Six were handles that
+    did not resolve. **The seventh was a file that had never been measured at
+    all**, and the repair is not a citation fix — it is to write a citation or
+    stop naming the file as a source. Found only because the total moved by one
+    for a change that added no citation to any file the total was about.
 19. **A handle is only as stable as the NAMESPACE it is unique in.** Choose one
     that cannot be duplicated by the ordinary growth of the target: prose from the
     line you mean, never an identifier that the target's own conventions repeat.
