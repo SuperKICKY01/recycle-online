@@ -3176,6 +3176,71 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   the owner's thinking, unhurried. Note for whoever picks it up: Nemesis
   found the defects anyway, so the leak degraded the pass without
   defeating it, and that is one data point rather than a general result.
+
+  **AMENDED 2026-08-17 — THE TENSION NOW HAS A SIZE, AND A REASON IT
+  CANNOT BE FIXED BY A BETTER EXCLUSION LIST.** The entry above argues
+  qualitatively and names three server files. Measured on the MOBILE side,
+  which is where P1.18's diff will land, by
+  `grep -cE '^[[:space:]]*(//|/\*|\*)'` over `wc -l`, and by an `awk` count
+  of comment blocks of five lines or more — five lines being a paragraph
+  rather than a label:
+
+  | file | comment lines | blocks >=5 lines |
+  |---|---|---|
+  | `mobile/src/sync/types.ts` | 494/667 (74%) | 41 blocks, 462 lines (69%) |
+  | `mobile/src/sync/outbox.ts` | 193/290 (67%) | 18 blocks, 183 lines (63%) |
+  | `mobile/src/sync/engine.ts` | 410/756 (54%) | 28 blocks, 367 lines (49%) |
+  | `mobile/src/adapters/sqlite/schema.ts` | 322/564 (57%) | — |
+  | `mobile/src/adapters/sqlite/SqliteLocalStore.ts` | 566/1086 (52%) | — |
+
+  The 73-second ordering incident is at `mobile/src/sync/engine.ts:321`, in
+  the comment on the loop it explains.
+
+  **THE FIGURE IS AN UPPER BOUND AND NOT A MEASUREMENT OF CONTAMINATION,
+  and saying so is the point of recording it.** A five-line paragraph
+  describing what a field MEANS is API documentation, not the author's
+  model of why a change is correct. So "block of five or more lines" is a
+  proxy for "paragraph", which is in turn a proxy for "argument". The
+  conclusion survives as a DIRECTION rather than a value — at half the
+  bound it is still several hundred lines against the 99 a criteria review
+  reads — and it is written here as a direction.
+
+  **HOW THAT CAUTION WAS ARRIVED AT, because the shape is the finding.**
+  The first instrument counted comment lines containing `deliberate`,
+  `because`, `measured`, `hard rule`, and was DISCARDED for measuring
+  lines-with-a-word rather than paragraphs-of-reasoning. The replacement
+  was better and **inherited the same flaw one level up**, and nobody
+  noticed until somebody asked what the NEW tool measures a proxy for.
+  Changing an instrument feels like the repair, and that feeling is what
+  stops the second question from being asked. Ask it of every replacement.
+
+  **THE GENERAL RESULT, which the entry above says it did not have.** A
+  fixed exclusion list rots STRUCTURALLY rather than through carelessness.
+  Closing a finding means recording the reason it was closed, so every
+  closure widens the set of documents holding the argument. This very
+  amendment does it: the entry above named three server files, and the
+  set now also contains `mobile/src/sync/outbox.ts`,
+  `mobile/src/sync/engine.ts` and `OPEN_ITEMS.md` itself. **So a dispatch
+  should carry a SCOPE and not an exclusion list** — the two overlap, and
+  the exclusion list is the one that is both redundant and incomplete,
+  because a reader told "do not read X" infers that Y is permitted.
+  Measured the same day: a dispatch scoped to `mobile/` already excluded
+  every root document, and the exclusion of `ROADMAP.md` written beside it
+  added nothing while implying `OPEN_ITEMS.md` was fine — where
+  `OPEN_ITEMS.md:2463-2464` carries P1.18's argument nearly verbatim.
+
+  **WHAT THE MEASUREMENT UNLOCKS, AND IT IS NOT A RESOLUTION.** The entry
+  above says no mechanism can detect the leak. There is now a way for a
+  pass to measure it ON ITSELF: the comment ratio of the files it read,
+  reported as a number in its own findings. That is not a rule and not a
+  fix; it is an observation a pass can make about its own conditions, and
+  it turns "this reviewer was contaminated" from an assumption into a
+  figure with a named instrument.
+
+  *Not done:* unchanged, and deliberately. A resolution written today would
+  still be a preference dressed as a finding. The measurement does not
+  resolve the tension — it gives it a size, and that size has an upper
+  bound rather than a known value.
 - **NOTHING ANYWHERE LIMITS REPEATED ATTEMPTS — A WHOLE-SYSTEM GAP, AND IT
   IS FILED AS ONE ON PURPOSE. Recorded 2026-08-10.** No throttle, no
   backoff, no attempt counter, no lockout-after-N and no record of a failed
