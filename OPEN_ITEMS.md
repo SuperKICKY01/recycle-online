@@ -69,6 +69,59 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   question anyone must answer before work can start. The behaviour is measured
   and it stops a real shop shape from trading.
 
+- **EIGHT THINGS EACH SHOP CONFIGURES FOR ITSELF, AND NOTHING STORES ANY OF
+  THEM — recorded 2026-08-17.** ONE entry and not eight, because they share a
+  single missing foundation and splitting them would hide that. They come from
+  the owner's directive that every capability ships and each shop turns on what
+  it wants — `ROADMAP.md § What the owner has settled` "S11 — every capability SHIPS"
+  — which is a claim about STORAGE before it is a claim about features. In his
+  order:
+  (1) **the grade model** — how many tiers, what they are called, and whether
+  tiers exist at all;
+  (2) **the default grade for a new seller**;
+  (3) **whether an id number is required**;
+  (4) **whether a serial number is required, and for which product categories**;
+  (5) **lump-sum purchase**;
+  (6) **the PII retention period**;
+  (7) **shop identity for the slip**;
+  (8) **which photographs are required**.
+  **THE SECOND OF THE EIGHT IS THE ONE THAT BLOCKS A WHOLE SHOP SHAPE TODAY**, and
+  the mechanism is measured rather than argued: a seller created with no grade
+  PARKS every bill sold against them until somebody at the office sets one. The
+  shape it blocks is a shop that does not use grades at all, and the entry
+  directly above this one holds the measurement, the three shop shapes and the
+  424 that produces it — cross-referenced and deliberately not restated. A
+  per-tenant DEFAULT is what turns that office round trip back into a walk-in
+  sale, so item 2 is the first of the eight anything should be built for.
+  **FIVE OF THE EIGHT ALREADY HAVE AN ENTRY AND ARE NOT DUPLICATED HERE.** Items
+  4, 5, 6 and 7 are under
+  `OPEN_ITEMS.md § Schema requirements raised by the 2026-08-17 legal research round`
+  — as the serial-per-bill-line question, lump-sum, PDPA retention and shop
+  identity — along with the per-tenant settings foundation itself, and that
+  section carries the four limits on the round that raised them. Item 2's block is
+  the entry directly above. **AND ITEM 4 ARRIVES HERE IN A DIFFERENT SHAPE:** that
+  section frames it as a possible LEGAL DUTY on every line, and the owner frames
+  it as a per-shop toggle scoped to product categories. Same column, two different
+  reasons to have it, and only one of the two is unverified.
+  **THREE ARE NEW HERE:** item 1's tier COUNT and tier NAMES (the entry above
+  settles only whether a shop grades at all), item 3, and item 8 — which arrives
+  with
+  `ROADMAP.md § What the owner has settled` "S12 — photographs are part of the workflow".
+  **WHAT THIS ENTRY ADDS that none of those has** is the COUNT and the fact that
+  it is one list: eight per-tenant values, of which the schema holds zero.
+  *Not done:* there is no settings table, no column and no default — and how the
+  eight should be REPRESENTED is itself questioned, at
+  `OPEN_ITEMS.md § Decisions open — the owner's, not the code's` (the settings-store
+  finding). *Unblocks:* item 2 unblocks a shop shape that cannot trade;
+  the rest unblock the handover.
+  **WHY IT IS IN THIS SECTION.** Under
+  `ROADMAP.md § What the owner has settled` "S7 — the pilot starts only after ALL THREE deliverables exist"
+  the pilot bar and the sale bar are ONE bar, and S11 says every capability ships
+  — so all eight are on the path to the first paying shop, which is what this
+  section holds. It is not under *Business questions* because none of the eight
+  needs an outside answer before work can start, and not under *Decisions open*
+  because S11 already settled who decides: the shop does, per shop, at run time.
+
 - **~~NO STAFF ACCOUNT EXISTS AND THERE IS NO WAY TO CREATE ONE — measured
   2026-08-10, not inferred.~~ — THE SECOND HALF IS CLOSED, THE FIRST STANDS.**
   The measurement below is left exactly as taken: at `a73c264` the API declared
@@ -2369,6 +2422,123 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   which is the correct behaviour and is also the reason nobody will notice them.
 
 ## Decisions open — the owner's, not the code's
+
+- **SIX REVIEW FINDINGS AGAINST THE 2026-08-17 DECISIONS, AND THEY CONTRADICT
+  PARTS OF WHAT THOSE DECISIONS SET UP.** ONE entry, on purpose: a reader who
+  meets one side alone acts on a plan that was already questioned. They are
+  FINDINGS AND NOT TASKS — nothing below is authorised, and each ends in a
+  decision only the owner can take. The decisions they bear on are S7-S13 at
+  `ROADMAP.md § What the owner has settled` "SEVEN MORE, FROM A SECOND WORKING SESSION"
+  and the eight-item entry under
+  `OPEN_ITEMS.md § Blocking one real paying shop`.
+
+  **(a) THE PLAN CUTS ONE SUBSYSTEM FOR BEING TOO LARGE AND ADDS A LARGER ONE IN
+  THE SAME CONVERSATION.** Offline seller creation was cut on the ground that the
+  queue has no shape for a second kind of work —
+  `ROADMAP.md § P1.8 — Seller creation from the phone` "The send queue has ONE row type over ONE table"
+  and
+  `ROADMAP.md § P1.8 — Seller creation from the phone` "EIGHTEEN sites hand-parallel the send and void paths".
+  Photo sync needs the queue to carry a second kind TOO, and a worse one: the
+  payloads are megabytes of binary rather than a row, and hard rule 8 means a
+  photo taken offline must be written locally first and uploaded later, which IS
+  the same queue work. *Contradicts:* the S12 photograph decision against P1.8b's
+  cut. *The decision owed:* one criterion for both. If the queue gains a second
+  kind for photographs then P1.8b becomes nearly free and should RETURN; if the
+  queue is not to gain one, photo sync is bounded by the same argument that cut
+  P1.8b. *Not done:* nobody has decided which. *Unblocks:* the owner picking the
+  criterion before either is scheduled.
+
+  **(b) STORING PHOTOGRAPHS IN THE DATABASE MAY MAKE P1.2's OWN ACCEPTANCE
+  CRITERION IMPRACTICAL.** That criterion is
+  `ROADMAP.md § P1.2 — A server a shop can reach` "schedule nobody triggered by hand has been fetched from off-box"
+  and restored, with the row counts read back. At a few hundred MB a day the
+  dump-restore-verify cycle becomes something nobody actually performs, and an
+  unperformed backup is a claim rather than a backup. **THE SIZE IS THE ADVISING
+  SESSION'S ARITHMETIC AND WAS NEVER MEASURED** — no photograph exists, no
+  camera path is written, and no resolution or compression has been chosen, so
+  the figure names an order of magnitude to re-derive and nothing more.
+  **THE COUNTER-ARGUMENT IT RESTS ON, stated because it may well win:** a lost
+  bill is cash with no record; a lost photo leaves a bill that still says what was
+  bought, from whom, at what price, by whom and when. The photograph
+  CORROBORATES the record — it is not the record — so the two do not need the
+  same durability. *Contradicts:* S12 against P1.2's DONE WHEN. *The decision
+  owed:* whether photographs live in the database at all, or beside it under a
+  different retention and a different backup. *Not done:* undecided, and
+  unmeasured. *Unblocks:* one measurement — a real photograph at a chosen
+  resolution, times the bills a day.
+
+  **(c) "A SETTINGS STORE" IS MORE MACHINERY THAN THE EIGHT ITEMS NEED.** Read as
+  DATA rather than as a feature, the eight are not one thing: shop identity is
+  shop MASTER DATA; the grade model is genuinely relational, because it replaces a
+  CHECK constraint with a per-tenant table; lump-sum is really a change to the
+  bill LINE; and the remaining five are scalars. **Five scalars are five
+  columns.** A JSON bag would be the first value in this schema with NO
+  CONSTRAINT ON IT, in a system whose whole discipline is that a wrong value must
+  be unrepresentable. **FOUR named CHECK constraints that establish that
+  discipline** — four of them, not all; there are more, and these are the ones
+  that make the point — are `ck_items_net` (`0001_initial_schema.py:267`, net = gross -
+  tare), `ck_bills_void_consistency` (`0001_initial_schema.py:224`, the three void
+  fields move together), `ck_sellers_grade`
+  (`0003_move_grade_to_sellers.py:31-32`) and `ck_shop_code`
+  (`0009_directory_shop_codes.py:389`, the eight-character alphabet). *Contradicts:*
+  the per-tenant settings home recorded as a FOUNDATION under
+  `OPEN_ITEMS.md § Schema requirements raised by the 2026-08-17 legal research round`,
+  and the framing of the eight-item entry as one list. *The decision owed:*
+  columns, or a store. *Not done:* nothing is built either way, which is the one
+  piece of luck here. *Unblocks:* the owner choosing, before the first capability
+  invents its own private place to keep a flag.
+
+  **(d) "ALL SIX SCHEMA CHANGES BEFORE THE DESKTOP" IS A SELF-IMPOSED DEADLINE.**
+  D10's real deadline is BEFORE THE FIRST REAL ROW —
+  `ROADMAP.md § The decisions the ordering forced` "D10 — the pilot runs on the production database"
+  — and S7 moves that to after all three programs exist, so the deadline moved
+  outward rather than inward. Five of the six come from one legal research round
+  whose four limits are recorded in this file, including **a district and province
+  that were not in the question put to it** and that the owner has not confirmed;
+  the sixth, `sellers.created_by`, came from P1.8a instead. *Contradicts:* S8's
+  sequential order read as a deadline, and the research round's own recorded
+  limits. *The decision owed:* let each schema change be PULLED by the feature
+  that needs it rather than pushed as a set. *Not done:* the set is being treated
+  as one deliverable. *Unblocks:* the owner accepting per-feature pull, which also
+  keeps the unverified local-ordinance material out of a migration.
+
+  **(e) ADDING AN OWNER ROLE SILENTLY DEGRADES THE MOBILE CLIENT, and it works
+  today only by a fail-open default chosen for an unrelated reason.** The client's
+  role list is hardcoded to two values (`mobile/src/session/deviceRole.ts:56`,
+  `ROLES = ["admin", "staff"]`); an unrecognised role parses to `null` (`:155`);
+  and the void gate is `role !== "staff"` (`:173`), so **an owner would be read as
+  UNKNOWN and shown the void button.** That is not a hole today, because the
+  fail-open was chosen deliberately for a different reason — `:23-32` argues that
+  a real admin whose token merely failed to parse must not be locked out of the
+  one action that corrects a wrong bill. A third role turns that same default into
+  a role being granted a button by accident. **AND THE FILE SAYS SO IN WORDS THAT
+  BECOME FALSE THE MOMENT THE THIRD ROLE LANDS:** `:52-54` reads "The only two
+  roles there are", citing migration 0001's CHECK, and **nothing compares that
+  comment or that array to the constraint.** The server has three spellings of the
+  pair and binds two of them at import (`server/app/users.py:351` raises
+  `RuntimeError` when `users.Role` and `auth.ADMIN_ROLE`/`STAFF_ROLE` diverge);
+  the phone is a FOURTH spelling with no such guard, and nothing on either side
+  reads the migration. *Contradicts:* S9. *The decision owed:* whether the client
+  is taught the third role in the same change that adds it, and whether the
+  fail-open is re-argued for three roles rather than inherited from two. *Not
+  done:* reported, not fixed. *Unblocks:* a decision at S9's implementation; the
+  code half of it belongs beside the other client/server seams under
+  `OPEN_ITEMS.md § Code debt found and left in place` and is cross-referenced
+  rather than moved.
+
+  **(f) REMOVING THE MID-PROJECT PILOT REMOVES THE ONLY INPUT TO P2.4 AND P2.5,
+  AND NOTHING REPLACES IT.**
+  `ROADMAP.md § P2.4 — The residues only real volume can settle` "that no amount of staging"
+  names four things staging cannot reach, and
+  `ROADMAP.md § P2.5 — What the day actually broke` "It cannot be enumerated"
+  says its own content cannot be written in advance without pretending to know it.
+  Both depend on P2.1, and S7 pushes P2.1 out past all three deliverables. *This
+  is not an argument for reinstating the pilot* — S7 is settled — *it is a
+  statement that two steps now have no evidence source and no substitute named.*
+  *Contradicts:* S7 against P2.4 and P2.5 as written. *The decision owed:* what
+  those two steps are fed by, or the acceptance that both stay open until the
+  first real shop trades. *Not done:* no replacement is named anywhere. *Unblocks:*
+  the owner saying which.
 
 - **SHOULD A TYPED SHOP CODE BE CASE-NORMALISED? A PRODUCT DECISION, NOT A BUG,
   and it is deliberately not settled in code.** `ck_shop_code` admits only

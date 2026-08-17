@@ -704,5 +704,34 @@ pointer. Remove the check and the licence dies with it.
   **This bullet is prose, not a mechanism.** Nothing can grep a reply.
   The only mechanism is the `REPORTS IN:` field at the head of a
   dispatched brief, which travels with the work to the point of use.
+- **THE `Co-Authored-By` TRAILER IS A BARE MODEL NAME.** The form
+  this repository uses is
+  `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>` — the model,
+  and nothing in brackets after it. Spelled with that capitalisation,
+  which is what every commit here already carries.
+  **WHY THIS NEEDS SAYING AT ALL: a coding session's HARNESS may hand
+  it a DEFAULT trailer carrying a parenthetical** — a context-window
+  label, e.g. `Claude Opus 5 (1M context)` — and that default lands in
+  the commit unless somebody looked first. Exactly one commit in this
+  repository carries one for that reason, `56b5008`. Nothing catches
+  it: no hook reads the trailer, and a wrong one is not a defect, it
+  is a permanent line in a message that cannot be amended without
+  rewriting history.
+  **THE LOG IS THE AUTHORITY — read it before writing a commit
+  message**, and read it BARE:
+  `git log --format='%(trailers:key=Co-Authored-By,valueonly)'`. Do
+  not take the form from a brief, from this bullet, or from the
+  harness default; take it from what the log already holds.
+  **The counts, measured 2026-08-17 at `1204081` and pinned there
+  because they rot:** 177 commits, 165 of them carrying the trailer,
+  four distinct values — `Claude Opus 5` 134, `Claude Opus 4.8` 17,
+  `Claude Fable 5` 13, and the one parenthetical. The MODEL name
+  legitimately varies with whichever model did the work; the
+  parenthetical does not.
+  **Why here.** It is a rule about how this project WRITES, which is
+  the argument the pin-a-claim bullet above already makes for its own
+  placement. Not Machine footguns: nothing about it is a property of
+  this box. Not a lesson: a lesson is opened when its index line
+  touches the task, and this touches EVERY commit.
 - Buddhist-era dates (พ.ศ.) in UI and printed slips only; store
   UTC ISO timestamps in the DB.

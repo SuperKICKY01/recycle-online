@@ -285,6 +285,97 @@ and no `รหัส:` line, the last because the code was recognised.
 - **Every walk-in here needed an office action with NO SCREEN behind it,
   performed over HTTP by a developer. THAT IS A TEST, NOT A WORKFLOW.**
 
+**THE MODAL-HOST DEVICE PASS — 2026-08-17. No commit; it observes.** The change
+observed is `1204081`, *fix(mobile): one Modal host, because a refused
+presentation is recorded as a success*, authored 2026-08-17 16:56:08 +0700 — sha,
+subject and date re-derived with `git log -1` in this pass and not copied from a
+brief. **That commit's own record states it establishes THAT THE BUTTON WORKS
+nowhere and carries no behavioural evidence of any kind. This block is that
+evidence, and it is the whole of it.**
+
+**WHAT WAS OBSERVED, on the owner's handset, REPORTED BY THE OWNER rather than
+measured by this session.** The same two-observer split the first-bill block above
+records, and it binds harder here: a presentation defect leaves no database row
+and no log line, so there is no artefact to read the report against.
+
+- **The add-seller control opens the form ON THE FIRST PRESS.** Before `1204081`
+  it did nothing until the picker was dismissed with `ปิด`, at which point the form
+  appeared — the exact symptom that commit exists for. **This is the observation
+  that could not have been made anywhere else:** the defect is native
+  presentation behaviour, every proof cell runs under node, and no headless run
+  can see it (`lessons/README.md § Lessons` "a-platform-can-refuse-an-effect-and-record-it-as-done.md").
+- **Closing a sheet returns to the PREVIOUS sheet, not to the root.** Closing the
+  add-seller form comes back to the picker, where the search box is. That is what
+  `mobile/src/ui/sheetStack.ts` encodes as a STACK rather than as a single slot,
+  and it had never been seen on a device.
+- **Both previously-untested transitions present correctly** — picker to the
+  seller-change dialog, and the add-seller form to that same dialog. Both are the
+  one `ask_seller_change` transition, whose `from` is
+  `["seller_picker", "add_seller"]`, and `1204081` classifies both as SAME-COMMIT
+  SWAPS that were LATENT: nobody had ever hit either, and the second sits on the
+  path a walk-in takes. **A latent defect now exercised is worth more here than
+  the reported one**, because nothing was going to reach it by use.
+- **Three of the sheets that were already working open and render unchanged.**
+  **WHICH three is not recorded, and it is not rounded up.** Of the seven kinds
+  declared in `mobile/src/ui/sheetStack.ts` — `sign_out`, `seller_picker`,
+  `add_seller`, `confirm_seller_change`, `confirm_save`, `daily`, `bills` — two
+  are accounted for above and `confirm_save` is named below as unobserved, which
+  leaves FOUR candidates for the three: `sign_out`, `seller_picker`, `daily`,
+  `bills`. **One of the four is certain by MECHANISM rather than by report:**
+  `open_add_seller`'s `from` is `["seller_picker"]`, so the picker must have been
+  open for the first observation above to exist at all. The other two are unnamed
+  and stay unnamed.
+
+**WHAT WAS NOT OBSERVED. Three things, and none of them is rounded up.**
+
+- **The save-confirmation dialog.** `confirm_save` was never opened. It is the one
+  sheet whose guard `1204081` newly moved TO the state layer — before that commit
+  the picker-plus-confirm pair was prevented only by `app/CartScreen.tsx`
+  disabling the save button, and `setConfirmOpen(true)` had no guard of its own —
+  so the sheet with the newest reason to be checked is the one nobody looked at.
+- **The void-reason field clearing on close.** Side effect 3 of `1204081`:
+  `BillsPanel` now clears `voidingId` and `reason` when it closes, which the owner
+  decided. **A STAFF SESSION CANNOT REACH IT AT ALL**, and the chain is three
+  files deep: `mobile/app/BillsPanel.tsx:365` offers the void control only when
+  `canRequestVoid(b, role)` holds, `mobile/src/sync/parkedReason.ts:640` requires
+  `mayVoid(role)`, and `mobile/src/session/deviceRole.ts:173` is
+  `role !== "staff"`. So this gap does not close by pressing harder on the same
+  handset — it needs an ADMIN session on a device. **Which account was signed in
+  for this pass is not recorded here:** the mechanism is what is stated, not an
+  inference about the pass from the shape of the gap.
+- **Whether anything LOOKS different.** `1204081` predicted two visual side
+  effects — sheet-to-sheet switches no longer animate, and all sheets now present
+  transparent where four were opaque, argued visually identical because each
+  already paints its own background. **NEITHER WAS CONFIRMED NOR DENIED.** A
+  prediction that nothing changed is not an observation that nothing changed.
+
+**WHAT THIS PASS DOES NOT ESTABLISH.**
+
+- **The artefact.** This project's own Android DEBUG build, one handset, over a
+  LAN address — a TEST artefact, the same bound every device pass in this file
+  carries. Nothing here is about a release build, a second device, or iOS, which
+  has never run this code at all.
+- **The structure is measured; the structure is not behaviour.** Seven components
+  each rendered their own `Modal` and now one file does: `git grep -l '<Modal'` at
+  `56b5008` returns seven paths under `mobile/app/` (`AddSellerSheet`,
+  `BillsPanel`, `ConfirmSaveDialog`, `ConfirmSellerChangeDialog`, `DailyScreen`,
+  `SellerPicker`, `SignOutSheet`), and the working tree at HEAD `1204081` —
+  measured clean for `mobile/` in this pass — returns exactly one,
+  `mobile/app/SheetHost.tsx`. Counted from git and from the tree, not from the
+  commit message that also states it.
+- **Nothing was read out of Postgres, and nothing needed to be.** No bill was
+  posted and no row is claimed by this pass. This file's usual discipline — read
+  the row, never the screen — has no row to offer here, and that is a property of
+  the defect rather than a shortcut taken.
+- **The hypothesis `1204081` kept as a hypothesis is still one.** Why pressing
+  `ปิด` revealed the sheet is unexplained, and the falsifiable prediction that
+  commit names — an inner sheet under a TRANSPARENT outer one would never appear
+  at all, not even after the outer one closes — was not run. Nothing about the fix
+  depends on the answer.
+- **`proveSheets` S9 still catches a second `Modal` and still nothing runs it
+  automatically.** There is no CI in this repository and no hook that runs a
+  proof. A compile error cannot be skipped; that scan can.
+
 **P1.7 IS COMPLETE. ALL SEVEN STEPS. 2026-08-11, `959f22d`.** This block
 SUPERSEDES every P1.7 entry below as the current phase; each is left exactly as
 written and was true when written.

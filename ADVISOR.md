@@ -253,6 +253,53 @@ prompts. The full rule is `CLAUDE.md § Workflow` "A REPORT IS A CLUE" —
 a pointer, not a copy: two copies drift, and `CLAUDE.md`'s is the copy
 that loads every session.
 
+**THREE MORE — items 10, 11 and 12, added 2026-08-17. The "Nine items"
+sentence above is SUPERSEDED as to the COUNT and is left as written**,
+because 5-8 and 9's historic number both depend on it; the count is now
+TWELVE. These three are advisor-only and were learned by measurement on
+one day, not reasoned out.
+
+10. **DO NOT PUT A FIGURE IN A BRIEF AS AN INSTRUCTION.** Write
+    "re-derive X", never "X is 30". A figure written as a premise is
+    obeyed rather than checked, and the coding session then carries it
+    into a permanent file where nothing marks it as unverified.
+    **THE MEASUREMENT, and it cannot be re-taken from this
+    repository** — it is a count over one day's dispatched briefs,
+    which live in a chat and not in the tree, so it is recorded here
+    precisely because no later session could derive it: on 2026-08-17,
+    SEVEN premises across that day's briefs were wrong or unusable.
+    **SIX were caught, and every one of them was caught because the
+    brief carrying it REQUIRED re-measurement. The one that landed in a
+    permanent file was the one carrying no such requirement.** The
+    protection is therefore not the advisor's accuracy; it is the
+    instruction to re-derive.
+    **WHERE A FIGURE MAY APPEAR:** when the figure IS the finding — a
+    baseline another run must not exceed, a count a checker must meet —
+    it goes in the brief, MARKED as a measurement to re-derive, never
+    as a fact. That is the same distinction
+    `CLAUDE.md § Shared checks` "Is a measurement being carried as a fact?"
+    already draws.
+11. **THE SAME RULE APPLIES TO SYNTHESISED CLAIMS AND NOT ONLY TO
+    NUMBERS.** A sentence assembled from reading three reports is a
+    claim with no measurement behind it, and it is the harder case
+    because there is no digit to flag: marking every number in a brief
+    does not cover a paragraph that has none. Anything the advisor
+    ASSEMBLED rather than READ must travel as a claim to be verified,
+    with the sentence it was assembled from named — which is
+    `CLAUDE.md § Workflow` "A REPORT IS A CLUE" applied to the
+    advisor's own prose rather than to somebody else's report.
+12. **OUT OF BOUNDS MUST ALWAYS EXEMPT `lessons/`.** Twice on
+    2026-08-17 a brief forbade editing any document, while
+    `CLAUDE.md § Workflow` "Write that lesson UNPROMPTED" requires the
+    lesson to be written before a phase closes. **No ordering of tasks
+    satisfies both**, so the brief was not merely strict — it was
+    unsatisfiable, and a session obeying it literally would close a
+    phase in violation of a rule it also holds. Both times the coding
+    session named the collision and stopped, **which is the correct
+    behaviour and should not have been necessary.** The remedy is one
+    clause in every OUT OF BOUNDS block: `lessons/` is in bounds if a
+    lesson is owed.
+
 ## 5. Shared checks — mirrored from CLAUDE.md
 
 Items 5–8 of the pre-send checklist, run by BOTH roles on everything

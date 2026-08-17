@@ -196,6 +196,162 @@ from the desktop at the counter; prices can be edited from either. And when a bi
 has not synced the slip cannot be printed, and the system says so plainly rather
 than inventing a workaround the shop did not ask for.
 
+**SEVEN MORE, FROM A SECOND WORKING SESSION — 2026-08-17.** The sentence at the
+head of this section is about the FIRST session and is left exactly as written.
+S7 SUPERSEDES S2; the other six are new and reopen nothing. As with S1-S6, each
+carries the owner's reasoning so it is not re-argued.
+
+**S7 — the pilot starts only after ALL THREE deliverables exist: the mobile app,
+the desktop application and the provider web application. THIS SUPERSEDES S2,
+2026-08-17.** S2 says a pilot is part of the path and that the bar before a pilot
+is a different and SMALLER one than the bar before the product is sold to a
+stranger. The owner has decided the smaller bar is not taken: nothing goes in
+front of a shop until all three programs exist, which is S1's handover arriving
+before the pilot rather than after it. **S2 is superseded and NOT deleted** — it
+was the decision until this date, and the three-stage shape of this file was
+built on it.
+
+**THE CONSEQUENCE, and it is stated here rather than left for a reader to
+notice: STAGE 1 AND STAGE 3 MERGE IN EFFECT.** Stage 1 is defined as what a pilot
+shop needs to trade a normal day and stage 3 as what selling to a stranger needs.
+If the pilot cannot begin until the stranger's deliverables exist, those are ONE
+bar and not two. **Nothing is renumbered and no step is moved.** Every step keeps
+its number, its dependencies and its DONE WHEN; renumbering orphans every
+reference to it, which is the argument that closed the A-, R- and D-numbers
+rather than tidying them. What changes is the CLOCK: no step in stage 3 can any
+longer be read as "after the pilot", and stage 2's steps still depend on a pilot
+that now starts later.
+
+**AND THE OWNER'S OWN TEST IS NOT P2.1.** He will test with his father himself.
+P2.1's criterion is a shop buying real loads on CONSECUTIVE TRADING DAYS, with
+nobody running a request by hand and printed slips handed over. A test the owner
+runs himself does not meet that by being run, however much it teaches — and the
+consecutive days are the clause it cannot meet at all. P2.1 stays open until its
+own criterion is met, and this decision does not lower it.
+
+**S8 — the order is mobile, then desktop, then the provider web, and it is
+SEQUENTIAL.** Not a statement about where attention goes; a statement that each
+waits on the one before it. **The reason is measured rather than preferred.**
+P1.12 restructures the one program that currently works, and Metro has already
+broken once on a nested package
+(`lessons/README.md § Lessons` "metro-file-map-nesting.md"). Starting the desktop
+before the mobile app is finished pays that restructuring risk while the only
+working program is still moving; starting the provider web before the desktop
+creates P1.12's package for a consumer that does not exist yet, and P3.5's own
+DEPENDS ON already says the only shared logic it needs is the Buddhist-era date
+rendering that package carries. This promotes P1.12's internal ordering argument
+to a decision about the whole programme.
+
+**S9 — THREE roles: owner, admin, staff.** The OWNER is whoever activates the
+licence key. They do everything an admin does, for their OWN shop and no other,
+and **the account is TRANSFERABLE**: a shop changes hands and the licence goes
+with the shop rather than with the person who first paid for it.
+
+**TWO ENTRY PATHS, ONE STATE — record that, or a shop will one day have an owner
+and no licence and nobody will know why.** In the interim
+`server/scripts/provision_shop.py` may create an owner; once the provider web
+application exists (P3.5), activating a key creates one. Two paths reaching the
+SAME state is fine. Two paths that can reach DIFFERENT states is the defect, so
+whatever P3.1 settles as licence state has to be written by both paths or by
+neither — and P3.1 is where that belongs, not here.
+
+**WHAT IS TRUE TODAY, so the size of this change is not underestimated.** There
+are TWO roles and not three: migration 0001 creates
+`role text NOT NULL CHECK (role IN ('admin', 'staff'))`
+(`0001_initial_schema.py:100`), and the provisioning script creates an `admin` —
+the "owner role" in step 1 of *The four steps to one paying shop* above is the
+DATABASE role `recycle_owner` it connects as, not a user role — that script's own
+header calls it "a role the API never connects as". The two strings have FOUR
+spellings across the tree and only TWO of them are bound by a MECHANISM
+(`server/app/users.py:351` raises at import when `auth.py`'s pair and the route
+module's `Literal` diverge); the migration's CHECK is bound by a comment, and the
+fourth spelling is on the phone with nothing holding it. That is a review finding
+rather than part of this decision, and it is recorded at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "ADDING AN OWNER ROLE SILENTLY DEGRADES THE MOBILE CLIENT".
+
+**S10 — no new mobile screens until a UX/UI rework, which the owner has said
+comes after the internals.** Schema, API and local storage land now; screens land
+in the rework. A screen drawn now is drawn twice, and the second drawing is not a
+restyle once the state behind it has moved.
+
+**THE ONE EXCEPTION IS A DEFECT THAT MAKES SOMETHING UNUSABLE.** That is an
+exception about repair, not about scope — the add-seller control that did nothing
+on its first press is the shape of it.
+
+**WHAT THIS RULE DOES NOT SAY, and the difference decides whether a step is
+blocked:** it does not defer the WORK a screen will need. A grade default, a
+per-tenant settings home, photo columns and `sellers.created_by` are all
+internals and all land now. What waits is the drawing.
+
+**S11 — every capability SHIPS, and each shop configures it.** The provider is
+not in the loop for a shop's own choices, and the product must not slow a shop's
+workflow in order to ask. **This EXTENDS S6 rather than repeating it.** S6 is
+about the cases where a shop could reasonably work either way; S11 says the same
+of choices that are not either/or, and adds the claim S6 did not have to make — a
+capability every shop can turn on is a capability with a PER-TENANT VALUE behind
+it, so this is a statement about storage before it is one about features.
+
+**LEGAL COMPLIANCE IS THE SHOP'S DECISION; OURS IS TO MAKE IT POSSIBLE.** The
+system must be ABLE to record what a statute requires. Whether a given shop
+records it is that shop's call and that shop's liability. This is what keeps
+unverified legal material out of the schema as a REQUIREMENT while still
+requiring the column to exist — the four limits on the round that raised most of
+it are at
+`OPEN_ITEMS.md § Schema requirements raised by the 2026-08-17 legal research round`
+and are not restated here.
+
+**S12 — photographs are part of the workflow, not an optional practice.** Two
+photographs, with different subjects and taken at different moments:
+
+- **ONE PHOTO PER BILL, showing the goods AND the weight display IN ONE FRAME.**
+  One frame is the requirement rather than a convenience: two pictures prove a
+  weight and some goods and nothing ties the two together.
+- **ONE FACE PHOTO PER SELLER**, taken when the seller is created.
+
+The desktop staff then rechecks the bill against the photo and PRINTS.
+
+**THAT IS S3 UNCHANGED, and it is said explicitly because a reader meeting "the
+desktop rechecks and prints" could conclude the desktop now ISSUES the bill.** It
+does not. The phone creates the bill and the server assigns the doc_no, exactly
+as S3 has it; what the desktop gains is a check before the paper.
+
+**NOTHING ALREADY BUILT IS INVALIDATED BY THIS.** No existing column changes
+meaning, no hard rule moves, and no proof that passes today would have to be
+rewritten to pass tomorrow: hard rule 3's client-minted uuid and server-assigned
+doc_no are untouched, and hard rule 8's write-locally-first is untouched. What
+this ADDS is storage for binary payloads and a path to send them, and the cost of
+that is a review finding rather than a part of this decision — see
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "SIX REVIEW FINDINGS".
+
+**S13 — hosting is the owner's own machine plus a domain and a tunnel, deferring
+a rented server.** Managed database services are DISQUALIFIED BY MEASUREMENT and
+not by price. The measurement is the host checklist's own A-questions, which end
+an evaluation on any single "no" — role creation
+(`ARCHITECTURE.md § 14.8 The checklist` "Can we create our own database roles"),
+a superuser or a role FORCE RLS does not bind
+(`ARCHITECTURE.md § 14.8 The checklist` "Can we obtain a superuser connection"),
+and shell access with the credentials
+(`ARCHITECTURE.md § 14.8 The checklist` "Do we get shell access on the machine")
+— under the conclusion at
+`ARCHITECTURE.md § 14.1 The conclusion` "THIS SYSTEM NEEDS A MACHINE THE PROJECT CONTROLS".
+**Those three are A1, A2 and A5, and they live in § 14.8 rather than in § 14.1**,
+which is the conclusion they support; a brief citing § 14.1 for them is pointing
+one section too high. **No host or product is named here**, per that section's
+own rule, and the choice remains the owner's.
+
+**THE DOMAIN IS THE PART WORTH BUYING EARLY, and that is measured too.**
+`ARCHITECTURE.md § 14.7 What the client requires` "One string, one reader"
+records that `apiBaseUrl` is baked into the BUILD, so moving the API costs a
+rebuild and a redistribution to every handset rather than a setting on a device.
+A NAME outlives a machine; an address does not.
+
+**WHAT THIS DECISION DOES NOT SETTLE.** P1.2's DONE WHEN is untouched and still
+wants the PHONE getting a 200 from an `https://` URL that is not a LAN address,
+AND a scheduled dump fetched off-box and restored. A tunnel is a route, not a
+certificate and not a backup; and D10's constraint — whatever is chosen must
+survive migration, backup and restore without being emptied — applies to a
+machine the owner already owns exactly as it applies to a rented one.
+
 ---
 
 ## Findings this file carries because no other file records them
