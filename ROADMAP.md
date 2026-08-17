@@ -352,6 +352,114 @@ certificate and not a backup; and D10's constraint — whatever is chosen must
 survive migration, backup and restore without being emptied — applies to a
 machine the owner already owns exactly as it applies to a rented one.
 
+**SIX MORE (2026-08-17), TAKEN AGAINST THE SIX REVIEW FINDINGS RATHER THAN
+BEFORE THEM.** S7-S13 were settled first and then attacked; these six are the
+owner's answers to that attack, recorded with the reasoning so they are not
+re-argued. The findings themselves stay where they are and are closed in place,
+at `OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "SIX REVIEW FINDINGS".
+
+**S14 — THE DEVICE OUTBOX BECOMES ONE MECHANISM CARRYING SEVERAL KINDS OF WORK.**
+Finding (a) is accepted, and it lands on the side that REVERSES a cut rather
+than the side that bounds a feature.
+
+**The cost that cut P1.8b was misidentified.** It was read as "the queue would
+need a second ROW TYPE"; what it actually is, is a second HAND-WRITTEN PATH.
+The queue already carries a second kind of work — the void — and the columns
+were the cheap half of doing it. Re-derived 2026-08-17 against the artefacts,
+each count with the command that produced it: **nine void columns** on
+`local_bills` in `mobile/src/adapters/sqlite/schema.ts` (`void_reason`,
+`void_requested_at`, `void_requested_by_tenant_id`, `void_requested_by_user_id`,
+`voided_at`, `void_attempts`, `void_last_error`, `void_refused_at`,
+`void_refused_code`, counted in the CREATE TABLE and matched by nine entries in
+the same file's migration list); a second index `ix_local_bills_void_owed` at
+`:313`; a second outcome union `VoidOutcome` at `mobile/src/sync/types.ts:334`;
+a second `Transport` method `voidBill` at `:400`; and **six void-only methods on
+`LocalStore`** — `requestVoid`, `listVoidsToApply`, `markVoidApplied`,
+`markVoidAttemptFailed`, `markVoidRefused`, `clearVoidRefusals`.
+
+**A photo path built the same way is a THIRD parallel; P1.8b would be a FOURTH.**
+Generalising once makes bill send, bill void, bill photo, seller photo and
+offline seller creation instances of ONE mechanism, and the eighteen
+hand-parallel sites stop growing by one per kind.
+
+**CONSEQUENCE: P1.8b's CUT IS REVERSED.** Its seven-item survey stands UNCHANGED
+and becomes the SPEC of the generalisation rather than the argument against it.
+The reversal is written at P1.8 as well as here, because that is where a session
+reads what the step is.
+
+**AND ONE OPTION WAS NEVER AVAILABLE, which is why this was not a free choice.**
+Hard rule 8 says write locally first, always. A photograph taken at the
+weighbridge is a record, so "photographs upload online only" cannot coexist with
+S12's one-photo-per-bill. A later reader will propose it; this sentence exists to
+answer them.
+
+**S15 — PHOTOGRAPHS LIVE BESIDE THE DATABASE, NOT IN IT.** Finding (b) is
+accepted on its own counter-argument rather than on its arithmetic. A lost bill
+is cash with no record; a lost photograph leaves a bill that still says what was
+bought, from whom, at what price, by whom and when. **The photograph
+CORROBORATES the record and is not the record**, so the two do not need the same
+durability — and that is a statement about what the data IS, which does not rot
+when the size estimate does.
+
+This also keeps P1.2's DONE WHEN performable: a scheduled dump fetched off-box
+and restored with the row counts read back stays a thing a person will actually
+do.
+
+**WHAT S15 DOES NOT SETTLE, and it is most of the engineering:** retention,
+resolution, compression, and where "beside" physically is. **The size arithmetic
+in finding (b) was never measured and must not be carried forward as a fact** —
+that entry labels it the advising session's own figure, and it stays labelled.
+
+**S16 — THE EIGHT PER-TENANT VALUES ARE STORED BY KIND, NOT IN A SETTINGS
+STORE.** Finding (c) is accepted. Scalars become columns carrying their own
+CHECK constraints; the grade model is a per-tenant TABLE replacing a CHECK
+constraint; lump-sum is a change to the bill LINE; shop identity is master data
+on `tenants`.
+
+**NO JSON BAG.** It would be the first value in this schema with no constraint on
+it, in a system whose whole discipline is that a wrong value must be
+unrepresentable. The four named CHECK constraints finding (c) cites are the
+evidence, and they are to be re-derived from the migrations rather than copied.
+
+**S17 — SCHEMA CHANGES ARE PULLED BY THE FEATURE THAT NEEDS THEM, NEVER PUSHED
+AS A SET.** Finding (d) is accepted. D10's real deadline is BEFORE THE FIRST REAL
+ROW, and S7 moved that outward rather than inward, so "all six before the
+desktop" was a deadline this project set itself.
+
+**Two of the six already have a feature pulling them:** `sellers.created_by`,
+because P1.8a made seller creation reachable from the yard and nothing records
+who did it; and the per-tenant grade default, which blocks a whole shop shape
+today. **The other four do not, and they wait.** Per-feature pull is also what
+keeps the UNVERIFIED local-ordinance material out of a migration — that round's
+own four limits are recorded at
+`OPEN_ITEMS.md § Schema requirements raised by the 2026-08-17 legal research round`
+and are not restated here.
+
+**S18 — WHEN THE OWNER ROLE LANDS, THE MOBILE CLIENT LEARNS IT IN THE SAME
+CHANGE. THE FAIL-OPEN IS KEPT.** Finding (e) is accepted as to the defect and
+REJECTED as to the remedy it might suggest.
+
+Today the client's role list holds two values, an unrecognised role parses to
+`null`, and the void gate refuses only a definite staff — so an owner would read
+as UNKNOWN and be offered the void button. **Every one of those is to be
+re-derived from `mobile/src/session/deviceRole.ts` in the pass that implements
+S9; the line numbers in finding (e) are a clue and not a source.**
+
+**The fail-open itself is NOT reversed.** That file's own header argues it:
+enforcement is on the server, and a real admin whose token merely failed to parse
+must not be locked out of the one action that corrects a wrong bill. That
+argument survives a third role. **What must not survive it is the COMMENT
+asserting there are only two roles, with nothing comparing it to the migration.**
+
+**S19 — P2.4 AND P2.5 STAY OPEN UNTIL A REAL SHOP TRADES. NO SUBSTITUTE IS
+INVENTED.** Finding (f) is accepted exactly as it was written — as a statement,
+not as an argument to reinstate the pilot. S7 pushed P2.1 out past all three
+deliverables and those two steps depended on it for their only evidence.
+Inventing a staging substitute would produce evidence about staging, which is
+the one thing both steps already say cannot work. **This is recorded at both
+steps and not only here**, so a later session reading either does not treat it as
+schedulable.
+
 ---
 
 ## Findings this file carries because no other file records them
@@ -1296,6 +1404,26 @@ EXISTING send path already depends on:
   only by a code collision — and a 409 on the send path classifies as
   retry-forever, which would dam the queue behind a seller that already exists.
 
+**SUPERSEDED 2026-08-17 BY S14 — THE CUT IS REVERSED, AND THE SEVEN BULLETS
+ABOVE ARE UNCHANGED BECAUSE THEY ARE NOW THE SPEC.** Nothing in that survey was
+wrong. What was wrong is the conclusion drawn from it: the cost was read as "the
+queue would need a second ROW TYPE", and it is a second HAND-WRITTEN PATH. The
+queue already carries a second kind of work — the void — and doing it that way
+cost nine columns, an index, a second outcome union, a second `Transport` method
+and six store methods, every one of them hand-parallel to the send path.
+
+**So the seventh bullet's arithmetic is the argument FOR generalising, not
+against it.** A photo path built the same way is a THIRD parallel and P1.8b would
+be a FOURTH; the eighteen hand-parallel sites grow by one set per kind for as
+long as each kind is written out by hand. Generalising once makes bill send, bill
+void, bill photo, seller photo and offline seller creation instances of ONE
+mechanism, and each bullet above becomes a requirement that mechanism must meet.
+
+**THIS IS NOT A SCHEDULE.** No P-number is minted here and the generalisation has
+no entry yet — what it is, what it depends on, what it unblocks and its DONE WHEN
+are a planning step's work, not this record's. Read the reversal as: the reason
+P1.8b was cut no longer holds.
+
 ### P1.9 — Price editing on the phone
 
 **What it is.** The shop owner changing a buy price without anyone running a request
@@ -1611,6 +1739,13 @@ manufacturing it would measure the fixture.
 in `PROJECT_STATUS.md § Baseline observations`, or recorded as accepted-unproven with
 the owner's decision beside it. Both outcomes close the step; silence does not.
 
+**S19 (2026-08-17) — THIS STEP IS OPEN UNTIL A REAL SHOP TRADES, AND NO
+SUBSTITUTE WILL BE INVENTED FOR IT.** S7 pushed P2.1 out past all three
+deliverables, so the evidence this step needs does not exist yet and will not
+before then. That is accepted rather than worked around: a staging substitute
+would measure staging, which is exactly what the four items above already say
+cannot reach them. **Do not read this step as schedulable.**
+
 ### P2.5 — What the day actually broke
 
 **What it is.** The step whose content the pilot writes. It cannot be enumerated
@@ -1623,6 +1758,13 @@ here without pretending to know it.
 **DONE WHEN:** every defect the shop reported has a diagnosis with a reproduction,
 or is recorded as not reproduced — with the reproduction established before any
 cause is named (`CLAUDE.md § Workflow` "For any debugging").
+
+**S19 (2026-08-17) — THIS STEP IS OPEN UNTIL A REAL SHOP TRADES, AND NO
+SUBSTITUTE WILL BE INVENTED FOR IT.** The step's own first paragraph says its
+content cannot be enumerated in advance without pretending to know it; S7 moved
+the only thing that could write that content out past all three deliverables.
+Both facts are now recorded together, because a reader meeting one alone could
+conclude the step is merely unwritten. **Do not read this step as schedulable.**
 
 ### P2.6 — The decisions the pilot is the evidence for
 

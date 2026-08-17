@@ -134,6 +134,93 @@ WRITTEN, NOT WORKING. It is also prose and not a mechanism — nothing can
 grep a reply, and the only mechanism in play is the `REPORTS IN:` field
 at the head of a dispatched brief, which travels with the work.
 
+**P-GUARD — 2026-08-17, TWO COMMITS. Docs and one ignore file: no code
+path changed, and the P1.7 record below stays the current CODE phase
+exactly as written.** The two halves are unrelated in subject and were
+run as one phase because their file sets are disjoint.
+
+**Commit 1 — the staging hole.** A third-party skill install (25
+directories under `.claude/skills/`, plus `.agents/` and
+`skills-lock.json`) sat untracked and UNIGNORED while
+`.claude/settings.local.json` pre-approves `Bash(git add *)`, so one
+sweeping stage would have committed somebody else's tree with no
+permission prompt in the way. `git status --porcelain
+--untracked-files=all` counted **152 untracked files** before the
+pattern and **3** after — the three being `ARGUS_MOBILE_READ.md`,
+`COMMIT_MSG.txt` and `UNCOMMITTED_DOCS.diff`, left alone deliberately as
+another session's working files.
+
+- The pattern makes IGNORE the default under `.claude/skills/` and names
+  the nine authored directories back in, so the next install is excluded
+  without anybody remembering. Negation lines matching
+  `^!\.claude/skills/[^/]+/$`: **9**, against **9** directories from
+  `git ls-files .claude/skills | cut -d/ -f3 | sort -u`.
+- MEASURED in a throwaway repository outside the tree, 14 probes over
+  three patterns, every verdict from `git check-ignore -q --no-index`:
+  today's pattern **MISMATCHES=5** and `git add -A` staged **8**
+  third-party paths; the directory form `.claude/skills/` (no star)
+  **MISMATCHES=4**, all nine negations inert; the candidate **0 and 0**.
+  The evidence is the PAIR — the case-A staging number is the control
+  that makes the candidate's zero mean anything.
+- In the real tree, reads only: the tracked set is unchanged
+  (`git ls-files` equals `git ls-tree -r HEAD` for that path, 14 paths,
+  0 differences); 25 must-keep paths kept and 12 must-ignore paths
+  ignored, including the neighbours in the same block — every file under
+  `.claude/agents/`, `hooks/*.py` against `hooks/*.log`, and
+  `settings.json` against `settings.local.json`.
+- **Two mechanisms appended to
+  `lessons/README.md § Lessons` "a-check-that-never-went-red-was-never-observed.md"
+  in ONE amendment**, because both came out of one `Prove:` document on
+  one day under one review and neither was found by running anything.
+  `git check-ignore` consults the INDEX by default, so a TRACKED path
+  reports "not ignored" whatever the patterns say — measured on git
+  2.50.1.windows.1, `-q` exits 1 where `-q --no-index` exits 0 under a
+  deliberately broken pattern, and all nine authored directories are
+  tracked. And a set check that passes on EXCESS: an empty-intersection
+  test catches a file in BOTH commits and is blind to a file in NEITHER,
+  so the phase check is now EQUALITY. A third instance arrived inside
+  the probe itself — the second instrument first printed
+  `STAGED=1 THIRD_PARTY_STAGED=0` because the fixture had already
+  committed every authored file and the stage decided nothing.
+
+**Commit 2 — the six decisions of 2026-08-17, and two findings.** S14 to
+S19 were minted after re-deriving S13 as the highest in use
+(`git grep -ohE "\bS([1-9]|[12][0-9]|30)\b" -- '*.md'` returned S1-S13
+only). Each answers one of the six review findings, which are CLOSED IN
+PLACE with dated closures rather than rewritten: the device outbox
+becomes one mechanism carrying several kinds of work and **P1.8b's cut is
+REVERSED**, its seven-item survey standing unchanged as the spec;
+photographs live BESIDE the database; the eight per-tenant values are
+stored by kind with no JSON bag; schema changes are pulled by the feature
+that needs them; the mobile client learns the owner role in the same
+change that adds it, with the fail-open deliberately kept and re-argued;
+and P2.4 and P2.5 stay open until a real shop trades, recorded at both
+steps.
+
+Two findings recorded, neither repaired: the print gate and the
+photograph disagree about when a slip may be printed, with the negative
+search's own words named; and a raw count inside an acceptance criterion
+rots, which `ROADMAP.md`'s P1.12 already demonstrates at two sites
+against 28 `prove:*` scripts.
+
+**THE SECOND FINDING DEMONSTRATED ITSELF INSIDE THIS PHASE.** The brief
+ordering it recorded `git grep -n "fourteen" -- '*.md'` as **seven**
+sites; re-derived after commit 1 it is **nine** — the two extra being the
+word "fourteenth" in the lesson commit 1 amended and in its generated
+copy. The count moved by the phase's own first commit, in the day it took
+to write the entry about counts moving.
+
+**WHAT THIS PHASE DID NOT ESTABLISH.** Commit 1 does not prevent a
+sweeping stage; it removes what such a stage would have swept, and
+`git add -A` remains pre-approved. **No mechanism enforces any of the six
+decisions** — a decision recorded is not a decision implemented, no
+P-number was minted for the outbox generalisation, and no code exists on
+either side of either finding. The citation checker over its eight
+sources read `SOURCES=8 CITATIONS=346 BROKEN=7` before commit 1; all
+seven pre-date this phase, proven by the handle
+"prove_reconcile.py back to green" returning 0 hits against
+`git show HEAD:ROADMAP.md`.
+
 **THE FIRST BILL EVER TO TRAVEL DEVICE → SERVER — 2026-08-17.** It is
 recorded here because it is in no tracked file at all: the row is in the
 DEV database and the observation existed only in a conversation. This is

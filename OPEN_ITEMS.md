@@ -2448,6 +2448,14 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   P1.8b. *Not done:* nobody has decided which. *Unblocks:* the owner picking the
   criterion before either is scheduled.
 
+  **CLOSED 2026-08-17 by S14** (`ROADMAP.md § What the owner has settled` "S14 — THE DEVICE OUTBOX BECOMES ONE MECHANISM").
+  The criterion is ONE mechanism for all kinds, and it resolves on the side that
+  REVERSES the cut: P1.8b returns. The finding's diagnosis was sharpened in the
+  answering — the cost was never a second ROW TYPE, it is a second HAND-WRITTEN
+  PATH, which is why the seven-item survey stands unchanged and becomes the spec
+  rather than the objection. **No P-number was minted:** what is recorded is that
+  the reason for the cut no longer holds, not a step that builds the replacement.
+
   **(b) STORING PHOTOGRAPHS IN THE DATABASE MAY MAKE P1.2's OWN ACCEPTANCE
   CRITERION IMPRACTICAL.** That criterion is
   `ROADMAP.md § P1.2 — A server a shop can reach` "schedule nobody triggered by hand has been fetched from off-box"
@@ -2466,6 +2474,15 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   different retention and a different backup. *Not done:* undecided, and
   unmeasured. *Unblocks:* one measurement — a real photograph at a chosen
   resolution, times the bills a day.
+
+  **CLOSED 2026-08-17 by S15** (`ROADMAP.md § What the owner has settled` "S15 — PHOTOGRAPHS LIVE BESIDE THE DATABASE").
+  Photographs live BESIDE the database, not in it. **It was closed on this
+  entry's own counter-argument and not on its arithmetic** — the photograph
+  corroborates the record and is not the record, which is a claim about what the
+  data IS and does not rot when a size estimate does. **The unmeasured figure
+  above stays labelled as unmeasured and must not be carried forward as a fact.**
+  Retention, resolution, compression and where "beside" physically is are all
+  still open and belong to whoever plans the photo path.
 
   **(c) "A SETTINGS STORE" IS MORE MACHINERY THAN THE EIGHT ITEMS NEED.** Read as
   DATA rather than as a feature, the eight are not one thing: shop identity is
@@ -2488,6 +2505,14 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   piece of luck here. *Unblocks:* the owner choosing, before the first capability
   invents its own private place to keep a flag.
 
+  **CLOSED 2026-08-17 by S16** (`ROADMAP.md § What the owner has settled` "S16 — THE EIGHT PER-TENANT VALUES ARE STORED BY KIND").
+  Columns, not a store: scalars become columns with their own CHECK constraints,
+  the grade model becomes a per-tenant TABLE replacing a CHECK constraint,
+  lump-sum is a change to the bill LINE, and shop identity is master data on
+  `tenants`. **No JSON bag.** The four named CHECK constraints above are the
+  evidence for that discipline and are to be re-derived from the migrations
+  rather than copied from this entry.
+
   **(d) "ALL SIX SCHEMA CHANGES BEFORE THE DESKTOP" IS A SELF-IMPOSED DEADLINE.**
   D10's real deadline is BEFORE THE FIRST REAL ROW —
   `ROADMAP.md § The decisions the ordering forced` "D10 — the pilot runs on the production database"
@@ -2501,6 +2526,14 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   that needs it rather than pushed as a set. *Not done:* the set is being treated
   as one deliverable. *Unblocks:* the owner accepting per-feature pull, which also
   keeps the unverified local-ordinance material out of a migration.
+
+  **CLOSED 2026-08-17 by S17** (`ROADMAP.md § What the owner has settled` "S17 — SCHEMA CHANGES ARE PULLED BY THE FEATURE THAT NEEDS THEM").
+  Per-feature pull is accepted. **Two of the six already have a feature pulling
+  them** — `sellers.created_by`, because P1.8a made seller creation reachable
+  from the yard and nothing records who did it, and the per-tenant grade default,
+  which blocks a whole shop shape today. The other four wait for a feature. This
+  is also what keeps the unverified local-ordinance material out of a migration,
+  by the route this entry already named.
 
   **(e) ADDING AN OWNER ROLE SILENTLY DEGRADES THE MOBILE CLIENT, and it works
   today only by a fail-open default chosen for an unrelated reason.** The client's
@@ -2526,6 +2559,16 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   `OPEN_ITEMS.md § Code debt found and left in place` and is cross-referenced
   rather than moved.
 
+  **CLOSED 2026-08-17 by S18** (`ROADMAP.md § What the owner has settled` "S18 — WHEN THE OWNER ROLE LANDS, THE MOBILE CLIENT LEARNS IT").
+  The client is taught the third role in the SAME change that adds it. **The
+  fail-open is deliberately KEPT, and it was re-argued rather than inherited:**
+  enforcement is on the server, and a real admin whose token merely failed to
+  parse must not be locked out of the one action that corrects a wrong bill —
+  which holds for three roles as it did for two. What does not survive the third
+  role is the comment asserting there are only two, with nothing comparing it to
+  the migration. **Every line number in this entry is a clue and is to be
+  re-derived in the pass that implements S9.**
+
   **(f) REMOVING THE MID-PROJECT PILOT REMOVES THE ONLY INPUT TO P2.4 AND P2.5,
   AND NOTHING REPLACES IT.**
   `ROADMAP.md § P2.4 — The residues only real volume can settle` "that no amount of staging"
@@ -2539,6 +2582,147 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   those two steps are fed by, or the acceptance that both stay open until the
   first real shop trades. *Not done:* no replacement is named anywhere. *Unblocks:*
   the owner saying which.
+
+  **CLOSED 2026-08-17 by S19** (`ROADMAP.md § What the owner has settled` "S19 — P2.4 AND P2.5 STAY OPEN UNTIL A REAL SHOP TRADES").
+  The second option is taken: both steps stay open until a real shop trades, and
+  no substitute is invented. **The finding was accepted exactly as written** — as
+  a statement rather than as an argument to reinstate the pilot, which is the
+  distinction it drew about itself and which the answer preserves. Inventing a
+  staging substitute would produce evidence about staging, which is the one thing
+  both steps already say cannot reach them. The acceptance is recorded at both
+  steps and not only in the decision, so a session reading either one is told
+  there.
+
+- **THE PRINT GATE AND THE PHOTOGRAPH DISAGREE ABOUT WHEN A SLIP MAY BE PRINTED,
+  AND NO FILE SAYS WHICH WINS.** Found 2026-08-17 while recording S14-S19; a
+  FINDING with a decision owed, not a task, and nothing here is authorised.
+
+  S12 has the desktop staff recheck the bill against the photograph and PRINT
+  (`ROADMAP.md § What the owner has settled` "The desktop staff then rechecks the bill against the photo"),
+  while P1.17's DONE WHEN gates printing on a SYNCED bill and does not mention a
+  photograph at all
+  (`ROADMAP.md § P1.17 — Thermal slip printing from the desktop` "asked to print a bill").
+  Hard rule 8 means the photograph is written locally first and therefore arrives
+  AFTER the bill, by a gap with no bound — the first bill this system ever synced
+  was weighed in airplane mode. **So the desktop can hold a bill it is entitled to
+  print and a photograph that has not arrived**, and the two sentences give
+  opposite answers about what it should do.
+
+  *Contradicts:* S12 against P1.17's DONE WHEN. *The decision owed:* whether the
+  print gate waits for the photograph, prints without it, or prints with a mark
+  saying the photograph is not yet here. *Not done:* recorded only; P1.17's DONE
+  WHEN is untouched and no code exists on either side. *Unblocks:* P1.17 being
+  implementable without its author choosing this by accident.
+
+  **THE NEGATIVE CLAIM, WITH ITS WORDS NAMED.** Searched case-insensitively with
+  ripgrep over `ROADMAP.md`, `OPEN_ITEMS.md`, `PROJECT_STATUS.md`,
+  `ARCHITECTURE.md` and `SRS_MAP.md` for `photo|photograph|image|picture|attach`:
+  50 lines. Of those, exactly **two** also carry `print|slip|esc/pos`, and they
+  are the two quoted above — **and the second is a DIFFERENT SENSE of the word**,
+  where "photographed" means photographing the printed slip as evidence, not the
+  bill's photograph. So the two subjects meet nowhere. **"Not found with these
+  words" is not "there is none"**; a reader who widens the search and finds a
+  governing sentence should correct this entry rather than assume it was thorough.
+
+- **A RAW COUNT INSIDE AN ACCEPTANCE CRITERION ROTS, AND ONE ALREADY HAS.**
+  Found 2026-08-17. RECORDED, NOT REPAIRED.
+
+  `ROADMAP.md § P1.12` requires "all **fourteen** `prove:*` scripts" in two
+  places — its dependency clause and its DONE WHEN. Counted 2026-08-17 by
+  `grep -oE '"prove:[^"]+"' mobile/package.json`, unique matches: **28**. That
+  pattern matches a script NAME and would also match one script's name appearing
+  inside another's command line, so re-derive it and say what you counted.
+  **Nothing went red when the suite grew.** The criterion simply stopped
+  describing it, and a step's DONE WHEN is the sentence this project uses to
+  decide a step is finished.
+
+  **THE DEFECT IS NOT THE DIGIT.** Replacing "fourteen" with 28 commits the same
+  defect with a fresher value: 28 will rot exactly as 14 did, silently, and the
+  next reader gets no more warning than this one had. What is wrong is that an
+  acceptance criterion carries a RAW COUNT with nothing to announce that it
+  turned.
+
+  **THREE REPAIR FORMS, AND THIS REPOSITORY ALREADY CONTAINS ALL THREE.**
+  *(i) Anchor it to a commit.* `ROADMAP.md` line 1192 reads "Measured at
+  `16a1938`, fourteen statements in the local store select rows by predicate" —
+  anchored, therefore a statement about a moment that has already happened,
+  therefore true for ever. It is roughly three hundred lines from the two wrong
+  ones, in the same file.
+  *(ii) Name the SET and its SOURCE so the number is PRODUCED, not stored.* "every
+  `prove:*` script declared in `mobile/package.json`, counted at the moment it is
+  run" cannot rot, because it is a rule for producing the number rather than the
+  number. The count then belongs in the RUN'S REPORT and never in the criterion.
+  This is the form P1.12 should take.
+  *(iii) Confine the count to ONE site and declare in that same sentence that it
+  is the only one.* `lessons/a-check-that-never-went-red-was-never-observed.md`
+  does exactly this at its head, **and it does so because the defect had already
+  happened THERE**: the count used to live in three headings and in that file's
+  index line, all four rotted together as the body grew from four to nine, and
+  the index line ended up reading "Six mechanisms" and "a NINTH mechanism" in one
+  sentence. This form does not stop a number going stale; it makes going stale a
+  one-line edit instead of a four-site sweep nobody completes. **Reach for it when
+  prose genuinely needs a number.**
+
+  `:1523` and `:1538` use none of the three, and they are two sites for one
+  number — the exact shape that rotted in that lessons file.
+
+  **THE DIVIDING LINE, AND IT IS WORTH MORE THAN THE FINDING.** The next reader
+  will meet a raw count in a criterion again, and the question is not *"is there a
+  number"* but **"CAN THIS SET GROW?"** A count is SAFE when the set is closed by
+  a definition somebody else owns — "all three programs" is the three deliverables
+  of S1, part of the architecture rather than the result of a measurement. It is
+  SAFE FOR A SECOND REASON when the set is enumerated in the same sentence, as
+  `ROADMAP.md`'s "all four" is by the four readers named immediately after it:
+  that set can grow, but the growth is VISIBLE, because anyone adding a fifth is
+  looking at a list of four rather than at a bare digit. **It ROTS when the count
+  is bare and the WORK adds to the set**, which is what `prove:*` is — it grows
+  every phase and nothing announces it.
+
+  **AND A SAFE NUMBER CAN BE DEMOTED, WHICH IS WHY THE RULE IS A QUESTION AND NOT
+  A LIST.** `ROADMAP.md`'s "all four tiers" is safe TODAY because the grade set is
+  closed — **and it is closed in FOUR places**: `product_prices.grade` and
+  `purchase_bill_items.grade` CHECKs in `0001_initial_schema.py`,
+  `ck_sellers_grade` in `0003_move_grade_to_sellers.py`, and
+  `Grade = Literal["A","B","C","D"]` in `server/app/master.py`, whose neighbouring
+  comment says in its own words that it mirrors the CHECKs so a bad grade is a 422
+  rather than a CheckViolation 500. **S16 opens all four**, because the grade
+  model becomes a per-tenant table and the first of the eight per-tenant values is
+  how many tiers there are, what they are called, and whether tiers exist at all.
+  **The fourth site is not merely a fourth copy:** a `Literal` is a compile-time
+  type, and a set a shop chooses at run time cannot be one, so S16 does not just
+  invalidate a count there — it removes the form the constraint is expressed in.
+  Re-derive all four before acting on any of it.
+
+  **ONE CONSEQUENCE NAMED AND DELIBERATELY NOT ANSWERED**, because it belongs to
+  whoever plans S16: the second of those four sites is on `purchase_bill_items`, a
+  HISTORICAL BILL LINE, which hard rule 5 forbids deleting and hard rule 6 forbids
+  recomputing. Old lines will carry grades a shop may later stop defining.
+
+  **DO NOT SWEEP BY THE WORD. NAME THE SITES BY LINE NUMBER, AND RE-DERIVE THEM.**
+  `git grep -n "fourteen" -- '*.md'` returned **nine** sites on 2026-08-17 *after*
+  this phase's own first commit — the brief that ordered this entry said seven,
+  and the two extra are the word "fourteenth" in the lesson amended by commit 1
+  and in its generated copy. **The count moved inside the phase that records the
+  finding, which is the finding.** Only two are in this class. The other seven
+  must be left alone: the pinned one at `ROADMAP.md:1192`; two dated observation
+  records in `PROJECT_STATUS.md`, which the pin-a-claim convention's own fallback
+  for status files permits; "fourteen HOURS" in
+  `lessons/a-stored-future-instant-is-a-promise-about-a-clock.md`, a unit of time
+  and not a count of anything; and the ordinal in the amended lesson — each of
+  those last three also appearing in `lessons/all-lessons.md`, which is
+  GENERATED by `server/scripts/build_all_lessons.py`, so a hand edit there is
+  overwritten on the next build and leaves the two copies disagreeing meanwhile.
+  **Those are where a find-and-replace kills most quietly**, because nobody
+  re-reads `lessons/` while editing `ROADMAP.md`, and the generated copy is not a
+  file anyone reviews at all.
+
+  *Contradicts:* nothing — it is a defect rather than a disagreement. *The
+  decision owed:* which of the three forms P1.12's criterion takes. *Not done:*
+  recorded, not repaired; repairing it rewrites a step's acceptance criterion and
+  belongs to whoever plans that step. *Unblocks:* that rewrite, and a survey with
+  a named scope — **criteria that count a set the work can add to** — which has
+  been run over `ROADMAP.md` and has NOT been run over `PROJECT_STATUS.md`,
+  `SRS_MAP.md` or `ARCHITECTURE.md`.
 
 - **SHOULD A TYPED SHOP CODE BE CASE-NORMALISED? A PRODUCT DECISION, NOT A BUG,
   and it is deliberately not settled in code.** `ck_shop_code` admits only
