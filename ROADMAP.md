@@ -1077,6 +1077,44 @@ are already in the closed R log — so this mints **no new P-number** and
 the server route (landed `2f88403`), the client wire (landed `826e4ee`), the
 screen, the handset.
 
+**P1.8a's DONE WHEN IS MET — 2026-08-17. THE CRITERION IS NOT REWRITTEN.** It
+was met AS WRITTEN, which is the ordinary case and the one this file rarely
+gets to record. Clause by clause, each closed by an observation and not by an
+argument, every figure re-derived from Postgres or from git in the closing
+pass rather than copied from the phase report that produced it:
+
+- *a **staff** (not admin) session creates a seller from the handset* — the
+  running server's own log carries `POST /auth/login` 200 followed by
+  `POST /sellers` **201 Created**, from the handset at `192.168.1.6`. Seller
+  `S006` / `somkid`, id `e06c6280-a4fa-4e74-abd2-4d64b588367a`, is in
+  `recycle` with `grade` NULL at creation and the code SERVER-ASSIGNED: the
+  code box was left blank, so the client had nothing to send and the
+  generate-then-retry assigner minted it from the previous maximum `S005`.
+- *a bill for that seller posts and comes back with a doc_no* — bill
+  `54b8b684-7119-436c-b3be-99d051e2a86d` carries `B-2569-382`, and the
+  `doc_no_counters` row for be_year 2569 moved **381 → 382**. The counter's
+  MOVEMENT is the claim and not the doc_no's existence: it is what says no
+  number was burned and none skipped. The bill was refused 424 first, parked
+  on the device with no number, and took 382 only on the retry after an admin
+  set the grade — which is the mechanism working, not a degradation.
+- *a staff token is still refused on a price write in the same pass* — a
+  STAFF token was driven at `PUT /products/{product_id}/prices/{grade}` and
+  answered **403**, `code=admin_required`, `actual_role=staff`. `AL-CAN`
+  grade C read `43.00` out of Postgres before and after, all four tiers
+  intact. The same token answered **200** to `GET /products` in the same run,
+  which is the control that makes the 403 evidence about the ROLE rather than
+  about a dead token, a wrong base URL or an unrouted path.
+
+**THE THIRD CLAUSE WAS DRIVEN IN THE SAME PASS AS THE FIRST TWO, which is what
+it demands and what the earlier evidence could not supply.** `2f88403`'s own
+proof had already shown that refusal, but a proof run on another day is a
+different pass. The clause exists to show that the gate which ADMITTED staff to
+`POST /sellers` did not also admit them to pricing, and only one pass crossing
+both routes can show that about one running server.
+
+**P1.8b — offline seller creation — is untouched by this closure and remains
+outstanding. Its survey below stands exactly as written.**
+
 **P1.8b — OFFLINE SELLER CREATION, AND IT IS A SUBSYSTEM RATHER THAN A
 FOLLOW-UP.** Measured 2026-08-17 by a read-only survey. The split is not
 arbitrary, and the reason is that every item below is a change to something the

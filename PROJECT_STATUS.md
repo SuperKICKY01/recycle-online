@@ -206,6 +206,85 @@ is OFFLINE and is a subsystem.
   and has never been seen; and every call is sequential, so
   `code_assignment_failed` has never been produced by a real race.
 
+**P1.8a IS COMPLETE — PHASES 3 AND 4, AND THE DONE WHEN IS MET AS WRITTEN.
+2026-08-17.** Four commits and a device pass. The commits, each sha and
+subject re-derived with `git log --no-walk` in this closing pass and not
+copied from a brief:
+
+| commit | subject |
+|---|---|
+| `2f88403` | feat(P1.8a): staff can create a seller, and the server assigns its code |
+| `826e4ee` | feat(P1.8a): a client creates a seller, and the outcome comes back classified |
+| `dc31353` | docs(lessons): an eleventh mechanism — the check went red, and red is not one state |
+| `7b9a002` | feat(P1.8a): the yard adds a seller, and eight outcomes each say a different thing |
+
+- **Phase 3, `7b9a002` — the screen.** `app/AddSellerSheet.tsx` draws, and
+  `src/master/sellerCreateNotice.ts` decides: eight outcomes, eight
+  sentences, the call site a REQUIRED argument so a second screen cannot
+  inherit the yard's wording. The form has NO grade field, and that absence
+  is the mechanism rather than an omission — a grade picker at the
+  weighbridge is re-pricing the shop wearing a different label.
+- **Phase 4, 2026-08-17 — THE DEVICE PASS. No commit; it observes.** Run on
+  this project's own Android DEBUG build against a LAN address. **That is a
+  TEST artefact and not a shipped one**, and every sentence below is bounded
+  by it.
+
+**WHAT THE HANDSET DID, read out of Postgres and never off a screen:**
+
+- Seller **`S006`** / `somkid`, id `e06c6280-a4fa-4e74-abd2-4d64b588367a`,
+  created FROM THE HANDSET by the **STAFF** account. Its code is
+  **SERVER-ASSIGNED**: the code box was left blank, so the draft carried no
+  `code` key at all and the server minted `S006` from the previous maximum
+  `S005`. The owner filled only the required name — `phone`, `id_number`,
+  `address` and `vehicle_no` are all NULL.
+- Bill **`54b8b684-7119-436c-b3be-99d051e2a86d`**, doc_no **`B-2569-382`**,
+  counter **381 → 382**.
+- `created_by` is **`bef92d61-a02e-412b-abfd-0ed144f6c4ed`, the STAFF
+  account — NOT `35d09981-f42a-4eae-8b29-6059dd224eeb`, the admin who set
+  the grade.** Migration 0006 records the SUBMITTING session, and the retry
+  carried the staff token, so the person who bought the load is on the row
+  and the person who fixed the master data is not.
+- `unit_price` **1.00** against `list_price` **43.00**. **THE FIRST BILL IN
+  THIS PROJECT WHERE THE TWO COLUMNS DIFFER**, and therefore the first row on
+  which that audit trail has ever carried information. The operator typed a
+  price while the seller had no grade and so no tier to default from; the
+  server stamped `list_price` from `product_prices` at posting time, by which
+  point a grade existed. `amount` 20.00 = `net_weight` 20.000 × `unit_price`,
+  recomputed IN POSTGRES rather than by importing the application's helper.
+- `device_created_at` `07:53:23+00` against `server_received_at`
+  `08:14:38+00` — **21m15s apart, and THAT GAP IS THE PARKING**, not a defect
+  and not a clock problem. Hard rule 7 kept both, so the purchase still says
+  it happened when the truck was on the scale.
+- Grade **C** set by an admin over HTTP, `PATCH /sellers/{id}`, because there
+  is no screen for it on any surface. **IT IS A TEST VALUE AND NOT A POLICY** —
+  whether a shop uses grades at all, let alone what a walk-in gets, is a
+  per-tenant question with no home in the schema.
+
+**THE PARKED CARD WAS VERIFIED CHARACTER-IDENTICAL AGAINST
+`mobile/src/sync/parkedReason.ts`, and this is the first time.** Badge, the
+cause sentence, the reassurance and the staff void note all matched their
+source literals exactly, and the card's `17/08/2569 14:53` agrees with
+`device_created_at` — a value the screen and the row could not have taken from
+each other. **The 2c-6 defect this renderer exists for is CONFIRMED ABSENT on a
+device, by a person**: no `ผิดพลาด`, no status number, no JSON, no seller uuid,
+and no `รหัส:` line, the last because the code was recognised.
+
+**WHAT IT DOES NOT ESTABLISH, and this half is not optional:**
+
+- **2 of the 8 create-outcomes have been reached on a device** — `created`,
+  and `forbidden` **only against a STALE SERVER** running code that predated
+  the gate change (`CLAUDE.md § Boot check` "WHICH CODE THE SERVER IS RUNNING").
+  `forbidden` is UNREACHABLE on this route today. **Not one of the eight has
+  had its wording quoted back verbatim by the person who saw it.**
+- **The card promises the system sends by itself once the office fixes the
+  data. THAT WAS NOT OBSERVED.** The retry was pressed on instruction, so what
+  is known is that it sends WHEN PRESSED. A wait is a promise about the future
+  exactly as much as a button is.
+- **The unpark rendering was never quoted.** The row proves the bill landed;
+  what the operator saw on the card as it changed is unobserved.
+- **Every walk-in here needed an office action with NO SCREEN behind it,
+  performed over HTTP by a developer. THAT IS A TEST, NOT A WORKFLOW.**
+
 **P1.7 IS COMPLETE. ALL SEVEN STEPS. 2026-08-11, `959f22d`.** This block
 SUPERSEDES every P1.7 entry below as the current phase; each is left exactly as
 written and was true when written.

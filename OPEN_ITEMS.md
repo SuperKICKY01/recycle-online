@@ -43,6 +43,32 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Blocking one real paying shop
 
+- **A SHOP THAT DOES NOT USE GRADES CANNOT USE THIS SYSTEM — found by the
+  P1.8a device pass, 2026-08-17, and it is the widest consequence that pass
+  produced.** A seller with no grade PARKS every bill sold against them until
+  somebody at the office sets one: `server/app/bills.py` refuses the post with
+  a resolvable 424 `seller_grade_unset`, because the grade is what selects the
+  `product_prices` tier. That is correct for a shop that grades. **For a shop
+  that prices one product one way for everyone it is a block on EVERY
+  WALK-IN** — and the walk-in is precisely the case P1.8a was built for, so
+  the step that unblocked walk-ins re-blocks them for this shop shape.
+  **THREE SHOP SHAPES EXIST AND ONE IS SERVED WELL:** grades that matter
+  (served); no grades at all (an office round trip per walk-in); grades with a
+  standard tier for walk-ins (an office round trip per walk-in). Today that
+  round trip has NO SCREEN behind it on any surface — it was performed over
+  HTTP by a developer in the pass that found this.
+  *Not done:* nothing at all. It is a **PER-TENANT POLICY WITH NO HOME IN THE
+  SCHEMA** — no column, no table, and no default to put one in.
+  *Unblocks:* it is the first real consumer of the per-tenant settings
+  foundation already queued under
+  `OPEN_ITEMS.md § Schema requirements raised by the 2026-08-17 legal research round`,
+  and that entry is cross-referenced rather than restated: it argues the
+  foundation from STORAGE, and this is the feature that cannot be built
+  without it.
+  **WHY IT IS IN THIS SECTION AND NOT UNDER BUSINESS QUESTIONS:** it is not a
+  question anyone must answer before work can start. The behaviour is measured
+  and it stops a real shop shape from trading.
+
 - **~~NO STAFF ACCOUNT EXISTS AND THERE IS NO WAY TO CREATE ONE — measured
   2026-08-10, not inferred.~~ — THE SECOND HALF IS CLOSED, THE FIRST STANDS.**
   The measurement below is left exactly as taken: at `a73c264` the API declared
@@ -355,6 +381,26 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   is empty. *Unblocks:* same decision as the master-data screens.
 
 ## Verification gaps — built, not proven
+
+- **TWO THINGS THE P1.8a DEVICE PASS DID NOT OBSERVE, 2026-08-17 — and both
+  are about the SAME card, which is why they are one entry rather than two.**
+  The bill landed and the row is in `recycle`; what is missing is what a
+  person saw.
+  **(a) THE AUTOMATIC SEND IS UNVERIFIED.** The parked card promises
+  `เมื่อสำนักงานแก้ให้แล้ว ระบบจะส่งเองอัตโนมัติ` — that the system will send
+  the bill itself once the office fixes the data. What was actually observed
+  is that it sends WHEN PRESSED: the owner was instructed to press
+  `ส่งอีกครั้ง`, so the engine's own retry interval was never allowed to be
+  the thing that fired. **A wait is a promise about the future exactly as much
+  as a button is**, and this one has never been kept in anyone's sight.
+  **(b) THE UNPARK RENDERING HAS NEVER BEEN QUOTED BY ANYONE.** The PARKED
+  state was captured before the press; the state after it was not. The row
+  proves the bill landed and says nothing about what the card said as it
+  changed — and a card still reading `รอสำนักงาน…` over a bill that now
+  carries a doc_no is exactly the shape this project keeps finding.
+  *Done when:* ONE staging closes both — park a bill on a grade-less seller,
+  set the grade from the office, **press nothing**, and quote the card before
+  and after.
 
 - **NOTHING NOTICES A FIFTH `master_data_missing` CODE. The client mapping is
   complete at `e836073` and nothing keeps it complete — recorded 2026-08-13,
@@ -1058,6 +1104,69 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   because the removal is unconditional rather than per field.
 
 ## Code debt found and left in place
+
+- **THE ADD-SELLER SHEET DOES NOT APPEAR ON THE FIRST PRESS — diagnosed
+  2026-08-17 from the source, not guessed from the symptom, and NOT
+  REPAIRED.** Two sibling `<Modal>` components — `mobile/app/SellerPicker.tsx:105`
+  and `mobile/app/AddSellerSheet.tsx:205` — are rendered as SIBLINGS at
+  `mobile/App.tsx:1830` and `mobile/App.tsx:1850`, each with its own `visible`
+  prop (`pickerOpen`, `addSellerOpen`). `onAddSeller` at `mobile/App.tsx:1839`
+  sets the second WITHOUT closing the first, and iOS will not present a second
+  modal while the first is up.
+  **SYMPTOM, reported by the owner and CONSISTENT rather than intermittent:**
+  the `+ เพิ่มผู้ขาย` control does nothing on the first press; pressing `ปิด`
+  to dismiss the picker makes the sheet appear. **That the sheet appears on the
+  DISMISSAL is what proves the state was already set** — nothing is wrong in
+  the handler, only in the presentation.
+  **NO HEADLESS PROOF CAN SEE THIS.** It is native presentation behaviour, and
+  `mobile/tsconfig.node.json` sets `rootDir: "src"`, so nothing under `app/`
+  reaches the proof program in any case. What IS provable headlessly is the
+  INVARIANT — the picker must be closed while the sheet is open. The BEHAVIOUR
+  needs a device.
+  *Not done:* three fix shapes, and **the trap is in the second**. (1) Render
+  the sheet INSIDE the picker's Modal. (2) Close the first before opening the
+  second — **ON iOS A SAME-TICK SWAP OFTEN STILL FAILS**, because the
+  dismissal has to COMPLETE before the next presentation is accepted; this is
+  the fix that looks obvious and is the one most likely to HALF-work, which is
+  worse than not working because it will pass a hurried check. (3) One Modal
+  whose content is switched.
+
+- **THE SAVE CONFIRMATION CONTRADICTS ITSELF — two boxes, two centimetres
+  apart on one screen. Found 2026-08-17, NOT REPAIRED.** Both live in
+  `mobile/app/ConfirmSaveDialog.tsx` and each is internally correct:
+  - `:86-88`, red, rendered ONLY when the seller has no grade —
+    `ผู้ขายรายนี้ยังไม่มีเกรด — บันทึกได้ แต่บิลจะค้างรอสำนักงานกำหนดเกรดก่อนจึงจะส่งเข้าระบบ`
+  - `:99-101`, amber, rendered UNCONDITIONALLY —
+    `บันทึกแล้วจะส่งเข้าระบบทันที แก้ไขไม่ได้ — หากผิดต้องยกเลิกบิลและออกใบใหม่`
+  One says the bill will WAIT for the office before it enters the system; the
+  other says that once saved it goes in IMMEDIATELY. The amber string is a
+  constant with no `sellerGrade` in it, so **neither renderer knows the other
+  exists** — the shape
+  `lessons/correct-classification-can-still-render-as-an-error.md` was written
+  for: one card, two renderers, each right on its own.
+  *Consequence is MILD, and it is stated so nobody over-prioritises this:* the
+  operator saves either way, and the status strip corrects the claim seconds
+  later.
+  **WHAT MUST SURVIVE INTO THE PLANNED UX REWORK IS THE STRUCTURE, NOT THE
+  WORDING.** A rework that rewrites both sentences without knowing the cause
+  reproduces the contradiction in new words.
+
+- **THE `forbidden` SENTENCE PROMISES SOMETHING THE SYSTEM CANNOT DO — found
+  2026-08-17, NOT REPAIRED.** `mobile/src/master/sellerCreateNotice.ts` tells
+  the operator to have the shop owner open a permission for this account:
+  `ต้องแจ้งเจ้าของร้านให้เปิดสิทธิ์ให้บัญชีนี้`. **There is no permission to
+  open.** Measured in `recycle`: `users_role_check` is
+  `CHECK ((role = ANY (ARRAY['admin'::text, 'staff'::text])))` — **two values,
+  not a permission system.** The owner's only available move is to make that
+  person an ADMIN, which grants voiding, pricing and user management wholesale
+  — so the instruction asks for a granularity that does not exist and, taken
+  literally, gets somebody over-privileged.
+  *Not urgent:* the sentence is UNREACHABLE on this route today, because
+  `POST /sellers` sits behind `get_principal` and no role is refused there, so
+  nobody can currently be handed the wrong instruction. It is in the tree and
+  it is wrong.
+  *Not done:* the wording should speak of changing a ROLE rather than opening
+  a permission, and must not promise a granularity the schema does not have.
 
 - **A UVICORN PAIR HAS BEEN SERVING THIS REPOSITORY'S OWN API ON 127.0.0.1:8137
   SINCE 2026-08-07, RUNNING CODE THAT PREDATES SEVERAL COMMITS — and two of the

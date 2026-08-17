@@ -455,6 +455,35 @@ The incidents behind three of these observables are in
   produces the reading — not afterwards to check, because by then the
   reading is already in the notes. State the bundle in the observation
   itself, the way a proof states its commit.
+- **WHICH CODE THE SERVER IS RUNNING — the same question the entry above
+  asks about the handset, at the other end of the same request, and this
+  section carried only one of the two until 2026-08-17.** A long-running
+  server serves the code it IMPORTED AT STARTUP. Without `--reload`
+  nothing re-imports, so the files on disk and the objects inside that
+  process are two different things, and a CLEAN `git status` says
+  nothing whatever about what an interpreter read hours ago. It lies in
+  the same expensive direction as the bundle entry: the RESPONSE becomes
+  evidence about source that is not running, so a correct and committed
+  change reads as broken, and every inspection of that code comes back
+  innocent.
+  MEASURED 2026-08-17. `POST /sellers` answered 403 twice to a staff
+  token from the handset, and it read as a gate defect. The process had
+  started 01:21:23; the commit moving that route off `require_admin`
+  landed 12:07:08 — ten hours and forty-six minutes later. A whole
+  device pass was spent before anybody looked at the process.
+  Observable, and BOTH HALVES ARE NECESSARY AND NEITHER IS SUFFICIENT:
+  the running process's start time postdates the commit under test, AND
+  the tree is measured clean at that commit. A conjunction of necessary
+  conditions is still not a sufficient one — ONLY A REQUEST THROUGH THE
+  CHANGED PATH proves the changed code is live, and here that was
+  `POST /sellers` answering 201 where it had answered 403.
+  WHY IT LIVES HERE AND NOT IN `lessons/`, so a later reader does not
+  move it: Boot check loads unconditionally, while a lesson loads only
+  when its index line touches the task — and this touches every task
+  that judges a server response. It is also not the first instance; the
+  same class is already queued at
+  `OPEN_ITEMS.md § Code debt found and left in place` "A UVICORN PAIR HAS BEEN SERVING THIS REPOSITORY'S OWN API ON 127.0.0.1:8137"
+  — a different process, the same class, and that one is still alive.
 - **`JWT_SECRET` is set in `server/.env`.** It has no default by
   design and the API refuses to start without one; a default value
   would be a default IDENTITY.
