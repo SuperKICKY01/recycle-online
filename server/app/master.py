@@ -1,9 +1,10 @@
-"""Master data: reads for any signed-in user, writes for ADMINS ONLY.
+"""Master data: reads for any signed-in user, writes for admins — with ONE
+named exception, POST /sellers.
 
     GET   /uoms                          POST  /uoms
     GET   /product-categories            POST  /product-categories
     GET   /products                      POST  /products
-    GET   /sellers                       POST  /sellers
+    GET   /sellers                       POST  /sellers   <- STAFF TOO (D1)
                                          PATCH /uoms/{id}
                                          PATCH /product-categories/{id}
                                          PATCH /products/{id}
@@ -11,9 +12,19 @@
                                          PUT   /products/{id}/prices/{grade}
 
 Reads are open to staff: the yard app caches this list to price a bill offline,
-so a phone that cannot read master data cannot work at all. Writes are behind
-require_admin, every one of them — a yard phone must not be able to re-price the
-shop's product list from the weighbridge.
+so a phone that cannot read master data cannot work at all.
+
+**Superseded 2026-08-17 (ROADMAP D1).** This said "Writes are behind
+require_admin, every one of them". That is now FALSE of exactly one route and
+still true of every other: `POST /sellers` takes `get_principal`, so STAFF may
+create a seller. Nothing else moved, and STAFF DID NOT BECOME ADMINS — the
+reason the gate was narrowed rather than opened is at create_seller, and the
+control that proves it is prove_seller_create.py cells 4 and 5.
+
+The intent behind the old sentence is unchanged and is the thing to preserve: a
+yard phone must not be able to re-price the shop's product list from the
+weighbridge. Every price and product write, `PATCH /sellers/{id}`, and both
+seller activate/deactivate routes keep require_admin.
 
 THERE IS NO DELETE ON THIS ROUTER, ANYWHERE, ON PURPOSE
 -------------------------------------------------------
@@ -87,7 +98,14 @@ _TENANT = "NULLIF(current_setting('app.tenant_id', true), '')::uuid"
 # violation arrives as a 500, which the mobile client reads as `unavailable` and
 # retries forever. A constraint declared here is a terminal, visible 422.
 # ---------------------------------------------------------------------------
-Code = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
+# NAMED because the seller-code assigner below has to know it: a code the server
+# mints must be one this same edge type would have accepted, and two copies of 64
+# would drift the day one of them moved.
+_CODE_MAX_LENGTH = 64
+Code = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=_CODE_MAX_LENGTH),
+]
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 Phone = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
 # Mirrors ck_sellers_grade and product_prices' CHECK. A bad grade is a 422 from
@@ -744,7 +762,12 @@ VehicleNo = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1
 
 class SellerCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    code: Code
+    # OPTIONAL, and absent does NOT mean "no code" — it means the SERVER assigns
+    # one. See the assignment block above create_seller for the mechanism and for
+    # why both halves exist (ROADMAP D2, S6): a shop with a paper code system
+    # supplies its own and keeps it; a shop without one never has to invent a
+    # unique string at the weighbridge with a truck waiting.
+    code: Code | None = None
     name: Name
     phone: Phone | None = None
     # Optional at create, and NOT defaulted. A seller with no grade is refused at
@@ -821,37 +844,178 @@ async def list_sellers(
     return {"sellers": [_seller_payload(r) for r in rows]}
 
 
+# ---------------------------------------------------------------------------
+# The server-assigned seller code (ROADMAP D2 / S6)
+# ---------------------------------------------------------------------------
+# THE SELLER CODE IS THE SELLER'S doc_no, and hard rule 3 already draws this line
+# for bills: the client mints the id it needs, the SERVER assigns the
+# human-readable number. A staff member with a truck on the weighbridge must not
+# be asked to invent a unique string, because the failure mode is a 409 on a
+# screen at five in the morning with a queue behind it.
+#
+# GENERATE-THEN-RETRY, which is the THIRD of this repository's three existing
+# precedents — the one already half-present at _raise_for_integrity above, which
+# names uq_sellers_tenant_code and turns it into a 409. The other two were read
+# and rejected, and the reasons are recorded so this is not re-argued:
+#
+#   * doc_no_counters (bills.py:515-535) buys a GAP-FREE sequence. That is what a
+#     legal document number needs and what a seller label does not. It would cost
+#     a new counter table — sellers are not year-scoped, so the existing
+#     (tenant_id, be_year) key does not fit — and it would STILL need this retry
+#     underneath it, because a counter cannot know that a human has already typed
+#     `S006` by hand into the same unique namespace, which D2 explicitly permits.
+#     A mechanism that needs the fallback anyway should be the fallback.
+#   * provision_shop.code_shape_from_constraint derives its alphabet and length
+#     FROM a CHECK constraint, and mints with `secrets`. There is no CHECK on
+#     `sellers.code` to derive from — measured 2026-08-17 against a restored copy:
+#     ck_sellers_grade, sellers_pkey, the tenant FK, uq_sellers_tenant_code,
+#     uq_sellers_tenant_id, and nothing on `code`. Its randomness is also load
+#     bearing for a DIFFERENT reason that does not apply here: a shop code is
+#     typed by an outsider at an unauthenticated endpoint, so a predictable one
+#     narrows an enumeration. A seller code is read off a slip by the shop that
+#     issued it.
+#
+# WHAT MAKES IT CORRECT UNDER CONCURRENCY — two phones creating a seller in the
+# same second. THE UNIQUE INDEX IS THE ARBITER; THE SELECT ONLY PROPOSES. Under
+# READ COMMITTED both requests genuinely can read the same maximum, and that is
+# survivable: the second INSERT then BLOCKS on uq_sellers_tenant_code until the
+# first transaction ends, and comes back 23505. The loser rolls back to its
+# SAVEPOINT — not the whole request — re-reads a maximum that now includes the
+# winner's committed row, and inserts. Nobody is handed a 409 they did not
+# deserve, and the loop cannot spin: the index block is what paces it.
+#
+# A naive `SELECT max(code)+1` with no constraint underneath is the failure this
+# replaces: it hands both phones the same string and 409s one of them.
+_ASSIGNED_CODE_SHAPE = "^S[0-9]+$"   # the shape THIS server assigns, and only it
+_ASSIGNED_CODE_WIDTH = 3             # S001, widening on its own past S999
+_ASSIGN_ATTEMPTS = 8
+
+
+async def _next_seller_code(conn: AsyncConnection) -> str:
+    """The next `S<n>` for THIS tenant. RLS scopes the maximum; no WHERE here.
+
+    ONLY codes of the assigned shape take part. A shop running its own paper
+    codes — `A-12`, a name, a national id — keeps them, and they neither move
+    this number nor are moved by it. `S006` typed by hand DOES take part, which
+    is the point: the assigner must see it, or it would propose it again.
+    """
+    highest = (
+        await conn.execute(
+            text(
+                "SELECT max(substring(code from 2)::numeric) FROM sellers"
+                " WHERE code ~ :shape"
+            ),
+            {"shape": _ASSIGNED_CODE_SHAPE},
+        )
+    ).scalar_one()
+    nxt = 1 if highest is None else int(highest) + 1
+    candidate = f"S{nxt:0{_ASSIGNED_CODE_WIDTH}d}"
+    if len(candidate) > _CODE_MAX_LENGTH:
+        # Reachable only if a shop has typed an absurdly long S-code by hand.
+        # REFUSE rather than mint a value this module's own edge type would
+        # reject — the reasoning provision_shop.py gives for having no fallback:
+        # a code the database accepts but the rest of the system does not expect
+        # is silent and permanent, because it goes onto paper.
+        raise _invalid(
+            "code_assignment_overflow",
+            "ไม่สามารถออกรหัสผู้ขายอัตโนมัติได้ กรุณาระบุรหัสเอง",
+            entity="seller",
+            candidate_length=len(candidate),
+            max_length=_CODE_MAX_LENGTH,
+        )
+    return candidate
+
+
+async def _insert_seller(conn: AsyncConnection, body: SellerCreate, code: str) -> Any:
+    return (
+        await conn.execute(
+            text(
+                f"INSERT INTO sellers (tenant_id, code, name, phone, grade,"
+                f" id_number, address, vehicle_no)"
+                f" VALUES ({_TENANT}, :code, :name, :phone, :grade,"
+                f" :id_number, :address, :vehicle_no)"
+                f" RETURNING id, code, name, phone, grade, id_number,"
+                f" address, vehicle_no, is_active"
+            ),
+            {
+                "code": code,
+                "name": body.name,
+                "phone": body.phone,
+                "grade": body.grade,
+                "id_number": body.id_number,
+                "address": body.address,
+                "vehicle_no": body.vehicle_no,
+            },
+        )
+    ).mappings().one()
+
+
 @router.post("/sellers", status_code=status.HTTP_201_CREATED)
 async def create_seller(
-    body: SellerCreate, principal: Principal = Depends(require_admin)
+    body: SellerCreate, principal: Principal = Depends(get_principal)
 ) -> dict:
+    """Create a seller. STAFF MAY DO THIS — and this is the ONLY write here that
+    staff may do.
+
+    ROADMAP D1. Creating a seller and re-pricing the shop's product list are not
+    the same risk, and `require_admin` conflated them. A yard buys from walk-ins,
+    and `fk_bills_seller` refuses a bill for a seller who does not exist, so a
+    shop that cannot add one in the minute the truck is on the weighbridge cannot
+    buy the load. The stated intent in this module's docstring — a yard phone must
+    not re-price — survives intact and is CHECKED by prove_seller_create.py:
+    PUT /products/{id}/prices/{grade}, PATCH /sellers/{id}, and both seller
+    activate/deactivate routes all keep require_admin.
+
+    NOTE what staff still cannot do to a seller they just created: rename it,
+    re-code it, or retire it. That asymmetry is deliberate — creating a row is
+    additive and a wrong one is retired by an admin; editing one rewrites a fact
+    other rows already point at.
+    """
     async with tenant_connection(principal.tenant_id) as conn:
-        try:
-            row = (
-                await conn.execute(
-                    text(
-                        f"INSERT INTO sellers (tenant_id, code, name, phone, grade,"
-                        f" id_number, address, vehicle_no)"
-                        f" VALUES ({_TENANT}, :code, :name, :phone, :grade,"
-                        f" :id_number, :address, :vehicle_no)"
-                        f" RETURNING id, code, name, phone, grade, id_number,"
-                        f" address, vehicle_no, is_active"
-                    ),
-                    {
-                        "code": body.code,
-                        "name": body.name,
-                        "phone": body.phone,
-                        "grade": body.grade,
-                        "id_number": body.id_number,
-                        "address": body.address,
-                        "vehicle_no": body.vehicle_no,
-                    },
-                )
-            ).mappings().one()
-        except IntegrityError as e:
-            _raise_for_integrity(e, body.code)
-            raise
-        return _seller_payload(row)
+        if body.code is not None:
+            # SUPPLIED — exactly one attempt, and a collision is the caller's 409.
+            # RETRYING HERE WOULD BE THE ONE OUTCOME WORSE THAN THE REFUSAL: it
+            # would file the row under a code the shop did not choose, while the
+            # shop's paper slip carries the one they typed, and this system never
+            # sees that slip again.
+            try:
+                row = await _insert_seller(conn, body, body.code)
+            except IntegrityError as e:
+                _raise_for_integrity(e, body.code)
+                raise
+            return _seller_payload(row)
+
+        for _ in range(_ASSIGN_ATTEMPTS):
+            candidate = await _next_seller_code(conn)
+            try:
+                # A SAVEPOINT, so a lost race costs this INSERT and not the
+                # request. Without it the 23505 aborts the whole transaction and
+                # the retry would run every statement against a dead one.
+                # set_config ran BEFORE this savepoint, so rolling back to it
+                # cannot take the tenant context with it.
+                async with conn.begin_nested():
+                    row = await _insert_seller(conn, body, candidate)
+            except IntegrityError as e:
+                if constraint_name_of(e) == "uq_sellers_tenant_code":
+                    continue
+                # ANYTHING ELSE KEEPS ITS 500, the same rule
+                # _raise_for_integrity states: a violation this loop does not
+                # understand must not be dressed up as a race it survived.
+                raise
+            return _seller_payload(row)
+
+        # NOT duplicate_code. The caller supplied no code, so naming one as taken
+        # would be a confident lie about a value they never sent.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "kind": "conflict",
+                "code": "code_assignment_failed",
+                "message": "ไม่สามารถออกรหัสผู้ขายอัตโนมัติได้ กรุณาระบุรหัสเอง",
+                "entity": "seller",
+                "attempts": _ASSIGN_ATTEMPTS,
+            },
+        )
 
 
 @router.patch("/sellers/{seller_id}")

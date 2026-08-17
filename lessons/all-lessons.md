@@ -487,7 +487,7 @@ to the instrument you are about to cite as evidence for something else.
 case, run in the same pass, that makes it fire. A check nobody has watched go red
 is a claim about the code, not a measurement of it.
 
-**NINE MECHANISMS, and this line is the ONLY place in this file that says how
+**TEN MECHANISMS, and this line is the ONLY place in this file that says how
 many.** Every heading below names its own mechanism and never the running total,
 so appending a tenth is a one-number edit, here. This line exists because the
 count used to live in three headings and in this file's index line, and all four
@@ -1027,6 +1027,115 @@ today's fixture?*. This one asks the question that survives a yes to all four:
 the only interesting one?** Every negative assertion — absent, not equal, not
 present, zero, empty — has a large satisfying family, and the members of it that
 are silent breakage are exactly the ones a proof will never think to supply.
+
+---
+
+## A TENTH MECHANISM (P1.8a, 2026-08-17) — BOTH SIDES OF A CROSS-CHECK CAME FROM THE SAME FAILED OPERATION, AND AGREED
+
+The ninth is *the needle was fine and the haystack was empty*, and it is about a
+NEGATIVE assertion over a collection. **This is a POSITIVE assertion between two
+scalars, and it is the strongest cell in the file.** It compares a value read off
+the response against the same value read back out of Postgres — the cross-check a
+phase brief explicitly ordered, in these words:
+
+> Read back OUT OF POSTGRES, not off the response — a response echoing your own
+> input proves nothing about what was stored.
+
+That instruction is correct. It was followed. **And the resulting cell is
+satisfied by the request never having been served.**
+
+**The shape.**
+
+```python
+r1 = client.post(f"{BASE}/sellers", headers=auth(token_staff), json=body1)
+b1 = body_of(r1) if r1.status_code == 201 else {}
+assigned = b1.get("code")
+check(stored_code(b1.get("id")) == assigned,
+      "cell1: and Postgres stores that same code for the new row")
+```
+
+Under the disproof — `POST /sellers` put back behind `require_admin` — the create
+is refused 403. `assigned` is `None`, because there is no body. `stored_code(None)`
+is `None`, because there is no id to look up. **`None == None` printed `[ok]`,
+directly beneath three cells that had just gone RED**, in the one run whose entire
+job was to find out which cells can move.
+
+| cell 1's four checks, under the reverted gate | |
+|---|---|
+| status is 201 | **RED** — got 403 |
+| the response carries a code of the shape S\<n\> | **RED** — `None` |
+| the assigned number is the one after the highest that existed | **RED** — `None` |
+| **and Postgres stores that same code for the new row** | **green** |
+
+Three of four moved, so the run went red and the disproof looked successful. **The
+fourth is the one that mattered**, because it is the only cell in that group that
+reads the database at all, and it is the cell a reviewer would point at when asking
+whether the write really happened.
+
+### Why it is none of the nine
+
+**Not the ninth.** Neither operand is a collection, neither assertion is negative,
+and nothing was defaulted to `[]`. Two scalars are compared and they are equal.
+
+**Not [[a-differential-control-is-only-as-good-as-its-weaker-side]]**, and this is
+the near miss worth stating out loud. That lesson is about one operand being a
+LITERAL — the relation true by construction. Here NEITHER side is a literal: both
+were derived from the real path, which is exactly the remedy that file prescribes,
+and it did not help. **What makes them agree is that they are derived from the SAME
+EVENT.** When the event does not happen, both derivations return the same null, and
+a comparison between two nulls is the most convincing green available.
+
+**The generalisation, and it is uncomfortable in the same way the fifth mechanism
+is: the BETTER the cross-check, the more exposed it is to this.** A weak cell
+asserts the response against a value the script typed, and a wrong response cannot
+match it. A strong cell asserts two INDEPENDENT observations of one write against
+each other — and independence is precisely what makes them share a failure mode:
+both observers are observing the same absence, and absence is self-consistent.
+
+### And the disproof did not finish, which is the second half
+
+The same run died at cell 5 on `uuid.UUID(None)` — `seller2_id` was `None` for the
+same reason. **Cells 6 and 7 never ran, and no `PROVE_SELLER_CREATE_EXIT` line was
+printed at all**, which is the absence `CLAUDE.md § Machine footguns` already names
+as the signal for a failed restore.
+
+The fourth mechanism is *the deliberate break was stopped BEFORE the assertion ran*
+— a compile error, upstream. **This is that sentence pointed downstream.** The
+break reached the assertions, three of them fired correctly, and then the
+instrument died on the null the mutation had produced. A crash and a red suite are
+different results and only one of them is a measurement: a disproof exists to say
+WHICH cells move, and this one had nothing to say about the two behind the crash.
+
+Both halves have one cause. **A proof is written along its GREEN path**, where
+every id is a string, every body parses and every response is 201 — and the
+disproof is the first time any of that is false. Everything the script does with a
+response is therefore untested at exactly the moment it matters most.
+
+### Two more, appended to How to apply
+
+16. **A cross-check between two readings of one write must assert, IN THE SAME
+    CELL, that the write happened.** `a == b` where both are derived from one
+    operation is satisfied when the operation did not occur. The fix is one
+    conjunct on the same line — `assigned is not None and stored_code(id) ==
+    assigned` — never a separate cell above it, because *a control on one
+    assertion says nothing about the one beside it* is this file's oldest rule and
+    a status cell three lines up did not stop this. Print both operands in the
+    label: `db=None response=None` is unmistakable and `[ok]` is not.
+17. **A disproof must reach the last cell, and getting there is a property of the
+    proof you have to build on purpose.** Every id, uuid, parse and index on the
+    failure path is a crash waiting for the run that matters. Make each one return
+    a value that can be absent, make the absence a RED cell rather than an
+    exception, and give any cell whose target came from an earlier cell a fixture
+    that exists independently — here a sentinel row written before the server
+    started, so cells 4–7 kept measuring the gate while 1–3 were refused. Then
+    judge the disproof by whether it printed its exit line, not by whether it
+    failed.
+
+**The question this adds.** Mechanisms 1–4 ask *could this have failed given my
+inputs?*, 5–7 *was it looking at the right thing?*, 8 *does it still reach its
+failing state on today's fixture?*, 9 *how many different states satisfy this?*.
+This one asks: **when the thing under test does nothing at all, what does each
+side of my comparison become — and do those two nothings look the same?**
 
 ---
 
