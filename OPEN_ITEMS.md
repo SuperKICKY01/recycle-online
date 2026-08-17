@@ -2456,6 +2456,16 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   rather than the objection. **No P-number was minted:** what is recorded is that
   the reason for the cut no longer holds, not a step that builds the replacement.
 
+  **SUPERSEDED THE SAME DAY, 2026-08-17 — the step now exists as P1.18**
+  (`ROADMAP.md § P1.18 — One outbox, several kinds of work` "must express ORDERING and RETRY POLICY PER KIND").
+  The planning pass that wrote it measured something that changes how it must be
+  built: the send and void drains in `mobile/src/sync/engine.ts` are not
+  duplicates but DELIBERATELY DIFFERENT — send enforces strict head-of-line order
+  with backoff, void has no backoff, no time gate and no ordering — each
+  difference carrying a device incident behind it. **A single shared policy would
+  be a regression either way it went**, so the mechanism must express ordering and
+  retry policy PER KIND. That is recorded at the step and not restated here.
+
   **(b) STORING PHOTOGRAPHS IN THE DATABASE MAY MAKE P1.2's OWN ACCEPTANCE
   CRITERION IMPRACTICAL.** That criterion is
   `ROADMAP.md § P1.2 — A server a shop can reach` "schedule nobody triggered by hand has been fetched from off-box"

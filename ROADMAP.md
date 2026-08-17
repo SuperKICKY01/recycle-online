@@ -1424,6 +1424,13 @@ no entry yet — what it is, what it depends on, what it unblocks and its DONE W
 are a planning step's work, not this record's. Read the reversal as: the reason
 P1.8b was cut no longer holds.
 
+**SUPERSEDED THE SAME DAY, 2026-08-17: the planning step ran and the entry
+EXISTS.** It is **P1.18 — One outbox, several kinds of work**, and this survey is
+named there as its spec. The paragraph above is kept rather than deleted because
+it is the record of what the recording phase deliberately did not do, and because
+a reader meeting P1.18 should be able to see that the step was written after the
+decision rather than alongside it.
+
 ### P1.9 — Price editing on the phone
 
 **What it is.** The shop owner changing a buy price without anyone running a request
@@ -1621,6 +1628,85 @@ without it.
 doc_no and a Buddhist-era date, photographed; AND the desktop, asked to print a bill
 that has not synced, refuses and says so on screen — S6's "says so plainly", and the
 half that proves no workaround was invented.
+
+### P1.18 — One outbox, several kinds of work
+
+**What it is.** The device's send queue stops being a bill-shaped pipe with a
+void bolted to its side, and becomes ONE mechanism that carries KINDS of work.
+S14 settled that it should; this step is the building of it. Minted 2026-08-17
+after S14; the number is the next unused one and nothing is renumbered for it.
+
+**WHY THE CUT OF P1.8b WAS WRONG, IN ONE SENTENCE:** the cost was read as a
+second ROW TYPE and it is a second HAND-WRITTEN PATH. Doing the void that way
+already cost nine columns on `local_bills`, an index, a second outcome union, a
+second `Transport` method and six store methods — and every one of those is
+paid again, in full, for each new kind.
+
+**THE MEASUREMENT THAT SHOULD DECIDE HOW THIS IS BUILT, and it is the opposite
+of what "extract the common loop" assumes.** Read 2026-08-17 in
+`mobile/src/sync/engine.ts`: the two existing drains are not duplicates, they
+are DELIBERATELY DIFFERENT, and each difference has a device incident behind it.
+
+- The **send** loop enforces STRICT HEAD-OF-LINE order over
+  `listPendingOldestFirst`, reads the queue WITHOUT the backoff filter, stops
+  the whole pass when the head cannot go, applies per-attempt backoff, and
+  refuses to run at all while submission is forbidden. Two bills weighed 73
+  seconds apart took doc_nos in the wrong order before that ordering existed.
+- The **void** drain (`applyVoids`) has **no backoff, no time gate and no
+  ordering at all**, iterates everything owed, and keys its in-flight guard
+  `void:${id}` so a void and a send of the same bill do not block each other.
+  `void_requested_at` is never cleared, so a void stays owed across restarts and
+  days offline, and there is no attempt cap.
+
+**So a single shared policy would be a REGRESSION either way it went** — giving
+voids head-of-line blocking, or giving bills the void's no-backoff behaviour.
+**The mechanism must express ORDERING and RETRY POLICY PER KIND**, with the
+shared part being what a kind IS, how it is enqueued, how its outcome is
+classified, and how it is made visible. Anything that unifies the policies has
+misread the file.
+
+**AND NOTHING IN THIS SYSTEM CARRIES A BINARY PAYLOAD TODAY.** Searched
+2026-08-17 with `git grep -inE "multipart|base64|FormData|blob|Buffer|photo|image/jpeg"`
+over `mobile/src`, `mobile/app` and `server/app`: 13 lines, every one of them
+JWT base64url decoding, a proof harness's buffer, or the word "photographed" in
+prose. No upload path exists on either side. **"Not found with these words" is
+not "there is none"** — widen it before relying on the negative — but the photo
+kinds are a new capability rather than a variation on an existing one, and this
+step should carry the mechanism, not the camera.
+
+**Depends on:** nothing outside `mobile/`. It touches no server route, no
+migration and no screen, which is exactly why it can be done before the features
+that need it rather than inside one of them. **P1.8b's seven-item survey is its
+SPEC** — each bullet there is a requirement this mechanism must meet, and the
+one about `sync_state`'s CHECK constraint is the one that decides whether the
+local schema can be migrated in place.
+
+**Unblocks:** P1.8b (which S14 returns to the plan), the bill photograph and the
+seller face photograph S12 requires, and any later kind — without each one
+paying the void's price again.
+
+**DONE WHEN**, and the count deliberately is not written here:
+
+- **Bill send and bill void both run through the one mechanism with their
+  existing policies unchanged**, proven by EVERY `prove:*` script declared in
+  `mobile/package.json` exiting 0 twice in a row, bare, with the count
+  re-derived at run time and REPORTED IN THE RUN rather than named here
+  (`OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "A RAW COUNT INSIDE AN ACCEPTANCE CRITERION ROTS").
+  Both mobile typecheck programs exit 0 run bare.
+- **A THIRD KIND IS CARRIED WITH NO NEW DRAIN LOOP.** The observable is
+  structural and must be read off the diff: adding it introduced no second
+  iteration construct in `runOnce` and no third `Transport` method shaped like
+  `voidBill`. A generalisation that still needs a hand-written loop per kind has
+  not generalised anything.
+- **ON A DEVICE, not in a proof:** a bill weighed offline still syncs and takes
+  a doc_no, and a void requested offline still applies, both after the change,
+  with the rows read back out of Postgres. Applied is not verified, and the two
+  paths this rewrites are the two that already carry real money.
+
+**WHAT THIS STEP MUST NOT DO.** It must not change what the server accepts, must
+not alter doc_no assignment, and must not touch the void's identity refusal —
+`void_refused_at` and its 403 handling are the outcome of a device incident and
+are not part of the shape being generalised.
 
 ### `GET /users` — landed 2026-08-07, and it is NOT a step in this file
 
