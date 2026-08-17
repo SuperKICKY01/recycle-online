@@ -36,7 +36,8 @@
     "prove:draftowner": "npm run build && node dist/proof/proveDraftOwner.js",
     "prove:login": "npm run build && node dist/proof/proveLogin.js",
     "prove:loginscreen": "npm run build && node dist/proof/proveLoginScreen.js",
-    "prove:statuscounts": "npm run build && node dist/proof/proveStatusCounts.js"
+    "prove:statuscounts": "npm run build && node dist/proof/proveStatusCounts.js",
+    "prove:sellercreate": "npm run build && node dist/proof/proveSellerCreate.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

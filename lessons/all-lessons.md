@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 18 across 10 files, counted from the source headings and
+**Amendments:** 19 across 10 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -63,7 +63,7 @@ line instead of by heading depth.
 - `concurrency-tests-need-a-barrier.md` -- A concurrency test without a start barrier proves nothing
 - `config-defaults-must-fail-closed.md` -- A default for a security secret is a default IDENTITY
 - `console-is-not-the-observation.md` -- The console is not the observation — verify text at the source, in bytes
-- `correct-classification-can-still-render-as-an-error.md` *(3 amendments)* -- A correct classification is not correct behaviour until the screen agrees
+- `correct-classification-can-still-render-as-an-error.md` *(4 amendments)* -- A correct classification is not correct behaviour until the screen agrees
 - `decimal-precision-for-domain-scale.md` -- Decimal precision must be set for the domain's scale, not left at the default
 - `diagnosis-must-precede-the-fix.md` -- Diagnose before you fix: read the real error and the real files first
 - `doc-no-is-arrival-order-not-event-time.md` -- doc_no is arrival order; device clocks are wrong. Report on server time.
@@ -4625,6 +4625,68 @@ state. Caught only because the Expo program is typechecked **separately**
 chained as `npm run typecheck:app 2>&1 | tail -3 && echo CLEAN` — `tail` exits 0,
 so the failure was reported as clean. Run each typecheck bare, with its exit code
 visible. Never let a pipe decide whether a check passed.
+
+## Amendment (P1.8a phase 2): one STATUS, two meanings, and the body was not available to tell them apart
+
+The 2d amendment above is about one CODE serving N call sites, and its answer is
+to make the call site an input. **This is the mirror image, and it has a
+different answer: one STATUS serving two CODES at ONE call site.**
+
+`POST /sellers` answers 409 for two different things:
+
+| the server's code | when | the instruction |
+|---|---|---|
+| `duplicate_code` | the caller SUPPLIED a code and it is taken | type a different one |
+| `code_assignment_failed` | the caller supplied NO code, and generate-then-retry gave up | type a code yourself |
+
+Those instructions are opposites, and the server already refuses to conflate
+them — `server/app/master.py`, at the raise: *"NOT duplicate_code. The caller
+supplied no code, so naming one as taken would be a confident lie about a value
+they never sent."* A client that maps 409 onto "that code is taken" tells
+somebody who typed nothing that the thing they did not type is taken. That is
+2c-6's wrong instruction one layer out, and it makes the office go looking for a
+collision that does not exist.
+
+**THE OBVIOUS FIX IS FORBIDDEN ON THIS ROUTE.** Read `detail.code` off the body
+and branch on it. Every other refusal in this client is classified on the STATUS
+precisely so the classification survives a body that will not parse
+(`adapters/httpTransport.ts`, the 403 and 424 paths) — and on THIS route the
+refusal body is the one that can echo an ID CARD NUMBER,
+[[a-refusal-hands-back-what-it-refused]]. So two rules that normally cooperate
+collide here: the status is not enough, and the body is not available.
+
+**THE DISCRIMINATOR WAS IN THE REQUEST.** `duplicate_code` is reachable only when
+a code was supplied and `code_assignment_failed` only when one was not, so the
+caller already holds the answer before the request leaves:
+
+```ts
+const suppliedCode = draft.code !== undefined;   // read once, at the top
+...
+if (status === 409) {
+  return suppliedCode ? { kind: "duplicate_code" } : { kind: "code_assignment_failed" };
+}
+```
+
+Ask, of any status that can mean two things: **is there a fact the CALLER already
+holds that separates them?** A value taken from the request cannot be corrupted
+by the response, cannot be missing, and needs no parse — so a classification
+built on it is right even when the body is unreadable, which is the property the
+status-only rule was buying in the first place.
+
+**THE RESIDUAL, STATED RATHER THAN HIDDEN.** One refusal is still collapsed.
+`code_assignment_overflow` is a server-named 422 whose real instruction is also
+"type a code yourself", and it lands in the generic `invalid` member. Telling it
+from a pydantic 422 needs the body, and the body of a 422 on this route is the
+one that mirrors the input. It is reachable only if a shop has typed an S-code
+longer than 64 characters by hand — the server's own comment says so — and a
+generic sentence in that case is the price of a union that cannot leak. Recorded
+so the next author meets it as a decision and not as a bug.
+
+**Where measured.** `mobile/src/master/createSeller.ts`, proven by
+`mobile/src/proof/proveSellerCreate.ts` C3 against a real server bound to
+`recycle_p18a_scratch`: the cell asserts WHICH member comes back, not that the
+call failed, because "it failed" is satisfied by a 500, by an outage and by a
+route that does not exist.
 
 ---
 
