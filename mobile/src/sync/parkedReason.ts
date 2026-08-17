@@ -79,9 +79,36 @@ const REASSURE =
   " เมื่อสำนักงานแก้ให้แล้ว ระบบจะส่งเองอัตโนมัติ";
 
 const BY_CODE: Record<MasterDataCode, { badge: string; what: string }> = {
+  /*
+   * TWO REMEDIES, AND THE SENTENCE NAMES BOTH. bills.py now falls back to the
+   * shop's own default_grade when the seller has none, so this code is raised
+   * only when BOTH are unset — and setting EITHER releases the same bill,
+   * unchanged, with nothing re-typed at the yard.
+   *
+   * THE OLD SENTENCE WAS NEVER FALSE. This card is drawn only after the server
+   * has already refused, so "this seller has no grade" is true every time it
+   * appears. What was wrong is its SHAPE: it named the remedy that has to be
+   * repeated for every walk-in and never the one that fixes the shop once —
+   * which is the remedy a yard that grades nobody actually needs, and the shop
+   * shape the fallback was added for. A wrong-shaped instruction is acted on
+   * exactly like a wrong one.
+   *
+   * NEITHER IS ASSERTED TO BE THE ONE THAT APPLIES, because the device cannot
+   * know and must not pretend to: nothing in this client reads the shop's
+   * settings, and the same code can arrive from a server build that has no
+   * shop default at all. It offers both and lets the office choose.
+   *
+   * THE BADGE IS DELIBERATELY UNCHANGED. Its job, stated on the field above, is
+   * to name WHO the bill is waiting for — and WHO has not moved: it is still
+   * the office. The badge is also never drawn without this sentence beside it
+   * (app/BillsPanel.tsx renders notice.badge and then notice.lines), and the
+   * status strip uses this sentence with no badge at all.
+   */
   seller_grade_unset: {
     badge: "รอสำนักงานกำหนดเกรดผู้ขาย",
-    what: "ผู้ขายรายนี้ยังไม่ได้กำหนดเกรด จึงยังไม่มีราคาตามเกรด — ให้สำนักงานกำหนดเกรดของผู้ขายรายนี้",
+    what:
+      "ผู้ขายรายนี้ยังไม่ได้กำหนดเกรด จึงยังไม่มีราคาตามเกรด —" +
+      " ให้สำนักงานกำหนดเกรดของผู้ขายรายนี้ หรือกำหนดเกรดเริ่มต้นของร้าน",
   },
   product_price_unset: {
     badge: "รอสำนักงานตั้งราคาสินค้า",

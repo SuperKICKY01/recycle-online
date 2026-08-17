@@ -462,3 +462,99 @@ so the next author meets it as a decision and not as a bug.
 `recycle_p18a_scratch`: the cell asserts WHICH member comes back, not that the
 call failed, because "it failed" is satisfied by a 500, by an outage and by a
 route that does not exist.
+
+## Amendment (P-GRADECARD, 2026-08-18): the code names the CAUSE, and the REMEDIES are not a function of it
+
+Point 3 at the top of this file says a message naming an action must be DERIVED
+FROM THE CAUSE. Every amendment since has been about the derivation having too
+little input: 2d added the call site, R2b added a device-global state, P1.8a
+phase 2 found a status that could not name its own code. **This one is
+different, and it is the uncomfortable case: the cause was right, the derivation
+was right, and the sentence was still the wrong shape — because a refusal can
+have MORE THAN ONE remedy, and the code names one of them.**
+
+`9ad225e` gave `POST /bills` a fallback to `tenants.default_grade`, so
+`seller_grade_unset` is raised only when the seller's grade AND the shop's
+default are both unset. Either one being set releases the same bill, unchanged.
+`parkedReason.ts` went on saying:
+
+```
+ผู้ขายรายนี้ยังไม่ได้กำหนดเกรด จึงยังไม่มีราคาตามเกรด — ให้สำนักงานกำหนดเกรดของผู้ขายรายนี้
+```
+
+**IT WAS NEVER FALSE, and that is the whole difficulty.** The card is drawn only
+after the server has already refused, so "this seller has no grade" is true every
+single time it appears. No assertion of the form *does this sentence match its
+cause* could fire; nothing was stale; nothing failed to compile. What was wrong
+is the SHAPE: it named the remedy that must be repeated for every walk-in and
+never the one that fixes the shop once — which is the remedy the shop shape the
+fallback was ADDED FOR actually needs. A wrong-shaped instruction is acted on
+exactly like a wrong one, which is 2c-6's own finding about the price wording,
+arriving by a route 2c-6 could not have predicted.
+
+**WHAT MAKES IT INVISIBLE FROM THE CLIENT, and this is the part that
+generalises. The server-side change that created it ADDED NO CODE.**
+`MASTER_DATA_CODES` in `mobile/src/sync/parkedReason.ts` carries a warning in
+its own docstring about exactly one hazard — a code added on the server and not
+mirrored here, which reaches the yard through the unknown fallback — and that
+tripwire is aimed at ADDITION. A NARROWING adds nothing, removes nothing and
+renames nothing: the client's mapping stays complete, every code stays
+recognised, and the unknown branch is never reached.
+
+> **The set of CODES is a poor proxy for the set of REMEDIES, and it is the only
+> one of the two the client can see.** 2d established that a code names the RULE
+> THAT REFUSED rather than the action refused. This adds the other half: it does
+> not name the set of changes that would make the same request succeed either,
+> and that set can GROW on the server with no signal of any kind reaching the
+> client.
+
+**WHY THE STANDARD FIX DOES NOT APPLY, stated because reaching for it is the
+obvious move.** 2d and R2b both repair a missing input by making it a REQUIRED
+parameter, so the next call site is a compile error until someone writes its
+sentence. There is no such input here. The second remedy is a fact about the
+SERVER'S RULE — not about the caller, not about the call site, not about any
+device-global state — so there is nothing the client could be handed. And
+ASKING (`GET /shop`) is worse than useless: it would let the device claim which
+of the two the shop lacks, which it must not do, because the same code can
+arrive from a server build that has no shop default at all. **The sentence names
+BOTH remedies and asserts NEITHER**, and the office chooses.
+
+**The badge was deliberately left alone.** Its own field docstring says its job
+is to name WHO the bill is waiting for, and WHO did not move: it is still the
+office. It is also never drawn without the sentence beside it.
+
+**How it was proven, and the disproof cost nothing because the defect was
+already in the tree.** The new assertion is NEGATIVE — the drawn text may not
+name one remedy without the other — asserted over the CONCATENATION in draw
+order through `billNotice`, and it was run against the UNCHANGED wording first:
+exactly three cells red, all three named in advance, no fourth cell moving.
+Three things worth separating out:
+
+- **A presence sibling was required, not optional.** `namesA !== namesB` is
+  false for a card naming NEITHER remedy, so the negative cell alone is
+  satisfied by silence — the ninth mechanism in
+  [[a-check-that-never-went-red-was-never-observed]], an absence assertion over
+  an empty haystack. The sibling asserts both are present, in the same string.
+- **The positive control has to be a LITERAL here**, which is normally the
+  thing [[a-differential-control-is-only-as-good-as-its-weaker-side]] forbids.
+  After the fix the live function can no longer make the predicate true, so
+  without the shipped wording kept in the file there is no input left that the
+  instrument is known to catch. The literal is the control; the derived value
+  is the claim; they are different cells and the text says which is which.
+- **The sentence is drawn on TWO surfaces and the second was nearly missed.**
+  `billNotice` puts it on the bill card under a badge; `parkedSummary` puts it
+  on the status strip with NO badge at all. Two renderers, one sentence, and the
+  strip is what an operator reads when several bills are parked at once — the
+  seam [[two-green-proofs-do-not-cover-the-seam]] describes. Both are asserted.
+
+**RECORDED AND NOT FIXED:** the server's code is named `seller_grade_unset`,
+after ONE of the two causes it can now stand for. Renaming it is a client
+contract and `MASTER_DATA_CODES` is a closed union that would move with it, so
+it is a decision and not a tidy-up.
+
+**How to apply.** Ask of any refusal sentence: **how many DIFFERENT changes
+would make this same request succeed?** One is safe. More than one, and the
+sentence must name them all, or name who chooses — never the first one somebody
+implemented. And when a SERVER change narrows a refusal, sweep the client
+wording for that code in the same pass: nothing will go red, nothing will fail
+to compile, and the sentence will still be true.

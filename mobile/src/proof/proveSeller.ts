@@ -645,6 +645,104 @@ function s7ParkedIsNotAnError(): void {
     price.what.includes("ราคาสินค้า"),
     price.what,
   );
+
+  /*
+   * BOTH REMEDIES, AND NEITHER MAY STAND ALONE — the shape 9ad225e changed.
+   *
+   * Before that commit the server refused seller_grade_unset whenever the
+   * SELLER's grade was NULL, so there was one remedy and the sentence named it.
+   * bills.py now falls back to the shop's own default_grade and refuses only
+   * when BOTH are NULL, so this card is drawn for a refusal that has TWO
+   * remedies: grade this seller, or give the shop a default.
+   *
+   * THE OLD SENTENCE WAS NEVER FALSE. It is only ever drawn when the server has
+   * already refused, so "this seller has no grade" is true every time it
+   * appears. What was wrong is its SHAPE: it named the remedy that must be
+   * repeated for every walk-in and never the one that fixes the shop once —
+   * which is the remedy a yard that grades nobody actually needs. A
+   * wrong-SHAPED instruction is acted on exactly like a wrong one, which is
+   * this lesson's own finding about the price wording.
+   *
+   * NEITHER REMEDY IS ASSERTED TO BE THE ONE THAT APPLIES. The device is not
+   * told which of the two the shop lacks and must not pretend to know: nothing
+   * here reads GET /shop, and the same code can arrive from a server build that
+   * has no default_grade column at all.
+   *
+   * ASSERTED OVER THE CONCATENATION IN DRAW ORDER, and through billNotice
+   * rather than parkedReason, because app/BillsPanel.tsx draws notice.badge
+   * (:289) and then NoticeBox with notice.lines (:362) — a screen assembled
+   * from independently-correct parts is not an asserted screen.
+   */
+  const SELLER_REMEDY = "กำหนดเกรดของผู้ขายรายนี้";
+  const SHOP_REMEDY = "เกรดเริ่มต้นของร้าน";
+  /** Names ONE of the two remedies and not the other. THE DEFECT, as a predicate. */
+  const soleRemedy = (drawn: string): boolean =>
+    drawn.includes(SELLER_REMEDY) !== drawn.includes(SHOP_REMEDY);
+
+  const gradeParked: NoticeInput = {
+    sync_state: "pending",
+    attempt_count: 1,
+    master_data_missing_at: "2026-08-18T02:00:00.000Z",
+    master_data_code: "seller_grade_unset",
+    void_requested_at: null,
+    void_refused_at: null,
+    void_refused_code: null,
+  };
+  const gradeCard = billNotice(gradeParked, "active", "ok");
+  const gradeDrawn = `${gradeCard.badge ?? ""} ${gradeCard.lines.join(" ")}`;
+  console.log(`\n  the parked card, in draw order:\n    ${gradeDrawn}`);
+
+  /*
+   * THE POSITIVE CONTROL, and it is the wording as it actually shipped —
+   * badge, what and reassure, in draw order, kept as a literal. It has to be a
+   * literal: after the fix below the live function can no longer make this
+   * predicate true, so without a known-defective input the negative cell would
+   * be a green that cannot go red.
+   */
+  const SHIPPED_BEFORE_THIS_PHASE =
+    "รอสำนักงานกำหนดเกรดผู้ขาย " +
+    "ผู้ขายรายนี้ยังไม่ได้กำหนดเกรด จึงยังไม่มีราคาตามเกรด — ให้สำนักงานกำหนดเกรดของผู้ขายรายนี้ " +
+    "บิลถูกเก็บไว้ครบแล้ว ไม่ต้องชั่งใหม่และไม่ต้องทำอะไรที่หน้าลาน" +
+    " เมื่อสำนักงานแก้ให้แล้ว ระบบจะส่งเองอัตโนมัติ";
+  check(
+    "CONTROL: the instrument fires on the wording as it shipped before this phase",
+    soleRemedy(SHIPPED_BEFORE_THIS_PHASE),
+    `seller=${String(SHIPPED_BEFORE_THIS_PHASE.includes(SELLER_REMEDY))}` +
+      ` shop=${String(SHIPPED_BEFORE_THIS_PHASE.includes(SHOP_REMEDY))}`,
+  );
+  // THE CELL THAT CARRIES THE CLAIM, and it is negative: the card must not put
+  // ONE remedy on a refusal that has two.
+  check(
+    "THE CLAIM — the parked card never names one remedy without the other",
+    !soleRemedy(gradeDrawn),
+    `seller=${String(gradeDrawn.includes(SELLER_REMEDY))}` +
+      ` shop=${String(gradeDrawn.includes(SHOP_REMEDY))}`,
+  );
+  // THE PRESENCE SIBLING. Without it the negative cell above is satisfied by a
+  // card naming NEITHER remedy — an absence assertion over an empty haystack.
+  check(
+    "...and both remedies are actually named, so that cell is not satisfied by silence",
+    gradeDrawn.includes(SELLER_REMEDY) && gradeDrawn.includes(SHOP_REMEDY),
+    gradeDrawn,
+  );
+
+  /*
+   * THE SECOND SURFACE, and it was nearly missed. `what` is drawn twice: on the
+   * card through billNotice above, and on the STATUS STRIP through
+   * parkedSummary, which composes `${count} ใบรอข้อมูลจากสำนักงาน — ${what}` and
+   * uses no badge at all (statusNotice.ts then appends — ไม่ต้องชั่งใหม่). Two
+   * green renderers are not a proven composition, and the strip is the one an
+   * operator reads when several bills are parked at once.
+   */
+  const gradeStrip = parkedSummary(2, ["seller_grade_unset"]);
+  console.log(`  the strip line, in draw order:\n    ${gradeStrip}`);
+  check(
+    "THE CLAIM, on the strip — it names one remedy without the other nowhere either",
+    !soleRemedy(gradeStrip),
+    `seller=${String(gradeStrip.includes(SELLER_REMEDY))}` +
+      ` shop=${String(gradeStrip.includes(SHOP_REMEDY))}`,
+  );
+
   /*
    * The two retirement causes. The fix is REACTIVATION — one click at the
    * office — so the sentence must name it, and must NOT mention a price or a
