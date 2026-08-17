@@ -37,7 +37,8 @@
     "prove:login": "npm run build && node dist/proof/proveLogin.js",
     "prove:loginscreen": "npm run build && node dist/proof/proveLoginScreen.js",
     "prove:statuscounts": "npm run build && node dist/proof/proveStatusCounts.js",
-    "prove:sellercreate": "npm run build && node dist/proof/proveSellerCreate.js"
+    "prove:sellercreate": "npm run build && node dist/proof/proveSellerCreate.js",
+    "prove:sellernotice": "npm run build && node dist/proof/proveSellerNotice.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

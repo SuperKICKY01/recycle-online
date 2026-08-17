@@ -54,6 +54,17 @@ interface Props {
    * is an alarming thing to tell a shop with hundreds of customers.
    */
   neverFetched: boolean;
+  /**
+   * Open the add-seller form (P1.8a phase 3).
+   *
+   * ITS CONTROL IS IN THE HEADER AND NOT IN THE EMPTY STATE, and that placement
+   * is the whole feature. A shop has no sellers on day one and never again; the
+   * case this exists for is a walk-in arriving at a yard with five hundred
+   * sellers on file, where the list is emphatically NOT empty and the search has
+   * just come back with nothing. A control reachable only from the empty state
+   * would be a control nobody could reach on the day they needed it.
+   */
+  onAddSeller: () => void;
   onClose: () => void;
   onPick: (seller: Seller) => void;
 }
@@ -65,6 +76,7 @@ export function SellerPicker({
   currentSellerId,
   changing,
   neverFetched,
+  onAddSeller,
   onClose,
   onPick,
 }: Props) {
@@ -97,9 +109,14 @@ export function SellerPicker({
       >
         <View style={styles.head}>
           <Text style={styles.title}>{changing ? "เปลี่ยนผู้ขาย" : "เลือกผู้ขาย"}</Text>
-          <Pressable style={styles.closeBtn} onPress={close}>
-            <Text style={styles.closeText}>ปิด</Text>
-          </Pressable>
+          <View style={styles.headActions}>
+            <Pressable style={styles.addBtn} onPress={onAddSeller}>
+              <Text style={styles.addText}>+ เพิ่มผู้ขาย</Text>
+            </Pressable>
+            <Pressable style={styles.closeBtn} onPress={close}>
+              <Text style={styles.closeText}>ปิด</Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.searchWrap}>
@@ -133,7 +150,16 @@ export function SellerPicker({
                 ? `ไม่พบผู้ขายที่ตรงกับ “${query}”`
                 : neverFetched
                   ? "เครื่องนี้ยังไม่เคยดึงรายชื่อผู้ขายมาเก็บไว้ — ต้องต่อเน็ตและเข้าสู่ระบบสักครั้งก่อน"
-                  : "ยังไม่มีผู้ขายในระบบ — ต้องเพิ่มที่สำนักงานก่อน"}
+                  : /*
+                       CHANGED IN P1.8a phase 3. This read "ยังไม่มีผู้ขายในระบบ —
+                       ต้องเพิ่มที่สำนักงานก่อน", which became FALSE the moment
+                       staff could add one from the phone: it sent the yard to the
+                       office over something the button in this header now does.
+                       The grade warning further down is NOT changed and stays
+                       true — grades remain admin-only and the add form offers no
+                       grade field.
+                    */
+                    "ยังไม่มีผู้ขายในระบบ — กดปุ่ม เพิ่มผู้ขาย ด้านบนเพื่อเพิ่มจากหน้าลานได้เลย"}
             </Text>
           }
           renderItem={({ item }) => {
@@ -187,6 +213,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0",
   },
   title: { fontSize: 20, fontWeight: "900", color: "#0f172a" },
+  headActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  // Teal, so it reads as the one thing on this screen that CREATES something,
+  // beside a neutral ปิด. Same 48pt floor as every other control here.
+  addBtn: {
+    minHeight: 48, paddingHorizontal: 14, borderRadius: 10,
+    backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center",
+  },
+  addText: { fontSize: 15, fontWeight: "800", color: "#fff" },
   closeBtn: {
     minHeight: 48, paddingHorizontal: 20, borderRadius: 10,
     backgroundColor: "#e2e8f0", alignItems: "center", justifyContent: "center",

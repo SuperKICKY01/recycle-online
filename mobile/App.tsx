@@ -86,6 +86,9 @@ import {
   masterNotice,
   mayStartBill,
 } from "./src/master/freshness";
+import { SellerApi } from "./src/master/createSeller";
+import type { CreatedSeller, SellerDraft } from "./src/master/createSeller";
+import { pickableSeller } from "./src/master/sellerForm";
 import { dailyScreen } from "./src/reports/dailyView";
 import type { DailyScreen as DailyScreenModel } from "./src/reports/dailyView";
 import { readTokenRole } from "./src/session/deviceRole";
@@ -109,6 +112,7 @@ import {
   login,
   resolveShopCode,
 } from "./app/api";
+import { AddSellerSheet } from "./app/AddSellerSheet";
 import { BillsPanel } from "./app/BillsPanel";
 import { CartScreen } from "./app/CartScreen";
 import { DailyScreen } from "./app/DailyScreen";
@@ -190,6 +194,8 @@ export default function App() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [billsOpen, setBillsOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  /** The add-seller form, stacked over the picker (P1.8a phase 3). */
+  const [addSellerOpen, setAddSellerOpen] = useState(false);
   /*
    * CARTS ON THIS DEVICE THAT THIS PERSON MAY NOT CONTINUE — a count, from the
    * loader, never computed here. Read once at boot: nothing on this screen can
@@ -1209,6 +1215,31 @@ export default function App() {
   }, [failedCount, pendingCount]);
 
   /**
+   * THE POST /sellers CALLER (P1.8a). One instance for the app's lifetime:
+   * `getToken` reads `tokenRef` at call time, exactly as the sync engine's
+   * transport does, so a sign-in does not have to rebuild it — and a stale
+   * captured token cannot be sent.
+   *
+   * `fetchImpl` is wrapped rather than handed over as `globalThis.fetch`, for
+   * the same reason HttpTransport wraps it: an unbound reference to React
+   * Native's fetch is not safe to call.
+   */
+  const sellerApi = useMemo(
+    () =>
+      new SellerApi({
+        baseUrl: API_BASE_URL,
+        getToken: () => Promise.resolve(tokenRef.current),
+        fetchImpl: (input, init) => fetch(input, init),
+      }),
+    [],
+  );
+
+  const createSeller = useCallback(
+    (draft: SellerDraft) => sellerApi.createSeller(draft),
+    [sellerApi],
+  );
+
+  /**
    * Open the seller picker, and re-read master data while it is open.
    *
    * The refresh is fired and NOT waited on: the picker opens immediately with
@@ -1330,6 +1361,50 @@ export default function App() {
       setPendingChange({ to: s, impact: preview.impact });
     },
     [applySellerChange, currentOwner, draft, freshness.asOf, locks, tierResolver],
+  );
+
+  /**
+   * A SELLER WAS JUST CREATED ON THE SERVER, AND THE TRUCK IS ON THE
+   * WEIGHBRIDGE (P1.8a phase 3).
+   *
+   * THE IN-MEMORY LIST IS UPDATED FIRST, and that is not an optimisation. The
+   * durable cache is written only by `saveSellers`, which runs an UNCONDITIONAL
+   * `DELETE FROM cached_sellers` and re-inserts the server's whole list — so
+   * until a refresh completes the new seller is nowhere on this device. And
+   * `seller` (the useMemo near the top of this component) resolves the draft's
+   * `seller_id` out of THIS array: a draft whose seller is not in it renders as
+   * null and CartScreen treats that as "cannot save". Without this line the
+   * operator would create a seller, start a bill for them, and be unable to
+   * save it.
+   *
+   * THEN the refresh, which is what makes it durable — it re-reads the server's
+   * list, which now contains this row, and writes the lot to SQLite.
+   *
+   * THE REFRESH CAN FAIL WHILE THE CREATE SUCCEEDED, and nothing here repairs
+   * that: the connection can drop between the two requests, and
+   * `refreshMaster` also returns immediately when one is already in flight. The
+   * seller then exists on the server and only in this app's memory. The bill
+   * still saves and still sends — it carries `seller_id`, and the server
+   * resolves it — but a relaunch before the next successful refresh loses the
+   * local row, and a draft pointing at it becomes unsaveable until one lands.
+   * That fails CLOSED, which is the right direction for money, and it is
+   * recorded rather than fixed here.
+   */
+  const onSellerCreated = useCallback(
+    (created: CreatedSeller) => {
+      setAddSellerOpen(false);
+      // FIVE FIELDS, named one by one. `CreatedSeller` also carries id_number,
+      // address and vehicle_no, and structural typing would let all three into
+      // this list and then into saveSellers — see src/master/sellerForm.ts.
+      const seller = pickableSeller(created);
+      setSellers((prev) => (prev.some((s) => s.id === seller.id) ? prev : [...prev, seller]));
+      const t = tokenRef.current;
+      if (t !== null) void refreshMaster(t);
+      // The operator pressed เลือกผู้ขายรายนี้; this is that pick, going through
+      // the one function that starts or changes a bill.
+      chooseSeller(seller);
+    },
+    [chooseSeller, refreshMaster],
   );
 
   /* ------------------------------------------------------------ vehicle -- */
@@ -1761,8 +1836,37 @@ export default function App() {
           /* Tells "this device has never downloaded the list" apart from "the
              office has not added anyone" — same empty screen, opposite fixes. */
           neverFetched={!freshness.haveSellers}
+          onAddSeller={() => setAddSellerOpen(true)}
           onClose={() => setPickerOpen(false)}
           onPick={chooseSeller}
+        />
+
+        {/*
+          STACKED OVER THE PICKER, which is itself a Modal. That is why this
+          sheet carries its own sign-in exit: the status strip's button — the
+          app's usual answer to an expired session — is physically underneath
+          both and cannot be reached from here.
+        */}
+        <AddSellerSheet
+          visible={addSellerOpen}
+          create={createSeller}
+          onPick={onSellerCreated}
+          onSignIn={() => {
+            // Same shape as the strip's onSignIn: close what is on top, and the
+            // login screen is already the body of the app for a session that has
+            // ended. Nothing here can supply credentials.
+            setAddSellerOpen(false);
+            setPickerOpen(false);
+          }}
+          onRefreshList={() => {
+            // `ambiguous`: the server may or may not have created the seller.
+            // Re-read the list and put the operator back on the picker, where
+            // the search box is, so they can LOOK before adding again.
+            setAddSellerOpen(false);
+            const t = tokenRef.current;
+            if (t !== null) void refreshMaster(t);
+          }}
+          onClose={() => setAddSellerOpen(false)}
         />
 
         <ConfirmSellerChangeDialog

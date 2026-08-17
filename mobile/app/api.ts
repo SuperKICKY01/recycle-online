@@ -35,6 +35,58 @@ export interface Product {
  *
  * A form sends those three through `SellerDraft` in `src/master/createSeller.ts`,
  * which has them. Nothing on the app side needs them back.
+ *
+ * ---------------------------------------------------------------------------
+ * SUPERSEDED 2026-08-17 — HALF OF THE PARAGRAPH ABOVE IS FALSE, AND IT IS THE
+ * HALF THAT GUARDS THE WRITE. The original is kept rather than corrected in
+ * place: it is the only evidence of how long it stood and of what somebody
+ * believed while writing code next to it. It landed at `55b58e9` and was false
+ * on the day it landed — this is not a claim that rotted.
+ * ---------------------------------------------------------------------------
+ * WHICH HALF SURVIVES: "no screen can render one". Reading the field off a
+ * value typed as the narrow type is refused — `TS2339: Property 'id_number'
+ * does not exist on type 'MasterSeller'`. A screen cannot render what it
+ * cannot name, and that much the compiler really does enforce.
+ *
+ * WHICH HALF IS FALSE: "no code can hand one to `saveSellers` by accident".
+ * A wider object IS assignable to a narrower parameter — that is what
+ * structural typing MEANS — and excess-property checking bites only on FRESH
+ * OBJECT LITERALS. Measured with `tsc -p tsconfig.node.json --noEmit` over one
+ * line per way of moving a nine-field `CreatedSeller` into a five-field
+ * position (the probe used `MasterSeller`, which is these same five fields —
+ * `src/master/types.ts` says the two satisfy each other structurally):
+ *
+ *     const a: MasterSeller = created            COMPILES
+ *     const b: MasterSeller = { ...created }     COMPILES
+ *     saveSellers([created], "x")                COMPILES
+ *     a.id_number                                TS2339
+ *     { id, code, name, phone, grade, id_number } TS2353
+ *
+ * The two the compiler refuses are the two nobody writes by accident. The
+ * three it permits are the three an ordinary author reaches for: take what the
+ * server returned, put it in the list, hand the list to the store.
+ *
+ * WHERE THE GUARANTEE ACTUALLY LIVES, and it is one layer down from where this
+ * paragraph put it: `SqliteMasterStore.saveSellers` writes a fixed INSERT
+ * column list into a table that has no `id_number`, `address` or `vehicle_no`
+ * column at all. That is a RUNTIME guarantee, and it is the one
+ * `proveSellerCreate`'s C6 measures. The security property is real. The
+ * compiler is not what enforces it.
+ *
+ * AND THE PART THAT IS NOT ABOUT THIS COMMENT: a sentence in a file about what
+ * OTHER code cannot do is a claim nothing executes, nothing typechecks and no
+ * proof drives. It is believed rather than measured — and believed by exactly
+ * the reader who is about to write the code it is wrong about.
+ *
+ * → `lessons/a-narrowing-type-is-not-a-barrier-to-the-object.md`, indexed at
+ *   `lessons/README.md § Lessons` "one word apart in English".
+ *
+ * NO SHA ON THIS SUPERSESSION, deliberately: it is written before the commit
+ * that carries it, so the only sha available names the tree without it
+ * (CLAUDE.md § Conventions, the pin-a-claim corollary). The date stands
+ * instead. THE INTERFACE BELOW IS UNCHANGED — the narrowing stays and is still
+ * worth having for the half that holds; only the account of what enforces it
+ * is corrected.
  */
 export interface Seller {
   id: string;
