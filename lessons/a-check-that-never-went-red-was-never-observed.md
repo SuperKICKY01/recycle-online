@@ -7,9 +7,9 @@ to the instrument you are about to cite as evidence for something else.
 case, run in the same pass, that makes it fire. A check nobody has watched go red
 is a claim about the code, not a measurement of it.
 
-**TEN MECHANISMS, and this line is the ONLY place in this file that says how
+**ELEVEN MECHANISMS, and this line is the ONLY place in this file that says how
 many.** Every heading below names its own mechanism and never the running total,
-so appending a tenth is a one-number edit, here. This line exists because the
+so appending another is a one-number edit, here. This line exists because the
 count used to live in three headings and in this file's index line, and all four
 went stale together while the body grew from four to nine — the index line ended
 up reading "Six mechanisms" and "a NINTH mechanism" in one sentence.
@@ -656,3 +656,139 @@ inputs?*, 5–7 *was it looking at the right thing?*, 8 *does it still reach its
 failing state on today's fixture?*, 9 *how many different states satisfy this?*.
 This one asks: **when the thing under test does nothing at all, what does each
 side of my comparison become — and do those two nothings look the same?**
+
+---
+
+## AN ELEVENTH MECHANISM (P1.8a, 2026-08-17) — THE CHECK WENT RED, AND RED IS NOT ONE STATE
+
+Every mechanism above is a GREEN that carries no information. **This one is a RED
+that carries the WRONG information**, and it belongs in this file rather than in
+a note about tooling because it is the same defect on the other side of the exit
+code. This file's rule is *a passing result is evidence only if you know what
+would have made it fail*. Its corollary, which nothing above states, is that **a
+failing result is actionable only if you know WHICH of several conditions
+produced it.**
+
+**The shape.** `tools/verify_citations.ps1` reads a citation as a backticked
+`file § section` followed by a quoted handle, and requires that handle to occur
+in the target **exactly once**. It prints the same word for `hits=0` and for
+`hits=2`:
+
+```
+19  BROKEN  lessons/README.md  sect=Lessons
+    handle="a-checker-must-not-share-the-code-it-checks.md"  hits=2 L19,L42
+```
+
+**Those two conditions have OPPOSITE REPAIRS.** `hits=0` means the target is
+missing — go and write it, or correct the path. `hits=2` means the target is
+AMBIGUOUS — the thing pointed at exists twice, and it is the CITING file that
+must change. A reader scanning that column for `BROKEN`, which is what the eye
+reads, goes looking for a file that is not missing. `hits=N` is the only thing
+separating them, and it sits at the end of the line after the handle.
+
+This is the SEVENTH mechanism's rule turned on an instrument's OUTPUT instead of
+on a proof cell: *where two mechanisms produce an identical outcome, the shared
+outcome is not evidence about either*. There, two guards both answered 401 and
+the discriminating field was `code`. Here, two conditions both answer `BROKEN`
+and the discriminating field is `hits`.
+
+### Why the handle was ambiguous BY CONSTRUCTION, not by carelessness
+
+The handle was a lesson's FILENAME. In `lessons/README.md` a lesson's filename
+appears **twice by design**: once at the head of its own index line, and again
+inside another lesson's index line wherever that lesson cross-references it.
+`a-checker-must-not-share-the-code-it-checks.md` is at L19, its own entry, and at
+L42 inside `a-differential-control-is-only-as-good-as-its-weaker-side.md`'s.
+**A filename handle is therefore ambiguous the moment any other lesson mentions
+the file — and mentioning each other is what these index lines are FOR.**
+
+**MEASURED 2026-08-17, and the measurement is what turns this from a typo into a
+class.** Tool: ripgrep over `*.md`, pattern
+`` `lessons/README\.md § Lessons`\s+"[^"]+\.md" `` — a backticked citation into
+that file followed by a quoted handle ending `.md`:
+
+| | count |
+|---|---|
+| citation sites using a FILENAME as the handle | **27**, across 6 files |
+| distinct lesson filenames used that way | **16** |
+| of those 16, resolving at exactly 1 today | **16 — none is broken now** |
+
+**CONTROL, in the same run, because a count with no control is a count nobody
+watched fire:** the handle repaired here comes back at **2** occurrences,
+matching the checker's own `hits=2`, which is what says the script is reading
+what the checker read; and the replacement handle comes back at **1**. Without
+the first number the sixteen zeros mean nothing.
+
+**The broader pattern — a backtick, whitespace, any quoted `.md` — returns the
+same 27 across the same 6 files, so every filename-handle citation in this tree
+targets `lessons/README.md`.** A second pattern allowing ANY handle into that
+file returns **31**, so 27 of 31 citations into the lesson index name a filename.
+The two patterns disagreeing by exactly the four non-filename handles is the
+evidence that the narrow one discriminates rather than matching everything.
+
+### TWO FAILURE PATHS, and only one of them has been observed
+
+**BORN BROKEN — this is the one that was measured.** A citation is WRITTEN naming
+a filename that ALREADY occurs more than once. It is red on its first run, which
+is the safe direction; the cost is only that the word sent the author looking for
+a missing target. That is what happened at `55b58e9`: the citation was never
+valid, not made invalid.
+
+**BECOMES BROKEN LATER — inferred from the mechanism, and never yet seen.** A
+citation names a filename occurring once, and a future lesson cross-references
+that filename in its index line. The citation breaks **with neither endpoint
+edited**: not the citing file, not the cited section, not the handle. Twenty-seven
+sites and sixteen distinct handles sit one cross-reference away from it. **Nobody
+has observed this happen, and it is written here as a prediction rather than as a
+finding**, which is the distinction the ninth mechanism's two instances turn on.
+
+**Why it is not the SIXTH mechanism restated.** That one is damage propagating
+*opposite* to the edit — you DELETE a heading in the file you are editing and
+break a citation in a file you are not. Its remedy, rule 9 above, is *before
+deleting or renaming a heading, grep for it*. This propagates the same way and
+**arrives from an ADDITION, in a THIRD file that is neither endpoint**. Rule 9 is
+silent about additions, and there is nothing to grep for at the moment of the
+edit: the person adding a cross-reference is writing prose about lessons, not
+touching anything anybody cites.
+
+**And it shares the EIGHTH mechanism's worst property** — it can arrive with no
+diff to review — while differing in what moves. There a fixture SHRANK and a
+stimulus stopped being delivered; here a namespace GROWS and a handle stops being
+unique. Both are properties of the check and the data together, and neither is
+visible in the commit that causes it.
+
+### The repair, so it is reproducible
+
+**Use a distinctive phrase from the target's own index line, never its filename**,
+and confirm it occurs exactly once BEFORE writing it. The repair here was
+`"DUPLICATE ARITHMETIC"`, measured at 1 occurrence before the citation was
+written. A phrase from the index line's own prose cannot be duplicated by another
+lesson mentioning the file, because what other lessons write is the FILENAME.
+
+**The residual, stated: one of the twenty-seven is in a file no run opens.**
+`server/README.md` carries one such citation and appears in no `-Source` list used
+in this repository, so its state is not measured by any check that runs here —
+the FIFTH mechanism, still live, in the same instrument this amendment is about.
+
+### Two more, appended to How to apply
+
+18. **When an instrument reports one word for two conditions, read the
+    discriminating field before acting on the word.** `BROKEN` covers missing and
+    ambiguous; `0 violations` covers clean and never-looked; a non-zero exit
+    covers the check failing and the harness failing. Ask of any red: *how many
+    different states print this, and which one am I looking at?* — the same
+    question the ninth mechanism asks of greens, and it is owed to reds too.
+19. **A handle is only as stable as the NAMESPACE it is unique in.** Choose one
+    that cannot be duplicated by the ordinary growth of the target: prose from the
+    line you mean, never an identifier that the target's own conventions repeat.
+    And confirm the count is 1 at the moment you write it — a handle verified once
+    is a handle that was unique once, and this file's whole subject is the
+    difference between those two sentences.
+
+**The question this adds.** Mechanisms 1–4 ask *could this have failed given my
+inputs?*, 5–7 *was it looking at the right thing?*, 8 *does it still reach its
+failing state on today's fixture?*, 9 *how many different states satisfy this?*,
+10 *when the thing under test does nothing, do both sides of my comparison become
+the same nothing?*. This one asks the mirror of the ninth, and it is the only one
+in the file addressed to a RED: **how many different states produce this
+FAILURE, and does the word in front of me name the one I have?**

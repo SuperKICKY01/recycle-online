@@ -880,6 +880,15 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   inverted from it: those nine mechanisms are cells that CANNOT go red;
   this is a cell that WOULD go red if the premise it encodes were
   updated, and stays green precisely because nobody updated it.
+  **Superseded 2026-08-17: ELEVEN mechanisms, not nine.** The tenth
+  landed at `2f88403` and the eleventh in this phase, and this sentence
+  was stale for both. The ARGUMENT above is untouched and still holds —
+  it is about the inversion, not about the count. **And the eleventh
+  narrows the word "those": it is the only mechanism in that file about
+  a RED rather than a green, so "cells that CANNOT go red" is now true
+  of ten of the eleven.** The count is quoted here at all only because
+  this entry quotes it; the file itself states it in exactly one place
+  by design, and that place is the authority.
   **THE OPEN QUESTION THIS RAISES, and it is deliberately unanswered:
   how many other cells in either proof suite encode a premise the clock
   work changed?** Two commits added a server-wide 503 and a tenant-wide
@@ -2947,7 +2956,21 @@ with no feature of its own.
   only-as-good-as-its-weaker-side.md` split off because its question
   differs (`:46-47`), and that file and the nine-mechanism one each
   declined to absorb the other, in writing. Differing remedies are
-  therefore NOT evidence for splitting here. *Done when:* the file
+  therefore NOT evidence for splitting here.
+  **Superseded 2026-08-17: ELEVEN mechanisms and NINETEEN remedies.**
+  Both figures were taken when that file held nine and fifteen; the
+  tenth landed at `2f88403` and the eleventh in this phase, each adding
+  two remedies. **The MERGE CRITERION above is what matters and it is
+  unchanged** — one file per operative test, not per mechanism and not
+  per remedy. **One qualification the eleventh forces, flagged and not
+  resolved:** it is the only mechanism in that file addressed to a RED
+  rather than a green, so "all N answer one question" now needs the
+  question stated at its widest — *did you observe the instrument, or
+  trust its word?* — rather than at the narrower one this sentence was
+  written under. **The `:174-176` and `:46-47` references have rotted**
+  and are left as found: that file has grown from 176 lines to 794, and
+  repairing position citations is a different pass from correcting a
+  count. *Done when:* the file
   carries three mechanisms; the three-clause operative test (WRITERS /
   BURNT TOKENS / DOMAIN AND EXCLUDE BY IDENTITY) **with the failed
   single-clause first attempt shown rather than edited out** — the
@@ -3019,6 +3042,14 @@ with no feature of its own.
   to the fixture — and says why the nine mechanisms are its inverse:
   they are cells that CANNOT go red, this is one that can and nobody
   moved it.
+  **Superseded 2026-08-17: ELEVEN mechanisms, not nine** — the tenth at
+  `2f88403`, the eleventh in this phase. The *Done when* above still
+  stands and its wording is what needs care when the lesson is
+  eventually written: **"they are cells that CANNOT go red" is now true
+  of TEN of the eleven.** The eleventh is a cell that DID go red and
+  reported a word covering two conditions with opposite repairs, so a
+  new lesson citing this contrast must say ten, or say it of the
+  mechanisms rather than of the file.
   **(4) NEW — read the spec before designing the experiment.** Two
   propagation experiments were designed to establish what one line of
   vendor documentation already states, costing over an hour. The same
