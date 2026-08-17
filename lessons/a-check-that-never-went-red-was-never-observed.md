@@ -7,7 +7,7 @@ to the instrument you are about to cite as evidence for something else.
 case, run in the same pass, that makes it fire. A check nobody has watched go red
 is a claim about the code, not a measurement of it.
 
-**TWELVE MECHANISMS, and this line is the ONLY place in this file that says how
+**FOURTEEN MECHANISMS, and this line is the ONLY place in this file that says how
 many.** Every heading below names its own mechanism and never the running total,
 so appending another is a one-number edit, here. This line exists because the
 count used to live in three headings and in this file's index line, and all four
@@ -928,3 +928,137 @@ failure?*. This one asks the question that outranks all of them, because it is
 about the pass that validates the others: **which cell did I predict would move,
 did THAT cell move, and if it did not, is my model of the cell wrong or my model
 of the damage?**
+
+## A THIRTEENTH AND A FOURTEENTH MECHANISM (P-GUARD, 2026-08-17) — ONE AMENDMENT, BECAUSE THE PAIR IS THE FINDING
+
+**Both were produced by ONE `Prove:` document, on ONE day, under ONE review.
+Neither was found by running anything.** The thirteenth surfaced because two
+measurements of the same command disagreed and somebody refused to pick one; the
+fourteenth was found by a person reading the brief before it was dispatched, in
+a check that had already been written, reviewed and approved. **Nothing was
+executing yet. There was no red to notice and no green to doubt.**
+
+That is why they are appended together. Every mechanism above is a defect in an
+instrument pointed at CODE. These two are defects in the document that says the
+code was proven — and a document is not run, so the entire disproof discipline
+this file teaches never gets a chance to fire on it. **Split into two amendments
+months apart, each reads as one more instrument bug and that datum is gone.**
+
+### MECHANISM 13 — THE INSTRUMENT ANSWERS A DIFFERENT QUESTION DEPENDING ON THE INDEX
+
+`git check-ignore` **consults the index by default**, so a TRACKED path is
+reported as not-ignored no matter what the patterns say. Measured on
+**git 2.50.1.windows.1**, in a throwaway repository, under a deliberately BROKEN
+pattern (`.claude/skills/` in the directory form, which makes every negation
+under it inert), against a path that is in the index:
+
+```
+git check-ignore -q            .claude/skills/async-python-engineering/SKILL.md
+  -> exit 1   "not ignored"   READS AS PASS
+git check-ignore -q --no-index .claude/skills/async-python-engineering/SKILL.md
+  -> exit 0   "ignored"       THE ACTUAL ANSWER: FAIL
+```
+
+**All nine authored skill directories in this repository are tracked.** So the
+plain form answers PASS over a pattern that would silently stop protecting them
+— and it does so for every file the repository guards most, because *tracked* is
+what guarded means here. A `Prove:` block written with the plain form is a cell
+that cannot go red, in the document whose job is proving the change.
+
+**WRITE THE SECOND HALF, NOT THE FIRST.** The eye-catching detail is that `-v`
+prints a line for a NEGATION match too, so "produced output" is not "is
+ignored" — `.claude/settings.json` untracked prints `!.claude/settings.json`
+while `-q` exits 1. That is a property of one flag. **The lesson is that this
+instrument cannot check the very files a repository protects**, and `--no-index`
+is what asks the question the author meant. The `-v` detail is also
+index-dependent in the opposite direction: for the SAME path TRACKED, `-v`
+prints NOTHING. Two correct measurements taken in two index states, which is
+exactly how the disagreement that surfaced this arose.
+
+**Not the fifth mechanism.** There the instrument never read the artifact — a
+hardcoded source list, a green computed from a different file. Here it reads the
+right artifact, at the right path, and answers a DIFFERENT QUESTION about it:
+*is this path ignored in practice, given what is already tracked?* rather than
+*what do these patterns say?* Both questions are legitimate and the tool answers
+the first by default. **The fifth is a wrong target; this is a wrong question
+about the right target**, and no source list can fix it.
+
+**Not the ninth.** The haystack is not empty — the path exists, the patterns
+exist, the comparison is real. It comes out wrong for a reason that is
+documented behaviour.
+
+**The disproof that finds it is one line:** run the same path under a pattern you
+know is broken and require the two flag forms to DISAGREE. If they agree, the
+cell you are about to trust is not reading the patterns at all.
+
+### MECHANISM 14 — A SET CHECK THAT PASSES ON EXCESS
+
+The phase check in P-GUARD's brief originally required the two commits' file
+sets to have an **EMPTY INTERSECTION**. That is a real property and it catches a
+real defect: the same file edited by both commits, which is the case where a
+two-commit phase goes wrong. **It is blind to a file appearing in NEITHER
+declared set.** A commit that also swept in a pile of unrelated untracked paths
+has a perfectly empty intersection with the other commit and passes completely.
+
+**THE GENERAL FORM, and it is not about git.** A containment test and a
+disjointness test both ask **WHAT IS PRESENT**. Only **EQUALITY** asks **WHAT IS
+IN EXCESS.** Any check whose real question is *did anything extra get in here* —
+a staging set, an allowlist, a serialised payload, a migration's touched tables,
+a response body's keys — is answered by equality and is not answered by either
+of the other two, however carefully they are written.
+
+**Measured at the time the check was written:** 152 untracked files in this tree,
+`git add *` pre-approved in `.claude/settings.local.json` so a sweeping stage
+raises no permission prompt, and a check that would have reported the result
+clean.
+
+**Not the third mechanism.** There the failing state is unreachable from the
+inputs supplied. Here it is trivially reachable — one `git add -A` reaches it —
+and the check simply does not express it.
+
+**Not the twelfth.** There the cell was sound and the prediction about it was
+wrong. Here the prediction was right (a wrong file set must redden this) and the
+CELL was wrong: it tests a weaker relation than the sentence above it claims.
+
+### THE THIRD DATUM, AND IT ARRIVED INSIDE THE PROBE BUILT TO PROVE THIS PHASE
+
+The `Prove:` block for this phase requires a SECOND INSTRUMENT: `git add -A`
+inside the fixture, whose staged list must contain no third-party path. Its
+first run printed:
+
+```
+STAGED=1  THIRD_PARTY_STAGED=0
+```
+
+The one staged path was `.gitignore`. **The fixture had already committed every
+authored file, so `git add -A` had nothing to stage and the instrument decided
+nothing.** `THIRD_PARTY_STAGED=0` was true, and carried no information — **the
+ninth mechanism, in the instrument written to prove a phase about instruments
+that carry no information.** Repaired by creating new files on BOTH sides first
+(one inside an authored skill, two third-party) and by running the same stage
+under case A as a control: `STAGED=10  THIRD_PARTY_STAGED=8`. Only with that
+control on the page does the zero above it mean anything.
+
+**This is why the pair is the finding and not a coincidence of timing.** Three
+instances in one phase, all in the proving apparatus rather than in the thing
+proved.
+
+### Three more, appended to How to apply
+
+22. **Ask what QUESTION your instrument answers by default, not just what
+    artifact it opens.** Rule for the fifth mechanism is *which paths does it
+    read*; this is one level in from that. A tool can read exactly the right file
+    and answer a neighbouring question — `check-ignore` asks about the index,
+    `git status` asks about the working tree normalised, a linter asks about the
+    files it was handed. **Where a flag switches the question, name the flag in
+    the cell and say which question you meant.**
+23. **When the real question is "did anything EXTRA get in", only equality
+    answers it.** Write the check as *this set EQUALS that set* and never as
+    *this set contains* or *these sets are disjoint*. Both weaker forms are
+    satisfied by the excess you are looking for.
+24. **A `Prove:` block is not exempt from this file, and nothing runs it.** Code
+    gets a red eventually; a proof document gets one only if a person reads it
+    adversarially before it is dispatched. **Read your own `Prove:` block asking,
+    of each cell, what state of the world would make this print PASS while the
+    change is broken** — and treat a cell whose answer is "none I can construct"
+    as unfinished rather than as strong.

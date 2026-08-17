@@ -42,3 +42,38 @@ desktop.ini
 # patterns come AFTER the negation on purpose: the last match wins.
 .claude/hooks/*.log
 .claude/hooks/*.log.1
+
+# A third-party skill install landed under .claude/skills/ and none of it
+# was ignored, while `git add *` is pre-approved in settings.local.json -
+# so one sweeping stage would have committed somebody else's tree.
+# The DEFAULT here is IGNORE and the AUTHORED skills are named back in,
+# so the next install is excluded without anybody remembering and a new
+# authored skill has to be admitted on purpose. Naming the intruders
+# instead would fail open.
+# MEASURED 2026-08-17 in a throwaway repository outside this tree, 14
+# probes over three patterns. Today's: 5 wrong, and `git add -A` staged
+# 8 third-party paths. The DIRECTORY form `.claude/skills/` (no star):
+# all nine negations INERT - it re-ignores the authored skills too, and
+# the damage is silent because a rule cannot untrack a tracked file, so
+# `git status` looks right and only the NEXT file added inside a skill
+# goes missing. This pattern: 0 and 0. The star is load-bearing for the
+# same measured reason it is one level up.
+# The negation count MUST EQUAL the tracked directory count -
+# `git ls-files .claude/skills | cut -d/ -f3 | sort -u` returned 9 on
+# 2026-08-17, and a list short by one drops a skill silently.
+.claude/skills/*
+!.claude/skills/async-python-engineering/
+!.claude/skills/buddhist-method/
+!.claude/skills/crash-safety/
+!.claude/skills/debug-mantra/
+!.claude/skills/defensive-coding/
+!.claude/skills/delivery-workflow/
+!.claude/skills/long-running-jobs/
+!.claude/skills/scrutinize/
+!.claude/skills/verification-discipline/
+
+# The same installer's other two artefacts. skills-lock.json is what ties
+# them together: every entry in it records "source": "mattpocock/skills",
+# and none of the nine authored skills appears in it at all.
+.agents/
+skills-lock.json
