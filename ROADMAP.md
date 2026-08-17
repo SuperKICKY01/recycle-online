@@ -1685,28 +1685,117 @@ local schema can be migrated in place.
 seller face photograph S12 requires, and any later kind — without each one
 paying the void's price again.
 
-**DONE WHEN**, and the count deliberately is not written here:
+**A SECOND KIND IN THE QUEUE BREAKS A COMPLETENESS CLAIM THE CODE MAKES ABOUT
+ITSELF, AND IT BREAKS IT SILENTLY.** `mobile/src/sync/types.ts` documents
+`UnsentBreakdown` as **four counts over `sync_state IN ('pending','syncing')`,
+DISJOINT and COMPLETE — every unsent row is in exactly one, and the four sum to
+the old undivided total.** That predicate is about ROWS IN A STATE, not about
+bills, so a photo upload or a seller create sitting in the same queue is an
+unsent row belonging to none of the four — or miscounted into `mine`. And
+`mobile/src/session/signOutNotice.ts` renders that number as
+`มีบิลรอส่งขึ้นระบบ ${pending} ใบ` — the word is BILLS, on the gate that refuses
+sign-out. **So the first non-bill kind makes a screen lie to a worker and a gate
+refuse for a reason it cannot name.** Deciding what those counts mean under
+several kinds is part of this step, not a follow-up.
 
-- **Bill send and bill void both run through the one mechanism with their
-  existing policies unchanged**, proven by EVERY `prove:*` script declared in
-  `mobile/package.json` exiting 0 twice in a row, bare, with the count
-  re-derived at run time and REPORTED IN THE RUN rather than named here
-  (`OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "A RAW COUNT INSIDE AN ACCEPTANCE CRITERION ROTS").
-  Both mobile typecheck programs exit 0 run bare.
-- **A THIRD KIND IS CARRIED WITH NO NEW DRAIN LOOP.** The observable is
-  structural and must be read off the diff: adding it introduced no second
-  iteration construct in `runOnce` and no third `Transport` method shaped like
-  `voidBill`. A generalisation that still needs a hand-written loop per kind has
-  not generalised anything.
-- **ON A DEVICE, not in a proof:** a bill weighed offline still syncs and takes
-  a doc_no, and a void requested offline still applies, both after the change,
-  with the rows read back out of Postgres. Applied is not verified, and the two
-  paths this rewrites are the two that already carry real money.
+**DONE WHEN.** No count is written into these criteria, per
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "A RAW COUNT INSIDE AN ACCEPTANCE CRITERION ROTS".
 
-**WHAT THIS STEP MUST NOT DO.** It must not change what the server accepts, must
-not alter doc_no assignment, and must not touch the void's identity refusal —
+**1 — THE THIRD KIND IS OFFLINE SELLER CREATION, NAMED HERE SO IT CANNOT BE THE
+EASIEST ONE AVAILABLE.** A generalisation demonstrated on a kind chosen for
+being easy has been demonstrated on nothing
+(`lessons/README.md § Lessons` "a-control-must-contain-what-fooled-you.md").
+Seller creation is named because P1.8b's survey already establishes what makes
+it hard, and every one of those must hold through the mechanism rather than
+around it: the server REFUSES a client-minted id, `sellers` has NO idempotency
+key so a re-send is recognisable only by a code collision, and a 409 means
+ALREADY EXISTS rather than retry-forever — which on the bill path would dam the
+queue.
+
+**AND WHAT NAMING IT COSTS, STATED RATHER THAN HIDDEN.** The other candidate was
+the photograph, and it is hard along a DIFFERENT axis: a multi-megabyte binary
+with its own resume semantics, in a system this step measured as carrying no
+binary payload anywhere. Seller creation is chosen because it needs no
+capability that does not exist, so the mechanism can be built without dragging
+the camera in with it — **but a mechanism proven on seller creation has NOT been
+shown to carry a large binary.** That residual is real and belongs to whoever
+adds the photo kind: the design must be checked against a multi-megabyte payload
+and a resumable transfer at DESIGN time, in this step, even though nothing here
+proves it at run time.
+
+**2 — A HAND-WRITTEN PATH MUST FAIL TO COMPILE, NOT FAIL A READING.** The
+mechanism is the ONLY producer of the value its drain consumes, so a second
+path cannot be written without the typechecker refusing it. **This replaces
+reading the diff**, which is not an observable: `runOnce` is a function name
+rather than a structural property, so moving a per-kind loop into a helper
+satisfies a diff-reading criterion while defeating the design, and a single
+`send(kind, payload)` switching on `kind` with a hand-written branch per kind
+pays the whole original cost in new clothes. The observable is a command with
+an exit code: both mobile typecheck programs exit 0 run bare, AND a deliberately
+hand-written fourth path, added on purpose, FAILS to compile with its error
+recorded.
+
+**3 — THE PROOFS AGREE, AND THEIR OWN DIFF IS REPORTED.** Every `prove:*` script
+declared in `mobile/package.json` exits 0 twice in a row with no reseed between,
+run bare and with NO FLAGS — `prove:forbidden --offline` exits 2 by design
+(`START_HERE.md § 4` "prove:forbidden") and is not a counter-example. Report
+THREE numbers and assert the first two are equal: how many the file declares,
+how many actually ran, and the per-script exit codes. A run that skipped one and
+reported the declared total is the `SOURCES=` defect this repository has already
+paid for.
+**AND THE PROOFS ARE INSIDE THE BLAST RADIUS**, which is what makes their green
+weak here: the files under `mobile/src/proof/` that import `../sync/` or
+`../adapters/sqlite/` are edited by the same change they measure, and a proof
+adjusted to fit a broken generalisation exits 0 exactly as well. So: report the
+proof diff, and **for every assertion that changed, name the behaviour change
+that forced it. An assertion that changed where no behaviour changed is a
+finding**, not a tidy-up.
+
+**4 — ORDER IS TESTED WITH MORE THAN ONE ROW, ON A DEVICE.** Head-of-line is the
+send kind's whole policy and the 73-second incident is this step's own evidence
+for it; **one bill is green with ordering removed entirely.** At least two bills
+weighed offline in a KNOWN order, then synced, then their `doc_no`s read back
+out of Postgres in that same order, with the counter's MOVEMENT reported rather
+than the doc_no's existence.
+
+**5 — THE DISCRIMINATING VOID CASE, WHICH IS NOT A VOID ON ITS OWN.** What makes
+the void kind different is no backoff, no time gate, no ordering, and an
+in-flight guard keyed `void:${id}` so a void and a send of the SAME bill do not
+block each other. The case that tests it is therefore ONE BILL that is
+simultaneously awaiting send and carrying a void request — driven offline, then
+released. Two separate single-row exercises never touch the point where a
+unified drain is most likely to fail.
+
+**6 — THE RENDERED NUMBER IS READ, NOT THE STORED ONE.** With a non-bill kind
+queued, the sign-out notice and the status strip are READ ON THE HANDSET and
+reported verbatim in Thai, and the sign-out gate's decision is exercised. If the
+counts still claim completeness over `sync_state`, the claim in
+`mobile/src/sync/types.ts` is re-derived and either re-stated or the type is
+split — silently leaving a docstring that has become false is the failure this
+criterion exists to catch.
+
+**7 — THE QUEUE ALARM SURVIVES THE REWRITE.** `first_server_error_at` and
+`server_error_attempts` are POLICY STATE on the send path maintained by the
+drain being rewritten. The jam alarm is driven to YELLOW and then to RED after
+the change, both states observed on the handset — a mechanism that carries both
+kinds correctly can still break the alarm silently, and nothing else here would
+notice.
+
+**BEFORE ANY DEVICE READING IS BELIEVED**, state which bundle and which server
+process produced it: `npx expo start -c` and a full reload BEFORE the staging
+that produces the reading, and the server's start time postdating the commit
+under test with a request through the changed path
+(`CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING").
+
+**WHAT THIS STEP MUST NOT DO — AND ONE OF THESE HAS A MECHANISM WHILE THE OTHERS
+ARE PROSE.** It must not change what the server accepts and must not alter
+doc_no assignment. It must not touch the void's identity refusal —
 `void_refused_at` and its 403 handling are the outcome of a device incident and
-are not part of the shape being generalised.
+are not part of the shape being generalised. **That last one is unenforceable as
+written**, because `void_refused_at` lives inside `applyVoids`, which is the
+function being rewritten; the mechanism is that the assertions naming
+`void_refused_at` in `proveVoid` and `proveVoidTerminal` appear UNCHANGED in the
+diff, which is checkable.
 
 ### `GET /users` — landed 2026-08-07, and it is NOT a step in this file
 
