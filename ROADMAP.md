@@ -2002,6 +2002,721 @@ time, so it is independent of THIS FILE's reasoning and not of the reviewer's.
 Six of the seven criteria exist because of that earlier pass. An empty report
 would therefore have established only that a second reader found nothing further.
 
+#### THE OUTBOX DESIGN — and it produces no drain
+
+**WHAT THIS IS.** The mechanism, argued against the artefacts it has to replace,
+so that acceptance criteria can be DERIVED from it rather than guessed ahead of
+it. That derivation is the whole reason stage 2 was restructured. **Nothing here
+is built**, no file under `mobile/src/` moves, and the sketched types at
+`ac535c2` are an INPUT to this design and not a thing it extends.
+
+**WHERE ITS FACTS COME FROM.** Every path:line below was re-derived on
+2026-08-18 at `b3d3654`, a commit at which `git status --porcelain` reported no
+tracked path modified, so each one names the committed blob. Line numbers rot;
+where a number and a quoted line disagree, the quoted line is the claim.
+
+**HOW ITS PARTS ARE REFERRED TO.** The criteria are NAMED, never numbered.
+`mobile/src/sync/outbox.ts` already cites "the step's criterion 2" and "the
+step's criterion 5" in its own header, and those point at the superseded seven —
+a second 1-to-7 in this section would make both references resolve two ways,
+which is the collision `lessons/README.md § Lessons` "a-label-is-a-reference-with-no-checker.md — applies the moment you APPEND"
+records. Re-pointing those two comments belongs to whoever next edits that file.
+
+---
+
+#### The two things the stage-1 types get wrong, measured before anything is designed on them
+
+Both are in `mobile/src/sync/outbox.ts`, both are load-bearing, and neither was
+visible to the criteria review, which read the file's declarations and not its
+mappings.
+
+**ONE — THE COMPILE-TIME GUARANTEE IS NOT ARMED, AND CANNOT BE ARMED AS
+WRITTEN.** The file's header states it as `Record<OutboxKind, OutboxHandler<...>>`
+and argues that adding a kind makes every registry literal fail to typecheck.
+The declaration is not that. It is an interface with three hand-spelled
+properties — `readonly bill_send`, `readonly bill_void`, `readonly seller_create`
+— which references `OutboxKind` nowhere, so a fourth member added to that union
+moves nothing. **And no literal of it exists.** Searched over `mobile/` for
+`OutboxRegistry|OutboxHandler|BILL_SEND_POLICY|BILL_VOID_POLICY|dispositionOfSend|dispositionOfVoid|OutboxKind|OutboxPolicy|LocalOutboxSeller`:
+every hit is inside `outbox.ts` itself, and `mobile/src/sync/index.ts` re-exports
+`./types.js`, `./engine.js` and `./createBill.js` and not this file. An interface
+with no value assigned to it produces no error, so the sentence "the typecheck is
+red until stage 3 supplies it" describes a state that does not exist — nothing is
+red, and nothing can be, until a literal is written.
+
+**TWO — `dispositionOfSend` CONTRADICTS ITSELF, IN THE ONE MAPPING THE DRAIN
+WOULD BE BUILT ON.** Its `rejected_resolvable` arm carries the comment "It is
+NOT terminal: the bill becomes valid without anything being re-weighed" and
+returns `{ next: "terminal", ... }`. `terminal` is defined thirteen lines above
+as "Not done, and no later attempt on this device can differ." The measured
+behaviour is the opposite: `SqliteLocalStore.markMasterDataMissing` writes
+`SET sync_state = 'pending'`, and every pass calls
+`this.store.releaseMasterDataBlocked(this.clock.now(), false)` before the send
+loop, so a later attempt differs BY DESIGN and the engine schedules it. The file
+describes its two policy constants as "transcriptions of measured behaviour, not
+proposals"; this mapping is not one. It also regresses
+`lessons/README.md § Lessons` "unavailable-is-not-rejected.md — applies to every sync/retry path",
+which is explicit that the split is THREE-WAY and that collapsing a resolvable
+refusal into a permanent one strands a load already tipped into the pile.
+
+**WHY BOTH MATTER TO THIS DESIGN AND NOT ONLY TO THAT FILE.** The mapping now
+exists twice — once as dead code in `outbox.ts` and once live in `engine.ts`,
+whose send classifier is a `switch (outcome.kind)` inside `sendOne` — with
+nothing holding the copies together. That is how the disagreement got there
+unnoticed, and it is the general form the mechanism has to remove: one producer
+per kind, imported and not retyped.
+
+---
+
+#### What a KIND is
+
+A kind is a member of `OutboxKind` with exactly one handler in the registry, and
+the registry is a MAPPED TYPE so the set of handlers is total by construction:
+
+    type OutboxKind = "bill_send" | "bill_void";
+
+    interface OutboxRow    { bill_send: LocalBill;   bill_void: LocalBill }
+    interface OutboxResult { bill_send: SendOutcome; bill_void: VoidOutcome }
+
+    type OutboxRegistry = {
+      readonly [K in OutboxKind]: OutboxHandler<OutboxRow[K], OutboxResult[K]>
+    };
+
+Two type parameters, not one. `Row` is the kind's own row so a handler cannot be
+handed another kind's; `Outcome` is the kind's own transport union so the drain
+never learns what a 409 means. The row map and the result map are separate
+interfaces rather than inline conditionals so that adding a kind is three
+one-line edits in one file, each of which the compiler demands.
+
+**`seller_create` IS REMOVED FROM `OutboxKind` BY THIS DESIGN, AND THAT IS NOT A
+RETREAT.** It is declared at stage 1 with no handler, and the argument given for
+declaring it early is that the registry cannot be satisfied without one. That
+argument only works once a registry literal exists — and the moment one does, a
+kind nobody may build makes the typecheck permanently red. Nobody may build it:
+what identifies a locally created seller across devices before the server has
+seen it is an OPEN DECISION at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "TWO OFFLINE HANDSETS CAN MINT THE SAME SELLER CODE",
+which states in its own text that this design step cannot specify the seller kind
+until it is answered. A union member that cannot be given a handler is a
+permanent red or a permanent excuse to leave the registry unbuilt, and the second
+is what the tree holds today. So the member goes, the reason is recorded here,
+and the kind returns in the step that answers the decision.
+
+**WHAT EVERY KIND SUPPLIES.** Twelve members, and each one exists because
+something in `engine.ts` does it today for exactly one kind:
+
+    interface OutboxHandler<Row, Outcome> {
+      readonly kind: OutboxKind;
+      readonly policy: OutboxPolicy;
+
+      /** Rows owed, already in the order `policy` requires. Ordering lives in
+          the QUERY: a sort cannot order a row the query did not return. */
+      owed(limit: number): Promise<Row[]>;
+      /** How many are owed. The only input to the visible counts. */
+      owedCount(): Promise<number>;
+      /** Boot sweep for THIS kind: rows stranded in flight go back to owed. */
+      recover(now: Date): Promise<readonly string[]>;
+
+      rowId(row: Row): string;
+      attempt(row: Row): number;
+      /** The row's own schedule, or null for a kind that carries none. */
+      dueAt(row: Row): string | null;
+
+      perform(row: Row): Promise<Outcome>;
+      /** A throw, converted to THIS kind's own outcome. */
+      onThrow(err: unknown): Outcome;
+      /** Pure. Drivable headlessly over every member, with no server. */
+      classify(o: Outcome): OutboxDisposition;
+      /** The next schedule, or null. Covers backoff, the parked cadence, and a
+          transfer that made progress and must not be delayed. */
+      nextAttemptAt(row: Row, d: OutboxDisposition, attempt: number, now: Date): Date | null;
+      /** The only writer for this kind. Takes the OUTCOME as well as the
+          disposition — see the poison signal below. */
+      record(row: Row, o: Outcome, d: OutboxDisposition, attempt: number, now: Date): Promise<void>;
+    }
+
+`recover` is on the handler and not in a boot function because the only sweep
+that exists is `resetSyncingToPending`, whose statement is
+`UPDATE local_bills ... WHERE sync_state = 'syncing'` — one table, no kind
+predicate — and it is called once, from `SyncEngine.recoverInterrupted`, from
+`App.tsx`'s boot. A second kind added anywhere else inherits nothing.
+`lessons/README.md § Lessons` "sync-state-needs-startup-recovery.md — applies to any"
+is the rule; making it a registry member is what makes forgetting it a compile
+error rather than a silence.
+
+---
+
+#### Ordering, per kind — and `head_of_line` is THREE behaviours, not one
+
+The measured send loop does three separable things. The stage-1 `OutboxOrdering`
+names them as one word, and a criterion written against that word cannot break
+them apart.
+
+1. **The query returns weighing order, UNFILTERED BY BACKOFF.**
+   `listPendingOldestFirst` is `WHERE ${QUEUED} ORDER BY device_created_at, created_at, id`.
+   The sender has to SEE the bill it is not allowed to skip; a backoff-filtered
+   query hides exactly that bill, which is the 73-second incident.
+2. **A row that cannot go STOPS THE PASS for its kind.** Four `break`s in
+   `engine.ts`: the empty queue, `attempted.has(bill.id)`, the in-flight guard,
+   and `!scheduledInstantIsDue(...)`.
+3. **The queue is RE-READ after each unit of work, not iterated as a snapshot.**
+   `const queue = await this.store.listPendingOldestFirst(this.batchLimit);`
+   sits INSIDE the `for`, and it is load-bearing: a successful send calls
+   `clearBackoffForPending`, and re-reading is what lets the bills that call
+   frees be picked up in the SAME pass.
+
+The void drain has the opposite of (2) and (3), and **NOT the opposite of (1)**.
+`applyVoids` snapshots — `const owed = await this.store.listVoidsToApply(this.batchLimit);`
+then iterates it — and `continue`s past a row it cannot take. But
+`listVoidsToApply` ends `ORDER BY void_requested_at, id`, so the void queue IS
+ordered. "no ordering at all" appears in this step's own text above and in
+`outbox.ts`'s header, and it is true of the drain's BEHAVIOUR and false of the
+query. The design records the correction rather than repeating the phrase.
+
+So ordering is expressed as two policy members plus one query obligation:
+
+    interface OutboxPolicy {
+      readonly blocking: "head_blocks" | "independent";
+      readonly rereadAfterEach: boolean;
+      readonly concurrency: "serial_per_kind" | "parallel_rows";
+      readonly inFlightKey: (rowId: string) => string;
+    }
+
+    const BILL_SEND: OutboxPolicy = {
+      blocking: "head_blocks", rereadAfterEach: true,
+      concurrency: "serial_per_kind", inFlightKey: (id) => id,
+    };
+    const BILL_VOID: OutboxPolicy = {
+      blocking: "independent", rereadAfterEach: false,
+      concurrency: "parallel_rows", inFlightKey: (id) => `void:${id}`,
+    };
+
+and **the order itself stays in the SQL**, which is why `owed` is documented as
+returning rows already ordered. The drain cannot check that and must not pretend
+to; what the drain owns is what it does with the row it is handed.
+
+**ONE DRAIN, NO HAND-WRITTEN LOOP PER KIND.** The two policies select branches
+inside a single function, and the function is generic over `Row` and `Outcome`
+so it can name no kind:
+
+    while (true) {
+      const batch = await h.owed(limit);          // rereadAfterEach: false → read once
+      const row = batch[0];
+      if (row === undefined) break;
+      if (inFlight.has(h.policy.inFlightKey(h.rowId(row)))) {
+        if (h.policy.blocking === "head_blocks") break; else continue;
+      }
+      const due = h.dueAt(row);
+      if (due !== null && !scheduledInstantIsDue(due, now)) {
+        if (h.policy.blocking === "head_blocks") break; else continue;
+      }
+      ...
+      const d = h.classify(outcome);
+      await h.record(row, outcome, d, attempt, now);
+      if (d.next === "halt_kind") break;
+      if (d.next !== "settled" && h.policy.blocking === "head_blocks") break;
+    }
+
+`blocking` appears three times and is the only difference between the two
+existing drains at the row level. Nothing here unifies the policies; what is
+unified is the loop that reads them.
+
+---
+
+#### Retry, per kind — and where a 409's meaning lives
+
+**A STATUS NEVER REACHES THE DRAIN.** The transport maps a status to the KIND'S
+OWN outcome union, and `classify` maps that union to the shared disposition. So
+"409 means ALREADY EXISTS here and retry-forever there" needs no drain change at
+all: it is two lines in two different `classify` functions over two different
+unions. `httpTransport` already answers 409 on the void path as
+`{ kind: "already_voided", doc_no: docNo }`, and its send path has no 409 branch
+at all — searched `httpTransport.ts` for `409`: two hits, both in `voidBill`.
+
+**A THROW IS THE KIND'S OWN OUTCOME, AND THE TWO KINDS ALREADY DIFFER.**
+`engine.ts` builds `{ kind: "unavailable", reason: describeError(err), reachable: false }`
+for a send and `{ kind: "unavailable", reason: describeError(err) }` for a void —
+different shapes, because `VoidOutcome.unavailable` carries no `reachable`. That
+difference is why `onThrow` is a handler member rather than a drain rule. The
+drain-level invariant it replaces stays, as an obligation on every kind: **a
+throw carries no information about whether the server committed, so
+`classify(onThrow(x))` must never be `terminal`.** That is a total, headless,
+per-kind assertion, and it is a criterion below.
+
+**SCHEDULES ARE ONE MEMBER, NOT AN ENUM.** `nextAttemptAt` returning `null` is
+the void kind — no schedule column, no time gate, no attempt cap, bounded only by
+the server settling it. Returning a Date covers the send backoff
+(`backoffBaseMs * 2 ** (attempt-1)`, capped at `backoffMaxMs`), the parked slow
+cadence (`masterDataRetryMs`, deliberately not a backoff), and the case an enum
+cannot express at all: a transfer that MADE PROGRESS and must not be delayed for
+having bounced. `SyncEngine`'s constructor already throws when a knob exceeds
+`SEND_SCHEDULE_HORIZON_MS`, and that check moves with this member — a kind that
+can write a schedule its own reader discards is a backoff silently reduced to
+zero.
+
+---
+
+#### How an outcome is classified, and how a kind adds a member without moving another kind's union
+
+    type OutboxDisposition =
+      | { next: "settled" }
+      | { next: "retry";        reason: string }
+      | { next: "parked";       reason: string; code: string }
+      | { next: "terminal";     reason: string; code: string }
+      | { next: "needs_review"; reason: string; code: string }
+      | { next: "halt_kind";    reason: string; code: string };
+
+Six, and two of them are new. Each is a NEXT ACTION for the drain, never a
+reason.
+
+**`parked` — not done, out of the sendable queue, and IT COMES BACK BY ITSELF.**
+The 424 case. `terminal` cannot express it, and the stage-1 mapping proves the
+point by claiming it does while its own comment says otherwise. Splitting it is
+the three-way rule of
+`lessons/README.md § Lessons` "unavailable-is-not-rejected.md — applies to every sync/retry path"
+put in the type instead of in a comment.
+
+**`needs_review` — the server MAY have committed, and it is NOT safe to retry.**
+No current member means this. `settled` lies, `terminal` strands work the server
+may hold, `retry` duplicates it, and `halt_kind` is about the kind rather than
+the row. The state already exists and is already named:
+`mobile/src/master/createSeller.ts`'s `{ kind: "ambiguous" }` — a 2xx whose body
+could not be read as a seller, on a route with no idempotency key. That member's
+own comment says "there is no idempotency_key on this route to recover with" and
+"this cannot be retried safely and it cannot be reported as done". A union with
+no arm for it forces every implementation to pick one of the three wrong answers.
+The row leaves the queue into a named, operator-visible state; nothing on the
+device resolves it, and that is what the operator is told.
+
+**THE RULE FOR ADDING A MEMBER, WHICH IS THE PART THAT KEEPS THE KINDS APART.**
+A new SERVER MEANING goes in the kind's own outcome union — `SendOutcome`,
+`VoidOutcome` — and moves nothing anywhere else, because the drain never sees it
+and no other kind imports it. A new NEXT ACTION goes in `OutboxDisposition` and
+is a compile error in EVERY kind's `classify`. That expense is deliberate and is
+the whole point: a new next-action is a new drain behaviour, and a kind that
+silently inherits somebody else's answer to it is the failure
+`lessons/README.md § Lessons` "correct-classification-can-still-render-as-an-error.md — applies to every internally-distinguished state"
+records three times over.
+
+**THE POISON SIGNAL IS WHY `record` TAKES THE OUTCOME.** `first_server_error_at`
+and `server_error_attempts` are maintained by two `CASE WHEN ? = 1` expressions
+in `markPendingAgain`, and the `1` is `reachable`. The stage-1 mapping's
+`unavailable` arm returns `{ next: "retry", reason: o.reason }` — `reachable` is
+dropped — and `record(row, d, attempt, now)` has no second source for it. **With
+those two signatures the send kind cannot maintain its own poison columns**, so
+`queueHealth`'s `poisoned`, `alarm` and `blockerId` go dark and nothing else in
+the tree notices. Handing `record` the kind's own outcome fixes it at the type,
+and keeps `reachable` out of the shared union where it does not belong.
+
+---
+
+#### How work is made VISIBLE — and the type whose stated invariant a second kind breaks
+
+**WHAT IS THERE NOW.** `UnsentBreakdown` in `mobile/src/sync/types.ts` documents
+its four counts as over `sync_state IN ('pending','syncing')`, "DISJOINT and
+COMPLETE: every unsent row is in exactly one". The statement that produces them
+reads `FROM local_bills`. `signOutNotice.ts` renders the number as
+`มีบิลรอส่งขึ้นระบบ ${String(input.pending)} ใบ` — the noun is BILLS, on the gate
+that refuses sign-out. So the predicate is about ROWS IN A STATE, the sentence is
+about BILLS, and the query is about ONE TABLE; a second kind makes at most two of
+those three true at once.
+
+**AND IT IS ALREADY WORSE THAN THE SUPERSESSION SAYS, BEFORE ANY NEW KIND.**
+Three findings, re-derived here:
+
+- **The gate and the sheet read DIFFERENT numbers.** `App.tsx` passes
+  `pending: ownUnsentCount` to `signOut`, where `ownUnsentCount` is
+  `unsent.mine + unsent.mineBlocked`; and it passes `pending: pendingCount` to
+  `signOutCard`, where `pendingCount` is `unsent.mine`. With `mine === 0` and
+  `mineBlocked > 0` the sheet takes its confirmation branch — `ออกจากระบบ?`,
+  `บิลทั้งหมดส่งขึ้นระบบครบแล้ว` — and the button then reaches
+  `if (outcome.kind === "refused_pending") return;`, which sets no state. A
+  confirm that does nothing, with no sentence anywhere saying why.
+- **`unsentBreakdown` is not on the `LocalStore` interface.** Searched
+  `mobile/src/sync/types.ts` for `unsentBreakdown`: zero hits, and the interface
+  runs from `export interface LocalStore {` to its closing brace without
+  declaring it. It resolves only because `App.tsx` types the ref as
+  `useRef<SqliteLocalStore | null>(null)` — the concrete class. So the number the
+  sign-out gate turns on is supplied by a method the shared contract does not
+  require, and a second store implementation owes nothing.
+- **The four counts have no kind axis at all**, so they cannot be extended to a
+  second kind without either double-counting a bill or inventing a fifth count
+  whose completeness claim nothing checks.
+
+**WHAT THE DESIGN DOES.**
+
+1. **`UnsentBreakdown` keeps its four counts and its completeness claim is
+   RE-SCOPED IN ITS OWN TEXT to BILLS.** The four split by WHOSE and WAITING ON
+   WHAT, which is a question about bills and stays one. The docstring stops
+   saying "every unsent row" and says "every unsent BILL", because the sentence
+   as written is a claim about a caller nothing verifies —
+   `lessons/README.md § Lessons` "a-docstring-that-states-a-filter-is-a-claim-about-its-caller.md — applies to every comment saying what a value EXCLUDES".
+   The false wording is superseded in place, not deleted.
+2. **A second value carries the kinds, and is total by construction.**
+
+       type OutboxOwed = { readonly [K in OutboxKind]: number };
+
+   Produced by iterating the registry and calling `owedCount()`, so a kind cannot
+   be omitted from it without failing to compile, and no hand-written SQL has to
+   remember to union a new table.
+3. **The gate consumes `OutboxOwed`, never a bill count.** `signOut`'s
+   `deps.pending > 0` becomes "any kind owes anything", and its docstring stops
+   naming bills.
+4. **The SHEET takes `OutboxOwed` as a REQUIRED field and switches
+   exhaustively.** `ใบ` is a classifier for bills and is FALSE of a seller or a
+   photograph, so the sentence cannot be inherited. Making the field required
+   turns every existing call site into a compile error until someone writes the
+   sentence for the kinds it can now see — the repair
+   `correct-classification-can-still-render-as-an-error.md` arrived at twice, and
+   the reason `ForbiddenAction` is already a required argument in
+   `parkedReason.ts` rather than an optional one with the old wording as its
+   default.
+
+**AND THE GATE'S REASON IS NOT ONLY COSMETIC.** The queue carries no identity of
+its own — `signOut.ts` says so at its gate, and `HttpTransport` resolves the
+token from a device-global ref at send time — so work that survives a sign-out
+drains under whoever signs in next. For a bill that is already recorded as a
+hazard. For a kind whose rows are keyed to a tenant the server takes from the
+CALLER'S TOKEN and never from the row, it is the same hazard with no owner filter
+anywhere: `listVoidsToApply` gained a requester filter and `QUEUED` gained an
+owner filter, and each was written by hand, at its own site, in its own commit.
+So `owed()` carrying the owner predicate is a REQUIREMENT ON EVERY KIND stated
+here, and it is per-kind because the two existing predicates ask different
+questions — who WEIGHED it, and who ORDERED THE REVERSAL.
+
+---
+
+#### What SERIALISES the drain — recorded here because it is recorded nowhere
+
+**TODAY, WITHIN ONE PASS:** the shape of the code and nothing else. `runOnce`'s
+loop body ends `await this.sendOne(bill, result);`, so one request is in flight
+at a time, and `listPendingOldestFirst` is re-read at the top of each iteration.
+That `await` is the entire mechanism by which `doc_no` order is deterministic,
+and no member of `OutboxPolicy` means it.
+
+**TODAY, ACROSS PASSES: nothing.** `App.tsx` fires `void syncOnce()` on a
+`setInterval(..., 4000)` and from four other sites; `syncOnce` guards only on
+`maySync({ paused, token })`; `HttpTransport`'s timeout is `config.timeoutMs ?? 20_000`.
+So a request may legitimately outlive the next three ticks. And the two guards
+that look like they cover it do not:
+
+- `SyncEngine.inFlight` is keyed by ROW. It stops the same row being sent twice.
+- `claimForSend` moves the row `pending → syncing`, and `QUEUED` is
+  `sync_state = 'pending' AND ...`. **So the claim itself removes the head from
+  the next pass's queue**, pass B's head becomes the SECOND bill, `inFlight` does
+  not contain it, its claim succeeds, and both are in flight at once. `doc_no`
+  then falls to whichever request reaches the counter's row lock first.
+
+Head-of-line is therefore a property of one pass, not of the device, and the
+73-second incident's fix holds only while every request completes inside the tick
+interval. That is a timing assumption, and it is written down here for the first
+time.
+
+**WHAT THE DESIGN ADDS.** `concurrency: "serial_per_kind"` — a pass over a kind
+so marked takes an in-process lock for the whole pass and a second pass over that
+kind returns immediately rather than reaching past a claimed head. It is a
+member of `OutboxPolicy` because it is a per-kind decision: the void kind is
+`parallel_rows` and must stay so, since its rows are independent and its whole
+point is that one refusal does not hold another.
+
+**AND WHAT IT DOES NOT COVER, STATED RATHER THAN IMPLIED.** An in-process lock is
+a claim about ONE JavaScript context. It does not serialise two PROCESSES, and
+nothing on the handset runs two today; `claimForSend`'s conditional UPDATE
+remains the durable guard for the crash case and for anything that ever does.
+Three mechanisms, three scopes, and each one is needed: the `await` orders one
+pass, the lock orders the passes, the claim survives the process.
+
+---
+
+#### The two instances this must be able to carry — and builds neither
+
+**A KIND WHOSE 409 SETTLES.** Expressible with no drain change: it is one arm of
+that kind's `classify` over that kind's own union. What the design also has to
+say is what it CANNOT settle. `POST /sellers` refuses a client-minted id —
+`SellerCreate` sets `model_config = ConfigDict(extra="forbid")` and declares no
+`id` — and where a draft supplies NO code the server MINTS one and inserts, so a
+re-send returns a second seller rather than any collision at all. Whether a 409
+may be read as ALREADY EXISTS is therefore not a client question, and the
+decision is the owner's at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "TWO OFFLINE HANDSETS CAN MINT THE SAME SELLER CODE".
+**What this design owes that decision is only this:** whichever way it goes, the
+mapping is one arm of one `classify`, `needs_review` exists for the arm that
+cannot be settled or retried, and `owed()` carries the owner predicate. No other
+part of the mechanism moves.
+
+**A MULTI-MEGABYTE BINARY WITH RESUME SEMANTICS.** Four things it needs, and
+where each one lands:
+
+- **The payload must never be a field of `Row`.** `owed()` returns rows; a batch
+  of them is in memory at once. So `Row` for such a kind is a DESCRIPTOR — an id,
+  a path, a size, an offset — and `perform` streams. Nothing in the interface
+  forbids the wrong shape, so this is a rule the kind's own row type has to
+  carry, not a guarantee the drain provides. Stated because a guarantee believed
+  is not a guarantee measured.
+- **Partial progress is the kind's own row state.** `record` is the kind's only
+  writer and already receives the outcome, so an offset or an upload-session id
+  is written there and read back by the next `perform`. The drain needs nothing.
+- **`retry` must mean "still owed", never "repeat the same request".** With
+  `record` writing the offset and `perform` reading it, the next attempt
+  continues. This is a semantic obligation on the disposition and it is why the
+  member carries no request in it.
+- **A backoff enum would be wrong for it, and `nextAttemptAt` is not.** An
+  attempt that transferred four megabytes and then dropped has made progress and
+  must not wait out a doubling delay. `nextAttemptAt` sees the row, so the kind
+  can return `now` for a bounce that advanced the offset and a real delay for one
+  that did not. **This is the single member of the stage-1 policy that the photo
+  kind could not have used**, and it is the reason the enum is replaced.
+
+**What is NOT carried, and belongs to whoever adds the kind:** the local store
+moves only `string | number | null` across its driver boundary, every table is
+`STRICT`, and no BLOB column exists anywhere in `schema.ts`. Bytes on this device
+are a filesystem question that the outbox does not answer.
+
+---
+
+#### WHAT SATISFIES EVERY CRITERION BELOW AND STILL LEAVES THE WORK BROKEN
+
+The question that killed the previous set, asked of this one. **Three states
+were constructed. Two are closed by criteria below; the third is real and is
+stated rather than hidden.**
+
+**CLOSED — a mechanism that carries both kinds and loses the poison alarm.** A
+drain whose `record` takes only the disposition satisfies everything about
+ordering, visibility and retry while `first_server_error_at` stays null for ever
+and the red alarm never fires again. `THE-POISON-SIGNAL-SURVIVES-BOTH-WAYS`
+exists for it, and drives the RESET arm specifically, because the stamp arm alone
+is satisfied by code that never resets.
+
+**CLOSED — a mechanism proven with one row per kind.** Every single-row exercise
+is green with ordering removed entirely, with the pass lock removed, and with the
+head-blocking `break` replaced by `continue`. `HEAD-BLOCKS-A-ROW-THAT-MUST-NOT-GO`
+and `PASSES-OVERLAP-AND-ORDER-HOLDS` both state a minimum staging and argue for
+it.
+
+**OPEN, AND IT IS THE HONEST ANSWER TO THE QUESTION.** A build can satisfy every
+criterion below and still leave the yard broken, because **the criteria are all
+about the OUTBOX and the first real non-bill kind depends on something outside
+it.** `SqliteMasterStore.saveSellers` opens with an unconditional
+`DELETE FROM cached_sellers` inside its transaction, and `App.tsx`'s boot ends
+with `if (token !== null) void refreshMaster(token);`. So a locally created
+seller written into `cached_sellers` so the yard can pick it is destroyed by the
+next successful refresh — at the next boot, on a device that is merely online —
+while its outbox row drains perfectly and every criterion here stays green. Its
+`cached_sellers` row has no origin marker to protect it: the table's six columns
+are `id, code, name, phone, grade, owner_tenant_id`.
+
+**IT IS NOT CLOSED BY A CRITERION HERE, DELIBERATELY.** This step must not build
+offline seller creation, and a criterion about the seller cache would be a
+criterion about a kind this design is forbidden to specify. It is recorded as the
+residual: **a mechanism proven under these criteria has NOT been shown to carry a
+kind whose rows must also be visible in the master cache**, and whoever adds that
+kind inherits the cache question with it. That is the same shape as the residual
+this step already accepted for the photograph, and it is stated in the same
+words: proven on one kind is not proven on another.
+
+**A FOURTH WAS SOUGHT AND NOT FOUND.** No state was constructed in which every
+criterion is green and the DRAIN itself is wrong, because
+`REGISTRY-IS-TOTAL-AND-CONSTRUCTED` pins the registry literal by name rather than
+measuring registry totality and reporting it as bypass-prevention. That is an
+absence of a counter-example, not a proof there is none.
+
+---
+
+#### THE CRITERIA, DERIVED FROM THE DESIGN ABOVE
+
+**These replace the seven. They are NAMED, not numbered**, for the reason given
+at the head of this design. **Every one names the concrete broken implementation
+it turns RED**, in its own text — a criterion with no nameable red case does not
+go in the set, which is the test the seven failed six times.
+
+**NO RAW COUNT APPEARS IN ANY OF THEM**, per
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "A RAW COUNT INSIDE AN ACCEPTANCE CRITERION ROTS".
+Where a number is needed it is named as a SET and a SOURCE, and produced at run
+time: *every key beginning `prove:` under `scripts` in `mobile/package.json`,
+counted by parsing that file as JSON and taking `Object.keys`* — a definition
+that cannot match a script's name appearing inside another script's command line,
+which a regex over the file text can and does.
+
+**REGISTRY-IS-TOTAL-AND-CONSTRUCTED.** A registry LITERAL exists, is imported by
+a proof, and its type is the mapped type over `OutboxKind`. **RED CASE, NAMED:**
+the declaration in the tree today — `export interface OutboxRegistry {` with one
+hand-spelled property per kind, referencing `OutboxKind` nowhere, and no value of
+it anywhere under `mobile/`. **Observable:** both mobile typecheck programs run
+BARE, each exiting 0; then a member is added to `OutboxKind` on purpose and
+`npm run typecheck` run BARE must exit non-zero **with the error located AT THE
+REGISTRY LITERAL** — the file and symbol named in the report, not merely a
+non-zero status — and the member then removed and the exit-0 pair re-run. Pinning
+the location is what separates this from measuring registry totality and
+reporting it as bypass-prevention; a red anywhere else is a different defect
+wearing this criterion's badge.
+
+**NO-SECOND-DRAIN.** The generic drain is the only producer of the value the pass
+consumes, and a hand-written fourth path is a compile error. **RED CASE, NAMED:**
+a `send(kind, payload)` that switches on `kind` with a branch per kind, or a
+per-kind loop moved into a helper — both satisfy a diff-reading criterion while
+paying the original cost in new clothes. **Observable:** a deliberately
+hand-written path added on purpose fails to compile, its error text recorded
+verbatim, and the path removed. **AND ITS LIMIT IS STATED IN THE CRITERION:**
+this cannot make an unsupported path unwriteable; what it measures is that the
+SUPPORTED path is total over the kinds and that bypassing it costs a compile
+error at a named site.
+
+**HEAD-BLOCKS-A-ROW-THAT-MUST-NOT-GO.** **RED CASE, NAMED:** a drain whose
+`blocking` branch is `continue` where `head_blocks` requires `break`, and one
+that iterates the batch `owed()` returned instead of re-reading. **Observable,
+and the staging is the criterion:** at least three bills weighed offline in a
+KNOWN order, with the OLDEST made unsendable — a row expected NOT to go, which
+the superseded staging never supplied, leaving head-of-line unexercised. Assert
+the two younger bills have NO `doc_no` after the pass. Then, separately, the
+oldest sends and a younger bill still carrying a backoff must go IN THE SAME
+PASS, which is what `clearBackoffForPending` plus the re-read exist for and what
+a snapshot drain cannot do. Report the counter's MOVEMENT, never the `doc_no`'s
+existence.
+
+**PASSES-OVERLAP-AND-ORDER-HOLDS.** **RED CASE, NAMED:** the tree as it stands —
+`setInterval(() => void syncOnce(), 4000)` with no re-entrancy guard against a
+20 s transport timeout, where `claimForSend`'s `pending → syncing` removes the
+claimed head from `QUEUED` so the next pass's head is the SECOND bill and both go
+concurrently. **Observable:** two bills, a transport whose first request blocks
+until released, a second pass started while the first is in flight, then both
+released; the `doc_no`s read back out of Postgres in weighing order. **AND THE
+CONTROL IS REQUIRED:** with `concurrency` forced to `parallel_rows` for the send
+kind, the identical staging must go RED, with the observed order printed — a
+green here that cannot go red is measuring the fixture.
+
+**VOID-KEEPS-ALL-FOUR-DIFFERENCES.** **RED CASE, NAMED:** `inFlightKey: (rowId) => rowId`
+for both kinds — the shared key the current `void:${id}` exists to avoid.
+**Observable:** one bill whose send is in flight while its void is owed; the void
+must be ATTEMPTED, not skipped. Under the shared key the drain skips it silently
+and it merely retries later, which is why the assertion is on the ATTEMPT and not
+on the eventual state. Plus: a void that bounced is re-attempted on the next pass
+with no wait (`nextAttemptAt` returning null), and a void the server refused on
+identity grounds leaves the owed queue — the existing behaviour, unchanged.
+
+**A-THROW-IS-NEVER-TERMINAL, FOR EVERY KIND.** **RED CASE, NAMED:** a kind whose
+`onThrow` produces an outcome its own `classify` maps to `terminal` — a lost
+connection turned into a permanently failed bill, with the cash already out of
+the till. **Observable:** for every member of the registry, headlessly and with
+no server, `classify(onThrow(new Error("x"))).next` is asserted not to be
+`terminal`, iterating the registry so a new kind is covered by construction
+rather than by somebody remembering to add a case.
+
+**PARKED-IS-NOT-TERMINAL.** **RED CASE, NAMED:** the mapping in the tree today —
+`dispositionOfSend`'s `rejected_resolvable` arm returning
+`{ next: "terminal", ... }` directly beneath its own comment saying "It is NOT
+terminal", wired to a drain that treats `terminal` uniformly and calls
+`markFailed`. **Observable, three cells:** a bill refused 424 is still
+`sync_state = 'pending'` with `master_data_missing_at` set; it is absent from the
+sendable queue so it dams nothing; and after the kind's own cadence it returns to
+that queue with nobody pressing anything. The first and third both go red under
+the named mapping.
+
+**THE-POISON-SIGNAL-SURVIVES-BOTH-WAYS.** **RED CASE, NAMED:** `record`'s
+stage-1 signature `record(row, d, attempt, now)` fed by a `classify` whose
+`unavailable` arm returns `{ next: "retry", reason: o.reason }` — `reachable`
+dropped, with no other source, so `markPendingAgain`'s two `CASE WHEN ? = 1`
+expressions can never take their true branch. **Observable, and the second half
+is the one that has never been driven:** a bill bounces repeatedly against a
+REACHABLE server, and `server_error_attempts` and `first_server_error_at` are
+read back as accumulating; then ONE transport-level bounce, and both are read
+back RESET. Searched `mobile/src/proof/` with `reset|cleared|back to (zero|0)`
+intersected with `poison|server_error|first_server`. **THE SEARCH IS ITS OWN
+CONTROL: it returned hits, so the instrument looked** — and each was read. One
+asserts the counters cleared by a SUCCESS, which is a different writer; one is a
+fake's comment; and the only one naming RESET is a docstring in `proveSync.ts`
+whose disproof stages a FRESH queue and starts the counter at zero, so it cannot
+reach the `ELSE` arm at all. **Not found with these words** — the arm that takes
+a non-zero counter to zero is asserted by nothing.
+The alarm is then driven to RED on a handset, which needs more than one bill,
+because `queueHealth` gates `poisoned` and `alarm` behind `blocking`, which needs
+`behind > 0`, and `behind` is `pendingCount - 1`.
+
+**EVERY-KIND-IS-VISIBLE-AND-THE-GATE-CAN-NAME-WHY.** **RED CASE, NAMED:**
+`unsentBreakdown`'s statement — `FROM local_bills WHERE sync_state IN ('pending','syncing')`
+— used unchanged as the gate's input. **Observable, in three parts.** (i) With a
+NON-BILL kind owed and nothing else, `signOut` returns `refused_pending`; against
+the bill-only count it returns `signed_out` and the work drains under whoever
+signs in next. (ii) The sheet is READ ON THE HANDSET and reported VERBATIM in
+Thai, and asserted NEGATIVELY over the whole concatenation in draw order
+(`signOutCardText`, which is `[title, ...lines, ...action labels]` and is what
+the view maps): with only a non-bill kind owed, the text must NOT contain `ใบ` —
+**with a PRESENCE sibling in the same string**, the sentence naming that kind, or
+a card naming nothing at all satisfies the absence. (iii) `UnsentBreakdown`'s
+completeness claim is re-derived and either re-scoped to bills in the type's own
+text or the type is split; a docstring that has silently become false is the
+failure this part exists to catch, and nothing else in the tree can see it.
+
+**EVERY-KIND-RECOVERS-AT-BOOT.** **RED CASE, NAMED:** `resetSyncingToPending`'s
+`UPDATE local_bills ... WHERE sync_state = 'syncing'` left as the whole boot
+sweep. **Observable:** a non-bill kind's row is left in its in-flight state, the
+process is killed, the app reopened, one pass run, and the row is attempted.
+**AND THE CONTROL:** the identical staging with a BILL must still recover, so the
+criterion cannot be satisfied by a sweep that recovers nothing.
+
+**THE-PROOFS-AGREE-AND-THEIR-OWN-DIFF-IS-REPORTED.** Every `prove:*` script — the
+set and source named above, counted at run time — exits 0 twice in a row with no
+reseed between, run bare and with no flags; `prove:forbidden --offline` exits 2
+by design (`START_HERE.md § 4` "prove:forbidden") and is not a counter-example.
+Report THREE numbers and assert the first two equal: declared, ran, and the
+per-script exit codes. **RED CASE, NAMED:** a run that skipped one and reported
+the declared total — the `SOURCES=` defect this repository has already paid for.
+**WHICH ONES NEED A LIVE API IS REPORTED, NOT INFERRED.** Searched
+`mobile/src/proof/*.ts` for `API_BASE|apiBaseUrl|localhost:8|127\.0\.0\.1|RECYCLE_API`:
+six files match — `proveCold.ts`, `proveDocNo.ts`, `proveForbidden.ts`,
+`proveLogin.ts`, `proveLoginScreen.ts`, `proveSellerCreate.ts`. **That grep names
+a mention, not a requirement**, and one of them deliberately points at a dead
+address, so the run must report which scripts actually refused to proceed without
+a server, from their own output. "All pass" is satisfiable only once that list is
+on the page. **AND THE PROOFS ARE INSIDE THE BLAST RADIUS:** the affected set is
+*every file under `mobile/src/proof/` that imports `../sync/` or
+`../adapters/sqlite/`* — LISTED by `grep -l` at the time the criterion is run,
+with its size reported THERE and not written here, because that set grows every
+phase and a digit in a criterion rots silently. Those files are edited by the
+same change they measure. Report the proof diff, and **for every assertion that
+changed, name the behaviour change that forced it. An assertion that changed
+where no behaviour changed is a finding.**
+
+**THE-VOID-REFUSAL-GUARD-QUANTIFIES-OVER-SOMETHING.** The MUST NOT below is kept
+and its mechanism is repaired. **RED CASE, NAMED:** the superseded guard named
+`proveVoid` and `proveVoidTerminal` as the files whose `void_refused_at`
+assertions must appear unchanged; `mobile/src/proof/proveVoid.ts` contains that
+string ZERO times — counted with `grep -o "void_refused_at" <file> | wc -l`,
+which counts OCCURRENCES and not matching lines — so half the guard quantified
+over an empty set, while `proveVoidOwner.ts` carries some and was not named.
+**Observable:** the guarded set is DERIVED at the time the guard runs — every
+file under `mobile/src/proof/` containing the string — the per-file occurrence
+counts are reported beside the file names, each is required to be greater than
+zero, and those hunks are required to appear unchanged in the diff. A guard that
+fails by finding LESS is this repository's oldest failure shape.
+
+---
+
+#### WHAT THIS SET DOES NOT COVER, SAID BEFORE ANYONE RUNS IT
+
+- **The master cache.** See the residual above: a kind whose rows must also be
+  visible in `cached_sellers` is not reached by any criterion here, and
+  `saveSellers` will delete such a row on the next successful refresh.
+- **Two processes draining at once.** The pass lock is in-process.
+  `claimForSend` is the durable guard and is unchanged; nothing here exercises a
+  second process.
+- **iOS.** Nothing in this step reaches it, and no release build exists on either
+  platform.
+- **The seller kind.** Not specified, by the owner's open decision, and therefore
+  not proven. `OutboxKind` carries two members until it is answered.
+
+**BEFORE ANY DEVICE READING IS BELIEVED**, state which bundle and which server
+process produced it — `npx expo start -c` and a full reload BEFORE the staging
+that produces the reading, and the server's start time postdating the commit
+under test with a request through the changed path
+(`CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING").
+
+**WHAT THIS DESIGN DOES NOT CLAIM.** It ran no build, no typecheck, no proof, no
+server and no handset — this stage is documentation only, so nothing in it
+carries an exit code. Every type-system claim above, including that the current
+registry declaration cannot go red, is READ OFF THE DECLARATION and is not a
+measured `tsc` result; the first criterion exists to measure exactly that, and
+until it is run the claim is a reading.
+
 ### `GET /users` — landed 2026-08-07, and it is NOT a step in this file
 
 Recorded rather than numbered. **GET /users is not a step in this file**, nothing

@@ -1193,3 +1193,116 @@ you**, which is the practical half of why this is written here.
     the only one that caught this. A count that rose by less than you added is a
     class the instrument cannot see — and a class it cannot see is one it will
     never call broken.
+
+## A SIXTEENTH MECHANISM (P1.18 stage 2, 2026-08-18) — THE SECTION HALF OF THE ELEVENTH, AND IT BREAKS ON A HEADING NOBODY WAS CITING
+
+**The eleventh mechanism is about a HANDLE going ambiguous. This is the SECTION
+side of the same instrument, and it is worse in the one way that decides whether
+anybody notices: a section is matched by SUBSTRING and CASE-INSENSITIVELY, so
+the colliding text need not equal the cited name, need not be near it, and need
+not be about the same subject.** The person who breaks it is writing new prose
+and is not thinking about citations at all.
+
+### What the checker actually does with a section
+
+`tools/verify_citations.ps1` resolves `` `FILE § Section` `` like this:
+
+    $sh = @($tlines | Select-String -SimpleMatch -Pattern $sect |
+            Where-Object { $_.Line -match '^#{1,4} ' })
+    $sHits = $sh.Count
+
+Two properties, neither of them written down anywhere before this amendment:
+
+- **`-SimpleMatch` turns off the REGEX, not the substring search.** It means "the
+  pattern is a literal", and `Select-String` still reports any line CONTAINING
+  it. A heading equal to the section name and a heading merely containing it are
+  the same event to this instrument.
+- **`Select-String` is CASE-INSENSITIVE by default.** `-CaseSensitive` is not
+  passed. So `STAGE 2` and `stage 2` are one string here.
+
+### What happened
+
+Writing this step's design meant appending twelve `####` headings to a file that
+five other documents cite. One of them read:
+
+    #### THE DESIGN — stage 2, and it produces no drain
+
+`ROADMAP.md` has carried `# STAGE 2 — what the pilot teaches, and what gets fixed
+because of it` since long before, and `OPEN_ITEMS.md` cites it by section. The
+citation immediately reported:
+
+    12  BROKEN  ROADMAP.md  sect=STAGE 2  hits=2 L2005,2757  handle="A standing reconcile against the shop's real data" hits=1 L2778
+
+**Nothing at either end of that citation was touched.** The cited heading is
+unchanged and still at `:2757`; the handle still resolves at 1. What broke it is
+a THIRD line, in the cited file, written by somebody with a different subject, in
+a different case, at a different heading level. The whole-repository count went
+`BROKEN=6` to `BROKEN=7`; renaming the heading to `#### THE OUTBOX DESIGN — and
+it produces no drain` took it back to 6, the identical six.
+
+### THE NEAR MISS, AND IT IS THE REASON THIS IS WRITTEN DOWN
+
+**The documented way to run this checker would have printed `BROKEN=0` over the
+broken repository.** Its `param()` default is
+`@('START_HERE.md', 'ARCHITECTURE.md')`, its own header shows exactly that
+invocation twice, and **neither file cites `ROADMAP.md § STAGE 2`** — measured,
+`grep -Fc 'ROADMAP.md § STAGE 2'` returns 0 for both and 1 for `OPEN_ITEMS.md`.
+The break was seen only because the run named five sources.
+
+That is the SIXTH mechanism, arriving by addition rather than deletion, and its
+remedy — *run every source, never the file you are editing* — is the only thing
+that caught it. **A remedy already in this file is not a remedy you will apply**
+unless something tells you the case is yours; the sixth mechanism is written
+about DELETING a heading, and nothing was deleted here.
+
+### Why it is none of the fifteen
+
+**Not the sixth.** That one is a heading DELETED, so the citation's target
+genuinely ceased to exist. Here the target exists, is correct, and is found —
+found twice.
+
+**Not the eleventh, which is its nearest sibling and shares its remedy's shape.**
+That one is about a HANDLE that is ambiguous by construction because a lesson's
+filename appears both on its index line and in cross-references, and its repair
+is to choose a more distinctive handle. **A section name is not chosen by the
+citer to be distinctive — it is the heading somebody else wrote**, and no amount
+of care at the citing end helps, because the collision is created later, by a
+writer who never reads the citation. The eleventh's other half does carry over
+and is worth keeping: `BROKEN` prints the same word for `hits=0` and `hits=2`,
+so a reader scanning that column goes looking for a heading that is not missing.
+**The line numbers are the tell** — `L2005,2757`, two of them, printed right
+there. Read the numbers, not the word.
+
+**Not the fifteenth.** No control was built out of the expression it controls;
+both positive controls held and correctly reported 114 sectioned citations parsed
+of 114 present. The instrument was entirely healthy and said so.
+
+### What to do
+
+- **Before adding a heading to a file other documents cite, list what they cite
+  in it.** The cheapest route is the checker's own output: run it over every
+  source once, and read the `sect=` column for the file you are about to write
+  in. Then check the heading text you are about to add against that list,
+  case-insensitively and as a SUBSTRING. The question is not "does my heading
+  equal one of these" but "does any of these appear anywhere inside my heading".
+- **Prefer a heading that could not contain a section name.** The collision here
+  was two ordinary words and a digit. A heading naming its own subject —
+  `THE OUTBOX DESIGN` — cannot collide with a heading naming a delivery stage,
+  and that is a cheaper defence than a grep somebody has to remember.
+- **Run the checker over every source before and after, and subtract.** Both
+  numbers matter: `BROKEN` must not rise, and `CITATIONS` must rise by exactly
+  the number of citations you wrote. Here it went 355 to 366 for eleven written,
+  which is item 26 above doing its job on the other side of the same run.
+
+### Two more, appended to How to apply
+
+27. **A section citation is a substring match, so the blast radius of a NEW
+    heading is every citation into that file.** Ask of any heading you add: could
+    this text contain, anywhere inside it and in any casing, the name of a
+    heading somebody cites? Adding is as dangerous as deleting, and it is far
+    less obviously dangerous, because nothing you can see is being removed.
+28. **A break can appear under a source you did not edit, so the file you
+    changed is the one place it cannot show.** When an instrument attributes
+    findings to a SOURCE, changing a TARGET moves the finding to somebody else's
+    row. Run every source, and read the whole table rather than the row with your
+    filename on it.

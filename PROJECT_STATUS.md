@@ -57,6 +57,153 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.18 STAGE 2 — THE DESIGN IS WRITTEN AND NO DRAIN IS BUILT. Documentation
+only, 2026-08-18.** The generalised device outbox now has a design in
+`ROADMAP.md § P1.18 — One outbox, several kinds of work`, and acceptance criteria
+DERIVED from it rather than written ahead of it. **Nothing under `mobile/` moved**
+and no P-number was minted. This is the current DOCUMENTATION phase; the
+P-SELLERAUTHOR record below stays as written and is still the current code phase.
+
+**WHY IT LOOKS LIKE THIS.** The seven criteria that stood before were superseded
+on 2026-08-18 because six of seven could be satisfied by a broken implementation
+— they were written before the design existed, and criteria for a mechanism with
+no shape cannot name the cases that discriminate. So the order was reversed:
+design first, criteria out of it, and every criterion carries the name of a
+concrete broken implementation it turns red. A criterion with no nameable red
+case did not go in.
+
+**WHAT THE DESIGN CONCLUDED, in the four places it disagrees with the sketched
+types at `ac535c2`.** Each was re-derived against the artefact at `b3d3654`, a
+commit at which `git status --porcelain` reported no tracked path modified.
+
+- **The compile-time guarantee is not armed and cannot be armed as written.**
+  `OutboxRegistry` is an interface with three hand-spelled properties that
+  reference `OutboxKind` nowhere, so a fourth kind moves nothing — and no literal
+  of it exists anywhere under `mobile/`, so nothing is red and nothing can be.
+  The design makes it a mapped type over `OutboxKind` and requires a constructed
+  literal a proof imports.
+- **`dispositionOfSend` contradicts itself.** Its `rejected_resolvable` arm
+  returns `{ next: "terminal", ... }` directly beneath its own comment reading
+  "It is NOT terminal", while `markMasterDataMissing` writes
+  `SET sync_state = 'pending'` and every pass releases parked bills. The design
+  splits `parked` out of `terminal`, which is the three-way rule of
+  `lessons/README.md § Lessons` "unavailable-is-not-rejected.md — applies to every sync/retry path"
+  put in the type rather than in a comment.
+- **The poison signal cannot survive the sketched signatures.** `record` takes
+  only the disposition, and the `unavailable` arm drops `reachable` — the exact
+  bit `markPendingAgain`'s two `CASE WHEN ? = 1` expressions turn on. The design
+  hands `record` the kind's own outcome.
+- **Nothing serialises the drain across passes, and that was recorded nowhere.**
+  `claimForSend` moves the head `pending -> syncing`, and `QUEUED` requires
+  `pending`, so a second overlapping pass takes the SECOND bill and both go
+  concurrently; `doc_no` then falls to whichever request reaches the counter's row
+  lock first. Head-of-line is a property of one pass, not of the device. The
+  design adds a per-kind pass lock and states the three scopes it does not cover.
+
+**STAGE 1'S TYPES ARE INPUT TO BE CORRECTED, NOT A FOUNDATION TO EXTEND.** This
+paragraph exists for one reader: a stage-3 session that opens
+`mobile/src/sync/outbox.ts`, reads its header, and believes it. **Two of the four
+findings above are not subtle questions about mechanism design. They are the two
+shapes an independent pass exists to catch, and both survived into a commit.**
+
+- **A DOCSTRING MAKING A CLAIM ABOUT CODE TWELVE LINES AWAY, WITH NOTHING
+  COMPARING THEM.** The header states the registry is
+  `Record<OutboxKind, OutboxHandler<...>>` and argues a compile-time guarantee
+  from it; the declaration is an interface with three hand-spelled properties and
+  no reference to `OutboxKind`. **The header asserts a guarantee the file does not
+  implement.** Nothing in this repository can see it: both typechecks pass because
+  every type there is well-formed, no proof imports the file, and nothing executes
+  a docstring — the class recorded at
+  `lessons/README.md § Lessons` "a-docstring-that-states-a-filter-is-a-claim-about-its-caller.md — applies to every comment saying what a value EXCLUDES".
+- **A COMMENT AND ITS OWN RETURN STATEMENT DISAGREEING IN ADJACENT LINES.** On the
+  424 path: the comment reads "It is NOT terminal" and the next line returns
+  `{ next: "terminal", ... }`. No file boundary, no indirection, nothing to trace
+  — two lines.
+
+**NEITHER IS FIXED IN THE COMMIT THAT RECORDS THEM, DELIBERATELY.** This phase is
+documentation only and those are stage 1's types; the design RECORDS them and
+stage 3 CORRECTS them. What must not happen in between is somebody extending that
+file on the strength of its own header. **Read the declaration, not the paragraph
+above it** — and treat every sentence in that file as a claim to re-derive, which
+is what this design did and is the only reason either was found.
+
+**`seller_create` IS REMOVED FROM `OutboxKind` BY THIS DESIGN.** What identifies a
+locally created seller across devices before the server has seen it is an open
+decision at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "TWO OFFLINE HANDSETS CAN MINT THE SAME SELLER CODE",
+and that entry states in its own text that this design step cannot specify the
+seller kind until it is answered. A union member nobody may supply a handler for
+is either a permanent red typecheck or a permanent excuse to leave the registry
+unbuilt, and the second is what the tree holds today.
+
+**WHAT WAS OBSERVED — and it is a short list, because this phase runs almost
+nothing.** No product build, no typecheck, no `prove:*` script, no server, no
+handset, no database. Every type-system claim above is READ OFF A DECLARATION and
+is not a measured `tsc` result; the first criterion exists to measure exactly
+that. **Three things WERE run, and the third is named because a reader could
+otherwise call it a build:** the citation checker, the shared-checks checker, and
+`build_all_lessons.py`, which the lesson edit obliges — its `--check` mode
+reddens the moment a lesson file changes without regeneration.
+
+- `& .\tools\verify_citations.ps1 -Source @('START_HERE.md','ARCHITECTURE.md','ROADMAP.md','OPEN_ITEMS.md','PROJECT_STATUS.md')`
+  — run BARE with the call operator so `[string[]]` binds, redirected to a file
+  rather than piped, and run BEFORE any edit so the after-run has a control.
+  **BEFORE: `SOURCES=5 CITATIONS=355 BROKEN=6`, exit 1. AFTER:
+  `SOURCES=5 CITATIONS=373 BROKEN=6`, exit 1** — the same six, decomposed and
+  attributed: four under `OPEN_ITEMS.md` as source, two under
+  `PROJECT_STATUS.md`, NONE under `ROADMAP.md`, and all six present in the
+  before-run character for character, compared with the line numbers stripped
+  because an insert of this size moves them. Both positive controls held on all
+  five sources. Citations rose by 18 against 18 written — 11 into `ROADMAP.md`
+  and 7 into this file — and that subtraction is the control the fifteenth
+  never-went-red mechanism asks for. **These two numbers are a MEASUREMENT and
+  they rot**: the after-figure was written at 366, then 370, then this, because
+  each later edit to either file added citations. Re-run it; do not cite it.
+- `server\.venv\Scripts\python.exe tools\verify_shared_checks.py` — exit 0,
+  `IDENTICAL: 4 items, 586 chars between markers`.
+- `server\.venv\Scripts\python.exe server\scripts\build_all_lessons.py` — run in
+  three steps so the checker was seen to MOVE: `--check` exit **1** naming the
+  first differing line, then `--write`, then `--check` exit **0**,
+  `430371 bytes`. A green from a checker that was never seen red is not an
+  observation.
+- **ONE CITATION WAS BROKEN BY THIS PHASE AND FIXED INSIDE IT.** A new heading
+  reading `#### THE DESIGN — stage 2, ...` made `ROADMAP.md § STAGE 2` resolve to
+  TWO headings and took BROKEN from 6 to 7. It is recorded as the sixteenth
+  mechanism of `lessons/a-check-that-never-went-red-was-never-observed.md`.
+
+**TWO THINGS THIS SESSION GOT WRONG ABOUT ITS OWN WORK AND CORRECTED BEFORE THE
+COMMIT.** Recorded because a phase record that only lists what the pass found in
+somebody else's file is not a record of the pass.
+
+- **A COUNT PUBLISHED AND THEN CORRECTED, 11 TO 12.** The criteria were first
+  counted with an ad-hoc `awk` pattern whose character class admitted letters,
+  digits, commas and hyphens and NOT a space, so the one criterion whose name
+  carries a space — `A-THROW-IS-NEVER-TERMINAL, FOR EVERY KIND` — was invisible to
+  it and the answer came back 11. Re-measured with a definition that admits the
+  space: **12 criterion-opening lines against 12 `RED CASE, NAMED` markers**, one
+  per criterion. The instrument failed by finding LESS, with no error and nothing
+  red, which is this repository's oldest failure shape — and here it was the
+  session's own instrument, built in the same minute, over its own output.
+- **A RAW COUNT CAUGHT IN THIS SESSION'S OWN DRAFT.** One criterion had been
+  written reading "thirty files under `mobile/src/proof/` import ...", which is
+  exactly what
+  `OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "A RAW COUNT INSIDE AN ACCEPTANCE CRITERION ROTS"
+  forbids: a bare digit over a set the WORK grows, in the sentence used to decide
+  a step is finished. It was found by running `CLAUDE.md § Shared checks` against
+  the draft rather than against somebody else's file, and replaced by the SET and
+  its SOURCE with the number produced at run time. **The check is only worth
+  anything pointed inward**, which is the half that is easy to skip.
+
+**WHAT IS STATED AS STILL BROKEN AFTER EVERY CRITERION PASSES.** The design
+carries its own counter-example rather than claiming there is none:
+`SqliteMasterStore.saveSellers` opens with an unconditional
+`DELETE FROM cached_sellers`, and boot ends with a master refresh, so a locally
+created seller written into that cache is destroyed on the next successful
+refresh while its outbox row drains perfectly and every criterion stays green.
+`cached_sellers` has six columns and none marks a row's origin. It is left as a
+stated residual and NOT closed by a criterion, because this step must not build
+offline seller creation.
+
 **P-SELLERAUTHOR — `sellers` NOW RECORDS WHO CREATED IT. Migration 0011, one
 commit, 2026-08-18.** `POST /sellers` writes the principal's user id into a new
 `sellers.created_by`, guarded by a composite FK to `users (tenant_id, id)`. This
