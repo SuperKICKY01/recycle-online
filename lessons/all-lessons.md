@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 20 across 10 files, counted from the source headings and
+**Amendments:** 21 across 11 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -65,7 +65,7 @@ line instead of by heading depth.
 - `cached-master-data-is-a-price-claim.md` -- A cached price is a claim about today, and a backwards clock makes it look fresh
 - `concurrency-tests-need-a-barrier.md` -- A concurrency test without a start barrier proves nothing
 - `config-defaults-must-fail-closed.md` -- A default for a security secret is a default IDENTITY
-- `console-is-not-the-observation.md` -- The console is not the observation — verify text at the source, in bytes
+- `console-is-not-the-observation.md` *(1 amendment)* -- The console is not the observation — verify text at the source, in bytes
 - `correct-classification-can-still-render-as-an-error.md` *(5 amendments)* -- A correct classification is not correct behaviour until the screen agrees
 - `decimal-precision-for-domain-scale.md` -- Decimal precision must be set for the domain's scale, not left at the default
 - `diagnosis-must-precede-the-fix.md` -- Diagnose before you fix: read the real error and the real files first
@@ -490,7 +490,7 @@ to the instrument you are about to cite as evidence for something else.
 case, run in the same pass, that makes it fire. A check nobody has watched go red
 is a claim about the code, not a measurement of it.
 
-**FOURTEEN MECHANISMS, and this line is the ONLY place in this file that says how
+**FIFTEEN MECHANISMS, and this line is the ONLY place in this file that says how
 many.** Every heading below names its own mechanism and never the running total,
 so appending another is a one-number edit, here. This line exists because the
 count used to live in three headings and in this file's index line, and all four
@@ -1557,6 +1557,125 @@ proved.
     of each cell, what state of the world would make this print PASS while the
     change is broken** — and treat a cell whose answer is "none I can construct"
     as unfinished rather than as strong.
+
+## A FIFTEENTH MECHANISM (P-OUTBOXREVIEW, 2026-08-18) — THE CONTROL WAS BUILT OUT OF THE EXPRESSION THAT FAILED, SO IT SUBTRACTED THE SAME BLIND SPOT FROM BOTH SIDES AND AGREED WITH ITSELF
+
+Every mechanism above is about an assertion. **This one is about a POSITIVE
+CONTROL — the thing this file tells you to add — and it is the case where adding
+one does not help, because the control is computed by the same expression whose
+failure it exists to detect.**
+
+**The instrument.** `tools/verify_citations.ps1` parses `` `FILE § Section` "handle" ``
+out of a set of source documents and asserts each resolves to exactly one place.
+Its header names the failure it fears, and it is this file's first mechanism: the
+parser silently stopping. It had already happened once — the section mark written
+as a literal character in a BOM-less `.ps1` read as codepage 874, `CITATIONS=3`
+where 36 were present, **exit 0**. So a control was added, and it is a good one:
+
+    SECTIONS - the number of section-bearing citations parsed must equal the
+    number present.
+
+**The defect.** Both parsers spell a filename `[A-Za-z0-9_/\.]+\.(?:md|json)` —
+letters, digits, underscore, slash, dot. **No hyphen.** So a citation naming a
+hyphenated file does not fail to resolve; it is never seen. It is not BROKEN, it
+is not counted, and nothing anywhere prints a number that moved. Every file under
+`lessons/` is hyphenated.
+
+**AND THE CONTROL CANNOT FIRE, BECAUSE THE CONTROL IS THAT REGEX.** The expected
+count is built with the identical class:
+
+    $sectExpected = ([regex]::Matches($text, '`[A-Za-z0-9_/\.]+\.(?:md|json)\s*' + $S)).Count
+
+so an invisible citation is missing from the EXPECTED number and from the PARSED
+number in the same breath, and `$sectSeen -eq $sectExpected` holds exactly as
+well over a corpus it cannot see. The second control — a source must yield at
+least one citation — asks a question this defect never makes false: a document
+with twenty parseable citations and three invisible ones is not empty. **Two
+positive controls, one of them written for this precise failure mode, and neither
+has a state in which it goes red.**
+
+**What actually caught it was arithmetic, and only because the number was small
+enough to hold in a head.** Four citations were written into one file; the
+checker's count for that file rose by **three**. Nothing was red. Nothing was
+missing from the output. The only evidence that existed was a subtraction nobody
+was asked to perform.
+
+**TWO INDEPENDENT MEASUREMENTS, MONTHS APART, AND NEITHER COST ANYTHING — WHICH IS
+THE POINT.** At `bcd4d40` the defect was measured once already, from the other
+direction: hyphenated `.md` paths inside backticks across the then-checked
+sources numbered **129**, and in genuine citation form — a path followed by the
+section mark — the count was **ZERO**. *(Taken at `bcd4d40`, recorded here, and
+deliberately NOT re-taken.)* At `e6249f6`, on a tree carrying no modified tracked
+path, a second pass over the 25 tracked documents that cite into `ROADMAP.md`,
+`OPEN_ITEMS.md` or `PROJECT_STATUS.md` parsed **435 citations naming 14 distinct
+target files, not one of them hyphenated**. So the blind spot is LATENT and has
+always been: every document here reaches a lesson through `lessons/README.md`,
+which has no hyphen. **Nothing has ever gone unchecked because of it.** The
+instrument has been correct about everything it was ever pointed at, and it has
+never been able to say so.
+
+**THAT IS WHY IT IS A LESSON AND THE HYPHEN IS A QUEUE ENTRY.** A latent tool bug
+gets fixed when someone gets to it. What does not get fixed by fixing it is the
+HABIT that let a control be written out of the failing expression — and the next
+control written that way will guard something that is not latent.
+
+### Why it is none of the fourteen
+
+**Not mechanisms 1–2, *the needle was empty*, and this is the near miss that
+matters.** Those are a needle matching EVERYTHING — `startswith(b'')` true for
+every input, a vacuous pass. Here the needle matches a correct SUBSET: every
+citation the checker reports is real, and every verdict it gives is right. The
+defect is entirely in what it never enumerated, so no amount of care over the
+assertion reaches it — and, unlike 1–2, the control that would have caught a
+needle problem was present and was itself built from the needle.
+
+**Not mechanism 9, *the haystack was empty*.** The collection is not empty and
+does not come from a system under test. It is the instrument's own grammar
+excluding a subclass of a corpus it read completely, in files it opened and
+decoded correctly.
+
+**Not mechanisms 5–6, *the instrument never read the artifact / never read what
+points at it*.** Every file was read, byte for byte, BOM consumed, CRLF
+normalised. Reading was not the failure.
+
+**Not 13 or 14.** Thirteen is an instrument answering a different question by
+default; fourteen is a containment test asked to do equality's job. Neither is
+about a control, and this one is about nothing else.
+
+### The two near misses that are NOT in this file, named out loud
+
+**[[a-differential-control-is-only-as-good-as-its-weaker-side]]** is the closest
+thing anywhere, because `$sectExpected` against `$sectSeen` is exactly a
+"these two must AGREE" check. It does not cover this and the difference is worth
+holding: that lesson's fault is an OPERAND the proof supplied itself, and its
+remedy is to derive both sides from the real path. **Both sides here ARE derived
+from the real text.** What is shared is not an operand but the GRAMMAR, and a
+grammar is invisible in a way a literal is not — you can see a hardcoded `5` in a
+comparison; you cannot see the strings a regex declined to match.
+
+**[[a-checker-must-not-share-the-code-it-checks]]** Bound 1 has the RIGHT REMEDY
+and the wrong scope. *Duplicate the arithmetic, never the convention* is precisely
+what was needed: count the expected citations by a second, independent route and
+the two would have disagreed the day a hyphen appeared. But that lesson's subject
+is a checker recomputing a value PRODUCTION code computes, and this is a control
+recomputing a value THE CHECKER computes — one level in, where nobody was looking.
+**A remedy filed under a scope that does not reach your case is not available to
+you**, which is the practical half of why this is written here.
+
+### Two more, appended to How to apply
+
+25. **A positive control must not be built from the expression it controls.** Ask
+    of every control: *if the thing I fear happened, would this number change?* If
+    the control and the suspect share a regex, a parser, a column list, a glob or
+    a key space, the answer is no, and the control is a second copy of the failure
+    wearing the word "control". Derive it by a route that could disagree — count
+    the raw candidates before parsing, count the corpus a different way, or count
+    by hand once and pin it to a commit.
+26. **When you add N things to something an instrument counts, read the count and
+    subtract.** It is the cheapest control there is, it needs no code, and it is
+    the only one that caught this. A count that rose by less than you added is a
+    class the instrument cannot see — and a class it cannot see is one it will
+    never call broken.
 
 ---
 
@@ -4984,6 +5103,57 @@ lossy transformation, exactly like Metro's file map in
 [[metro-file-map-nesting]], where `fs.existsSync` said `true` and the bundler's
 own index said `false`. Ask the layer that actually holds the truth, in a form
 it cannot reformat: bytes.
+
+## AMENDED 2026-08-18 (P1.12) — bytes are not enough when the two sides are in DIFFERENT encodings
+
+**Everything above is about a READER decoding with the wrong codepage, and its
+remedy is "compare bytes". That remedy is necessary and NOT sufficient, and this
+amendment lives here rather than in its own file because the remedy is what
+failed — a reader who follows the rule above and stops there lands in exactly
+this hole.**
+
+Scanning a Hermes bytecode bundle to confirm a string had reached the app:
+
+```
+needle "บิล" as UTF-8     -> count = 0     <- the confident false absence
+needle "บิล" as UTF-16LE  -> count = 89
+needle "shopDateTime"     -> count = 1     (ASCII, found)
+needle "zzz-not-present"  -> count = 0     (ASCII, correctly absent)
+```
+
+**Nothing was decoded.** No console, no pipe, no locale default — the file was
+read with `read_bytes()` and compared byte to byte, which is what the rule above
+prescribes. The instrument was correct and the NEEDLE was wrong: Hermes stores
+non-ASCII strings as UTF-16LE, so a UTF-8 needle cannot match a string that is
+certainly there.
+
+**Why it is the same lesson and not a new one.** The output is a CONFIDENT FALSE
+ABSENCE about the artefact, and the natural response to it is to go and "fix"
+strings that were never broken — the same destructive direction as the phantom
+mojibake above, reached from the opposite end. There the reader corrupted
+correct data; here the search failed to find correct data. Both end with an
+author editing text that was right.
+
+**AND THE CONTROL WAS THE WRONG CONTROL, which is the part worth carrying.** The
+absence was paired with ASCII PRESENT needles (`shopDateTime`,
+`SHOP_UTC_OFFSET_MINUTES`, both found) and ASCII ABSENT needles (both zero). All
+four behaved, and none of them could move: they proved the scan worked on ASCII
+and said nothing whatever about Thai, which is the only thing in question. A
+control must contain what fooled you — [[a-control-must-contain-what-fooled-you]]
+— and here that means a needle in the SAME encoding class as the one whose
+absence you are about to believe.
+
+**How to apply.** Establish the STORE's encoding before searching it, not after a
+zero. Where you cannot, search for the same string in every plausible encoding in
+ONE run and require exactly one to hit — the evidence is the PAIR (0 and 89), not
+either number. And never report "the string is not in the artefact" from a single
+encoding's miss.
+
+**Two homes, one test.** A LESSON, not a machine footgun: Hermes stores UTF-16LE
+on every platform it runs on, so this is not a property of this box, and a
+session on any machine would relearn it. It is also NOT the never-went-red
+family — nothing here is a vacuous assertion, the scan fired correctly and
+answered the question it was actually asked.
 
 **Where found.** Phase 2c-3, verifying `/products` before the on-device cart
 test. No code changed as a result — the correct outcome was a retraction.

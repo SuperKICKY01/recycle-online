@@ -1867,6 +1867,141 @@ function being rewritten; the mechanism is that the assertions naming
 `void_refused_at` in `proveVoid` and `proveVoidTerminal` appear UNCHANGED in the
 diff, which is checkable.
 
+**SUPERSEDED 2026-08-18 — THE SEVEN CRITERIA ABOVE DO NOT DECIDE THIS STEP, AND
+THE SEVEN ARE SUPERSEDED, NOT DELETED.** An independent pass read them against
+`mobile/` — the criteria and the code, not this file's argument for them — and
+reported NINE stop-class findings. The dispatch's stop rule fires on either of
+two things: a state that satisfies all seven while the work is broken, or a
+demonstration that ANY ONE criterion can be green over a broken implementation.
+Both fired. Stage 2 does not begin under these. They stay on the page because
+they are the evidence for what replaced them, and a reader has to be able to see
+what was tried.
+
+**THE INTERPRETIVE QUESTION, AND IT IS SETTLED FROM THE DISPATCH'S OWN TEXT
+RATHER THAN BY A FRESH JUDGEMENT.** Six of the seven carry a justifying sentence
+and an observable sentence, and the review judged them against the first — which
+the reviewer itself flagged as the one reading that could overturn its own
+result. The dispatch's stop table reads *a broken implementation SATISFIES the
+criterion → STOP*, and what a broken implementation satisfies is the OBSERVABLE.
+So the criterion IS its observable, and the justifying sentence is what says
+whether that observable is adequate. Rule (b) exists for exactly that case: an
+observable that passes while the property it claims to measure is false. All nine
+stand.
+
+**WHY THE REPAIR IS NOT TO PATCH THE SEVEN.** Nearly every finding has one shape
+— *the mechanism could be built this way and criterion N would not notice.* That
+is a statement about DESIGN FREEDOM, not about wording. Adding clauses to close
+nine holes found by one pass closes those nine and leaves the next set, because
+**the criteria were written before the design existed**, and criteria for a
+mechanism with no shape cannot name the cases that discriminate. Criterion 3 is
+the only one of the seven the review could name verified teeth for, and what it
+measures is declared-equals-ran, not coverage of the change.
+
+**SO STAGE 2 IS RESTRUCTURED, AND THE ORDER IS THE POINT.** Stage 2 delivers a
+DESIGN and no drain. That design is reviewed. The acceptance criteria are then
+DERIVED FROM IT. They are deliberately NOT written here: writing them now would
+repeat, in the same file, the exact error this supersession records.
+
+#### What any replacement criterion set must catch
+
+One line each. This is a SPECIFICATION the design's criteria must meet — not a queue, and nothing in it is
+authorised work. **Every item is a claim RE-DERIVED against the artefact on
+2026-08-18 at `e6249f6`**, a commit at which `git status --porcelain` reported no
+tracked path modified, so each path:line names the committed blob. Where a
+handed-down line number did not hold, the correction is here and the original is
+not repeated.
+
+- **A bill weighed offline against a seller created offline.** The server refuses
+  a client-minted id, so the local seller's id is never the id the server stores;
+  a bill drawn up against it carries an id `POST /bills` cannot resolve, and
+  `server/app/bills.py` answers 422, which `mobile/src/adapters/httpTransport.ts`
+  classifies `rejected` and the engine marks terminally `failed`. Cash is already
+  out of the till. **This is the one composition offline seller creation exists
+  for, and no criterion above stages it.**
+- **A queued non-bill kind that the sign-out gate and the status strip cannot
+  see.** Both read `unsentBreakdown`, which is one statement over `local_bills`;
+  the strip then says everything has been sent and the gate permits the sign-out,
+  after which the work drains under whoever signs in next — a different tenant
+  included, because the server takes the tenant from the caller's token and never
+  from the row. Criterion 6 requires the strings be READ and the gate's decision
+  EXERCISED, and names no expected value for either.
+- **A generalisation whose bypass is not actually refused by the typechecker.**
+  `OutboxRegistry` is declared as an interface with three literal keys and not as
+  a mapped type over `OutboxKind`, nothing constructs one anywhere under
+  `mobile/src`, and `OutboxDisposition` is a structural union any hand-written
+  code may produce. The file says so itself in its own header. A criterion whose
+  demonstration is "a fourth path fails to compile" must pin WHICH path, or it
+  measures registry totality and reports it as bypass-prevention.
+- **An assertion-set whose named guard is vacuous.** The MUST NOT below names
+  `proveVoid` and `proveVoidTerminal` as the files whose `void_refused_at`
+  assertions must appear unchanged. `mobile/src/proof/proveVoid.ts` contains the
+  string ZERO times, so half that guard quantifies over an empty set, while
+  `proveVoidOwner.ts` carries seven and is not named. A guard that fails by
+  finding LESS is this repository's oldest failure shape.
+- **The reset half of the poison signal.** `first_server_error_at` and
+  `server_error_attempts` are stamped when the server answered and RESET when the
+  bounce was transport-level; the reset is the ELSE arm of two CASE expressions in
+  `markPendingAgain`, and `dispositionOfSend` drops the `reachable` bit entirely.
+  Criterion 7's "yellow then red" drives only the stamp direction — the strip's
+  yellow is the offline message and does not read queue health at all — and no
+  proof drives a row that accumulated the counters and then bounced offline.
+- **A kind whose lost response is not safe to retry.** `sellers` carries no
+  idempotency key anywhere in the migration stack, and where the draft supplies
+  no code the server MINTS one, so a re-send returns 201 and a SECOND seller row
+  rather than a collision. `OutboxDisposition` has four members and none of them
+  means *unknown whether the server committed, and NOT safe to retry* — a state
+  `mobile/src/master/createSeller.ts` already names as `ambiguous`.
+- **Startup recovery for a kind that is not a bill.** `resetSyncingToPending`
+  updates `local_bills` alone, and it is the only sweep at boot.
+- **Two offline handsets minting the same seller code.** Filed as its own finding
+  at `OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "TWO OFFLINE HANDSETS CAN MINT THE SAME SELLER CODE",
+  because it is a defect in the design the criteria MANDATE rather than a defect
+  in a criterion.
+- **Ordering under overlapping passes.** `syncOnce` in `mobile/App.tsx` has no
+  re-entrancy guard and is fired on a 4-second interval against a 20-second
+  transport timeout, so passes overlap as a matter of course; once a pass has
+  claimed the head the row leaves the pending queue and a second pass takes the
+  next row and sends it concurrently, and `doc_no` then falls to whichever request
+  reaches the counter's row lock first. Criterion 4 stages one drain and cannot
+  see it; the only proof with concurrent passes stages one bill.
+
+**AND TWO PROPERTIES OF THE CRITERIA THEMSELVES, WHICH A REPLACEMENT MUST NOT
+INHERIT.** Criterion 4's staging leaves every row eligible, so nothing blocks and
+head-of-line — the property it exists to test — is never exercised; what is
+missing is a row expected NOT to go. Criterion 7 cannot be performed at all with
+one bill: `mobile/src/sync/queueHealth.ts` gates both `poisoned` and `alarm`
+behind `blocking`, which needs `behind > 0`, and `behind` is `pendingCount - 1`.
+Criterion 4 states its minimum and argues for it; criterion 7 states none.
+
+**THE RE-DERIVATION, AND WHAT DID NOT HOLD.** Seven claims were handed to this
+phase to check. Five held verbatim. **Two did not, and both are line numbers
+rather than facts:** the send loop's in-flight guard is `break` at
+`mobile/src/sync/engine.ts:349` and not at `:348`, which is `noteSkip(bill.id);`
+— the guard opens at `:347` and the comment calling it "a stop, not a skip" is at
+`:346`; and `syncOnce` is fired from the 4-second interval plus FOUR other call
+sites, not five. **AND THE FIRST OF THOSE TWO SAT IN THE GROUP THE BRIEF
+LABELLED ALREADY VERIFIED, WHICH IS WORSE THAN AN UNLABELLED CLAIM AND NOT
+BETTER.** A verification badge is an instruction to the next reader to stop
+checking, so a wrong one does not merely fail to help — it withdraws the
+attention that would have caught it. Re-derive a labelled claim exactly as hard
+as an unlabelled one; the label is evidence about a previous reader, never about
+the artefact. One was narrowed: criterion 7's one-bill objection reaches RED
+and not yellow, because the strip's yellow comes from the offline branch and not
+from `QueueHealth` at all. Everything else — the non-optional `code` field and the
+409-settles rule beside it, `QUEUED` carrying no backoff term against
+`listPendingOldestFirst`'s "INCLUDING ones still in backoff", the `continue` in
+`applyVoids`, the 409 body echoing only the caller's own code while the client
+never parses that body, and `proveVoid`'s two engine instances over a per-instance
+`inFlight` — held as given.
+
+**WHAT THIS SUPERSESSION DOES NOT CLAIM.** The review read CRITERIA and stage 1's
+types; it did not build the drain, run a proof, touch a handset or reach a
+server, so nothing in it carries an exit code. Its independence is partial and
+stated: it was written by the session that reviewed these criteria the first
+time, so it is independent of THIS FILE's reasoning and not of the reviewer's.
+Six of the seven criteria exist because of that earlier pass. An empty report
+would therefore have established only that a second reader found nothing further.
+
 ### `GET /users` — landed 2026-08-07, and it is NOT a step in this file
 
 Recorded rather than numbered. **GET /users is not a step in this file**, nothing

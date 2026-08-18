@@ -57,6 +57,166 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P-OUTBOXREVIEW — THE P1.18 CRITERIA REVIEW RETURNED, THE STOP FIRED, AND STAGE 2
+DOES NOT BEGIN. Documentation only, one commit, SIX declared paths, 2026-08-18.** No code path
+changed; nothing was run against a server, a database or a device, and no proof
+was run because nothing this phase touches is executed. The P1.12 record below
+stays the current CODE phase exactly as written.
+
+**WHAT THE REVIEW WAS AND WHAT IT FOUND.** An independent session was given
+P1.18's seven acceptance criteria, `CLAUDE.md`, `lessons/README.md`,
+`START_HERE.md § 3` and the code under `mobile/`, and was withheld this file,
+`OPEN_ITEMS.md`, `ROADMAP.md` and every recent commit body, so that it could not
+inherit the author's reasons for believing the criteria adequate. It reported
+NINE stop-class findings. The stop rule fires on either a state satisfying all
+seven while the work is broken, or a demonstration that any ONE criterion can be
+green over a broken implementation; both fired. **Six of the seven have no red
+case for the property they name.** The findings are not restated here — they are
+a specification at `ROADMAP.md § P1.18 — One outbox, several kinds of work` "THE SEVEN ARE SUPERSEDED, NOT DELETED",
+which is where the step's restructure is recorded and where they are load-bearing.
+
+**WHAT THE REVIEW COULD NOT ESTABLISH, AND IT IS MOST OF WHAT A READER WILL WANT.**
+It read CRITERIA and stage 1's declared types. It did not build the drain, run a
+typecheck, run a proof, reach a server, open a database or touch a handset, so
+**nothing in it carries an exit code** and no finding is a device observation.
+Every claim in it is a read of source at `e6249f6`. And its independence is
+partial in a direction that must be recorded rather than assumed away: **the
+dispatch was written by the session that had reviewed these same criteria once
+before**, and six of the seven exist because of that earlier pass — so it is
+independent of the AUTHOR's reasoning and NOT of the reviewer's. An empty report
+from it would therefore have established only that a second reader, holding the
+criteria's own justifications and none of the surrounding argument, found nothing
+further. That is a weaker claim than "the criteria are sound", and it is the one
+that would have been recorded.
+
+**THE INTERPRETIVE QUESTION THE REVIEW RAISED AGAINST ITSELF WAS SETTLED AGAINST
+THE REVIEWER'S CAUTION, NOT WITH IT.** The reviewer named, as the strongest reason
+to overrule it, that several criteria carry a justifying sentence and an
+observable sentence and that it had judged them against the first. The dispatch's
+own stop table reads *a broken implementation SATISFIES the criterion → STOP*, and
+what a broken implementation satisfies is the OBSERVABLE — so the criterion is its
+observable and the justifying sentence is what says whether that observable is
+adequate, which is the case rule (b) exists for. All nine stand. The argument is
+recorded at the step and not repeated here.
+
+**WHAT THIS PHASE WROTE, AND WHAT IT DELIBERATELY DID NOT.** The seven criteria
+are SUPERSEDED IN PLACE and not deleted — they are the evidence for why the step
+was restructured to deliver a design first. The replacement criteria are NOT
+written: they come from a design that does not exist, and writing them now would
+repeat the error being recorded. Two findings were lifted out of the criteria
+question into `OPEN_ITEMS.md § Decisions open — the owner's, not the code's` — the
+seller-code collision, which is a defect in the design the criteria MANDATE rather
+than in a criterion, and the boot-path order disagreement held over from
+P-PASTESET. Neither is authorised work.
+
+**SEVEN HANDED-DOWN CLAIMS WERE RE-DERIVED. FIVE HELD; TWO DID NOT.** Both
+failures were line numbers rather than facts, and both are corrected at the step:
+the send loop's in-flight guard is `break` at `mobile/src/sync/engine.ts:349`, not
+`:348`, and `syncOnce` is fired from its interval plus FOUR other call sites, not
+five. One claim was narrowed rather than refuted. **This is why a brief's premises
+are re-measured and not carried:** three of the seven had been marked verified
+before dispatch, and one of the two corrections was in that group. **A wrong
+verification badge is worse than no badge**, because its whole function is to
+tell the next reader they need not look.
+
+**AND THE PHASE FOUND ONE THING NOBODY SENT IT LOOKING FOR.**
+`tools/verify_citations.ps1` cannot parse a citation whose target filename
+contains a hyphen — which is every file under `lessons/` — and such a citation is
+not reported BROKEN, it is not reported at all. It was caught by arithmetic: the
+checker's count rose by three where four citations had been written. **Neither of
+the checker's two positive controls can fire on it**, because both count only what
+the same failing class already matched. Measured latent — of 442 parsed citations
+naming 14 distinct targets, none carries a hyphen, and the only citation-shaped
+reference to a hyphenated file in the whole 25-document corpus was the one this
+phase had just written, since re-pointed at the index. Filed at
+`OPEN_ITEMS.md § Documentation`.
+
+**OBSERVED — the citation checker, before and after, over TWENTY-FIVE sources.**
+`tools/verify_citations.ps1`, run with the call operator and an explicit array,
+bare, one invocation per pass, output redirected and the status read in the SAME
+invocation. `SOURCES=` was read first and equalled the 25 passed. **The source set
+is every TRACKED document that CITES INTO one of the three edited files**,
+enumerated by grep rather than by memory — the word TRACKED is what makes the
+number reproducible, and it is doing work. Taken on the working tree, 2026-08-18.
+
+| | before | after |
+|---|---|---|
+| SOURCES | 25 | 25 |
+| CITATIONS | 435 | 451 |
+| BROKEN | 16 | 16 |
+
+**BROKEN DID NOT MOVE, AND ALL SIXTEEN PRE-DATE THIS PHASE.** `BROKEN` has FIVE
+contributors in this checker, not three: a missing target file, a citation whose
+handle or section resolves to a count other than one, the sections control, and
+the non-empty control. Two of the five did not fire at all here — no target file
+was missing and the sections control printed OK on all 25 sources in both passes.
+Decomposed: **ten**
+are *resolves to nothing* (`hits=0`) — three of them a section name that wrapped
+across two lines in the citing file, two a handle that wrapped and came back
+joined by extra spaces, two a section captured with a blockquote marker on the
+front, two a handle whose target heading now
+wraps a filename in backticks the citation does not, and one a handle absent
+from its target entirely; **one** is *resolves to
+two things*, `` `core.autocrlf` `` appearing on both `CLAUDE.md:198` and `:200`;
+and **five** are the checker's own non-empty control firing on sources THIS PHASE
+NAMED that carry no citation in the checked shape at all. **Those five are an
+artefact of the source selection and not repository breakage** — they are lesson
+files that mention a target filename in prose or with a line range rather than as
+a citation. The eleven real ones are in files this phase did not edit except where
+noted, and it repaired none of them.
+
+**THE FOUR-AGAINST-SEVEN CHECK THIS PHASE OWED ITSELF.** This phase only ADDS
+text, so the one way it could break an existing citation is by repeating a handle
+until it resolved TWICE. The 78 distinct handles resolving into the three edited
+files were enumerated first and every drafted line was checked against them,
+case-insensitively, before anything was written. None collided. The
+sixteen citations this phase writes all resolve at one hit each.
+
+**`tools/verify_shared_checks.py` exits 0.** Neither copy of the shared four was
+touched; it is run because a phase boundary runs it.
+
+**`server/scripts/build_all_lessons.py --write` then `--check`, both exit 0** —
+`CHECK OK ... 421060 bytes`. The generated file rides in this commit because the
+checker reddens the moment a lesson changes.
+
+**AND IT CARRIES 51 LINES THIS PHASE DID NOT AUTHOR, WHICH IS SAID HERE BECAUSE A
+READER DIFFING THIS COMMIT WILL FIND THEM.** `lessons/all-lessons.md` was ALREADY
+STALE at `e6249f6`: measured with `git show`, `lessons/console-is-not-the-
+observation.md` carries its P1.12 amendment at that commit and the generated file
+does not — one hit against zero, and the banner read `20 across 10 files` where the
+sources hold 21 across 11. So `--check` would have exited 1 at `e6249f6`, and this
+phase's regeneration necessarily repairs P1.12's omission as well as carrying its
+own. The generator is all-or-nothing; there is no partial regeneration to offer.
+**None of the amendment count is this phase's:** mechanism 15 is headed `A
+FIFTEENTH MECHANISM`, and the generator counts only headings matching
+`AMENDED|Amendment`, so the 20 to 21 move belongs entirely to the stale P1.12 work.
+
+**`build_paste_set.py` WAS NOT RUN, in either mode.** The duty was retired at
+`e6249f6` and there is no paste-set list to report.
+
+**IS A LESSON OWED? ASKED, AND ANSWERED: YES, AND IT IS WRITTEN.** The phase was
+re-opened with a re-declared six-path set for exactly this; the first declaration
+was three paths and could not accommodate the `lessons/` exemption its own brief
+granted, so the phase stopped rather than close in violation of a rule it holds.
+**THE FINDING SPLITS, AND THE TWO HALVES HAVE DIFFERENT HOMES** — the test is
+`CLAUDE.md § Workflow` "Two homes, one test", asked as *which thing would the
+forgetting break*. The hyphen in the filename class is a DEFECT IN A REPO-OWNED
+TOOL: a bug in your own instrument gets fixed, not remembered, so it stays a queue
+entry under `OPEN_ITEMS.md § Documentation` and the fix is a `tools/` change in a
+later phase. What is lesson-shaped is the MECHANISM, and it is neither the hyphen
+nor a machine footgun — nothing about it is a property of this box.
+**A FIFTEENTH MECHANISM was appended to
+`lessons/README.md § Lessons` "a-check-that-never-went-red-was-never-observed.md"**
+rather than filed as a new lesson: that file's whole subject is a control that
+cannot go red, its established shape is numbered mechanisms each carrying a *why
+it is none of the previous* section, and a new file would split one subject across
+two homes. The mechanism is sharper than the hyphen that exposed it — **the
+positive control was built out of the same expression whose failure it exists to
+detect, so it subtracted the identical blind spot from both sides of its own
+comparison and agreed with itself.** Its two nearest relatives are named in the
+amendment and are both OUTSIDE that file, which is the practical half: one of them
+carries the right remedy under a scope statement that does not reach this case.
+
 **P-PASTESET — THE PASTE-SET DUTY IS RETIRED. Documentation only, one commit,
 2026-08-18.** No code path changed; nothing was run against a server, a database
 or a device, and no proof was run because nothing this phase touches is executed.
@@ -95,6 +255,14 @@ bare, one source-set per invocation, the status read in the same invocation.
 `CITATIONS / BROKEN`, taken on the WORKING TREE on 2026-08-18, and they carry NO
 sha deliberately: the work they describe was uncommitted when they were written,
 so the only sha available is the one that does not contain it.
+**ANCHORED 2026-08-18 to `e6249f6` — this is the half of the pin-a-claim
+convention that usually gets skipped.** The work those figures describe was
+committed as `e6249f6`, and nothing moved between the final measurement and the
+commit, so that is the sha they were always about. **It is not an inference.**
+P-OUTBOXREVIEW re-ran the same checker over the same seven sources at `e6249f6`,
+on a tree `git status --porcelain` reported as carrying no modified tracked path,
+BEFORE it edited anything — and reproduced the AFTER column exactly: 39/0, 24/0,
+46/2, 21/0, 68/0, 83/4, 102/0, total 383/6.
 
 | source | before | after |
 |---|---|---|

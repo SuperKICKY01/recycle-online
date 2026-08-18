@@ -2516,6 +2516,113 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
 
 ## Decisions open — the owner's, not the code's
 
+- **TWO OFFLINE HANDSETS CAN MINT THE SAME SELLER CODE, AND THE RULE THE P1.18
+  CRITERIA MANDATE THEN BINDS ONE OF THEM TO THE OTHER'S SELLER.** Raised
+  2026-08-18 by the independent review of P1.18's acceptance criteria, and filed
+  here rather than at the step because it is a defect in the DESIGN THE CRITERIA
+  MANDATE and not a defect in a criterion — the step's own supersession is at
+  `ROADMAP.md § P1.18 — One outbox, several kinds of work` "THE SEVEN ARE SUPERSEDED, NOT DELETED".
+  NOTHING BELOW IS AUTHORISED.
+
+  **The mechanism, re-derived 2026-08-18 at `e6249f6`.** `LocalOutboxSeller.code`
+  in `mobile/src/sync/outbox.ts` is `readonly code: string` — non-optional — and
+  the comment above it states the rule: a re-send is recognisable only by a code
+  collision, so a 409 on this kind means ALREADY EXISTS and settles the row. The
+  device must therefore mint a code while offline, and no arbiter exists while two
+  handsets both are. If both mint the same code, the first to drain creates the
+  seller and the second collides on `uq_sellers_tenant_code`. The server's 409
+  body carries `kind`, `code`, a Thai `message`, `entity` and `conflicting_code`,
+  and the only variable content in it is THE CALLER'S OWN CODE HANDED BACK — no
+  row id, no name, no owner, nothing that identifies WHOSE row holds it. Under the
+  mandated rule the second device settles, and its local seller is now bound to a
+  different person's server row. Every bill it files afterwards is a cash purchase
+  recorded against the wrong seller, on rows carrying `id_number` and `address`,
+  and hard rule 5 forbids deleting the bill.
+
+  **AND THE CLIENT CANNOT TELL THE TWO APART EVEN IF IT WANTED TO**, which is why
+  this is not a coding slip somebody would notice. `mobile/src/master/createSeller.ts`
+  classifies a 409 on the STATUS plus one fact the caller already holds — whether
+  it supplied a code — and never calls `response.json()` on that branch at all.
+  That is deliberate and correct for the reason its header gives: a refusal body
+  on this route can echo an ID CARD NUMBER. So the discriminator this case needs
+  is not merely absent from the client, it is behind a rule the client is right to
+  keep.
+
+  **IT IS NOT THE 409 CASE ALREADY RECORDED.** That one is `duplicate_code`
+  against `code_assignment_failed` — one status, two server meanings, settled by
+  asking what the CALLER sent
+  (`lessons/README.md § Lessons` "THE DISCRIMINATOR WAS IN THE REQUEST", indexing
+  `correct-classification-can-still-render-as-an-error.md`, whose P1.8a amendment
+  is the entry meant). **The citation is pointed at the INDEX and not at the lesson
+  file on purpose:** `tools/verify_citations.ps1` parses a filename with the class
+  `[A-Za-z0-9_/.]`, which has no hyphen, so a citation naming any lesson file is
+  not parsed at all — it is INVISIBLE to the checker rather than BROKEN by it, and
+  that is recorded under `OPEN_ITEMS.md § Documentation` below.
+  This is a THIRD pair inside `duplicate_code` itself: *my own prior send* against
+  *another caller's row*. The earlier discriminator cannot separate it, because
+  both sides of this pair supplied a code.
+
+  **A SECOND, QUIETER HALF, and it is why the non-optional `code` is
+  load-bearing.** Where a draft supplies NO code the server mints one and inserts,
+  so a duplicate send returns 201 and a SECOND seller row rather than any
+  collision at all — no signal, no error, two sellers for one person.
+
+  *Contradicts:* the settle-on-409 rule the P1.18 criteria state as established,
+  against `sellers` having no idempotency key and its codes being device-minted
+  while offline. *The decision owed:* what identifies a locally created seller
+  across devices before the server has seen it — a device-scoped code space, a
+  server-minted reservation taken while online, a client-supplied idempotency key
+  on `POST /sellers`, or accepting duplicates and reconciling in the back office.
+  Each is a different schema and a different offline story. *Not done:* nobody has
+  decided, and the sketched types at `ac535c2` assume the question away. *Unblocks:*
+  the P1.18 design step, which cannot specify the seller kind until this is
+  answered.
+
+- **THE BOOT PATH TELLS A SESSION TWO DIFFERENT THINGS ABOUT ORDER, AND EVERY
+  SESSION READS BOTH.** Held over from P-PASTESET and filed 2026-08-18. Re-derived
+  at `e6249f6`: `CLAUDE.md § Workflow` "Show a diff before editing any existing file"
+  is line 498, unconditional and about EVERY existing file; the
+  measure-before-the-write bullet four bullets later opens at line 502 and its
+  second sentence reads that afterwards *"is the normal order and it is right
+  almost everywhere, because almost everything can be corrected."* NOTHING BELOW
+  IS AUTHORISED.
+
+  **WHAT KIND OF DISAGREEMENT THIS IS, STATED PRECISELY RATHER THAN DRAMATICALLY,
+  because the precision is what the decision turns on.** The two bullets are not
+  contradictory INSTRUCTIONS: one governs SHOWING a diff to the owner, the other
+  governs MEASURING a value, and a session can obey both. What collides is a rule
+  and a rationale. The second bullet's stated principle — the before-order earns
+  its cost only where the write cannot be undone — is general, and a file edit in
+  a git repository is the most correctable write there is. So the first bullet's
+  UNCONDITIONAL form has no surviving argument behind it once the second is
+  granted, while the first bullet is still what the boot path says. A session that
+  reads both in order is told to do something the next bullet explains is
+  unnecessary here, and neither bullet mentions the other.
+
+  **WHY IT NEEDS A DECISION RATHER THAN AN EDIT.** Which one gives way is a
+  question about how the owner wants to review, not about the code: showing a diff
+  first is a DISCLOSURE discipline whose value is that he sees a change before it
+  exists, and that value is untouched by whether the change is reversible. If that
+  is the reason, the first bullet is right and the second's principle needs a
+  boundary saying it is about measurement only. If it is not the reason, the first
+  bullet should say what it actually applies to. Either way one of two boot-path
+  files changes, which is why no session should settle it in passing.
+
+  **THE PRECEDENT for a boot-path disagreement getting its own phase** is
+  `CLAUDE.md § Scope and status` "Superseded 2026-08-16:", where CLAUDE.md and
+  `ROADMAP.md` disagreed about whether forward steps were R-numbers or P-numbers
+  and the repair was a dated supersession rather than a rewrite. **This entry is
+  not that repair and does not attempt it.**
+
+  *Contradicts:* `CLAUDE.md`'s Workflow bullet at line 498 against the principle
+  stated by the bullet at line 502, both of which load unconditionally at the
+  start of every session. *The decision owed:* whether "show a diff first" is a
+  disclosure rule that survives reversibility, or a measurement rule that the
+  later bullet already bounds. *Not done:* the practice has followed the second
+  for as long as anyone can measure, and no phase record claims otherwise.
+  *Unblocks:* nothing built — it removes a standing disagreement between two rules
+  a session is told to obey before it does anything else.
+
 - **SIX REVIEW FINDINGS AGAINST THE 2026-08-17 DECISIONS, AND THEY CONTRADICT
   PARTS OF WHAT THOSE DECISIONS SET UP.** ONE entry, on purpose: a reader who
   meets one side alone acts on a plan that was already questioned. They are
@@ -3621,6 +3728,86 @@ with no feature of its own.
   already landed.
 
 ## Documentation
+
+- **NOTHING AT A PHASE BOUNDARY RUNS `build_all_lessons.py --check`, AND THE FILE
+  IT GUARDS WAS MEASURED STALE.** Found 2026-08-18. `START_HERE.md § 4`'s Commands
+  table lists the typechecks, the `prove:*` scripts, the server proofs,
+  `reconcile.py` and `verify_shared_checks.py`, and does NOT list this one — so the
+  only thing that regenerates `lessons/all-lessons.md` is a session that happens to
+  remember. Measured at `e6249f6` with `git show`:
+  `lessons/console-is-not-the-observation.md` carries its P1.12 amendment there and
+  `lessons/all-lessons.md` does not, one hit against zero, with the banner reading
+  `20 across 10 files` against sources holding 21 across 11. `--check` would have
+  exited 1 at that commit and nothing asked it to. NOTHING BELOW IS AUTHORISED.
+
+  **It is the cheap half of the entry below and not a duplicate of it.** That one is
+  a control that cannot go red; this is a check that CAN go red and is never asked.
+  The failure is quieter than it looks: a stale generated file is not wrong about
+  anything it contains, it is merely missing what it has not been told, so every
+  reader of it gets correct text and an incomplete corpus. *Contradicts:* nothing —
+  it is an omission from a checklist. *The decision owed:* whether
+  `build_all_lessons.py --check` joins the Done table, or whether the generated file
+  is regenerated by whatever writes a lesson and the check stays on demand.
+  *Not done:* neither; `START_HERE.md` was outside this phase's declared set.
+  *Unblocks:* nothing built — it stops a generated document drifting from its
+  sources for a whole phase without anything noticing.
+
+- **`tools/verify_citations.ps1` CANNOT PARSE A CITATION WHOSE TARGET FILENAME
+  CONTAINS A HYPHEN, WHICH IS EVERY LESSON FILE — AND SUCH A CITATION IS NOT
+  REPORTED BROKEN, IT IS NOT REPORTED AT ALL.** Found 2026-08-18 by writing one:
+  the checker's own count went up by three where four citations had been added,
+  and the missing one named a lesson file. The mechanism is the filename class in
+  both parsers, `[A-Za-z0-9_/.]` with no `-`, so the match fails at the first
+  hyphen and the citation is never seen. NOTHING BELOW IS AUTHORISED; `tools/` was
+  out of bounds to the phase that found this.
+
+  **IT FAILS BY MEASURING LESS, WITH NO SIGNAL** — this repository's oldest
+  failure shape, and the one the checker's own header was written to defend
+  against for a different cause (`lessons/README.md § Lessons` "a-check-that-never-went-red-was-never-observed.md").
+  BOTH of the checker's positive controls stay green: the sections control counts
+  only citations the same class already matched, so a citation it cannot see is
+  absent from the expected number as well as from the parsed one, and the
+  non-empty control passes on any source with at least one parseable citation.
+  **The two controls cannot fire on this**, which is why it survived to be found
+  by arithmetic rather than by a red.
+
+  **MEASURED TWICE, INDEPENDENTLY, MONTHS APART — AND THAT IS THE REASSURING HALF
+  AND THE ARGUMENT FOR THE PRIORITY AT ONCE.** At `bcd4d40` it was measured from
+  the other direction: hyphenated `.md` paths inside backticks across the
+  then-checked sources numbered **129**, and in genuine citation form — a path
+  followed by the section mark — the count was **ZERO**. That figure is recorded
+  here at the commit it was taken at and was deliberately NOT re-taken. At
+  `e6249f6`, on a tree carrying no modified tracked path, a second pass over the 25
+  tracked documents that cite into `ROADMAP.md`, `OPEN_ITEMS.md` or
+  `PROJECT_STATUS.md` parsed **435 citations naming 14 distinct target files, not
+  one of them hyphenated**; a search of those same 25 for a citation-shaped
+  reference to a hyphenated `.md` returned exactly ONE hit, and it was the one this
+  phase had just written and has since re-pointed at the index.
+
+  **SO THIS IS A DEBT THAT CAN WAIT, AND THE TWO MEASUREMENTS ARE WHY.** Two
+  independent discoveries of one latent defect, months apart, neither of which cost
+  anything, is evidence about its RATE and not merely about its severity: no
+  standing citation is going unchecked today, because every document here reaches a
+  lesson through `lessons/README.md`, which has no hyphen. What is unchecked is the
+  FORM — nothing says that route is required rather than customary — and a form is
+  not an outage. **It is not urgent and it is not closed**; the reason to fix it is
+  that its cost the day it is not latent is a green run over a pointer nobody
+  opened, and by then the habit has been copied. The MECHANISM behind it is
+  recorded separately and does not wait on the fix:
+  `lessons/README.md § Lessons` "a-check-that-never-went-red-was-never-observed.md",
+  fifteenth mechanism.
+
+  **WHY THAT IS A WORSE STATE THAN A BROKEN CITATION, not a better one.** A broken
+  citation is loud and gets fixed. This is a rule nobody knows exists: the next
+  writer to cite a lesson directly — the obvious, more precise thing to do — gets
+  a green run over a pointer the instrument never opened, and every later reader
+  sees a citation in the checked shape and reasonably believes it was checked.
+  *The decision owed:* widen the class to include `-` and re-run to see what the
+  checker has been unable to see, or state in the checker's header that lessons
+  are cited through the index BY DESIGN and make a direct lesson citation a named
+  refusal rather than a silence. *Not done:* neither; `tools/` is code and this
+  phase was documentation only. *Unblocks:* nothing built — it removes a way for a
+  green citation run to be quietly narrower than the corpus it claims to cover.
 
 - **The cluster inventory in `PROJECT_STATUS.md`'s `2026-08-09 — the directory role`
   entry is STALE, and is deliberately not being rewritten.** It records
