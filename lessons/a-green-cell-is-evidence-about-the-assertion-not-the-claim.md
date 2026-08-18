@@ -140,6 +140,57 @@ constants the compiler had already resolved, a queue answered by a different
 statement, a column reused from a situation with other assumptions, and a
 comparison with nothing on either side.
 
+## AMENDED 2026-08-18 (P-SELLERAUTHOR) — the discriminator has a hole: the mutation must be one the SCHEMA WILL STORE
+
+"Break the claim in the smallest way you can and check that THIS cell moves"
+assumes the break you chose can actually happen. **A constraint can refuse your
+mutation, and then the red you get is about the constraint.**
+
+Measured while adding `sellers.created_by` (migration 0011). The phase brief
+named the disproof itself: write the principal's TENANT id into the column — a
+wrong, non-null, plausible value — and require the differential cell to redden.
+It reddened. **EIGHTEEN cells reddened**, and the two that matter read
+`db=None`.
+
+Because `fk_sellers_created_by (tenant_id, created_by) REFERENCES users
+(tenant_id, id)` cannot resolve a tenant id to a user row. The INSERT raised
+23503; the assign-branch retry loop re-raises anything that is not
+`uq_sellers_tenant_code`, and `_raise_for_integrity` re-raises anything not in
+`_DUPLICATE_CODE_CONSTRAINTS`; so `POST /sellers` answered 500 and **no row was
+written at all**. There was never a wrong value in the column for the cell to
+discriminate. A bare `created_by IS NOT NULL` check would have produced the
+identical eighteen reds.
+
+**AND THE BLAST RADIUS READS AS MORE EVIDENCE, WHICH IS THE TRAP.** Eighteen red
+cells feel like a stronger disproof than one. They are the opposite: a wide red
+is what a NEIGHBOUR does, and the discriminator above already says so about
+greens. Nobody re-reads that sentence while watching a suite they meant to break
+go satisfyingly red.
+
+What DID test the cell was a wrong value the constraint ADMITS — the other
+principal's real user id, FK-valid, non-null and entirely plausible. **Exactly
+one cell moved**, and it printed the stored value:
+`db=35d09981… staff=bef92d61… admin=35d09981…`. Its mirror — the staff id
+hardcoded instead — moved exactly the other cell. Neither is reachable by a
+one-sided assertion, which is why the cell asserts over TWO rows created by TWO
+principals: **one constant is right for at most one of them**, so no single wrong
+value can satisfy the pair.
+
+**The rule: before running a disproof, ask whether the schema will ACCEPT what
+you are about to write.** If a constraint refuses it, you have measured the
+constraint — worth knowing, and not what you came for. Then pick a wrong value
+the constraint admits, and require the red to be NARROW and to NAME the value it
+found.
+
+Two siblings, and they divide cleanly.
+[[a-mutation-on-a-protected-write-path-needs-a-scratch-database]] is about WHERE
+a mutation runs; this is about WHAT it writes, and the two are asked in that
+order because a mutation that cannot be stored still leaves rows everywhere the
+proof got to before it failed.
+[[a-differential-control-is-only-as-good-as-its-weaker-side]] is why both
+principals are read from `/whoami` rather than from seeddata: a differential
+whose sides are literals measures the literals.
+
 ## The rule
 
 An assertion is a sentence, and a green is evidence about that sentence and

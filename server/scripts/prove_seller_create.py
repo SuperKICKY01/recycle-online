@@ -1,5 +1,5 @@
-"""Prove STAFF can create a seller, that the SERVER assigns the code, and that
-the gate was NARROWED and not opened.
+"""Prove STAFF can create a seller, that the SERVER assigns the code, that the
+row records WHO created it, and that the gate was NARROWED and not opened.
 
     python scripts/prove_seller_create.py --database recycle_p18a_scratch
 
@@ -206,6 +206,27 @@ def stored_code(seller_id: object) -> str | None:
     return rows[0]["code"] if rows else None
 
 
+def seller_created_by(seller_id: object) -> uuid.UUID | None:
+    """The author Postgres holds for this row, as a uuid.
+
+    None if there is no such row, and None if the caller had no id to give --
+    the same answer for two different reasons. That is exactly why every caller
+    pairs it with a NON-NULL conjunct ON THE SAME LINE as its comparison: a cell
+    reading `None == None` prints [ok] under a failed create, which this
+    repository has already paid for once in stored_code above.
+
+    READ OUT OF POSTGRES, never off the response. `created_by` is not in
+    _seller_payload at all, but the argument would hold even if it were: a
+    response echoing a value proves what the handler SAID, not what the table
+    HOLDS.
+    """
+    sid = as_uuid(seller_id)
+    if sid is None:
+        return None
+    rows = sql("SELECT created_by FROM sellers WHERE id = :i", {"i": sid})
+    return as_uuid(rows[0]["created_by"]) if rows else None
+
+
 def rows_with_code(code: str) -> int:
     return int(sql("SELECT count(*) AS c FROM sellers WHERE code = :c",
                    {"c": code})[0]["c"])
@@ -378,6 +399,20 @@ def main() -> int:
             check(who.status_code == 200 and who.json().get("role") == "staff",
                   f"B1: the staff token really is role=staff "
                   f"({who.json().get('role') if who.status_code == 200 else who.status_code})")
+            # THE ADMIN SIDE OF CELL 8's DIFFERENTIAL, resolved by the SERVER for
+            # this run. Both identities are taken from /whoami rather than from
+            # seeddata or a literal: a difference-check whose sides are constants
+            # measures the constants
+            # (lessons/a-differential-control-is-only-as-good-as-its-weaker-side.md).
+            who_admin = client.get(f"{BASE}/whoami", headers=auth(token_admin))
+            print(f"  admin /whoami -> {who_admin.status_code} "
+                  f"{who_admin.text.strip()[:160]}")
+            check(who_admin.status_code == 200 and
+                  body_of(who_admin).get("role") == "admin",
+                  f"B1: the admin token really is role=admin "
+                  f"({body_of(who_admin).get('role')!r})")
+            staff_uid = as_uuid(body_of(who).get("user_id"))
+            admin_uid = as_uuid(body_of(who_admin).get("user_id"))
 
             banner("B2 - WHICH DATABASE THE SERVER IS BOUND TO, measured")
             r = client.get(f"{BASE}/sellers?include_inactive=true",
@@ -581,13 +616,71 @@ def main() -> int:
                   f"cell7: no second row was written (before={rows_before}, "
                   f"after={rows_after}), counted in Postgres either side")
 
+            # ============================================================ 8
+            banner("CELL 8 - sellers.created_by names the SESSION that created "
+                   "the row, over TWO real principals")
+            # WHY THE ADMIN ROW IS HERE AND NOT A SECOND NON-NULL CHECK. A cell
+            # asserting only "the staff row is not null" passes over a column
+            # storing the tenant id, the seller's own id, or one hardcoded user;
+            # so does "the staff row equals staff" if staff is the only principal
+            # in the comparison. TWO rows created by TWO different principals,
+            # each required to name ITS OWN creator, is refused by every single
+            # constant a mutation could write -- one constant is wrong for at
+            # least one of the two rows
+            # (lessons/a-green-cell-is-evidence-about-the-assertion-not-the-claim.md,
+            # whose first mechanism is a difference-check satisfied by a wrong
+            # non-null value).
+            print(f"  staff user_id (server, /whoami): {staff_uid}")
+            print(f"  admin user_id (server, /whoami): {admin_uid}")
+            check(staff_uid is not None and admin_uid is not None
+                  and staff_uid != admin_uid,
+                  f"cell8: the two principals are REAL and DISTINCT "
+                  f"(staff={staff_uid} admin={admin_uid}) -- the weaker side of "
+                  "the differential, checked first: if these were one identity "
+                  "both assertions below would hold over a broken column")
+            cb_staff = seller_created_by(seller1_id)
+            cb_admin = seller_created_by(admin_seller_id)
+            print(f"  sellers.created_by, STAFF-created row {seller1_id}: "
+                  f"{cb_staff}")
+            print(f"  sellers.created_by, ADMIN-created row {admin_seller_id}: "
+                  f"{cb_admin}")
+            check(cb_staff is not None and cb_staff == staff_uid
+                  and cb_staff != admin_uid,
+                  f"cell8: the STAFF-created seller records the STAFF user "
+                  f"(db={cb_staff} staff={staff_uid} admin={admin_uid}) -- read "
+                  "out of Postgres, and the non-null conjunct is ON THIS LINE "
+                  "because two Nones agreeing prints [ok] under a failed create")
+            check(cb_admin is not None and cb_admin == admin_uid
+                  and cb_admin != staff_uid,
+                  f"cell8: the ADMIN-created seller records the ADMIN user "
+                  f"(db={cb_admin} admin={admin_uid} staff={staff_uid}) -- the "
+                  "other side, and the reason a single wrong constant cannot "
+                  "satisfy this pair")
+            # THE SENTINEL IS THE NEGATIVE HALF. It was INSERTed directly, before
+            # any server existed, so its author is NULL -- and it must stay NULL.
+            # Migration 0011 is not retroactive and nothing backfills; a value
+            # here would mean something had invented one.
+            cb_sentinel = seller_created_by(sentinel_id)
+            check(as_uuid(sentinel_id) is not None and cb_sentinel is None,
+                  f"cell8: the directly-INSERTed sentinel {sentinel_code} still "
+                  f"has NO author (created_by={cb_sentinel}) -- nothing "
+                  "retroactive, and the row id was real (id="
+                  f"{sentinel_id}) so this is not an absent row reading as a "
+                  "clean NULL")
+
             banner("WHAT THIS RUN CANNOT SEE")
             print("  - That any CLIENT can call this route. Nothing under mobile/")
             print("    is touched or executed by this script.")
             print("  - That any operator can reach it. There is no screen.")
-            print("  - WHO created any of these sellers. `sellers` has no")
-            print("    created_by column, while purchase_bills has carried one")
-            print("    since migration 0006. This phase WIDENS that gap.")
+            print("  - WHO created any seller that already existed. Migration 0011")
+            print("    is not retroactive: every seller written before it stays")
+            print("    authorless permanently, and cell 8 proves the column only")
+            print("    for rows this run created through POST /sellers.")
+            print("  - WHO last EDITED a seller. PATCH /sellers keeps")
+            print("    require_admin and does not touch created_by, so an admin")
+            print("    edit leaves the staff creator named. There is no")
+            print("    last-modified-by column and this run asserts nothing")
+            print("    about one.")
             print("  - Two phones racing for real. The concurrency argument is")
             print("    about the unique index being the arbiter; this run makes")
             print("    the calls in sequence and does NOT exercise the retry.")

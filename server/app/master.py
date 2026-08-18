@@ -932,14 +932,21 @@ async def _next_seller_code(conn: AsyncConnection) -> str:
     return candidate
 
 
-async def _insert_seller(conn: AsyncConnection, body: SellerCreate, code: str) -> Any:
+async def _insert_seller(
+    conn: AsyncConnection, body: SellerCreate, code: str, principal: Principal
+) -> Any:
+    """Write the row. TAKES THE PRINCIPAL, not a uuid — `created_by` is the
+    SESSION that created this seller and there must be no argument through which
+    a different author could be supplied. Migration 0011 states the same bound in
+    the column comment; this signature is what makes it hold in the code.
+    """
     return (
         await conn.execute(
             text(
                 f"INSERT INTO sellers (tenant_id, code, name, phone, grade,"
-                f" id_number, address, vehicle_no)"
+                f" id_number, address, vehicle_no, created_by)"
                 f" VALUES ({_TENANT}, :code, :name, :phone, :grade,"
-                f" :id_number, :address, :vehicle_no)"
+                f" :id_number, :address, :vehicle_no, :created_by)"
                 f" RETURNING id, code, name, phone, grade, id_number,"
                 f" address, vehicle_no, is_active"
             ),
@@ -951,6 +958,22 @@ async def _insert_seller(conn: AsyncConnection, body: SellerCreate, code: str) -
                 "id_number": body.id_number,
                 "address": body.address,
                 "vehicle_no": body.vehicle_no,
+                # THE SESSION THAT CREATED THIS SELLER, and never a field from
+                # the body. SellerCreate carries no user of any kind and must
+                # not: a client-supplied author is an author the client chooses.
+                # principal.user_id has already been proven to name a live user
+                # IN THIS TENANT by get_principal, which re-reads the users row
+                # under tenant context — so the composite (tenant_id, created_by)
+                # FK cannot fail here. Same argument bills.py makes at its own
+                # INSERT, and it matters for the same reason: an unhandled 500 on
+                # this path is `unavailable` to a yard phone with a truck on the
+                # weighbridge.
+                #
+                # NOT in RETURNING and NOT in _seller_payload. The column is
+                # written by the server and read from the database; putting it in
+                # the response is a product decision with a screen attached, and
+                # there is no screen.
+                "created_by": principal.user_id,
             },
         )
     ).mappings().one()
@@ -985,7 +1008,7 @@ async def create_seller(
             # shop's paper slip carries the one they typed, and this system never
             # sees that slip again.
             try:
-                row = await _insert_seller(conn, body, body.code)
+                row = await _insert_seller(conn, body, body.code, principal)
             except IntegrityError as e:
                 _raise_for_integrity(e, body.code)
                 raise
@@ -1000,7 +1023,7 @@ async def create_seller(
                 # set_config ran BEFORE this savepoint, so rolling back to it
                 # cannot take the tenant context with it.
                 async with conn.begin_nested():
-                    row = await _insert_seller(conn, body, candidate)
+                    row = await _insert_seller(conn, body, candidate, principal)
             except IntegrityError as e:
                 if constraint_name_of(e) == "uq_sellers_tenant_code":
                     continue

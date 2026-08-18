@@ -57,6 +57,147 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P-SELLERAUTHOR — `sellers` NOW RECORDS WHO CREATED IT. Migration 0011, one
+commit, 2026-08-18.** `POST /sellers` writes the principal's user id into a new
+`sellers.created_by`, guarded by a composite FK to `users (tenant_id, id)`. This
+is the current CODE phase; the P1.12 record below stays as written for the mobile
+side.
+
+**WHY IT EXISTS.** P1.8a moved `POST /sellers` off `require_admin` and onto
+`get_principal`, so a staff account at the weighbridge can bring a seller into
+existence — a row carrying a real person's name, and where the shop asks for
+them an id number and an address. Nothing recorded who did it. `purchase_bills`
+has carried `created_by` since migration 0006, so the system knew who bought the
+load and not who created the person it was bought from.
+
+**WHAT IT DOES NOT DO, AND THIS HALF IS NOT SOFTENED ANYWHERE. NOTHING IS
+RETROACTIVE.** There is no backfill and no UPDATE of any existing row. **Every
+seller that already existed stays authorless PERMANENTLY**, and a `NULL` in that
+column is not recoverable by any later migration, because the fact was never
+written down. Measured in the scratch copy after all seven runs of the proof: 78
+sellers, **20 carrying an author and 58 carrying none**, and the 58 decomposes
+exactly — 47 rows that predated 0011, 7 per-run sentinels (INSERTed directly and
+MEANT to read NULL), and the 4 that disproof 1 wrote while the column was removed
+from the INSERT. The 20 are 4 apiece from the five runs in which the API wrote an
+author. Nothing is unaccounted for.
+The column closes the gap going forward and closes nothing behind it. It also
+does not record who EDITED a seller: `PATCH /sellers/{id}` keeps `require_admin`
+and does not touch this column, so an admin who renames a staff-created seller
+leaves the staff member named — which is the truth about who CREATED it, and is
+the reason no second column was added. Three other sites INSERT sellers directly
+(`seed_dev.py:97`, `prove_rls.py:100` and `:283`, and the binding sentinel in
+`prove_seller_create.py:253`) and all three keep writing NULL on purpose: a
+fixture is not an API-written row, and teaching the sentinel to fill this column
+would destroy the property that makes it discriminating. `_seller_payload` is
+unchanged, so **no client sees the column at all** and nothing under `mobile/` or
+`desktop/` moved.
+
+**WHAT WAS OBSERVED, AND AGAINST WHAT.** Everything below ran against
+`recycle_p18a_scratch`, a scratch database, migrated 0009 -> 0010 -> 0011. **The
+live database `recycle` was not migrated, not written and not connected to** —
+the scratch route exists because `prove_seller_create.py` creates sellers and
+posts a bill through the real path, and `is_active` retires a seller rather than
+removing one while hard rule 5 forbids deleting the bill
+(`lessons/a-mutation-on-a-protected-write-path-needs-a-scratch-database.md`).
+The migration runner used a pre-flight that printed which database the child
+would actually resolve to before any DDL ran, with a control run that had to come
+back naming `recycle`; it did.
+
+- `prove_seller_create.py --database recycle_p18a_scratch` — **exit 0 twice in a
+  row with no reseed between**, run tags `010abeca` and `caaff233`, and a third
+  green after the mutations were reverted. `B2` measured the server's binding
+  rather than assuming it: a sentinel seller carrying the run's own uuid is
+  written before the child uvicorn starts and the server is required to return
+  it. The server is a fresh child per run, so it cannot be serving pre-migration
+  code — and the changed path was RUN, not reasoned about: `POST /sellers`
+  answered 201 and the new column was read back out of Postgres.
+- **CELL 8 is the new one, and it is a differential over TWO REAL PRINCIPALS,
+  not a non-null check.** It reads `created_by` OUT OF POSTGRES — never off the
+  response, which would only prove the API echoes its own input — for the
+  staff-created seller AND the admin-created one, and requires each to name ITS
+  OWN creator. Both identities come from the SERVER (`/whoami`), neither is a
+  literal
+  (`lessons/a-differential-control-is-only-as-good-as-its-weaker-side.md`), and a
+  cell checks first that the two principals are genuinely distinct. A fourth cell
+  requires the directly-INSERTed sentinel to still have NO author, which is the
+  nothing-is-retroactive claim as an observable.
+- `reconcile.py --database recycle_p18a_scratch` — **exit 0, VIOLATIONS 0**, 78
+  checks over 4 tenants, `S5` examining 23 constraints and 1 index. That count is
+  UNCHANGED, which is the point: `fk_sellers_created_by` was deliberately NOT
+  added to `REQUIRED_CONSTRAINTS`, for the reason 0005 and 0006 both give — a
+  dump taken before this migration has neither the column nor the constraint, so
+  S5 would redden on every restored copy for a reason that has nothing to do with
+  money. The limits it prints on every run are unchanged and are not restated
+  here.
+- The column comment was verified **at the authority, not by eye**: length 381
+  and md5 `b4ca994b1b0b6430c6f09a5d4475af56` read out of `pg_description`
+  server-side, equal to the same two numbers computed from the Python literal,
+  with a one-character control producing a completely different digest. It is
+  ASCII-only and apostrophe-free, checked with positive controls on both halves
+  of that instrument.
+
+**THE DISPROOFS — THREE, AND THE FIRST ONE'S RESULT IS A FINDING ABOUT THE
+DISPROOF ITSELF.** Each prediction was written down BEFORE the run.
+
+1. **Remove `created_by` from the INSERT.** Predicted: exactly two cells redden,
+   both in cell 8, via the non-null conjunct. Observed exactly that —
+   `db=None` on both, `failures: 2`, exit 1, and NO other cell moved. Reverted,
+   `sha256` byte-identical (`30e18447…`), green again.
+2. **Write the principal's TENANT id into the column** — the disproof the brief
+   named, a wrong, non-null, plausible value. **It reddened, and it did not test
+   what it was meant to test.** The composite FK cannot resolve a tenant id to a
+   user row, so the INSERT raised 23503 and `POST /sellers` answered 500:
+   EIGHTEEN cells reddened and the two that matter read `db=None`, because no row
+   was written and there was no wrong value to discriminate. A bare
+   `IS NOT NULL` check would have produced the identical eighteen reds. The
+   mechanism was confirmed directly — a probe INSERT naming a tenant id is
+   refused by `fk_sellers_created_by`, while the same INSERT with a real user id
+   succeeds, both rolled back.
+3. **Write a REAL but WRONG user id** — FK-valid, non-null, plausible, which is
+   the mutation that actually tests the cell. Writing the ADMIN's id reddened
+   **exactly one** cell, the staff side, printing the stored value; writing the
+   STAFF id instead reddened exactly the other one. **So both sides of the
+   differential are load-bearing**, and no single constant can satisfy the pair.
+   The cell is not a non-null check wearing a comparison.
+
+**IS A LESSON OWED? ASKED, AND ANSWERED: YES — AND THE MEASUREMENT IS WHAT
+DECIDED IT, NOT THE PLAN.** The brief predicted one probably was not owed, on the
+reasonable ground that this is a column added by following an existing precedent,
+and that would have been right had disproof 2 not come back as it did. It is a
+LESSON and not a machine footgun by `CLAUDE.md § Workflow` "Two homes, one test":
+nothing about it is a property of this box. It was written as an AMENDMENT to
+`lessons/a-green-cell-is-evidence-about-the-assertion-not-the-claim.md` rather
+than as a new file, because that file's "The discriminator" section carries the
+very instruction the finding qualifies — *break the claim in the smallest way you
+can and check that THIS cell moves* — which silently assumes the break you chose
+can happen. A constraint can refuse your mutation, and then the red is about the
+constraint; and the wide blast radius reads as MORE evidence when it is the
+opposite, because a wide red is what a neighbour does.
+`lessons/all-lessons.md` rides in this commit: `--check` went RED on the
+amendment first (21 -> 22 amendments across 11 -> 12 files, which is the
+generator's own positive control that it saw the change), then `--write`, then
+`--check` exit 0 at 424026 bytes.
+
+**`tools/verify_shared_checks.py` exits 0.** Neither copy of the shared four was
+touched; it is run because a phase boundary runs it.
+
+**ONE DISCREPANCY IN THE BRIEF, RECORDED RATHER THAN QUIETLY OBEYED.** The
+dispatch stated that `prove_seller_create.py` "refuses to run without
+`RECYCLE_API_BASE` and `RECYCLE_BINDING_SENTINEL`". Measured at `d02dc32`: it
+does not, and no such environment variable appears anywhere in that file. What it
+actually does is stronger, and is the thing the sentence was reaching for — it
+requires `--database`, REFUSES the name in `APP_DATABASE_URL`, starts its OWN
+uvicorn with the scratch URLs injected through the child's environment dict, and
+MEASURES the resulting binding with a per-run sentinel. Nothing was supplied to
+satisfy the phantom requirement.
+
+**WHAT THIS PHASE STILL CANNOT SEE.** That any client can call the route or any
+operator can reach it — there is no screen, and nothing under `mobile/` was
+touched or executed. Anything about the live database: **`recycle` is still at
+migration 0010** and has neither the column nor the constraint. And the
+concurrency path — cell 1's retry loop is exercised in sequence, never by two
+callers racing.
+
 **P-OUTBOXREVIEW — THE P1.18 CRITERIA REVIEW RETURNED, THE STOP FIRED, AND STAGE 2
 DOES NOT BEGIN. Documentation only, one commit, SIX declared paths, 2026-08-18.** No code path
 changed; nothing was run against a server, a database or a device, and no proof
@@ -138,6 +279,19 @@ invocation. `SOURCES=` was read first and equalled the 25 passed. **The source s
 is every TRACKED document that CITES INTO one of the three edited files**,
 enumerated by grep rather than by memory — the word TRACKED is what makes the
 number reproducible, and it is doing work. Taken on the working tree, 2026-08-18.
+**ANCHORED 2026-08-18 to `d02dc32` by P-SELLERAUTHOR — the half of the
+pin-a-claim convention that gets skipped.** The work these figures describe was
+committed as `d02dc32`, and no sha existed that contained them at the moment they
+were written, which is why the sentence above says *working tree* and stops
+there. **IT IS NOT AN INFERENCE**, the same standard this file applied when it
+anchored P-PASTESET's figures below. P-SELLERAUTHOR re-derived the source set by
+the same grep over `git ls-files "*.md"` — 25 files, the same 25 — and re-ran the
+same checker over them, BEFORE it edited anything, on a tree whose only
+`git status --porcelain` entries were three UNTRACKED paths, so the tracked tree
+was `d02dc32`. It reproduced the AFTER column exactly: `SOURCES=25
+CITATIONS=451 BROKEN=16`, exit 1. The `421060 bytes` figure below was
+independently confirmed the same way — `build_all_lessons.py --check` read
+exactly that from disk before this phase's own lesson work moved it.
 
 | | before | after |
 |---|---|---|
