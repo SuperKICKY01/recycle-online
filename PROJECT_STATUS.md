@@ -57,6 +57,91 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P-PASTESET — THE PASTE-SET DUTY IS RETIRED. Documentation only, one commit,
+2026-08-18.** No code path changed; nothing was run against a server, a database
+or a device, and no proof was run because nothing this phase touches is executed.
+The P1.12 record below stays the current CODE phase exactly as written.
+
+**WHAT WAS RETIRED, AND WHY.** The advising role has run as a session inside this
+repository since 2026-08-16 and reads the tree live, so the copies
+`tools/build_paste_set.py` produces have no reader. The STANDING obligation to
+rebuild and re-paste after every commit that moves a declared file was therefore
+maintenance of an artefact nobody opens, and it is retired. Two documents carried
+it and both are SUPERSEDED IN PLACE rather than rewritten: the second unprompted
+duty in `ADVISOR.md § 2. Two duties it performs UNPROMPTED`, and the
+`START_HERE.md § 2. Who writes what` bullet that still described the advising
+chat as reading a paste set and not the codebase — one dated sentence there,
+pointing at the boundary rather than restating it. `P-PASTESET` is a NAMED docs
+phase and not a numbered forward step, the same shape as `P-GUARD` and
+`P-GRADECARD` below; no P-number was issued and `ROADMAP.md` was not touched.
+
+**WHAT THIS DOES NOT DO — each half stated because the obvious next move is the
+wrong one.** `tools/build_paste_set.py` IS NOT TOUCHED and its `SET_FILES` list is
+unchanged, so a handover to a reader who does not have the repository is still one
+`--write` away. NO SNAPSHOT DIRECTORY IS DELETED. `--check` is neither repaired nor
+removed: it is STOOD DOWN, because its question is only meaningful while something
+consumes the snapshot, and with no consumer it reddens after any documentation
+commit for a remedy that serves nobody. It is available on demand and is no longer
+part of any phase's `Prove:` block — this phase deliberately did not run it, in
+either mode. The scope defect already queued against it at
+`OPEN_ITEMS.md § Code debt found and left in place` is neither closed nor
+re-argued here; retiring the duty lowers what that defect costs and does not make
+it false.
+
+**OBSERVED — the citation checker, before and after, over SEVEN sources.**
+`tools/verify_citations.ps1`, run with the call operator and an explicit array,
+bare, one source-set per invocation, the status read in the same invocation.
+`SOURCES=` was read first every time and equalled the number passed. Counts are
+`CITATIONS / BROKEN`, taken on the WORKING TREE on 2026-08-18, and they carry NO
+sha deliberately: the work they describe was uncommitted when they were written,
+so the only sha available is the one that does not contain it.
+
+| source | before | after |
+|---|---|---|
+| `START_HERE.md` | 38 / 0 | 39 / 0 |
+| `ADVISOR.md` | 24 / 0 | 24 / 0 |
+| `PROJECT_STATUS.md` | 42 / 2 | 46 / 2 |
+| `CLAUDE.md` | 21 / 0 | 21 / 0 |
+| `ARCHITECTURE.md` | 68 / 0 | 68 / 0 |
+| `OPEN_ITEMS.md` | 83 / 4 | 83 / 4 |
+| `ROADMAP.md` | 102 / 0 | 102 / 0 |
+| **total** | **378 / 6** | **383 / 6** |
+
+**The last four are in the table because they CITE INTO the three edited files,
+and an inbound citation breaks in the file nobody edited.** This phase only ADDS
+text, so the one way it could have broken such a citation is by repeating a
+handle until it resolved TWICE; none did, and the four inbound totals are
+byte-for-byte the numbers they were before. The five new citations this phase
+writes all resolve at one hit each. **The `PROJECT_STATUS.md` after-figure
+counts the citations THIS BLOCK writes** — the instrument is inside the thing
+it measures here, so the row was re-taken after the block was in place and not
+before, and the first value written into it (45) was already wrong when it was
+typed.
+
+**BROKEN DID NOT MOVE, AND ALL SIX PRE-DATE THIS PHASE.** Decomposed into the
+three conditions the checker can print: all six are *resolves to nothing*
+(`hits=0`); NONE is *resolves to two things*; and NO source yielded zero
+citations — both controls, sections and non-empty, printed OK on all seven
+sources in both passes, which is what makes these totals a reading rather than
+an instrument that never looked. `OPEN_ITEMS.md` already records all six and the
+wrapped-handle cause behind three of them. This phase repaired none of them and
+is owed nothing by them.
+
+**`tools/verify_shared_checks.py` exits 0** — `IDENTICAL: 4 items, 586 chars
+between markers`. Neither copy of the shared four was touched; it is run because
+a phase boundary runs it, not because this phase had a reason to move it.
+
+**`build_paste_set.py` WAS NOT RUN, in either mode, and its absence is this
+phase's own observable.** Running it here would be the ceremony the phase exists
+to end, and a red from it would have meant nothing.
+
+**IS A LESSON OWED? ASKED, AND ANSWERED: NO.** Nothing here was a mistake and
+nothing was relearned — a delivery mode ended, and the two documents describing
+it were superseded in place rather than rewritten, which is where a later reader
+meets the reasoning anyway. Against `CLAUDE.md § Workflow` "Two homes, one test"
+it is neither home: it is not something this project would otherwise RELEARN, and
+it is not a property of this box.
+
 **P1.12 — THE SHARED PACKAGE. Two commits, 2026-08-18.** `shopTime.ts` now
 lives outside `mobile/` and is imported rather than copied, which is what
 unblocks the desktop slip.

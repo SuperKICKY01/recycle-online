@@ -204,6 +204,29 @@ fires when a copy outside it goes stale.
   pass. Then `--write`, and re-paste only the files it named. Nothing
   surfaces this on its own: the copy lives in a Claude project the repo
   cannot see, and a copy cannot know what changed after it was made.
+  **SUPERSEDED 2026-08-18 — THE DUTY IS DORMANT, NOT WRONG, and the
+  paragraph above is left exactly as written.** The owner has stopped using
+  the pasted advising chat. The advising role now runs as a session inside
+  this repository and reads the tree live, which § 0 above records as the
+  owner's decision of 2026-08-16 and which this file therefore already
+  anticipated. **So the copies this duty maintains have no reader**, and the
+  standing instruction to rebuild and re-paste after every commit that moves
+  a declared file is maintenance of an artefact nobody opens. What is retired
+  is that STANDING OBLIGATION and nothing else. The reasoning above is not
+  withdrawn: it was correct for the delivery it describes, and its argument
+  — that a copy has no way to learn what moved after it was taken — holds of
+  ANY snapshot, which is why this is a supersession and not a deletion.
+  **THE TOOL STAYS.** `tools/build_paste_set.py` is not deleted and its
+  `SET_FILES` list is not touched. `BRIEFING.md` still defines a reader who
+  never opens the code, so a handover to someone who does not have the
+  repository is exactly one `--write` away, on demand.
+  **AND `--check` GOES DORMANT WITH IT**, which is the half worth stating,
+  because the obvious move is to keep running it. Its question is whether the
+  snapshot still matches the repo, and that question is only meaningful while
+  something CONSUMES the snapshot. With no consumer it goes red after any
+  documentation commit and the remedy is a `--write` that serves nobody — a
+  red nobody can act on trains its reader to shrug at reds. It stays available
+  on demand; it is no longer part of any phase's `Prove:` block.
 
 ## 3. The brief header
 

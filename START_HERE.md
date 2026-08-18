@@ -85,6 +85,9 @@ Not in the boot path. Open when the task reaches them:
   `CLAUDE.md § Shared checks` under `tools/verify_shared_checks.py`,
   and the ninth by pointer: 4+4+1. The placeholder is gone, and the
   queue entry carries its own dated closure.
+  **Superseded 2026-08-18:** the advising role runs as a session inside this
+  repository and reads the tree live rather than a paste set — the boundary it
+  now runs under is `ADVISOR.md § 0. The boundary`, and it is not restated here.
 - **You, this session, write the production code**, run the proofs, and
   report what was observed.
 - **A red-team session** is a fourth role, run separately, and is never
