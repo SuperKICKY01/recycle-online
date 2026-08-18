@@ -80,7 +80,7 @@
  * place, named, and the proof prints what it costs on both sides.
  */
 import { instantMs, pastStampSuspect } from "../time/clockSanity.js";
-import { shopDateTime } from "../time/shopTime.js";
+import { shopDateTime } from "@recycle/shop-time";
 
 /* ------------------------------------------------------------ thresholds -- */
 

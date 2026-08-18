@@ -36,7 +36,7 @@ import type {
   DailyReportScreen,
   DailyScreen,
 } from "../reports/dailyView.js";
-import { shopDate, shopTime } from "../time/shopTime.js";
+import { shopDate, shopTime } from "@recycle/shop-time";
 
 let failures = 0;
 

@@ -473,12 +473,22 @@ headers (1.9); `CLAUDE.md` assigns thermal ESC/POS 58/80mm to `desktop/`, which
 holds one 0-byte file.
 
 *What exists to build on, and it is a real constraint rather than a note:*
-`mobile/src/time/shopTime.ts:45-51` carries a **NEXT CONSUMER** block naming the
-desktop thermal slip and requiring the module be **PORTED — "offset constant,
+`packages/shop-time/src/shopTime.ts:45-51` carries a **NEXT CONSUMER** block naming
+the desktop thermal slip and requiring the module be **PORTED — "offset constant,
 brand, and the ordering rule" — not re-derived**: "a second `+ 543` somewhere in
 Electron is a second behaviour, and the two would drift at exactly the boundary
 neither author tested." `ROADMAP.md` R7 carries the same constraint in the same
-words. This is the only one of the three gaps that already has a written
+words.
+
+**SUPERSEDED 2026-08-18 by P1.12, and the instruction INVERTS.** The path above was
+`mobile/src/time/shopTime.ts` until that phase moved the file byte-identical into a
+package outside `mobile/` — so the `:45-51` line numbers still resolve, and only the
+directory changed. The constraint no longer says PORT: the desktop **IMPORTS**
+`@recycle/shop-time`, which is what the package was created for, and porting it now
+would manufacture the very second implementation the quoted sentence forbids. The
+quoted text is left verbatim because it is the evidence of why the package exists;
+the block INSIDE `shopTime.ts` still says PORT and is queued for correction in
+`OPEN_ITEMS.md`. This is the only one of the three gaps that already has a written
 engineering constraint attached to it, and it is load-bearing:
 `lessons/be-year-comes-after-the-timezone.md` exists because that exact
 derivation has already been got wrong twice.

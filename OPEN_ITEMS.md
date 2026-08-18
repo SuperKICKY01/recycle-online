@@ -1478,6 +1478,49 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   `tsconfig.node.json`, which makes the guarantee a property of the
   compiler instead of a property of which command someone happened to
   type.
+- **`npx expo export` DEFAULTS ITS OUTPUT TO `dist/` — the same directory
+  `npm run build` compiles the node proofs into, and it has ALREADY HAPPENED.**
+  Not a hypothesis: `mobile/dist/_expo/` and `mobile/dist/metadata.json` are
+  dated **2026-07-22**, left by a bare `expo export` run, while
+  `mobile/dist/proof/*.js` was rewritten **2026-08-17** by the proof build. Two
+  unrelated tools write one directory, four weeks apart, and both outputs are
+  live in the tree today. `--output-dir <dir>` is the flag, and its default is
+  the trap (`@expo/cli`'s export command: `Default: dist`). **This is the
+  neighbour of the entry above, not a restatement of it** — that one is about a
+  RED BUILD leaving stale JS that a hand-run proof would execute; this is about a
+  DIFFERENT PROGRAM'S artefacts landing in the same place, which no `&&` and no
+  `noEmitOnError` can reach. *Not done:* P1.12 avoided it by passing
+  `--output-dir` explicitly, and nothing has yet run a proof against the mixed
+  directory. *Unblocks:* either a separate export directory fixed in
+  `app.json`/scripts, or `dist/` split so the two programs cannot share it.
+- **THERE ARE NOW TWO LOCKFILES, AND THE TWO INSTALLS ARE FREE TO DRIFT.**
+  P1.12 added a workspace root whose `package.json` declares
+  `workspaces: ["packages/*"]` and deliberately does NOT list `mobile`, so
+  `npm install` at the root resolves only `packages/*` and `npm install` in
+  `mobile/` resolves only mobile — two lockfiles, `package-lock.json` at the root
+  and `mobile/package-lock.json`, neither aware of the other. **This is the
+  ACCEPTED PRICE of not hoisting, not an oversight**: membership would have made
+  Expo's `getDefaultConfig` set `nodeModulesPaths` and `disableHierarchicalLookup`
+  automatically, which is the R4 configuration in
+  `lessons/README.md § Lessons` "metro-file-map-nesting.md" that broke every
+  nested dependency, and the nesting it breaks is live here
+  (`mobile/node_modules/expo/node_modules/expo-asset`). *Not done:* deliberately;
+  recorded so nobody "tidies" it by adding `mobile` to the workspace list without
+  knowing what that switches on. *Unblocks:* nothing today. It becomes a real
+  question only if a second package needs a dependency mobile also has.
+- **`shopTime.ts`'s NEXT CONSUMER block still says PORT, and the answer is now
+  IMPORT.** P1.12 moved the module byte-identical into
+  `packages/shop-time/src/shopTime.ts` so that every `shopTime.ts:NN` line
+  reference in `ARCHITECTURE.md`, `PROJECT_STATUS.md` and `SRS_MAP.md` kept
+  resolving — which means its own paragraph at `:45-51`, written when there was
+  nowhere to import from, still instructs the desktop to PORT the offset
+  constant, the brand and the ordering rule. Porting it now would manufacture
+  exactly the second implementation that paragraph exists to forbid. The
+  correction is carried at the point of use in
+  `packages/shop-time/src/index.ts`, which is what a desktop author opens first.
+  *Not done:* editing it inside a MOVE would have shifted every line reference in
+  the same commit that moved the file, so the two changes were kept apart.
+  *Unblocks:* P1.13; do it before the desktop slip is written, not after.
 - **`TAP_MIN` is a stated standard honoured in two screens and undercut
   everywhere else.** It is `56`, DUPLICATED as a local constant in
   `mobile/app/CartScreen.tsx` and `mobile/app/SellerPicker.tsx` (free to

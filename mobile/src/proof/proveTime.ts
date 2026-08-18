@@ -39,7 +39,7 @@ import {
   shopDateTime,
   shopTime,
   SHOP_TIMEZONE_NAME,
-} from "../time/shopTime.js";
+} from "@recycle/shop-time";
 
 let failures = 0;
 

@@ -75,5 +75,56 @@ lossy transformation, exactly like Metro's file map in
 own index said `false`. Ask the layer that actually holds the truth, in a form
 it cannot reformat: bytes.
 
+## AMENDED 2026-08-18 (P1.12) — bytes are not enough when the two sides are in DIFFERENT encodings
+
+**Everything above is about a READER decoding with the wrong codepage, and its
+remedy is "compare bytes". That remedy is necessary and NOT sufficient, and this
+amendment lives here rather than in its own file because the remedy is what
+failed — a reader who follows the rule above and stops there lands in exactly
+this hole.**
+
+Scanning a Hermes bytecode bundle to confirm a string had reached the app:
+
+```
+needle "บิล" as UTF-8     -> count = 0     <- the confident false absence
+needle "บิล" as UTF-16LE  -> count = 89
+needle "shopDateTime"     -> count = 1     (ASCII, found)
+needle "zzz-not-present"  -> count = 0     (ASCII, correctly absent)
+```
+
+**Nothing was decoded.** No console, no pipe, no locale default — the file was
+read with `read_bytes()` and compared byte to byte, which is what the rule above
+prescribes. The instrument was correct and the NEEDLE was wrong: Hermes stores
+non-ASCII strings as UTF-16LE, so a UTF-8 needle cannot match a string that is
+certainly there.
+
+**Why it is the same lesson and not a new one.** The output is a CONFIDENT FALSE
+ABSENCE about the artefact, and the natural response to it is to go and "fix"
+strings that were never broken — the same destructive direction as the phantom
+mojibake above, reached from the opposite end. There the reader corrupted
+correct data; here the search failed to find correct data. Both end with an
+author editing text that was right.
+
+**AND THE CONTROL WAS THE WRONG CONTROL, which is the part worth carrying.** The
+absence was paired with ASCII PRESENT needles (`shopDateTime`,
+`SHOP_UTC_OFFSET_MINUTES`, both found) and ASCII ABSENT needles (both zero). All
+four behaved, and none of them could move: they proved the scan worked on ASCII
+and said nothing whatever about Thai, which is the only thing in question. A
+control must contain what fooled you — [[a-control-must-contain-what-fooled-you]]
+— and here that means a needle in the SAME encoding class as the one whose
+absence you are about to believe.
+
+**How to apply.** Establish the STORE's encoding before searching it, not after a
+zero. Where you cannot, search for the same string in every plausible encoding in
+ONE run and require exactly one to hit — the evidence is the PAIR (0 and 89), not
+either number. And never report "the string is not in the artefact" from a single
+encoding's miss.
+
+**Two homes, one test.** A LESSON, not a machine footgun: Hermes stores UTF-16LE
+on every platform it runs on, so this is not a property of this box, and a
+session on any machine would relearn it. It is also NOT the never-went-red
+family — nothing here is a vacuous assertion, the scan fired correctly and
+answered the question it was actually asked.
+
 **Where found.** Phase 2c-3, verifying `/products` before the on-device cart
 test. No code changed as a result — the correct outcome was a retraction.

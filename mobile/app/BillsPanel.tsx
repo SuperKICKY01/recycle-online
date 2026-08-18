@@ -35,7 +35,7 @@ import {
 import type { AccountState, NoticeTone, SessionState } from "../src/sync/parkedReason";
 import type { LocalBill, SyncState } from "../src/sync/types";
 import { isVoided, isVoidRefused } from "../src/sync/types";
-import { shopDateTime } from "../src/time/shopTime";
+import { shopDateTime } from "@recycle/shop-time";
 
 const STATE_TH: Record<SyncState, string> = {
   pending: "รอส่ง",

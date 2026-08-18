@@ -1,27 +1,27 @@
 /**
- * @recycle/shop-time — the shared package.
+ * @recycle/shop-time — shop-local date and time for every Recycle Online client.
  *
- * COMMIT 1 OF P1.12 CONTAINS NOTHING REAL ON PURPOSE. This package exists so
- * that the WORKSPACE and the four resolution paths can be proven while nothing
- * of value has moved. `shopTime.ts` arrives in commit 2, and if Metro breaks
- * then, the split is what names which change did it.
+ * IMPORT THIS. DO NOT PORT IT. That instruction is the whole reason this
+ * package exists, and it INVERTS what shopTime.ts's own NEXT CONSUMER block
+ * still says: that block was written when there was nowhere to import from, so
+ * it asks the desktop to PORT the offset constant, the brand and the ordering
+ * rule. There is somewhere now. A second implementation in Electron would be a
+ * second behaviour, and the two would drift at exactly the boundary neither
+ * author tested — which is what that block was guarding against and what this
+ * package removes the need for.
  *
- * WHY THE SPLIT: lessons/metro-file-map-nesting.md records a failure that is
- * SILENT — imports resolve to nothing rather than erroring — so a combined
- * change would leave "the workspace" and "the move" indistinguishable as
- * causes.
+ * The paragraph inside shopTime.ts is deliberately UNEDITED: this phase is a
+ * move, and moving the file byte-identical keeps every `shopTime.ts:NN` line
+ * reference in ARCHITECTURE.md, PROJECT_STATUS.md and SRS_MAP.md resolving.
+ * Correcting it is queued in OPEN_ITEMS.md rather than smuggled into a move.
  *
- * THIS PACKAGE SHIPS COMPILED dist/ + .d.ts, NOT SOURCE. Node's type-stripping
- * would run the .ts directly on Node 24, but it is version-dependent and this
- * repository pins no Node version; the next consumer is an Electron main
- * process (desktop/) that nobody has measured. One artifact, consumed
- * identically by tsc, by node's ESM loader and by Metro.
+ * WHY A BARREL AT ALL, rather than pointing the package at shopTime.ts: the
+ * package's PUBLIC SURFACE and its FILE LAYOUT are different things, and the
+ * consumers' specifier should not have to move when the second module arrives.
+ *
+ * `export *` rather than a named list, on purpose. Everything shopTime.ts
+ * exports is public by design — it is THE client authority on the timezone, the
+ * year and the format — so a named list here could only ever drift from it,
+ * silently, by someone adding an export there and not here.
  */
-
-/**
- * The trivial value. Its only job is to be imported by exactly one existing
- * file in mobile/ so that a failure to resolve is a failure to build or to run.
- *
- * REMOVED IN COMMIT 2 once shopTime.ts is the real export.
- */
-export const SHARED_PACKAGE_MARKER = "@recycle/shop-time";
+export * from "./shopTime.js";

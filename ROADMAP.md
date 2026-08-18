@@ -1527,8 +1527,9 @@ decision beside it.
 desktop can import it from.
 
 **Depends on:** the mobile program being green and stable — both typecheck programs
-and all fourteen `prove:*` scripts — because that suite is the only instrument that
-would see this break something. **It sits here, immediately before the desktop, and
+and every `prove:*` script DECLARED IN `mobile/package.json` THAT DOES NOT REQUIRE A
+LIVE API, the set counted at run time — because that suite is the only instrument
+that would see this break something. **It sits here, immediately before the desktop, and
 not earlier.** The earlier slot was argued and rejected: restructuring before P1.11
 would save one distribution round, but this change restructures the one program that
 works, and Metro has already broken once on a nested package
@@ -1541,9 +1542,32 @@ the cheaper of the two costs.
 can only mean copy, which is the second implementation the module's own header
 forbids.
 
-**DONE WHEN:** `mobile/src/time/shopTime.ts` is imported from a package outside
-`mobile/`, both mobile typecheck programs exit 0 run bare, all fourteen `prove:*`
-scripts exit 0 twice bare, and Metro still serves the app to a handset.
+**DONE WHEN:** `shopTime.ts` is imported from a package outside `mobile/`, both
+mobile typecheck programs exit 0 run bare, every `prove:*` script DECLARED IN
+`mobile/package.json` THAT DOES NOT REQUIRE A LIVE API exits 0 twice bare, and Metro
+still SERVES the app to a handset.
+
+**WHY THE CRITERION NAMES A SET, A SOURCE AND A CONDITION RATHER THAN A NUMBER.**
+Both sites above said "all fourteen" until 2026-08-18, and that figure had rotted:
+`mobile/package.json` declared TWENTY-EIGHT. A raw count inside an acceptance
+criterion rots the same way whatever its value, so no fresh number replaces it — the
+count belongs in the run report, never here
+(`OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "A RAW COUNT INSIDE AN ACCEPTANCE CRITERION ROTS").
+
+The SECOND defect was not a count at all, and nothing recorded it: "all `prove:*`
+exit 0 twice bare" is UNSATISFIABLE on any machine without a running API and a
+scratch database, which the old criterion never mentioned. FOUR scripts require a
+live API and are outside the set: `prove:login` (`127.0.0.1:8211`), `prove:loginscreen`
+(`:8231`), `prove:forbidden` (`:8000`), and `prove:sellercreate`, which takes
+`RECYCLE_API_BASE` and `RECYCLE_BINDING_SENTINEL` with no defaults and returns 2 in
+its BARE form by design, because it creates sellers through the real path and hard
+rule 5 means they cannot be removed. They measure API BEHAVIOUR, which a workspace
+change cannot reach. Any step whose risk IS an API must name them back in
+explicitly.
+
+**Metro SERVES rather than bundles, deliberately.** `npx expo export` exercises the
+file map and is not the same code path as the dev server; a green export is not a
+served app.
 
 ### P1.13 — The desktop scaffold
 

@@ -57,6 +57,84 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.12 — THE SHARED PACKAGE. Two commits, 2026-08-18.** `shopTime.ts` now
+lives outside `mobile/` and is imported rather than copied, which is what
+unblocks the desktop slip.
+
+**The design decision, and it contradicted the brief's premise.** The brief
+assumed a hoisted install and asked for "whatever `nodeModulesPaths` a hoisted
+install requires". MEASURED: none is required, and supplying them would have
+been the trap. `@expo/metro-config`'s `getWatchFolders` and `getModulesPaths`
+both branch on `getMetroServerRoot(projectRoot) !== projectRoot`, and
+`resolve-workspace-root` reports a root ONLY when the project itself is a
+member. The repo root therefore declares `workspaces: ["packages/*"]` and
+deliberately omits `mobile`, so `getDefaultConfig` leaves `watchFolders` and
+`nodeModulesPaths` at `[]` — measured byte-identical before and after the root
+`package.json` existed. Membership would have switched on the exact pair the R4
+row of `lessons/README.md § Lessons` "metro-file-map-nesting.md" records as
+breaking every nested dependency, and that nesting is live here
+(`mobile/node_modules/expo/node_modules/expo-asset`). ONE knob moved:
+`watchFolders`, which is about the FILE MAP and not about resolution.
+
+**OBSERVED, both commits.** Both typecheck programs exit 0 run bare. The
+`prove:*` set re-derived at run time: 28 declared, 4 excluded as requiring a
+live API, 24 run, twice each with no reseed between, `PASS1_RED=0
+PASS2_RED=0` on both commits. Controls fired and were predicted in advance: a
+broken specifier reddens BOTH typecheck programs (TS2307 at the named line),
+reddens `expo export` (exit 1, the resolver naming the directories it searched
+— `node_modules` and `..
+ode_modules`, which is Metro confirming its own
+hierarchical walk reaches the repo root), and reddens node with
+`ERR_MODULE_NOT_FOUND`; each cleared byte-exact on restore. Exactly ONE
+executable client-side `+543` remains, at
+`packages/shop-time/src/shopTime.ts:70`.
+
+**NOT OBSERVED, and this is the part to read.** FOUR `prove:*` scripts require a
+live API and were not run: `prove:login` (`:8211`), `prove:loginscreen`
+(`:8231`), `prove:forbidden` (`:8000`), `prove:sellercreate` (two env vars, no
+defaults, and its BARE form returns 2 by design because it creates sellers
+through the real path that hard rule 5 cannot remove). Nothing was listening on
+those ports; the same `netstat` saw 38 listening sockets, so that is a
+measurement and not a blind instrument. They measure API BEHAVIOUR, which a
+workspace change cannot reach.
+
+**THE HANDSET, AND WHAT EACH READING COVERS.** Commit 1: the app opened on the
+handset against a Metro started with `-c` and reached a screen. **A
+Buddhist-era date was NOT separately confirmed at that commit** — the reading
+taken was the launch. That answers commit 1's primary risk on its own, because
+Metro builds its graph statically: `App.tsx:93` imports `./src/reports/dailyView`
+and `dailyView.ts:103` re-exported from the package, so an unresolvable
+specifier would have stopped the bundle and the app would not have reached a
+screen at all. It does NOT establish that nothing else broke; that half rests on
+the 24 proofs and both typecheck programs.
+
+**Commit 2: `18/08/2569 15:44` rendered on the handset**, against Metro PID 43032
+started with `-c` and reporting its cache empty, on the tree at `2eaa75e` plus the
+commit-2 changes. It establishes TWO things. Metro resolved the package — the
+module edge runs through the moved file, so a failure to resolve would have
+stopped the bundle rather than degrading the screen. And the moved code COMPUTES
+and RENDERS: 2026 + 543 = 2569, day-first, four-digit BE year, not ISO-shaped,
+which is the form `lessons/README.md § Lessons`
+"be-year-comes-after-the-timezone.md" requires and the form a printed slip has to
+carry.
+
+**AND IT DOES NOT ESTABLISH THE ORDERING — read this before citing the reading
+above, because it looks stronger than it is.** A reading taken at 15:44 Bangkok
+CANNOT tell the right order from the wrong one. Convert-to-shop-time-then-+543
+and +543-then-convert produce the SAME DIGITS for most of the day; they diverge
+only across Bangkok midnight, which is the entire subject of that lesson and the
+reason the module carries a branded type instead of a comment. A device reading
+taken at any ordinary hour is therefore evidence that the code MOVED and RUNS,
+and evidence of nothing whatever about the order. **THE ORDER IS PROVEN BY
+`proveTime.ts` T8**, which ran green inside the 24 — offline, on the boundary,
+with the wrong order's output printed beside the right one. Do not let "a
+Buddhist-era date rendered on a device" stand in for that cell.
+
+**`npx expo export` IS NOT THE HANDSET.** It exercised Metro's file map from an
+empty cache and its control fired, so it is real evidence — about the file map,
+and about nothing further. SERVE and EXPORT are different code paths in Metro,
+and P1.12's DONE WHEN names serving.
+
 **A DOCUMENTATION RESTRUCTURE CLOSED 2026-08-16, at `1d58899` and
 `5ac22c3`.** Not a P-step: no code path changed, and the P1.7 record
 below stays the current CODE phase exactly as written. What the two
@@ -3337,7 +3415,7 @@ Dated, because they decay. Re-run them; do not cite them.
   | `server/scripts/prove_shop_time.py:89,98,194` | SOUND BY INTENT — the UTC expression is the DISPROOF, and :194 is guarded by `if utc_be != expected_be` |
   | `server/scripts/prove_daily_report.py:339` | SOUND BY INTENT — deliberately the wrong UTC boundary, for the disproof |
   | `server/scripts/prove_daily_report.py:115,509` | SOUND — builds shop-time instants; converts before `.date()` |
-  | `mobile/src/time/shopTime.ts:127` | SOUND — the one client authority; `getUTCFullYear()` on an already-shifted branded `ShopWallClock` |
+  | `packages/shop-time/src/shopTime.ts:127` | SOUND — the one client authority; `getUTCFullYear()` on an already-shifted branded `ShopWallClock` |
   | `mobile/src/proof/proveTime.ts:134,155,168` | SOUND BY INTENT — UTC slice and `getHours()` shown as the CONTRAST |
   | `proveTime.ts:125-128,223-226`, `proveClock.ts:624,707` | SOUND — fixed input instant → fixed expected string. A constant mapping is correct forever; only a derivation from the CURRENT clock is a time bomb |
   | `mobile/src/proof/fakes.ts:452`, `fileServer.ts:59` | SOUND, deliberately frozen — making the fake derive the real year would add a clock dependency to deterministic tests, and nothing compares fake doc_no to a computed year |

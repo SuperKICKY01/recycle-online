@@ -23,7 +23,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { statusNotice } from "../src/sync/statusNotice";
 import type { StatusInput, StatusTone } from "../src/sync/statusNotice";
-import { shopTime } from "../src/time/shopTime";
+import { shopTime } from "@recycle/shop-time";
 
 export interface StatusStripProps extends StatusInput {
   lastSyncedAt: string | null;

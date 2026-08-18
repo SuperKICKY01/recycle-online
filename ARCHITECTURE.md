@@ -1337,6 +1337,24 @@ its own length.
   SUBJECT, AND ONLY ONE OF THEM ROTTED**, which is the finding worth carrying out
   of it — see `CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT".
 
+- **§6 says the client authority is `mobile/src/time/shopTime.ts`. THAT PATH NO
+  LONGER EXISTS.** P1.12 (2026-08-18) moved the file, byte-identical, to
+  `packages/shop-time/src/shopTime.ts`, behind the package specifier
+  `@recycle/shop-time`. **Every `shopTime.ts:NN` line reference in this file still
+  resolves** — `:24-27` and `:45-51` among them — because the move changed no byte
+  of the file; that was the point of moving it unedited. What changed is the
+  DIRECTORY and the specifier its six importers use.
+  **THE INSTRUCTION IN §6 IS NOW THE WRONG ONE, AND THAT MATTERS MORE THAN THE
+  PATH.** It says the desktop must **PORT** the module. It must now **IMPORT** it:
+  that is the whole purpose of the package, and porting would create exactly the
+  second implementation the sentence was written to prevent. The superseded
+  instruction is left standing above per this section's own rule; the package's
+  `src/index.ts` carries the correction at the point of use, where a desktop
+  author actually arrives.
+  **The paragraph inside `shopTime.ts` still says PORT too.** It was left unedited
+  on purpose, for the line-reference reason above, and correcting it is queued in
+  `OPEN_ITEMS.md`.
+
 **Re-derive before resting a decision on any number in this file.** The count
 that decayed fastest was the migration count, and it decayed twice in one day.
 
