@@ -1,0 +1,9 @@
+{
+  "name": "recycle-online",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Workspace root. Holds packages/ ONLY - mobile/ is deliberately NOT a member; see mobile/metro.config.js for the measurement that decided it.",
+  "workspaces": [
+    "packages/*"
+  ]
+}

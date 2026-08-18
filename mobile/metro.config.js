@@ -17,8 +17,43 @@
 // second package.json underneath it made Metro's file map stop indexing files
 // that exist on disk, and every import silently failed to resolve.
 const { getDefaultConfig } = require("expo/metro-config");
+const path = require("path");
 
 const config = getDefaultConfig(__dirname);
+
+// THE SHARED PACKAGE SITS OUTSIDE METRO'S PROJECT ROOT, AND ONLY THE FILE MAP
+// NEEDS TEACHING (P1.12). RESOLUTION ALREADY WORKS: disableHierarchicalLookup
+// is false, so metro-resolver walks up from the importing file trying
+// <dir>/node_modules at every level until the filesystem root, which reaches
+// <repo root>/node_modules/@recycle/shop-time on its own
+// (metro-resolver/src/resolve.js:144-165, metro 0.83.7).
+//
+// What that walk does NOT do is INDEX a file outside projectRoot. That is the
+// exact failure in lessons/metro-file-map-nesting.md, where fs.existsSync said
+// true and context.doesFileExist said false about the same absolute path, and
+// every import silently resolved to nothing. watchFolders is the fix for THAT,
+// and it is the only knob this phase moves.
+//
+// DELIBERATELY NOT SET: nodeModulesPaths and disableHierarchicalLookup. That
+// pair is the R4 row of the same lesson - it made ../src resolve and broke
+// every NESTED dependency - and the nesting it breaks is live in this tree:
+// node_modules/expo/node_modules/expo-asset, and @expo/metro-config itself at
+// node_modules/expo/node_modules/@expo/metro-config.
+//
+// The repo root declares workspaces ["packages/*"] and NOT "mobile", which is
+// what keeps that pair off. MEASURED 2026-08-18: @expo/metro-config's
+// getWatchFolders and getModulesPaths both branch on
+// getMetroServerRoot(projectRoot) !== projectRoot, and resolveWorkspaceRoot
+// only reports a root when the project ITSELF is a member. With mobile out of
+// the list it returns null, so getDefaultConfig leaves both at [] - measured
+// identical before and after the root package.json existed. Adding "mobile" to
+// that list would switch BOTH on automatically, and move Metro's server root.
+const workspaceRoot = path.resolve(__dirname, "..");
+config.watchFolders = [
+  ...config.watchFolders,
+  path.resolve(workspaceRoot, "packages"),
+  path.resolve(workspaceRoot, "node_modules"),
+];
 
 const defaultResolve = config.resolver.resolveRequest;
 

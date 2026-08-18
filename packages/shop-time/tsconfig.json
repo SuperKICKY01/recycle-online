@@ -1,0 +1,36 @@
+{
+  // The SHARED package's own program. It emits dist/ + .d.ts, and that pair is
+  // what every consumer resolves: tsc reads the .d.ts, node's ESM loader and
+  // Metro read the .js. Nothing imports this package's SOURCE.
+  //
+  // NO "types" AND NO DOM LIB, ON PURPOSE. This code is consumed by React
+  // Native (Hermes), by node, and next by an Electron main process. Pulling
+  // @types/node in here would let a platform global compile that does not
+  // exist on a handset - the mirror of why mobile/tsconfig.json and
+  // tsconfig.node.json exclude each other's files.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "rootDir": "src",
+    "outDir": "dist",
+
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "useUnknownInCatchVariables": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "sourceMap": true
+  },
+  "include": ["src"]
+}

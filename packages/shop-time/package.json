@@ -1,0 +1,21 @@
+{
+  "name": "@recycle/shop-time",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shop-local date and time for every Recycle Online client. ONE timezone, ONE +543, ONE formatter - shared so the desktop slip cannot grow a second implementation.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}

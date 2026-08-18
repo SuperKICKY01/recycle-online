@@ -87,6 +87,21 @@
 import { forbiddenReason } from "../sync/parkedReason.js";
 import { SHOP_UTC_OFFSET_MINUTES, shopDate, shopDateTime, shopTime } from "../time/shopTime.js";
 
+// P1.12 COMMIT-1 SCAFFOLDING - REMOVED IN COMMIT 2, WHEN shopTime.ts ITSELF
+// MOVES INTO THIS PACKAGE. Its only job is to make the shared package resolve
+// through every consumer at once, from ONE import site: this file is in both
+// tsc programs, it is in Metro's bundle (App.tsx imports dailyScreen), and it
+// is executed by an offline proof (prove:daily). If the workspace does not
+// resolve, that is a failed build or a failed proof rather than a silent
+// nothing - which is the failure shape lessons/metro-file-map-nesting.md
+// records.
+//
+// A RE-EXPORT, NOT A STATEMENT: noUnusedLocals would reject an unused import,
+// and this phase's OUT OF BOUNDS forbids a behaviour change, so no runtime
+// code may be added to a screen. A re-export adds none and survives
+// verbatimModuleSyntax.
+export { SHARED_PACKAGE_MARKER } from "@recycle/shop-time";
+
 /* ==========================================================================
  * 1. THE WIRE — what the server sends, and what we refuse to read
  * ========================================================================== */
