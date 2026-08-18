@@ -1610,6 +1610,52 @@ D10 applies — it wants doing before the pilot's rows exist.
 observed as an actual response, and `git grep -n "FROM tenants" -- server/app/` no
 longer returns exit 1.
 
+**SUPERSEDED 2026-08-18 — "no endpoint reads it" IS FALSE.** Everything above is
+left exactly as written and was true when written. `9ad225e` added `GET /shop` and
+`PATCH /shop` (`server/app/master.py:1098` and `:1111`), the first routes in this
+API to read or write `tenants`, and gave `POST /bills` a read of the same table for
+a shop-wide default grade (`server/app/bills.py:367`).
+
+**THE DONE WHEN HAS ALREADY MOVED, AND NOBODY INTENDED IT. Re-derived clause by
+clause 2026-08-18; this entry does NOT declare the step done or not done, which is
+the owner's call.** Two clauses:
+
+- **Clause 2 — the mechanical one — IS MET.**
+  `git grep -n "FROM tenants" -- server/app/` returned **two** hits and **exit 0**:
+  `server/app/bills.py:367` and `server/app/master.py:1089`. The clause asks that it
+  "no longer return exit 1", and it does not. **The criterion was satisfied by work
+  it was not describing** — the grep was written as a proxy for a slip-header
+  endpoint and was met by a grade feature that has nothing to do with a slip. It is
+  recorded rather than quietly re-tightened, because a criterion that can be met
+  sideways is a fact about the criterion.
+- **Clause 1 — the observable one — IS PARTLY MET, and the unmet half is the half
+  this step is named for.** `GET /shop` does return the shop's `name`
+  (`server/app/master.py:1085` selects `id, name, default_grade`), and a real
+  response was observed: `9ad225e` records staff `GET /shop` answering **200**.
+  **The BODY of that response is recorded in no tracked file**, so "returns the
+  shop's name" is established from the code and from a status line, not from a
+  transcript. And "whatever else the slip carries" cannot be satisfied by any
+  request today: `tenants` still has no address and no phone, so there is nothing
+  else to return.
+
+**SCOPE, WIDENED 2026-08-18: THIS STEP OWNS THE SHOP-SETTINGS SURFACE. Nothing is
+scheduled here and no step is minted.** `tenants` now carries a value a shop is
+meant to choose for itself, and there is no operator surface anywhere that can set
+it — `desktop/` holds one 0-byte file and its scaffold step has not run, and
+S10 defers new mobile screens to the UX rework while explicitly NOT deferring the
+internals ("What waits is the drawing"). A way to SET a shop setting therefore has
+nowhere else to live: this is the step that owns `tenants`.
+
+**AND A QUESTION RECORDED RATHER THAN ANSWERED: should a newly provisioned shop be
+GIVEN a default grade at provisioning time?** `server/scripts/provision_shop.py` is
+the only non-`curl` path that touches a new shop today and it does not set one —
+its tenant INSERT names two columns, `INSERT INTO public.tenants (id, name)` at
+`:289`, and the string "grade" does not occur anywhere in that file (measured
+2026-08-18, `grep -c -i grade` returned 0). So every shop provisioned today starts
+with `default_grade` NULL and therefore with the 424. Whether that is the right
+starting state is a product question about what a new shop IS, and this phase does
+not answer it.
+
 ### P1.17 — Thermal slip printing from the desktop
 
 **What it is.** ESC/POS to a 58/80 mm printer, from the desktop, for a bill that has

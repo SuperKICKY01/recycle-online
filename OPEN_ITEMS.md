@@ -68,6 +68,28 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   **WHY IT IS IN THIS SECTION AND NOT UNDER BUSINESS QUESTIONS:** it is not a
   question anyone must answer before work can start. The behaviour is measured
   and it stops a real shop shape from trading.
+  **AMENDED 2026-08-18 — THE BLOCK CHANGED SHAPE, IT DID NOT CLEAR.** Everything
+  above is left exactly as written and was true when written. `9ad225e` added
+  `tenants.default_grade` and gave `POST /bills` a fallback to it, so the 424 is
+  now raised only when the seller's grade AND the shop's default are both unset;
+  setting either releases the same bill unchanged.
+  **THE *Not done:* LINE ABOVE IS THE PART THAT TURNED.** "PER-TENANT POLICY WITH
+  NO HOME IN THE SCHEMA — no column, no table, and no default to put one in" is
+  FALSE for this one value as of that commit: there is a column, a named CHECK,
+  and two routes. **What replaces it is not smaller, it is different — there is a
+  home and no human can reach it.** `PATCH /shop` is admin-only and reachable by
+  `curl` and by nothing else; no screen on any surface sets it; and
+  `provision_shop.py` does not set it either, so every shop still starts at NULL.
+  **OF THE THREE SHOP SHAPES NAMED ABOVE:** shape 1, grades that matter, is
+  untouched and still served. Shapes 2 and 3 — no grades at all, and grades with a
+  standard tier for walk-ins — now have a MECHANISM that would end the office
+  round trip, and no way for the shop to switch it on. **So the round trip that
+  "has NO SCREEN behind it on any surface" is still exactly that, and the sentence
+  above stands as written for a different reason than when it was written.**
+  The device wording caught up in `3e35558`: the parked card names both remedies
+  rather than only the seller's grade, so the yard is at least told that the
+  shop-wide fix exists. *Unblocks:* unchanged in kind — an operator surface,
+  which `ROADMAP.md § P1.16` took as scope on the same date.
 
 - **EIGHT THINGS EACH SHOP CONFIGURES FOR ITSELF, AND NOTHING STORES ANY OF
   THEM — recorded 2026-08-17.** ONE entry and not eight, because they share a
@@ -121,6 +143,34 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   section holds. It is not under *Business questions* because none of the eight
   needs an outside answer before work can start, and not under *Decisions open*
   because S11 already settled who decides: the shop does, per shop, at run time.
+  **AMENDED 2026-08-18 — THE COUNT IN THIS ENTRY MOVED, WHICH IS THE ONE THING
+  THIS ENTRY SAID IT WAS FOR.** Everything above is left exactly as written.
+  `9ad225e` stores a grade default as `tenants.default_grade` with its own named
+  CHECK — the form
+  `ROADMAP.md § What the owner has settled` "S16 — THE EIGHT PER-TENANT VALUES ARE STORED BY KIND"
+  requires, not a settings bag — so "eight per-tenant values, of which the schema
+  holds zero" is now **one of eight, not zero**, and the *Not done:* line's "there
+  is no settings table, no column and no default" is false for that one value.
+  **AND THE MECHANISM IS NOT THE ONE ITEM 2 NAMES, which matters more than the
+  count.** Item 2 above is *the default grade for a NEW SELLER* — a value written
+  onto the seller row at creation. What landed is a SHOP-WIDE FALLBACK read at
+  BILL time: a seller created today still has `grade` NULL, and the shop's default
+  is consulted only when the bill is priced. The two produce the same relief for
+  the blocked shop shape and are not the same thing, and whether item 2 as worded
+  is ALSO wanted is not settled by this.
+  **AND THE TWO ANSWER A LATER CHANGE TO THE VALUE DIFFERENTLY — recorded as a
+  CONSEQUENCE, not as a decision.** A default STAMPED onto a seller at creation
+  FREEZES that seller: changing the shop's default afterwards leaves every
+  existing seller exactly where it was. A shop-wide fallback READ at bill time
+  moves the price basis for EVERY NULL-grade seller at once, on every future
+  bill. Neither is obviously correct — a shop repricing its walk-in tier may want
+  precisely one of them and would be surprised by the other — and **the choice
+  between them was made by the implementation without the question being put.**
+  Nothing here authorises changing the mechanism. **The other seven are
+  untouched.**
+  The block itself is not cleared — the measurement, the three shop shapes, and
+  what did and did not move are in the entry directly above this one,
+  cross-referenced and deliberately not restated.
 
 - **~~NO STAFF ACCOUNT EXISTS AND THERE IS NO WAY TO CREATE ONE — measured
   2026-08-10, not inferred.~~ — THE SECOND HALF IS CLOSED, THE FIRST STANDS.**
@@ -2708,6 +2758,105 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   HISTORICAL BILL LINE, which hard rule 5 forbids deleting and hard rule 6 forbids
   recomputing. Old lines will carry grades a shop may later stop defining.
 
+  **AMENDED 2026-08-18 — IT IS FIVE, NOT FOUR, AND THE ENTRY ABOUT COUNTS THAT
+  ROT HAS ROTTED. Both paragraphs above are left exactly as written.** `9ad225e`
+  added `ck_tenants_default_grade` on `tenants.default_grade`
+  (`server/migrations/versions/0010_tenants_default_grade.py:52`), which is the
+  fifth. **Where it came from is worth one sentence, because it is the same shape
+  as the finding it damages:** the commit that let a shop which does not grade its
+  sellers trade at all did so by adding another constraint hardcoding A-D, so the
+  work relieving one per-tenant block widened the count in the entry warning that
+  counts widen. The code already says five in two places — that migration's
+  docstring at `:27` and `server/app/master.py:114` — and this entry did not.
+
+  **RE-DERIVED HERE RATHER THAN INCREMENTED, WHICH IS WHAT `Re-derive all four`
+  ASKS FOR, AND RE-DERIVING FOUND MORE THAN A FIFTH.** What you count depends on
+  a distinction neither paragraph above draws, so each figure below carries its
+  own command AND its own definition. **The bare word "sites" conflates the two,
+  and that conflation is the whole mechanism here:** it is how a column that was
+  DROPPED three migrations later stayed on a list of things a future decision
+  must open.
+
+  - *Sites whose SOURCE TEXT encodes the set A-D: five.* Definition — an
+    occurrence, in source text on the path to head, that writes the four members
+    out. Measured 2026-08-18 by `git grep -n "IN ('A', 'B', 'C', 'D')" --
+    server/` for the CHECKs and `git grep -n "Grade = Literal" -- server/` for
+    the type. They are `product_prices.grade` and `purchase_bill_items.grade` in
+    `0001_initial_schema.py:169` and `:253`; `ck_sellers_grade` in
+    `0003_move_grade_to_sellers.py:31`; `ck_tenants_default_grade` in
+    `0010_tenants_default_grade.py:52`; and
+    `Grade = Literal["A", "B", "C", "D"]` at `server/app/master.py:119`. A sixth
+    occurrence sits in `0003`'s DOWNGRADE (`ck_items_grade`, `:42`) and is not
+    counted, because nothing reaching head ever runs it.
+  - *CHECK constraints in force on a database migrated to head: three.*
+    Definition — a constraint a write would actually have to satisfy today.
+    Measured by reading the stack FORWARD with every DROP applied
+    (`git grep -n "grade" -- server/migrations/versions/`, then reading each hit
+    in revision order): **`0003`'s UPGRADE drops the column the second site is
+    on** — `ALTER TABLE purchase_bill_items DROP COLUMN grade` at `:25`, whose
+    own comment at `:24` says the inline CHECK goes with it — and no migration
+    `0004`-`0010` re-adds either. So `product_prices.grade`, `ck_sellers_grade`
+    and `ck_tenants_default_grade` are the three in force. **The gap between the
+    two figures is TWO and only one of them is the drop:** `master.py`'s
+    `Literal` is not a database constraint at all, it is a Python type checked at
+    the edge.
+  - *THE LIMIT ON THE SECOND FIGURE, STATED RATHER THAN LEFT IMPLICIT.* It was
+    derived by READING the stack, not by querying a database — this phase ran no
+    SQL. The authority for "what constraints exist" is `pg_constraint` on a
+    database at head, and it was NOT consulted. That is the same instrument
+    weakness this correction is about, one level up: a careful forward read of a
+    log is still a read of the log. Anyone acting on the figure should take it
+    from the database.
+
+  **THAT MAKES THE CONSEQUENCE PARAGRAPH ABOVE FALSE, and it is the more useful
+  half of this amendment.** It reasons about `purchase_bill_items` as a live
+  historical constraint whose old lines "will carry grades a shop may later stop
+  defining". They will not: the column was dropped in `0003` and the data with it,
+  so bill LINES carry no grade at all today and the hard-rule-5/6 problem it names
+  does not exist in that form. Whether it returns in another form — a bill line
+  priced off a tier a shop later renames — is a real question for whoever plans
+  S16, and it is not the one that paragraph asks. **Re-derive all five, and say
+  which of the two definitions you counted.**
+
+  **WHY THIS WAS WORSE THAN A WRONG FACT, and it is why the correction runs
+  longer than the error.** Hard rule 6 stores `unit_price` AND `list_price` on
+  the line (`0001_initial_schema.py:257-258`), so a bill records the PRICE a
+  grade produced and never the grade itself — a later change to the grade model
+  CANNOT REACH A HISTORICAL BILL BY CONSTRUCTION. `0003` closed that on purpose,
+  and its own docstring gives the reason: line items do not carry a grade,
+  because per SRS 1.6 the grade belongs to the SELLER. So the paragraph above did
+  not merely miscount by one. **It raised as an open risk a case that cannot
+  occur**, and filed it against whoever plans S16. A wrong fact costs a
+  correction; an invented risk costs whatever work somebody does about it, and
+  that work is indistinguishable from diligence while it is being done.
+
+  **THE ROOT, NAMED BECAUSE IT WILL RECUR AND THIS REPOSITORY HAS TEN
+  MIGRATIONS.** A migration stack is a LOG of what was done, not a description of
+  what IS. An upgrade file records ONE MOMENT, so reading it as current state is
+  reading history as the present — and counting live constraints by grepping
+  migration source will keep producing this, because the grep is a correct
+  instrument answering a neighbouring question and returns a plausible integer
+  with no error and nothing red. Written up, with the hard-rule-6 argument above
+  as its evidence:
+  `lessons/README.md § Lessons` "a-migration-stack-is-a-log-not-a-schema.md".
+  **Cited through the index and not at the lesson directly, which is forced
+  rather than stylistic:** `tools/verify_citations.ps1`'s filename pattern is
+  `[A-Za-z0-9_/\.]+`, with NO HYPHEN, so a hyphenated lesson filename inside
+  backticks matches nothing and the citation is INVISIBLE to the checker — not
+  broken, not counted, silently absent. Measured here: the first draft cited the
+  lesson directly and `CITATIONS` moved by ONE where two citations had been
+  added.
+
+  **HOW IT GOT IN, ATTRIBUTED PLAINLY RATHER THAN LEFT AS A PASSIVE.** The
+  paragraph came from the ADVISING SESSION and was accepted into this file
+  without the migrations being opened. That is exactly the promotion
+  `CLAUDE.md § Workflow` "A REPORT IS A CLUE, NOT A SOURCE" forbids: a finding
+  becomes a fact by re-measurement against the artefact in the current pass, and
+  this one never was. **A schema report is the easy one to wave through**,
+  because it cites a filename and a line number and both are REAL —
+  `0001_initial_schema.py:253` exists and says what it was quoted as saying. The
+  citation resolves; only the tense was wrong.
+
   **DO NOT SWEEP BY THE WORD. NAME THE SITES BY LINE NUMBER, AND RE-DERIVE THEM.**
   `git grep -n "fourteen" -- '*.md'` returned **nine** sites on 2026-08-17 *after*
   this phase's own first commit — the brief that ordered this entry said seven,
@@ -2873,6 +3022,45 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   wants. *Unblocks:* the owner's answer, which `ROADMAP.md § STAGE 3` "User
   management inside a shop" needs before it draws a screen — a roster the
   yard cannot open is a different screen from one it can.
+- **Whether `GET /shop` should stay STAFF-READABLE while `PATCH /shop` stays
+  ADMIN-ONLY — SETTLED in code by `9ad225e` and recorded here as the owner's to
+  revisit.** Filed in the same shape as the `GET /users` question directly above,
+  and for the same reason: it is a route TIER whose two directions cost different
+  amounts. It is filed separately from that one because the table is different —
+  these are the FIRST routes in this API over `tenants`, so whatever tier they
+  carry becomes the precedent the next route on that table inherits.
+  **The asymmetry.** The split is not a compromise, it is two different questions
+  answered separately. READING is a yard need: the phone cannot explain a 424 it
+  would otherwise present as the seller's fault without knowing whether a shop
+  default exists, and the response carries the shop's own name and its own choice
+  and nothing about any person. WRITING decides how every ungraded seller's bill
+  in the shop is priced, standing, until someone changes it back — which is
+  exactly the kind of choice the yard must not be able to make with a load on the
+  scale. And the two directions do not cost the same in the usual way: opening
+  `PATCH` later is one dependency changed; a shop that discovers its walk-in
+  pricing was moved from the weighbridge cannot un-price the bills.
+  **THE ARGUMENT EXISTS — AND NOT WHERE A READER OF THESE DOCUMENTS WILL MEET
+  IT, which is the whole reason for this entry.** It is written twice, both times
+  in code: the two route docstrings at `server/app/master.py:1100` and `:1115`,
+  and the module comment above them at `:1062`. It is written a third time in
+  `9ad225e`'s commit body. **Searched over every tracked `*.md` on 2026-08-18
+  with `git grep -F`, these terms: `PATCH /shop`, `get_shop`, `update_shop`,
+  `ShopUpdate`, `staff-readable`, `shop settings`, `ck_tenants_default_grade` —
+  NOT FOUND WITH THESE WORDS, zero hits each.** `GET /shop` and `default_grade`
+  each returned hits in exactly three and two files, and every one of them is
+  text written by `3e35558` earlier the same day — excluded by IDENTITY, not by
+  content, because a content filter would delete the true positives that resemble
+  this session's own record. Before that commit both were zero.
+  `ARCHITECTURE.md § 3.1 Three authentication tiers, not two` was not updated by
+  `9ad225e` either, so its admin-only row does not name `PATCH /shop`.
+  *Not done:* the tier is what the code does — `get_principal` on the GET,
+  `require_admin` on the PATCH — and `9ad225e` observed both ends over real HTTP
+  (staff `GET /shop` → 200, staff `PATCH /shop` → 403), so what is open is not
+  whether it works but whether it is what the OWNER wants, and whether it should
+  bind the next route over `tenants`. *Unblocks:* the owner's answer, which
+  `ROADMAP.md § P1.16` needs before it draws the shop-settings surface it took as
+  scope on 2026-08-18 — a setting the yard can read is a different screen from
+  one it cannot.
 - **Thousands separators in money** — deliberately absent; `128400.00`
   is genuinely harder to read than `128,400.00`. *Not done:* it is the
   owner's call, and grouping is one edit from splitting a money string

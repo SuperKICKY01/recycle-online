@@ -463,6 +463,70 @@ and no log line, so there is no artefact to read the report against.
   automatically.** There is no CI in this repository and no hook that runs a
   proof. A compile error cannot be skipped; that scan can.
 
+**A SHOP-WIDE DEFAULT GRADE IS BUILT, PROVEN, AND UNREACHABLE — `9ad225e`,
+2026-08-18.** Recorded as one entry because the two halves are one fact: the
+capability is real and no operator can get at it.
+
+- **WHAT WAS OBSERVED, and it is stronger evidence than most entries here
+  carry.** `9ad225e` was measured over real HTTP against a server confirmed to be
+  running that code — `GET /shop` answered **401 rather than 404** before any
+  token existed, which is a request through the changed path and not an inference
+  from a clean tree (`CLAUDE.md § Boot check` "WHICH CODE THE SERVER IS RUNNING").
+  Five cells, each with a sibling coming out the other way: an ungraded seller
+  with no shop default → **424 `seller_grade_unset`**; the same bill with the
+  default set to `B` → **201, doc_no B-2569-384**; the default cleared back to
+  NULL → **the 424 returns, same code**, which is the cell saying this is a
+  fallback and not a deleted check; staff `PATCH /shop` → **403**; staff
+  `GET /shop` → **200**. The stored price was read **out of Postgres and not out
+  of the response**: list_price 15.00 against tier B 15.00 and tier A 15.50, with
+  seller S005's own grade still NULL — the tiers differ, which is what lets that
+  cell discriminate. And `ck_tenants_default_grade` was SEEN TO REFUSE: `'Z'`
+  raised the named constraint and rolled back, with the surviving value still
+  `'B'` rather than nulled.
+- **AND NO OPERATOR ON ANY SURFACE CAN SET IT.** `PATCH /shop` is admin-only and
+  reachable by `curl` and by nothing else. `desktop/` holds one 0-byte file and
+  its scaffold step has not run; the phone has no admin surface and S10 defers new
+  screens; and `provision_shop.py` does not set the column either — its tenant
+  INSERT names `(id, name)` and the string "grade" does not occur in that file —
+  so every shop starts at NULL and stays there. **A capability with no path to it
+  is indistinguishable from an unbuilt one from outside**, which is an argument
+  `ROADMAP.md § landed 2026-08-07, and it is NOT a step in this file` "A capability with no path to it is indistinguishable from an"
+  already makes about a different endpoint. `ROADMAP.md § P1.16` took the
+  shop-settings surface as scope on this date; nothing is scheduled.
+- **THE DEVICE WORDING CAUGHT UP — `3e35558`, 2026-08-18, and it is a text change
+  and nothing more.** The parked card said only "have the office set this
+  seller's grade" for a refusal that has had two remedies since `9ad225e`. It was
+  never FALSE — the card is drawn only after the server has refused — but it named
+  the remedy repeated for every walk-in and never the one that fixes the shop
+  once. It now names both and asserts neither, because the device cannot know
+  which the shop lacks and nothing in the client reads `GET /shop`. Proven
+  NEGATIVELY over the card's concatenation in draw order and over the status strip
+  (a second surface, drawn through `parkedSummary` with no badge): the new
+  assertion was run against the UNCHANGED string first and reddened **exactly the
+  three cells named in advance, with no fourth cell moving**, then went green. All
+  five proofs that reach that renderer — located by grep and confirmed by a second
+  independent search — exit 0 twice in a row with no reseed, and both TypeScript
+  programs exit 0.
+- **WHAT THIS DOES NOT ESTABLISH: there has been no device pass, on either
+  half.** Nothing on a handset has read `GET /shop`, and the new wording has been
+  seen by no screen — it is proven headlessly and by nothing else. `9ad225e`'s own
+  record says the same of its half.
+- **TWO REAL BILLS WERE LEFT IN THE DEV DATABASE BY THIS PHASE.** `prove:forbidden`
+  F6 drives the real API and creates a bill per run through the real path, so the
+  two runs the twice-in-a-row rule requires produced **B-2569-395** and
+  **B-2569-396**; both were voided by the proof's own admin cell, and hard rule 5
+  forbids removing either. This is the class already queued at
+  `OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "A shared proof teardown",
+  whose argument is not restated here.
+- **A FINDING, RECORDED AND NOT FIXED.** The server's code `seller_grade_unset` is
+  named after ONE of the two causes it can now stand for, so wording derived from
+  the code alone can no longer derive the full remedy. That is the "(code, call
+  site)" amendment in
+  `lessons/README.md § Lessons` "AMENDED AGAIN (P-GRADECARD, 2026-08-18)"
+  arriving at a new site. Renaming it is a client contract and `MASTER_DATA_CODES`
+  is a closed union that would move with it, so it is a decision and not a
+  tidy-up.
+
 **P1.7 IS COMPLETE. ALL SEVEN STEPS. 2026-08-11, `959f22d`.** This block
 SUPERSEDES every P1.7 entry below as the current phase; each is left exactly as
 written and was true when written.
