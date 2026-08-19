@@ -148,6 +148,7 @@ exit".
 | `uv run python scripts/reconcile.py` (`server/`) | exit 0; 1 = violations, 2 = could not run (`PROJECT_STATUS.md § What is built` "clean / violations / could-not-run") | the limits it prints as What this checker CANNOT see, on every run |
 | `node dist/proof/<name>.js` run by hand | **not a green** — a red build still writes `dist/` (`OPEN_ITEMS.md § Code debt` "A red build still overwrites") | use the `npm run prove:*` script instead |
 | `server\.venv\Scripts\python.exe tools\verify_shared_checks.py` (repo root) | exit 0 | the checks' CONTENT — it proves the two copies identical, not that either role ran them (`CLAUDE.md § Shared checks`) |
+| `server\.venv\Scripts\python.exe server\scripts\build_all_lessons.py --check` (repo root) | exit 0 | whether any lesson is RIGHT — it proves only that `lessons/all-lessons.md` still matches its sources, and `--write` is what regenerates it (`OPEN_ITEMS.md § Documentation`) |
 
 **Before the phase closes**
 

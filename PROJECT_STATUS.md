@@ -57,6 +57,84 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P-SAASGAPS — WHAT A PRODUCT SOLD TO STRANGERS NEEDS AND THIS ONE HAS NOT BUILT,
+WRITTEN DOWN AND NOT SCHEDULED. Documentation only, 2026-08-19.** The owner raised
+a set of gaps on 2026-08-19 and **deferred them the same day**. That deferral is a
+decision about ORDER and about nothing else; it is not an assessment of importance,
+and this phase carried out the recording half only. **Nothing under `mobile/`,
+`server/`, `packages/`, `desktop/` or `tools/` moved.** No P-number was minted, no
+step was created or extended, no ordering changed, and no S-decision was written or
+superseded. Nothing on the list was fixed, including the two that were measured.
+Three files changed: `OPEN_ITEMS.md`, `START_HERE.md` and this one.
+
+**WHAT WAS WRITTEN.** One new section in `OPEN_ITEMS.md`, twenty-two items, each
+carrying one of two markers and none carrying neither: **fifteen MEASURED** — a
+command run in this pass with what it returned quoted at the item — and **seven
+UNVERIFIED**, the advising session's reasoning left as reasoning, with the words
+it would take to confirm or refute it. **The set is deliberately one section
+rather than items distributed among the existing ones**, because the shape of what
+twenty-two simultaneous gaps look like is itself the finding and splitting it hides
+that. The counts live at the head of that section and nowhere else, this sentence
+included by reference rather than by a second copy of the numbers.
+
+**FOURTEEN OF THE THINGS RAISED WERE ALREADY RECORDED, AND ARE POINTED AT RATHER
+THAN RESTATED.** The advising session named eight it believed were already on file
+and all eight were — attempt limiting, the second free-guessing site at the
+password route, the 422 echo, HTTPS, the daily report's scan, the backup's missing
+schedule and destination, the backup tooling's inability to reach a database that
+is not local, and iOS never having run the migration. **Six more that it did not
+know about were found by searching for them**, five of those in `SRS_MAP.md`:
+certificate pinning, the audit log, JWT key rotation, the one-hour token, licence
+enforcement, and printing. **One of the eight is not merely recorded but CLOSED** —
+the 422 echo was fixed on 2026-08-10 and `server/app/main.py:94` holds the handler,
+re-derived here.
+
+**TWO OF THE ITEMS AS RAISED WERE WRONG, AND BOTH CORRECTIONS ARE IN THE SECTION
+RATHER THAN IN A REPLY.** "No search anywhere" is false: `SellerPicker.tsx`
+describes itself as a search screen, renders a box, and calls `searchSellers` — the
+true and narrower statement is that the search is a client-side linear scan over
+the cached list and that no server route takes a search parameter. "No licence
+enforcement behaviour decided" is false: `ROADMAP.md § What the owner has settled`
+D3 settles what a lapse does, while `SRS_MAP.md § 7a. How a licence is enforced — nothing exists`
+still calls that same question unanswered, so two sentences in the tree disagree
+and one of them is stale. What remains true is that no licence concept reaches the
+code at all.
+
+**WHAT CARRIES AN EXIT CODE, AND WHAT DOES NOT.** `tools\verify_citations.ps1`,
+invoked with the call operator and an explicit array so `[string[]]` binds, over
+the fourteen sources that cite into the three files this phase touched: **baselined
+BEFORE any edit at SOURCES=14 CITATIONS=483 BROKEN=10, exit 1**, and finally at
+**SOURCES=14 CITATIONS=520 BROKEN=10, exit 1** — the same ten, diffed line by line,
+with only two index numbers and one neighbouring OK row moving because citations
+were added above them. **The rise of thirty-seven is accounted for exactly**:
+thirty-one in `OPEN_ITEMS.md` (twenty-eight in the new section, two in the P1.13
+entry, one in the closure added under Documentation), five in this file, one in
+`START_HERE.md`. That accounting is the check, not the green: a checker that stops
+matching fails by finding LESS, so the number it prints is only evidence once the
+difference is predicted and met. **Every one of the fourteen sources passed both of
+its own controls, before and after** — twenty-eight control lines each run, none
+failing. `tools\verify_shared_checks.py` prints
+`IDENTICAL: 4 items, 586 chars between markers` and exits 0.
+**NOTHING ELSE WAS RUN AND NOTHING ELSE IS CLAIMED** — no build, no proof, no
+server, no device, no database, by the brief's own bounds, so this entry rests on
+file reads and greps and says which command produced each figure.
+
+**NO SHA IS GIVEN FOR ANY CLAIM IN THIS BLOCK, DELIBERATELY.** The work carrying it
+was uncommitted when it was written, so the only sha available is the one that does
+NOT contain it — the corollary under `CLAUDE.md § Conventions` to the rule about
+anchoring a claim. The item-level measurements inside the new section are dated
+2026-08-19 and will rot in the ordinary way; each one names the command that took
+it so the next reader re-runs rather than believes.
+
+**ONE THING THIS PHASE SETTLED THAT A FILE HAD RECORDED AS OWED, AND IT IS FLAGGED
+RATHER THAN BURIED.** `OPEN_ITEMS.md § Documentation` recorded, on 2026-08-18, a
+choice between adding `build_all_lessons.py --check` to the Done table and leaving
+the generated document to be regenerated by whoever writes a lesson. The 2026-08-19
+brief instructed the first, so the row is now in `START_HERE.md § 4` and that
+entry carries a dated closure saying which of the two was taken. **The rest of the
+list is untouched: most of it is unverified by design, and nothing on it was
+ranked, scheduled or repaired.**
+
 **P1.18 STAGE 2b — THE DESIGN AND THE CRITERIA ARE REVISED, AND THE DRAIN THE
 DESIGN PRINTED DID NOT WORK. Documentation only, 2026-08-19.** An independent pass
 read the design and the criteria delivered by stage 2 and fired the stop. Seven

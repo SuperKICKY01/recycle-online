@@ -3625,6 +3625,54 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   changes if a limiter arrives** — it is a decision about where attempts are
   counted, not about what the 400 means.
 
+- **P1.13's DONE WHEN WILL REDDEN OVER A CORRECT DESKTOP, BECAUSE ITS INSTRUMENT
+  READS COMMENTS.** Found 2026-08-19. RECORDED, NOT REPAIRED; `ROADMAP.md` was
+  outside this phase's declared file set and NOTHING BELOW IS AUTHORISED.
+
+  `ROADMAP.md § P1.13 — The desktop scaffold` requires that
+  `git grep -n "543" -- desktop/` return exit 1, and the step says why: the whole
+  point of P1.12 is that this number appears in one place in the system.
+  **`git grep` searches FILE CONTENT and knows nothing about comments**, so the
+  criterion is satisfied only by a desktop that never writes the digits down —
+  including in a sentence explaining why it holds no second derivation.
+
+  **MEASURED IN THIS PASS, AND TODAY IT PASSES BY BEING EMPTY.**
+  `git grep -n "543" -- desktop/` exits **1** over a directory whose only tracked
+  file is `desktop/.gitkeep` — `git ls-files desktop/` returns that one path. So
+  the criterion currently measures nothing: there is no state of a correct desktop
+  it has ever distinguished from an incorrect one.
+
+  **THE CONTROL IS ONE DIRECTORY AWAY AND IS THE WHOLE ARGUMENT.** The same
+  instrument over `packages/` returns ten lines and exits 0. Exactly ONE of them
+  is a derivation — `packages/shop-time/src/shopTime.ts:70`,
+  `export const BE_YEAR_OFFSET = 543;` — and the other nine are prose: the
+  package's own `description` field, and comments at `:48`, `:61`, `:73`, `:75`,
+  `:80`, `:81`, `:166` and `:181` that exist BECAUSE this derivation has been got
+  wrong before. That is precisely the shape a correct desktop will have. The
+  sentence its author is most likely to write is the one the constraint invites —
+  `SRS_MAP.md § 7c. Printing — nothing exists, and it may not be a late item`
+  records that the shared module carries a NEXT CONSUMER block naming the desktop
+  thermal slip, and the desktop's job is to IMPORT rather than re-derive. **A
+  developer who does the right thing and says so in a comment turns the step's
+  DONE WHEN red.**
+
+  **SAME CLASS AS THE COUNT-IN-A-CRITERION ENTRY EARLIER IN THIS SECTION, AND NOT
+  A DUPLICATE OF IT** — that one is a criterion whose NUMBER stops describing the
+  set; this is a criterion whose INSTRUMENT cannot express what it means. Both are
+  a sentence this project uses to decide a step is finished, going wrong with
+  nothing to announce it, which is why they belong beside each other rather than
+  in one entry. The repair forms that entry lists do not reach this one: no
+  anchoring, naming of the set, or single-site confinement makes `git grep`
+  distinguish a comment from an assignment.
+
+  *Contradicts:* nothing — the criterion is right about its intent and wrong about
+  its measurement. *The decision owed:* whether the criterion names a stricter
+  instrument (one that reads the module graph, or an assignment rather than a
+  substring), or whether the desktop is simply required not to write the digits
+  anywhere including prose, which is a real cost paid by the next reader of that
+  code. *Not done:* neither. *Unblocks:* nothing built — it stops P1.13 being
+  argued about on the day it is otherwise finished.
+
 ## Business questions — unanswered, and not answerable from the code
 
 Both were raised and neither has been resolved. Recorded as QUESTIONS;
@@ -3751,6 +3799,17 @@ with no feature of its own.
   *Not done:* neither; `START_HERE.md` was outside this phase's declared set.
   *Unblocks:* nothing built — it stops a generated document drifting from its
   sources for a whole phase without anything noticing.
+
+  **CLOSED 2026-08-19 BY P-SAASGAPS, ON THE FIRST OF THE TWO OPTIONS.** The
+  brief of that date instructed the Done-table row, so `START_HERE.md § 4` now
+  lists this check beside the typechecks and the proofs. **The second option was
+  not weighed here and was not rejected on its merits** — leaving the generated
+  document to whoever writes a lesson, with the check on demand, is still a
+  coherent answer and simply was not the one instructed. **What the row does NOT
+  do:** nothing runs it, any more than anything runs the typechecks listed beside
+  it; it is a checklist a session reads at a boundary, which is the delivery
+  mechanism this repository has measured going unopened. The staleness measured
+  above stands exactly as written.
 
 - **`tools/verify_citations.ps1` CANNOT PARSE A CITATION WHOSE TARGET FILENAME
   CONTAINS A HYPHEN, WHICH IS EVERY LESSON FILE — AND SUCH A CITATION IS NOT
@@ -4490,4 +4549,346 @@ with no feature of its own.
   elsewhere in the tree, and reproducing it verbatim here makes it match twice
   and breaks every citation pointing at it. That happened in the first draft of
   this very entry.
+
+
+## What a product sold to strangers needs and this one has not built
+
+**Raised by the owner on 2026-08-19 and DEFERRED BY THE OWNER ON THE SAME DAY.**
+The deferral is a decision of that date about ORDER and about nothing else. It is
+**not an assessment of importance**, and no item below has been weighed against
+any other or against anything already on this list. They go to the BACK of the
+queue. This file says in its own opening that it is a list with no priorities and
+no dates; the ranking that does exist lives in `ROADMAP.md`, and none of these
+entered it. **Nothing here was scheduled, ranked or minted, no P-number was
+issued, and no settled decision was written or superseded.**
+
+**WHY ONE SECTION RATHER THAN ITEMS SCATTERED THROUGH THE ONES ABOVE — THE SET IS
+PART OF THE FINDING.** What follows is the shape of what a multi-tenant money
+product sold to strangers needs and this one has not built, produced in a single
+pass on a single day. Split across the existing sections that shape stops being
+visible, and each item then reads as a small omission rather than as one of
+twenty-two taken together.
+
+**EVERY ITEM CARRIES ONE OF TWO MARKERS, AND NO ITEM MAY GO IN WITHOUT ONE.**
+**MEASURED** — a command was run in the pass that wrote this section and what it
+returned is quoted at the item. **UNVERIFIED** — reasoning from the advising
+session that this pass did not confirm, carrying the words it would take to
+confirm or refute it. The marker describes what was DONE, not how confident
+anybody is: where only part of an item was measured, the item says in its own
+words which part.
+
+**THE COUNTS LIVE HERE AND NOWHERE ELSE, AND THAT IS DELIBERATE — twenty-two
+items, fifteen MEASURED, seven UNVERIFIED.** A count in prose rots when the work
+adds to the set; the repair used here is the third of the three this file already
+records under `OPEN_ITEMS.md § Decisions open — the owner's, not the code's` —
+confine the number to one site and say in the same sentence that it is the only
+one. **Anyone adding an item edits this line.** The set is otherwise closed: it is
+what one day produced, not a category anything is expected to grow into.
+
+**ALREADY RECORDED ELSEWHERE — POINTERS, NOT ENTRIES, AND DELIBERATELY NOT
+RESTATED.** Fourteen of the things raised on 2026-08-19 already have a home. They
+are listed so a later reader does not re-raise them, and they are not re-argued: a
+second home for one argument is the drift `CLAUDE.md § Scope and status` forbids.
+Where a recorded entry leaves a genuinely new half open, that half is an ITEM
+below and says so.
+
+- **Attempt limiting, anywhere in the API** — recorded 2026-08-10 as a
+  whole-system gap under `OPEN_ITEMS.md § Decisions open — the owner's, not the code's`,
+  filed as one item on purpose so that fixing one endpoint cannot look like
+  fixing the system.
+- **Free guessing at the password route** — the same entry, widened by `cb11f6a`
+  on 2026-08-10. It is not a second finding and does not need a second line.
+- **A 422 handing back the value it refused** — recorded under
+  `OPEN_ITEMS.md § Code debt found and left in place` **and CLOSED there on
+  2026-08-10.** Re-derived in this pass: `server/app/main.py:94`
+  `validation_error_handler` exists and `:90` names the removed key. This is not
+  an outstanding gap.
+- **HTTPS** — a requirement of `ROADMAP.md § P1.2 — A server a shop can reach`,
+  not a later hardening pass, and named in that step's DONE WHEN.
+- **The daily report's sequential scan** — `PROJECT_STATUS.md § Known scaling limits`.
+- **A backup with no schedule, no off-site destination and no retention rule** —
+  two entries under `OPEN_ITEMS.md § Blocking one real paying shop`, one for the
+  schedule and the destination, one for the tooling's inability to reach a
+  database that is not local.
+- **Dumps unencrypted** — `PROJECT_STATUS.md § Earlier phases` puts encryption at
+  rest on the deliberately-not-built list beside scheduling, off-site upload and
+  retention. What that line does not say is WHAT the plaintext holds; that is an
+  item below.
+- **iOS has never run the migration** — `OPEN_ITEMS.md § Verification gaps — built, not proven`.
+- **Nothing pins a certificate, and the address is baked into the build** —
+  `ARCHITECTURE.md § 14.7 What the client requires, and what it costs to change`
+  records both in one paragraph, including the redistribution cost that makes
+  pinning repeat the same trap. **The advising session did not know this one was
+  already recorded.**
+- **No audit log of any kind** — `SRS_MAP.md § 3. The schema gap`, which states
+  that nothing records who changed a price, who retired a product or who signed
+  in. `ARCHITECTURE.md § 10. The three settled decisions` covers only the PROVIDER
+  side of it.
+- **No key rotation path for the JWT secret** — `SRS_MAP.md § 6. Security posture, per area`,
+  under Absent.
+- **The one-hour token and the absence of a refresh token** — the same subsection,
+  together with the two other decisions that rest on the number. The OFFLINE
+  consequence is not there, and is the first item below.
+- **How a licence is enforced** — `SRS_MAP.md § 7a. How a licence is enforced — nothing exists`,
+  with the per-term counts behind it.
+- **Printing exists nowhere and is assigned to the desktop** —
+  `SRS_MAP.md § 7c. Printing — nothing exists, and it may not be a late item`.
+  That a pilot needs a PC only because of the print decision is already stated at
+  `ROADMAP.md § P1.13 — The desktop scaffold`; what nobody has costed is a PC per
+  shop as a condition of sale.
+- **Weight typed by hand, and Excel export** — both on the out-of-MVP list at
+  `PROJECT_STATUS.md § What is NOT built`, and the typed weight is architecture:
+  `CLAUDE.md § Architecture` states it as a property of `mobile/`.
+
+**SECURITY**
+
+- **[MEASURED] A YARD WITH NO SIGNAL AT THE HOUR MARK CANNOT SIGN IN AGAIN, AND
+  THE QUEUE STOPS MID-SHIFT.** The three facts behind this are each recorded and
+  their CONJUNCTION is not. Measured in this pass:
+  `grep -rn "JWT_TTL_SECONDS" server/` returns `server/app/config.py:85` reading
+  the environment with the default `"3600"`, plus `server/.env:9` and
+  `server/.env.example:21` both setting 3600.
+  `grep -rniE "refresh_token|refresh token|/refresh" server/app/` returns ONE
+  line, `server/app/users.py:19`, and it is a comment saying there is none — no
+  route, no handler. The route inventory taken the same way
+  (`grep -rhoP '@(app|router)\.(get|post|put|patch|delete)\("([^"]+)"' server/app/*.py`,
+  32 distinct paths) contains `/auth/login` and nothing that renews anything, so
+  **re-authenticating is an HTTP round trip to the server or it does not happen.**
+  The consequence is the part nothing records: a shift longer than an hour in a
+  place with no signal ends holding a token the server will refuse, and the device
+  cannot get another until signal returns — the send queue meets 401 and stops,
+  with cash still crossing the table. The lesson at
+  lessons/401-is-about-the-caller-not-the-bill.md records the no-refresh decision
+  as deliberate and argues it for the ONLINE case, where signing in again is
+  available; this is the offline case that argument does not reach. The revocation
+  entry earlier in this file treats the absence of a refresh token only as a BOUND
+  on how long a stolen token lives, which is the same fact pointed the other way.
+  *Not done:* nothing. *Unblocks:* the owner deciding whether a yard is expected to
+  work a full shift out of signal, which is a question about the product rather
+  than about the token.
+- **[MEASURED] THERE IS NO API VERSION, SO ONE CONTRACT CHANGE BREAKS EVERY
+  HANDSET THAT HAS NOT BEEN UPDATED.** Measured:
+  `grep -rniE "api/v1|/v1/|API_VERSION" server/app/ --include='*.py'` exits **1**,
+  zero hits. **The negative carries a control in the same run** — the identical
+  command with `|/auth/login` added to the pattern returns 8 lines and exits 0, so
+  the instrument was looking where it was pointed. The 32 route paths inventoried
+  above carry no version segment of any kind, and `server/app/main.py:84`
+  constructs `FastAPI(title="Recycle Online API (Phase 2c-2)", lifespan=lifespan)`
+  with no `version` argument. Against that,
+  `ARCHITECTURE.md § 14.7 What the client requires, and what it costs to change`
+  records that the address is fixed at build time — so there is no way to force an
+  update, and no way for the server to tell an old client that it is obsolete. A
+  shop with six phones is six independent builds. *Not done:* nothing. *Unblocks:*
+  nothing built — it decides what a contract change costs on the day one is needed.
+- **[MEASURED] WHAT `mobile/app.json`'s `extra` CARRIES TODAY, AND WHAT DECIDES
+  WHAT IT CARRIES NEXT.** A release build is readable by anyone holding the app,
+  and `extra` is compiled into it. Measured by reading the file in this pass: it
+  holds `apiBaseUrl` and two `_comment` strings and nothing else, and
+  `mobile/app/config.ts` carries a written prohibition in its own text against
+  putting credentials back there, with the history of the one that sat in a
+  tracked file for months. **So the present contents are fine and the item is
+  about the future**: nothing reads that file at any boundary, no check names it,
+  and the prohibition is a comment. *The half this pass did not measure* is
+  whether anything ought to — a process question no command settles. *Not done:*
+  nothing.
+- **[UNVERIFIED] A DUMP HOLDS THE SELLERS' IDENTITY DOCUMENTS AND THE CLUSTER'S
+  PASSWORD HASHES, IN PLAINTEXT.** That the dump is unencrypted is recorded (see
+  the pointer above). What is not recorded is what it contains: `id_number` and
+  `address` are ordinary nullable columns on `sellers`, and the roles half of the
+  backup comes from `pg_dumpall`, which writes role definitions. A file that can
+  be copied off a laptop is therefore a file of national ID numbers with the
+  cluster's credentials beside them. *To confirm or refute:* read
+  `server/scripts/backup_db.py` for what the globals dump contains and whether
+  role passwords appear in it; grep `id_number` and `address` over
+  `server/migrations/versions/`; and open one produced dump in bytes rather than
+  reasoning about it. *Not done:* nothing.
+- **[UNVERIFIED] A PRICE CHANGE HAS NO AUTHOR WHILE A BILL NOW HAS TWO.** The
+  absence of an audit log is recorded (pointer above). The ASYMMETRY is not:
+  `purchase_bills` carries `created_by` and the void columns carry `voided_by`, so
+  the money rows name a person, while the master data that DECIDES what the money
+  rows say names nobody. A shop investigating a bad payout can see who wrote the
+  bill and not who moved the price it was written against. *To confirm or refute:*
+  `git grep -n "created_by\|voided_by" -- server/migrations/versions/` against the
+  column lists of `product_prices` and `products`. *Not done:* nothing.
+- **[UNVERIFIED] CHANGING THE JWT SECRET ENDS EVERY SESSION IN EVERY SHOP AT
+  ONCE.** The absence of a rotation path is recorded (pointer above); the blast
+  radius is not. One symmetric key signs every token for every tenant, so the
+  remedy for a leaked secret and the remedy for nothing are the same action, and
+  it signs out every yard on every phone at whatever moment it is taken. *To
+  confirm or refute:* read the claim list in `server/app/security.py` for a key
+  id, and grep `JWT_SECRET` over `server/app/` for any second key. *Not done:*
+  nothing.
+
+**AVAILABILITY**
+
+- **[MEASURED] ONE CONNECTION POOL SERVES EVERY TENANT AND NOTHING BOUNDS ANY
+  SHOP'S SHARE OF IT.** Measured: `server/app/db.py:43` is
+  `engine = create_async_engine(APP_DATABASE_URL, pool_pre_ping=True)` and `:50`
+  builds the directory engine the same way; a grep for `pool_size` and
+  `max_overflow` over that file returns nothing, so the library's defaults stand
+  and there is one pool for the whole product. One shop's traffic and one shop's
+  slow query draw from the same place as everybody else's.
+  `ARCHITECTURE.md § 14.6 What is NOT required — stated on purpose` already
+  records that no connection-count figure is fixed anywhere, which is the adjacent
+  fact and not this one. *Not done:* nothing.
+- **[MEASURED] NOTHING LIMITS THE SIZE OF A REQUEST BODY, AND THERE IS EXACTLY
+  ONE MIDDLEWARE IN THE WHOLE API.** Measured:
+  `grep -rn "middleware" server/app/ --include='*.py'` returns **one line**,
+  `server/app/main.py:160`, which is the clock guard. A grep for `max_length`,
+  `content-length`, `max_size` and `limit` over `server/app/main.py` returns
+  nothing, and no route sets one. So there is no layer at which a body limit could
+  be sitting unnoticed. **This one measurement bounds two other items** — the
+  attempt-limiting entry recorded elsewhere in this file, and the request-id item
+  below — because all three would live in the layer that holds one thing.
+  *Not done:* nothing.
+- **[UNVERIFIED] PHOTOGRAPHS WILL BE THE LARGEST DENIAL SURFACE IN THE SYSTEM,
+  AND THE ANGLE ALREADY RECORDED IS A DIFFERENT ONE.**
+  `OPEN_ITEMS.md § Decisions open — the owner's, not the code's` carries the photo
+  question as a BACKUP problem and as a queue-shape problem, and closes both
+  halves on S14 and S15. Neither half is about a client that retries: hard rule 8
+  writes the photo locally first, and a device queue with no give-up sends a
+  multi-megabyte payload again and again at a server with no body limit. The two
+  facts are recorded in different files and their product is recorded nowhere.
+  *To confirm or refute:* once a photo path exists, read the retry policy the
+  outbox gives that kind against the body limit the server sets, and measure one
+  photograph at the chosen resolution — the arithmetic in the recorded entry is
+  labelled unmeasured there and must not be carried forward as a figure.
+  *Not done:* nothing; no photo path is written.
+- **[MEASURED] NOTHING NAMES FAILOVER, A REPLICA, A STANDBY OR HIGH
+  AVAILABILITY.** Measured with `grep -rciE` over `OPEN_ITEMS.md`,
+  `PROJECT_STATUS.md`, `ROADMAP.md`, `ARCHITECTURE.md`, `SRS_MAP.md` and
+  `BRIEFING.md`: `failover` 0, `standby` 0, `high availability` 0, `replica` 2 —
+  and both of those two are `rolreplication` and `session_replication_role` in
+  role listings, neither about redundancy. **Control in the same run:**
+  `tenant_id` returns hits in all six files, so the instrument read all six. The
+  hosting model IS settled — S13 at `ROADMAP.md § What the owner has settled` puts
+  production on the owner's own machine with a domain and a tunnel — and nothing
+  anywhere says what happens when that machine is off. *The related step that DOES
+  exist:* `ROADMAP.md § P2.3 — An off-site restore of real shop data` exists
+  precisely so that the first restore of real data is not the one performed in an
+  emergency, so the rehearsal half is scheduled and the redundancy half is not.
+  *Not done:* nothing.
+
+**OPERATIONS**
+
+- **[MEASURED] NOTHING MONITORS AND NOTHING ALERTS, SO THE SHOPS LEARN OF AN
+  OUTAGE BEFORE THE VENDOR DOES.** Measured the same way as the item above:
+  `monitoring|alerting|on-call|pager` returns exactly one hit across the six
+  documents, and it is the word "pager" at `OPEN_ITEMS.md:1719` meaning a thing
+  you read a proof through. The same six-file control applies. **S4's provider
+  screen is the seed of this and is not the thing** —
+  `ROADMAP.md § What the owner has settled` settles a screen showing when each
+  shop last sent a bill, and a screen is something a person has to open; an alert
+  is something that finds the person. *Not done:* nothing. *Unblocks:* the owner
+  deciding whether the vendor is expected to notice an outage at all.
+- **[MEASURED] TWO MODULES LOG, AND NOTHING CARRIES A REQUEST ID.** Measured:
+  `grep -rniE "^import logging|logging\.|logger" server/app/ --include='*.py'`
+  returns six lines in two files — `server/app/bills.py` at `:11`, `:28`, `:110`
+  and `:515`, and `server/app/clock_guard.py` at `:34` and `:42`. There is no
+  logging configuration and no formatter, and
+  `structured log|json log|request id|correlation id` returns zero across the six
+  documents under the control above. So a shop reporting that a bill did not go
+  through cannot have that joined to anything the server wrote, and the one path
+  that logs at all is the bill path. *Not done:* nothing.
+- **[MEASURED] THERE IS NO DEPLOYMENT PATH, NO CI CONFIGURATION AND NO
+  ROLLBACK.** Measured: `ls .github` and `ls .gitlab-ci.yml` both report no such
+  file or directory, and `rollback|blue-green|rolling deploy` returns zero across
+  the six documents under the control above. `PROJECT_STATUS.md § Current phase`
+  already records that there is no CI and no hook that runs a proof, which is the
+  same absence seen from the proofs' side; **what is added here is that no CI
+  configuration exists in the tree at all, and that nothing anywhere describes how
+  a change reaches a shop or how it is taken back out.** *Not done:* nothing.
+- **[MEASURED] A SHOP THAT LEAVES CANNOT TAKE ITS DATA WITH IT.** Measured:
+  `data export|export their data|shop that leaves|offboard` returns zero across
+  the six documents under the control above. The nearest recorded thing is Excel
+  export on the out-of-MVP list, which is a REPORTING feature and not this — this
+  is every bill, seller and price for one `tenant_id`, in a form somebody else can
+  read, produced without a developer. *Not done:* nothing. *Unblocks:* what the
+  contract can promise a shop about its own records.
+- **[UNVERIFIED] THERE IS NO SUPPORT PATH FOR A STUCK BILL.** A bill that will not
+  send is visible on the handset by design — hard rule 8 requires the failure to
+  be visible — and there is no route by which anybody outside the yard can see it,
+  ask about it, or clear it. The nearest thing that exists is a developer with a
+  database. *To confirm or refute:* read the outbox's terminal states against the
+  question "what does the operator do next", and check whether any recorded step
+  gives the provider a read of one shop's queue.
+  `ARCHITECTURE.md § 14. What this system requires of a host` notes that a support
+  path speaking only to the host is a different thing from one inside the product.
+  *Not done:* nothing.
+- **[MEASURED] WHAT A LAPSED LICENCE DOES IS ALREADY DECIDED, AND THE FILE THAT
+  CALLS IT UNRESOLVED HAS NOT BEEN TOLD — SO THIS ITEM AS RAISED WAS WRONG.** It
+  was raised as "no licence enforcement behaviour decided". **It is decided.**
+  `ROADMAP.md § What the owner has settled` D3 — that file's own D-space, and not
+  `ARCHITECTURE.md`'s, which numbers a different D3 — settles that a lapsed
+  licence does NOT stop a shop trading: it warns on screen and withholds what is
+  not the act of buying and selling, on the argument that the shop is not the
+  party who failed to pay. Against that,
+  `SRS_MAP.md § 7a. How a licence is enforced — nothing exists` still names what a
+  lapsed licence does to a shop that has already bought a load today as the one
+  question nothing answers. **Both sentences are in the tree and one of them is
+  stale.** What IS still absent is any implementation: measured in this pass,
+  `grep -rniE "licen[cs]e" server/app server/migrations` exits **1** — no licence,
+  subscription, lapse or expiry concept reaches the code. *Not done:* nothing.
+  *Unblocks:* a correction pass over that survey file, which is outside this
+  section's scope.
+
+**FLOW**
+
+- **[MEASURED] THERE IS A SEARCH, AND IT IS THE SELLER PICKER'S — THE CLAIM THAT
+  THERE IS NONE IS FALSE.** Raised as "no search anywhere, with seller lists that
+  grow". Measured by reading the file: `mobile/app/SellerPicker.tsx:5` describes
+  itself as "a SEARCH screen with a list under it, not a list to scroll", `:126`
+  renders the box, whose placeholder at `:129` is `ค้นหา: ชื่อ / รหัส / ทะเบียนรถ`, and
+  `:89` calls `searchSellers`, defined at `mobile/src/cart/sellers.ts:148`. It
+  matches code, name and the plates THIS DEVICE has recorded, which that file's
+  own header explains. **What is true after the correction, and it is narrower:**
+  the search is a linear scan in memory over the cached list, so its cost grows
+  with the list rather than with the query; no server route takes a search
+  parameter, none of the 32 paths inventoried above; and nothing else — bills,
+  products — has one at all. *Not done:* nothing.
+- **[MEASURED] ONE TYPO RE-KEYS A WHOLE BILL, BECAUSE NOTHING REISSUES FROM AN
+  EXISTING ONE.** Hard rule 5 makes void-and-reissue the only correction, and the
+  reissue half is hand typing. Measured:
+  `grep -rniE "reissue|re-issue|duplicate the bill|copy a bill" mobile/app mobile/src server/app`
+  exits **1**. **Control in the same run** — the identical command with `|void`
+  added to the pattern returns 80 files and exits 0, so the instrument was reading
+  the same trees. *Not done:* nothing. *Unblocks:* how long a correction takes at
+  a weighbridge with a queue behind it.
+- **[MEASURED] ONE PRICE LIST PER SHOP IS A SCHEMA CONSTRAINT, NOT AN OMISSION.**
+  Measured: `server/migrations/versions/0001_initial_schema.py:171` declares
+  `CONSTRAINT uq_prices_tenant_product_grade UNIQUE (tenant_id, product_id, grade)`,
+  so a shop holds exactly one price per product per grade and there is nowhere to
+  put a second list. No table carries a branch or location column. **A shop with
+  two yards is therefore two tenants, or it is one price** — and neither answer
+  has been written down. *Not done:* nothing. *Unblocks:* what a shop with
+  branches is sold.
+- **[UNVERIFIED] THE TYPED WEIGHT IS WHERE ERROR AND FRAUD ENTER, AND THE ONLY
+  THING ANSWERING IT IS A PHOTOGRAPH.** That the weight is typed is architecture
+  and is recorded (pointer above); the exposure is not. Nothing cross-checks the
+  number, and the shop's only corroboration is S12's photograph of the display,
+  which carries more of this system's integrity than its one line suggests. *To
+  confirm or refute:* read whether any recorded step gives that photograph an
+  obligation — must exist, must be taken at weighing — or leaves it optional, and
+  whether anything compares gross minus tare against net at the edge. *Not done:*
+  nothing.
+
+**DEVICES**
+
+- **[MEASURED] NOTHING NAMES A TABLET OR A LARGER SCREEN.** Measured:
+  `tablet|iPad|larger screen` returns zero across the six documents under the
+  control above. The app is phone-shaped by construction, and a weighbridge desk
+  is a plausible place for something bigger. *(`mobile/app.json` sets
+  `ios.supportsTablet` true, which is an Expo build flag and not a layout — it
+  says the binary may install, not that a screen was designed.)* *Not done:*
+  nothing.
+- **[UNVERIFIED] THE DESKTOP WILL BE A SECOND CODEBASE SHARING ONE PACKAGE, SO
+  EVERY SCREEN IS BUILT TWICE.** `packages/shop-time` is the shared piece and was
+  created for exactly this reason; everything else — the refusal vocabulary, the
+  bill card, the money formatting, the offline states — is written once for Expo
+  and would be written again for Electron. Searched
+  `built twice|written twice|two implementations` over the six documents: the hits
+  are about the be-year offset and not about the client surface, so the cost is
+  not recorded. *To confirm or refute:* once `desktop/` has code, count the
+  modules imported from `packages/` against the modules written under
+  `desktop/src/`. *Not done:* nothing; `desktop/` holds one tracked file.
   
