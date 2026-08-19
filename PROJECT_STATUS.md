@@ -124,6 +124,72 @@ false of the code it described.
 - Every other proof still lacks the exit preset the new lesson prescribes —
   queued in `OPEN_ITEMS.md § Code debt found and left in place`.
 
+**SUPERSEDED 2026-08-20, SAME DAY: THE DEVICE PASS RAN AND THE PHASE CLOSES AT
+THIS ENTRY.** The first not-established bullet above is closed; the readings,
+their attestations, and what still stands unobserved follow. Every value below
+was read OUT OF POSTGRES (`recycle` on `recycle_pg`, read-only psql through
+docker exec), never off a screen and never from the owner's account of it.
+
+**The attestations, measured and not reported.** Tree clean at `bbef7a6`
+(committed 2026-08-20T00:41:10+07:00). `recycle_pg` healthy on 5544. uvicorn
+`app.main:app --host 0.0.0.0 --port 8000` from `server/.venv`, process created
+2026-08-20 00:44:28+07 — three minutes AFTER the commit. Metro's live process
+argv reads `expo start -c` (created 00:44:51+07); the `-c` in the argv is the
+measured half of the cache attestation, the cache-observed-empty half is the
+owner's report from start time. The request through the changed path is the
+observations themselves: the changed program is the mobile bundle (this phase
+touched no server route), and all three bills below reached Postgres at
+00:49–01:03+07, after both processes started.
+
+**(a) ORDERING, two bills weighed offline by staff, 19 seconds apart.**
+`B-2569-398`: device_created_at 17:48:55.033Z, server_received_at
+17:49:56.811Z. `B-2569-399`: device_created_at 17:49:14.360Z,
+server_received_at 17:49:56.899Z. The doc_no order FOLLOWS the
+device_created_at order, both landed 88 ms apart in one reconnect drain — the
+head settled before the second was sent — and THE COUNTER MOVED: doc_no_counters
+for the tenant at be_year 2569 reads last_seq 400, the tip before this pass was
+`B-2569-397` (received 2026-08-18), so the pass consumed exactly three
+consecutive seqs, 397 → 400, no gap and no rewind.
+
+**(b) A VOID ON AN ALREADY-SYNCED BILL, requested offline by admin, applied
+after reconnect.** `B-2569-398` (synced 17:49:56Z, eleven minutes earlier):
+voided_at 18:01:07.390Z, voided_by = the admin id, void_reason present —
+`ck_bills_void_consistency` enforces the triple, and non-refusal's server-side
+evidence is voided_at NOT NULL. The requested-to-applied span is a DEVICE-LOCAL
+fact (`void_requested_at` lives only in the handset's SQLite) and was not read
+from this box; the offline span is not a defect.
+
+**(c) THE SHARPEST: one bill simultaneously awaiting send and carrying a void
+request — the STOP-4 repair read directly.** `B-2569-400`, weighed offline by
+admin at device_created_at 18:02:07.365Z and void-requested before it had ever
+synced. After reconnect: server_received_at 18:03:15.981087Z, voided_at
+18:03:16.148933Z. **The interval is 167.846 ms**, against a 4-second poll
+interval. That reading supports ONE PASS — the send settled, the void became
+actionable and was read and applied in the SAME pass — and excludes the
+reversed-registry-order behaviour, in which the void waits out a whole poll
+interval. `SENDS-SETTLE-BEFORE-VOIDS-ARE-READ` holds on the device.
+
+**WHAT THE PASS ESTABLISHED, AND ITS EDGES.** One handset, one Android debug
+build served by Metro over one LAN address, one tenant, the dev database, one
+staff and one admin account. Nothing here is about a release build, a second
+device, iOS, or a route off this network. Still UNOBSERVED after this pass: the
+poison alarm driven to yellow and red on a handset; a real 424 parking a bill
+on the wire; the sign-out gate, sheet and strip under an owed void
+(EVERY-SURFACE, out of this phase's scope by design); `prove:forbidden` still
+does not carry the leaked-lock catch (it refuses before any engine runs) and an
+engine-level send-403 still has no headless driver; and everything in the
+design's own not-covered list — the seller kind, a large binary, a second
+process.
+
+**AND WHAT P1.18 DOES NOT GIVE ANYBODY, said so the step is not read as a
+feature.** The mechanism carries the same two kinds the device carried before;
+no operator sees anything they did not see before this phase. The seller kind
+is not built and waits on the owner's open decision about identity across
+offline devices. The step's value is a claim about FUTURE work: photographs and
+offline seller creation stop paying the parallel-path cost the void paid —
+nine columns, a second outcome union, a second transport method and six store
+methods, per kind — and that value is realised only when the next kind lands.
+
 **P1.18 STAGE 2c — THE PRINTED DRAIN IS REMOVED, THE TWO DEFECTS NO PROOF CATCHES
 ARE REPAIRED, AND DESIGN REVIEW ENDS. Documentation only, 2026-08-19.** A second
 independent review read the stage-2b design and criteria and fired the stop: five
