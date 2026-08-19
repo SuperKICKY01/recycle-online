@@ -276,9 +276,24 @@ async function case4CrashDuringSyncing(harness: StoreHarness): Promise<void> {
   const beforeRecovery = await rebooted.listReadyToSend(r.clock.now(), 10);
   check("without recovery it would never be sent again", beforeRecovery.length === 0);
 
+  // CHANGED at P1.18 stage 3 by a named behaviour change: recoverInterrupted
+  // returns a map keyed by kind — the boot sweeps THROUGH the registry, and
+  // the key set equalling the kind set is the only observable a kind with a
+  // no-op recovery has (a boot calling resetSyncingToPending directly could
+  // not produce it).
   const recovered = await engine.recoverInterrupted();
   const afterRecovery = await rebooted.getBill(bill.id);
-  check("startup recovery returns it to pending", recovered.length === 1 && afterRecovery?.sync_state === "pending", `recovered=${JSON.stringify(recovered)}`);
+  check(
+    "startup recovery returns it to pending, reported under its kind",
+    recovered.bill_send.length === 1 && recovered.bill_send[0] === bill.id &&
+      afterRecovery?.sync_state === "pending",
+    `recovered=${JSON.stringify(recovered)}`,
+  );
+  check(
+    "the recovery map's key set EQUALS the kind set",
+    Object.keys(recovered).sort().join(",") === "bill_send,bill_void",
+    JSON.stringify(Object.keys(recovered)),
+  );
 
   const run = await engine.runOnce();
   const after = await rebooted.getBill(bill.id);
@@ -376,7 +391,19 @@ async function case6DoubleTrigger(harness: StoreHarness): Promise<void> {
   const after = await r.store.getBill(bill.id);
 
   check("transport was entered once for this bill", gated.started.length === 1 && counter.get(bill.id) === 1, `started=${JSON.stringify(gated.started)} sends=${counter.get(bill.id)}`);
-  check("one run sent it, the other skipped it", r1.attempted + r2.attempted === 1 && r1.skippedInFlight + r2.skippedInFlight === 1, `run1=${JSON.stringify(r1)} run2=${JSON.stringify(r2)}`);
+  // CHANGED at P1.18 stage 3 by a named behaviour change: the process-scoped
+  // pass lock (PASSES-OVERLAP-AND-ORDER-HOLDS). The losing pass no longer
+  // reads the queue and skips the held head — it RETURNS WITHOUT READING
+  // ROWS, so it reports nothing at all, and skippedInFlight's live meaning
+  // narrows to a lost durable claim. The durable guard's own cell above ("a
+  // competing claim on an in-flight bill is refused") is unchanged.
+  check(
+    "one run sent it, the other returned without reading rows",
+    r1.attempted + r2.attempted === 1 &&
+      r1.synced + r2.synced === 1 &&
+      r1.skippedInFlight + r2.skippedInFlight === 0,
+    `run1=${JSON.stringify(r1)} run2=${JSON.stringify(r2)}`,
+  );
   check("bill ends synced", after?.sync_state === "synced");
   invariant(r, created);
 }

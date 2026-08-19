@@ -1,13 +1,12 @@
 /**
  * THE TWO HANDLERS AND THE REGISTRY LITERAL.
  *
- * Each handler is the transcription of one of `engine.ts`'s hand-written
- * drains into the members `OutboxHandler` names — the store calls, the
- * counter increments and the schedules are the ones `sendOne` and
- * `applyVoids` make today, moved and not redesigned. While `runOnce` still
- * calls those loops (stage 3 commit 1), the mapping exists twice; commit 2
- * deletes the loops and this file becomes the only copy, which is the design's
- * point: one producer per kind, imported and not retyped.
+ * Each handler is the transcription of one of the hand-written drains
+ * `engine.ts` carried until stage 3 (last present at `47d17ab`) — the store
+ * calls, the counter increments and the schedules are the ones `sendOne` and
+ * `applyVoids` made, moved and not redesigned. Commit 2 deleted those loops,
+ * so this file is the only copy of each mapping, which is the design's point:
+ * one producer per kind, imported and not retyped.
  *
  * THE REGISTRY LITERAL IS HERE, outside src/proof on purpose: both typecheck
  * programs read this file, so adding a member to `OutboxKind` reddens BOTH
@@ -267,8 +266,9 @@ export function billVoidHandler(deps: OutboxDeps): OutboxHandler<LocalBill, Void
         case "rejected":
           // The server refused the VOID ITSELF (404/400/422): permanently, and
           // under the client-minted code clearVoidRefusals never retracts —
-          // the whole argument sits on engine.ts's rejected arm and on
-          // VOID_REJECTED_CODE in types.ts.
+          // the whole argument (both consumers of the code, and why reusing
+          // the 403's marker would break each of them) sits on
+          // VOID_REJECTED_CODE in sync/types.ts.
           await deps.store.markVoidRefused(row.id, VOID_REJECTED_CODE, o.reason, attempt, now);
           result.voidsRejected += 1;
           return;

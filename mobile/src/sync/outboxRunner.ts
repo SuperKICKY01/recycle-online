@@ -8,8 +8,9 @@
  * enumerating the registry, in member order.
  *
  * RUNNER STATE OUTLIVES A PASS — the design's rule: the halted-kind set and
- * the in-flight key set live on the runner (the scope today's engine gives
- * sendForbidden and inFlight), and the per-kind pass lock outlives even the
+ * the in-flight key set live on the runner (the scope the engine's own
+ * sendForbidden and inFlight fields carried before stage 3 moved both onto
+ * this class), and the per-kind pass lock outlives even the
  * runner object — it is PROCESS-scoped (see PASS_LOCKS below), because the
  * serialisation claim the design makes is about one JavaScript context and a
  * second runner instance is the same context. `claim` (the durable
@@ -100,7 +101,9 @@ export class OutboxRunner {
    * drain returns without reading rows on every later pass until retracted.
    * Deliberately in memory and not persisted — a restart costs one request,
    * and that request is the only way the device ever discovers the refusal
-   * was lifted (the whole argument sits on engine.ts's sendForbidden field).
+   * was lifted (the whole argument sits on `halt_kind`'s doc in ./outbox.js;
+   * it carried over unchanged from the engine's sendForbidden field, which
+   * this set replaced in stage 3).
    */
   private readonly halted = new Set<OutboxKind>();
 

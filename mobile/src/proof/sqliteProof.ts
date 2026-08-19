@@ -372,6 +372,8 @@ async function s4DurabilityAcrossRestart(): Promise<void> {
     backoffBaseMs: 1000,
   });
   const readyBeforeRecovery = await store2.listReadyToSend(clock.now(), 10);
+  // A map keyed by kind since P1.18 stage 3 — the stranded send is reported
+  // under bill_send, which is the one kind with durable in-flight state.
   const recovered = await engine.recoverInterrupted();
   const afterRecovery = await store2.getBill(willBeSyncing.id);
 
@@ -382,7 +384,9 @@ async function s4DurabilityAcrossRestart(): Promise<void> {
   );
   check(
     "reopen + recovery returns exactly the stranded bill to pending",
-    recovered.length === 1 && recovered[0] === willBeSyncing.id && afterRecovery?.sync_state === "pending",
+    recovered.bill_send.length === 1 &&
+      recovered.bill_send[0] === willBeSyncing.id &&
+      afterRecovery?.sync_state === "pending",
     `recovered=${JSON.stringify(recovered)} state=${String(afterRecovery?.sync_state)}`,
   );
 

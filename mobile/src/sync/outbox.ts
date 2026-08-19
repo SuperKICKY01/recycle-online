@@ -8,7 +8,8 @@
  * supply; it constructs nothing.
  *
  * WHY THIS IS NOT "EXTRACT THE COMMON LOOP", and the measurement that says so.
- * `engine.ts` holds two drains that are DELIBERATELY DIFFERENT, and each
+ * `engine.ts` held two hand-written drains at `91d49d0` — moved onto this
+ * mechanism in stage 3 — that are DELIBERATELY DIFFERENT, and each
  * difference has a device incident behind it:
  *
  *   send   strict head-of-line over listPendingOldestFirst, queue read WITHOUT

@@ -655,6 +655,13 @@ export default function App() {
         });
 
         const recovered = await engineRef.current.recoverInterrupted();
+        // A map keyed by kind since P1.18 stage 3 — the boot sweeps THROUGH
+        // the registry. The toast counts every kind's rows; today only the
+        // send kind has durable in-flight state to sweep.
+        const recoveredCount = Object.values(recovered).reduce(
+          (n, ids) => n + ids.length,
+          0,
+        );
         // The loader now decides WHETHER this person may have the draft; what
         // comes back is the one they own, plus how many were kept back.
         const loaded = await draftStore.load();
@@ -699,7 +706,7 @@ export default function App() {
         setReady(true);
         setStatus(
           API_BASE_URL +
-            (recovered.length > 0 ? ` · กู้คืน ${String(recovered.length)} บิลที่ค้าง` : "") +
+            (recoveredCount > 0 ? ` · กู้คืน ${String(recoveredCount)} บิลที่ค้าง` : "") +
             (restored ? ` · พบบิลค้างไว้ ${String(restored.lines.length)} รายการ` : "") +
             ` · ในเครื่อง: สินค้า ${String(cache.products.length)} · ผู้ขาย ${String(cache.sellers.length)} ราย`,
         );

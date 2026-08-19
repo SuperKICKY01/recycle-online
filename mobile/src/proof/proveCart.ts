@@ -286,17 +286,20 @@ async function c4EngineNeverSeesADraft(): Promise<void> {
 
   const ready = await billStore.listReadyToSend(clock.now(), 100);
   const pending = await billStore.listByState("pending");
+  // A map keyed by kind since P1.18 stage 3; summed here because this cell is
+  // about NOTHING being recovered, whichever kind it would have come from.
   const recovered = await engine.recoverInterrupted();
+  const recoveredCount = recovered.bill_send.length + recovered.bill_void.length;
   const run = await engine.runOnce();
 
   console.log(`  draft rows: 1 header, ${String(draftLineCount)} lines`);
-  console.log(`  engine sees ready=${String(ready.length)} pending=${String(pending.length)} recovered=${String(recovered.length)}`);
+  console.log(`  engine sees ready=${String(ready.length)} pending=${String(pending.length)} recovered=${String(recoveredCount)}`);
   console.log(`  runOnce -> ${JSON.stringify(run)}   billsOnServer=${String(server.billCount)}`);
 
   check("the draft really is stored", draftLineCount === 3);
   check("listReadyToSend returns nothing", ready.length === 0);
   check("listByState('pending') returns nothing", pending.length === 0);
-  check("startup recovery finds nothing to recover", recovered.length === 0);
+  check("startup recovery finds nothing to recover", recoveredCount === 0);
   check("the engine attempted zero sends", run.attempted === 0 && run.synced === 0);
   check("nothing reached the server", server.billCount === 0);
 

@@ -2463,6 +2463,25 @@ an artefact rots; a list the reader can finish counting does not.
       record(row: Row, o: Outcome, d: OutboxDisposition, attempt: number, now: Date): Promise<void>;
     }
 
+**SUPERSEDED 2026-08-20, stage 3 — `record` carries two further parameters, and
+this is a dated correction to the printed member above, derived rather than
+chosen.** The chain: `classify` returns a disposition that deliberately carries
+no reason, so the RUNNER cannot tell a 401 from an offline bounce —
+`sessionExpired` versus `retryable` is a fact about `SendOutcome`, and both
+classify `retry`; only the handler holds the raw outcome; and `record` is the
+only member that runs after it. So the interface as printed cannot satisfy this
+design's own pass-report requirement below ("every field those six lines read
+must still be produced") — and `backoffsCleared` seals it, because that field is
+the return value of a store write only `record` makes, so no runner and no pure
+member can fill it. The signature built at `47d17ab` is
+`record(row, o, d, attempt, next: Date | null, now, result: SyncRunResult)`:
+`next` is the option the inherits section below already names in its own words
+(the drain calls `nextAttemptAt` and its "result handed to `record`"), and
+`result` is the kind's own fold of its outcome into the pass counters — one
+member per thing `engine.ts` did for exactly one kind, which is this
+interface's own generative sentence. Both independent reviews of this design
+ran against the printed form; this paragraph is why the tree disagrees with it.
+
 `recover` is on the handler and not in a boot function because the only sweep
 that exists is `resetSyncingToPending`, whose statement is
 `UPDATE local_bills ... WHERE sync_state = 'syncing'` — one table, no kind
@@ -2856,6 +2875,18 @@ pins four of these fields structurally: `PassEvidence` is a `Pick` off
 `SyncRunResult`, so renaming one there is a compile error rather than a branch that
 quietly stops matching, and `forbidden` is absent from that `Pick` ON PURPOSE.
 A per-kind result may be ADDED beside it; it may not replace it silently.
+
+**SUPERSEDED 2026-08-20, stage 3, in one clause of the paragraph above: "on a
+LOST DURABLE CLAIM and on nothing else" was FALSE of the code it described.** At
+`91d49d0` the send loop also called `noteSkip` on the in-memory in-flight hold —
+the branch at `engine.ts:347-349` at that sha, whose own comment reads "Being
+sent by another pass. Also a stop, not a skip" — so the field had two writers,
+not one. The runner transcribes both branches. What then makes the sentence TRUE
+of the mechanism, by a route this design did not argue: under the process-scoped
+pass lock a second pass over the send kind returns without reading rows, so
+within one process the held-head branch is unreachable for `bill_send` and a
+lost durable claim is the field's one live writer — the held-head skip stays as
+defence in depth.
 
 ---
 

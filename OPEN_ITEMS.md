@@ -1208,6 +1208,19 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Code debt found and left in place
 
+- **EVERY PROOF EXCEPT `proveOutbox.ts` CAN EXIT 0 WITH ITS RUN INCOMPLETE —
+  found 2026-08-19 by a disproof that READ AS A PASS, and swept nowhere.**
+  Each proof assigns its verdict in a trailing `.then`, and node's natural
+  exit status defaults to success: a staged deadlock (an awaited signal that
+  never comes) drains the event loop and the process exits 0 mid-proof with
+  no exit line — measured when the leaked-pass-lock disproof printed EXIT=0
+  over nine [FAIL] cells with `OUTBOX_EXIT=` absent. The rule and the whole
+  incident are in `lessons/a-default-exit-code-is-a-default-verdict.md`; the
+  remedy (preset `process.exitCode = 1` at entry, cleared only by a completed
+  run) is applied in `proveOutbox.ts` alone, because the sweep was outside
+  that commit's declared file set. *Not done:* the same preset in every other
+  proof entrypoint — one line each, no behaviour change on any completed run.
+
 - **THE ADD-SELLER SHEET DOES NOT APPEAR ON THE FIRST PRESS — diagnosed
   2026-08-17 from the source, not guessed from the symptom, and NOT
   REPAIRED.** Two sibling `<Modal>` components — `mobile/app/SellerPicker.tsx:105`

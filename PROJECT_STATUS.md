@@ -57,6 +57,73 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.18 STAGE 3 — THE OUTBOX MECHANISM IS BUILT AND `runOnce` RUNS IT; THE TWO
+HAND-WRITTEN DRAINS ARE DELETED. Code, two commits: `47d17ab` (2026-08-19) and
+the commit carrying this entry (2026-08-20). THE PHASE DOES NOT CLOSE HERE —
+the device pass has not run.** This entry supersedes the stage 2c entry below.
+
+Commit 1 built the mechanism BESIDE the untouched engine: `OutboxRegistry` as a
+mapped type over the two bill kinds, two handlers transcribing the drains, one
+generic runner (policy-driven blocking and re-read, durable per-kind halts, a
+PROCESS-scoped pass lock, the horizon refusal at the per-row write), the two
+owed-count store members, and `prove:outbox` — 75 cells, green twice, with the
+compile break reddening both typecheck programs at the registry literal, a
+third-kind drain probe, and three deliberate breaks each moving the cells named
+in advance. One lesson landed with it
+(`lessons/a-default-exit-code-is-a-default-verdict.md`: a disproof had read as
+a pass because node exits 0 when an unsettled await drains the event loop).
+
+The commit carrying this entry switched `runOnce` to the runner and DELETED
+`sendOne`, `applyVoids`, the engine's in-flight set and the `sendForbidden`
+flag — the runner's halted set replaces it, retracted by `resumeAfterSignIn`
+and `resetAfterSignOut` and by nothing else. `recoverInterrupted` now returns a
+map keyed by kind whose key set equals the kind set. Observed at this
+boundary, all commands bare with status read in the same invocation: both
+typecheck programs exit 0; all 29 declared `prove:*` scripts ran twice with no
+reseed — 25 exit 0 twice; prove:forbidden (1), prove:login (1),
+prove:loginscreen (1) and prove:sellercreate (2) refuse in their own output for
+want of a live API, exits identical across runs, with zero listeners measured
+on their target ports against a 55-listener control. THE LEAKED-LOCK CATCH IS
+MEASURED, NOT ARGUED: with the pass-lock release deliberately removed, the six
+headless `runUntilQuiescent` files went red individually — prove:sync 1,
+prove:void 1, prove:clock 1, prove:signout 1 (a crash, loud), prove:voidterminal
+1, prove:voidowner 1 — and the seventh, prove:forbidden, refuses pre-engine and
+cannot carry the catch; the runner was restored byte-exact (sha256) and
+canaries re-ran green. Proof edits forced by named behaviour changes, and only
+those: the recovery map's shape (proveSync, proveCart, sqliteProof), and
+proveSync CASE 6's overlapped pass, which now RETURNS WITHOUT READING ROWS
+instead of skipping the held head — the rule `PASSES-OVERLAP-AND-ORDER-HOLDS`
+mandates. Per-file assertion counts against the base commit decreased nowhere.
+Two dated design corrections went into `ROADMAP.md § P1.18` as supersessions:
+`record`'s two stage-3 parameters, and the `skippedInFlight` clause that was
+false of the code it described.
+
+**WHAT THIS PHASE HAS NOT ESTABLISHED, plainly.**
+- **NOTHING HAS BEEN OBSERVED ON A DEVICE.** The three Postgres-read
+  observations — two bills weighed offline in a known order with the counter's
+  MOVEMENT, a void requested offline and applied after reconnect, and one bill
+  simultaneously awaiting send and carrying a void request — are UNOBSERVED.
+  They need the owner at the handset (`npx expo start -c`, cache confirmed
+  empty, full reload) against a server whose start time postdates the commit
+  under test, on a tree measured clean at that commit. The phase stays open
+  until they are read.
+- The HANDSET and SERVER halves of the criteria are unobserved: the poison
+  alarm driven to red on a handset, a real 424 parking a bill, real doc_no
+  order read out of Postgres.
+- EVERY-SURFACE-COUNTS-EVERY-KIND is untouched BY DESIGN — no screen was in
+  scope — so the sign-out gate, the sheet and the strip still count bills
+  only, `OutboxOwed` does not exist yet, and the strip still reads ส่งครบแล้ว
+  over an owed void. That criterion's only landed parts are `unsentBreakdown`
+  on the `LocalStore` contract and the headless owed/owedCount separation.
+- No headless proof drives an engine-level send-403: only the API-bound
+  prove:forbidden does. The halt path is proven at the runner level
+  (prove:outbox O9) and the engine methods are one-line delegations.
+- The seller kind, a large binary, and a second process: absent, per the
+  design's own not-covered list. The pass lock is in-process; `claimForSend`
+  remains the only cross-process guard.
+- Every other proof still lacks the exit preset the new lesson prescribes —
+  queued in `OPEN_ITEMS.md § Code debt found and left in place`.
+
 **P1.18 STAGE 2c — THE PRINTED DRAIN IS REMOVED, THE TWO DEFECTS NO PROOF CATCHES
 ARE REPAIRED, AND DESIGN REVIEW ENDS. Documentation only, 2026-08-19.** A second
 independent review read the stage-2b design and criteria and fired the stop: five
