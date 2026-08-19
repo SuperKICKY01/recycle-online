@@ -2591,54 +2591,84 @@ rather than by failing.
   blocks correctly, and the pass can never pick up a row its own success just
   released. It is the send kind with its second half removed.
 
-**ONE DRAIN, NO HAND-WRITTEN LOOP PER KIND.** The policy selects branches inside a
-single function, and the function is generic over `Row` and `Outcome` so it can
-name no kind. **A CURSOR OVER A BATCH, NEVER `batch[0]`**, and the loop is bounded
-three ways:
+**ONE DRAIN, NO HAND-WRITTEN LOOP PER KIND — AND IT IS STATED AS RULES, NOT
+PRINTED AS CODE.** The policy selects behaviour inside a single function, and the
+function is generic over `Row` and `Outcome` so it can name no kind. The rules
+that function must satisfy — each of which has a criterion below that can turn
+red, which a printed line does not:
 
-    // halted, inFlight and lock belong to the RUNNER, not to the pass.
-    if (halted.has(h.kind)) return;                   // device-global, ACROSS passes
-    if (h.policy.concurrency === "serial_per_kind" && !lock.tryAcquire(h.kind)) return;
+- **Runner state outlives a pass.** The set of halted kinds, the in-flight key
+  set, and the per-kind pass lock belong to the RUNNER — not to a pass and not
+  to a row. A pass over a `serial_per_kind` kind that cannot take the lock
+  returns without reading rows; a `parallel_rows` kind takes no lock. **The
+  lock is released on every exit path out of the pass, a throw out of
+  `perform` included** — recorded as a constraint on stage 3 in the inherits
+  section below, with the proof that catches a leak.
+- **Kinds drain in a FIXED order within one pass, and `bill_send` drains to its
+  stop before `bill_void`'s owed rows are read.** Transcribed, not chosen:
+  `engine.ts:394` calls `applyVoids` after the send loop closes at `:386`, and
+  the comment at `:388-393` carries the reason — a bill created offline and
+  voided offline becomes void-owed the instant its send settles
+  (`listVoidsToApply` requires `sync_state = 'synced'`), so the void applies in
+  the SAME pass; reversed, the void stays owed for a whole poll interval, and a
+  crash in that window looks exactly like a bill the owner cancelled while the
+  server still shows it as active. The runner drains kinds in the order it
+  enumerates the registry, so the member order of the registry literal is
+  LOAD-BEARING; no criterion in the previous revision read that order —
+  re-derived 2026-08-19 by searching that criteria set for *same pass*,
+  *order*, *before*, *after* and *enumerat*: every hit is within one kind or
+  about registry totality — and `SENDS-SETTLE-BEFORE-VOIDS-ARE-READ` below now
+  pins it.
+- **A batch is iterated by CURSOR, never by re-selecting its first row.** A
+  pass reads `owed(limit)` into a batch and moves a cursor over it, so a row
+  passed over cannot be handed back by the same batch — the first draft's
+  non-advancing loop is the named red case of
+  `THE-DRAIN-ADVANCES-AND-TERMINATES`.
+- **A held or not-due row is not attempted.** A row whose in-flight key is
+  already held, or whose `dueAt` has not arrived — under the clock-sanity read
+  that treats an over-horizon schedule as due now — is passed without an
+  attempt: under `head_blocks` the kind's pass ENDS; under `independent` the
+  cursor ADVANCES.
+- **A lost claim is not an outcome.** `claim(row)` answering false performs
+  nothing, classifies nothing and records nothing; the pass reports the skip in
+  the field `noteSkip` writes today, the cursor advances, and the row is still
+  owed.
+- **One unit of work is claim, perform, classify, record — with the row's
+  in-flight key held from the successful claim until `record` returns**, and a
+  throw out of `perform` converted by `onThrow` into the kind's own outcome
+  before `classify` sees it.
+- **After `record`, the disposition decides the pass.** `halt_kind` stops the
+  KIND, durably — the paragraph below owns that argument. `retry` under
+  `head_blocks` ends the kind's pass: the row is still owed, which is the rule
+  the table below derives. Every other disposition advances.
+- **`rereadAfterEach` selects what "advance" means after a row that advanced
+  the queue.** TRUE: the batch is discarded, re-read, and the cursor reset —
+  which is how a bill freed by `clearBackoffForPending` goes in the SAME pass.
+  FALSE: the cursor moves within the one batch the pass read.
+- **A pass terminates under every policy.** Every iteration either advances the
+  cursor or ends the pass, each row is attempted at most once per pass, and the
+  iteration count is bounded by the batch limit — the bound covers the re-read
+  path too.
 
-    let batch = await h.owed(limit);
-    let i = 0;                                        // THE CURSOR
-    const attemptedThisPass = new Set<string>();
-
-    for (let guard = 0; guard < limit; guard += 1) {   // BOUND 1: iterations
-      const row = batch[i];
-      if (row === undefined) break;
-      const id = h.rowId(row);
-      if (attemptedThisPass.has(id)) break;           // BOUND 2: one try per row per pass
-
-      const due = h.dueAt(row);
-      const held = inFlight.has(h.policy.inFlightKey(id));
-      const notDue = due !== null && !scheduledInstantIsDue(due, now().getTime());
-      if (held || notDue) {
-        if (h.policy.blocking === "head_blocks") break;
-        i += 1; continue;                             // ADVANCE. A bare `continue` re-takes it.
-      }
-
-      // THE DURABLE CLAIM, AND A LOST ONE IS NOT AN OUTCOME: nothing is
-      // performed, nothing is classified, nothing is recorded, the row is still
-      // owed, and the pass reports the skip.
-      if (!(await h.claim(row))) { noteSkip(id); i += 1; continue; }
-
-      attemptedThisPass.add(id);
-      inFlight.add(h.policy.inFlightKey(id));
-      const attempt = h.attempt(row) + 1;
-      try {
-        let outcome: Outcome;
-        try { outcome = await h.perform(row); } catch (e) { outcome = h.onThrow(e); }
-        const d = h.classify(outcome);
-        await h.record(row, outcome, d, attempt, now());
-
-        if (d.next === "halt_kind") { halted.add(h.kind); break; }    // BOUND 3
-        // THE HEAD BLOCKS WHEN THE ROW IS STILL OWED — never on "not settled".
-        if (d.next === "retry" && h.policy.blocking === "head_blocks") break;
-      } finally { inFlight.delete(h.policy.inFlightKey(id)); }
-
-      if (h.policy.rereadAfterEach) { batch = await h.owed(limit); i = 0; } else { i += 1; }
-    }
+**WHY NO LOOP BODY IS PRINTED HERE, RECORDED SO THE NEXT AUTHOR DOES NOT
+HELPFULLY ADD ONE BACK.** Three drafts of this design printed executable
+pseudo-code, and every defect either review found in the mechanism lived in the
+printed code. Stage 2's block held a loop that re-selected its batch's first row
+under `while (true)` — it could not advance and did not terminate — beside a
+`rereadAfterEach` flag no printed line read. Stage 2b rewrote that block, and the
+rewrite printed a pass lock acquired and released on no path, declared a
+schedule member no printed line called, and reported skips through a `noteSkip`
+that had no channel out of the pass. Each block passed the session that wrote it
+and fell to the next independent reader. **A code block in a design document is
+the only artefact in this repository written like code and reviewed like
+prose:** no typechecker reads it, no proof runs it, and it has no exit code —
+every discipline this project owns is built on execution, and a printed loop is
+exempt from all of it while inviting the reader to execute it in their head,
+which is how it gets reviewed as if it had been run. So the design keeps the
+DECISIONS — the types, the member contracts, the policy values, and the rules
+above — and prints no statement sequence. The statement sequence belongs to
+stage 3, under `mobile/src/`, where both typecheck programs and the proof suite
+reach it.
 
 **WHY `retry` AND NOT `next !== "settled"`, AND IT IS A TRANSCRIPTION RATHER THAN
 A CHOICE.** `engine.ts`'s send loop does NOT stop on a rejected bill, on a parked
@@ -2670,18 +2700,23 @@ that returns to pending" being "retried in a tight spin". All three were dropped
 
 **AND THE DRAFT DID NOT TERMINATE AT ALL FOR A KIND WHOSE RETRIES STAY OWED.**
 `markVoidAttemptFailed` writes `void_attempts` and `void_last_error`, and neither
-appears in `listVoidsToApply`'s predicate — `void_requested_at IS NOT NULL AND
-voided_at IS NULL AND void_refused_at IS NULL` — so a bounced void is owed again on
-the next read and `batch[0]` returns the same row for ever, re-POSTing it inside one
-pass. Termination is now a property that can be STATED rather than hoped for: every
-path either advances the cursor or breaks, and `guard` bounds the re-read path, so a
-pass ends within `limit` iterations under every policy.
+appears in `listVoidsToApply`'s predicate — three of whose clauses are
+`void_requested_at IS NOT NULL AND voided_at IS NULL AND void_refused_at IS NULL`;
+the full predicate also carries the requester pair and
+`sync_state = 'synced' AND doc_no IS NOT NULL`, which is load-bearing for the
+staging repair recorded at the void criterion below — so a bounced void is owed
+again on the next read, and a loop re-selecting its batch's first row returns the
+same row for ever, re-POSTing it inside one pass. Termination is now a property
+that can be STATED rather than hoped for — the terminating rule above: every path
+either advances the cursor or ends the pass, and the iteration bound covers the
+re-read path, so a pass ends within the batch limit under every policy.
 
-**`rereadAfterEach: false` NOW HAS A PATH.** In the draft the read was unconditional
-at the top of the loop and the flag appeared only in a trailing comment, so no value
-of it changed anything and the loop had no cursor a snapshot could have been
-iterated with. It now selects the last line of the body: refresh the batch and reset
-the cursor, or advance the cursor within the batch already held.
+**`rereadAfterEach: false` NOW HAS A MEANING.** In the first draft the read was
+unconditional at the top of the loop and the flag appeared only in a trailing
+comment, so no value of it changed anything and the loop had no cursor a snapshot
+could have been iterated with. It is now the advance rule stated above: TRUE
+discards and re-reads the batch after every row that advanced the queue; FALSE
+moves the cursor within the batch already held.
 
 **`halt_kind` IS DEVICE-GLOBAL AND SURVIVES THE PASS**, which is the whole of what
 `sendForbidden` means. `engine.ts:142` holds that flag on the ENGINE — not on a pass
@@ -2695,9 +2730,8 @@ seconds, from `mobile/App.tsx:904` — which is the behaviour the flag exists to
 So `halted` belongs to the runner, is keyed by kind, and is retracted by those two
 events and by nothing else.
 
-`blocking` appears twice and `rereadAfterEach` once, and together they are the whole
-difference between the two existing drains at the row level. Nothing here unifies
-the policies; what is unified is the loop that reads them.
+Nothing here unifies the policies; what is unified is the one rule set that reads
+them.
 
 ---
 
@@ -3074,11 +3108,21 @@ remains open is an assertion REWRITTEN rather than deleted, which the count cann
 see and only a reader can.
 
 **3. THE WRITE — what the drain writes that no criterion reads back. OPEN, AND
-MEASURED.** `local_bills` has **27 columns** at `mobile/src/adapters/sqlite/schema.ts`
-on 2026-08-19, counted by reading the `CREATE TABLE` body and matching column
-declarations with `grep -cE`. The criteria below read a MINORITY of them back after a
-pass, and no figure is written here because it moves with the set. Four that are
-load-bearing and are not read back by any cell:
+MEASURED — AND THE MEASUREMENT FAILED BY FINDING LESS, INSIDE THE SECTION THAT
+NAMES THAT FAILURE.** This paragraph read: `local_bills` has **27 columns** at
+`mobile/src/adapters/sqlite/schema.ts` on 2026-08-19, counted by reading the
+`CREATE TABLE` body and matching column declarations with `grep -cE`.
+**Superseded 2026-08-19, found by the second review and re-derived here: the
+table has 28 columns AT RUN TIME.** `master_as_of` appears nowhere in the
+`CREATE TABLE` body — it is appended by `ADDED_BILL_COLUMNS`
+(`mobile/src/adapters/sqlite/schema.ts:357`) on every `initConnection`, fresh
+installs included, and it is live: `BillRow`, the shared `COLUMNS` select list
+and `billInsertParams` all carry it. The instrument read the schema's STATIC
+text while the column set is a RUN-TIME property; the count was correct about
+the wrong object. The criteria below read a MINORITY of the columns back after a
+pass, and no further figure is written here because it moves with the set. FIVE
+that are load-bearing and are not read back by any cell — the fifth found by the
+second review:
 
 - **`idempotency_key`, and it is the sharpest.** Hard rule 4 lives on it. Nothing in
   this set asserts the key TRAVELS through the rewritten drain, so a `perform` that
@@ -3098,6 +3142,13 @@ load-bearing and are not read back by any cell:
 - **`synced_at`.** The only input to the strip's "last synced" line. A `record` that
   stopped writing it leaves the screen claiming the device has never synced, for
   ever, while everything syncs.
+- **`first_attempt_at`, the fifth.** The total-stuck clock: stamped once by
+  `COALESCE` in `markPendingAgain`, `markSessionExpired` and `markSendForbidden`,
+  surfaced through `pendingQueueSnapshot`'s head, and read by `queueHealth` to
+  compute how long the head has been blocked. A `record` that stopped stamping it
+  holds that clock at zero while the queue jams, and the poison criterion cannot
+  see it: its cells read the two SERVER-error columns, a different pair with a
+  different reset rule.
 
 **4. TIME — what holds only while a request finishes inside a tick. ONE FOUND AND
 CLOSED, ONE FOUND AND MADE A CRITERION, ONE LEFT OPEN.**
@@ -3162,7 +3213,17 @@ since `onThrow` is a designed member — survives the drain, throw and ordering 
 and could not be cleared through `THE-PROOFS-AGREE`, because `runUntilQuiescent` polls
 up to two hundred passes and a leaked lock plausibly hangs a proof that stages
 offline-then-online. Reported as a PARTIAL state with its failing branch named rather
-than as a state or as nothing.
+than as a state or as nothing. **Superseded 2026-08-19, in the direction that
+strengthens the catch.** `runUntilQuiescent` (`engine.ts:566`) BOUNDS its polling at
+two hundred passes on the injected clock, whose sleep is instant in a proof, so a
+leaked lock does not hang the suite — it STARVES it: every pass after the leak
+returns without reading rows, the staged final state never arrives, and the
+assertion on that state goes red in the same run. Seven proof files call
+`runUntilQuiescent` — measured 2026-08-19 with `grep -l` over `mobile/src/proof/`:
+proveSync, proveVoid, proveVoidOwner, proveVoidTerminal, proveSignOut,
+proveForbidden, proveClock — so this state IS constructed-and-caught by the suite's
+first run, and lock release on every exit path is recorded as a constraint on
+stage 3 in the inherits section below, with that suite as its catch.
 
 **AND THE HONEST SUMMARY.** All five directions returned something this time, against
 one in the previous answer. Two of the findings changed the DESIGN rather than the
@@ -3176,12 +3237,19 @@ five.
 
 #### THE CRITERIA, DERIVED FROM THE DESIGN ABOVE
 
-**These replace the seven, and this is their SECOND revision.** The first derived
+**These replace the seven, and this is their THIRD revision.** The first derived
 set was read by an independent pass on 2026-08-19 and stopped again: two criteria a
 broken implementation satisfies, three properties no criterion reached, and a
 printed drain loop that could not advance past its first row. The design above moved
 first, because four of the findings were about the mechanism rather than about the
-wording. **They are NAMED, not numbered**, for the reason given at the head of this
+wording. **The second derived set was read by a second independent pass, also on
+2026-08-19, and stopped a third time:** five stop-class findings — two repaired in
+this revision because no proof would catch them (the unpinned cross-kind drain
+order, and a void staging the stores cannot produce), three recorded as constraints
+on stage 3 in the inherits section below, each with what catches it named — and
+seven improve-class findings recorded there as stage-3 inputs. **DESIGN REVIEW ENDS
+WITH THIS REVISION**; the boundary and its argument are recorded in the inherits
+section. **They are NAMED, not numbered**, for the reason given at the head of this
 design.
 
 **EVERY ONE NOW CARRIES TWO SENTENCES, AND THE PREVIOUS SET CARRIED ONLY THE
@@ -3342,6 +3410,29 @@ lock, and only the two-instance staging separates the object from the context. *
 BOUND, UNCHANGED:** nothing here reaches a second PROCESS; `claimForSend` remains the
 durable guard for that and for the crash case.
 
+**SENDS-SETTLE-BEFORE-VOIDS-ARE-READ.** *(HEADLESS)* The cross-kind rule of the
+drain, pinned: within one pass the runner drains `bill_send` to its stop BEFORE it
+reads `bill_void`'s owed rows, because a void becomes owed the moment its bill's
+send settles — `listVoidsToApply` requires
+`sync_state = 'synced' AND doc_no IS NOT NULL` — and the window between a synced
+bill and its still-owed void must not span a poll interval: a crash inside it looks
+exactly like a bill the owner cancelled while the server still shows it as active.
+**RED CASE, NAMED, AND IT IS A REGISTRY LITERAL IN THE OTHER ORDER:** the runner
+obtains handlers by enumerating the registry, so a literal listing `bill_void`
+before `bill_send` reverses the drain order with no diff anywhere else — the void
+kind's `owed()` runs while its bill is still `pending`, returns nothing, the send
+then settles, and the pass ends with the void owed until the next tick.
+**Observable:** one bill weighed offline whose void is requested offline, then
+released online, then exactly ONE pass. At the end of that single pass the bill is
+`synced` with a `doc_no` AND `voided_at` is set, and the presence sibling is in the
+same pass's result: one send settled and one void applied, reported together.
+**CAN A BROKEN IMPLEMENTATION SATISFY IT? No.** The reversed literal ends the
+single pass with `voided_at` null; a drain that never runs the void kind fails the
+same cell plus the registry criterion's behavioural cell; and running a second pass
+to reach green is refused by the staging, which is ONE pass by construction.
+**ITS BOUND:** it pins the ORDER of these two kinds, not adjacency — a runner
+draining a third kind between them still satisfies it, and should.
+
 **VOID-KEEPS-EVERY-DIFFERENCE-THE-DESIGN-NAMES.** *(HEADLESS, plus SERVER for the
 attempt cell)* **The differences are enumerated here rather than counted**, and the
 enumeration is the criterion: no backoff and no attempt cap (`nextAttemptAt` returns
@@ -3350,21 +3441,47 @@ null), no time gate (`dueAt` returns null), `blocking: "independent"`,
 prefixes the row id. The ordering difference is NOT in the list, and that is the
 correction the design above records: `listVoidsToApply` ends
 `ORDER BY void_requested_at, id`, so the void QUEUE is ordered and only the DRAIN is
-unordered. **RED CASE, NAMED — TWO:** `inFlightKey: (rowId) => rowId` for both kinds,
-the shared key the current prefix exists to avoid; and **`blocking: "head_blocks"` on
-the void kind**, which every single-void staging passes because a lone row has
-nothing behind it to block. **Observable:** one bill whose send is in flight while
-its void is owed — the void must be ATTEMPTED, not skipped, and the assertion is on
-the ATTEMPT rather than on the eventual state because under the shared key the drain
-skips it silently and it merely retries later. **AND TWO VOIDS OWED, THE FIRST
-BOUNCING:** the second must be attempted in the SAME pass, which is the whole of what
+unordered. **RED CASE, NAMED — TWO:** **`blocking: "head_blocks"` on the void
+kind**, which every single-void staging passes because a lone row has nothing
+behind it to block; and a drain with NO in-flight guard at all, which performs a
+row a second time while its first attempt is still in flight.
+
+**A CELL THE PREVIOUS REVISION STAGED IS DELETED HERE, BECAUSE THE STORES CANNOT
+PRODUCE ITS STATE — re-derived 2026-08-19 at both stores.** It staged one bill
+whose send is in flight while its void is owed. A send in flight is
+`sync_state = 'syncing'`: `claimForSend`'s conditional UPDATE writes it and its
+own guard requires `sync_state = 'pending'` (`SqliteLocalStore.ts:476-477`,
+mirrored by the fake's `claimForSend`). An owed void requires
+`sync_state = 'synced' AND doc_no IS NOT NULL` (`SqliteLocalStore.ts:967`,
+mirrored by the fake's `listVoidsToApply`). One column, two required values: the
+cell's premise is unrepresentable in either store, so the staging could never
+have run and any green over it would have measured nothing. **What is
+consequently unmeasured, said rather than hidden:** no behavioural cell now
+separates the prefixed `inFlightKey` from a shared one, because the only state in
+which the two differ is the state those predicates forbid. The prefix survives as
+a declaration — one in-flight set is keyed by more than one kind, so the key
+spaces must not collide — asserted by the field-by-field cell below and by
+nothing behavioural. And the predicates themselves are what protect the same-bill
+case: a send and a void of ONE bill are never simultaneously actionable, a
+guarantee owned by the store queries, which is stronger than any key prefix and
+is why no drain behaviour can be made to turn on it.
+
+**Observable.** With TWO bills synced and both voids owed, ONE runner, and a
+transport whose first void call blocks until released: a second pass entered
+while that void is in flight must ADVANCE past the held row and attempt the
+SECOND void — the held branch under `independent`, staged against a state the
+stores CAN produce — with the presence sibling that the first void is performed
+exactly ONCE across both passes. **AND TWO VOIDS OWED, THE FIRST BOUNCING:** the
+second must be attempted in the SAME pass, which is the whole of what
 `independent` means and which no previous cell could see. Plus, in the same run and
 each asserted separately: a void that bounced is re-attempted on the NEXT pass with
 no wait; a void the server refused on identity grounds leaves the owed queue; and the
 policy object for `bill_void` is asserted field by field against the list above.
-**CAN A BROKEN IMPLEMENTATION SATISFY IT? No** — the two-void cell reddens
-`head_blocks`, the in-flight cell reddens the shared key, and the field-by-field cell
-catches a member silently dropped by a later edit. **ITS BOUND:** the field-by-field
+**CAN A BROKEN IMPLEMENTATION SATISFY IT? No** — `head_blocks` on the void kind
+reddens both the held cell (the second pass stops at the held row and the second
+void goes unattempted) and the two-void bouncing cell; a missing in-flight guard
+reddens the performed-exactly-once sibling; and the field-by-field cell catches a
+member silently dropped by a later edit. **ITS BOUND:** the field-by-field
 half compares against a list written by the same author in the same commit, so it
 catches a later edit and not this one's own error, which is what
 `lessons/README.md § Lessons` "a-differential-control-is-only-as-good-as-its-weaker-side.md — applies to every check of the form"
@@ -3776,8 +3893,11 @@ what would settle it rather than with a verdict:**
 - **The registry red may land on the type alias rather than on the literal.** Adding
   a member to `OutboxKind` moves the alias first, and a `tsc` report naming that
   line is not evidence the registry is total. Settled only by running the break and
-  reading WHERE the error points; `REGISTRY-IS-TOTAL-AND-CONSTRUCTED` requires the
-  location and names this as the likely wrong red.
+  reading WHERE the error points;
+  `THE-REGISTRY-IS-TOTAL-AND-IS-WHAT-THE-DRAIN-ENUMERATES` requires the location
+  and names this as the likely wrong red. (The first printing of this bullet cited
+  `REGISTRY-IS-TOTAL-AND-CONSTRUCTED`, a name no criterion in this file carries —
+  corrected 2026-08-19.)
 - **`THE-PROOFS-AGREE`'s declared-equals-ran may not be able to go green run bare.**
   Some `prove:*` scripts reach a live API and one deliberately points at a dead
   address. If the declared set cannot all run in one bare sitting, *declared equals
@@ -3806,6 +3926,58 @@ a cursor, a claim member and a durable `halt_kind`. **A rewritten mechanism has 
 history of being read**, and the two defects the previous draft shipped — a loop
 that could not advance and a flag that could not take effect — were both in printed
 code that had already passed one review.
+
+**THE SECOND INDEPENDENT REVIEW RAN, 2026-08-19 — AND DESIGN REVIEW ENDS WITH THE
+REVISION THAT CARRIES THIS SENTENCE.** It fired the stop: five stop-class findings,
+seven improve-class, and its own measurement that this design is markedly better
+than the one it replaced. Two independent passes have now both fired the stop, and
+both found their defects in printed code — the surface the paragraph above told the
+next reader to attack first — which is why this revision removes the printed drain
+entirely; the rules subsection above records that argument where the next author
+will meet it. Of the five stop-class findings, two are repaired in this revision
+because no proof would catch them: the cross-kind drain order is now a stated rule
+with `SENDS-SETTLE-BEFORE-VOIDS-ARE-READ` as its criterion, and the void
+criterion's in-flight cell — whose staging both stores refuse to represent — is
+deleted with its residue stated at the criterion. The other three are NOT repaired
+in prose. Each is a CONSTRAINT stage 3 must satisfy, with what catches it named,
+because a defect an existing suite reddens on its first run is cheaper found there
+than designed against a fourth time:
+
+- **The pass lock is released on every exit path, a throw out of `perform`
+  included.** The catch: seven proof files call `runUntilQuiescent`
+  (`engine.ts:566`), which drives up to two hundred passes on one engine over an
+  injected clock — a leaked lock starves every later pass, the staged final state
+  never arrives, and the suite is red on its first run. The measurement is in the
+  five-directions section above, superseding the earlier reading that a leak could
+  hide from the suite.
+- **`nextAttemptAt` gains a caller in the MECHANISM, or leaves the interface.** No
+  rule above makes the drain call it; if only a kind's own `record` ever does, it
+  is a private computation wearing an interface member's clothes, and the argument
+  for putting it on the interface bought nothing the drain can enforce. NOTHING
+  MECHANICAL CATCHES AN UNCALLED INTERFACE MEMBER — no typecheck flag, no proof —
+  so this constraint is the sentence itself: the stage-3 diff either shows the
+  drain's call site, its result handed to `record`, or shows the member removed,
+  and the phase report says which.
+- **A 401 stays distinguishable from an offline bounce ACROSS the interface.** The
+  stage-1 mappings already collapse them — `mobile/src/sync/outbox.ts:283-288`
+  maps `session_expired` and `unavailable` to the identical
+  `{ next: "retry", reason }`, and the send classifier at `:264-269` does the
+  same — and `engine.ts:64-68` names the regression that collapse re-ships: an
+  expired session displayed as ออฟไลน์. The catch:
+  `THE-POISON-SIGNAL-SURVIVES-BOTH-WAYS` asserts the pass result reports
+  `sessionExpired` rather than `retryable` on a 401, and `proveSignOut` S9 drives
+  a 401 and an outage to the same count and asserts the sheets DIFFER — both red
+  against a classify that folds them.
+
+**THE SEVEN IMPROVE-CLASS FINDINGS ARE STAGE-3 INPUTS, NOT REPAIRS.** Two were
+handed to this phase in full, judged sharper than their labels, and both are
+re-derived and folded in above: the write-side count is corrected — twenty-eight
+columns at run time, not the CREATE body's twenty-seven — and `first_attempt_at`
+is recorded as a fifth load-bearing column no criterion reads back. **The
+remaining five were not among this phase's inputs:** the dispatch carried the two,
+the review's own record holds the rest, and nothing here restates what this phase
+has not read. Routing any of the five into stage 3's brief is the owner's call, at
+the boundary this entry closes.
 
 ### `GET /users` — landed 2026-08-07, and it is NOT a step in this file
 

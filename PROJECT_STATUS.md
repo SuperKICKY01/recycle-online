@@ -57,6 +57,106 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.18 STAGE 2c — THE PRINTED DRAIN IS REMOVED, THE TWO DEFECTS NO PROOF CATCHES
+ARE REPAIRED, AND DESIGN REVIEW ENDS. Documentation only, 2026-08-19.** A second
+independent review read the stage-2b design and criteria and fired the stop: five
+stop-class findings, seven improve-class, and its own measurement that the design
+is markedly better than what it replaced. This entry supersedes the stage 2b entry
+below as the current documentation phase; the P-SELLERAUTHOR record further down
+is still the current code phase. **Nothing under `mobile/`, `server/`,
+`packages/`, `desktop/` or `tools/` moved**, no P-number was minted, no decision
+was reopened, and no third review is scheduled — the remaining defect classes are
+ones the existing proof suite reddens on its first run, and they are cheaper to
+find there.
+
+**THE MAIN ACT: the design no longer prints executable code.** Three drafts
+printed a drain loop, and every mechanism defect either review found lived in the
+printed lines — stage 2's could not advance past its first row, beside a flag no
+printed line read; stage 2b's rewrite acquired a pass lock it released on no
+path, declared a schedule member no printed line called, and reported skips
+through a channel that did not exist. The drain is now stated as RULES, each with
+a criterion that can turn red; the reason is recorded in the design itself so the
+next author does not add the block back; and a lesson is written, because the
+next design document is the site the in-file reason cannot protect.
+
+**THE TWO REPAIRS NO PROOF WOULD HAVE CAUGHT.** First, the cross-kind order:
+`engine.ts:394` runs the voids only after the send loop closes at `:386`, with
+the crash-window argument at `:388-393`, and the design left that order to the
+registry literal's member order with no rule and no criterion reading it —
+re-derived by searching the criteria for *same pass / order / before / after /
+enumerat*: every hit is within one kind or about registry totality. It is now a
+stated rule of the mechanism, and `SENDS-SETTLE-BEFORE-VOIDS-ARE-READ` pins it
+with a registry literal in the other order as its named red case. Second, the
+void criterion's in-flight cell staged a state both stores refuse to represent —
+a send in flight is `sync_state = 'syncing'` (`claimForSend`,
+`SqliteLocalStore.ts:476-477`, mirrored in the fake) while an owed void requires
+`sync_state = 'synced' AND doc_no IS NOT NULL` (`listVoidsToApply`,
+`SqliteLocalStore.ts:967`, mirrored in the fake) — one column, two required
+values. The cell is deleted; the drain's held branch, which rested on it, is
+restaged against two owed voids under one runner, a state the stores CAN produce;
+and what the deletion leaves unmeasured is stated at the criterion: nothing
+behavioural now separates the prefixed in-flight key from a shared one, and the
+field-by-field policy cell is the only carrier of that difference.
+
+**WHAT THE REMOVAL COST, COUNTED.** No criterion referred to the deleted block:
+the printed-code references inside criteria are self-contained red cases
+describing the FIRST draft's loop, and they still stage. Five passages of design
+prose did refer to it — the three-bounds paragraph, the termination sentence, the
+`rereadAfterEach` path paragraph, the sentence counting the loop's reads of two
+policy fields, and the stage-2b coda — and each now refers to the stated rules or
+carries a dated supersession. After the edit the criteria count and the two
+per-criterion sentences are EQUAL AT EIGHTEEN: eighteen named criteria, eighteen
+with a named RED CASE, eighteen answering CAN A BROKEN IMPLEMENTATION SATISFY IT,
+counted by splitting the criteria subsection at bold-name-plus-cost paragraphs
+and matching each block with newlines collapsed — the first count, taken per
+LINE, reported eight of the eighteen questions absent because the sentence wraps,
+and the wrap-insensitive recount moved exactly those eight, which is the pair
+that proves the instrument change did the work.
+
+**WHAT REMAINS UNREPAIRED, AND WHICH PROOF IS EXPECTED TO CATCH EACH.** The pass
+lock released on every exit path: caught by the seven proof files calling
+`runUntilQuiescent` (`engine.ts:566`), which drive up to two hundred passes on an
+injected clock, so a leaked lock starves the staged final state and the suite is
+red in one run. The 401/offline collapse (`outbox.ts:283-288`, and the send
+classifier at `:264-269`): caught by the poison criterion's pass-result cells and
+by `proveSignOut` S9's 401-against-outage pairing. `nextAttemptAt`'s missing
+caller: caught by nothing mechanical — recorded as an either/or the stage-3 diff
+must answer in its own text. Of the seven improve-class findings, two were handed
+to this phase and both re-derived: `local_bills` has 28 columns at run time where
+the design counted the `CREATE TABLE` body's 27 (`master_as_of` arrives via
+`ADDED_BILL_COLUMNS`, `schema.ts:357`, on every open), and `first_attempt_at` is
+a fifth load-bearing column no criterion reads back. **The other five were not
+among this phase's inputs** and stay with the review's record, for the owner to
+route into stage 3's brief.
+
+**WHAT CARRIES AN EXIT CODE, AND WHAT DOES NOT.** `tools\verify_citations.ps1`,
+call operator, explicit array, over every file that carries citations — the
+fourteen root-and-agent documents plus eleven lesson files: baselined BEFORE any
+edit at SOURCES=25 CITATIONS=521 BROKEN=10, exit 1. Finally over twenty-six
+sources — the same twenty-five plus the lesson this phase wrote, which carries
+one citation — at SOURCES=26 CITATIONS=522 BROKEN=10, exit 1: the rise of one is
+that citation exactly, every per-source count otherwise identical, and the ten
+broken lines are byte-identical to the baseline's with line numbers stripped —
+every one pre-existing, none created and none repaired by this phase.
+`tools\verify_shared_checks.py` exits 0. The lesson bundle was regenerated —
+`build_all_lessons.py --write` then `--check` exit 0 — which is one command
+beyond the brief's read-plus-two-checkers bound, run because the Done table
+requires the bundle checker green and a lesson landed this phase; it is a
+documentation generator and touches nothing else. **Nothing else was run and
+nothing else is claimed** — no build, no proof, no server, no device, no
+database; this entry rests on file reads and greps, and each figure names the
+command that took it.
+
+**NO SHA IS GIVEN FOR ANY CLAIM IN THIS BLOCK, DELIBERATELY.** The work carrying
+it was uncommitted when it was written, so the only sha available is the one that
+does NOT contain it — the corollary under the pin-a-claim convention.
+
+**DESIGN REVIEW ENDS HERE.** Two independent passes, both fired the stop, both
+found their defects in printed code, and the second measured the design markedly
+better than what it replaced. Stage 3 — the implementation — begins on the
+owner's confirmation, inheriting the three constraints and the stage-3 inputs
+recorded at the foot of the design.
+
 **P-SAASGAPS — WHAT A PRODUCT SOLD TO STRANGERS NEEDS AND THIS ONE HAS NOT BUILT,
 WRITTEN DOWN AND NOT SCHEDULED. Documentation only, 2026-08-19.** The owner raised
 a set of gaps on 2026-08-19 and **deferred them the same day**. That deferral is a
