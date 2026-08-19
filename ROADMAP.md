@@ -323,6 +323,35 @@ this ADDS is storage for binary payloads and a path to send them, and the cost o
 that is a review finding rather than a part of this decision — see
 `OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "SIX REVIEW FINDINGS".
 
+**EXTENDED 2026-08-18 BY THE OWNER — A THIRD PHOTOGRAPH: ONE PER STAFF MEMBER.
+The two bullets above are UNCHANGED and this is an addition to them, not a
+correction of them.** The third has its own subject and its own moment: **ONE
+FACE PHOTO PER STAFF MEMBER**, belonging to the person's account rather than to a
+bill or a seller.
+
+**THE OWNER'S REASON, recorded so it is not re-argued.** `created_by` on a bill
+and on a seller is a **uuid**, and an owner who is not standing in the yard cannot
+read one. A shop owner looking at who bought a load needs a face, not an
+identifier — so the third photograph is what makes authorship legible to the
+person who is not there, and it serves the shop owner's dashboard settled on the
+same day and recorded in this file's own audit.
+
+**THIS IS NEW ON 2026-08-18 AND WAS AGREED NOWHERE BEFORE IT.** It is written as
+new rather than as a clarification, because it is not one: S12 as settled on
+2026-08-17 named two photographs and this is a third. Anyone reading the two
+bullets above and concluding the set was closed was reading them correctly.
+
+**IT GAINS NO OWNER, AND IT WIDENS THE ONE THAT IS MISSING.** S12 has no step, as
+the audit under *Every settled decision, and the step that owns it* below records,
+and this changes none of it. *(Named and not cited: a `file § Section` citation
+into THIS file quotes its own target and the checker counts two hits — the same
+rule the `GET /users` subsection states, measured again here when the citation
+took that handle from one hit to two.)* What it changes is the SIZE of the step
+that does not exist yet: a photograph attached to an ACCOUNT is taken where an
+account is created, and **no client can create an account** — `POST /users` is
+declared on the server and called by no client at all. So the third photograph
+couples S12 to **P3.7**, which owns that screen, in a way the first two do not.
+
 **S13 — hosting is the owner's own machine plus a domain and a tunnel, deferring
 a rented server.** Managed database services are DISQUALIFIED BY MEASUREMENT and
 not by price. The measurement is the host checklist's own A-questions, which end
@@ -459,6 +488,284 @@ Inventing a staging substitute would produce evidence about staging, which is
 the one thing both steps already say cannot work. **This is recorded at both
 steps and not only here**, so a later session reading either does not treat it as
 schedulable.
+
+---
+
+## Every settled decision, and the step that owns it
+
+**What this is, and what it is NOT.** A sweep of S1 to S19 asking one question of
+each: which step in this file builds it. **It is EVIDENCE, not a decision.** No
+P-number is minted here, nothing is renumbered, no decision is reopened and no
+S-number is superseded. The owner decides how many steps to open from the table;
+this section only puts the question in front of him with the measurements
+attached.
+
+**WHY IT EXISTS.** Five decisions were sampled by hand and four had no step
+owning them. That is a class rather than a dropped item:
+**a decision with no step is a commitment nothing schedules**, and the two found
+first — S10's UX rework and S12's photographs — are each cited elsewhere in this
+file as the reason something else cannot proceed, while being defined nowhere in
+it.
+
+**THE RANGE WAS RE-DERIVED AND NOT ASSUMED.** `grep -nE '^\*\*S[0-9]+ —' ROADMAP.md`
+returns **19** definition lines, S1 through S19 with no gap. A repo-wide
+`grep -rnoE '\bS(2[0-9]|[3-9][0-9])\b' --include='*.md'` exits **1**: no S-number
+above 19 exists in any tracked markdown, so the range is closed at the top.
+Nineteen decisions swept, nineteen cells established by grep — **the two numbers
+are equal, and no cell was filled from knowledge of the file.**
+
+**HOW A CELL WAS ESTABLISHED, because the method decides what the table is worth.**
+Two searches per decision. A LABEL search — `grep -nE '\bS<n>\b' ROADMAP.md` — and
+where that returned only the decisions section, a SUBJECT search over the words the
+step would have to use. A hit only counts as an owner if it falls inside a
+`### P…` step section; a hit inside the decisions section, inside a D-number or
+inside *Findings* is the decision talking about itself and establishes NOTHING.
+
+**THE LINE NUMBERS IN THE TABLE ARE INTO THIS FILE, MEASURED 2026-08-18, AND THEY
+WILL DRIFT.** They are given the way this file gives line numbers into code — as a
+thing to re-derive rather than to trust — and every one of them is reproducible
+from the command in the row beside it. **No sha is quoted**, deliberately: the work
+carrying this table was uncommitted when it was written, so the only sha available
+is the one that does not contain it.
+
+| # | the decision, in short | owned by — and the command that established it | if none: new step, or extend which | if new: what blocks it |
+|---|---|---|---|---|
+| S1 | scope is three deliverables, shipped as one handover | **DISTRIBUTED, and the no-SQL bar is P3.6.** `grep -nE '\bS1\b'` → L2991 inside P3.6. The three deliverables are stage 1's mobile steps, P1.13–P1.17, and P3.5 | — | — |
+| S2 | a pilot is part of the path | **SUPERSEDED BY S7**, so no step is owed. `grep -nE '\bS2\b'` → L205, L206, L210, every one inside S7's own text | none needed | — |
+| S3 | the slip prints from the desktop, after sync | **P1.13 and P1.17.** `grep -nE '\bS3\b'` → L1580 (P1.13), L1686 and L1689 (P1.17). *L1492 is a DIFFERENT S3* — a reconcile injection cell, not this decision | — | — |
+| S4 | the provider web shows status, licence, last bill — and no shop data | **P3.5.** `grep -nE '\bS4\b'` → L2972, the step's own *What it is* | — | — |
+| S5 | staff-owned phones, accounts per person | **P1.4, P1.5 and P3.7; the platform half at P1.11 through D9.** `grep -nE '\bS5\b'` → L864 (P1.4), L1009 (P1.5), L3022 (P3.7), L631 (D9) | — | — |
+| S6 | where a shop could work either way, support both | **P1.15, P1.17 and P2.6; P1.8 and P1.9 through D5.** `grep -nE '\bS6\b'` → L1606 and L1609 (P1.15), L1699 (P1.17), L2866 (P2.6), L587 (D5) | — | — |
+| S7 | the pilot starts only after all three programs exist | **NONE, and it needs none — it is a CLOCK.** `grep -nE '\bS7\b'` → L2838 (P2.4) and L2859 (P2.5), where both cite it as the reason a step cannot start. Neither builds it, and nothing could. **But P2.1 — the step S7 actually moves — carries no S-number at all**, so the one step whose clock this decision reset does not say so | structural | — |
+| S8 | mobile, then desktop, then the provider web — sequentially | **NONE. One mention in the whole file, and it is the definition.** `grep -nE '\bS8\b'` → L232 only. Subject search `grep -niE 'sequential\|mobile, then desktop'` adds nothing inside a step | structural — the order it states is already carried by the steps' own *Depends on* chains (P1.12 before P1.13, P3.5 last). **But no step CITES it**, so an edit to a dependency chain has nothing comparing it to the decision | — |
+| S9 | three roles: owner, admin, staff; the owner account transfers | **NONE.** `grep -nE '\bS9\b'` → L245 (definition) and L446 (inside S18). Subject search `grep -niE 'owner role\|three roles\|deviceRole'` → L98, L262, L270, L438–L448, not one of them inside a step | **NEW STEP.** Not an extension of anything: it is a migration against `0001`'s two-value CHECK, a sweep of four spellings of the role pair, and the client change S18 binds into the same commit | **Nothing technical.** The licence half — who mints an owner — is P3.1 and P3.5, and S9 itself sends licence STATE to P3.1; the role model waits on none of that |
+| S10 | no new mobile screens until a UX/UI rework | **NONE. The rework is defined nowhere in this file.** `grep -nE '\bS10\b'` → L272 (definition) and L1669, where P1.16 cites it as the reason a shop-settings surface has nowhere to live. Subject search `grep -niE 'UX\|rework\|new mobile screens'` returns those two lines and no third | **NEW STEP** | The internals S10 says come first — P1.18 among them — and the owner's own answer about what the rework covers. **It is a gate with no definition**, which is what makes every screen behind it unschedulable rather than merely unscheduled |
+| S11 | every capability ships; each shop configures it | **NONE by label.** `grep -nE '\bS11\b'` → L286 and L289, both inside the decisions. The eight values it implies are queued at `OPEN_ITEMS.md § Blocking one real paying shop` "EIGHT THINGS EACH SHOP CONFIGURES FOR ITSELF" and scheduled nowhere | **EXTEND P1.16** for the operator surface — it took the shop-settings surface as scope on 2026-08-18 (L1665). The STORAGE is S16's, and each value is pulled by its own feature under S17 | For the surface: S10's undefined rework on the phone, and P1.13 on the desktop |
+| S12 | photographs are part of the workflow — **three of them since 2026-08-18**, per bill, per seller and per staff member | **NONE. P1.18 UNBLOCKS it and refuses to carry it.** `grep -niE 'photograph\|photo\b\|camera'` → L1755 in P1.18's *Unblocks*, and L1745 in the same step saying it carries the mechanism and not the camera. No `### P…` section builds a photograph | **NEW STEP, and more than one** | P1.18's mechanism, S16's storage answer for *which photographs are required*, the UX rework for a camera screen, and S15's unanswered engineering. **The third photograph adds a fourth blocker the other two do not have**: it is taken where an ACCOUNT is created, and no client can create one, so it couples to P3.7 |
+| S13 | hosting is the owner's machine, plus a domain and a tunnel | **P1.2 — established by SUBJECT, because no step names the label.** `grep -niE 'tunnel\|domain\|hosting\|host\b'` → L675, P1.2's own *What it is*: a host, a name, TLS and a scheduler. S13 says at L349–L350 that P1.2's DONE WHEN is untouched by it. **RESIDUAL, and it is a word rather than a gap:** neither "tunnel" nor "domain" occurs anywhere inside P1.2, and that step's title and DONE WHEN are written against "this box" and "off-box" (L871, L921, L923) meaning the DEVELOPMENT box. Once production is the owner's own machine, "off-box" has two candidate referents and nothing in the step says which | — | — |
+| S14 | the device outbox becomes one mechanism carrying kinds | **P1.18.** `grep -nE '\bS14\b'` → L1706 and L1707 (P1.18 mints itself after it), L1754, and L1407 where it reverses P1.8b's cut | — | — |
+| S15 | photographs live beside the database, not in it | **NONE.** `grep -nE '\bS15\b'` → L396 and L408, both inside the decisions | **Goes with S12's step.** It is a storage answer for a capability that has no step, so it cannot be owned before that one exists | S12's step not existing — and *where beside physically is* is a property of the machine, so P1.2 |
+| S16 | the eight per-tenant values are stored by kind | **PARTIAL, and the partial is the finding.** `grep -nE '\bS16\b'` → L413 only. By subject, `grep -niE 'per-tenant\|default_grade\|settings'` → L1665, where P1.16 takes the shop-settings surface as scope — **and does it without naming S16 or S11, and while saying in the same sentence that no step is minted**, so the overlap is by subject and nothing binds the two. **One of the eight is already in the schema and arrived with no step at all** — the shop-wide default grade, at `9ad225e` | **EXTEND P1.16** for shop identity and the surface. **The GRADE MODEL needs its own step**: it replaces a CHECK with a per-tenant table, and `OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "A RAW COUNT INSIDE AN ACCEPTANCE CRITERION ROTS" measures five source sites writing A–D that it opens | For the grade model: nothing technical. For the surface: P1.13 on the desktop, or S10's rework on the phone |
+| S17 | schema changes are pulled by the feature that needs them | **NONE, and it needs none.** `grep -nE '\bS17\b'` → L424 only; subject search `grep -niE 'pulled by the feature\|schema change'` finds no step naming it | structural — a policy about how schema work is SCHEDULED, not work | — |
+| S18 | the client learns the owner role in the same change | **NONE, and it cannot have one of its own.** `grep -nE '\bS18\b'` → L438 only. It is a CONSTRAINT on S9's step rather than a thing to build | **Rides S9's new step.** Scheduling it separately would be scheduling the defect it exists to prevent | whatever blocks S9 |
+| S19 | P2.4 and P2.5 stay open until a real shop trades | **P2.4 and P2.5.** `grep -nE '\bS19\b'` → L2837 (P2.4) and L2857 (P2.5). It is a decision NOT to schedule, and it is written at both steps as well as here | — | — |
+
+**THE TOTALS, so the shape is readable without counting rows.** Eight have a step
+— S1 in part, S3, S4, S5, S6, S13, S14, S19. Four need none: S2 is superseded, S7
+is a clock, S8 is an ordering rule and S17 is a scheduling policy. **Seven are
+outstanding** — S9, S10, S11, S12, S15, S16 in part, and S18 riding S9 — and of
+those, three are ANSWERS this file already relies on elsewhere while defining
+them nowhere: S10, S12 and S16.
+
+**THE FOUR STRUCTURAL ONES ARE AN ANSWER, NOT A GAP, and the distinction matters
+because a sweep that reports nineteen holes teaches nothing.** S7 is a clock: it
+says WHEN a bar may be attempted, and no code makes a date arrive. S8 is an
+ordering rule, already expressed in the steps' dependency chains. S17 is a policy
+about how a schema change gets scheduled, which is a rule for writing steps rather
+than a step. S2 was superseded before anything could own it. **S8 carries the one
+residual in that group**: nothing cites it, so if a dependency chain is ever
+edited, no sentence in this file compares the result to the decision.
+
+**AND ONE THING THE SWEEP FOUND THAT IT WAS NOT LOOKING FOR: the S-space collides,
+exactly as `lessons/README.md § Lessons` "S, P, A and R were not checked"
+predicted it might.** That lesson bounds itself with "S, P, A and R were not
+checked"; S is now checked. `grep -rnoE '\bS(1[0-9]|[1-9])\b' --include='*.md'`
+outside this file returns hits in two unrelated spaces — these decisions, and
+PROOF CELL names (`proveSignOut` S1 and S9, `proveSheets` S9, `prove_reconcile`'s
+S3/T0 and S3/X2, which appear in this file at L1492). **No broken sentence was
+found today**: every use is disambiguated by what sits beside it. The exposure is
+that nothing enforces that, and a bare S-number written across a file boundary
+would read as either. It is recorded here because the audit is where it surfaced.
+
+**THE TWO ANSWERS OF 2026-08-18, and both are new — neither was agreed before.**
+
+**PHOTOGRAPHS ARE IN THE PILOT BAR.** The owner CONFIRMED S12 rather than
+reopening it. The reasoning is his and is recorded rather than re-argued: the
+pilot tests the product being sold, and photographs are what settle a dispute
+about weight and goods — which only real money produces. A pilot that omits them
+is a pilot of a different product.
+
+**AND HE THEN EXTENDED IT, the same day, WITH A THIRD PHOTOGRAPH — one per STAFF
+MEMBER**, because `created_by` is a uuid and an owner who is not at the yard
+cannot read one. That is written at the decision itself and is not restated here;
+what belongs in the audit is its effect, which is that S12's missing step grew
+without gaining an owner, and that the third photograph is the only one of the
+three that needs a surface nobody has built.
+
+**THE PILOT IS FURTHER AWAY THAN EVERY FILE IN THIS REPOSITORY CURRENTLY
+IMPLIES.** The photograph chain is four layers deep — P1.18's outbox, S16's
+storage answer for which photographs are required, the UX rework, and a camera
+screen — and it has to be walked before a shop can trade under S12. **The one
+qualification, measured rather than inherited:** exactly ONE of those four is a
+step in this file. P1.18 is minted, and it is minted-and-unbuilt — its stage 2
+delivered a design and no drain, and its criteria were derived only on 2026-08-18.
+The other three are not steps at all. That makes the sentence above stronger, not
+weaker, and it is stated here because a brief handed this phase the claim that
+none of the four was in the sequence, and that clause does not survive a grep.
+
+**THE SHOP OWNER'S DASHBOARD LIVES ON MOBILE, not on a fourth surface.** The
+reasoning is the owner's, recorded and not re-argued. A phone is already
+"anywhere". Mobile is one of S1's three programs, so **S1 does not change and no
+fourth deliverable is created.** The provider web is REFUSED, and the argument is
+S4's own: a tool with no path to a shop's data cannot leak one, and a dashboard
+would create exactly that path. An Electron application on a shop's PC is not
+"anywhere".
+
+**THE COST THE OWNER ACCEPTED, recorded so it is not discovered later as a
+surprise:** the dashboard waits on S10, and therefore on S16 and P1.18, like every
+other mobile screen. **Nothing about it is separately schedulable while the rework
+is undefined.**
+
+**WHAT THOSE TWO ANSWER IN THE TABLE, said plainly.** S12 gains NO owner — a
+confirmation is not a step, and the cell stays NONE. The dashboard is not a
+nineteenth decision and gets no row; it becomes a THIRD thing standing behind
+S10's undefined rework, beside the camera screen and every other new mobile
+screen. **So both answers make S10 the load-bearing gap rather than a tidy-up**,
+which is the one conclusion this table can carry on its own.
+
+**THREE FINDINGS WERE HANDED TO THIS PHASE AND EACH WAS RE-DERIVED, NOT CARRIED.
+Two held. One did not, and its second half held perfectly, which is why it is
+worth the space.**
+
+**1 — THE DASHBOARD DOES NOT NEED THE OWNER ROLE. HOLDS, with a qualification the
+finding did not carry.** S9 is about who activates a licence and whose account
+transfers; nothing in it is about reading a report. What a dashboard needs is an
+ADMIN-gated screen. Re-derived from `mobile/src/session/deviceRole.ts`:
+`DeviceRole` is `"admin" | "staff" | null` at `:49`, `ROLES` holds two values at
+`:56`, `readTokenRole` parses at `:140`, and there is **exactly one role-gated
+predicate in the client** — `mayVoid` at `:172`, reached through `canRequestVoid`
+and `voidRoleNote` in `mobile/src/sync/parkedReason.ts`. **So S9 and the dashboard
+are separable and this table must not couple them.** Two qualifications, and the
+second one answers the question the first raises.
+
+*The gate fails OPEN.* `mayVoid` is `role !== "staff"`, so an unreadable token is
+`null` and `mayVoid(null)` is true. `role` reaches exactly ONE component in the
+app — `mobile/App.tsx:1916`, into `BillsPanel`. So "the client already gates on
+role" is true and is not the same sentence as "the client can hide a screen".
+
+**AND AN ADMIN-ONLY SCREEN ALREADY EXISTS, WHICH THE FINDING DOES NOT MENTION AND
+WHICH SETTLES THE SHAPE.** The daily-money screen is admin-only —
+`server/app/reports.py:434` is `Depends(require_admin)` — and the client
+**deliberately does not gate it at all**. The button at `mobile/App.tsx:1963` is
+offered to every account, over fourteen lines of comment arguing why: pressing it
+costs one refused GET and one plain sentence, whereas the token's role claim is
+ADVISORY and up to an hour stale, so gating on it would lock out an owner promoted
+this morning. The refusal is rendered from the server's 403 —
+`mobile/src/reports/dailyView.ts:729` and `:740`, through
+`forbiddenReason(code, "daily_report")` in `mobile/src/sync/parkedReason.ts:287`.
+**So the fail-open direction is not the obstacle it looks like: this project has
+already decided how a read-only admin screen is built here, and it is server-side
+enforcement with a derived sentence, not a client predicate.** A dashboard would
+follow that pattern rather than need a new one.
+
+**2 — THE DASHBOARD'S SERVER HALF IS NOT GATED BY S10. HOLDS, re-derived.**
+`grep -rnE '@router\.(get|post|patch|put|delete)' server/app/reports.py` returns
+ONE line, `:421`, `@router.get("/reports/daily")`. `grep -rn "GROUP BY" server/app/`
+returns one source hit, `reports.py:328`, and it is `GROUP BY b.id`.
+`grep -rn "created_by" server/app/` returns twelve source lines across `bills.py`,
+`master.py` and `users.py`, and **not one of them is in `reports.py` and not one is
+an aggregate**. Nothing in this API groups or filters by who created a bill. **So
+the read path is buildable today, with no screen and no rework.**
+
+**TWO NARROWINGS, BOTH MEASURED, AND NEITHER OVERTURNS THE FINDING.** *First:* the
+API DOES already resolve a user identity into a report — `reports.py:378` and
+`:391` are `LEFT JOIN users u ON u.id = b.voided_by`, returning
+`voided_by_username`. The claim survives with the word that matters kept: nothing
+aggregates by `created_by`. What is missing is the aggregation, not the join.
+*Second:* a daily-money screen ALREADY EXISTS on the phone —
+`mobile/app/DailyScreen.tsx`, reached from `mobile/App.tsx` and calling
+`/reports/daily` from `mobile/app/api.ts`. **Whether a dashboard is a NEW screen,
+and therefore behind S10, or an extension of that one, is the owner's call and
+this phase does not take it.** It is recorded because the cost the owner accepted
+was stated in terms of new screens.
+
+**AND BUILDING IT EARLY REPRODUCES THE PATTERN `9ad225e` HAS JUST PRODUCED — a
+capability finished on the server that no human can reach.** That instance is
+recorded at
+`PROJECT_STATUS.md § Current phase` "A SHOP-WIDE DEFAULT GRADE IS BUILT, PROVEN, AND UNREACHABLE"
+— `PATCH /shop` is admin-only and reachable by
+`curl` and by nothing else, `desktop/` holds one 0-byte file, and the phone has no
+admin surface. **Both halves are recorded and NEITHER is recommended.** Which one
+wins is a question about whether a proven-and-unreachable server capability is an
+asset or a liability, and this phase does not answer it.
+
+**3 — STAFF PHOTOGRAPHS NEED THE ACCOUNT-CREATION SURFACE. THE SECOND HALF HOLDS
+EXACTLY; THE SUBJECT DOES NOT.** `grep -rniE 'staff (face )?photo|photo.{0,30}staff|employee photo'`
+over every tracked markdown exits **1**. **Not found with these words** — which is
+not the same as "there is none", and a reader who widens the search and finds a
+staff-photograph requirement should correct this paragraph rather than assume it
+was thorough. What S12 actually requires is one photo per BILL and one face photo
+per SELLER. A seller is created from the phone, and that surface EXISTS: P1.8a's
+DONE WHEN was met on 2026-08-17. So the seller face photo is blocked on the
+camera, not on a missing surface.
+
+**THE SECOND HALF IS TRUE AND IS ABOUT SOMETHING ELSE.**
+`grep -rn "@router" server/app/users.py` returns seven routes including
+`POST /users` at `:390`; `grep -rn '"/users' mobile/ desktop/` exits **1**; and
+`desktop/` holds one 0-byte file. **No CLIENT reaches `POST /users`**, exactly as
+reported. That gap is real, it is a second instance of the
+server-capability-with-no-caller shape above, and it belongs to **P3.7**, which
+owns the screen — not to S12.
+
+**"BY `CURL` ALONE" IS THE ONE WORD TO TIGHTEN, and it matters because it is the
+sentence somebody will act on.** Two in-tree callers reach those routes over HTTP
+— `server/scripts/prove_user_create.py` and `server/scripts/prove_revocation.py`,
+both `httpx`, both proofs — and one path creates an account without HTTP at all:
+`server/scripts/provision_shop.py` INSERTs a shop's FIRST admin directly, and
+`server/app/users.py:409` records that it refuses a second run. **What is true is
+that no CLIENT reaches them**, which is the claim that carries the consequence.
+
+**WHY THIS ONE IS WORTH RECORDING RATHER THAN SILENTLY CORRECTING.** The finding
+has two halves, and only one of them is checkable cheaply. *"Y does not exist"*
+resolves in two greps and comes back true; *"X needs Y"* needs somebody to read
+what X actually is. A reader who checks the half that can be checked gets a
+confident green over a claim about the wrong subject — and the repair here was not
+a better instrument but reading S12's own two bullets.
+
+**SUPERSEDED THE SAME DAY, 2026-08-18, AND EVERYTHING ABOVE IS LEFT EXACTLY AS
+WRITTEN BECAUSE THE MEASUREMENT WAS RIGHT.** The owner has EXTENDED S12 with a
+third photograph, one per STAFF MEMBER, and the extension is written at the
+decision. So the requirement now exists — **and it did not exist in any tracked
+file at the moment the grep above was run, which is precisely what that grep
+measured and reported.**
+
+**THE FRAME WAS WRONG, NOT THE INSTRUMENT, AND THAT IS THE PART WORTH KEEPING.**
+The claim arrived among items to VERIFY AGAINST THE TREE, and **a new requirement
+cannot be verified against the tree, because the tree is exactly where a new
+requirement is not yet.** The grep could only ever come back empty, and its
+emptiness was evidence about the repository rather than about the owner's
+intention — two different objects, and only one of them has a file. Ask of any
+claim handed over for checking whether it is a claim about what IS WRITTEN or a
+claim about what SHOULD BE; the first is greppable and the second is not, and no
+instrument distinguishes them.
+
+**AND THE TWO HALVES TURN OUT TO HAVE BEEN ABOUT THE SAME THING AFTER ALL.** With
+the third photograph settled, a photo attached to an ACCOUNT is taken where an
+account is created — so the account-creation surface the second half measured as
+absent is the surface the requirement needs, and P3.7 is where it lands. The
+paragraph above splits them because on the evidence then available they were
+split; they are rejoined here rather than by editing it.
+
+**WHAT THIS SECTION DOES NOT DO.** It mints no P-number, for the UX rework or for
+anything else. It reopens no decision and supersedes no S-number. It ranks
+nothing, and it does not say how many steps should be opened — the table is the
+input to that decision and not the decision. And it ran no build, no proof, no
+server and no database: every claim in it is a grep or a read, so **nothing here
+carries an exit code except the citation and shared-check runs recorded at
+`PROJECT_STATUS.md § Current phase`.**
+
+**AND WHAT WAS DISPATCHED FOR INDEPENDENT CHECKING AND DID NOT COME BACK, said
+here rather than left as a silence.** Five read-only verification passes were run
+over this table. **Three completed** — the unowned cells, the owned cells, and the
+three findings — and every one of them moved something in the text above: the
+already-existing admin screen, the `voided_by` narrowing, the `curl` narrowing,
+S13's "off-box" residual and S7's silent P2.1 all came from them, and each was
+re-measured here before it was written. **Two did not run to completion**, so
+their subjects are checked by this session alone: the systematic classification of
+every S-label occurrence across the tree, and a completeness critic asking what
+this audit missed. **The S-space collision recorded above therefore rests on one
+grep run here and on no second reader**, which is exactly the strength this file
+asks a negative result to declare.
 
 ---
 

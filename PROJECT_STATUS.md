@@ -57,6 +57,122 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P-SWEEP — EVERY SETTLED DECISION NOW HAS AN OWNER OR IS RECORDED AS HAVING
+NONE. Documentation only, 2026-08-18.** S1 to S19 were swept against the steps in
+`ROADMAP.md`, and the audited table is at
+`ROADMAP.md § Every settled decision, and the step that owns it` "a decision with no step is a commitment nothing schedules".
+**No file under `mobile/`, `server/`, `packages/`, `desktop/` or `tools/` moved.**
+This is the current DOCUMENTATION phase; the P1.18 stage 2 record immediately
+below stays as written, and the P-SELLERAUTHOR record further down is still the
+current code phase.
+
+**WHAT THIS PHASE DID NOT DO, first, because it is the part most likely to be
+misread.** **No P-number was minted** — not for the UX rework, not for
+photographs, not for the owner role, not for anything. No decision was reopened
+and no S-number was superseded. Nothing was ranked. **The table is EVIDENCE for a
+decision the owner has not yet taken**: how many steps to open. A reader who
+treats a NONE cell as an authorisation has read it backwards.
+
+**THE RESULT IN ONE LINE.** Nineteen decisions swept, nineteen cells established
+by grep — equal, which is the check that says none was filled from memory of the
+file. **Eight have a step. Four need none** and that is an answer rather than a
+gap: S2 is superseded, S7 is a clock, S8 is an ordering rule, S17 is a scheduling
+policy. **Seven are outstanding** — S9, S10, S11, S12, S15, S16 in part, and S18,
+which cannot be scheduled apart from S9. Three of those seven are relied on
+elsewhere in `ROADMAP.md` as the reason something cannot proceed while being
+defined nowhere in it: S10, S12 and S16.
+
+**TWO ANSWERS OF 2026-08-18 WERE RECORDED, AND RECORDING THEM CREATED NO OWNER.**
+Photographs stay in the pilot bar — the owner CONFIRMED S12 rather than reopening
+it, **and then EXTENDED it the same day with a third photograph, one per staff
+member** — and the shop owner's dashboard lives on mobile rather than on a fourth
+surface, which leaves S1 untouched. All of it is written at the decision, with the
+owner's reasoning, so none is re-argued. **None of it is a step**, and S12's cell
+still reads NONE — the extension made the missing step bigger, not present.
+
+**AND THE CONSEQUENCE THE TABLE CARRIES THAT NOTHING ELSE DID.** The photograph
+chain is four layers — P1.18's outbox, S16's storage answer, the UX rework, and a
+camera screen — and exactly ONE of the four is a step in `ROADMAP.md`. P1.18 is
+minted and unbuilt: its stage 2 delivered a design and no drain. **So the pilot is
+further away than the files in this repository imply**, and the dashboard joins
+the camera screen behind S10's undefined rework, which makes S10 the load-bearing
+gap rather than a tidy-up.
+
+**THREE FINDINGS WERE RE-DERIVED RATHER THAN CARRIED. TWO HELD; ONE HELD ONLY IN
+ITS SECOND HALF.** The dashboard does not need the owner role. The client's one
+role-gated predicate — `mayVoid` in `mobile/src/session/deviceRole.ts` — fails
+OPEN, **and that turned out not to matter**: an admin-only screen already exists
+on the phone, the daily report, and the client deliberately does not gate it at
+all. `server/app/reports.py:434` is `Depends(require_admin)` and the refusal is
+rendered from the 403, over an argument written into `mobile/App.tsx` that a
+token's role claim is advisory and up to an hour stale. **So the pattern a
+dashboard would follow is already decided here, and it is server-side.** The
+dashboard's server half is not gated by S10: `server/app/reports.py` declares one
+route and its only `GROUP BY` is `b.id`, and nothing in `server/app/` aggregates
+by `created_by` — the API does resolve a username for `voided_by`, which narrows
+the claim to the word that carries it. So the read path is buildable today —
+**and building it early would repeat the shape recorded below for `9ad225e`.**
+Both halves are recorded; neither is recommended. The third finding named STAFF
+photographs; a search of every tracked markdown for that requirement exited 1 at
+the moment it was run, and **"not found with these words" is not "there is
+none"** — S12 as settled on 2026-08-17 named one photo per bill and one face
+photo per seller. Its second half is exactly right: `POST /users` is one of seven
+routes in `server/app/users.py` that **no client** calls.
+
+**AND THE OWNER THEN SETTLED THE THIRD PHOTOGRAPH, so the finding's subject now
+exists — as of today, and not before.** S12 is EXTENDED with one face photo per
+STAFF MEMBER, because `created_by` is a uuid and an owner away from the yard
+cannot read one; it is written at the decision in `ROADMAP.md`, dated, as new. **The
+measurement was right and the FRAME was wrong: a new requirement cannot be
+verified against the tree, because the tree is where it is not yet.** The
+consequence is that the two halves were about one thing after all — a photograph
+attached to an ACCOUNT is taken where an account is created, no client can create
+one, and that surface is **P3.7**. **S12 still gains no owner**; what grew is the
+size of the step it does not have.
+
+**WHAT CARRIES AN EXIT CODE, AND WHAT DOES NOT.** Two commands, both run bare with
+their status read in the same invocation. `tools\verify_citations.ps1` over the
+fourteen sources that cite into the two edited files: **baselined BEFORE any edit
+at SOURCES=14 CITATIONS=453 BROKEN=10, exit 1**, and after the edits at
+**SOURCES=14 CITATIONS=458 BROKEN=10, exit 1** — the same ten, none of them in
+`ROADMAP.md`, and the count risen by exactly the five citations added.
+`tools\verify_shared_checks.py` exits **0**. **Everything else in this phase is a
+grep or a read**, so no other claim in it carries a status, and no build, proof,
+server, database or handset was touched.
+
+**FIVE INDEPENDENT VERIFICATION PASSES WERE DISPATCHED OVER THE TABLE; THREE
+COMPLETED AND TWO DID NOT.** The three that ran each moved something — the
+already-existing admin screen, the `voided_by` narrowing, the precision on "by
+`curl` alone", S13's unreconciled "off-box", and the fact that P2.1 carries no
+S-number though S7 is the decision that moved it — and every one was re-measured
+here before it was written down. **The two that failed did so on a session limit,
+not on a result**, so their subjects are checked by this session alone: a
+systematic classification of every S-label occurrence across the tree, and a
+completeness critic asking what the audit missed. The S-space collision recorded
+in the table has one reader and no second one.
+
+**IS A LESSON OWED? ASKED AND ANSWERED: NO, and the three candidates are named so
+the answer can be disagreed with.** *(i)* The S-label collision confirms
+`lessons/README.md § Lessons` "A LABEL IS NOT A CITATION" — that
+file's own bound reads *S, P, A and R were not checked*, S is now checked, two
+spaces exist and **no broken sentence was found**. A confirmation with no new
+mechanism adds no rule, and the bound was true of the pass that wrote it. *(ii)*
+The handed-down finding whose evidence held and whose subject did not is covered
+by the standing rule that a report is a clue and not a source; re-measuring is
+exactly what caught it, and nothing wrong reached a permanent file. It is recorded
+where a reader of the table meets it. *(iii)* A handle wrapped across two lines in
+the TARGET returned zero hits mid-phase — which is the trap
+`CLAUDE.md § Conventions` "The target end is the harder one" already carries, hit
+and repaired by its own written remedy. **Nothing new was learned, so nothing is
+written**; the answer turns if the second shape recurs or reaches a file as a
+premise.
+
+**NO SHA IS QUOTED FOR THE TABLE'S MEASUREMENTS**, deliberately. The work carrying
+them was uncommitted when they were written, so the only sha available is the one
+that does not contain them — the corollary to this repository's pin-a-claim rule.
+The line numbers in the table are into `ROADMAP.md` as it stood on 2026-08-18 and
+will drift; each row carries the command that reproduces it.
+
 **P1.18 STAGE 2 — THE DESIGN IS WRITTEN AND NO DRAIN IS BUILT. Documentation
 only, 2026-08-18.** The generalised device outbox now has a design in
 `ROADMAP.md § P1.18 — One outbox, several kinds of work`, and acceptance criteria
