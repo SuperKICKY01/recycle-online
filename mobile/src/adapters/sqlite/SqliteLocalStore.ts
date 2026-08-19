@@ -972,6 +972,28 @@ export class SqliteLocalStore implements LocalStore {
     return rows.map(toBill);
   }
 
+  /**
+   * How many voids the current identity still owes. DELIBERATELY WIDER than
+   * listVoidsToApply's predicate: no sync_state and no doc_no clause, because
+   * a void requested on a bill that has not synced yet is owed work even
+   * though it is not yet actionable — it becomes actionable the instant the
+   * send settles, and a count that shared the actionable predicate would read
+   * zero over a device that owes a cancellation (the same owed/owedCount rule
+   * as the send queue, P1.18). The refused exclusion and the requester clause
+   * are the SAME two as listVoidsToApply's, for the same reasons written
+   * there.
+   */
+  async countVoidsOwed(): Promise<number> {
+    const rows = await this.db.all<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM local_bills
+       WHERE void_requested_at IS NOT NULL AND voided_at IS NULL
+         AND void_refused_at IS NULL
+         AND void_requested_by_tenant_id = ? AND void_requested_by_user_id = ?`,
+      ownerParams(await this.currentOwner()),
+    );
+    return rows[0]?.n ?? 0;
+  }
+
   async markVoidApplied(id: string, attempt: number, now: Date): Promise<void> {
     await this.db.run(
       // The refusal columns are cleared alongside: this transition retires the

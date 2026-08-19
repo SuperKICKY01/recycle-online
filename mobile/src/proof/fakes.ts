@@ -15,6 +15,7 @@ import type {
   SendOutcome,
   SyncState,
   Transport,
+  UnsentBreakdown,
   VoidOutcome,
 } from "../sync/types.js";
 
@@ -397,6 +398,35 @@ export class InMemoryStore implements LocalStore {
     });
   }
 
+  /**
+   * Mirrors SqliteLocalStore.unsentBreakdown's four CASE arms, three-valued
+   * logic included: `mine` needs an identity AND a matching owner (a device
+   * with no identity matches nothing — fail closed); `otherAccount` is any
+   * KNOWN owner that is not me, which with no identity stored is every known
+   * owner; `unknownOwner` is an absent owner. Both stores must agree or a
+   * count case would pass on one and lie on the other.
+   */
+  unsentBreakdown(): Promise<UnsentBreakdown> {
+    let mine = 0;
+    let mineBlocked = 0;
+    let otherAccount = 0;
+    let unknownOwner = 0;
+    for (const b of this.rows.values()) {
+      if (b.sync_state !== "pending" && b.sync_state !== "syncing") continue;
+      const owner = this.owners.get(b.id) ?? null;
+      if (owner === null) {
+        unknownOwner += 1;
+      } else if (!sameOwner(owner, this.identity)) {
+        otherAccount += 1;
+      } else if (b.master_data_missing_at !== null) {
+        mineBlocked += 1;
+      } else {
+        mine += 1;
+      }
+    }
+    return Promise.resolve({ mine, mineBlocked, otherAccount, unknownOwner });
+  }
+
   resetSyncingToPending(now: Date): Promise<string[]> {
     const recovered: string[] = [];
     for (const row of this.rows.values()) {
@@ -442,6 +472,25 @@ export class InMemoryStore implements LocalStore {
       .slice(0, limit)
       .map(clone);
     return Promise.resolve(out);
+  }
+
+  /**
+   * Mirrors SqliteLocalStore.countVoidsOwed: requested, not settled, not
+   * refused, ordered by the current identity — and DELIBERATELY no sync_state
+   * clause, unlike listVoidsToApply above, because a void on a still-unsent
+   * bill is owed even though it is not yet actionable. Both stores must agree
+   * on the width of "owed" or the same count case would lie on one of them.
+   */
+  countVoidsOwed(): Promise<number> {
+    let n = 0;
+    for (const b of this.rows.values()) {
+      if (b.void_requested_at === null || b.voided_at !== null || b.void_refused_at !== null) {
+        continue;
+      }
+      if (!sameOwner(this.voidRequesters.get(b.id) ?? null, this.identity)) continue;
+      n += 1;
+    }
+    return Promise.resolve(n);
   }
 
   markVoidApplied(id: string, attempt: number, now: Date): Promise<void> {

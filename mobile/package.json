@@ -40,7 +40,8 @@
     "prove:statuscounts": "npm run build && node dist/proof/proveStatusCounts.js",
     "prove:sellercreate": "npm run build && node dist/proof/proveSellerCreate.js",
     "prove:sellernotice": "npm run build && node dist/proof/proveSellerNotice.js",
-    "prove:sheets": "npm run build && node dist/proof/proveSheets.js"
+    "prove:sheets": "npm run build && node dist/proof/proveSheets.js",
+    "prove:outbox": "npm run build && node dist/proof/proveOutbox.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

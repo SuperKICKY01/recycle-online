@@ -618,6 +618,20 @@ export interface LocalStore {
    */
   pendingQueueSnapshot(): Promise<QueueSnapshot>;
   /**
+   * Every unsent bill on the device, split by what it is waiting for — the
+   * number the sign-out gate turns on (App.tsx's ownUnsentCount is
+   * mine + mineBlocked).
+   *
+   * DECLARED HERE as of P1.18 stage 3, on the design's own finding: the method
+   * existed only on the concrete SqliteLocalStore, so the value the gate reads
+   * was supplied by a method the shared contract did not require and a second
+   * store implementation owed nothing. It is also what the bill kind's
+   * `owedCount` reads — the count deliberately WIDER than the sendable queue:
+   * a claimed (syncing) bill and a parked bill are both outside `owed()` and
+   * both still owed.
+   */
+  unsentBreakdown(): Promise<UnsentBreakdown>;
+  /**
    * Startup recovery: every row stranded in `syncing` by a crash goes back to
    * pending. Returns the ids that were recovered. Never silent.
    */
@@ -635,6 +649,16 @@ export interface LocalStore {
    * already synced so there is something on the server to void.
    */
   listVoidsToApply(limit: number): Promise<LocalBill[]>;
+  /**
+   * How many voids the CURRENT identity still owes: requested, not settled
+   * (`voided_at` null), not refused (`void_refused_at` null), ordered by this
+   * requester. DELIBERATELY WIDER than listVoidsToApply — no sync_state
+   * clause, because a void on a bill that has not synced yet is owed work even
+   * though it is not yet actionable, and a count sharing the actionable
+   * predicate is a screen that goes quiet exactly while work is happening
+   * (P1.18's owed/owedCount rule). The void kind's `owedCount` reads this.
+   */
+  countVoidsOwed(): Promise<number>;
   markVoidApplied(id: string, attempt: number, now: Date): Promise<void>;
   markVoidAttemptFailed(id: string, reason: string, attempt: number): Promise<void>;
   /**

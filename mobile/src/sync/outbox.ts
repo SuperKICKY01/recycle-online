@@ -1,10 +1,11 @@
 /**
  * THE OUTBOX: ONE MECHANISM CARRYING SEVERAL KINDS OF WORK.
  *
- * P1.18 stage 1 — TYPES ONLY. Nothing is moved onto this yet and no behaviour
- * changes in this file's first commit. It exists so that stage 2 has something
- * to move onto, and so the compile-time guarantee the step's DONE WHEN requires
- * is in place BEFORE any drain is rewritten rather than asserted afterwards.
+ * P1.18 stage 3 — the TYPES of the mechanism, built to the design committed at
+ * `91d49d0` (`ROADMAP.md § P1.18`, "THE OUTBOX DESIGN"). The handlers and the
+ * registry literal live in ./outboxHandlers.ts; the drain lives in
+ * ./outboxRunner.ts. This file declares WHAT a kind is and what every kind must
+ * supply; it constructs nothing.
  *
  * WHY THIS IS NOT "EXTRACT THE COMMON LOOP", and the measurement that says so.
  * `engine.ts` holds two drains that are DELIBERATELY DIFFERENT, and each
@@ -15,276 +16,332 @@
  *          per-attempt backoff, and it does not run at all while submission is
  *          forbidden. Two bills weighed 73 seconds apart took doc_nos in the
  *          wrong order before that ordering existed.
- *   void   no backoff, no time gate, no ordering; iterates everything owed;
- *          in-flight guard keyed `void:${id}` so a void and a send of the SAME
- *          bill do not block each other; void_requested_at is never cleared, so
- *          a void stays owed across restarts and days offline, with no attempt
- *          cap.
+ *   void   no backoff, no time gate, no attempt cap; a refusal of one row does
+ *          not hold another; in-flight guard keyed `void:${id}`;
+ *          void_requested_at is never cleared, so a void stays owed across
+ *          restarts and days offline. (The void QUEUE is ordered —
+ *          listVoidsToApply ends ORDER BY void_requested_at, id — it is the
+ *          DRAIN that imposes no order. The design records that correction.)
  *
  * A single shared policy is a REGRESSION whichever way it goes — voids gaining
  * head-of-line blocking, or bills losing backoff. So POLICY IS PER KIND and the
  * shared part is what a kind IS, how it is drained, how its outcome is
- * classified, and how it is made visible. Anything here that unifies the
- * policies has misread `engine.ts`.
+ * classified, and how it is made visible.
  *
- * THE COMPILE-TIME GUARANTEE, and what it does and does not stop.
- * `OutboxRegistry` is `Record<OutboxKind, OutboxHandler<...>>`. Adding a member
- * to `OutboxKind` makes every registry literal fail to typecheck until a handler
- * exists for it, and no cast at a call site can dodge that — the error is at the
- * registry, which is one object in one place. That is the mechanism behind the
- * step's criterion 2, which replaced "read the diff and see there is no new
- * loop": `runOnce` is a function NAME rather than a structural property, so a
- * per-kind loop moved into a helper satisfies a diff-reading criterion while
- * defeating the design.
+ * THE COMPILE-TIME GUARANTEE. `OutboxRegistry` is a MAPPED TYPE over
+ * `OutboxKind`, and the one registry literal (outboxHandlers.ts,
+ * buildOutboxRegistry) is typed with it. Adding a member to `OutboxKind` makes
+ * that literal — and the OutboxRow/OutboxResult maps here — fail to typecheck
+ * until a handler exists for it. That is the observable of
+ * `THE-REGISTRY-IS-TOTAL-AND-IS-WHAT-THE-DRAIN-ENUMERATES` (the named criteria
+ * in `ROADMAP.md § P1.18`; the numbered 1-7 this file's earlier revision cited
+ * are superseded there).
  *
  * WHAT IT DOES NOT STOP, stated because a guarantee believed is not a guarantee
  * measured: nothing here prevents somebody writing a second drain that ignores
- * this file entirely. The registry makes the SUPPORTED path total over the kinds
- * — it cannot make an unsupported path unwriteable. What it does is remove the
- * excuse: a new kind has exactly one place to be declared, and leaving it out is
- * a red typecheck rather than a silent omission.
+ * this file entirely. The registry makes the SUPPORTED path total over the
+ * kinds — it cannot make an unsupported path unwriteable
+ * (`NO-SECOND-DRAIN` states that limit in its own text).
  */
 
 import type { LocalBill, SendOutcome, VoidOutcome } from "./types.js";
+import type { SyncRunResult } from "./engine.js";
 
 /**
  * EVERY KIND OF WORK THE DEVICE OWES THE SERVER.
  *
- * `seller_create` is declared here in stage 1 and has NO handler yet, which is
- * deliberate and is the first thing this file proves about itself: the registry
- * type below cannot be satisfied without one, so the typecheck is red until
- * stage 3 supplies it. A kind that could be forgotten is the defect this whole
- * step exists to remove.
+ * TWO members, deliberately. `seller_create` was declared in stage 1 and is
+ * REMOVED by the stage-2 design: what identifies a locally created seller
+ * across offline devices is an OPEN DECISION of the owner's
+ * (`OPEN_ITEMS.md § Decisions open`, the two-handsets seller-code finding), and
+ * a union member nobody may build makes the registry literal a permanent red or
+ * a permanent excuse to leave it unbuilt. The kind returns in the step that
+ * answers the decision. The generalisation is demonstrated by the COMPILE
+ * ERROR adding a member produces, not by a third runtime kind.
  */
-export type OutboxKind = "bill_send" | "bill_void" | "seller_create";
+export type OutboxKind = "bill_send" | "bill_void";
 
 /**
- * HOW A KIND IS ORDERED. Not a preference — the two existing values are the two
- * measured behaviours, and mixing them up is the regression named at the head of
- * this file.
+ * Each kind's own row type. Both bill kinds carry LocalBill today; the map
+ * exists so a kind with a DIFFERENT row (a photo descriptor, a local seller)
+ * is three one-line edits in this file, each demanded by the compiler.
  */
-export type OutboxOrdering =
-  /**
-   * Oldest first by the row's own business time, and THE HEAD BLOCKS. If the
-   * head cannot go, the pass stops and nothing behind it may overtake. The cost
-   * is deliberate: one unsendable row holds up the rest. That is what a queue
-   * means when the numbers it produces are legal documents.
-   */
-  | "head_of_line"
-  /**
-   * No order at all. Every owed row is attempted in the same pass and one
-   * failing row does not hold another. Correct for work whose rows are
-   * independent of each other, which a void is and a bill send is not.
-   */
-  | "unordered";
+export interface OutboxRow {
+  bill_send: LocalBill;
+  bill_void: LocalBill;
+}
 
 /**
- * WHETHER A FAILED ATTEMPT IS DELAYED BEFORE THE NEXT ONE.
- *
- * `none` is not an oversight for the void kind. A void has no attempt cap and no
- * terminal failure state for an unknown outcome, so its retry is bounded by the
- * server settling it rather than by a schedule — and a backoff would delay the
- * one action that corrects a wrong bill.
+ * Each kind's own transport-outcome union. Kept per kind so the drain never
+ * learns what a status means: "409 settles here and retries there" is two
+ * lines in two different `classify` functions, never a drain branch.
  */
-export type OutboxBackoff = "per_attempt" | "none";
+export interface OutboxResult {
+  bill_send: SendOutcome;
+  bill_void: VoidOutcome;
+}
+
+/**
+ * THE REGISTRY — total by construction. A mapped type over `OutboxKind`, so a
+ * new member reddens every literal of this type until the kind has a handler,
+ * and pins each kind to its own Row and Outcome, so a handler written against
+ * the wrong row does not compile. The runner obtains handlers ONLY by
+ * enumerating a value of this type, and drains kinds in its member order —
+ * which makes the literal's member order LOAD-BEARING
+ * (`SENDS-SETTLE-BEFORE-VOIDS-ARE-READ`; the argument sits on the literal in
+ * outboxHandlers.ts).
+ */
+export type OutboxRegistry = {
+  readonly [K in OutboxKind]: OutboxHandler<OutboxRow[K], OutboxResult[K]>;
+};
 
 /**
  * The per-kind policy, read by the drain and by nothing else.
  *
- * `inFlightKey` exists because two kinds can be owed for the SAME row: a bill
- * can be awaiting send and carrying a void request at once. Keying the in-flight
- * guard by row id alone would make one silently block the other, which is the
- * case the step's criterion 5 drives on a device precisely because it is the
- * point a unified drain is most likely to fail.
+ * `blocking` AND `rereadAfterEach` ARE NOT INDEPENDENT — only two of the four
+ * pairs mean anything, and one illegal pair fails by draining SLOWLY rather
+ * than by failing (the design's pair rule):
+ *
+ *   head_blocks + re-read   the send kind. The re-read is the only reason a
+ *                           bill freed by clearBackoffForPending goes in the
+ *                           SAME pass. Safe only here: a row still owed after
+ *                           `record` stops the pass, so no re-read can hand
+ *                           the same row back.
+ *   independent + snapshot  the void kind. One read, iterated by cursor; a
+ *                           row that stays owed is passed over by the cursor
+ *                           rather than by leaving the set.
+ *   independent + re-read   legal to write, drains ONE row per pass — a row
+ *                           that stays owed heads every re-read, so the pass
+ *                           ends on the per-pass bound instead of the queue.
+ *   head_blocks + snapshot  the send kind with its second half removed: the
+ *                           pass can never pick up a row its own success just
+ *                           released.
  */
 export interface OutboxPolicy {
-  readonly ordering: OutboxOrdering;
-  readonly backoff: OutboxBackoff;
+  /** A row that cannot go: `head_blocks` ends the kind's pass, `independent` advances past it. */
+  readonly blocking: "head_blocks" | "independent";
   /**
-   * Whether a row's scheduled next-attempt time gates the attempt. FALSE for a
-   * kind that carries no schedule; TRUE for one that does, in which case the
-   * drain must also apply the clock-sanity read that stops a stamp written by a
-   * since-corrected device clock from holding the queue.
+   * TRUE  -> after every row that ADVANCED the queue, discard the batch and
+   *          re-read (cursor reset). FALSE -> iterate the one batch by cursor.
+   * Not free to combine with `blocking`; see the pair rule above.
    */
-  readonly timeGated: boolean;
+  readonly rereadAfterEach: boolean;
+  /**
+   * `serial_per_kind`: a pass over this kind takes an in-process lock for the
+   * whole pass, and a second pass over the kind returns without reading rows —
+   * so overlapping ticks cannot reach past a claimed head
+   * (`PASSES-OVERLAP-AND-ORDER-HOLDS`). `parallel_rows` takes no lock: the
+   * kind's rows are independent and one held row must not stop another.
+   * An in-process lock is a claim about ONE JavaScript context; the durable
+   * claim (`claim` below) remains the guard for a crash or a second process.
+   */
+  readonly concurrency: "serial_per_kind" | "parallel_rows";
+  /**
+   * The in-flight guard's key for a row of this kind. One in-flight set is
+   * keyed by more than one kind, so the key spaces must not collide — which is
+   * why the void kind prefixes. A send and a void of ONE bill are never
+   * simultaneously actionable (the store predicates forbid it: an in-flight
+   * send is `syncing`, an owed void requires `synced`), so the prefix is a
+   * declaration the field-by-field criterion asserts, not a behaviour any
+   * staging can reach — the design deletes that staging and says why.
+   */
   readonly inFlightKey: (rowId: string) => string;
+  /**
+   * Can the SERVER recognise a repeat of this kind's request? Read by no
+   * branch of the drain. It is a declaration the kind makes about its own
+   * route, and it is what `A-THROW-LANDS-IN-ONE-OF-TWO-PLACES` checks
+   * `classify(onThrow(x))` against without re-deriving idempotence in a proof.
+   */
+  readonly resendIsIdempotent: boolean;
 }
 
 /**
- * WHAT THE DRAIN DID WITH ONE UNIT OF WORK, in the drain's own vocabulary rather
- * than the server's.
- *
- * Each kind classifies its own transport outcome into this, which is what keeps
- * the drain from knowing anything about `SendOutcome` or `VoidOutcome`. The
- * names are about WHAT HAPPENS NEXT, because that is the only question the drain
- * asks: it does not care why.
+ * WHAT THE DRAIN DOES NEXT with one unit of work, in the drain's own
+ * vocabulary. Each kind classifies its own transport outcome into this; the
+ * drain never sees a status. Six members, each a NEXT ACTION and never a
+ * reason. Adding a member here is deliberately expensive — it is a new drain
+ * behaviour, and it is a compile error in EVERY kind's `classify` until that
+ * kind answers it, because a kind silently inheriting somebody else's answer
+ * is the failure `correct-classification-can-still-render-as-an-error` records
+ * three times over.
  */
 export type OutboxDisposition =
-  /** Done. The server is in the state the device asked for. */
+  /** Done. The server is in the state the device asked for. The row leaves the queue. */
   | { readonly next: "settled" }
-  /** Not done, and a later attempt may differ. Backoff applies if the kind has one. */
+  /**
+   * Not done, and a later attempt may differ. The row is STILL OWED — under
+   * `head_blocks` this is the one disposition that ends the kind's pass.
+   */
   | { readonly next: "retry"; readonly reason: string }
   /**
-   * Not done, and no later attempt on this device can differ. The row leaves the
-   * queue into a named, operator-visible state. NEVER used for an unknown
-   * outcome: a throw carries no information about whether the server committed,
-   * and treating that as terminal would strand real work.
+   * Not done, out of the sendable queue, and IT COMES BACK BY ITSELF — the 424
+   * case: master data the office has not set up. `terminal` cannot express it
+   * (the stage-1 mapping claimed it could, against its own comment); this is
+   * unavailable-is-not-rejected's three-way split put in the type.
+   */
+  | { readonly next: "parked"; readonly reason: string; readonly code: string }
+  /**
+   * Not done, and no later attempt on this device can differ. The row leaves
+   * the queue into a named, operator-visible state. NEVER for an unknown
+   * outcome: a throw carries no information about whether the server
+   * committed.
    */
   | { readonly next: "terminal"; readonly reason: string; readonly code: string }
   /**
-   * Not done, and the whole KIND must stop for this pass — not just this row.
-   * The measured case is a 403 on the send path: every further attempt is an
-   * identical question to a server that has already answered it, so the drain
-   * stops rather than climbing attempt counts on rows that are perfectly fine.
+   * The server MAY have committed, and a repeat is NOT safe. No bill kind
+   * produces it today (both routes are idempotent); it exists because a route
+   * with no idempotency key already names this state (`createSeller`'s
+   * "ambiguous") and a union with no arm for it forces every implementation to
+   * pick one of the three wrong answers: `settled` lies, `terminal` strands
+   * work the server may hold, `retry` duplicates it.
+   */
+  | { readonly next: "needs_review"; readonly reason: string; readonly code: string }
+  /**
+   * Not done, and the whole KIND must stop — durably, not for one pass. The
+   * measured case is a 403 on the send path: it refuses every bill equally, so
+   * retrying any of them re-asks a settled question. The runner holds the halt
+   * on itself, keyed by kind; exactly two events retract it (sign-in and
+   * sign-out — `SyncEngine.resumeAfterSignIn` / `resetAfterSignOut`), and it
+   * is deliberately not persisted: a restart costs one request, and that
+   * request is the only way the device ever discovers the role was fixed.
    */
   | { readonly next: "halt_kind"; readonly reason: string; readonly code: string };
 
 /**
- * EVERYTHING A KIND MUST SUPPLY TO BE DRAINED. One implementation per kind, and
- * `OutboxRegistry` below makes the set of them total.
- *
- * `Row` is the kind's own row type. It is a type parameter rather than a union
- * so that a handler cannot be handed a row belonging to a different kind: the
- * registry pins each kind to its own row type, and a handler written against the
- * wrong one does not compile.
+ * EVERYTHING A KIND MUST SUPPLY TO BE DRAINED. One implementation per kind;
+ * the registry makes the set total. One member per thing `engine.ts` does
+ * today for exactly one kind — which is the design's own generative rule for
+ * this interface, and the licence for `record`'s two stage-3 parameters (see
+ * its doc).
  */
-export interface OutboxHandler<Row> {
+export interface OutboxHandler<Row, Outcome> {
   readonly kind: OutboxKind;
   readonly policy: OutboxPolicy;
+
   /**
-   * The rows this kind currently owes, already in the order `policy.ordering`
-   * requires. Ordering lives in the QUERY and not in the drain, because a sort
-   * cannot order a row the query did not return — the defect that produced the
-   * 73-second incident was a backoff-filtered query hiding the older bill, and no
-   * amount of sorting in the loop could have fixed it.
+   * Rows owed AND ACTIONABLE NOW, already in the order `policy` requires, and
+   * already filtered to rows this device's current identity may act on.
+   * Ordering lives in the QUERY: a sort cannot order a row the query did not
+   * return, and an owner filter applied in the drain is a filter every future
+   * kind has to remember (`OWED-CARRIES-THE-OWNER-PREDICATE`).
    */
   owed(limit: number): Promise<Row[]>;
-  /** The row's identity, for the in-flight guard and for reporting. */
+  /**
+   * How many rows the device still OWES. The only input to the visible counts,
+   * and its predicate is DELIBERATELY WIDER than `owed`'s: `owed` is filtered
+   * by what can be ATTEMPTED, this only by what is SETTLED. A kind whose two
+   * methods share a predicate is a screen that goes quiet exactly while work
+   * is happening — a claimed (in-flight) bill and a parked bill are both
+   * outside `owed()` and both still owed.
+   */
+  owedCount(): Promise<number>;
+  /**
+   * Boot sweep for THIS kind: rows stranded in flight go back to owed.
+   * Returns the ids it swept, so the runner can report a result keyed by kind
+   * and a missing kind is visible rather than silent
+   * (`EVERY-KIND-RECOVERS-AT-BOOT`). A kind with no durable in-flight state
+   * correctly returns an empty array.
+   */
+  recover(now: Date): Promise<readonly string[]>;
+
   rowId(row: Row): string;
-  /** Attempts already made. Drives backoff, and is reported, never inferred. */
+  /** Attempts already made, off the row. Reported, never inferred. */
   attempt(row: Row): number;
   /**
-   * Do the work. May throw; a throw is classified by the drain as `retry`, never
-   * as terminal, because it carries no information about whether the server
-   * committed.
+   * The row's own schedule, or null for a kind that carries none. The drain
+   * reads it under the clock-sanity rule (an over-horizon schedule is due
+   * NOW), so a stamp written by a since-corrected clock cannot hold a queue.
    */
-  perform(row: Row): Promise<OutboxDisposition>;
-  /** Record the disposition against the row. The only writer for this kind. */
-  record(row: Row, d: OutboxDisposition, attempt: number, now: Date): Promise<void>;
+  dueAt(row: Row): string | null;
+
+  /**
+   * THE DURABLE CLAIM — `claimForSend`'s conditional UPDATE, or a constant
+   * `true` for a kind that has none. A false answer is not an outcome: nothing
+   * is performed, classified or recorded, the pass reports the skip, and the
+   * row is still owed (`A-LOST-CLAIM-IS-NOT-AN-OUTCOME`).
+   */
+  claim(row: Row): Promise<boolean>;
+
+  perform(row: Row): Promise<Outcome>;
+  /** A throw, converted to THIS kind's own outcome. A throw carries no
+      information about whether the server committed, so
+      `classify(onThrow(x))` must never be `terminal` — and the positive form
+      is asserted per kind: `retry` where the kind's re-send is idempotent,
+      `needs_review` where it is not (`A-THROW-LANDS-IN-ONE-OF-TWO-PLACES`). */
+  onThrow(err: unknown): Outcome;
+  /** Pure. Drivable headlessly over every member, with no server. */
+  classify(o: Outcome): OutboxDisposition;
+  /**
+   * The next schedule, or null. Covers the send backoff, the parked slow
+   * cadence, and a transfer that made progress and must not be delayed. The
+   * DRAIN calls this — once per recorded unit — and hands the result to
+   * `record`; the drain also refuses (loudly, with kind, row and value) any
+   * result past SEND_SCHEDULE_HORIZON_MS, because the schedule's own reader
+   * fails open and would silently reduce such a backoff to zero
+   * (`A-SCHEDULE-STAYS-INSIDE-THE-HORIZON`).
+   */
+  nextAttemptAt(row: Row, d: OutboxDisposition, attempt: number, now: Date): Date | null;
+  /**
+   * THE ONLY WRITER FOR THIS KIND — the store transition AND the pass-result
+   * counters, in one member, exactly as `engine.ts`'s `sendOne(bill, result)`
+   * and `applyVoids` arms are today.
+   *
+   * Two parameters here are stage 3's, and each carries its licence:
+   *
+   *   `next`    the design's inherits section names this exact shape — the
+   *             drain calls `nextAttemptAt` and its "result [is] handed to
+   *             `record`". Null where the kind or the disposition carries no
+   *             schedule.
+   *   `result`  the pass result the screen reacts to. It CANNOT be filled by
+   *             the runner: `sessionExpired` versus `retryable` is a fact
+   *             about SendOutcome — both classify `retry` — and the drain
+   *             never learns what an outcome means. It cannot be a separate
+   *             pure member either: `backoffsCleared` is the return value of a
+   *             store write this member makes. So the kind's own writer folds
+   *             its outcome into the counters, which is one member per thing
+   *             engine.ts does today for exactly one kind — the design's own
+   *             rule for what this interface holds.
+   *
+   * Takes the OUTCOME as well as the disposition: with only the disposition
+   * the send kind cannot maintain its poison columns (`reachable` lives on the
+   * outcome and nowhere else — `THE-POISON-SIGNAL-SURVIVES-BOTH-WAYS`), and a
+   * 401 could not stay distinguishable from an offline bounce across this
+   * interface.
+   */
+  record(
+    row: Row,
+    o: Outcome,
+    d: OutboxDisposition,
+    attempt: number,
+    next: Date | null,
+    now: Date,
+    result: SyncRunResult,
+  ): Promise<void>;
 }
 
 /**
- * THE REGISTRY, AND IT IS THE WHOLE COMPILE-TIME GUARANTEE.
- *
- * `Record<OutboxKind, ...>` is total: every member of `OutboxKind` must have an
- * entry. Add a kind and every registry literal is a compile error until it is
- * handled. That is criterion 2's observable — a command with an exit code —
- * rather than a property somebody reads off a diff.
- *
- * The row types are pinned per kind rather than left as a union, so a handler
- * written against the wrong row does not compile either.
+ * THE TWO POLICIES, written as data so the difference between the kinds is
+ * READABLE rather than buried in two loops diffed by eye. Transcriptions of
+ * measured behaviour (engine.ts at `91d49d0`), not proposals — and
+ * `VOID-KEEPS-EVERY-DIFFERENCE-THE-DESIGN-NAMES` asserts BILL_VOID field by
+ * field, so a member silently changed by a later edit is a red cell.
  */
-export interface OutboxRegistry {
-  readonly bill_send: OutboxHandler<LocalBill>;
-  readonly bill_void: OutboxHandler<LocalBill>;
-  readonly seller_create: OutboxHandler<LocalOutboxSeller>;
-}
-
-/**
- * A locally created seller awaiting its first send. DECLARED, NOT BUILT — stage
- * 3 owns it, and the fields here are the ones P1.8b's survey says the kind must
- * carry rather than a guess at a schema:
- *
- *   - it has an ORIGIN, because `cached_sellers` has none and a locally created
- *     seller is otherwise indistinguishable from one the server sent;
- *   - it has NO server id, because the server refuses a client-minted one
- *     (`SellerCreate` sets extra="forbid" and `sellers.id` defaults to
- *     gen_random_uuid(), where `purchase_bills.id` has no default);
- *   - it carries the code it asked for, because `sellers` has no idempotency key
- *     and a re-send is recognisable only by a code collision — which is why a
- *     409 on this kind means ALREADY EXISTS and settles the row, where the same
- *     status on the bill path would be retry-forever and would dam the queue.
- *
- * Every one of those is to be re-derived against the artefacts in stage 3. They
- * are written here so the shape is argued before it is built, not after.
- */
-export interface LocalOutboxSeller {
-  readonly id: string;
-  readonly code: string;
-  readonly name: string;
-  readonly tenant_id: string;
-  readonly device_created_at: string;
-  readonly attempts: number;
-  readonly last_error: string | null;
-}
-
-/**
- * THE TWO POLICIES THAT EXIST TODAY, written as data so the difference between
- * them is READABLE rather than buried in two loops that must be diffed by eye.
- *
- * These are transcriptions of measured behaviour, not proposals. Stage 2 moves
- * the drains onto them and the existing proofs are what establish that the
- * transcription is faithful — a claim this file cannot make about itself.
- */
-export const BILL_SEND_POLICY: OutboxPolicy = {
-  ordering: "head_of_line",
-  backoff: "per_attempt",
-  timeGated: true,
+export const BILL_SEND: OutboxPolicy = {
+  blocking: "head_blocks",
+  rereadAfterEach: true,
+  concurrency: "serial_per_kind",
   inFlightKey: (rowId) => rowId,
+  // hard rule 4: every bill create carries an idempotency_key, and a repeat
+  // returns the existing bill rather than a second one.
+  resendIsIdempotent: true,
 };
 
-export const BILL_VOID_POLICY: OutboxPolicy = {
-  ordering: "unordered",
-  backoff: "none",
-  timeGated: false,
+export const BILL_VOID: OutboxPolicy = {
+  blocking: "independent",
+  rereadAfterEach: false,
+  concurrency: "parallel_rows",
   inFlightKey: (rowId) => `void:${rowId}`,
+  // a repeat is answered 409, which httpTransport.voidBill maps to
+  // `already_voided` and the void kind's classify settles.
+  resendIsIdempotent: true,
 };
-
-/**
- * Classify a bill send's transport outcome. Pure, so a proof can drive every
- * member without a server.
- *
- * NOT YET WIRED — stage 2 hands this to the drain. It is written now because the
- * mapping is where the send path's meaning lives, and getting it wrong is
- * exactly the class `unavailable-is-not-rejected` records: `rejected` is
- * terminal and `unavailable` is not, and collapsing them either strands a
- * correct bill or retries a malformed one forever.
- */
-export function dispositionOfSend(o: SendOutcome): OutboxDisposition {
-  switch (o.kind) {
-    case "accepted":
-    case "duplicate":
-      return { next: "settled" };
-    case "rejected":
-      return { next: "terminal", reason: o.reason, code: "rejected" };
-    case "rejected_resolvable":
-      // Parks in a named state and returns when the office adds the price. It is
-      // NOT terminal: the bill becomes valid without anything being re-weighed.
-      return { next: "terminal", reason: o.reason, code: o.code };
-    case "session_expired":
-      return { next: "retry", reason: o.reason };
-    case "forbidden":
-      return { next: "halt_kind", reason: o.reason, code: o.code };
-    case "unavailable":
-      return { next: "retry", reason: o.reason };
-  }
-}
-
-/** Classify a void's transport outcome. Same contract as above. */
-export function dispositionOfVoid(o: VoidOutcome): OutboxDisposition {
-  switch (o.kind) {
-    case "voided":
-    case "already_voided":
-      // "Already voided" is success: the server is in the state the owner asked
-      // for, which is the entire question being answered.
-      return { next: "settled" };
-    case "rejected":
-      return { next: "terminal", reason: o.reason, code: "void_rejected" };
-    case "session_expired":
-      return { next: "retry", reason: o.reason };
-    case "forbidden":
-      return { next: "terminal", reason: o.reason, code: o.code };
-    case "unavailable":
-      return { next: "retry", reason: o.reason };
-  }
-}
