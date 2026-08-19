@@ -7,9 +7,18 @@ to the instrument you are about to cite as evidence for something else.
 case, run in the same pass, that makes it fire. A check nobody has watched go red
 is a claim about the code, not a measurement of it.
 
-**FIFTEEN MECHANISMS, and this line is the ONLY place in this file that says how
+**SIXTEEN MECHANISMS, and this line is the ONLY place in this file that says how
 many.** Every heading below names its own mechanism and never the running total,
-so appending another is a one-number edit, here. This line exists because the
+so appending another is a one-number edit, here.
+**It read FIFTEEN until 2026-08-19, and the correction is its own instance.**
+`a60340c` appended `## A SIXTEENTH MECHANISM` at the foot of this file and did not
+touch this line — `git show a60340c -- <this file> | grep -E "FIFTEEN|SIXTEEN"`
+returns exactly one line, the added heading. The one-number edit named in the
+sentence above was not made, by an author who had just written the mechanism it
+counts. That is the second instance behind
+`lessons/a-quantified-sentence-names-no-member.md`, which is about the sentences a
+membership change falsifies WITHOUT NAMING THE MEMBER: a count is one of them, and
+it is the only kind this file can carry. This line exists because the
 count used to live in three headings and in this file's index line, and all four
 went stale together while the body grew from four to nine — the index line ended
 up reading "Six mechanisms" and "a NINTH mechanism" in one sentence.

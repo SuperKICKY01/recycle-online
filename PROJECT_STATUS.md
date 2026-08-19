@@ -57,14 +57,153 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.18 STAGE 2b — THE DESIGN AND THE CRITERIA ARE REVISED, AND THE DRAIN THE
+DESIGN PRINTED DID NOT WORK. Documentation only, 2026-08-19.** An independent pass
+read the design and the criteria delivered by stage 2 and fired the stop. Seven
+findings, all re-derived against the artefacts in this phase before any repair was
+written. **Nothing under `mobile/`, `server/`, `packages/`, `desktop/` or `tools/`
+moved**, no P-number was minted, no decision was reopened, no S-number was
+superseded, and the staff photograph settled on 2026-08-18 is left where P-SWEEP
+recorded it. This is the current DOCUMENTATION phase; the P-SELLERAUTHOR record
+further down is still the current code phase.
+
+**THE FINDING THAT MATTERS MOST IS THE ONE ABOUT THE MECHANISM, NOT THE
+CRITERIA.** The generic drain the design printed **could not advance past its first
+row**: it read `batch[0]` on every iteration under `while (true)`, so `batch[1]` was
+unreachable and `continue` re-took the row it had just passed over. **And for a kind
+whose retries stay owed it did not terminate at all** — `markVoidAttemptFailed`
+writes `void_attempts` and `void_last_error`, neither of which appears in
+`listVoidsToApply`'s predicate, so a bounced void is owed again on the next read and
+the pass re-POSTs it for ever. It had also dropped all three of today's per-pass
+bounds: `guard < this.batchLimit` and `!this.sendForbidden` from the loop header, and
+the `attempted` set whose own comment says it is what stops "a bill that returns to
+pending" being "retried in a tight spin". The design now carries a CURSOR over a
+batch, three bounds, a `claim` member for the durable claim, a `halt_kind` that
+survives the pass the way `sendForbidden` does, and a rule for when the head blocks
+that is derived from the disposition rather than from an enumeration — *is the row
+still owed after `record`*, which of the six dispositions exactly one is.
+
+**FOUR MORE CHANGED THE DESIGN RATHER THAN THE CRITERIA, WHICH IS WHAT THE
+RESTRUCTURING OF STAGE 2 WAS FOR.** `owedCount()` must NOT share `owed()`'s
+predicate — `claimForSend` moves the head out of `QUEUED`, so a count sharing it
+drops a bill for the length of its own request, up to twenty seconds, on a screen
+that refreshes every 400 ms. The pass must still RETURN what the screen reacts to:
+`SyncRunResult`, `sessionExpired`, `skippedInFlight` and `setOnline` appeared zero
+times in the design, against a control of `claimForSend` which appeared four times,
+while six lines of `mobile/App.tsx` react to those fields. `nextAttemptAt` can write
+a schedule its own reader discards, because the horizon check is a CONSTRUCTOR throw
+over two integers and cannot follow a per-row function. And the `ใบ` argument for an
+exhaustive sheet named two things `OutboxKind` does not contain, because this same
+design removed the third.
+
+**TWO CRITERIA A BROKEN IMPLEMENTATION SATISFIED, AND THREE PROPERTIES NO CRITERION
+REACHED.** A throw was required only not to be `terminal` — one member of six — so
+`settled` passed, and on a void that is worse than the outcome it forbade:
+`markVoidApplied` sets `voided_at`, `listVoidsToApply` requires it null, and
+`voidProgressLine` then returns `แจ้งระบบแล้ว` on a cancellation the server never
+received. The void-refusal guard derived its own domain from the post-change tree and
+required each member's count to exceed zero — true by construction, and blind to the
+deletion it existed to forbid. Unreached: the status strip (`grep -ci strip` over the
+criteria returned 0, against a control of 5 for the same instrument over the whole
+step), the owner predicate the design calls a requirement on every kind, and the pass
+result. **The set went from TWELVE criteria to SEVENTEEN**, measured with one
+whitespace-normalising script run over both objects — the superseded block in
+`git show HEAD:ROADMAP.md` and the revised block in the working tree — because these
+phrases WRAP and a line-anchored instrument reported five of the seventeen as missing
+a sentence they carry. **Twelve of twelve carried a named red case and NONE carried
+an answer to *can a broken implementation satisfy it?*; seventeen of seventeen now
+carry both**, plus a cost label of HEADLESS, SERVER or HANDSET that none of the
+twelve had, so a set nobody can afford to run in one sitting is visible as such.
+
+**THE CONJUNCTION QUESTION WAS ASKED FROM FIVE FIXED DIRECTIONS, AND THE PREVIOUS
+ANSWER TO IT WAS ITSELF A FINDING.** It closed with "A FOURTH WAS SOUGHT AND NOT
+FOUND. No state was constructed in which every criterion is green and the DRAIN
+itself is wrong" — while a wrong drain sat printed on the same page. All five
+directions returned something this time, against one before. Three are recorded as
+residuals rather than closed: the per-bill card, which no criterion reads and which
+this repository has already shipped two defects on; four load-bearing columns of
+`local_bills` that the drain writes and no cell reads back, `idempotency_key` the
+sharpest of them because hard rule 4 lives on it; and the master cache, unchanged
+from the previous answer.
+
+**WHAT CARRIES AN EXIT CODE, AND WHAT DOES NOT.** `tools\verify_citations.ps1`,
+invoked with the call operator and an explicit array so `[string[]]` binds:
+**baselined BEFORE any edit at SOURCES=25 CITATIONS=487 BROKEN=12, exit 1**, and
+finally at **SOURCES=26 CITATIONS=500 BROKEN=12, exit 1** — the same twelve, listed
+and compared line by line, none of them in `ROADMAP.md`, and the one difference
+between the two lists a line number that moved because `ROADMAP.md` grew above it.
+The source list gained the new lesson, because a document that cites and is not a
+source is the fifth mechanism this repository has already paid for. **The rise of
+THIRTEEN citations is accounted for exactly**: nine added to `ROADMAP.md`, two to
+this file, and the new lesson's single citation counted twice — once in the lesson
+and once inside the regenerated `lessons/all-lessons.md`. **Two of the thirteen are
+this paragraph's own doing**, which is why the figure was wrong once before it was
+right: a count of citations, written into a file that is itself a citation source,
+moves when you record it. Both positive controls held 26/26 and no `SOURCE MISSING`
+appeared. `tools\verify_shared_checks.py` exits **0**.
+`server/scripts/build_all_lessons.py --check` exits **1** before the regeneration and
+**0** after, over 56 lesson files. **Everything else in this phase is a grep, a read
+or a `git show`**, so no other claim in it carries a status: no build, no typecheck,
+no proof, no server and no handset were run, and every type-system and behavioural
+claim in the revised design is a READING of the artefacts.
+
+**AND BROKEN WENT 12 → 20 → 12 IN THE MIDDLE OF IT, BY THIS PHASE'S OWN HAND.** The
+new lesson's index line named a sibling lesson by its FILENAME, and eight citations
+across five files use that filename as their handle — so one added line made every
+one of them resolve to TWO, with **neither endpoint edited**. That is the ELEVENTH
+MECHANISM of the very file the index line was pointing at, executed by the entry
+announcing a lesson about sentences a membership change falsifies. It was caught only
+because the checker was run over every source rather than over the files this phase
+edited, which is the sixth mechanism's remedy and the one thing that could have found
+it. The line now names that lesson WITHOUT its `.md`, and says in its own text why.
+
+**AND ONE INSTRUMENT LIED INSIDE THIS PHASE.** `grep -c $'\r'` over
+`lessons/README.md` returned 0 through the Bash tool, which reads as that file having
+been normalised. Counted in BYTES it holds 62 CR and 62 LF — fully CRLF, exactly as
+`CLAUDE.md § Machine footguns` says. The escape did not survive the invocation, which
+is the empty-needle mechanism this repository already records; the index line was
+appended by a script that COPIES the file's existing ending rather than assuming one,
+and the BOM and all 63 CRLFs are intact after it.
+
+**WHAT THIS COMMIT DELETED FROM THIS FILE, AND WHY REPLACEMENT WAS RIGHT FOR ALL OF
+IT.** Five lines, in two hunks, and **none of them was a superseded record** — they
+are the two occurrences of one present-tense sentence, *"This is the current
+DOCUMENTATION phase"*, in the P-SWEEP record and in the P1.18 stage 2 record. Both
+were struck through in place with `~~ ~~`, dated 2026-08-19, and given the record
+that replaced them, which is this file's own convention rather than an exception to
+it; the line count moves because a superseded sentence reflows the paragraph it sits
+in, not because anything was dropped. **Two trailing clauses WERE reworded and have
+been restored verbatim** — *"the P1.18 stage 2 record immediately below stays as
+written"* and *"the P-SELLERAUTHOR record below stays as written"* — because only the
+stale clause is the supersession's business and the rest of a sentence must survive
+the way it was written. `ROADMAP.md`'s 243 deletions are a different thing and are
+the revision itself: replacing a design and a criteria set is what this phase was
+dispatched to do.
+
+**WHAT THE SECOND REVIEW MUST BE TOLD, WRITTEN HERE SO THE NEXT DISPATCH INHERITS IT
+RATHER THAN REDISCOVERING IT.** The revised design goes to a SECOND independent
+review before stage 3 begins. **The drain loop was REWRITTEN, not patched** — a
+cursor, three bounds, a `claim` member, a durable `halt_kind`, and a head-blocking
+rule derived from the disposition instead of enumerated — **and a rewritten mechanism
+has no history of being read.** Both defects the previous draft shipped, a loop that
+could not advance past its first row and a policy flag with no path in which its
+value took effect, were in PRINTED CODE THAT HAD ALREADY PASSED ONE REVIEW. Attack
+the drain first, and read the printed code as code rather than as prose. The
+forty-five findings from the review killed part-way through this phase are carried
+forward as INPUT to that pass and are recorded at
+`ROADMAP.md § What the NEXT review inherits — clues, not findings` with the four the
+reviewer named as worth re-deriving first.
+
 **P-SWEEP — EVERY SETTLED DECISION NOW HAS AN OWNER OR IS RECORDED AS HAVING
 NONE. Documentation only, 2026-08-18.** S1 to S19 were swept against the steps in
 `ROADMAP.md`, and the audited table is at
 `ROADMAP.md § Every settled decision, and the step that owns it` "a decision with no step is a commitment nothing schedules".
 **No file under `mobile/`, `server/`, `packages/`, `desktop/` or `tools/` moved.**
-This is the current DOCUMENTATION phase; the P1.18 stage 2 record immediately
-below stays as written, and the P-SELLERAUTHOR record further down is still the
-current code phase.
+~~This is the current DOCUMENTATION phase~~ — **superseded 2026-08-19: the P1.18
+stage 2b record ABOVE is now the current documentation phase.** The rest of this
+sentence stands as written: the P1.18 stage 2 record immediately below stays as
+written — and is now superseded in place, there — and the P-SELLERAUTHOR record
+further down is still the current code phase.
 
 **WHAT THIS PHASE DID NOT DO, first, because it is the part most likely to be
 misread.** **No P-number was minted** — not for the UX rework, not for
@@ -177,8 +316,18 @@ will drift; each row carries the command that reproduces it.
 only, 2026-08-18.** The generalised device outbox now has a design in
 `ROADMAP.md § P1.18 — One outbox, several kinds of work`, and acceptance criteria
 DERIVED from it rather than written ahead of it. **Nothing under `mobile/` moved**
-and no P-number was minted. This is the current DOCUMENTATION phase; the
-P-SELLERAUTHOR record below stays as written and is still the current code phase.
+and no P-number was minted. ~~This is the current DOCUMENTATION phase~~ —
+**superseded 2026-08-19 by the P1.18 STAGE 2b record at the head of this section,
+and this one is kept rather than rewritten because it is the evidence for what
+replaced it.** An independent pass then read the design AND the criteria this record
+announces and fired the stop again: **the printed drain could not advance past its
+first row and did not terminate for the void kind**, two criteria were satisfied by
+a broken implementation, and three properties — the status strip, the owner
+predicate and the pass result — were reached by nothing. What survives below is
+accurate about the four things the design concluded; what it does not say is that
+the MECHANISM it delivered had to be rewritten rather than patched. The rest of the
+struck sentence stands as written: the P-SELLERAUTHOR record below stays as written
+and is still the current code phase.
 
 **WHY IT LOOKS LIKE THIS.** The seven criteria that stood before were superseded
 on 2026-08-18 because six of seven could be satisfied by a broken implementation
