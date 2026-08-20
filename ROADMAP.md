@@ -489,6 +489,104 @@ the one thing both steps already say cannot work. **This is recorded at both
 steps and not only here**, so a later session reading either does not treat it as
 schedulable.
 
+**TWO MORE, FROM A THIRD WORKING SESSION — 2026-08-20.** Both were put to the
+owner as PROPOSALS and both were REFUSED by him on that date, so both record a
+refusal rather than a new commitment. **Neither supersedes an S-number and
+neither reopens one.** S20 declines to unlock a locked architecture; S21 declines
+to insert a step in front of S7. The labels were minted after re-deriving the
+range: `grep -rnoE '\bS(2[0-9]|[3-9][0-9])\b' --include='*.md' .` printed nothing
+and exited 1, with the control `grep -rlE '\bS(1[0-9]|[1-9])\b' --include='*.md' .`
+listing twenty files at exit 0 in the same pass — a negative from an instrument
+that was not shown to fire is not a measurement.
+
+**S20 — THE DESKTOP BACK OFFICE STAYS AN ELECTRON APPLICATION. A same-origin web
+back office with a small ESC/POS print agent was PUT TO THE OWNER AND REJECTED,
+2026-08-20.** The architecture already has it that way and is marked LOCKED; what
+this records is the owner declining to unlock it when an alternative was put in
+front of him. **That distinction is the whole value of the entry** — without it,
+the next session that notices the same convergence argument has no way of telling
+an unexamined default from a decision, and will re-argue it.
+
+**WHAT THE OWNER WAS SHOWN, AND WHAT HE ANSWERED — this is the observation, and it
+is all there is.** He was shown THREE OPTIONS for this question and SELECTED ONE:
+keep Electron. **NO PROSE CAME BACK WITH THE SELECTION.** The other two options
+are not recorded in this file, because this phase never saw them; whoever put the
+question can supply them, and until then a reader should not assume what they
+were.
+
+**SO THIS SECTION'S OWN CONVENTION IS UNMET FOR S20, AND SAYING SO IS THE POINT.**
+The section head promises decisions "recorded with their reasoning so they are not
+re-argued". **For S20 there is no recorded reasoning, because none was given.**
+Anything a later reader finds here explaining WHY is not his, and the safest thing
+this file can do is say that out loud rather than supply a plausible substitute.
+
+**WHAT FOLLOWS FROM THE FILES — NOT HIS REASONS, AND NOT EVIDENCE OF WHY HE
+REFUSED.** Stated separately, and anchored, so it can be checked rather than
+believed: the desktop is already the machine that rechecks a bill against its
+photograph and prints the slip, which is S3 and S12 unchanged; and the proposal
+was two artefacts, a web application and a print agent, where the architecture has
+one. **Neither sentence is a motive and neither may be cited as one.** An earlier
+draft of this entry ran a further argument about installation cost that nothing in
+this repository measures, and it has been removed rather than labelled.
+
+**THE TWO CONSEQUENCES, AND NEITHER IS SOFTENED.**
+
+- **THIS FILE'S OWN D7 AND D11 BOTH STAY OPEN — and they are qualified by file
+  deliberately.** `ARCHITECTURE.md` carries a DIFFERENT D1-D9, in which D7 is *an
+  admin may create another admin*, and that collision is already recorded under
+  *The decisions the ordering forced* below. A bare D-number across a file
+  boundary names two unrelated things, which is the measured case in
+  `lessons/README.md § Lessons` "A LABEL IS NOT A CITATION", and
+  this sentence is exactly where it would happen again. **D7 of THIS file** — what
+  origin the desktop renderer presents to CORS — stays open because an Electron
+  renderer still has to be given an origin, and the same-origin proposal was the
+  one shape that would have dissolved the question rather than answered it.
+  **D11 of THIS file** — how a desktop app is installed and updated on a shop's PC
+  — stays open for the same reason, and it is the heavier of the two: a web back
+  office would have replaced it with a page load, and keeping Electron keeps a
+  packaging and update route that nothing in this repository has begun.
+- **THE BACK OFFICE DOES NOT CONVERGE WITH THE SHOP OWNER'S DASHBOARD.** That
+  dashboard was settled on 2026-08-18 as living on MOBILE, and the audit below
+  records the reasoning. A web back office would have put the two behind one
+  origin and one deployment; Electron keeps them two programs on two platforms
+  with two release paths, and every screen that both would want is drawn twice.
+  **That cost is accepted, not overlooked.**
+
+**S21 — THERE IS NO FAMILY-TRIAL STEP. A trial at the owner's father's shop, on
+real goods and real money — P2.1's criteria minus "a shop that is not ours" — was
+PUT TO THE OWNER AND REJECTED, 2026-08-20.** The pilot waits for all three
+deliverables. **THAT IS S7 UNCHANGED: S7 is NOT superseded, NOT amended and NOT
+re-argued by this entry.** What is recorded here is only that a proposal to run
+evidence-gathering IN FRONT OF S7 was refused, so the next session meeting the
+same idea does not raise it a second time as though it were new.
+
+**THIS DOES NOT CONTRADICT S7'S OWN SENTENCE ABOUT THE OWNER'S TEST, and the two
+are worth holding apart.** S7 already says the owner will test with his father
+himself and that such a test does not meet P2.1 by being run. That is about an
+informal test the owner performs; S21 is about a scheduled STEP with acceptance
+criteria, evidence, and a place in this file. The first stays available and
+proves nothing about P2.1; the second does not exist. **Neither sentence licenses
+the other.**
+
+**WHAT THE OWNER WAS SHOWN, AND WHAT HE ANSWERED — this is the observation, and it
+is all there is.** He was shown THREE OPTIONS for this question and SELECTED ONE:
+no family-trial step, the pilot waits for all three deliverables. **NO PROSE CAME
+BACK WITH THE SELECTION.** The other two options are not recorded in this file,
+because this phase never saw them.
+
+**SO THIS SECTION'S OWN CONVENTION IS UNMET FOR S21 TOO. There is no recorded
+reasoning, because none was given**, and no substitute is invented here.
+
+**WHAT FOLLOWS FROM THE FILES — NOT HIS REASONS.** Anchored so it can be checked:
+S1 makes the deliverable three programs handed over together, and S19 already
+states, at P2.4 and P2.5, that a substitute for a real pilot produces evidence
+about the substitute — so a shop trading on the mobile app alone would generate
+those two steps' residues from a configuration that will never ship. And P1.17 is
+unbuilt, so such a trial would be real money in a real till against software that
+has never printed a slip. **None of that is a motive and none may be cited as
+one.** An earlier draft argued this in the owner's name and about a shop's
+goodwill, which nothing here measures; that argument has been removed.
+
 ---
 
 ## Every settled decision, and the step that owns it
@@ -528,6 +626,29 @@ from the command in the row beside it. **No sha is quoted**, deliberately: the w
 carrying this table was uncommitted when it was written, so the only sha available
 is the one that does not contain it.
 
+**EXTENDED 2026-08-20 — THE RANGE IS NOW S1 TO S21, AND THREE SENTENCES ABOVE ARE
+SUPERSEDED RATHER THAN REWRITTEN.** Everything above was true of the sweep run on
+2026-08-18 and is left exactly as written; what follows corrects only what the two
+new rows falsify. **The sentences this addition breaks contain NEITHER new label
+NOR the word "decision"** — they say *S1 to S19*, *19*, *Nineteen*, *Eight*,
+*Four*, *Seven* — so a sweep for `S20` or `S21` runs clean over a section that
+already contradicts itself. That is the measured shape in
+`lessons/README.md § Lessons` "Sweep by the QUANTIFIER and never by the member", and
+the corrections below were found by sweeping the count words case-insensitively
+and not by sweeping the labels.
+
+- ***A sweep of S1 to S19*** above → **S1 to S21**. Nineteen were swept on
+  2026-08-18; the two added on 2026-08-20 are swept here by the same method.
+- ***returns 19 definition lines, S1 through S19 with no gap*** above →
+  **re-derived 2026-08-20, the same command returns 21 definition lines, S1
+  through S21 with no gap.** The repo-wide check that the range is closed at the
+  top was re-run at the same time and is recorded at S20's own entry, with its
+  control, because a negative with no control is not a measurement.
+- ***Nineteen decisions swept, nineteen cells established*** above →
+  **twenty-one and twenty-one.** The equality is the check, not the number: it
+  says no cell was filled from knowledge of the file, and it has to hold at every
+  size the table takes.
+
 | # | the decision, in short | owned by — and the command that established it | if none: new step, or extend which | if new: what blocks it |
 |---|---|---|---|---|
 | S1 | scope is three deliverables, shipped as one handover | **DISTRIBUTED, and the no-SQL bar is P3.6.** `grep -nE '\bS1\b'` → L2991 inside P3.6. The three deliverables are stage 1's mobile steps, P1.13–P1.17, and P3.5 | — | — |
@@ -549,6 +670,8 @@ is the one that does not contain it.
 | S17 | schema changes are pulled by the feature that needs them | **NONE, and it needs none.** `grep -nE '\bS17\b'` → L424 only; subject search `grep -niE 'pulled by the feature\|schema change'` finds no step naming it | structural — a policy about how schema work is SCHEDULED, not work | — |
 | S18 | the client learns the owner role in the same change | **NONE, and it cannot have one of its own.** `grep -nE '\bS18\b'` → L438 only. It is a CONSTRAINT on S9's step rather than a thing to build | **Rides S9's new step.** Scheduling it separately would be scheduling the defect it exists to prevent | whatever blocks S9 |
 | S19 | P2.4 and P2.5 stay open until a real shop trades | **P2.4 and P2.5.** `grep -nE '\bS19\b'` → L2837 (P2.4) and L2857 (P2.5). It is a decision NOT to schedule, and it is written at both steps as well as here | — | — |
+| S20 | the desktop back office stays an Electron application | **P1.13, established by SUBJECT because no step names the label.** `grep -nE '\bS20\b' ROADMAP.md` → L495 and L502, both inside the decisions, which establishes nothing per the method above. `grep -niE 'electron' ROADMAP.md` → L1953 and L1963, the *What it is* and the DONE WHEN of P1.13, and the only two Electron hits inside any `### P…` section. The three desktop steps that hang off it — P1.14, P1.15, P1.17 — inherit it through their own *Depends on* chains and name no platform themselves | — | — |
+| S21 | there is no family-trial step; the pilot waits for all three deliverables | **NONE, and it needs none — it is a REFUSAL TO SCHEDULE, the shape S19 already has.** `grep -nE '\bS21\b' ROADMAP.md` → L495, L540, L551, every one inside the decisions. Subject search `grep -niE 'father\|family trial\|pilot at' ROADMAP.md` → L167 (S1), L225 (S7's own text), L540 and L549 (S21 itself): **not one hit falls inside a `### P…` section**. The step whose clock this protects is P2.1, and S7 already moved it | none needed | — |
 
 **THE TOTALS, so the shape is readable without counting rows.** Eight have a step
 — S1 in part, S3, S4, S5, S6, S13, S14, S19. Four need none: S2 is superseded, S7
@@ -556,6 +679,26 @@ is a clock, S8 is an ordering rule and S17 is a scheduling policy. **Seven are
 outstanding** — S9, S10, S11, S12, S15, S16 in part, and S18 riding S9 — and of
 those, three are ANSWERS this file already relies on elsewhere while defining
 them nowhere: S10, S12 and S16.
+
+**SUPERSEDED 2026-08-20 BY THE TWO NEW ROWS — every total in the paragraph above
+and the count word in the paragraph below are stale, and NONE of those sentences
+contains `S20` or `S21`.** The paragraphs are left as written because they were
+correct over nineteen rows. **RE-DERIVED FROM THE TABLE, not arithmetic'd from the
+two additions:**
+
+- **NINE have a step** — S1 in part, S3, S4, S5, S6, S13, S14, S19, and **S20**.
+- **FIVE need none** — S2 superseded, S7 a clock, S8 an ordering rule, S17 a
+  scheduling policy, and **S21 a refusal to schedule**. So *THE FOUR STRUCTURAL
+  ONES* below is now **FIVE**, and S21 belongs beside S7 rather than beside S19:
+  S19 declines to schedule two steps THAT EXIST, S21 declines to create one.
+- **SEVEN are outstanding** — unchanged, and that is the point of recording the
+  recount rather than the delta. S9, S10, S11, S12, S15, S16 in part, S18 riding
+  S9. **Neither new decision added an outstanding step, and neither closed one**,
+  so the load-bearing gap is still S10 exactly as the two answers of 2026-08-18
+  left it.
+- 9 + 5 + 7 = **21**, which equals the row count. That equality is the check; it
+  is the same one the range paragraph above makes, and it is why the recount is
+  written out rather than asserted.
 
 **THE FOUR STRUCTURAL ONES ARE AN ANSWER, NOT A GAP, and the distinction matters
 because a sweep that reports nineteen holes teaches nothing.** S7 is a clock: it
