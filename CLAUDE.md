@@ -417,6 +417,59 @@ WRONG DIAGNOSIS here. Symptom / why it lies / what to do instead.
   create.
   → `EVIDENCE.md § Out-File BOM: the incidents and the bounds`
 
+- **`grep -i` TOGETHER WITH `-F` DIES "Aborted", EXIT 134 — AND WHETHER IT DOES
+  DEPENDS ON ONE ENVIRONMENT VARIABLE, SO TWO SESSIONS ON THIS BOX GET OPPOSITE
+  ANSWERS AND BOTH ARE RIGHT.** GNU grep 3.0, Git Bash. Either flag ALONE is
+  fine; only the pair fails. **The trigger is the C/POSIX locale**, which is
+  what a shell gets when nothing exports one. Measured 2026-08-20, every
+  invocation bare with the status read in the same call:
+
+      LC_ALL=C            grep -iF "daily money" PROJECT_STATUS.md  -> Aborted, 134
+      env -u LANG -u LC_ALL grep -iF "daily money" PROJECT_STATUS.md -> Aborted, 134
+      LC_ALL=C            grep -F  "daily money" PROJECT_STATUS.md  -> 0, 8 lines
+      LC_ALL=C            grep -i  "daily money" PROJECT_STATUS.md  -> 0, 9 lines
+      LC_ALL=en_US.UTF-8  grep -iF "daily money" PROJECT_STATUS.md  -> 0, 9 lines
+
+  EXCLUDED, each by its own measurement rather than by argument: PATH and
+  aliasing (`type -a grep` shows no alias and no function), the binary
+  (`md5sum /usr/bin/grep` = `65b7eb148ea01dacf451bed0d1a4608e`, identical on
+  both sides and to `/bin/grep`), the absolute path (invoking
+  `/usr/bin/grep` directly changes nothing either way), the file (a two-line
+  file outside the repository aborts identically under `LC_ALL=C`), the needle,
+  and the working directory.
+
+  **WHY IT LIES, and this is the entry's whole value: RE-RUNNING IT CANNOT
+  DISCOVER IT.** The failure is DETERMINISTIC WITHIN A SESSION and opposite
+  BETWEEN sessions. A session whose environment carries no locale gets 134 every
+  single time; a session carrying `LANG=en_US.UTF-8` gets 0 every single time
+  and **correctly reports that it does not reproduce.** That is exactly what
+  happened on 2026-08-20 — seven bare aborts in one session against nine bare
+  exit-zeros in another, same repository, same day, same binary — and neither
+  side mis-read a number. **The usual defence, run it again, is the one defence
+  that cannot work here**, because repetition inside one environment is what the
+  bug is stable under.
+
+  And it fails toward a plausible number. Under `2>/dev/null` with the output
+  piped to `wc -l`, **an abort is indistinguishable from "not found"**: stderr is
+  discarded and a pipeline's status is the LAST command's, so nothing goes red
+  and a zero appears where a count should be. MEASURED COST, in the session that
+  found it: one loop over twelve search terms returned **twelve zeros, every one
+  of them false** — the control term in that same set is present in six tracked
+  files.
+
+  Instead: **never combine `-i` with `-F` in a shell `grep` on this box** — use
+  one or the other, or `rg`. And give any run whose ZERO you are about to believe
+  a POSITIVE CONTROL with a known answer IN THE SAME INVOCATION, and read the
+  control before you read the zero. A zero from a process that aborted and a zero
+  from an absent string are the same zero.
+  **This supersedes, BY MEASUREMENT AND NOT BY PREFERENCE, the conclusion
+  recorded on the same day that `CLAUDE.md` should get nothing** because the
+  behaviour was not characterised well enough to write down. It is characterised
+  now: one variable, five measurements, and the pair of opposite results
+  explained. The open half — which shell exported which locale, and why — stays
+  at `OPEN_ITEMS.md § Documentation`, and the three footguns already owed there
+  are untouched by this entry.
+
 ### Boot check — name the observable, don't assume the environment
 
 Before judging any result, name the observation that proves the
