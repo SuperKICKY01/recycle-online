@@ -1097,6 +1097,18 @@ Seventeen steps. The bar is a shop buying real loads from real sellers and handi
 over real receipts, on staff-owned phones, without anyone running a request by hand
 for them.
 
+**CORRECTED 2026-08-20 — TWENTY-TWO, and the figure had already rotted before
+this phase touched it.** `grep -oE '^### P1\.[0-9]+' ROADMAP.md` returns one
+heading per step: it read EIGHTEEN the moment P1.18 was minted on 2026-08-17
+against a sentence saying seventeen, and this phase's four take it to twenty-two.
+**The bar itself is unchanged** — only the count of steps standing before it moved.
+**Nothing announced the first rot and nothing would have announced the second:**
+the sentence contains no step label, so a sweep for `P1.18` or for `P1.19` runs
+clean over it, which is why it is corrected by a sweep for the COUNT WORD instead.
+The figure is left as a word rather than replaced with a mechanism because this set
+is enumerated immediately below it, where a reader adding a twenty-third is looking
+at the list rather than at a bare digit.
+
 ### P1.1 — The second-hand goods act's record-keeping obligation
 
 **What it is.** An answer, from outside this repository, to the question recorded at
@@ -2134,6 +2146,15 @@ not answer it.
 
 **What it is.** ESC/POS to a 58/80 mm printer, from the desktop, for a bill that has
 synced. The last stage-1 step, and the one S3 put here.
+
+**CORRECTED 2026-08-20 — "THE LAST STAGE-1 STEP" IS NO LONGER TRUE, AND IT STOPPED
+BEING TRUE ON 2026-08-17 rather than today.** P1.18 was minted after this sentence
+and P1.19 through P1.22 follow it; the clause is left above because it was true when
+written and because what it is REALLY saying — that S3 put slip printing inside the
+pilot bar — is untouched by anything that came after. **The half that is dead is the
+ORDINAL, not the argument.** It is corrected here rather than swept because a search
+for `P1.18` or `P1.22` finds nothing in it: the sentence names no step but this one,
+which is the shape a membership change falsifies without naming the member.
 
 **Depends on:** P1.14 (the bill on screen), P1.16 (the header), P1.12 (the date
 logic it must import), and a bill that has a doc_no. **S3 is what makes the last of
@@ -4152,6 +4173,224 @@ remaining five were not among this phase's inputs:** the dispatch carried the tw
 the review's own record holds the rest, and nothing here restates what this phase
 has not read. Routing any of the five into stage 3's brief is the owner's call, at
 the boundary this entry closes.
+
+---
+
+**FOUR CAPABILITIES THE OWNER NAMED ON 2026-08-20, AND WHY THEY BELONG IN THIS
+STAGE. They existed in no file.** Each is the owner's own intent, given in his order,
+and each is minted as a stage-1 step below: P1.19 through P1.22, the next four
+unused numbers. `grep -oE '^### P1\.[0-9]+' ROADMAP.md` returned eighteen headings
+ending at P1.18, and `grep -rnoE '\bP1\.(19|2[0-9])\b' --include='*.md' .` exited
+1 over every tracked markdown, with the control `grep -rlE '\bP1\.1[0-8]\b'
+--include='*.md' .` listing fourteen files at exit 0 in the same pass. Nothing is
+renumbered.
+
+**WHY STAGE 1 AND NOT STAGE 2 OR 3, argued rather than assumed.** S1 makes the
+three deliverables ONE handover and S7 merged the pilot bar with the sale bar, so
+there is one bar and a capability that SHIPS has to be inside it. Stage 2 is what
+the pilot TEACHES — it cannot hold something that must exist before the pilot
+begins — and stage 3 is now inside the same bar as stage 1 by S7's own stated
+consequence. **Stage 1 is therefore the only stage whose definition these fit**,
+and the file's own text was checked against the argument rather than the argument
+against the file.
+
+**EVERY ONE OF THE FOUR SPLITS IN TWO, AND THE SPLIT IS THE WHOLE OF THE
+SCHEDULING QUESTION.** The READING half is a query and an endpoint. The DRAWING
+half needs a surface, and there are only two — the desktop, which S20 has just
+kept as an Electron application, and the phone, whose new screens S10 defers to a
+UX rework that is defined nowhere. Each step below says which half it is talking
+about in its *Depends on*, because a step that blurs them reads as blocked when
+half of it is not.
+
+**AND THE DATA CLAIM WAS VERIFIED, NOT INHERITED.** These four were proposed on
+the premise that the data they need already exists. That premise is a claim, and
+it was checked here against the HEAD STATE by reading `server/migrations/versions/`
+FORWARD from `0001` to `0011` with every DROP applied — the method
+`lessons/README.md § Lessons` "a migration stack is a LOG OF WHAT WAS DONE"
+prescribes, and it is stated because it is a DIFFERENT measurement from querying
+the database, which this phase did not do and was not permitted to do. **The claim
+held for three of the four and failed for one**, and P1.20 records the failure as
+a schema dependency instead of building on it.
+
+**NO DONE WHEN BELOW CARRIES A RAW COUNT.** Each names the SET and its SOURCE so
+the number is produced at the moment of the run rather than stored in the
+sentence, per
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "A RAW COUNT INSIDE AN ACCEPTANCE CRITERION ROTS".
+
+### P1.19 — The end-of-day cash close
+
+**What it is.** At the end of a trading day the shop counts the cash actually in
+the drawer and enters that number. The system shows what it says went out that
+day. **The difference between the two is displayed AND RECORDED**, so a shop can
+look back at which days reconciled and which did not.
+
+**THIS IS NOT THE A-NUMBERED DAILY MONEY VIEW, AND THE DISTINCTION IS WRITTEN
+HERE SO A LATER SESSION DOES NOT READ ONE AS THE OTHER.** A1 was built as the
+server half plus a mobile screen. Checked against the endpoint rather than
+remembered: `server/app/reports.py` opens *"The daily money view — one shop day,
+ADMIN ONLY"* and describes itself in its own second sentence as **"The number an
+owner balances the cash box against at closing."** That is exactly the
+relationship. **A1 PRODUCES the number to balance AGAINST. It does not hold the
+counted number, and it records no difference** — it totals rows that already
+exist, and a counted drawer is not a row that exists. This step is the other side
+of that sentence.
+
+**Depends on — the reading half:** nothing that is not already built. The
+system's own figure for the day is what `GET /reports/daily` already computes,
+over the shop-time day window applied to `server_received_at`.
+
+**Depends on — a SCHEMA dependency, and it is not optional.** Read forward
+across `0001` to `0011` with every DROP applied, **no relation and no column
+anywhere holds a counted cash figure**; the only occurrences of the word are
+prose inside migration docstrings. The counted number and the recorded difference
+are both new storage. Because it is a new relation every tenant will have, D10
+applies: it wants doing before the pilot's rows exist.
+
+**Depends on — the drawing half:** a back-office surface, so the desktop, which
+under S20 stays an Electron application. Re-derived from each step's own
+*Depends on* line: P1.6 depends on P1.2; P1.13 depends on P1.6 **and P1.12**;
+P1.14 depends on P1.13. So the chain is P1.2 → P1.6 → P1.13 → P1.14, with P1.12
+joining it at P1.13 — a fifth link that the shorthand chain omits.
+
+**Unblocks:** an owner who can tell a counting mistake from a shortfall, which is
+the question a daily total alone cannot answer.
+
+**DONE WHEN:** for one named shop day, a counted figure is entered, stored, and
+read back unchanged; the system's own figure for that same day EQUALS what
+`GET /reports/daily` returns for it, compared value against value rather than
+asserted; and the recorded difference equals the two subtracted, including when it
+is negative and when it is zero. **The zero case is required, not decorative:** a
+day that reconciles exactly is the state most easily produced by a difference
+that was never computed.
+
+### P1.20 — Price history: what a price was, when it changed, and who changed it
+
+**What it is.** For each product and grade tier: the price over time, the moment
+of each change, and the person who made it.
+
+**THE READING HALF CANNOT BE BUILT ON TODAY'S DATA, AND THIS IS THE ONE OF THE
+FOUR WHERE THE PREMISE FAILED.** `product_prices` is `(id, tenant_id, product_id,
+grade, price)` at `0001` and nothing since has widened it: no timestamp, no
+actor. And the write path OVERWRITES —
+`PUT /products/{product_id}/prices/{grade}` ends
+`ON CONFLICT (tenant_id, product_id, grade) DO UPDATE SET price = EXCLUDED.price`,
+so the previous value is gone the moment the new one lands. Read forward across
+`0001` to `0011` with every DROP applied, **there is no history relation and no
+audit relation of any kind in this schema.**
+
+**WHAT IS NOT LOST, said explicitly so this is not read as wider than it is.**
+Hard rule 6 keeps `unit_price` AND `list_price` on every bill line, so what a
+SOLD line was struck at, and the list price it was struck against, are preserved
+for ever and no change here can reach them. What is absent is the LIST'S OWN
+history: what a tier stood at on a day nobody traded it, when it moved, and who
+moved it. Those three facts exist nowhere.
+
+**AND THE PART THAT CANNOT BE RECOVERED LATER.** Every price change made before
+this storage exists is already unrecoverable — not hard to reconstruct,
+UNRECONSTRUCTABLE, because the old value was overwritten in place and no copy was
+kept. **That makes this the one of the four with a deadline rather than an
+order**, and it is D10's shape: the cost of building it late is not rework, it is
+a permanently empty stretch of history.
+
+**Depends on:** the schema above, first — the reading half depends on it and not
+merely the drawing half. Then, for the drawing half, the desktop chain re-derived
+at P1.19: P1.2 → P1.6 → P1.13 → P1.14, with P1.12 joining at P1.13.
+
+**Unblocks:** answering "why was this bill priced at that" months later, and the
+staff-average signal in P1.22, which compares against a list that has to have
+been knowable on the day.
+
+**DONE WHEN:** a tier's price is changed through the real route more than once,
+and every change is read back as its own row carrying the value, the instant and
+the user id — the SET being the changes made during the run, and the SOURCE the
+run's own record of what it sent, so the criterion holds whatever that number
+turns out to be. AND the row that a change REPLACED is still readable afterwards,
+which is the clause an implementation that merely stamps the current row cannot
+satisfy.
+
+### P1.21 — Seller history at the weighbridge
+
+**What it is.** When staff pick a seller on the phone, they see what that seller
+last sold: when, what, how much, and at what price.
+
+**THE DATA IS ALL PRESENT, re-derived forward across `0001` to `0011` with every
+DROP applied.** `purchase_bills` carries `seller_id`, `doc_no`, `total_amount`,
+`device_created_at` and `server_received_at`; `purchase_bill_items` carries
+`product_id`, the three weights, `unit_price`, `list_price` and `amount`. Every
+one of the four things the owner named has a column behind it, and nothing new is
+needed to answer the question.
+
+**THE SPLIT, AND IT IS THE SHARP ONE OF THE FOUR.** The reading half — a query
+and an endpoint — can be built today and depends on nothing that is not already
+there. **The drawing half is a MOBILE surface, so S10 gates it, and S10 has no
+step and no definition.** The audit above records S10 as the load-bearing gap for
+exactly this reason. S10's own text says *"What waits is the drawing"* and
+explicitly does not defer the internals, so this step is not blocked — half of it
+is, by a gate nothing schedules. **P1.16 already carries this shape** and is the
+entry to read beside this one.
+
+**Depends on:** nothing, for the reading half. For the drawing half, S10's
+undefined rework, and that is a gate rather than a dependency — no step in this
+file makes it arrive.
+
+**Unblocks:** the yard recognising a seller it has bought from before, at the
+moment the truck is on the weighbridge rather than afterwards.
+
+**DONE WHEN:** for a seller with more than one bill, a request returns that
+seller's prior bills with the four facts on each, read back as an actual
+response; the SET is the bills that seller holds and the SOURCE is the database
+at the moment of the run, so no number is written here. AND a seller with NO
+prior bills returns an empty answer that the caller can tell apart from a
+failure — the case a query written along its happy path does not distinguish.
+
+### P1.22 — Anomaly signals: three named ones
+
+**What it is.** Three signals, named by the owner and not widened here:
+
+1. **An override far from the list price.**
+2. **A seller recurring oddly often.**
+3. **A staff member whose bills average higher than everyone else's.**
+
+**THE DATA IS PRESENT FOR ALL THREE, with one bound.** Re-derived forward across
+`0001` to `0011` with every DROP applied. For (1), hard rule 6 puts `unit_price`
+AND `list_price` on every line, and the daily report already counts lines where
+the two DIFFER — so what is new is not the comparison but the MAGNITUDE and the
+view across days. For (2), `purchase_bills` carries `seller_id` and
+`server_received_at`. For (3), `purchase_bills.created_by` arrived in `0006`.
+
+**THE BOUND ON (3), and it is a property of the column rather than of the
+feature:** `0006` adds `created_by uuid` with NO `NOT NULL`, so every bill
+written before that migration carries NULL and belongs to no staff member. An
+average over authors is an average over the bills that HAVE one, and a signal
+that quietly treats the rest as a group will name the wrong person. Say which
+population is being averaged, in the answer itself.
+
+**ALL THREE WORDS THE OWNER USED ARE THRESHOLDS — *far*, *oddly often*,
+*higher than* — AND A THRESHOLD IS A TUNED CONSTANT.** This project already has
+one home for those and one rule about them:
+`PROJECT_STATUS.md § Tuned constants — trial ledger`. Every number this step
+chooses belongs in that ledger with what it was tried against, or the next
+session cannot tell a measured threshold from one somebody typed until the output
+looked right.
+
+**Depends on** — the reading half: nothing that is not already built, plus P1.20
+for (1) if the signal is ever to be evaluated against the list price AS IT STOOD
+on the day rather than as it stands now. **Those are two different signals and
+only the second is buildable today**; which one the owner wants is a product
+question this step does not settle. The drawing half is back-office work, so the
+desktop chain re-derived at P1.19.
+
+**Unblocks:** a shop owner noticing a pattern without reading every bill, which
+is the only form of oversight available to somebody who is not in the yard.
+
+**DONE WHEN:** each of the three signals fires on a case constructed to trigger
+it AND stays silent on a case constructed not to — both halves, per signal, in
+one run. **The silent half is the requirement, not the courtesy:** a detector
+that fires on everything and a detector that fires on the right thing produce the
+same output on a positive case, and only the negative case separates them. The
+SET is the three signals the owner named, its SOURCE this entry, and no count is
+written into the criterion because the set is enumerated in the sentence above
+it.
 
 ### `GET /users` — landed 2026-08-07, and it is NOT a step in this file
 

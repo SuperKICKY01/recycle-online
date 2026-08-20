@@ -462,7 +462,7 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   **WHY THIS IS SIZED RATHER THAN NOTED, and it is the whole reason for this
   entry.** The day the database moves to a host, the backup tooling **stops
   working** — and a backup is HALF of that step's own acceptance criterion
-  (`ROADMAP.md § P1.2` wants a scheduled dump fetched off-box and restored into
+  (`ROADMAP.md § P1.2 — A server a shop can reach` wants a scheduled dump fetched off-box and restored into
   a scratch database). So this surfaces at the moment the step looks nearly
   done: the server is reachable, the phone gets its 200, and the other half of
   the criterion cannot be attempted at all. **A step that is half-met and looks
@@ -482,6 +482,29 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   daily money screen exists on the phone only, so an owner who works
   from a PC cannot see the day's takings there. *Not done:* `desktop/`
   is empty. *Unblocks:* same decision as the master-data screens.
+- **EVERY PRICE CHANGE MADE BEFORE PRICE HISTORY EXISTS IS ALREADY
+  UNRECOVERABLE, AND THE CLOCK IS RUNNING NOW — raised 2026-08-20 by the
+  step that needs it.** `PUT /products/{product_id}/prices/{grade}` ends
+  `ON CONFLICT (tenant_id, product_id, grade) DO UPDATE SET price =
+  EXCLUDED.price`, so a tier's previous value is overwritten in place;
+  `product_prices` is `(id, tenant_id, product_id, grade, price)` with no
+  timestamp and no actor, and reading the migration stack FORWARD from
+  `0001` to `0011` with every DROP applied finds **no history or audit
+  relation of any kind in this schema**. That is a read of the stack and
+  NOT a query of the head state, which was out of bounds for the phase
+  that measured it. *Why it is here rather than only at the step:*
+  **this one is not rework, it is data that does not come back.** A
+  feature built late is built late; a history built late begins at the
+  day it is built, and every change before that is gone with no copy
+  anywhere. **What is NOT lost, so this is not read as wider than it
+  is:** hard rule 6 keeps `unit_price` and `list_price` on every bill
+  line, so what a SOLD line was struck at is preserved for ever. What is
+  absent is the LIST's own history — what a tier stood at on a day
+  nobody traded it, when it moved, and who moved it. *Not done:*
+  reported, not fixed; no migration is written and none is proposed
+  here. *Unblocks:* the step that owns it, `ROADMAP.md § STAGE 1`
+  "Price history", which records the same measurement as a schema
+  dependency rather than assuming the data exists.
 
 ## Verification gaps — built, not proven
 
@@ -4339,6 +4362,43 @@ with no feature of its own.
   00:00'` returns 18. *Done when:* all three are entries in `CLAUDE.md
   § Machine footguns` in that section's symptom / why it lies / what to
   do instead form.
+  **THE COUNT ABOVE HAS NOT GONE DOWN — 2026-08-20. All three are still
+  owed and NONE of them was swept by the phase writing this line**, whose
+  brief forbade it: their evidence has not been re-measured, and writing
+  them out of this entry's summary is the report-is-a-clue failure
+  (`CLAUDE.md § Workflow` "A REPORT IS A CLUE"). **This note is here
+  because a FOURTH footgun was written to `CLAUDE.md` on that date, and it
+  is NOT one of these three — the outcome most easily misread as one of
+  them being paid.** That entry is the `grep -i` with `-F` abort, and it
+  lives at `CLAUDE.md § Machine footguns`. **The three above stay owed and
+  the count stays three.**
+
+  **WHAT IS KEPT HERE RATHER THAN THERE: the two sessions' observations,
+  because the pair is what made the mechanism findable.** On 2026-08-20 the
+  advising session measured `grep -iF` as `Aborted`, `EXIT=134` — twice on
+  `PROJECT_STATUS.md` and again on a two-line file outside the repository —
+  while the coding session measured nine bare runs of the same pair at
+  `EXIT=0`, in the same repository on the same day, having first excluded
+  aliasing, PATH order, the absolute path and the binary itself
+  (`md5sum /usr/bin/grep` = `65b7eb148ea01dacf451bed0d1a4608e`, agreeing on
+  both sides). **An earlier draft of this entry concluded "it did not
+  reproduce". That sentence was struck: it was a general claim and it was
+  false**, and the reason it looked true is now the footgun's whole subject
+  — the failure is deterministic within a session and opposite between
+  them, so re-running it in either environment confirms that environment
+  and discovers nothing.
+
+  **THE MECHANISM WAS THEN FOUND, WHICH IS WHY THE FOOTGUN COULD BE
+  WRITTEN AT ALL: it is the C/POSIX LOCALE.** Under `LC_ALL=C`, or with no
+  locale exported at all, the pair aborts; under a UTF-8 locale it returns
+  the correct case-insensitive answer; either flag alone is fine in both.
+  The five measurements are at the footgun and are not repeated here.
+
+  ***What remains open, and it is smaller than it was:*** which shell
+  exported which locale, and why two tool sessions on one box differed in
+  it. That is a question about the harness rather than about `grep`, and
+  nothing here answers it. *Unblocks:* nothing in the tree — the operating
+  rule and the remedy are both at the footgun.
   **AND A FIFTH, ADDED 2026-08-10, WHICH BELONGS BESIDE THE RIPGREP ONE ABOVE
   BECAUSE IT IS THE SAME FAILURE WEARING THE SEARCHER'S OWN CLOTHES: A PATTERN
   CAN RETURN "No matches found" BECAUSE THE PATTERN IS BROKEN, NOT BECAUSE THE

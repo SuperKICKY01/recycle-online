@@ -1315,3 +1315,77 @@ of 114 present. The instrument was entirely healthy and said so.
     findings to a SOURCE, changing a TARGET moves the finding to somebody else's
     row. Run every source, and read the whole table rather than the row with your
     filename on it.
+
+### EXTENDED (P-OWNERDECIDED, 2026-08-20) — WHEN THE HEADING TEXT IS A LABEL, THE REMEDY ABOVE DOES NOT EXIST
+
+**This is the same mechanism, not a new one — the count at the head of this file
+stays at sixteen.** What is new is that *"prefer a heading that could not contain
+a section name"* is sometimes **unavailable**, and this repository's own numbering
+guarantees it will keep being unavailable.
+
+**The instance.** Four stage-1 steps were minted into `ROADMAP.md` as `P1.19`
+through `P1.22`. `P1.2` is a cited section, and `### P1.20`, `### P1.21` and
+`### P1.22` each CONTAIN it as a substring — so `` `ROADMAP.md § P1.2` `` went from
+`hits=1` to `hits=4` **with neither endpoint's text edited**, exactly as the
+sixteenth mechanism describes. The heading text could not be chosen differently:
+it is a LABEL fixed by sequence, and renumbering to dodge the collision is
+forbidden here for the reason that closed the `A`- and `R`-numbers — it orphans
+every existing reference.
+
+**THE GENERAL FORM, AND IT IS A PROPERTY OF THE LABEL SPACE RATHER THAN OF ANY
+HEADING.** A decimal label space generates substrings of its own earlier members
+the moment it crosses ten. `P1.2` is a prefix of `P1.20`–`P1.29`; `P1.1` is a
+prefix of `P1.10`–`P1.19`. **`P2.1` and `P3.1` will do the same the day those
+stages cross ten**, and nothing will announce it.
+
+**AND IT IS ALREADY WORSE THAN THE INSTANCE THAT CAUGHT IT — MEASURED 2026-08-20,
+WITH ITS CONTROL IN THE SAME PASS.** `grep -cE '^#{1,4} .*P1\.1' ROADMAP.md`
+returns **11** heading lines containing `P1.1`: the step itself plus `P1.10`
+through `P1.19`. **So `` `ROADMAP.md § P1.1` `` has been unresolvable since `P1.10` was
+minted, and nobody has noticed** — because nobody cites it. The control is the
+same run's positive half: `` grep -rnoE 'ROADMAP\.md § P1\.[0-9]+`' --include='*.md' . ``
+returns **15 sites at exit 0**, naming `P1.7`, `P1.12`, `P1.16` and `P1.18`, and
+**not one naming `P1.1`**. The instrument fires; the label is simply uncited.
+
+**THAT IS THE SENTENCE WORTH KEEPING: the label space is already broken, and what
+is holding it up is WHICH LABELS HAPPEN TO BE CITED.** `P1.19` breaks nothing —
+**by luck, not by design.** The next mint may not be lucky, and the luck is
+invisible from the diff.
+
+**What to do, since the heading cannot move.**
+
+- **Grep the CITED SECTION NAMES for any that your new label CONTAINS, not for
+  the new label itself.** Before minting, `P1.20` returned nothing across every
+  tracked markdown — measured, exit 1 — and the break was real anyway, because
+  the label that breaks is `P1.2`. Searching for what you are about to write is
+  the wrong direction.
+- **Cite the FULL heading, never the bare label.** The repair here was widening
+  both sites to `` `ROADMAP.md § P1.2 — A server a shop can reach` ``, which
+  cannot be a prefix of a sibling: after `P1.2` the cited form continues with the
+  em dash and the sibling continues with a digit. **A bare-label section citation
+  is a citation waiting for its tenth sibling.**
+
+**AND THE SHARPEST DATUM OF THE WHOLE EPISODE — THE FIFTH MECHANISM, INSIDE THE
+FILE THAT DOCUMENTS THE FIFTH MECHANISM.** Writing the two paragraphs above
+MANUFACTURED two more of the defect they describe: the strings naming `P1.2` and
+`P1.1` were first written in SINGLE backticks, which is citation form, so this
+file now carried a citation resolving to four heading lines and another resolving
+to eleven. **Nothing went red, and nothing could have**, because `lessons/` is not
+in `verify_citations.ps1`'s `-Source` list — the checker never opens these files,
+so a broken citation written INTO a lesson is invisible by construction. That is
+the fifth mechanism exactly: *ask what paths a checker OPENS, never what it is
+named*. They were escaped to double backticks, which is what
+`a-label-is-a-reference-with-no-checker` already does at its own site, and the
+sentences are unchanged.
+
+**Two consequences, and the second is the uncomfortable one.** A citation written
+in a lesson is unverified today and becomes REAL the day anyone adds `lessons/`
+to the source list — so this directory accumulates latent breaks that the act of
+adding coverage would reveal all at once. And the file most likely to contain
+citation-shaped prose is THIS one, because describing a citation defect means
+writing citations down. **When you write about a broken citation, escape it, or
+you have written another one** — which is the rule
+`OPEN_ITEMS.md § Documentation` reached independently in its own words, *"a broken
+citation written in citation form is parsed, counted, and raises `BROKEN`, so
+describing the problem manufactures more of it"*, one directory away and about
+files the checker DOES read.

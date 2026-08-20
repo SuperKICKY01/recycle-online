@@ -1368,7 +1368,8 @@ inserted: `ARCHITECTURE.md § 11` is cited by name from other files, and a
 numbered insert would renumber it and orphan those citations — the argument that
 closed the A-, R- and D-numbers rather than tidying them.
 
-**What this section is for.** The hosting step (`ROADMAP.md § P1.2`) is a spend
+**What this section is for.** The hosting step
+(`ROADMAP.md § P1.2 — A server a shop can reach`) is a spend
 decision with external lead time, and a choice made before the requirements are
 known is one that gets discovered to be wrong after it is paid for. These are
 requirements, not a recommendation: no host, product or price is named here, and

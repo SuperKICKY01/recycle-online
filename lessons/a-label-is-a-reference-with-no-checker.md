@@ -62,6 +62,16 @@ for the change.
 - **Before minting a label, grep every other file for that exact label.** One
   command. `git grep -nE '\bD6\b' -- '*.md'` would have returned the DONE WHEN
   above before the append, not after.
+  **BOUND, MEASURED 2026-08-20: that grep CANNOT SEE A COLLISION YOUR NEW LABEL
+  CREATES IN SOMEBODY ELSE'S CITATION, because the label that breaks is not the
+  one you are minting.** Minting `P1.20` into `ROADMAP.md` broke the section
+  citation `` `ROADMAP.md § P1.2` `` at two sites — section names resolve by
+  case-insensitive SUBSTRING over heading lines — while the prescribed grep for
+  `P1.20` returned **nothing, exit 1, over every tracked markdown**. The remedy
+  above is aimed at the label you are writing; this collision is created by a
+  label you are not. Grep instead for every cited section name your new label
+  CONTAINS, and see
+  `lessons/README.md § Lessons` "a heading you ADD breaks a citation to a DIFFERENT heading nobody touched".
 - **Never write a bare label across a file boundary.** Both files already knew to
   qualify when citing each other — `ARCHITECTURE.md` writes "`ROADMAP.md` D4" and
   `ROADMAP.md` writes `` `ARCHITECTURE.md § 10. The three settled decisions` `` D3

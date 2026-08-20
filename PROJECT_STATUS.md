@@ -57,6 +57,216 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P-OWNERDECIDED — TWO DECISIONS THE OWNER REFUSED ARE RECORDED, AND FOUR
+CAPABILITIES HE NAMED BECOME STAGE-1 STEPS. DOCUMENTATION ONLY, 2026-08-20. Two
+commits.** This entry supersedes the P1.18 stage-3 entry below **as the current
+DOCUMENTATION phase only**. That entry's record of the closed CODE phase — the
+mechanism, the deleted drains, the device pass read out of Postgres — is untouched
+by this and remains the current code record.
+
+**NO FILE UNDER `mobile/`, `server/`, `packages/`, `desktop/` OR `tools/` MOVED.**
+Not one source file, proof, script, migration or tool. No database was touched,
+live or scratch: no `psql`, no `alembic`, no `docker exec`, no `SELECT`. The
+schema statements this phase makes were established by reading
+`server/migrations/versions/` FORWARD from `0001` to `0011` with every DROP
+applied — **a read of the stack and NOT a query of the head state**, which are two
+different measurements, and this phase took only the first.
+
+**NO PROOF AND NO TYPECHECK WAS RUN. That is a fact about this phase and not an
+omission from it:** no code was touched, so neither instrument would have carried
+information about the change, and running one to produce a green would have
+produced a true statement about a different object. **Every dated green under
+*Baseline observations* keeps its own date and NONE is refreshed by this work** —
+nothing below that heading was re-measured, and no line there should be read as
+having been re-observed on 2026-08-20.
+
+**COMMIT 1 — the two decisions.** S20 and S21 were minted into
+`ROADMAP.md § What the owner has settled` after re-deriving the range: the
+repo-wide check for an S-number above 19 printed nothing and exited 1, with a
+control in the same pass listing twenty files at exit 0. **S20** — the desktop
+back office stays an Electron application; a same-origin web back office with a
+small ESC/POS print agent was put to the owner and REJECTED. Two consequences are
+recorded and not softened: that file's own D7 and D11 both stay open, and the back
+office does not converge with the shop owner's dashboard. Both are qualified BY
+FILE, because `ARCHITECTURE.md` carries a different D-space in which D7 is a
+different decision. **S21** — there is no family-trial step; a trial at the
+owner's father's shop was put to him and REJECTED. **S7 is not superseded, not
+amended and not re-argued**; the entry records only that a proposal to run
+evidence-gathering in front of S7 was refused. Two rows were added to
+`ROADMAP.md § Every settled decision, and the step that owns it`, each cell
+established by the command written beside it, and its totals were RE-DERIVED from
+the table rather than arithmetic'd: nine have a step, five need none, seven
+outstanding, summing to the row count.
+
+**COMMIT 2 — four stage-1 steps.** P1.19 (an end-of-day cash close), P1.20 (price
+history), P1.21 (seller history at the weighbridge) and P1.22 (three named anomaly
+signals) were minted into `ROADMAP.md § STAGE 1` after re-deriving the highest
+existing stage-1 number and checking the four for collision with a control.
+
+**THE DATA PREMISE WAS VERIFIED AND ONE QUARTER OF IT FAILED, which is the finding
+this phase carries.** These four arrived on the claim that the data they need
+already exists. Three hold: the seller-history facts, the override comparison
+(hard rule 6 puts `unit_price` and `list_price` on every line) and the staff and
+seller aggregation columns are all present. **P1.20 does not.** `product_prices`
+carries no timestamp and no actor, the price write is an
+`ON CONFLICT ... DO UPDATE` that overwrites in place, and no history or audit
+relation exists anywhere in the stack — so the READING half of that step, not
+merely its screen, has a schema dependency. **It is recorded as a dependency and
+not built on**, and it is queued separately because it is the one gap where late
+work costs data rather than effort: every price change made before that storage
+exists is already unrecoverable.
+
+**WHAT THIS PHASE DID NOT DO, and the first is the one most easily misread.**
+- **NO MACHINE FOOTGUN WAS ADDED TO `CLAUDE.md`, AND THAT FILE IS NOT IN EITHER
+  COMMIT.** A fourth footgun was proposed — that `grep -i` combined with `-F`
+  aborts on this box, unconditionally, exit 134 — and **it did not reproduce.**
+  Seven bare invocations, status read in the same invocation, all exit 0, on GNU
+  grep 3.0 with one binary on `PATH` and `LANG=en_US.UTF-8`; `-iF` returns nine
+  matching lines where `-F` returns eight, so the flag pair is producing the
+  correct answer rather than failing quietly. The control that makes that negative
+  a measurement: `bash -c 'kill -ABRT $$'` printed `Aborted` and exit 134 in the
+  same harness. Writing the entry anyway would have put a claim measured false
+  into the one section of that file whose value is that every entry re-derives.
+  The measurement and its control are queued under `OPEN_ITEMS.md § Documentation`
+  so the negative is not lost.
+  **SUPERSEDED THE SAME DAY BY COMMIT 3 — THE BULLET ABOVE IS LEFT AS WRITTEN
+  BECAUSE EVERY MEASUREMENT IN IT IS STILL TRUE, AND ITS CONCLUSION IS STILL
+  WRONG.** The footgun IS written, at `CLAUDE.md § Machine footguns`, and that
+  file IS in a commit of this phase. What changed is not a preference but the
+  arrival of the mechanism: **the trigger is the C/POSIX locale.** Under
+  `LC_ALL=C`, and with no locale exported at all, the pair aborts at 134 in the
+  very session whose nine exit-zeros are recorded above; under a UTF-8 locale it
+  returns the correct answer; either flag alone is fine in both. So the two
+  sessions differed by ONE ENVIRONMENT VARIABLE, neither mis-read anything, and
+  the reason the negative above looked general is now the entry's whole subject —
+  **the failure is deterministic within a session and opposite between sessions,
+  so re-running it confirms your own environment and discovers nothing.**
+- **THE THREE FOOTGUNS ALREADY OWED TO `CLAUDE.md` WERE NOT SWEPT**, per the
+  phase's own bounds. Their evidence was not re-measured here and the count of
+  three has not gone down.
+- **NO S-NUMBER WAS SUPERSEDED AND NO EXISTING LABEL WAS RENUMBERED.** Both new
+  decisions record a REFUSAL; neither reopens anything.
+- **NOTHING WAS OBSERVED ON A DEVICE OR A SERVER**, and nothing in this phase
+  needed either.
+
+**ONE FILE OUTSIDE THE PLANNED SET WAS EDITED, BY ONE TOKEN, AND IT IS DECLARED
+RATHER THAN QUIET.** Minting `P1.20`, `P1.21` and `P1.22` breaks a live citation
+NOBODY EDITED: section citations resolve by case-insensitive SUBSTRING over
+heading lines, `P1.2` is a cited section, and each new heading contains it — so
+that citation went from one hit to four at both of its sites,
+`ARCHITECTURE.md:1371` and `OPEN_ITEMS.md`. Renumbering to dodge it is forbidden,
+so both handles were widened to the step's fuller heading, which already resolves
+at one elsewhere. **The edit to `ARCHITECTURE.md` is a citation handle and nothing
+else** — no architecture and no hard rule moved, and that file's own content is
+untouched.
+
+**THE CITATION ARITHMETIC, because a total that rose by LESS than was written is a
+class the checker cannot see and will never call broken.** Over ten sources, with
+`SOURCES` read first and equal to the ten passed on every run. Baseline taken
+BEFORE the first edit: `CITATIONS=477 BROKEN=7`. After commit 1's edits, two
+citations written: **479**, +2. After commit 2's edits, eleven more written:
+**490**, +11 — and per file, ROADMAP +3, PROJECT_STATUS +6, OPEN_ITEMS +2, which
+is what was written in each. **`BROKEN` stayed at 7 across all three runs and the
+seven are the same seven identities**, inherited, six of them a handle or section
+name wrapped across two source lines; they are itemised under
+`OPEN_ITEMS.md § Documentation` and none is this phase's. One break was caught
+before it shipped by measuring a handle instead of trusting it, and one was
+predicted and repaired before it could appear. The two repo checkers ran bare at
+this boundary with status read in the same invocation: shared checks exit 0
+(4 items, identical between the two files), `build_all_lessons.py --check` exit 0
+(58 lesson files, document matching) — **no lesson was touched, which is what that
+green says and all it says.**
+
+**AMENDED 2026-08-20, THE SAME DAY AND BEFORE EITHER COMMIT LANDED — four
+repairs, and the first is a defect in what this phase had already written.**
+
+**1 — AN INVENTED ATTRIBUTION WAS REMOVED FROM BOTH NEW DECISIONS.** S20 and S21
+each carried a paragraph headed *THE OWNER'S REASONING, recorded so it is not
+re-argued*. **The owner gave no reasoning.** He was shown three options per
+question and selected one; no prose came back with either selection. Both
+paragraphs were therefore assembled prose wearing his name, in the one section of
+that file whose declared purpose is to make its contents unarguable. Each is
+replaced by **WHAT THE OWNER WAS SHOWN, AND WHAT HE ANSWERED** — the three
+options, the one selected, and the fact that no prose accompanied it — followed by
+an explicit statement that **the section's own convention is UNMET for S20 and
+S21**, since none was given. The consequences that are derivable from the files
+are kept and re-labelled as **not his reasons and not evidence of why he refused**;
+the arguments that rested on nothing measurable (installation cost, a shop's
+goodwill) are deleted rather than relabelled. **The record that a proposal was made
+and refused is untouched** — that is the part with value and nothing here weakens
+it. Swept across everything this phase wrote, with the words named:
+`OWNER'S REASON`, `owner's reason`, `his reason`, `reasoning`, `re-argued`,
+`because the owner`, `why he`, `he decided`, `the owner wanted`, `owner chose`,
+`his own reason`. **Two hits were this phase's and both are repaired; every other
+hit is a pre-existing record from an earlier phase and none was swept** — their
+evidence has not been re-measured here.
+
+**2 — `.claude/agents/metis.md` WAS RESTORED, AND IT IS IN NEITHER COMMIT.** The
+working tree carried a one-line change to that file: the frontmatter
+`description:` value gained surrounding double quotes, which is YAML-equivalent.
+Nothing in this phase authored it and nobody can name what did, so it was
+restored and `git status --porcelain=v1` re-read bare to confirm the line was
+gone. **One correction to how it was reported: it did not move during this
+phase.** It was already present as ` M` in the git status snapshot taken when this
+session booted, before its first command ran. **And the phase's own staged-set
+check was too narrow, which is why it could not see this:** requiring the STAGED
+set to equal the declaration asks about the INDEX, and a modified-but-unstaged
+path satisfies it completely — the fourteenth mechanism, inside the block written
+to prevent it. Both `git diff --cached --name-only` and `git status
+--porcelain=v1` are now read bare before each commit, and both must equal the
+declaration.
+
+**3 — "IT DID NOT REPRODUCE" WAS STRUCK FROM THE GREP ENTRY. It is a general claim
+and it is false.** The advising session measured seven bare aborts (`EXIT=134`)
+where this session measured nine bare exit-zeros, on the same day, in the same
+repository. **Neither side mis-read a number, and the queue entry now records both
+with the instrument each was taken through** rather than picking one. This
+session's binary was established rather than assumed, because liveness is not
+identity: `type -a grep` shows no alias and no shell function,
+`cygpath -w /usr/bin/grep` resolves to `C:\Program Files\Git\usr\bin\grep.exe`,
+`md5sum` agrees across `/usr/bin/grep` and `/bin/grep` at
+`65b7eb148ea01dacf451bed0d1a4608e`, and the pair was re-run **by absolute path**
+to the same exit 0 — so PATH order, aliasing and builtins are all excluded. **The
+open question is therefore the execution ENVIRONMENT, not the result**, and it is
+left open rather than guessed. The operating rule stands: do not combine `-i` with
+`-F` in a shell `grep` on this box, and give any zero a positive control in the
+same invocation.
+
+**AND THEN THE MECHANISM WAS FOUND, WHICH IS COMMIT 3 — the paragraph above is
+left as written and its conclusion, that `CLAUDE.md` should get nothing, is the
+part that turned.** The variable is not the session, it is the **C/POSIX
+LOCALE**. Measured in the session whose nine exit-zeros are recorded above:
+`LC_ALL=C grep -iF` → `Aborted`, `EXIT=134`, and
+`env -u LANG -u LC_ALL grep -iF` → the same, while `LC_ALL=C` with `-F` alone and
+with `-i` alone both exit 0, and `LC_ALL=en_US.UTF-8 grep -iF` exits 0 with the
+correct nine lines. The same abort reproduces on a two-line file outside the
+repository under `LC_ALL=C`, so the file is excluded as well. **Two sessions, one
+environment variable, and neither reading was wrong.** The footgun is therefore
+written at `CLAUDE.md § Machine footguns` with the supersession stated in the
+entry itself, and the queue entry is trimmed to a pointer that keeps both
+sessions' observations. **The three footguns already owed there are untouched and
+the count stays three.** What remains open is smaller: which shell exported which
+locale, which is a question about the harness rather than about `grep`.
+
+**4 — THE LESSON WAS WRITTEN, and it was owed rather than optional.** Minting
+`P1.19`–`P1.22` broke a live citation nobody edited, because section names resolve
+by case-insensitive SUBSTRING and `P1.20`–`P1.22` each contain the cited `P1.2`.
+The two-homes test puts it in `lessons/`: a decimal label space colliding with its
+own earlier members is a property of this PROJECT, not of this box. It is written
+as an **extension of the sixteenth mechanism and not a seventeenth**, so that
+file's single count line stays at sixteen. **The finding that generalises was
+measured with its control in one pass:** eleven heading lines contain `P1.1`, so a
+section citation naming `P1.1` in that file has been unresolvable since `P1.10`
+was minted and **nobody noticed, because nobody cites it** — while the same run
+returned fifteen
+bare-label section citations at exit 0 naming `P1.7`, `P1.12`, `P1.16` and
+`P1.18`. **The label space is already broken and what holds it up is which labels
+happen to be cited; `P1.19` breaks nothing by luck, not by design.** A bound was
+added at the label lesson's own remedy, because grepping the label you are minting
+cannot see a collision created by a label you are not. Both index lines updated,
+`all-lessons.md` regenerated: **58 lesson files, unchanged — two amended, none
+added or removed.**
+
 **P1.18 STAGE 3 — THE OUTBOX MECHANISM IS BUILT AND `runOnce` RUNS IT; THE TWO
 HAND-WRITTEN DRAINS ARE DELETED. Code, two commits: `47d17ab` (2026-08-19) and
 the commit carrying this entry (2026-08-20). THE PHASE DOES NOT CLOSE HERE —
@@ -531,6 +741,15 @@ policy. **Seven are outstanding** — S9, S10, S11, S12, S15, S16 in part, and S
 which cannot be scheduled apart from S9. Three of those seven are relied on
 elsewhere in `ROADMAP.md` as the reason something cannot proceed while being
 defined nowhere in it: S10, S12 and S16.
+
+**THE FIGURES IN THE PARAGRAPH ABOVE DESCRIBE THE 2026-08-18 SWEEP AND ARE LEFT AS
+WRITTEN; THE TABLE HAS SINCE GROWN.** P-OWNERDECIDED added S20 and S21 on
+2026-08-20, so the current totals are nine with a step, five needing none and seven
+outstanding, over twenty-one rows. **Seven outstanding is unchanged**, which is why
+this is a pointer rather than a rewrite: neither new decision added an outstanding
+step or closed one, and S10 is still the load-bearing gap this record names.
+`ROADMAP.md § Every settled decision, and the step that owns it` carries the
+recount, with each cell established by its own command.
 
 **TWO ANSWERS OF 2026-08-18 WERE RECORDED, AND RECORDING THEM CREATED NO OWNER.**
 Photographs stay in the pilot bar — the owner CONFIRMED S12 rather than reopening
