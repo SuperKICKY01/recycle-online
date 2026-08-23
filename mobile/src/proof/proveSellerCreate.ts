@@ -89,6 +89,34 @@ const SENTINEL = process.env["RECYCLE_BINDING_SENTINEL"] ?? "";
  */
 const BREAK = (process.argv.find((a) => a.startsWith("--break=")) ?? "").split("=")[1] ?? "";
 
+/**
+ * EVERY BREAK THIS FILE IMPLEMENTS. A value not in here is REFUSED, at module
+ * scope, before `main()` and before one character is printed.
+ *
+ * WHY: an unrecognised value used to leave `CALLER_BASE` pointed at the REAL
+ * API — the break silently not applied — while C7's banner printed `*** C7
+ * NEGATIVE CONTROL ACTIVE: --break=<typo> ***` and every cell passed against a
+ * healthy server. The operator asked for a disproof, was TOLD one was armed,
+ * and got an ordinary green. Validating inside `main()` would still let a
+ * rejected value announce itself on the way out, so this sits above the first
+ * `console.log`.
+ *
+ * EXIT 2, NOT 1: 1 means assertions failed, 2 means could-not-run, which is
+ * what this file already uses at `SELLERCREATE_EXIT=2` for a missing
+ * environment. A break that was never applied measured nothing.
+ *
+ * FAILS CLOSED WHEN THE LIST ROTS: add a break below and forget it here and the
+ * new name is refused BY NAME at exit 2, never silently ignored.
+ */
+const BREAK_MODES: readonly string[] = ["path"];
+
+if (BREAK !== "" && !BREAK_MODES.includes(BREAK)) {
+  console.log(`  [FAIL] unknown --break=${BREAK} — nothing was damaged and nothing was measured`);
+  console.log(`         known breaks: ${BREAK_MODES.join(", ")}`);
+  console.log("SELLERCREATE_EXIT=2");
+  process.exit(2);
+}
+
 /** The baseUrl the CALLER gets. Every roster read below uses API directly. */
 const CALLER_BASE = BREAK === "path" ? `${API}/__no_such_prefix` : API;
 

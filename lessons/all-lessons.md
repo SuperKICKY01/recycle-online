@@ -493,7 +493,7 @@ to the instrument you are about to cite as evidence for something else.
 case, run in the same pass, that makes it fire. A check nobody has watched go red
 is a claim about the code, not a measurement of it.
 
-**SIXTEEN MECHANISMS, and this line is the ONLY place in this file that says how
+**SEVENTEEN MECHANISMS, and this line is the ONLY place in this file that says how
 many.** Every heading below names its own mechanism and never the running total,
 so appending another is a one-number edit, here.
 **It read FIFTEEN until 2026-08-19, and the correction is its own instance.**
@@ -1875,6 +1875,96 @@ you have written another one** — which is the rule
 citation written in citation form is parsed, counted, and raises `BROKEN`, so
 describing the problem manufactures more of it"*, one directory away and about
 files the checker DOES read.
+
+## A SEVENTEENTH MECHANISM (P-SHEETFIRSTPRESS, 2026-08-23) — THE DISPROOF WAS NEVER ARMED, AND THE HARNESS PRINTED THAT IT HAD BEEN
+
+Every mechanism above is about an ASSERTION — one that cannot fire, or fires
+about something adjacent. This one is about the APPARATUS THAT DAMAGES THE CODE
+so the assertions have something to catch, and about a sentence it prints.
+
+**The measurement.** `mobile/src/proof/proveSheets.ts` accepts five deliberate
+breaks. Its selector was:
+
+```ts
+const BREAK = (process.argv.find((a) => a.startsWith("--break=")) ?? "").split("=")[1] ?? "";
+```
+
+Nothing compared `BREAK` against the five. Every wrapper asks `BREAK === "coexist"`
+and so on, so an unrecognised value simply matches nothing and the model stays
+UNDAMAGED — and then `main()` prints, unconditionally on `BREAK !== ""`:
+
+```
+  *** NEGATIVE CONTROL ACTIVE: --break=coexsit ***
+      The model is damaged ON PURPOSE by this script, never by src/ui/. Cells
+      that measure the invariant must go red.
+```
+
+Measured on 2026-08-23, one letter transposed:
+`npm run prove:sheets -- --break=coexsit` printed that banner, then
+`ALL CELLS PASSED`, `PROVE_SHEETS_EXIT=0`, exit 0. The correct spelling reddens
+S2 and S7. **The operator supplied the right intent, the harness discarded it
+without a word, and then told them it had been accepted.**
+
+**Three files, not one, and the sweep is by CONSTRUCT.**
+`grep -rln 'startsWith("--break=")' mobile/src/` returns exactly three —
+`proveSheets.ts`, `proveSellerCreate.ts`, `proveSellerNotice.ts` — byte-identical
+selectors, each with its own banner. Control in the same pass: eight files under
+`mobile/src/proof/` touch `process.argv`, and the other five are positional
+crash-children plus one boolean `includes("--offline")`, which mis-parses just as
+silently but ANNOUNCES NOTHING, so it cannot tell anybody a control ran.
+
+**WHY THIS IS NOT THE THIRD MECHANISM, which is the nearest neighbour.** There,
+`pending: 3` with `engine: null` makes the failing state UNREACHABLE FROM THE
+INPUTS SUPPLIED: the operator handed in something that could not produce the case
+they meant to test, and the instrument reported honestly on what it was given.
+Here the input was RIGHT — the operator asked for exactly the break that works —
+and the harness DISCARDED it between the command line and the model. The third
+mechanism is a badly chosen input; this is a correctly chosen input silently
+dropped. And the half with no counterpart anywhere above: **the apparatus then
+issued a POSITIVE CLAIM ABOUT ITSELF.** In every other mechanism the false
+assurance is something the reader INFERS from a green. Here it is PRINTED, in
+words, in the imperative voice, telling the reader that cells which stay green
+are cells that are not measuring what they claim — while nothing was damaged and
+a green was the only possible outcome.
+
+Not the twelfth either: there the break WAS applied and the cell was aimed at a
+granularity the damage did not reach. Here the break never happened.
+
+**The repair, and the placement is the whole of it.** Each file now declares its
+own modes and refuses anything else AT MODULE SCOPE, above the first
+`console.log`:
+
+```ts
+const BREAK_MODES: readonly string[] = ["coexist", "two_hosts", "always_push", "pop_all", "scan"];
+if (BREAK !== "" && !BREAK_MODES.includes(BREAK)) { /* print, then */ process.exit(2); }
+```
+
+**EXIT 2 AND NOT 1**: in this suite 1 means assertions failed and 2 means the
+check could not run, which is what `prove:forbidden --offline` and `reconcile.py`
+already mean by it. A break that was never applied measured nothing, so 1 would
+claim a measurement that did not happen.
+
+**VALIDATE BEFORE THE PRINT, NOT INSIDE `main()`.** A guard beside the banner
+still lets a rejected value announce itself on the way out; the sentence is half
+the defect and it has to be unreachable, not merely followed by an exit.
+
+**AND THE PAIR IS THE EVIDENCE, NOT THE REFUSAL.** A validator that refuses
+everything is not a fix and passes the same test as one that works, so each file
+was run twice: the misspelling must exit 2 WITH NO BANNER, and the known value
+must still raise the banner and still redden the same cells. Measured —
+`--break=coexsit` exit 2, banner count 0 over a 15-line output;
+`--break=coexist` exit 1, banner count 1, and S2 still reading
+`asks for 2 — seller_picker + add_seller`. The zero is controlled by the output
+being non-empty, because a banner is absent from an empty file too.
+
+**It fails closed when the list rots**, which is the one thing that makes this
+maintainable: add a wrapper and forget the list, and the new break is refused BY
+NAME at exit 2 rather than silently ignored — loud, in the direction that cannot
+be mistaken for a pass.
+
+Ask of any test harness, not just its assertions: **if I asked for a mode that
+does not exist, would this program tell me, or would it tell me the mode was
+on?**
 
 ---
 

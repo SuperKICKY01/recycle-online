@@ -1243,6 +1243,26 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   run) is applied in `proveOutbox.ts` alone, because the sweep was outside
   that commit's declared file set. *Not done:* the same preset in every other
   proof entrypoint — one line each, no behaviour change on any completed run.
+  **THE FILES ARE NOT EQUIVALENT, AND A SWEEPER MUST NOT TREAT THEM AS ONE JOB —
+  added 2026-08-23.** The hazard is an UNSETTLED await draining the loop, so it
+  needs an await INSIDE `main()` to have anything to strand. Where `main()` is
+  wholly synchronous the exposure is LATENT: the file lacks the guard AND lacks
+  the hazard, `main()`'s promise settles in a microtask before the loop can
+  drain, and a synchronous throw is caught by the entrypoint's own `.catch`.
+  Measured today in `mobile/src/proof/proveSheets.ts` — `grep -n await` returns
+  exactly ONE line, the top-level `await main()` at the entrypoint, and every
+  cell it calls is a plain synchronous function; control in the same pass,
+  `proveSellerCreate.ts` returns 35, so the instrument distinguishes. **The
+  consequence for the sweep is that a LATENT file gives a sweeper no way to tell
+  a correct preset from a typo'd one** — nothing can be staged that goes red
+  either way — while a LIVE file can be checked by staging the deadlock the
+  lesson describes. Do the live ones where the fix can be OBSERVED, and record
+  the latent ones as unobserved-by-construction rather than as swept. A latent
+  file also turns LIVE the first time somebody adds an `await` to a cell, with
+  nothing announcing it.
+  **NOT CLOSED BY P-SHEETFIRSTPRESS, deliberately.** That phase touched three of
+  these files for a different defect and left the preset alone in all three; it
+  is still owed everywhere except `proveOutbox.ts`.
 
 - **THE ADD-SELLER SHEET DOES NOT APPEAR ON THE FIRST PRESS — diagnosed
   2026-08-17 from the source, not guessed from the symptom, and NOT

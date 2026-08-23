@@ -85,6 +85,39 @@ function header(title: string): void {
 
 const BREAK = (process.argv.find((a) => a.startsWith("--break=")) ?? "").split("=")[1] ?? "";
 
+/**
+ * EVERY BREAK THIS FILE IMPLEMENTS. A value not in here is REFUSED, and the
+ * refusal happens HERE — at module scope, before `main()` and before this
+ * program has printed one character.
+ *
+ * WHY THE PLACEMENT IS THE FIX AND NOT A TIDINESS. `--break=coexsit` used to set
+ * `BREAK` to a string no wrapper matches, so the model stayed UNDAMAGED while
+ * the banner in `main()` printed `*** NEGATIVE CONTROL ACTIVE: --break=coexsit
+ * ***` and every cell passed: `ALL CELLS PASSED`, `PROVE_SHEETS_EXIT=0`, exit 0.
+ * The operator asked for a disproof, was TOLD one was armed, and got a clean
+ * run of the undamaged model. Validating inside `main()` would still let a
+ * rejected value announce itself on the way out, which is why this sits above
+ * the first `console.log` rather than beside the banner it disarms.
+ *
+ * EXIT 2, NOT 1. In this suite 1 means assertions FAILED and 2 means the check
+ * COULD NOT RUN — `prove:forbidden --offline` exits 2, `SELLERCREATE_EXIT=2`
+ * marks a missing environment, and `reconcile.py` uses the same 0/1/2. A break
+ * this file cannot apply is a could-not-run: nothing was measured, so 1 would
+ * claim a measurement that never happened.
+ *
+ * FAILS CLOSED WHEN THE LIST ROTS. Add a `BREAK === "x"` wrapper below and
+ * forget this list and `--break=x` is REFUSED BY NAME at exit 2 — loud, and in
+ * the direction that cannot be mistaken for a pass.
+ */
+const BREAK_MODES: readonly string[] = ["coexist", "two_hosts", "always_push", "pop_all", "scan"];
+
+if (BREAK !== "" && !BREAK_MODES.includes(BREAK)) {
+  console.log(`  [FAIL] unknown --break=${BREAK} — nothing was damaged and nothing was measured`);
+  console.log(`         known breaks: ${BREAK_MODES.join(", ")}`);
+  console.log("PROVE_SHEETS_EXIT=2");
+  process.exit(2);
+}
+
 /* ------------------------------------------------------------ the wrappers -- */
 
 /**

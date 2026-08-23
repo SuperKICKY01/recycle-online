@@ -57,6 +57,106 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P-SHEETFIRSTPRESS — THE PHASE FOUND ITS OWN PREMISE WITHDRAWN, AND SHIPPED THE
+DEFECT IT FOUND INSTEAD. 2026-08-23. Two commits.** This supersedes the
+P-OWNERDECIDED entry below as the current phase. That entry's record stands.
+
+**THE BRIEF WAS WRONG, AND THE BRIEF SAID TO CHECK.** P-SHEETFIRSTPRESS was
+dispatched to repair the add-seller sheet not appearing on the first press,
+described in its own words as "diagnosed from source 2026-08-17, never repaired".
+Its first instruction was to RE-DERIVE the defect before touching it, because the
+queue entry's line numbers "have rotted before". They had rotted, and so had the
+entry: `1204081` (2026-08-17 16:56:08 +0700) repaired the defect **77 minutes
+after `56b5008` recorded it as unrepaired**, and the device pass followed at
+`72b9881` two hours later. No code was owed. **The instruction to re-derive is the
+only reason this was found rather than re-implemented over a working fix**, and
+it is worth more than the phase's own output.
+
+**COMMIT A — `5b441e8`, `OPEN_ITEMS.md` only.** The queue entry superseded, not
+deleted, with the cause named: `1204081` did not clear its own queue line.
+Measured rather than inferred — `git show --numstat` lists SIXTEEN files for that
+commit (`wc -l` over the numstat, one line per file) and `OPEN_ITEMS.md` is not
+among them, while its 200-line message quotes this entry's own symptom at `:4`
+and names `56b5008` as the before state at `:16`, with `grep OPEN_ITEMS` over
+that message returning zero. The author had the paragraph open and the queue was
+never in view as a thing to edit. Also added: a NEW queue line recording that
+`mobile/src/master/sellerCreateNotice.ts:241` (line re-derived, not copied) still
+explains a notice by a two-Modal structure that stopped existing at `1204081` —
+**a stale mechanism in a comment and NOT a live defect**, because the conclusion
+it supports did not move.
+
+**COMMIT B — an unarmed disproof that announced itself as armed.** Found while
+verifying the phase's own instrument. `--break=` was parsed off argv in three
+proofs and never compared against the modes each file implements, so one
+transposed letter left the model UNDAMAGED while the run printed
+`*** NEGATIVE CONTROL ACTIVE: --break=coexsit ***` and then `ALL CELLS PASSED` at
+exit 0. **The operator asks for a disproof, is told one is armed, and gets a
+clean run of undamaged code.** Swept BY CONSTRUCT rather than by the three
+filenames it was reported under: `grep -rln 'startsWith("--break=")' mobile/src/`
+returns exactly three, controlled against the eight files under
+`mobile/src/proof/` that touch `process.argv`. Each now declares its modes and
+refuses anything else AT MODULE SCOPE, above the first `console.log` — a guard
+beside the banner would still let a rejected value announce itself on the way out
+— and exits **2, not 1**, because in this suite 1 means assertions failed and 2
+means could-not-run, which is what `prove:forbidden --offline` and
+`reconcile.py` already mean by it. The lesson is a SEVENTEENTH mechanism in
+`lessons/a-check-that-never-went-red-was-never-observed.md`, distinguished in
+writing from the third — there the failing state is unreachable from the inputs
+SUPPLIED; here the input was right and the harness discarded it, and then made a
+positive claim about itself.
+
+**WHAT WAS OBSERVED. Every command bare, status read in the same invocation.**
+
+- `npm run typecheck` exit 0 and `npm run typecheck:app` exit 0, each run bare —
+  two disjoint programs, both green.
+- `npm run prove:sheets` exit 0 TWICE in a row with no reseed;
+  `npm run prove:sellernotice` exit 0 TWICE in a row with no reseed.
+- **THE PAIR, which is the evidence and not the refusal:** `--break=coexsit`
+  exits **2** with the banner count **0** over a 15-line output (the zero
+  controlled by the output being non-empty, since a banner is absent from an
+  empty file too); `--break=coexist` exits 1, banner count **1**, and S2 still
+  reads `asks for 2 — seller_picker + add_seller`. Same pair for
+  `proveSellerNotice`: `colapse` exits 2 with no banner, `collapse` exits 1 with
+  the banner and five red cells. **A validator that refuses everything passes the
+  refusal half exactly as well**, which is why both halves were run.
+- The repair of the ORIGINAL defect re-measured at HEAD: `rg` returns ONE
+  `<Modal` line over `mobile/App.tsx` and `mobile/app/`, at
+  `mobile/app/SheetHost.tsx:67`, with a positive control of 14 files of 14 in the
+  same pass. Three disproofs with the cell NAMED IN ADVANCE each moved that named
+  cell with its control green.
+- `build_all_lessons.py --check` went RED naming the count line at `:496`, then
+  `--write`, then `--check` green at 463290 bytes — a red-then-green pair on the
+  generated file rather than a green alone.
+- Citations: baseline `SOURCES=5 CITATIONS=447 BROKEN=6` taken BEFORE the edit,
+  `SOURCES=5 CITATIONS=451 BROKEN=6` after, `SOURCES` read first and equal to
+  what was passed, the total risen by exactly the four added. Line numbers read
+  rather than the word: all six pre-existing breaks are `hits=0`, none new.
+
+**WHAT WAS NOT OBSERVED, and none of it is rounded up.**
+
+- **`proveSellerCreate`'s known-value half.** That proof needs a server against a
+  SCRATCH database and this phase was forbidden any database, so it could not be
+  run clean and its banner was never seen to return. What WAS measured is the
+  discrimination: `--break=paht` is refused by the validator by name at exit 2,
+  and `--break=path` PASSES the validator (`grep -c "unknown --break"` = 0) and
+  stops later at the file's own environment guard. That is weaker than the pair
+  the other two files carry, and it is the best available here.
+- **THE SECOND PRESS. R6 REMAINS OPEN AND IS THE OWNER'S.** What it observes is
+  NOT "the button works" — `72b9881` already records that. It is the STACK:
+  press `+ เพิ่มผู้ขาย`, close the form, confirm the picker is underneath with
+  its search box, and press the control AGAIN from there. `72b9881` records the
+  first press and records that closing returns to the picker; it records no press
+  from there.
+- **The `process.exitCode = 1` preset**, in these three files or any other. Left
+  alone deliberately and still queued as a whole-suite sweep, now carrying a
+  clause that the files are NOT equivalent: latent where `main()` holds no
+  `await` (measured — `proveSheets.ts` has exactly one `await` and it is the
+  entrypoint's, against 35 in `proveSellerCreate.ts`), live where one does.
+- **`--dump=` in `proveSellerNotice.ts` is still unvalidated.** Judged not to be
+  this defect and recorded at the site rather than fixed: a mistyped dump
+  selector prints nothing extra and announces no control, so it cannot tell an
+  operator a disproof ran.
+
 **P-OWNERDECIDED — TWO DECISIONS THE OWNER REFUSED ARE RECORDED, AND FOUR
 CAPABILITIES HE NAMED BECOME STAGE-1 STEPS. DOCUMENTATION ONLY, 2026-08-20. Two
 commits.** This entry supersedes the P1.18 stage-3 entry below **as the current

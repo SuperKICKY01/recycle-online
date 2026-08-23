@@ -74,6 +74,39 @@ const BREAK = (process.argv.find((a) => a.startsWith("--break=")) ?? "").split("
 const DUMP = (process.argv.find((a) => a.startsWith("--dump=")) ?? "").split("=")[1] ?? "";
 
 /**
+ * EVERY BREAK THIS FILE IMPLEMENTS. A value not in here is REFUSED, at module
+ * scope, before `main()` and before one character is printed.
+ *
+ * WHY: an unrecognised value used to leave `render()` returning the REAL
+ * notice — the break silently not applied — while `main()` printed `***
+ * NEGATIVE CONTROL ACTIVE: --break=<typo> ***` and every cell passed against
+ * the undamaged renderer. The operator asked for a disproof, was TOLD one was
+ * armed, and got an ordinary green. Validating inside `main()` would still let
+ * a rejected value announce itself on the way out, so this sits above the first
+ * `console.log`.
+ *
+ * EXIT 2, NOT 1: 1 means assertions failed and 2 means could-not-run, the same
+ * 0/1/2 `prove:forbidden --offline` and `reconcile.py` use. A break that was
+ * never applied measured nothing.
+ *
+ * FAILS CLOSED WHEN THE LIST ROTS: add a break below and forget it here and the
+ * new name is refused BY NAME at exit 2, never silently ignored.
+ *
+ * `--dump=` IS NOT COVERED AND IS NOT THIS DEFECT. A mistyped dump selector
+ * prints nothing extra and claims nothing; it announces no control, so it
+ * cannot tell an operator a disproof ran. It is recorded here so the omission
+ * reads as a decision rather than an oversight.
+ */
+const BREAK_MODES: readonly string[] = ["collapse", "fixed"];
+
+if (BREAK !== "" && !BREAK_MODES.includes(BREAK)) {
+  console.log(`  [FAIL] unknown --break=${BREAK} — nothing was damaged and nothing was measured`);
+  console.log(`         known breaks: ${BREAK_MODES.join(", ")}`);
+  console.log("SELLERNOTICE_EXIT=2");
+  process.exit(2);
+}
+
+/**
  * THE RENDERER, OR A DELIBERATELY BROKEN ONE. Every cell below goes through
  * here, so a break reaches all of them and the report can name which cells
  * moved. Nothing in `src/master/` knows this exists.
