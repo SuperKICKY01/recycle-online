@@ -157,6 +157,73 @@ positive claim about itself.
   selector prints nothing extra and announces no control, so it cannot tell an
   operator a disproof ran.
 
+**SUPERSEDED 2026-08-23 — THE SECOND-PRESS PASS RAN ON A HANDSET, AND
+P-SHEETFIRSTPRESS CLOSES AT THIS ENTRY.** The second bullet above is left exactly
+as written; only its status moves. The reading and the attestations behind it are
+SPLIT below, because a device observation has one instrument and that instrument
+is a person.
+
+**FIRST, THE LABEL IN THAT BULLET IS NOT CARRIED FORWARD, AND SAYING SO IS THE
+POINT.** `R6` names nothing in this repository. Measured in this pass:
+`grep -rn '\bR6\b' --include='*.md' .` returns FOUR lines and no more —
+`ROADMAP.md:46` and `ROADMAP.md:56`, which are the closed R-log's own resolution
+table, `PROJECT_STATUS.md:5506`, which restates that table, and the bullet itself
+at `PROJECT_STATUS.md:144`, every line number re-derived here rather than copied.
+**In the only space that defines it, `R6` is *one shop uses it daily*, resolving
+to P2.1** — a step about a shop trading for days, which has nothing to do with a
+sheet. The bullet's `R6` came from a phase brief, and a brief is not a file in
+this tree, so the sentence carried a reference with NO referent here AND a
+collision with one that has a referent. That is the measured case in
+`lessons/README.md § Lessons` "never write a bare label across a file boundary",
+arriving by a route that lesson's remedy does not name: **the label was not
+minted by the session that wrote it down, it was TRANSCRIBED**, and a
+transcriber has no reason to run a check aimed at minting. The line is superseded
+rather than edited, per this file's own convention, and nothing below it uses a
+bare label.
+
+**MEASURED BY THE ADVISING SESSION BEFORE THE PASS, AND NOT RE-TAKEN HERE.**
+`recycle_pg` was DOWN: the docker API unreachable, port 5544 closed while port
+8000 was open — which is what put the clock guard's could-not-evaluate line
+(`server/app/clock_guard.py:195`, re-derived in this pass) into the API's startup
+output with a ConnectionRefused inside it. The box's LAN address still equalled
+`mobile/app.json`'s `extra.apiBaseUrl`, which reads `http://192.168.1.238:8000`
+at `mobile/app.json:32`, re-derived here. The owner then started Docker,
+restarted uvicorn, and confirmed `/health` FROM THE HANDSET. **This session
+touched no container, no server and no database, so every clause in this
+paragraph is somebody else's measurement and is labelled as one.**
+
+**THE OWNER'S REPORT, AND IT IS THE ONLY INSTRUMENT A DEVICE OBSERVATION HAS.**
+He ran the sequence and reports it correct throughout:
+
+- `+ เพิ่มผู้ขาย` opened the form **ON THE FIRST PRESS**.
+- Closing the form returned to the **picker**, with its search box.
+- The control opened the form **AGAIN, from there**.
+
+**The third clause is the one no pass in this file has carried before.** The
+2026-08-17 modal-host pass recorded below records the first press and records
+that closing returns to the picker; it records no press taken from there.
+
+**WHAT THIS ESTABLISHES, AND WHAT IT DOES NOT.** One handset, one build, one
+session. It is the first observation that the STACK RETURNS — the property the
+one-host repair buys, and the property no headless proof can reach, because the
+defect was a native presentation and every proof cell in this repository runs
+under node. It says nothing about iOS, nothing about a release build, and
+nothing about a second device. **No row was read out of Postgres and none
+exists to read:** a presentation leaves no row and no log line, which is the same
+bound the 2026-08-17 pass already records for the first press, and it is a
+property of the defect rather than a shortcut taken here.
+
+**SO THE PHASE CLOSES, AND ITS FINDING WAS NOT THE REPAIR IT WAS BRIEFED FOR.**
+The repair had existed since `1204081` — 2026-08-17 16:56:08 +0700, sha and date
+re-derived with `git log -1` in this pass — which is 77 minutes after `56b5008`
+(15:39:04 +0700) recorded the defect as unrepaired. What the phase produced
+instead is two things it was not sent to find: **the harness that parsed
+`--break=` and never compared it against the modes each file implements**, so one
+transposed letter left the model undamaged while the run announced that the
+negative control was armed; and **the withdrawal, in writing, of three taxonomy
+claims** the seventeenth mechanism made about its own place in the file, one of
+which the eighth mechanism already carried. Neither is a sheet.
+
 **P-OWNERDECIDED — TWO DECISIONS THE OWNER REFUSED ARE RECORDED, AND FOUR
 CAPABILITIES HE NAMED BECOME STAGE-1 STEPS. DOCUMENTATION ONLY, 2026-08-20. Two
 commits.** This entry supersedes the P1.18 stage-3 entry below **as the current
