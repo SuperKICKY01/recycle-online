@@ -1269,6 +1269,70 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   the fix that looks obvious and is the one most likely to HALF-work, which is
   worse than not working because it will pass a hurried check. (3) One Modal
   whose content is switched.
+  **SUPERSEDED 2026-08-23 — REPAIRED, and this entry has been wrong since 77
+  MINUTES AFTER IT WAS WRITTEN.** The paragraph above landed at `56b5008`
+  (2026-08-17 15:39:04 +0700) and `1204081` (2026-08-17 16:56:08 +0700) repaired
+  it. **THE CAUSE IS ONE OMISSION, AND IT IS THE ACTIONABLE HALF: `1204081` DID
+  NOT CLEAR ITS OWN QUEUE LINE.** That commit touched sixteen files, quoted this
+  entry's own symptom in its message, and named `56b5008` as the "before" state —
+  so the author had this paragraph open — and `OPEN_ITEMS.md` was not among the
+  sixteen. Without that sentence the six days read as bad luck; they were a
+  missing step in a commit that knew about this line. **A REPAIR IS NOT FINISHED
+  UNTIL THE QUEUE ENTRY THAT SENT YOU DIES IN THE SAME COMMIT** — anything later
+  is a second commit nobody is scheduled to make. What it then cost is the
+  ordinary cost: a phase brief was written FROM this entry six days on, which is
+  `CLAUDE.md § Workflow` "A REPORT IS A CLUE, NOT A SOURCE" with this file as the
+  stale artefact, and the whole of P-SHEETFIRSTPRESS was spent re-deriving a
+  repair that was already in the tree.
+  **SHAPE (3) WAS CHOSEN, FROM THE SOURCE AND NOT FROM THE SYMPTOM.** One host,
+  `mobile/app/SheetHost.tsx`, whose CONTENT swaps; the rule is the pure module
+  `mobile/src/ui/sheetStack.ts`, a STACK and not a single slot, so closing the
+  add-seller form returns to the picker where the search box is. Shape (2) — the
+  trap named above — is refuted by `_shouldPresent = newProps.visible` being
+  evaluated PER INSTANCE, which makes a single `openSheet` state RENAME the
+  failure rather than remove it: `lessons/README.md § Lessons` "RECORDS INTENT, NOT OUTCOME".
+  **EVERY LINE NUMBER IN THE PARAGRAPH ABOVE HAS ROTTED.** `SellerPicker.tsx` and
+  `AddSellerSheet.tsx` render no `<Modal>` at all now — both carry a header
+  saying so — and `mobile/App.tsx:1830`, `:1839` and `:1850` are other code.
+  **THE DEVICE PASS HAPPENED**, at `72b9881` (2026-08-17 19:10:53 +0700), two
+  hours after the repair: `PROJECT_STATUS.md § Current phase` "THE MODAL-HOST DEVICE PASS".
+  **RE-MEASURED 2026-08-23, and NO SHA IS GIVEN because this correction was
+  uncommitted at the moment the sentence was written** — the only sha available
+  is the one that does not contain it. Both typechecks exit 0 run bare;
+  `npm run prove:sheets` exits 0 TWICE in a row with no reseed, S0-S10; `rg`
+  returns ONE `<Modal` line over `mobile/App.tsx` and `mobile/app/`,
+  `mobile/app/SheetHost.tsx:67`, with a positive control of 14 files of 14 in the
+  same pass. Three disproofs were run with the cell NAMED IN ADVANCE and each
+  moved that named cell, every control staying green: `--break=coexist` took S2's
+  `seller_picker>add_seller` to "asks for 2", `--break=two_hosts` took all four
+  S6 moves to `host:<a> -> host:<b>`, `--break=scan` reddened S9.
+  *STILL NOT DONE, and it is not the defect above:* the SECOND press — pressing
+  `+ เพิ่มผู้ขาย` again after closing the form and returning to the picker — has
+  never been observed on a handset. `72b9881` records the first press and records
+  that closing returns to the picker; it does not record a press from there.
+
+- **A COMMENT DESCRIBES A MECHANISM THAT STOPPED EXISTING AT `1204081`, AND ITS
+  CONCLUSION IS STILL RIGHT — found 2026-08-23, NOT REPAIRED.**
+  `mobile/src/master/sellerCreateNotice.ts:241` (line re-derived today, not
+  copied) explains why the `session_expired` notice carries its own sign-in exit:
+  the notice is drawn *"inside a Modal stacked over the picker, which is itself a
+  Modal"*, so the status strip's sign-in button is physically under BOTH and
+  cannot be reached. **There has been exactly one Modal in this app since
+  `1204081`**, so the two-Modals clause names a structure that no longer exists.
+  **THE CONCLUSION DID NOT MOVE**, which is what keeps this off the defect list:
+  the strip is under the HOST, which is just as unreachable, so the exit is still
+  needed and the notice is still right. `mobile/App.tsx:1780-1783` already
+  carries the corrected reason in the `add_seller` arm — so the tree holds both
+  the old mechanism and the new one, and only one of them is true.
+  **THIS IS A STALE MECHANISM IN A COMMENT, NOT A LIVE DEFECT.** Nothing renders
+  differently, no cell can go red, and no proof reads a comment. It is the shape
+  `lessons/README.md § Lessons` "could this sentence become false without this file changing?"
+  names: the sentence turned when a DIFFERENT file was edited, and nothing in the
+  repository compares a comment to the code it describes.
+  *Not done:* rewrite the clause to give the reason `App.tsx` already gives — the
+  strip is under the host — without touching the notice, its wording, or any
+  screen. Whoever does it should re-read the line number first; this entry's
+  predecessor two entries up rotted every one of its own.
 
 - **THE SAVE CONFIRMATION CONTRADICTS ITSELF — two boxes, two centimetres
   apart on one screen. Found 2026-08-17, NOT REPAIRED.** Both live in
