@@ -2698,6 +2698,25 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   the P1.18 design step, which cannot specify the seller kind until this is
   answered.
 
+  **CLOSED 2026-08-23 — THE *DECISION OWED* IS ANSWERED, AND EVERY OTHER WORD
+  ABOVE STAYS AS THE RECORD OF WHY THE QUESTION WAS ASKED.** The mechanism, the
+  two halves of it, the four options and the NOTHING BELOW IS AUTHORISED are
+  untouched, and this file is still the only place the mechanism is written down.
+  **The owner selected the SECOND option: a server-minted reservation, taken while
+  online.** It is recorded with its consequences, and with the cost he was shown,
+  at `ROADMAP.md § What the owner has settled` "S22 — WHAT IDENTIFIES A LOCALLY CREATED SELLER ACROSS DEVICES".
+
+  **WHAT THIS CLOSURE DOES NOT DO, said here so the entry is not read as
+  finished work.** It designs nothing. The three things the design still owes —
+  how many codes a device holds, when the holding refills, and what the screen
+  says when it is running low and when it is empty — are named at that decision
+  and answered nowhere, and the reservation puts a SERVER route and a RELATION
+  inside P1.8b that nothing in this repository implements. **And the cost is
+  recorded rather than resolved:** a reservation is finite on the device, so the
+  yard's inability to create a walk-in is RELOCATED to the moment a handset runs
+  out rather than removed. The *Unblocks* clause above is met — the design step
+  is no longer blocked — and that is the whole of what changed.
+
 - **THE BOOT PATH TELLS A SESSION TWO DIFFERENT THINGS ABOUT ORDER, AND EVERY
   SESSION READS BOTH.** Held over from P-PASTESET and filed 2026-08-18. Re-derived
   at `e6249f6`: `CLAUDE.md § Workflow` "Show a diff before editing any existing file"
@@ -4565,6 +4584,39 @@ with no feature of its own.
   written into the entry as unestablished:** which command produced the
   original wrong figure. No record of it survives, and guessing is how that
   paragraph went wrong the first time.
+
+  **AND ONE MORE FOOTGUN OWED, MEASURED 2026-08-23 AND FOUND BY ITS OWN CONTROL
+  FAILING: `grep` ON THIS BOX CANNOT SEE A `CR` BYTE, AND REPORTS ZERO.** It
+  opens files in TEXT mode, so CRLF is stripped before the pattern is applied and
+  a CR count comes back **0, exit 1** — a false CLEAN, silently, with no error.
+  **It matters because the paragraph directly above is the repository's most
+  careful statement about which object carries CR, and it tells a reader to
+  count** — so the instrument the reader reaches for is the one that cannot.
+  Measured, with the needle built from its codepoint (`CR=$(printf '\015')`,
+  confirmed `0d`) rather than typed:
+
+  - A file verified CRLF by its bytes, `61 6c 70 68 61 0d 0a 62 65 74 61 0d 0a`:
+    `grep -c "$CR"` → **0, exit 1**. `grep -Uc "$CR"` → **2, exit 0**.
+  - The repository's own CRLF working-tree file, `lessons/README.md`, whose byte
+    count read from Python is **CR=65**: `grep -c "$CR"` → **0, exit 1**;
+    `grep -Uc "$CR"` → **65, exit 0**, agreeing exactly with the authority.
+  - **THE OTHER HALF, because a flag that always answers yes passes the first
+    test just as well:** an LF-only file under `grep -Uc "$CR"` → **0, exit 1**.
+    The evidence is the PAIR.
+
+  **HOW IT WAS FOUND is the part worth keeping.** A CR check over three edited
+  files returned three zeros and was about to be reported as evidence; the
+  control in the same invocation — the one file this repository already knows
+  carries CRLF — returned zero too, which is the reading that cannot be true.
+  **Without that control the three zeros were indistinguishable from a working
+  instrument**, and they happened to be correct, which is the worst case.
+  *Done when:* it is an entry in `CLAUDE.md § Machine footguns` in that section's
+  symptom / why it lies / what to do instead form, beside the `core.autocrlf`
+  entry it directly serves. **Not written there by the phase that measured it**,
+  whose declared file set did not include that file. *Unblocks:* nothing in the
+  tree — the operating rule is `grep -U`, or count the bytes in Python, and say
+  which.
+
 - **Four open questions carried by `ROADMAP.md` rather than this list**,
   because each one moves a step rather than adding an item: does the
   pilot shop need a printed slip on day one (if yes, printing and the

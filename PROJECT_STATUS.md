@@ -57,6 +57,139 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P-SELLERCODE-DECIDED — THE OWNER ANSWERED THE QUESTION THAT HAS BLOCKED P1.8b
+SINCE 2026-08-18, AND P-SHEETFIRSTPRESS CLOSED IN THE SAME PHASE. DOCUMENTATION
+ONLY, 2026-08-23. Two commits.** This supersedes the P-SHEETFIRSTPRESS entry
+below as the current phase. That entry's record stands, and its close-out is
+written into it rather than here.
+
+**NO FILE UNDER `mobile/`, `server/`, `packages/`, `desktop/` OR `tools/` MOVED.**
+Not one source file, proof, script, migration or tool. No database was touched,
+live or scratch: no `psql`, no `alembic`, no `docker exec`, no `SELECT`. **NO
+PROOF AND NO TYPECHECK WAS RUN. That is a fact about this phase and not an
+omission from it:** no code was touched, so neither instrument would have carried
+information about the change, and running one to produce a green would have
+produced a true statement about a different object. **Every dated green in
+Baseline observations keeps its own date and NONE is refreshed by this work.**
+
+**COMMIT A — `626fc3c`, `PROJECT_STATUS.md` only.** P-SHEETFIRSTPRESS's last open
+bullet superseded: the owner ran the second-press sequence on his handset and the
+stack returns. The reading is split from its attestations, and the attestations
+are labelled with whose they are — the pre-pass measurements are the advising
+session's and were not re-taken here. **The finding inside that commit is the
+LABEL, not the press.** The bullet read `R6`, which names nothing in this
+repository: `grep -rn '\bR6\b' --include='*.md' .` returns four lines, three of
+them the closed R-log's own resolution table and its restatement, in which `R6`
+is *one shop uses it daily* and resolves to P2.1. The label came from a phase
+brief, and a brief is not a file in this tree. **It arrived by a route the label
+lesson's remedy does not name — it was TRANSCRIBED, not minted** — and a
+transcriber has no reason to run a check whose trigger is minting.
+
+**COMMIT B — the decision.** **S22** was minted into
+`ROADMAP.md § What the owner has settled` after re-deriving the range with its
+control in the same pass: 21 definition lines S1–S21 with no gap, the repo-wide
+check for an S-number above 21 printing nothing at exit 1, and the control for the
+existing range listing twenty files at exit 0. The owner was shown the four
+options the queue entry itself records and **SELECTED THE SECOND — a server-minted
+reservation, taken while online.** **NO PROSE CAME BACK WITH THE SELECTION**, so
+that section's own convention is unmet for S22 exactly as it is for S20 and S21,
+and no reasoning is invented in its place. **The cost he was shown is recorded as
+what he was shown, not as a motive:** a reservation is finite on the device, so a
+handset that exhausts its holding mid-shift cannot create a walk-in — the failure
+P1.8b exists to remove, RELOCATED rather than eliminated.
+
+**WHAT THIS PHASE MEASURED FOR THAT DECISION, all bare and all re-derived.**
+
+- **NOTHING ON THE SERVER IMPLEMENTS THE RESERVATION.** Word-anchored,
+  case-insensitive over `server/app/` `*.py`: **zero hits, exit 1**. The unanchored
+  form returns two, and both are substrings of ordinary words — *releases* at
+  `bills.py:537` and *preserve* at `master.py:24`. The same anchored sweep over
+  `server/migrations/versions/`, eleven files, also returns **zero at exit 1** —
+  **a read of the migration STACK and not a query of the head state**, which are
+  two different measurements and this phase took only the first. **The controls,
+  same tool and same corpus in the same pass:** the seller-code machinery returns
+  ten lines at exit 0 across `db.py`, `master.py` and `seeddata.py`, and the
+  `/sellers` route declarations return five at exit 0. The zeros are measurements
+  because the instrument was shown to fire.
+- **SO P1.8b IS NO LONGER A MOBILE-ONLY STEP.** It pulls a server route and a
+  relation, which is a WIDENING of that step rather than a new one, and it is what
+  S17 asks for. Five of P1.8b's seven survey bullets are wholly device-side; the
+  sixth names a different server change and the seventh a server-schema fact with
+  a device-side consequence. **None of the seven is the change this requires.**
+- **THREE QUESTIONS THE DESIGN OWES AND NOTHING ANSWERS:** how many codes a device
+  holds, when the holding refills, and what the screen says when it is running low
+  and when it is empty.
+
+**THE SWEEP WAS RUN BY THE QUANTIFIER, AND IT FOUND MORE THAN THE ONE SECTION THE
+PHASE WAS POINTED AT.** In the settled-decisions audit, the range sentence, the
+definition-line count and the three totals contain neither `S22` nor the word
+*decision*, and all five were corrected by supersession after the row was added,
+re-derived from the table rather than arithmetic'd: **ten** have a step, five need
+none, seven outstanding, **10 + 5 + 7 = 22**, which equals the row count and the
+definition-line count. **Two further sentences were found OUTSIDE that section**,
+both live and both falsified by the decision: `ROADMAP.md`'s P1.18 design, which
+argued the seller kind could not be specified because identity across offline
+devices was an open decision, and that step's own not-covered list, which names
+the kind as unspecified *by the owner's open decision*. **Both are superseded in
+one clause each and neither is rewritten** — the removal's argument, the tree, and
+the fact that the kind is still unspecified are all untouched. What moved is the
+BLOCKER.
+
+**WHAT THIS PHASE DID NOT DO.** It designed no seller kind, minted no P-number,
+and answered none of the three questions above. It ran no proof, no typecheck, no
+server and no database, so **nothing in it carries an exit code except the
+citation, shared-check and lesson-builder runs recorded below**. It did not
+re-take the advising session's pre-pass measurements. And it did not correct the
+present-tense sentences inside CLOSED phase records in THIS file that the decision
+also falsifies — the P1.18 stage-3 record's *waits on the owner's open decision*
+and the stage-2 record's *cannot specify the seller kind until it is answered*, at
+lines **697** and **1230** after this entry was inserted, both re-derived here and
+both certain to drift again — **because those are dated records of what was true
+when they were written, and this file supersedes rather than rewrites.** They are
+named so a reader meeting one does not take it for a live claim.
+
+**A THIRD FINDING ARRIVED FROM A CONTROL FAILING, AND IT IS A MACHINE FOOTGUN
+RATHER THAN ANYTHING TO DO WITH THIS DECISION.** A CR-byte check over the three
+edited files returned three zeros, and the control in the same invocation —
+`lessons/README.md`, the one file this repository already knows carries CRLF in
+its working tree — returned zero as well, which cannot be true. **`grep` on this
+box opens files in TEXT mode**, so CRLF is stripped before the pattern is applied
+and a CR count comes back **0 at exit 1**: a false clean, silently. Measured with
+the needle built from its codepoint and confirmed `0d`: over a file whose bytes
+read `61 6c 70 68 61 0d 0a 62 65 74 61 0d 0a`, plain `grep -c` returns 0 and
+`grep -Uc` returns 2; over `lessons/README.md`, plain returns 0 and `-U` returns
+**65**, agreeing exactly with a byte count taken in Python; and the other half,
+because a flag that always answers yes would pass the first test too — an LF-only
+file under `-U` returns 0 at exit 1. **The three zeros were correct, which is the
+worst case**, because nothing in the output separated them from an instrument
+that could not look. Re-run under `-U` they hold: CR=0 in all three files, and the
+Python byte count agrees. **It is not written into `CLAUDE.md` by this phase**,
+whose declared file set does not include that file; the measurement and both
+controls are queued under `OPEN_ITEMS.md § Documentation`, beside the
+`core.autocrlf` correction it directly serves.
+
+**IS A LESSON OWED? NO — FOR BOTH FINDINGS, AND THE ANSWER IS WRITTEN OUT RATHER
+THAN ASSUMED.** Applying *Two homes, one test* by name.
+
+- **The `grep` CR blindness is a MACHINE FOOTGUN and gets no lesson.** It is a
+  property of THIS BOX's grep build and would not reproduce on a machine whose
+  grep opens files in binary mode, which is exactly the test that section exists
+  for — and the rule says an environment trap goes to footguns and does NOT also
+  get a lesson, because writing both dilutes an index whose value is that every
+  line in it bites.
+- **The `R6` collision is neither.** It is not a footgun: nothing about it is a
+  property of this machine, and it would read identically anywhere. And it is not
+  a lesson, because this project would not RELEARN it —
+  `a-label-is-a-reference-with-no-checker.md` already carries **both** remedies
+  that reach this case: *grep every other file for that exact label* would have
+  returned the closed R-log, and *never write a bare label across a file boundary*
+  forbids the sentence outright. The only gap is in the TRIGGER wording, which
+  says *before minting*, and a second note about a rule already written is
+  precisely what `a-warning-in-one-file-does-not-protect-the-next.md` says does
+  not work. **So it is a DATUM about the `R` space and its home is this record** —
+  which is also where the label lesson's own bound, that `S`, `P`, `A` and `R`
+  were never checked, gets its second answer after the S-space audit checked `S`.
+
 **P-SHEETFIRSTPRESS — THE PHASE FOUND ITS OWN PREMISE WITHDRAWN, AND SHIPPED THE
 DEFECT IT FOUND INSTEAD. 2026-08-23. Two commits.** This supersedes the
 P-OWNERDECIDED entry below as the current phase. That entry's record stands.

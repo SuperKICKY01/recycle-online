@@ -587,6 +587,74 @@ has never printed a slip. **None of that is a motive and none may be cited as
 one.** An earlier draft argued this in the owner's name and about a shop's
 goodwill, which nothing here measures; that argument has been removed.
 
+**ONE MORE, FROM A FOURTH WORKING SESSION — 2026-08-23, AND IT ANSWERS A QUESTION
+RATHER THAN REFUSING A PROPOSAL, which is what separates it from the two above.**
+It supersedes no S-number and reopens none. **The label was minted after
+re-deriving the range in that pass, with its control:**
+`grep -nE '^\*\*S[0-9]+ —' ROADMAP.md` returns **21** definition lines, S1 through
+S21 with no gap, and the repo-wide
+`grep -rnoE '\bS(2[2-9]|[3-9][0-9])\b' --include='*.md' .` printed **nothing and
+exited 1**, with the control
+`grep -rlE '\bS([1-9]|1[0-9]|2[01])\b' --include='*.md' .` listing **twenty files
+at exit 0** in the same pass — a negative from an instrument that was not shown to
+fire is not a measurement.
+
+**S22 — WHAT IDENTIFIES A LOCALLY CREATED SELLER ACROSS DEVICES IS A
+SERVER-MINTED RESERVATION, TAKEN WHILE ONLINE. Decided 2026-08-23.** This answers
+the question that has blocked P1.8b since 2026-08-18, filed at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "TWO OFFLINE HANDSETS CAN MINT THE SAME SELLER CODE"
+and closed there on the same date.
+
+**WHAT THE OWNER WAS SHOWN, AND WHAT HE ANSWERED — this is the observation, and it
+is all there is.** He was shown the FOUR options that entry itself records — a
+device-scoped code space; a server-minted reservation taken while online; a
+client-supplied idempotency key on `POST /sellers`; and accepting duplicates and
+reconciling in the back office — and **SELECTED THE SECOND**. **NO PROSE CAME BACK
+WITH THE SELECTION.**
+
+**SO THIS SECTION'S OWN CONVENTION IS UNMET FOR S22, EXACTLY AS IT IS FOR THE TWO
+ABOVE.** The section head promises decisions "recorded with their reasoning so
+they are not re-argued". **For S22 there is no recorded reasoning, because none
+was given**, and none is invented here. Anything a later reader finds in this file
+explaining WHY is not his.
+
+**AND HE CHOSE WITH THE COST IN VIEW — recorded as what he was SHOWN, not as a
+motive.** The advising session named it and the selection was made with it in
+front of him: **a reservation is FINITE ON THE DEVICE**, so a handset that
+exhausts its holding mid-shift, with no signal, cannot create a walk-in. That is
+the exact failure P1.8b exists to remove, **RELOCATED rather than eliminated**.
+
+**THREE CONSEQUENCES, EACH RE-DERIVED IN THE PASS THAT RECORDED THIS DECISION AND
+NONE OF THEM CARRIED FROM A REPORT.**
+
+- **NOTHING ON THE SERVER IMPLEMENTS ANY PART OF IT.** Word-anchored,
+  case-insensitive, over `server/app/` `*.py` —
+  `\b(reserve|reserved|reservation|reservations|quota|quotas|allocate|allocated|allocation|lease|leased|prefetch)\b`
+  — the sweep returns **ZERO hits, exit 1**. The unanchored form returns **two**,
+  and both are substrings of ordinary words: `bills.py:537` inside *releases* and
+  `master.py:24` inside *preserve*. The same anchored sweep over
+  `server/migrations/versions/` (eleven files) also returns **zero, exit 1** —
+  which is a read of the migration STACK and not a query of the head state, two
+  different measurements and this is the first. **THE CONTROL, same tool, same
+  corpus, same pass:** the seller-code machinery already there returns **ten lines
+  at exit 0** across `db.py`, `master.py` and `seeddata.py`, and
+  `@router.(get|post|patch|put|delete)("/sellers` returns **five lines at exit 0**
+  in `master.py`. The instrument reads the corpus; the zeros are measurements.
+- **SO P1.8b IS NO LONGER A MOBILE-ONLY STEP.** It now pulls a server ROUTE and a
+  RELATION: something must hand a device a block of codes, and something must
+  remember which codes are out and to whom. **That is what S17 asks for** — a
+  schema change pulled by the feature that needs it rather than pushed as a set —
+  so this is a WIDENING of P1.8b and not a new step. Of that step's seven survey
+  bullets, **five are wholly device-side**; the sixth names a server change and
+  names a DIFFERENT one (accepting a client-minted seller id), and the seventh
+  states a server-schema FACT whose stated consequence is device-side. **None of
+  the seven is the change this decision requires.**
+- **THREE QUESTIONS THE DESIGN MUST ANSWER AND THIS RECORD DOES NOT:** how many
+  codes a device holds, when the holding refills, and what the screen says when it
+  is running LOW and when it is EMPTY. **They are named and deliberately
+  unanswered here.** The seller kind is not designed in this entry, and criteria
+  written ahead of a design are something this project has already paid for.
+
 ---
 
 ## Every settled decision, and the step that owns it
@@ -649,6 +717,25 @@ and not by sweeping the labels.
   says no cell was filled from knowledge of the file, and it has to hold at every
   size the table takes.
 
+**EXTENDED AGAIN 2026-08-23 — THE RANGE IS NOW S1 TO S22, AND THE THREE
+CORRECTIONS DIRECTLY ABOVE ARE THEMSELVES SUPERSEDED RATHER THAN REWRITTEN.** They
+were correct over twenty-one rows and are left exactly as written. **The sentences
+this addition breaks contain NEITHER `S22` NOR the word "decision"** — they read
+*S1 to S21*, *21 definition lines*, *twenty-one and twenty-one* — so a sweep for
+the new label runs clean over a section that already contradicts itself, which is
+now the THIRD extension in a row for which that has been true. The corrections
+below were found by sweeping the count words case-insensitively and not by
+sweeping the label, the same way the 2026-08-20 pair was.
+
+- ***S1 to S21*** above → **S1 to S22**. Twenty-one were swept before
+  2026-08-23; the one added on that date is swept here by the same method.
+- ***returns 21 definition lines, S1 through S21 with no gap*** above →
+  **re-derived 2026-08-23, the same command returns 22 definition lines, S1
+  through S22 with no gap.** The repo-wide check that the range is closed at the
+  top was re-run in the same pass and is recorded at S22's own entry, with its
+  control.
+- ***twenty-one and twenty-one*** above → **twenty-two and twenty-two.**
+
 | # | the decision, in short | owned by — and the command that established it | if none: new step, or extend which | if new: what blocks it |
 |---|---|---|---|---|
 | S1 | scope is three deliverables, shipped as one handover | **DISTRIBUTED, and the no-SQL bar is P3.6.** `grep -nE '\bS1\b'` → L2991 inside P3.6. The three deliverables are stage 1's mobile steps, P1.13–P1.17, and P3.5 | — | — |
@@ -672,6 +759,7 @@ and not by sweeping the labels.
 | S19 | P2.4 and P2.5 stay open until a real shop trades | **P2.4 and P2.5.** `grep -nE '\bS19\b'` → L2837 (P2.4) and L2857 (P2.5). It is a decision NOT to schedule, and it is written at both steps as well as here | — | — |
 | S20 | the desktop back office stays an Electron application | **P1.13, established by SUBJECT because no step names the label.** `grep -nE '\bS20\b' ROADMAP.md` → L495 and L502, both inside the decisions, which establishes nothing per the method above. `grep -niE 'electron' ROADMAP.md` → L1953 and L1963, the *What it is* and the DONE WHEN of P1.13, and the only two Electron hits inside any `### P…` section. The three desktop steps that hang off it — P1.14, P1.15, P1.17 — inherit it through their own *Depends on* chains and name no platform themselves | — | — |
 | S21 | there is no family-trial step; the pilot waits for all three deliverables | **NONE, and it needs none — it is a REFUSAL TO SCHEDULE, the shape S19 already has.** `grep -nE '\bS21\b' ROADMAP.md` → L495, L540, L551, every one inside the decisions. Subject search `grep -niE 'father\|family trial\|pilot at' ROADMAP.md` → L167 (S1), L225 (S7's own text), L540 and L549 (S21 itself): **not one hit falls inside a `### P…` section**. The step whose clock this protects is P2.1, and S7 already moved it | none needed | — |
+| S22 | what identifies a locally created seller across devices — a server-minted reservation, taken while online | **P1.8b, inside `### P1.8`, established by SUBJECT.** `grep -nE '\bS22\b' ROADMAP.md` → L602, L615, L617 (the decision itself) and L720–L735, L762, L791–L801 (this audit), none of which establishes anything per the method above; and **L2682, L2686 and L4169 inside `### P1.18`, where all three are that step saying it does NOT specify the kind** — the shape S7's row already records for P2.4 and P2.5, a step CITING a decision rather than building it. Subject search `grep -niE 'offline seller\|seller code' ROADMAP.md` → L411 (inside S14), L605 and L762 (the decision's own citation and this row — the instrument is inside its corpus and both are excluded by IDENTITY, not by content), **L1945, L1948 and L1985 inside `### P1.8`**, and L2349, L2494, L2531–2, L2673, L3331, L3492 inside `### P1.18`. **P1.8b BUILDS it and this decision WIDENS that step onto the server; P1.18 must CARRY it as a kind** | — | — |
 
 **THE TOTALS, so the shape is readable without counting rows.** Eight have a step
 — S1 in part, S3, S4, S5, S6, S13, S14, S19. Four need none: S2 is superseded, S7
@@ -699,6 +787,22 @@ two additions:**
 - 9 + 5 + 7 = **21**, which equals the row count. That equality is the check; it
   is the same one the range paragraph above makes, and it is why the recount is
   written out rather than asserted.
+
+**SUPERSEDED AGAIN 2026-08-23 BY THE S22 ROW — the recount directly above was
+correct over twenty-one rows and is left exactly as written. RE-DERIVED FROM THE
+TABLE, not arithmetic'd from the addition:**
+
+- **TEN have a step** — S1 in part, S3, S4, S5, S6, S13, S14, S19, S20, and
+  **S22**, whose owner is P1.8b. **That decision GROWS the step that owns it**:
+  the reservation is a server route and a relation, and P1.8b's recorded survey
+  is five-sevenths device-side. Owned and widened is still owned, so it sits in
+  this group and not among the outstanding, and the row says which.
+- **FIVE need none** — unchanged. S22 added nothing to that group.
+- **SEVEN are outstanding** — unchanged. **S22 neither added an outstanding step
+  nor closed one**, so the load-bearing gap is still S10, exactly as the two
+  answers of 2026-08-18 and the two decisions of 2026-08-20 left it.
+- 10 + 5 + 7 = **22**, which equals the row count. That equality is the check, at
+  this size as at the two before it.
 
 **THE FOUR STRUCTURAL ONES ARE AN ANSWER, NOT A GAP, and the distinction matters
 because a sweep that reports nineteen holes teaches nothing.** S7 is a clock: it
@@ -2573,6 +2677,21 @@ permanent red or a permanent excuse to leave the registry unbuilt, and the secon
 is what the tree holds today. So the member goes, the reason is recorded here,
 and the kind returns in the step that answers the decision.
 
+**SUPERSEDED 2026-08-23 IN ONE CLAUSE ONLY, AND THE PARAGRAPH ABOVE IS LEFT
+EXACTLY AS WRITTEN BECAUSE EVERY OTHER CLAUSE IN IT IS STILL TRUE.** The decision
+is **no longer open**: S22 above answers it — a server-minted reservation, taken
+while online — so *is an OPEN DECISION* and *until it is answered* have both
+turned, and the removal's ARGUMENT is untouched by that. **What has NOT changed is
+the tree.** The member is still absent from the design, still absent from the
+registry, and nothing in this step specifies it: S22 answers what IDENTIFIES a
+locally created seller and answers none of how many codes a device holds, when
+they refill, or what the screen says when they run out. **So the sentence to read
+forward is the last one — the kind returns in the step that answers the
+decision — and that step is now unblocked rather than blocked.** This clause is
+superseded and not edited because the paragraph is the record of why the member
+went, and a reader meeting it should see that the removal was right at the time
+and is still right now.
+
 **WHAT EVERY KIND SUPPLIES.** One member per thing `engine.ts` does today for
 exactly one kind, plus the two this design adds and argues for below. **No count is
 written in this sentence, and the reason is that the first draft wrote one and it
@@ -4046,6 +4165,13 @@ is the deletion case exactly.
   platform.
 - **The seller kind.** Not specified, by the owner's open decision, and therefore
   not proven. `OutboxKind` carries two members until it is answered.
+  **SUPERSEDED 2026-08-23, AND ONLY THE REASON MOVES:** the decision is ANSWERED
+  by S22 — a server-minted reservation, taken while online — so this item is no
+  longer *by the owner's open decision*. **It stays on this not-covered list
+  unchanged in every other respect.** The kind is still not specified, still not
+  proven, and `OutboxKind` still carries two members, because answering what
+  identifies a seller across devices is not designing the kind. What it removes is
+  the BLOCKER, not the item.
 - **A LARGE BINARY, AND THE SET NOW SAYS SO WHERE THE DESIGN ONLY IMPLIED IT.**
   Nothing here stages a multi-megabyte payload, a partial transfer, or a resume.
   The design argues where each of those would LAND; no criterion measures one, and
