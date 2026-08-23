@@ -1878,9 +1878,20 @@ files the checker DOES read.
 
 ## A SEVENTEENTH MECHANISM (P-SHEETFIRSTPRESS, 2026-08-23) — THE DISPROOF WAS NEVER ARMED, AND THE HARNESS PRINTED THAT IT HAD BEEN
 
-Every mechanism above is about an ASSERTION — one that cannot fire, or fires
-about something adjacent. This one is about the APPARATUS THAT DAMAGES THE CODE
-so the assertions have something to catch, and about a sentence it prints.
+**Most** mechanisms above are about an ASSERTION — one that cannot fire, or fires
+about something adjacent. **Seven are not, and naming them is what makes the
+boundary legible**: the first and second are an INSTRUMENT with an empty needle,
+the fifth and sixth an instrument reading the wrong artifact or nothing that
+points at it, the thirteenth and fourteenth a check answering a neighbouring
+question and a check that passes on excess, the fifteenth a CONTROL built out of
+the expression it exists to catch. Every one of those seven is the apparatus that
+MEASURES.
+
+**Only two above are about the apparatus that DAMAGES**, which is what this one
+is, so those two are its neighbours and the third mechanism is not: the FOURTH,
+where eight mutations were eaten by the compiler, and the EIGHTH, where a probe's
+stimulus stopped being delivered. A future member of this family is swept by
+those three numbers.
 
 **The measurement.** `mobile/src/proof/proveSheets.ts` accepts five deliberate
 breaks. Its selector was:
@@ -1913,19 +1924,37 @@ selectors, each with its own banner. Control in the same pass: eight files under
 crash-children plus one boolean `includes("--offline")`, which mis-parses just as
 silently but ANNOUNCES NOTHING, so it cannot tell anybody a control ran.
 
-**WHY THIS IS NOT THE THIRD MECHANISM, which is the nearest neighbour.** There,
-`pending: 3` with `engine: null` makes the failing state UNREACHABLE FROM THE
-INPUTS SUPPLIED: the operator handed in something that could not produce the case
-they meant to test, and the instrument reported honestly on what it was given.
-Here the input was RIGHT — the operator asked for exactly the break that works —
-and the harness DISCARDED it between the command line and the model. The third
-mechanism is a badly chosen input; this is a correctly chosen input silently
-dropped. And the half with no counterpart anywhere above: **the apparatus then
-issued a POSITIVE CLAIM ABOUT ITSELF.** In every other mechanism the false
-assurance is something the reader INFERS from a green. Here it is PRINTED, in
-words, in the imperative voice, telling the reader that cells which stay green
-are cells that are not measuring what they claim — while nothing was damaged and
-a green was the only possible outcome.
+**NOT THE THIRD MECHANISM.** There, `pending: 3` with `engine: null` makes the
+failing state UNREACHABLE FROM THE INPUTS SUPPLIED: the operator handed in
+something that could not produce the case they meant to test, and the instrument
+reported honestly on what it was given. Here the input was RIGHT — the operator
+asked for exactly the break that works — and the harness DISCARDED it between the
+command line and the model. The third is a badly chosen input; this is a
+correctly chosen input silently dropped.
+
+**NOT THE FOURTH, and this is the closer of the two real neighbours.** There the
+mutation also never reached what it was meant to damage — eight substitutions
+were all `TS2322` and the build stopped. But that interception is LOUD: nothing
+ran, no cell was observed, and the author could see that no proof had executed.
+Here everything ran, every cell was observed, and the run ended `ALL CELLS
+PASSED` at exit 0. **A break the compiler eats leaves no result to misread; a
+break the harness swallows leaves a full green one.**
+
+**NOT THE EIGHTH, AND THAT ONE ALREADY CARRIES THE HALF THAT LOOKS NOVEL HERE —
+say so rather than claim it.** The X3 probe's stimulus stopped being delivered
+and the probe went on *"still printing `inserted tenant … mid-run`"*. So the
+apparatus asserting in words that it did the thing it did not do is NOT new to
+this file, and an earlier draft of this section claimed it was. What separates
+them is the ROUTE IN and therefore the REPAIR. The eighth **arrived with no edit
+at all** — nobody mistyped anything, the proof was correct as written, and a
+database rebuilt from 46 tenants down to 2 moved the world under it, taking the
+report under the 8192-byte buffer that had been flushing it; its remedy is a
+synchronisation point you control. This one is available to ANYBODY, on EVERY
+run, DETERMINISTICALLY, from one transposed letter, and has been since the
+selector was written — because the harness never had a notion of which values it
+accepts; its remedy is a CLOSED SET of accepted inputs. Timing that drifted
+against a domain that was never defined. Neither remedy reaches the other's
+defect.
 
 Not the twelfth either: there the break WAS applied and the cell was aimed at a
 granularity the damage did not reach. Here the break never happened.
