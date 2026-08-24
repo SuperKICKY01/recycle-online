@@ -2634,6 +2634,43 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   *Unblocks:* an owner decision. Until it is taken the rows accumulate silently,
   which is the correct behaviour and is also the reason nobody will notice them.
 
+- **`POST /bills` CLASSIFIES AN UNRESOLVABLE `seller_id` AS PERMANENT, ON AN
+  ARGUMENT THAT OFFLINE SELLER CREATION FALSIFIES — AND THE ARGUMENT IS WRITTEN
+  DOWN BESIDE IT.** Raised 2026-08-23 by the seller-kind design, which decided
+  around it rather than changing it, because `server/` is out of that phase's
+  bounds. NOTHING BELOW IS AUTHORISED.
+
+  **The mechanism, re-derived in that pass.** The route reads the seller row and,
+  where it is absent, raises **422** — not the resolvable 424 it raises when the
+  seller exists but has no grade. The header comment above the route states the
+  reason in its own words: a reference that does not resolve at all stays
+  permanent because *the device got those ids from this tenant's own /sellers and
+  /products, so a miss means a corrupt or stale reference, not a setup gap.*
+  **That premise is exactly what P1.8b removes.** After it, a device legitimately
+  holds seller ids the server has never seen, and a bill naming one is valid a few
+  seconds early rather than corrupt.
+
+  **WHAT IT WOULD COST IF NOTHING CHANGED:** the first offline walk-in produces a
+  TERMINALLY FAILED bill for cash already paid, on a row hard rule 5 forbids
+  deleting — which is the failure the resolvable class was split out to prevent,
+  arriving through the one reference the split deliberately left permanent.
+
+  **THE DESIGN DOES NOT ASK FOR THE RULE TO CHANGE, and that is the finding
+  rather than a softening.** It parks such a bill on the DEVICE, so the request is
+  never sent and the server's 422 stays correct for what it was written for — a
+  genuinely corrupt reference. So this entry is not "fix the server"; it is that
+  **a comment in `server/app/bills.py` states a premise which stops being true the
+  day P1.8b ships, and nothing anywhere compares the two.** A wrong argument
+  beside a right rule is the shape this repository has recorded before: it does
+  not fail, it does not compile red, and it steers whoever reads it next.
+
+  *Contradicts:* that route's stated reason for the permanent class, against the
+  device holding server-unknown seller ids after P1.8b. *Not done:* the comment is
+  unedited and the classification is unchanged, both deliberately — the design
+  phase could touch neither. *Unblocks:* nothing built. It removes a premise a
+  later reader would otherwise rely on, and it is the sentence to re-read before
+  anyone reconsiders where a device-parked bill should live.
+
 ## Decisions open — the owner's, not the code's
 
 - **TWO OFFLINE HANDSETS CAN MINT THE SAME SELLER CODE, AND THE RULE THE P1.18

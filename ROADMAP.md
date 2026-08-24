@@ -1997,6 +1997,528 @@ it is the record of what the recording phase deliberately did not do, and becaus
 a reader meeting P1.18 should be able to see that the step was written after the
 decision rather than alongside it.
 
+---
+
+#### THE SELLER KIND — the design, and what the reservation actually buys
+
+**P-SELLERKIND-DESIGN, 2026-08-23. THIS DECIDES; IT BUILDS NOTHING AND IT WRITES
+NO CRITERIA.** The criteria come from this document in the next step and not
+here, because the outbox step wrote criteria ahead of its own design and had to
+rebuild them twice — both rebuilds are recorded as supersessions at that step —
+and a criterion written before the thing it measures exists is a criterion nobody
+can perform.
+
+**NO STATEMENT SEQUENCE IS PRINTED BELOW, AND THAT IS A CONSTRAINT RATHER THAN A
+STYLE.** Types and member contracts are stated; policy values are stated;
+dynamics are stated as RULES, each with the observable that turns red when the
+rule is broken. Three drafts of the outbox design printed a drain, every
+mechanism defect either review found lived inside the printed block, and the
+repair of that block arrived carrying three new printed ones.
+
+**WHAT WAS RE-DERIVED BEFORE ANY OF THIS WAS DECIDED, because the decision record
+written the same day is a clue and not a source.**
+
+- **`OutboxKind` has TWO members** — `mobile/src/sync/outbox.ts` declares
+  `"bill_send" | "bill_void"`. A third member is a compile error in
+  `OutboxRow`, in `OutboxResult`, and in the one registry literal typed by the
+  mapped `OutboxRegistry`, until a handler exists; `OutboxHandler` has fourteen
+  members and `OutboxDisposition` six.
+- **NO SELLER-SHAPED OUTBOX TYPE SURVIVES IN THE TREE.** Searched
+  `mobile/src/`, `mobile/app/` and `mobile/App.tsx` for `LocalOutboxSeller`,
+  `OutboxSeller` and `seller_create`: **one hit, and it is the doc comment in
+  `outbox.ts` explaining the removal** — controlled in the same pass against
+  `bill_void`, which returns hits at exit 0. **The queue entry that quotes
+  `LocalOutboxSeller.code` was CORRECT AT THE SHA IT NAMES** — `e6249f6` holds
+  it, two hits — and `47d17ab` (2026-08-19) deleted it. That quotation is a
+  correctly-pinned historical record which the tree has since overtaken, not a
+  description of anything present.
+- **`POST /sellers` REFUSES A CLIENT-MINTED ID.** `SellerCreate` sets
+  `extra="forbid"` and declares no `id`; `sellers.id` carries
+  `DEFAULT gen_random_uuid()`. `code` is OPTIONAL: supplied means one attempt and
+  a collision is the caller's 409 `duplicate_code`; absent means the server mints
+  one by generate-then-retry and answers 409 `code_assignment_failed` on
+  exhaustion.
+- **`sellers`, READ FORWARD THROUGH THE MIGRATION STACK WITH EVERY DROP APPLIED —
+  and that is a read of a LOG, not a query of the head state.** `0001` creates
+  `id, tenant_id, code, name, phone` with `uq_sellers_tenant_id` and
+  `uq_sellers_tenant_code`; `0003` adds `grade` with `ck_sellers_grade`; `0004`
+  adds `is_active` and `id_number, address, vehicle_no`; `0011` adds `created_by`
+  with `fk_sellers_created_by`. **There is no idempotency key on this table and
+  no reservation relation anywhere in the stack.**
+- **THIS DEVICE HAS NO PERSISTENT IDENTITY.** `mobile/app/ids.ts` is a UUID
+  GENERATOR (`newId()`), not an identity; `local_identity` holds `tenant_id`,
+  `user_id`, `updated_at` and nothing else; a tree-wide search for `device_id`,
+  `deviceId`, `installation_id` and `device_uuid` returns that generator and its
+  four call sites and nothing else.
+- **NEITHER ARCHITECTURE NOR A HARD RULE MOVES.** `ARCHITECTURE.md` mentions
+  `sellers` at four lines — the domain sentence, the table inventory, the
+  composite-FK argument and a bill's column list — and none of them says who mints
+  a seller id or that master data is created online. Hard rule 3 is about BILL
+  ids and is untouched; hard rule 4 is about bill creates and is EXTENDED in
+  spirit rather than changed; hard rule 5 is honoured by a local row that is never
+  deleted; hard rule 8 is what this whole step is for.
+
+---
+
+#### What holds a reserved code, and who the holder is
+
+**DECISION. A server relation, `seller_code_reservations`, keyed
+`PRIMARY KEY (tenant_id, code)`, with `UNIQUE (tenant_id, token)` beside it.**
+The thing being reserved IS the code, and the invariant the whole design rests on
+is *one holder per code per tenant*, so the code is the key and nothing else is.
+It carries the holder, an opaque server-generated `token`, the state, the issuing
+timestamp and user, and — once spent — the `seller_id` it produced.
+
+**THE HOLDER IS A DEVICE. Not a tenant, and not a user.**
+
+- **Not a TENANT.** A tenant-scoped pool is two handsets in one shop drawing from
+  one set of codes, which is the defect the owner's decision was taken to remove,
+  written down as a schema.
+- **Not a USER.** The codes physically live in ONE device's SQLite. A person signs
+  out on handset A and in on handset B and the codes do not travel; the server
+  would believe B holds what A is carrying. S5 makes accounts per person and
+  phones personal, and that still does not make user and device the same object —
+  a reinstall, a spare handset passed round at a busy weighbridge, and one person
+  signed in twice all break it, in both directions.
+
+**SO P1.8b MUST MINT A DEVICE IDENTITY, AND THE TREE HAS NONE.** Decision: a v4
+uuid minted once and stored in SQLite, never in the keystore. The keystore is
+wrong for a measured reason and not a preference — `schema.ts` records at
+`local_identity` that a sign-out DELETES the keystore entry, and reserved codes
+must outlive a sign-out because the device is still holding them.
+
+> **RULE.** A code appears at most once in this relation, for ever.
+> **RED WHEN BROKEN:** issuing the same `(tenant_id, code)` twice is refused by
+> the primary key, and a proof that asks for it must observe the refusal rather
+> than a second row.
+
+---
+
+#### The states a reservation can be in, and every transition between them
+
+**DECISION. TWO states, `held` and `spent`, and exactly one transition.**
+
+- `held` — issued to a device, not yet used.
+- `spent` — a seller row exists that this reservation produced; `seller_id` is
+  non-null.
+- `held → spent` happens ONLY inside the same transaction as the
+  `INSERT INTO sellers`. There is no other writer and no other order.
+- `spent → anything` is forbidden. A spent reservation records that a real row
+  exists, which is hard rule 5's shape one table over.
+
+**A THIRD STATE WAS CONSIDERED AND REJECTED, and the rejection is the load-bearing
+part.** A `void`/reclaimed state would let a shop withdraw codes from a handset
+that was lost. It buys nothing, because nothing is ever re-issued (below), and it
+costs a transition that can race a use: a device that has been offline for a week
+would spend a code the shop had withdrawn, and every answer to that race is worse
+than not having the race. **Two states have one transition; three states have
+four, and three of them exist only to be got wrong.**
+
+> **RULE.** Nothing outside the seller INSERT may write `spent`.
+> **RED WHEN BROKEN:** a reservation observed `spent` with a null `seller_id`, or
+> a `sellers` row whose code is reserved and whose reservation is still `held`.
+
+---
+
+#### How a device obtains codes, and what happens to one it never uses
+
+**DECISION. One server route, online only by construction, which issues N codes
+in one transaction and returns each with its token.** It takes the same gate as
+`POST /sellers` — staff may call it, because a yard that cannot obtain codes
+cannot buy a load, which is D1's argument unchanged.
+
+**DECISION. AN UNUSED RESERVED CODE LEAKS FOR EVER. There is no reclaim, and
+there is no re-issue.** This is the sharpest decision in the document and it is
+taken deliberately against the tidier alternative: **re-issuing a code to a second
+holder recreates the original defect exactly** — a device holding a stale
+reservation drains days later, collides with a row it did not create, and settles
+onto another person's seller. Every reclaim scheme has to defeat that race and
+none of them can defeat a handset that is simply switched off.
+
+**WHAT IT COSTS, STATED RATHER THAN GLOSSED:** gaps in the human-readable code
+sequence. A shop whose phone is lost holding twenty codes has twenty gaps, and
+those gaps are visible on the neighbours of a printed slip and nowhere else.
+**A gap in a sequence is not a defect; a wrong seller on a cash purchase is.**
+
+**AND THE RACE THE BRIEF ASKS ABOUT DOES NOT EXIST**, which is the answer rather
+than a dodge: with nothing re-issued there is no second holder for a late use to
+collide with, so no lock, no lease expiry and no clock is required anywhere in
+this mechanism. That matters more than it looks — a lease expiry would be a
+stored future instant, and this repository already has a lesson about what a
+device clock does to one.
+
+---
+
+#### The three policy values the owner's decision left open
+
+**5 — HOW MANY CODES A DEVICE HOLDS. DECISION: a TARGET HOLDING, per tenant, read
+from the tenant row and never a constant.** S16 puts a per-tenant value in a
+column of its own with its own CHECK rather than in a settings bag, and S17 says
+the column arrives with the feature that needs it, so it is a
+`tenants` column added by P1.8b's own migration with a floor of 1.
+
+**THE DEFAULT VALUE IS THE ONE NUMBER IN THIS DESIGN THAT NO MEASUREMENT
+SUPPORTS, AND IT IS LABELLED AS SUCH RATHER THAN ARGUED.** The right target is a
+function of the walk-in rate and the longest offline stretch, and this repository
+measures neither. A starting value of **20** is proposed on the grounds that it is
+a day's walk-ins at a yard busy enough to matter and small enough that the gaps
+from a lost handset are unremarkable — **that is an assumption, not a
+measurement.** The column is what makes it changeable without a release, and the
+value belongs in this file's tuned-constants ledger the day it lands, not before.
+
+**6 — WHAT TRIGGERS A REFILL. DECISION: every sync pass, while online, tops the
+holding back up to the target.** Not a low-water threshold, which would be a
+second unmeasured constant; not on exhaustion, which is too late by definition.
+
+**AND A REFILL IS NOT OUTBOX WORK.** The outbox carries what the device OWES the
+server; a refill is what the device WANTS from it. Making it a kind would put a
+failed refill into the owed counts, where it would refuse a sign-out and colour
+the strip over work nobody is waiting for.
+
+**IF THE REFILL FAILS, NOTHING ELSE IS AFFECTED.** It is an ordinary network
+failure: bills and voids drain as they always did, the holding simply does not
+grow, and the only thing that changes is the reserve level the wording below is
+derived from.
+
+> **RULE.** A refill failure never blocks, parks or fails any other unit of work.
+> **RED WHEN BROKEN:** with the refill route refused and the send route working, a
+> queued bill still reaches the server in the same pass, and the sign-out gate's
+> owed counts do not move.
+
+---
+
+#### What the yard is told when the reserve runs low, and when it is gone
+
+**THIS IS THE QUESTION THE WHOLE DECISION TURNS ON, and the honest answer has two
+halves that point in different directions.**
+
+**DECISION. The reserve level is a DEVICE-GLOBAL STATE with FOUR values, and it is
+a REQUIRED input to the wording — never optional with a default.** A default would
+leave every existing call site compiling clean while rendering the wrong sentence,
+which is the same defect wearing a parameter; making it required turns every call
+site into a compile error until somebody writes its sentence, which is how the
+sweep is known to be complete rather than remembered.
+
+| value | what is true | tone |
+|---|---|---|
+| `ample` | the device can create walk-ins offline | none |
+| `low` | it still can, and the holding is below target | amber |
+| `exhausted` | **it cannot.** No offline walk-in is possible on this device | red |
+| `never_provisioned` | it has never reached the server, so it holds nothing | red |
+
+**`never_provisioned` IS NOT `exhausted`, AND COLLAPSING THEM WOULD SHIP A FALSE
+SENTENCE.** A device fresh out of the box has spent nothing; telling its operator
+they have used up their codes is a confident lie about something they never did.
+The instruction differs too — one is *connect once to get started*, the other is
+*you have used them all*.
+
+**THE WORDING OBLIGATIONS, and the screen is NOT drawn here.** S10 defers the
+DRAWING and not the rule; what follows is the rule, and the sentences themselves
+are written where the existing wording functions live, in the step that builds
+them.
+
+- **Derived from the cause, never hardcoded to the common one.** Four values,
+  four sentences, and the mapping is pure and takes the level alone so a
+  diagnostic cannot be passed in even by accident.
+- **Never promise what the system cannot perform, and a WAIT is a promise.**
+  `exhausted` must NOT say *wait and it will sort itself out*: waiting fixes it
+  only if the device reaches the network, and if it does not, the sentence has
+  asked for patience toward a condition that cannot arrive.
+- **Name what the system CAN still do, because the exit is usually on another
+  screen.** With the reserve gone, a seller can still be created from the counter
+  while online, and a bill can still be weighed against a seller who already
+  exists. What the sentence must NOT offer is picking a different seller for this
+  load — that is a wrong seller on a cash purchase, which is the harm the whole
+  step exists to prevent.
+- **`low` is amber and `exhausted` is red**, on this repository's existing
+  division: red is for something that needs a human now.
+- **Asserted NEGATIVELY over the concatenation in draw order**, with a presence
+  sibling, because an absence assertion over an empty string is satisfied by
+  silence.
+
+**AND NOW THE HALF THAT IS NOT COMFORTABLE. THE DESIGN MAKES EXHAUSTION LEGIBLE.
+IT CANNOT, ON ANY EVIDENCE THIS REPOSITORY HOLDS, MAKE IT RARE.**
+
+- **LEGIBLE: yes, and strictly better than what it replaces.** The level is known
+  on the device at all times with no network call, so it can be shown CONTINUOUSLY
+  — before the operator needs a code, not at the moment they are refused. Under
+  device-minted codes there was nothing to run out of and therefore no signal at
+  all; there was instead a silent wrong-seller binding, which is worse in kind.
+- **RARE: not established, and nothing here can establish it.** Rarity is a
+  function of the target holding and the longest offline stretch. The first has no
+  measurement behind it and the second is not measured anywhere in this
+  repository. **So the residual the owner accepted when he took this decision
+  stands exactly as it was recorded: the failure P1.8b exists to remove is
+  RELOCATED to the moment a handset runs out, not eliminated.** The only thing
+  that will settle the target is a shop trading, which S7 places after all three
+  deliverables exist.
+
+---
+
+#### The kind as a registry member — row, outcome, ordering, retry
+
+**DECISION. The member is named `seller_create`** — the name the union carried
+before it was removed and the name the removal paragraph uses, so it returns under
+its own name rather than acquiring a second one.
+
+**ROW.** A LOCAL SELLER DESCRIPTOR of its own — the local row id, the reserved
+code, the reservation token, the seller fields, the creating identity, and the
+outbox bookkeeping. **The payload may be a field of the row here**, unlike the
+photograph kind, because it is a handful of short strings and a batch of them in
+memory costs nothing; that kind's descriptor rule is about megabytes and does not
+generalise to this one.
+
+**OUTCOME: ITS OWN UNION, AND DELIBERATELY NOT THE ONLINE ONE.**
+`CreateSellerOutcome` in `mobile/src/master/createSeller.ts` has eight members
+and is right for the online screen. Reusing it here would import two members this
+path cannot produce — `code_assignment_failed` requires that no code was
+supplied, and this kind always supplies one — and one whose meaning changes
+underneath, which the section below is entirely about. **A kind's outcome union is
+the kind's own; that is the rule that keeps a 409 from meaning one thing across
+two kinds.**
+
+**ORDERING AND RETRY, each mapped onto the per-kind axes and each saying whether
+it takes a bill's answer or a different one.**
+
+| axis | value | same as a bill? |
+|---|---|---|
+| `blocking` | `independent` | **DIFFERENT from `bill_send`.** `head_blocks` exists because a bill's arrival order decides its `doc_no` and a `doc_no` is a legal document. **A seller has no `doc_no` and no arrival-ordered number of any kind**, so the entire argument for head-of-line is absent here. One refused seller must not hold another. |
+| `rereadAfterEach` | `false` | Same as `bill_void`, and forced: `independent` with a re-read is the legal-but-slow pair that drains one row per pass. |
+| `concurrency` | `parallel_rows` | Same as `bill_void`. Rows are unrelated; a held row must not stop another. |
+| `inFlightKey` | prefixed, `seller:` | **DIFFERENT from `bill_send`**, which uses the bare id. A local seller id and a local bill id come from the same generator, so an unprefixed key could collide across kinds in principle; the prefix is a declaration, asserted rather than staged. |
+| `resendIsIdempotent` | `true` | Same VALUE as both bill kinds and for a **different reason, and it is the single most load-bearing consequence of the owner's decision.** A bill is idempotent because hard rule 4 puts a key on it. A seller create has no such column — and the reservation TOKEN is one. Without the token this would be `false`, and the kind would have to classify a throw as `needs_review` instead of `retry`. |
+
+**THE OTHER HANDLER MEMBERS, and the two that differ from a bill are the point.**
+
+- `owed(limit)` — rows still owed and actionable, ordered by creation, **and
+  filtered to the current identity.** The owner predicate is a requirement on
+  every kind and this kind asks a THIRD question: `bill_send` filters on who
+  WEIGHED it, `bill_void` on who ORDERED THE REVERSAL, and this on **who CREATED
+  the seller.** Three questions, three filters, each written by hand at its own
+  site.
+- `owedCount()` — wider than `owed`, as the rule requires: everything not settled,
+  in-flight rows included, or the strip goes quiet exactly while a send is
+  happening.
+- `recover(now)` — **a REAL sweep, unlike `bill_void`'s.** This kind has durable
+  in-flight state, so rows stranded mid-send at a kill go back to owed and their
+  ids are returned. A void's no-op recover is correct because its in-flight guard
+  is in memory; that is not true here.
+- `claim(row)` — a conditional UPDATE, the shape `claimForSend` already has,
+  because there is durable in-flight state to claim.
+- `dueAt` / `nextAttemptAt` — a real schedule with backoff on `retry` and null
+  otherwise. An offline device must not hammer a route it cannot reach.
+- `onThrow(err)` — the kind's own `unavailable`, carrying no `reachable`: the
+  poison alarm is about a server refusing a BILL and must not be fed from here.
+  `classify(onThrow(x))` is `retry`, which is only legal because the resend is
+  idempotent.
+- `record(...)` — the kind's only writer, and it does **one thing neither bill
+  kind does**: on settling it writes the SERVER's seller id onto the local row and
+  releases every bill parked behind it. That is the subject of the last section
+  below.
+
+---
+
+#### WHAT A 409 MEANS NOW — and the two cases that would still break it
+
+**THE SHORT ANSWER, AND IT IS NOT THE ONE THE DECISION WAS EXPECTED TO PRODUCE:
+server-minted reservations make settle-on-409 safe IN PRINCIPLE and DO NOT make
+it safe AS THE SERVER STANDS. Two further decisions are required, neither follows
+from the owner's decision on its own, and without both the defect has been moved
+rather than removed.**
+
+**FIRST, WHAT CHANGES FOR THE BETTER.** The device always supplies a code, so
+`code_assignment_failed` is unreachable from this path — and with it, the
+discriminator P1.8a established for this route. *Did the caller supply a code* is
+now always yes, so it separates nothing and this kind must not lean on it.
+**In its place the caller holds something stronger: the reservation token.** With
+the token carried on the create, a repeat is recognisable BY THE SERVER as the
+same create, and the server answers with the row the first attempt produced —
+hard rule 4's "already created", extended to this route by decision. **So the
+ordinary replay is not a 409 at all**, and the question the brief asks becomes
+narrower: what is left that a 409 could mean?
+
+**THE TWO CASES THAT WOULD STILL BREAK IT.**
+
+**BREAKING CASE 1 — A HUMAN TYPES A RESERVED CODE, AND THE SERVER TAKES IT.**
+`SellerCreate.code` is optional and a SUPPLIED code is accepted from any staff
+session; D2 and S6 exist precisely so a shop that keeps its own paper codes can
+supply them, and P1.15 will put that on the desktop. So somebody at the counter
+can type the code a phone is holding offline. `uq_sellers_tenant_code` is the only
+guard and the reservation is not in `sellers`, so the row is created. The phone
+then drains, is answered 409, and under settle-on-409 binds its local seller to
+the counter's row — **the measured defect, reproduced verbatim under the new
+design.**
+→ **REQUIRED DECISION: `POST /sellers` must REFUSE a supplied code that is
+currently reserved**, with a code of its own, and the refusal must name what
+happened without echoing the request body, since a refusal body on this route can
+carry an ID card number.
+
+**BREAKING CASE 2 — THE SERVER MINTS ONE ITSELF, AND NOBODY MAKES A MISTAKE.**
+`_next_seller_code` derives its candidate from the rows already in `sellers`.
+Reservations are not in `sellers`. So the generate-then-retry assigner will hand a
+RESERVED code to an online caller who supplied none, insert it, and produce case 1
+with no human involved at all. **This is the worse of the two**, because case 1
+needs somebody to type the wrong thing and this needs nothing.
+→ **REQUIRED DECISION: `_next_seller_code` must skip codes present in the
+reservation relation**, in the same transaction that inserts.
+
+**WITH BOTH DECISIONS TAKEN, WHAT IS A 409?** Only this: the reserved code is in
+`sellers` and this reservation did not put it there — which the two rules above
+make unreachable. **So the disposition for a 409 on this kind is `needs_review`
+and NEVER `settled`:** an unreachable state that has been reached is an invariant
+violation, and settling on it is exactly the binding this whole step exists to
+prevent. `needs_review` is already in the disposition union and was added for a
+neighbouring reason on this very route.
+
+> **RULE.** No arm of this kind's `classify` returns `settled` for a 409.
+> **RED WHEN BROKEN:** a 409 staged against the kind leaves the row owed and
+> operator-visible, and does not clear it.
+
+**AND THE FINDING THE BRIEF ASKED FOR, STATED PLAINLY RATHER THAN SOFTENED.** The
+owner's decision is not unworkable and is not reopened here. What it does not do
+by itself is make a 409 unambiguous: it makes a code have one holder in the
+RESERVATION relation while leaving two other paths able to put that same code into
+`sellers`. The reservation is only an answer once the server enforces it on every
+path that can write a code, and that enforcement is server work inside P1.8b.
+
+---
+
+#### The local schema — an origin marker, a refresh that deletes, and a CHECK
+
+**DECISION. AN UNSETTLED LOCAL SELLER NEVER ENTERS `cached_sellers`.** It lives in
+a new table beside `local_bills`, where owed work lives. That answers the survey's
+first two bullets by dissolving them rather than patching them:
+
+- **The origin marker.** There is none on `cached_sellers`, because nothing local
+  is in there to mark. The cache stays what it is — a copy of the server's list.
+- **`saveSellers`'s unconditional `DELETE FROM cached_sellers` DOES NOT CHANGE.**
+  A cache is content that follows a rewrite wholesale, and weakening the refresh
+  to protect a local row would be the wrong repair to the wrong statement.
+- The seller picker reads the UNION of the cache and the unsettled local rows,
+  resolved at read time, and stops offering a local row once it has settled AND
+  the corresponding server row has actually arrived in a refresh — never at settle
+  alone, or the seller disappears from the picker in the window between.
+
+**THE CLASSIFICATION, OUT LOUD, BECAUSE THE BRIEF ASKS AND BECAUSE THE THREE
+UPSERTS IN `mobile/src/adapters/sqlite` DELIBERATELY DISAGREE.** The question is
+never which columns changed; it is whether the column says WHAT THE ROW NOW HOLDS
+or WHERE IT CAME FROM.
+
+| column | classification | consequence |
+|---|---|---|
+| `owner_tenant_id`, `owner_user_id` on the local seller | **ORIGIN** — who created this seller, and no later edit makes that untrue | must never appear in a DO UPDATE that rewrites the row, exactly as the draft's owner pair does not |
+| the server id written at settle | **ORIGIN** — which server row this local row became | written once, never in a DO UPDATE at all |
+| `owner_tenant_id` on `cached_sellers` | **CONTENT** — which shop the cache belongs to NOW | already carried forward, and untouched by this design |
+
+**AND A FOURTH SHAPE THE THREE UPSERTS DO NOT COVER, recorded because it is the
+one a reader would meet next.** Had the origin marker been put on `cached_sellers`
+after all, the failure would have been neither of the two the rule names: that
+table is not upserted, it is DELETEd and re-INSERTed, so an origin marker there is
+DESTROYED rather than wrongly carried forward. Delete-and-reinsert is a third
+rewrite shape, and it fails an origin column in a way no DO UPDATE list can.
+
+**THE `sync_state` CHECK: NEITHER MIGRATED IN PLACE NOR REBUILT, BECAUSE NOTHING
+TOUCHES IT.** The new table is created with the CHECK it needs; `local_bills`'s
+CHECK is not altered. **So the question of what happens to rows in flight during a
+rebuild does not arise — and avoiding that question is one of the reasons a new
+table was chosen over widening an old one**, on a database that is already holding
+a shop's unsynced bills.
+
+**WHAT `local_bills` DOES GAIN is a nullable column pair recording that a bill is
+waiting on a seller this device created.** Additive columns need no rebuild:
+`schema.ts`'s migrator adds them by asking `PRAGMA table_info` what the table
+already has, and it is already used that way for the existing added bill columns.
+**And it must NOT be a new `sync_state` value**, for the reason the schema file
+already gives at the parked columns: the CHECK is baked into `CREATE TABLE` and
+SQLite cannot alter one without rebuilding the table.
+
+---
+
+#### A BILL CAN NAME A SELLER THE SERVER HAS NEVER SEEN, and today that bill is TERMINAL
+
+**THIS IS NOT IN THE SEVEN-BULLET SURVEY, AND IT IS THE MOST EXPENSIVE THING THIS
+DESIGN FOUND.** The server refuses a bill whose `seller_id` does not resolve with
+**422 — PERMANENT — terminal**, and it does so on a stated argument:
+`server/app/bills.py` records that a reference which does not resolve at all stays
+permanent because "the device got those ids from this tenant's own /sellers and
+/products, so a miss means a corrupt or stale reference, not a setup gap".
+
+**OFFLINE SELLER CREATION FALSIFIES THAT ARGUMENT'S PREMISE.** After P1.8b the
+device will hold seller ids the server has never seen, legitimately, and a bill
+naming one is not corrupt — it is valid a few seconds early. **Left alone, the
+first offline walk-in produces a terminally failed bill for cash already paid, on
+a row hard rule 5 forbids deleting.**
+
+**DECISION. THE BILL IS PARKED, LOCALLY, FROM THE MOMENT IT IS WEIGHED, AND
+RELEASED WHEN ITS SELLER SETTLES.** Not excluded from the queue, and not left to
+be refused by the server:
+
+- **It reuses the EXISTING parked exemption rather than inventing a second one.**
+  The ordering rule permits exactly one exception — a bill out of the sendable
+  queue on missing master data — and warns that any further skippable bill needs
+  its own argument. A seller that does not exist yet IS master data that is not
+  set up, so this is that exemption's own case and not a new one.
+- **The bill therefore never enters the sendable queue while its seller is
+  un-created**, so there is no head to block, no reordering to argue about, and no
+  request is spent discovering what the device already knows.
+- **The server's 422 rule does not change.** It stays permanent for a genuinely
+  unresolvable reference, which is what it was written for.
+- **The wording is a NEW code with a NEW sentence, and it must not borrow the
+  existing one.** Every parked sentence today says the OFFICE must act. Here
+  nobody must: it resolves itself when the device reaches the server. A message
+  that names an action must be derived from the cause, and telling a yard to call
+  the office about a bill that will send itself is the confidently-wrong
+  instruction this repository has already paid for twice.
+- **`record` releases it.** When the seller kind settles, the same writer that
+  stores the server id clears the park on every bill behind it — one statement, in
+  the kind's own writer, the shape `clearBackoffForPending` already has.
+
+> **RULE.** No bill naming an unsettled local seller is ever offered to the send
+> queue, and every such bill is released by the seller settling and by nothing
+> else.
+> **RED WHEN BROKEN:** a bill weighed against a locally created seller, with the
+> seller's own row still owed, is absent from the sendable queue and present in
+> the owed COUNT; after the seller settles it is present in both, carrying the
+> server's id.
+
+**AND THE REGISTRY'S MEMBER ORDER GAINS A THIRD ENTRY WHOSE POSITION IS
+LOAD-BEARING.** `seller_create` drains BEFORE `bill_send`, for the same shape of
+reason that puts `bill_send` before `bill_void`: a seller created and a bill
+weighed in one offline stretch both become actionable in one pass only if the
+seller goes first. Reversed, every such bill waits a whole poll interval behind a
+seller that had already settled.
+
+---
+
+#### WHAT THIS DESIGN DOES NOT COVER
+
+Said before anyone reads it as complete.
+
+- **The criteria.** They are derived from this document in the next step. Nothing
+  here is an acceptance criterion, and the rules above name what turns red without
+  saying how it is staged.
+- **Any screen, and any Thai sentence.** S10 defers the drawing. What is decided
+  here is the state, the required input, the tone and the wording obligations; the
+  strings are written where the wording functions live.
+- **The target holding's VALUE.** The mechanism is decided and the number is an
+  assumption, labelled as one.
+- **Whether exhaustion will be rare.** Not establishable here, and said so above.
+- **An admin surface for reservations.** None is designed and none is needed: with
+  nothing re-issued there is nothing to administer.
+- **The seller FACE PHOTOGRAPH.** S12 requires one per seller. It is a fourth kind
+  with a payload measured in megabytes, and none of the reasoning above about a
+  row carrying its own payload transfers to it.
+- **Authenticating a device.** The token is unguessable and that is the whole of
+  the guard. A caller inside the tenant who obtained another device's token could
+  spend its reservation; that caller can already create sellers, so this is a
+  bound rather than a hole, and it is not closed here.
+- **The desktop.** P1.15 creates sellers online; nothing here gives it a
+  reservation and nothing here requires one.
+- **A second process, and one person signed in on two handsets.** The holder is a
+  device, so both are outside the mechanism rather than solved by it.
+- **Anything in `server/app/bills.py` beyond naming its 422 rule** and recording
+  that the argument printed beside it stops being true when P1.8b ships.
+
 ### P1.9 — Price editing on the phone
 
 **What it is.** The shop owner changing a buy price without anyone running a request

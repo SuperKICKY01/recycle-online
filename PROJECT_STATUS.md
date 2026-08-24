@@ -57,6 +57,136 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P-SELLERKIND-DESIGN — THE SELLER KIND IS DESIGNED, AND THE DESIGN FOUND THAT THE
+OWNER'S DECISION DOES NOT MAKE SETTLE-ON-409 SAFE ON ITS OWN. DOCUMENTATION ONLY,
+2026-08-23. One commit.** This supersedes the P-SELLERCODE-DECIDED entry below as
+the current phase; that entry's record of the decision stands unchanged.
+
+**A DESIGN, AND NOT AN IMPLEMENTATION AND NOT A CRITERION SET.** The design lives
+at `ROADMAP.md § P1.8 — Seller creation from the phone`, beside the seven-bullet
+survey it answers. **No criteria are written** — they come from the design in the
+next step, because the outbox step wrote criteria ahead of its own design and had
+to rebuild them twice, and both rebuilds are recorded as supersessions at that
+step. **No statement sequence is printed anywhere in it**, for the reason that
+step also paid for: three drafts printed a drain, every mechanism defect either
+review found lived inside the printed block, and the repair of that block arrived
+carrying three new printed ones.
+
+**NO FILE UNDER `mobile/`, `server/`, `packages/`, `desktop/` OR `tools/` MOVED.**
+No source file, no migration, no type, no route. No database was touched, live or
+scratch. **NO PROOF AND NO TYPECHECK WAS RUN. That is a fact about this phase and
+not an omission from it:** no code was touched, so neither instrument would have
+carried information about the change. **Every dated green in Baseline observations
+keeps its own date and NONE is refreshed by this work.**
+
+**WHAT WAS RE-DERIVED BEFORE ANYTHING WAS DECIDED, because the decision record
+this session wrote the day before is a clue and not a source.** `OutboxKind` has
+two members and a third is a compile error in three places until a handler exists;
+**no seller-shaped outbox type survives** — one hit for `LocalOutboxSeller`,
+`OutboxSeller` and `seller_create` across `mobile/src`, `mobile/app` and
+`App.tsx`, and it is the comment explaining the removal, controlled against
+`bill_void` in the same pass. **The queue entry quoting `LocalOutboxSeller.code`
+was CORRECT AT THE SHA IT NAMES** — `e6249f6` holds it, two hits — and `47d17ab`
+deleted it, so that quotation is a correctly-pinned historical record the tree has
+overtaken rather than a description of anything present. `POST /sellers` refuses a
+client-minted id and treats a supplied code and an absent one differently.
+`sellers` was read FORWARD through the migration stack with every DROP applied —
+**a read of a LOG and not a query of the head state** — and carries no idempotency
+key, with no reservation relation anywhere in the stack. **And this device has no
+persistent identity at all:** `mobile/app/ids.ts` is a uuid GENERATOR, not an
+identity, and `local_identity` holds only tenant, user and a timestamp.
+
+**THE TEN DECISIONS ARE AT THE DESIGN AND ARE NOT RESTATED HERE.** What belongs in
+a status file is the three that change what somebody would otherwise expect:
+
+- **AN UNUSED RESERVED CODE LEAKS FOR EVER. There is no reclaim and no
+  re-issue**, because re-issuing a code to a second holder recreates the exact
+  defect the owner's decision was taken to remove. The cost is gaps in the
+  human-readable sequence, and it is accepted rather than glossed. **The race the
+  brief asked about does not exist**, which is the answer rather than a dodge:
+  with nothing re-issued there is no second holder to race, so no lease, no
+  expiry and no stored future instant appears anywhere in the mechanism.
+- **THE HOLDER IS A DEVICE, so P1.8b must mint a device identity that does not
+  exist**, stored in SQLite and never in the keystore — a sign-out DELETES the
+  keystore entry, and reserved codes must outlive a sign-out because the device is
+  still holding them.
+- **EXHAUSTION IS MADE LEGIBLE AND CANNOT BE MADE RARE ON ANY EVIDENCE THIS
+  REPOSITORY HOLDS**, and the design says so in those words. Legible is real and
+  is strictly better than what it replaces: the level is known on the device with
+  no network call, so it can be shown continuously rather than at the moment
+  somebody is refused. Rare is a function of the target holding and the longest
+  offline stretch, and neither is measured anywhere here. **The residual the owner
+  accepted stands exactly as recorded — the failure is RELOCATED, not removed.**
+
+**THE FINDING THIS PHASE CARRIES, AND IT IS THE ONE THE STEP EXISTED TO
+PRODUCE: SERVER-MINTED RESERVATIONS MAKE SETTLE-ON-409 SAFE IN PRINCIPLE AND NOT
+AS THE SERVER STANDS.** Two further server decisions are required and neither
+follows from the owner's decision on its own:
+
+- **A HUMAN CAN TYPE A RESERVED CODE AND THE SERVER TAKES IT.** A supplied code is
+  accepted from any staff session — D2 and S6 exist so a shop can keep its own
+  paper codes — and the unique constraint is the only guard, while a reservation
+  is not in `sellers`. The offline phone then drains, is answered 409, and under
+  settle-on-409 binds its local seller to somebody else's row: **the measured
+  defect, reproduced under the new design.**
+- **THE SERVER MINTS ONE ITSELF WITH NOBODY MAKING A MISTAKE.** The assigner
+  derives its candidate from rows already in `sellers`, and reservations are not
+  there, so it will hand a RESERVED code to an online caller who supplied none.
+  **This is the worse of the two, because the first needs somebody to type the
+  wrong thing and this needs nothing.**
+
+**The decision is NOT reopened** — that would be out of bounds and it is not
+warranted. What is recorded is that the reservation is only an answer once the
+server enforces it on every path that can write a code, and that with the
+reservation TOKEN carried on the create the design does not need settle-on-409 at
+all: a repeat is answered with the row the first attempt produced, and a 409 then
+means an invariant violation and classifies `needs_review`, never `settled`.
+
+**AND A SECOND FINDING THAT IS NOT IN THE SEVEN-BULLET SURVEY.** `POST /bills`
+classifies an unresolvable `seller_id` as **422, PERMANENT, terminal**, on a
+premise its own header states: the device could only have got that id from the
+server, so a miss is corruption rather than a setup gap. **Offline seller creation
+falsifies that premise and edits neither end.** Left alone, the first offline
+walk-in produces a terminally failed bill for cash already paid, on a row hard rule
+5 forbids deleting. The design does NOT ask for the server rule to change — it
+parks the bill on the DEVICE before the request is ever sent, under the ordering
+exemption that already exists — and the premise is queued at
+`OPEN_ITEMS.md § Code debt found and left in place`.
+
+**IS A LESSON OWED? YES, AND IT IS AN AMENDMENT RATHER THAN A NEW FILE.** Applying
+*Two homes, one test* by name: this is not a MACHINE FOOTGUN, because nothing
+about it is a property of this box and it would read identically on any machine.
+It is a LESSON, because the project would otherwise RELEARN it and the cost of
+relearning is a terminally failed bill for money already paid. **The home is
+`unavailable-is-not-rejected.md`, which owns this exact classification and whose
+index line would have been opened by this task** — and what it did not carry is
+that a class is on loan from the CLIENT: each of its three assignments rests on a
+premise about what the client can hold, and the client can remove that premise
+with nothing edited at either end, nothing failing to compile and no proof
+reddening. **The generated file was taken RED then GREEN** rather than green
+alone: `--check` failed naming the amendment-count line, `--write` regenerated,
+`--check` passed at 468468 bytes.
+
+**AND THE ENTRY BELOW PREDICTED ITS OWN ROT AND WAS RIGHT INSIDE ONE COMMIT.**
+P-SELLERCODE-DECIDED named two closed-record sentences by LINE NUMBER and said
+both were "certain to drift again". Inserting this entry above them moved both,
+and the numbers it carries are now stale. **They are not corrected, and no new
+number is written in their place** — every phase entry goes at the head of this
+section, so any figure here rots at the next one. The two sentences are the P1.18
+stage-3 record's *waits on the owner's open decision* and the stage-2 record's
+*cannot specify the seller kind until it is answered*, and **the text is the
+handle that does not drift.** Both remain dated records of what was true when they
+were written; neither is a live claim.
+
+**WHAT THIS PHASE DID NOT DO.** It built nothing, minted no P-number and no
+S-number, wrote no criterion, and answered none of the design's own not-covered
+list. It did not sweep the other two failure classes for client-owned premises —
+the lesson records that as an explicit bound. And it did not touch
+`ARCHITECTURE.md` or `BRIEFING.md`: neither architecture nor a hard rule moves,
+checked rather than assumed by reading every `sellers` mention in that file — four
+lines, none of which says who mints a seller id or that master data is created
+online.
+
 **P-SELLERCODE-DECIDED — THE OWNER ANSWERED THE QUESTION THAT HAS BLOCKED P1.8b
 SINCE 2026-08-18, AND P-SHEETFIRSTPRESS CLOSED IN THE SAME PHASE. DOCUMENTATION
 ONLY, 2026-08-23. Two commits.** This supersedes the P-SHEETFIRSTPRESS entry

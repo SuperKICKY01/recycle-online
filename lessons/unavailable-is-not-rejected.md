@@ -104,3 +104,55 @@ Generalised from defensive-coding rule #1.
 receives a higher `doc_no` than loads weighed after it. That exemption and its
 bound are recorded in [[doc-no-is-arrival-order-not-event-time]]; read it before
 introducing any further "skippable" state.
+
+## Amendment (P-SELLERKIND-DESIGN, 2026-08-23): a class is on loan from the client, and the client can take it back
+
+The three classes above read as properties of the FAILURE. **They are not.** Each
+assignment rests on a PREMISE about what the client could possibly be holding, and
+that premise belongs to the client — which changes independently, and silently.
+
+**Measured on `POST /bills`.** An unresolvable `seller_id` is **422, PERMANENT**,
+and the route's own header states the reason rather than leaving it implicit: a
+reference that does not resolve at all stays permanent because *the device got
+those ids from this tenant's own /sellers and /products, so a miss means a corrupt
+or stale reference, not a setup gap.* **That is correct today, and it is correct
+BECAUSE OF THE PREMISE and not because of the status.** An id the device could
+only have obtained from the server, which the server cannot find, really is
+corrupt, and nothing anyone does will make that payload valid.
+
+**OFFLINE SELLER CREATION REMOVES THE PREMISE AND EDITS NEITHER END.** After it,
+the device legitimately holds seller ids the server has never seen. The same 422,
+from the same line, over the same payload, changes class: the bill becomes valid a
+few seconds later, unchanged, which is this file's own definition of RESOLVABLE.
+**Nothing on the server is edited, nothing fails to compile, no proof turns red,
+and the sentence beside the rule still reads as true** — it names `/sellers` and
+`/products`, and both still exist. The premise it rests on is somewhere else
+entirely.
+
+**AND THE COST LANDS EXACTLY WHERE THIS FILE ALREADY SAYS IT DOES.** Marking
+RESOLVABLE as PERMANENT strands a load that has already been tipped: the first
+offline walk-in would produce a terminally failed bill for cash already paid, on a
+row hard rule 5 forbids deleting.
+
+**THE DISCRIMINATOR.** Ask of every PERMANENT classification: *what would have to
+become true for this to be resolvable?* If the answer is a fact about what the
+CLIENT CAN HOLD rather than about the payload itself, the class is on loan from
+the client and will change when the client gains a capability. Conversely, a class
+that turns only on the payload — malformed money, net ≠ gross − tare — is not on
+loan and cannot move.
+
+**WHERE THE REPAIR WENT, AND IT IS NOT WHERE IT LOOKS.** The design did NOT
+reclassify the server's 422. The rule is still right for a genuinely corrupt
+reference, and weakening it would make a real corruption retry for ever, which is
+this file's first failure direction. Instead the bill is parked ON THE DEVICE,
+before the request is ever sent, under the exemption
+[[doc-no-is-arrival-order-not-event-time]] already argues — so the request the
+server would misclassify is never made. **Where a class is on loan, stopping the
+request can be cheaper and safer than re-answering it**, and it leaves the
+server's rule intact for the case it was written for.
+
+**BOUNDS.** Nothing has shipped wrong. P1.8b is unbuilt at `287417c` and this
+records a premise BEFORE the change that falsifies it lands, which is the only
+time this is cheap. **The other two classes were not swept:** whether any
+UNAVAILABLE or RESOLVABLE assignment anywhere rests on a client-owned premise is
+not measured here, and the same question would have to be asked of each.
