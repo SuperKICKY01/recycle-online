@@ -2185,6 +2185,66 @@ derived from.
 > queued bill still reaches the server in the same pass, and the sign-out gate's
 > owed counts do not move.
 
+**AMENDED (P-SELLERKIND-DESIGN-AMEND, 2026-08-24) — WHAT IDENTIFIES A REFILL, AND
+WHAT THE SERVER ANSWERS TO A REPEAT. Policy 6 above is UNCHANGED — every sync pass,
+while online, still asks — and what is decided here is the ROUTE, which had no
+answer for a request it has already served.**
+
+**THE HOLE, STATED AS THE TWO SENTENCES THAT ARE EACH TRUE AND JOINTLY FALSE.** *An
+unused reserved code leaks for ever* and *if the refill fails, nothing else is
+affected* are both true OF THE DEVICE and both false OF THE CODE SPACE. A refill
+whose response is lost after the server committed leaves the device's shortfall
+unchanged, so the next pass asks again and the server mints again; nothing is
+reclaimed, and no number anywhere prints that it moved. Hard rule 4 already carries
+the shape — a repeated request is *already created*, never a new one — and this
+route did not have it.
+
+**DECISION. THE ROUTE IS A TOP-UP TO A TARGET, NOT AN ISSUE OF N, AND IT IS
+IDENTIFIED BY THE DEVICE RATHER THAN BY ANYTHING ON THE WIRE.** This supersedes the
+words *issues N codes* in *How a device obtains codes, and what happens to one it
+never uses* above; the single transaction, the online-only construction and the gate
+are untouched.
+
+- **WHAT IDENTIFIES A REFILL REQUEST: `(tenant_id, device identity)`.** No request
+  id, no idempotency key, no quantity. **The thing being asked for is a LEVEL and
+  not an EVENT**, and a level is idempotent by construction: *make this device hold
+  its target*, asked twice, is the same sentence as asked once. A key would make a
+  repeated ISSUE recognisable; making it a top-up means there is no issue to repeat.
+- **WHAT THE SERVER MINTS: the shortfall IT computes** — the tenant's target holding
+  minus the reservations currently `held` by this device — and never a number the
+  caller supplied. A quantity on the wire is a field the server must either trust,
+  which is the leak, or ignore, which is a field nothing reads.
+- **WHAT IT ANSWERS, AND THIS IS THE LOAD-BEARING HALF: everything the device
+  currently holds, never only what was just minted**, together with the target the
+  level is measured against. A repeat after a lost response finds the holding already
+  at target, mints ZERO, and hands back the same set — so a device that lost the
+  answer is repaired from the server's own view instead of asking for ever.
+
+**AND THE OTHER HALF IS THE ONE THAT LOOKS TIDIER AND DEADLOCKS.** A route that
+returns only the newly minted block answers a repeat with an EMPTY set: the server
+has already topped this device up, so it mints nothing and says nothing, the device's
+own holding never grows, it asks again every pass for ever, and a full block sits
+`held` in its name that no reclaim will ever return. **One route, two opposite
+failures** — mint-again burns the code space, return-nothing strands the device — and
+only *return what it holds* is safe against both.
+
+> **RULE.** A refill is a top-up to target identified by the device, and its answer
+> is the device's whole current holding.
+> **RED WHEN BROKEN:** with the FIRST refill's response discarded before the device
+> reads it, the second pass mints ZERO new reservations — read as the relation's row
+> count for that tenant, unchanged from after the first pass — AND the device's
+> holding equals the target afterwards. Both readings are required: the count alone
+> is satisfied by a route that answers nothing, and the holding alone by a route that
+> mints a second block.
+
+**WHAT THIS DOES NOT DO.** It reclaims nothing. A code issued to a device that never
+comes back still leaks for ever, which is the no-reclaim decision above and is
+untouched. What it removes is the SILENT, REPEATED burn: one lost response now costs
+a lookup instead of a block, and every pass after it costs the same lookup. **And it
+bounds ONE identity, not the number of identities** — a caller minting reservations
+under device identities it invents is unaffected, and that finding stands exactly as
+recorded below.
+
 ---
 
 #### What the yard is told when the reserve runs low, and when it is gone
@@ -2252,6 +2312,119 @@ IT CANNOT, ON ANY EVIDENCE THIS REPOSITORY HOLDS, MAKE IT RARE.**
   RELOCATED to the moment a handset runs out, not eliminated.** The only thing
   that will settle the target is a shop trading, which S7 places after all three
   deliverables exist.
+
+**AMENDED (P-SELLERKIND-DESIGN-AMEND, 2026-08-24) — A PERMANENTLY REFUSED CREATE,
+AND WHAT THE RESERVE LEVEL ACTUALLY COUNTS.**
+
+A create refused **422** on the payload's own merits — a name the edge rejects —
+leaves a local seller that is terminal and a code attached to nothing. The states
+are `held` and `spent` with one transition, and there is no state for it.
+
+**THE SERVER HALF IS ALREADY ANSWERED BY THE DESIGN'S OWN STATE MACHINE, which is
+why this is a smaller decision than the gap looks.** `held → spent` happens ONLY
+inside the same transaction as the `INSERT INTO sellers`. A create refused on its
+payload inserts nothing, so nothing was spent: the reservation is still `held`,
+still this device's, and the code is in no `sellers` row. **The gap was never about
+the reservation. It is about what the DEVICE does with a code it has stopped
+needing, and that is the half nothing states.**
+
+**DECISION. THE CODE GOES BACK INTO THE DEVICE'S SPENDABLE HOLDING — neither kept
+bound to the dead row nor dropped.** Both answers the gap offered cost something
+this one does not: keeping it bound makes the reserve level over-count what the yard
+can actually do, and dropping it leaves the device one short against a server that
+still counts the code as `held`, so the top-up decided above computes a shortfall of
+zero and the device never gets it back.
+
+**WHY IT IS SAFE, AS A PROPERTY AND NOT AS A REASSURANCE.** A 422 the device READ is
+a definitive refusal on the payload's merits, so no `sellers` row carries that code;
+the reservation is unspent and belongs to this device; and the two server decisions
+below mean nothing else can take it — a supplied reserved code is refused, and a
+minted one is derived above the whole relation. **A LOST 422 IS NOT A 422:** an
+unknown outcome is UNAVAILABLE, the row stays owed and is retried with the SAME code
+and the SAME token, and nothing is returned to the pool
+(`lessons/README.md § Lessons` "unavailable-is-not-rejected.md — applies to every sync/retry path").
+Only a refusal the device actually read returns anything.
+
+**SO WHAT THE RESERVE LEVEL COUNTS, said once and derived nowhere else: codes this
+device holds that are not bound to a create that has SETTLED or is IN FLIGHT.** It is
+a count of what the yard can still DO and never of what the server has issued. A code
+on a terminally refused create is spendable and is counted; a code on a settled
+create is not; a code on a create in flight is not, because the device does not yet
+know whether it was spent. **The device's count and the server's `held` count
+therefore differ by exactly the creates in flight, transiently and by construction**
+— which is the state the tone decision immediately below is about.
+
+> **RULE.** A create refused on the payload's own merits returns its code to the
+> device's holding, and neither end of the reservation moves.
+> **RED WHEN BROKEN:** a device at target with one create refused 422 shows an
+> unchanged reserve level and asks for nothing new on the next pass — **with the
+> presence sibling in the same run: the same device with one create SETTLED is one
+> below target and is topped up by one.** A level that never moves and a level that
+> moves for the wrong event print the same digit on the refused case alone.
+
+**AND THE RESIDUAL THIS DECISION CREATES IS ABOUT MONEY AND IS NOT ANSWERED HERE.** A
+bill weighed against a local seller whose create is then permanently refused is
+parked, and the design releases a park by that seller SETTLING and by nothing else.
+That seller will never settle. **So the bill is parked for ever, for cash already
+paid, on a row hard rule 5 forbids deleting** — the harm the park exists to prevent,
+arriving from the one direction the park does not cover. Whether the repair is the
+operator correcting the SAME local row so the existing settle still fires, or a
+second release event, is a decision with a screen behind it and this amendment does
+not take it. **It is owed BEFORE the build and not after, because nothing measures
+it:** searched the criteria set below for `422` and every hit is the BILL's 422 —
+**not found with these words** — so no criterion stages a permanently refused seller
+create, and nothing would go red.
+
+**AMENDED (P-SELLERKIND-DESIGN-AMEND, 2026-08-24) — `low` IS THE NORMAL STATE OF A
+WORKING DEVICE, AND THE TONE IS THE PART THAT WAS WRONG.**
+
+The values are defined against the target and the refill tops up every pass, so an
+online device that has just created one walk-in is below target until its next pass:
+`low`, in amber, over a condition that needs nobody and clears itself. The table
+above assigns that amber BY HAND, one value at a time.
+
+**DECISION. TONE IS DERIVED FROM THE LEVEL BY ONE QUESTION — *does this state
+require a person to do something now?* — and is never written per value.** It is the
+rule the wording already works under, applied to the colour: a total mapping taking
+the level alone, so a fifth level cannot arrive without a tone and no tone can be
+chosen for a reason the level does not carry.
+
+**ON THAT RULE THERE IS NO AMBER IN THIS MECHANISM.** `ample` no. `low` no — the next
+pass restores it and there is nothing a person can do that helps. `exhausted` yes.
+`never_provisioned` yes. **This supersedes the table's `low`/amber cell and the
+bullet reading `low` is amber and `exhausted` is red**: the four tones are none,
+none, red, red.
+
+**AND THE ARGUMENT IS NOT TIDINESS.** An amber that fires on the ordinary completion
+of the ordinary task is not a weaker red; it is a red whose reader is being trained
+to ignore it, and the state that will not be seen is the next one that needs them.
+
+**WHAT REPLACES THE WARNING IS A NUMBER AND NOT A COLOUR.** `low` keeps its value,
+its definition and its own sentence, and that sentence names how many codes remain —
+derived from the holding the device already has. The design's legibility claim rests
+on the level being SHOWN continuously rather than at the moment somebody is refused,
+and that is untouched: all four states are shown, and two of them no longer shout.
+
+**WHAT DOES NOT CHANGE, so the amendment is not read as wider than it is.** The four
+VALUES and their definitions; `never_provisioned` staying distinct from `exhausted`;
+the level being a REQUIRED input with no default; and the level being derived from
+the HOLDING and never from the last refill's outcome. This moves the tone and nothing
+else.
+
+> **RULE.** Tone is a total mapping from the level alone, and no level that clears
+> itself without a person carries a warning tone.
+> **RED WHEN BROKEN:** rendered over each of the four levels in one run, `exhausted`
+> and `never_provisioned` carry the red tone and `ample` and `low` carry none — **with
+> the presence sibling that each render still carries its own sentence**, because a
+> mapping that returns no tone for anything satisfies the two negatives on its own.
+
+**AND THE RESIDUAL, BECAUSE REMOVING THE AMBER REMOVES THE ONLY EARLY WARNING THERE
+WAS.** A device holding one code of twenty and a device holding nineteen are both
+`low` and both quiet. The state that would earn an amber is *few enough that the next
+offline stretch exhausts it*, and neither term is measurable here; a floor on the
+holding would be a second unmeasured constant, which is what this design refused for
+the refill trigger and refused for this reason. **None is introduced.** What settles
+it is a shop trading, which is where the target holding already waits.
 
 ---
 
@@ -2380,6 +2553,86 @@ by itself is make a 409 unambiguous: it makes a code have one holder in the
 RESERVATION relation while leaving two other paths able to put that same code into
 `sellers`. The reservation is only an answer once the server enforces it on every
 path that can write a code, and that enforcement is server work inside P1.8b.
+
+**AMENDED (P-SELLERKIND-DESIGN-AMEND, 2026-08-24) — WHERE THE SKIP LIVES. The
+required decision above names WHAT and not WHERE, and the two available placements do
+not differ in degree: one of them refuses the counter every time.**
+
+**RE-DERIVED AT THE ARTEFACT, and both figures are pinned to this dated paragraph
+because both rot.** `_ASSIGN_ATTEMPTS = 8` — `server/app/master.py:897`, the bound of
+the loop at `:1017` and the number echoed into the 409 body at `:1045`.
+`_next_seller_code` at `:900` takes `max(substring(code from 2)::numeric)` over
+`sellers` alone, filtered to the assigned shape, and adds one. **The module comment
+above it states what makes that retry correct and what makes it ADVANCE, in its own
+words:** *THE UNIQUE INDEX IS THE ARBITER; THE SELECT ONLY PROPOSES*, and the loser
+"re-reads a maximum that now includes the winner's committed row". **A reservation is
+not a row in `sellers`, so it moves that maximum by nothing.**
+
+**DECISION. THE SKIP LIVES IN THE CANDIDATE DERIVATION AND NOWHERE ELSE.** The
+maximum is taken over the UNION of the assigned-shape codes in `sellers` and the
+codes in the reservation relation for this tenant, in ONE expression, and the
+candidate is its successor. It costs the same whatever the block's length, and it
+returns a code ABOVE the whole block rather than merely outside it — which is the
+only answer consistent with the sequence a shop's paper slips carry.
+
+**AND THE RETRY BUDGET KEEPS THE JOB IT ALREADY HAD, WHICH IS THE HALF THAT DECIDES
+THIS.** Those eight attempts exist to survive a LOST RACE against another INSERT, and
+they work because the winner's commit changes the table the candidate is derived
+from. **A post-check cannot borrow that mechanism**: it changes nothing in `sellers`,
+so the derivation returns the identical candidate on every one of the eight attempts
+and the whole budget is spent on one value. **The refusal therefore does not need a
+long block — ONE reserved code is enough**, and it is arithmetic rather than a risk
+to be sized.
+
+**TWO POST-CHECK SHAPES EXIST AND THEY FAIL AT DIFFERENT SIZES, which is why the
+staging that separates them is named here.** The one that does NOT walk — check the
+candidate, and on a reserved value hand back to the existing retry — is refused at a
+block of ONE. The one that walks — check the candidate, step up until it is free, and
+use the retry as the walker — survives a block of one or two and is refused as soon
+as the block outruns the budget. **A single-code staging separates the first from a
+correct derivation; a block-length staging separates the second. Neither staging
+alone reaches both.**
+
+> **RULE.** The next assigned code is derived above BOTH tables in one expression,
+> and no arm of the create path may reach the retry loop because a candidate was
+> reserved.
+> **RED WHEN BROKEN:** with exactly ONE code reserved for a device and nothing else
+> changed, a staff session posting `POST /sellers` with no code is answered 201 and
+> the minted code is that reserved code's successor; a non-walking post-check answers
+> 409 `code_assignment_failed` to the identical request.
+
+**AND THE DERIVATION IS ONLY AN ANSWER IF NOTHING CAN RESERVE BETWEEN THE READ AND
+THE INSERT — which is the second half of *in the same transaction that inserts*, and
+the sentence above stops before saying it.** `uq_sellers_tenant_code` is the arbiter
+for two creates and is SILENT about a create against a refill: they write different
+tables, so both commit, and a reserved code lands in `sellers` with nobody making a
+mistake. That is breaking case 2 again, in a window instead of over a whole block.
+
+**DECISION. THE TWO WRITERS OF THE ASSIGNED CODE SPACE SERIALISE PER TENANT, on a
+transaction-scoped lock taken BEFORE the derivation, by BOTH of them.** The lock is
+the tenant's own row, taken FOR UPDATE. It is an object that already exists, it is
+already under a tenant-keyed RLS policy so a mistake cannot reach another shop's row,
+the refill route already reads that row for the target holding, and it is released by
+the commit rather than at a later moment nobody owns. **An advisory key was weighed
+and is not taken:** it is not RLS-scoped, and a lock that appears nowhere in the
+schema is a lock the next writer does not know to take.
+
+> **RULE.** Every path that writes an assigned-shape code into `sellers` or into the
+> reservation relation takes the per-tenant lock first and derives from the union
+> afterwards.
+> **RED WHEN BROKEN:** a refill and a no-code create driven concurrently behind a
+> start barrier, with the overlap evidence printed, leave `sellers` and the codes
+> still `held` sharing no member, both sets asserted non-empty.
+
+**AND ITS RESIDUAL, STATED RATHER THAN HIDDEN: this is a rule a future writer can
+forget, and no constraint refuses them.** A third path that mints a code without
+taking the lock is not a compile error and not a violated key — it is a silent
+re-opening of breaking case 2. What would remove the residual entirely is a single
+relation holding every assigned code, so a primary key is the arbiter for both
+writers and no lock is remembered anywhere; that is a larger design than this
+amendment takes, and its price is a nullable holder, a token for rows that have no
+device, and a backfill across every seller a shop already has. **Recorded as the
+alternative that was weighed, so a later reader does not have to rediscover it.**
 
 ---
 
@@ -2518,6 +2771,42 @@ Said before anyone reads it as complete.
   device, so both are outside the mechanism rather than solved by it.
 - **Anything in `server/app/bills.py` beyond naming its 422 rule** and recording
   that the argument printed beside it stops being true when P1.8b ships.
+- **THE REPAIR OF A BILL PARKED BEHIND A PERMANENTLY REFUSED SELLER.** Added
+  2026-08-24 by the amendment below, which found it while deciding what happens to
+  that create's reserved code. The release fires on a settle, and that seller never
+  settles. Recorded at the decision that produced it and answered nowhere.
+
+**AMENDED (P-SELLERKIND-DESIGN-AMEND, 2026-08-24) — S10 AND THE SIGN-OUT GATE,
+RULED, SO THE CRITERIA'S OPEN QUESTION BELOW IS CLOSED.** The second bullet above
+defers any screen and any Thai sentence to S10, and the refill argument two
+subsections up relies at the same time on an owed unit of work reaching the owed
+counts, refusing a sign-out and colouring the strip. **The reading is: S10 defers the
+DRAWING, and a sign-out gate is a decision about whether an action PROCEEDS, not a
+drawing.** And a sign-out that discards owed work is money already paid, which is
+S10's own stated exception — a defect that makes something unusable. **So
+`EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL` below STAYS and is not dropped.**
+
+**AND ITS SCOPE IS BOUNDED BY WHAT IS ALREADY BROKEN, re-derived rather than carried
+from the instruction that ruled it.** The outbox step closed with its own surfaces
+criterion untouched BY DESIGN — the gate, the sheet and the strip still count bills
+only, and the strip reads `ส่งครบแล้ว` over an owed void
+(`PROJECT_STATUS.md § Current phase` "EVERY-SURFACE-COUNTS-EVERY-KIND is untouched BY DESIGN").
+**A third kind WIDENS that gap; it does not open a new one.** The strip's wording
+moves only as far as stops it stating something false. It is not redesigned here, and
+no screen is drawn here.
+
+**WHAT P-SELLERKIND-DESIGN-AMEND CHANGED, listed once so a reader does not have to
+find the amendments by reading the design twice.** Each is recorded where the
+sentence it corrects lives, by dated supersession, and nothing above was rewritten:
+*How a device obtains codes* — the route is a top-up and not an issue of N, decided
+under policy 6 where the sentence it supersedes was written; *the three policy
+values* — what identifies a refill and what a repeat is answered with; *what the yard
+is told* — what the reserve level counts, and tone derived from the level with no
+amber left in the mechanism; *what a 409 means now* — where the skip lives, and what
+serialises it against a concurrent refill. **One ruling, on S10 and the sign-out
+gate, immediately above.** **No P-number and no S-number is minted, no decision of
+the owner's is reopened, and the criteria these answers touch are corrected in the
+same commit.**
 
 ---
 
@@ -2698,6 +2987,17 @@ indistinguishable from a correct implementation; only a reservation committed
 between the SELECT and the INSERT separates them, and only cell (c) stages that.
 **CAN A BROKEN IMPLEMENTATION SATISFY IT? No** — the check-then-insert shape passes
 (a) and (b) completely and reddens (c), which is exactly why (c) is not optional.
+**CORRECTED (P-SELLERKIND-DESIGN-AMEND, 2026-08-24) — CELL (c)'S RED CASE NOW HAS A
+NAMED DESIGN DECISION BEHIND IT, AND ITS SET COMPARISON NEEDS ONE WORD.** The design
+now says what *the same transaction* means against the OTHER writer: the refill route
+and the no-code create both take a transaction-scoped lock on the tenant's own row
+before deriving. Cell (c) is what measures it and stands exactly as written. **The
+one word: the disjointness in cell (c) is between `sellers` and the codes still
+`held`, not the whole relation.** A SPENT reservation's code is in `sellers` by
+construction — that is what `spent` means — so a staging that spends anything turns a
+CORRECT implementation red under the unscoped reading. Cell (c)'s own staging spends
+nothing and is unaffected today; the scope is written down so the next staging cannot
+inherit the wrong sentence.
 
 **THE-ASSIGNER-STILL-TERMINATES-ABOVE-A-RESERVED-BLOCK.** *(SERVER, scratch)*
 **This criterion exists because of a finding against the design, recorded below,
@@ -2724,6 +3024,24 @@ budget, which is why the staging derives the length from the artefact instead of
 picking a number. **CAN A BROKEN IMPLEMENTATION SATISFY IT? No**, and this is the
 only criterion in the set that separates a skip living in the candidate derivation
 from a skip living in the retry loop.
+**CORRECTED (P-SELLERKIND-DESIGN-AMEND, 2026-08-24) — THE DESIGN NOW NAMES THE
+PLACEMENT, AND THE DISCRIMINATOR ABOVE REACHES ONLY ONE OF THE TWO RED CASES.** The
+design decides that the skip lives in the CANDIDATE DERIVATION, as the successor of a
+maximum taken over `sellers` and the reservation relation together; this criterion
+measures that decision and is not superseded by it. **What is corrected is the
+discriminator, and the correction makes the criterion CHEAPER rather than stricter.**
+There are two post-check shapes. The one that does NOT walk hands a reserved
+candidate back to the existing retry, which re-derives from an UNCHANGED `sellers`
+and returns the identical value on every attempt — **so it is refused at a block of
+ONE**, and the block-length sentence above passes straight over it. The one that
+walks steps the candidate up and uses the retry as its walker; that one survives a
+short block and is refused only when the block outruns the budget, which is what the
+sentence above describes. **A THIRD CELL IS THEREFORE REQUIRED, and it is the cheap
+one:** with exactly ONE code reserved, the no-code create is answered 201 and the
+minted code is that code's successor — **with the presence sibling cell 2 already
+supplies, no reservations held at all.** Cells 1 and 2 keep the block-length staging
+and cell 3 takes the single-code staging; **neither staging alone reaches both red
+cases**, which is the whole of the correction.
 
 **A-REPLAY-CARRYING-THE-TOKEN-IS-ANSWERED-WITH-THE-FIRST-ROW.** *(SERVER, scratch)*
 Hard rule 4's shape, extended to this route by decision, and the thing that removes
@@ -2911,6 +3229,20 @@ parameter and a required one are indistinguishable at every call site that passe
 the argument — every site the author wrote. Only cell 1's deliberate removal
 separates them, and only at a site named in advance. **CAN A BROKEN IMPLEMENTATION
 SATISFY IT? No.**
+**CORRECTED (P-SELLERKIND-DESIGN-AMEND, 2026-08-24) — CELL 4'S TONE HALF, AND
+NOTHING ELSE IN THIS CRITERION.** The design now derives tone from the level by one
+question — *does this state require a person to do something now?* — and on that rule
+`low` carries NO tone: an amber over a condition that clears itself on the next pass
+is a red its reader is being trained to ignore. **So the tone assertion is `ample`
+none, `low` none, `exhausted` red, `never_provisioned` red** — four values asserted
+rather than two, because a mapping is total only if every member is read. Everything
+else in cell 4 stands: the negative over the whole concatenation in draw order, the
+presence sibling naming what the yard CAN still do, and the second negative about
+offering a different seller. **AND ITS BOUND, because the cell cannot see the
+decision it is derived from:** a tone written by hand per value and a tone derived by
+rule are behaviourally identical here, so what this cell measures is the four VALUES
+and the mapping's totality, never that anybody derived them. Cell 2's iteration over
+the union is what keeps a fifth level from arriving without one.
 
 **A-REFILL-ASKS-FOR-THE-SHORTFALL, AND FOR NOTHING WHEN THERE IS NONE.**
 *(HEADLESS)* **THE DESIGN NAMES NO THRESHOLD AND EXPLICITLY REFUSES ONE**, so a
@@ -2937,6 +3269,43 @@ after several passes with no seller created, the relation's row count for that
 tenant is UNCHANGED from after the first pass, with the presence sibling that the
 first pass DID create rows. **CAN A BROKEN IMPLEMENTATION SATISFY IT? No** — and
 cell 2 alone cannot see the second red case, which is why the relation is read.
+**CORRECTED (P-SELLERKIND-DESIGN-AMEND, 2026-08-24) — THE QUANTITY LEFT THE WIRE, SO
+CELLS 1 AND 2 CANNOT BE READ OFF THE REQUEST; AND CELL 2 CONTRADICTED A SIBLING
+CRITERION BEFORE THIS AMENDMENT TOUCHED ANYTHING.**
+
+**THE CONTRADICTION FIRST, because it is not this amendment's doing and a reader
+should not be left thinking it is.** Cell 2 above requires that a device AT TARGET
+makes NO refill request in that pass. `A-FAILED-REFILL-IS-AN-UNKNOWN-OUTCOME-AND-COSTS-NOTHING-ELSE`
+below stages *a full holding on the device* and asserts that the refill is attempted
+in the LAST pass as well as the first. **Both cannot be staged**, and the two were
+written into one set in one commit. One of them had to move, and the design's own
+words — *every sync pass, while online, tops the holding back up to the target* — put
+the request on every pass, so cell 2 is the one that moves and the sibling criterion
+is untouched.
+
+**WHAT REPLACES CELLS 1 TO 3.** The request carries the device identity and no
+quantity, and the server computes the shortfall, so *asking for the shortfall* is no
+longer a state of the wire and is not readable there. (1) Below target: one refill
+request in the pass, and the relation's row count for that tenant rises by EXACTLY
+the shortfall, read out of the relation — with the presence sibling that the device's
+holding equals the target afterwards. (2) At target: one refill request, and ZERO new
+rows in the relation, with the same presence sibling; **this cell now carries the
+criterion's whole hazard and is stronger than the absence it replaces**, because a
+route that mints on every call reddens it directly rather than by inference. (3)
+Offline: no request REACHES the server and the holding is unchanged — the device's
+attempt is not a defect and is not asserted against.
+
+**AND THE RED CASES MOVE WITH IT.** *A refill that asks for the TARGET on every pass*
+is unreachable, because there is nothing left to ask with. **In its place: a ROUTE
+that mints the target on every call rather than the shortfall** — the same leak with
+the decision moved to the server — and it reddens cell 2. The low-water threshold red
+case is unchanged and still reddens cell 1. **THE DISCRIMINATOR IS UNCHANGED AND IS
+STILL THE RELATION:** the device is topped up either way, the operator reads `ample`
+either way, and only a server-side count separates them.
+
+**THE NAME IS KEPT.** *ASKS FOR THE SHORTFALL* now describes what is minted rather
+than who names it, and renaming would orphan the reference to this criterion in the
+findings subsection below.
 
 **A-FAILED-REFILL-IS-AN-UNKNOWN-OUTCOME-AND-COSTS-NOTHING-ELSE.** *(HEADLESS)*
 Classified by the three-way rule this repository already holds, a failed refill is
@@ -3156,6 +3525,13 @@ process produced it — `npx expo start -c` and a full reload BEFORE the staging
 produces the reading, and the server's start time postdating the commit under test
 with a request through the changed path
 (`CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING").
+**CONFIRMED (P-SELLERKIND-DESIGN-AMEND, 2026-08-24) — THIS CRITERION STAYS.** The
+design now rules on the S10 question this criterion was written under: S10 defers the
+DRAWING, and a sign-out gate is a decision about whether an action proceeds. The
+findings subsection below says that if the owner reads S10 the other way, this is the
+criterion to drop; **he does not, and dropping it would ship a sign-out that loses
+work.** Its scope is unchanged, its parts are unchanged, and the strip's wording moves
+only as far as stops it stating something false.
 
 ---
 
@@ -3183,6 +3559,11 @@ with a request through the changed path
   `resendIsIdempotent: true`, so the outbox step's `needs_review` arm is STILL
   asserted over no kind after this one lands. That residual is unchanged and is not
   closed here.
+- **A CREATE REFUSED PERMANENTLY, AND THE BILLS PARKED BEHIND IT.** Added 2026-08-24
+  by P-SELLERKIND-DESIGN-AMEND. Searched this set for `422`: every hit is the BILL's
+  422 and none stages a refused SELLER create — **not found with these words.** The
+  design now decides what happens to that create's reserved code; it decides nothing
+  about a bill whose seller will never settle, and no criterion here reaches either.
 
 ---
 
@@ -3283,6 +3664,50 @@ were known before the build started.
   rather than re-answer the server's 422 — each was read against the artefact it
   claims about, and each held. The 422 half in particular is what stops the first
   offline walk-in becoming a terminally failed bill for cash already paid.
+
+**ANSWERED (P-SELLERKIND-DESIGN-AMEND, 2026-08-24) — FOUR OF THESE ARE CLOSED IN THE
+DESIGN ABOVE, AND EVERY FINDING IS LEFT EXACTLY AS WRITTEN**, because a finding is the
+record of what was true when the criteria were written, and a finding rewritten after
+the fact is a record of nothing.
+
+- **THE ASSIGNER'S ATTEMPT BUDGET.** The skip now lives in the CANDIDATE DERIVATION,
+  as the successor of a maximum over `sellers` and the reservation relation together,
+  and the design says what serialises it against a concurrent refill. This set gains
+  a third cell on `THE-ASSIGNER-STILL-TERMINATES-ABOVE-A-RESERVED-BLOCK` and a
+  corrected discriminator: the non-walking post-check is refused at a block of ONE,
+  which the block-length sentence could not see.
+- **A LOST REFILL RESPONSE.** The route is a top-up identified by the device, minting
+  the shortfall it computes itself and answering with the device's WHOLE holding.
+  `A-REFILL-ASKS-FOR-THE-SHORTFALL, AND FOR NOTHING WHEN THERE IS NONE` is corrected
+  — and correcting it resolved a contradiction that was already in this set: it
+  required NO request at target while
+  `A-FAILED-REFILL-IS-AN-UNKNOWN-OUTCOME-AND-COSTS-NOTHING-ELSE` stages a full
+  holding and asserts a request every pass. The second is untouched.
+- **A PERMANENTLY REFUSED CREATE.** The code returns to the device's spendable
+  holding — the reservation was never spent, because `held → spent` happens only
+  inside the seller INSERT — and the reserve level is defined as what the device can
+  still spend rather than what the server has issued.
+- **`low` IS THE NORMAL STATE.** The level keeps its value and its definition and
+  loses its tone. Tone is derived from the level by one question, and on that rule
+  there is no amber anywhere in this mechanism.
+
+**THE SURFACES FINDING IS RULED RATHER THAN ANSWERED**, at the design's not-covered
+list above: S10 defers the drawing and not a gate decision, so
+`EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL` stays and the sentence in this list
+about dropping it does not apply.
+
+**UNCHANGED AND STILL OPEN:** the brief-versus-design threshold disagreement, which
+is a record rather than a gap; the release's owner question, which the criterion
+above already answered in the only non-stranding direction; and a caller minting
+reservations under invented device identities, which the top-up bounds per identity
+and does not bound at all in the number of identities.
+
+**AND ONE NEW FINDING, PRODUCED BY CLOSING THE THIRD.** A bill parked behind a seller
+whose create is permanently refused has no release event: the release fires on a
+settle and that seller never settles. It is cash already paid on a row hard rule 5
+forbids deleting, nothing in this set stages it, and it is owed before the build
+rather than after. It is recorded at the decision that produced it and in the
+design's not-covered list.
 
 ### P1.9 — Price editing on the phone
 

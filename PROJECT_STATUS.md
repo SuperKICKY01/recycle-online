@@ -57,6 +57,167 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P-SELLERKIND-DESIGN-AMEND — THE THREE HOLES THE CRITERIA REVIEW OPENED ARE CLOSED
+IN THE DESIGN, `low` STOPS BEING A WARNING, AND THE SURFACES QUESTION IS RULED.
+DOCUMENTATION ONLY, 2026-08-24. One commit.** This supersedes the P-SELLERKIND-CRITERIA
+entry below as the current phase; that entry's record of the criteria stands
+unchanged, and **every finding it reported is left exactly as written** — a finding
+rewritten after the fact is a record of nothing. What moved is the DESIGN, and each
+finding now carries a dated line saying where its answer is.
+
+**AMENDED BY SUPERSESSION, NEVER BY REWRITING, AND THE DIFF IS THE EVIDENCE.**
+`git diff --numstat -- ROADMAP.md` reads **425 insertions and ZERO deletions.** Not
+one line of the design or of the criteria was removed, including the sentences this
+work contradicts; every correction is an appended dated paragraph sitting at the site
+of the sentence it corrects. **AND NO HEADING WAS ADDED ANYWHERE**, which is the
+cheapest defence available against the sixteenth never-went-red mechanism: a section
+citation is a case-insensitive SUBSTRING match, so the blast radius of a new heading
+is every citation into the file, and a document that adds none has a blast radius of
+zero. The remedy that mechanism prescribes — read the checker's `sect=` column for
+the file you are about to write in — was run anyway, and so was its handle twin: the
+handles cited INTO both edited files were listed before a word was written, so no new
+sentence could turn a resolving citation into `hits=2`.
+
+**NO FILE UNDER `mobile/`, `server/`, `packages/`, `desktop/` OR `tools/` MOVED.** No
+source file, no migration, no type, no route. No database was touched, live or
+scratch. **NO PROOF AND NO TYPECHECK WAS RUN. That is a fact about this phase and not
+an omission from it:** no code was touched, so neither instrument would have carried
+information about the change. **Every dated green in Baseline observations keeps its
+own date and NONE is refreshed by this work.**
+
+**NOTHING WAS MINTED, AND EACH COUNT WAS TAKEN BEFORE AND AFTER WITH ITS TOOL AND ITS
+DEFINITION NAMED.** S-numbers **22 → 22**, `grep -c '^\*\*S[0-9]\+ — '`. P-number
+headings **37 → 37**, `grep -c '^### P[0-9]'`. Seller-kind criteria **22 → 22**,
+counted by the COST LABEL that follows each name — the same instrument the criteria
+step used as its second count, and the one that stays honest here. **A count by
+bolded NAME alone would now over-count**, because a `**CORRECTED (…)**` paragraph
+opens the page the same way a criterion does; the cost label is what discriminates
+them, and it is written down here so the next recount does not pick the other one.
+
+**THE FOUR DECISIONS. Each is recorded at the design; what belongs in a status file
+is what a reader would otherwise expect to be true.**
+
+- **THE SKIP LIVES IN THE CANDIDATE DERIVATION, AND A POST-CHECK IS REFUSED AT A
+  BLOCK OF ONE.** The next assigned code is the successor of a maximum taken over
+  `sellers` AND the reservation relation in one expression, so it costs the same
+  whatever the block's length and lands ABOVE the whole block. **Re-derived at the
+  artefact rather than carried from the entry below that first recorded it:**
+  `_ASSIGN_ATTEMPTS = 8` at `server/app/master.py:897`, the loop bound at `:1017`,
+  the figure echoed into the 409 body at `:1045`; `_next_seller_code` at `:900`
+  taking its maximum over `sellers` alone. **The module comment above it is what
+  decides the placement**, because it states what makes the retry ADVANCE — the loser
+  re-reads a maximum that now includes the winner's committed row — and a reservation
+  is not a row in `sellers`, so it moves that maximum by nothing.
+  **AND THE MECHANISM IS THE LOOP'S SHAPE RATHER THAN A RATIO, which is the half that
+  decides the STAGING.** Re-derived bare in this pass, at the file:
+  `for _ in range(_ASSIGN_ATTEMPTS):` is `:1017` and
+  `candidate = await _next_seller_code(conn)` is `:1018`, the FIRST statement inside
+  that loop's body. So the candidate is re-derived on every attempt, out of a table a
+  post-check never writes to, and all eight attempts return the identical string.
+  **A post-check that does not walk is therefore refused at a block of ONE**, and the
+  block length decides nothing about whether the counter is refused — it decides only
+  how far a CORRECT derivation must jump, and it separates the WALKING post-check
+  alone. The entry below reads *two and a half times the assigner's entire budget*;
+  that is right about the outcome and wrong about the cause, it is left exactly as
+  written, and the difference is not cosmetic because a fixture reserving one code
+  reddens what a fixture sized against the ratio was built to reach.
+- **THE REFILL IS A TOP-UP IDENTIFIED BY THE DEVICE, AND ITS ANSWER IS THE WHOLE
+  HOLDING.** The request carries `(tenant_id, device identity)` and no quantity; the
+  server computes the shortfall itself; and it answers with everything the device
+  currently holds rather than with what it just minted. **The second half is the
+  load-bearing one and it is the one that looks unnecessary:** a route returning only
+  the new block answers a repeat with an empty set, so a device whose response was
+  lost asks for ever while a full block sits `held` in its name. One route, two
+  opposite failures — mint-again burns the code space, return-nothing strands the
+  device — and only *return what it holds* is safe against both.
+- **A PERMANENTLY REFUSED CREATE RETURNS ITS CODE TO THE DEVICE'S HOLDING.** Neither
+  answer the finding offered is taken. **The design's own state machine had already
+  answered the server half and nobody had read it that way:** `held → spent` happens
+  only inside the seller INSERT, so a create refused on its payload spent nothing.
+  What was missing was the DEVICE half. And the reserve level is now defined —
+  codes this device holds that are not bound to a create that has settled or is in
+  flight, which is a count of what the yard can still DO and never of what the server
+  has issued.
+- **`low` KEEPS ITS VALUE AND LOSES ITS TONE.** Tone is derived from the level by one
+  question — does this state require a person to do something now? — and on that rule
+  there is no amber anywhere in this mechanism: none, none, red, red. An amber that
+  fires on the ordinary completion of the ordinary task is not a weaker red, it is a
+  red whose reader is being trained to ignore it. **What replaces the warning is a
+  number and not a colour**, and the residual is stated rather than hidden: one code
+  of twenty and nineteen of twenty are both `low` and both quiet, and no warning floor
+  is introduced because it would be a second unmeasured constant.
+
+**THE RULING, WHICH IS THE OWNER'S AND NOT THIS SESSION'S.** S10 defers the DRAWING,
+and a sign-out gate is a decision about whether an action proceeds rather than a
+drawing; a sign-out that discards owed work is money already paid, which is S10's own
+stated exception. **So `EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL` stays.** Its
+scope is bounded by what is already broken and that was re-derived rather than
+carried: the outbox step closed with its own surfaces criterion untouched by design,
+so the gate, the sheet and the strip still count bills only and the strip still says
+the work is sent over an owed void. A third kind WIDENS that gap and does not open a
+new one, and the strip's wording moves only as far as stops it stating something
+false.
+
+**TWO THINGS THIS PHASE FOUND THAT NOBODY ASKED IT TO LOOK FOR, and both are in the
+criteria set rather than in the code.**
+
+- **TWO CRITERIA IN ONE SET CANNOT BOTH BE STAGED, AND THEY WERE WRITTEN IN ONE
+  COMMIT.** `A-REFILL-ASKS-FOR-THE-SHORTFALL, AND FOR NOTHING WHEN THERE IS NONE`
+  requires that a device AT TARGET makes NO refill request in that pass.
+  `A-FAILED-REFILL-IS-AN-UNKNOWN-OUTCOME-AND-COSTS-NOTHING-ELSE` stages a FULL holding
+  and asserts the refill is attempted in the last pass as well as the first. **Both
+  cannot hold.** It was found by taking a decision that touched one of them and
+  sweeping the other, not by searching for it — which is the sweep the brief ordered
+  and the reason it was ordered. The design's own words put the request on every pass,
+  so the first is the one that moved.
+- **A BILL PARKED BEHIND A PERMANENTLY REFUSED SELLER HAS NO RELEASE EVENT.** The
+  release fires on a settle and that seller never settles, so the bill is parked for
+  ever, for cash already paid, on a row hard rule 5 forbids deleting — the harm the
+  park exists to prevent, arriving from the one direction the park does not cover.
+  **It is produced BY the third decision and is not answered**, because the repair is
+  a decision with a screen behind it. **Nothing measures it:** the criteria set was
+  searched for `422` and every hit is the BILL's 422 — not found with these words —
+  so no criterion stages a refused seller create and nothing would go red. It is owed
+  before the build, not after, and it is recorded at the decision that produced it and
+  in the design's not-covered list.
+
+**AND ONE STALE SENTENCE REPORTED AND DELIBERATELY NOT EDITED, because it is outside
+this phase's declared file set and this phase did not make it stale.**
+`OPEN_ITEMS.md`'s closure of the offline-seller-code decision says the three things
+the design still owes — how many codes a device holds, when the holding refills, and
+what the screen says when it is low and when it is empty — are "answered nowhere".
+The design answered all three the same day that closure was written, and this
+amendment has now moved two of them again. It is an unpinned present-tense claim that
+rotted within hours, which is the failure the pin-a-claim convention describes, and
+it is left for whoever next opens that file.
+
+**IS A LESSON OWED? NO, and the two-homes test is applied by name rather than
+asserted.** Nothing here is a MACHINE FOOTGUN: none of it is a property of this box
+and all of it would read identically on any machine. And nothing here is a LESSON,
+because each shape this phase met is already written down and is already indexed. The
+two criteria that cannot both be staged are a document contradicting itself, which is
+the third shared check in `CLAUDE.md § Shared checks` in its own words. The
+unperformable cell the quantity leaving the wire would have created is
+`lessons/README.md § Lessons` "a-quantified-sentence-names-no-member.md — applies the moment you ADD to or REMOVE from any set",
+and it was avoided by that lesson's own remedy — sweep by what the change TOUCHES,
+never by searching for the words you wrote. The block-of-one refusal is a
+discriminator that reached only one of two red cases, which is the twelfth mechanism
+of
+`lessons/README.md § Lessons` "a-check-that-never-went-red-was-never-observed.md — applies to every assertion"
+— a sound cell and a wrong prediction about it. **A second note about a rule already
+written is what
+`lessons/README.md § Lessons` "a-warning-in-one-file-does-not-protect-the-next.md — applies to every hazard this repo has already paid for"
+says does not work.**
+
+**WHAT THIS PHASE DID NOT DO.** It built nothing, minted no P-number and no S-number,
+deleted no line of any file it touched, reopened no decision of the owner's, and
+answered nothing on the design's not-covered list except by adding one item to it. It
+ran no proof, no typecheck, no server and no handset, so nothing in it carries an exit
+code except the three checkers below. It did not touch `ARCHITECTURE.md` or
+`BRIEFING.md`: neither architecture nor a hard rule moves here, which was checked
+rather than assumed. And it did not touch `OPEN_ITEMS.md`, because no queue line was
+cleared or raised — the one line worth a correction is reported above and left.
+
 **P-SELLERKIND-CRITERIA — THE SELLER KIND HAS ACCEPTANCE CRITERIA, AND WRITING
 THEM FOUND THAT THE SKIP THE DESIGN REQUIRES CAN REFUSE AN ONLINE CREATE.
 DOCUMENTATION ONLY, 2026-08-24. One commit.** This supersedes the
