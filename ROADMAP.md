@@ -2519,6 +2519,771 @@ Said before anyone reads it as complete.
 - **Anything in `server/app/bills.py` beyond naming its 422 rule** and recording
   that the argument printed beside it stops being true when P1.8b ships.
 
+---
+
+#### THE SELLER-KIND CRITERIA, DERIVED FROM THE DESIGN ABOVE
+
+**P-SELLERKIND-CRITERIA, 2026-08-24. THIS WRITES CRITERIA AND NOTHING ELSE — no
+code, no type, no migration, no route, and not one line of the design above.** The
+design was read as a DOCUMENT TO BE TESTED rather than as a rationale to agree
+with, by a session that did not write it. Where it leaves a criterion unwriteable
+the gap is recorded in the findings subsection below and NO criterion is invented
+to cover it: inventing one would take a design decision inside the step whose
+whole job is to measure decisions somebody else took.
+
+**THEY ARE NAMED, NOT NUMBERED**, following the outbox step's own set, and for the
+reason that set gives: the seven numbered criteria it superseded could be cited by
+a digit that said nothing about what they measured.
+
+**EVERY ONE CARRIES FOUR THINGS, AND THE ORDER IS THE POINT.**
+
+- **THE STAGING** — the concrete state that produces the case, named before the
+  assertion. A criterion demanding a state the design FORBIDS is not strict, it is
+  UNPERFORMABLE: nothing runs, so nothing goes green and nothing goes red, and an
+  unperformable criterion is the one nobody discovers is broken because nobody can
+  run it (`lessons/README.md § Lessons` "a-quantified-sentence-names-no-member.md — applies the moment you ADD to or REMOVE from any set").
+- **RED CASE, NAMED** — the concrete broken implementation it turns red, written
+  as something somebody would plausibly build and not as a strawman.
+- **THE CASE THAT DISCRIMINATES** — the wrong behaviour that looks IDENTICAL from
+  outside, and the observation that separates the two. Where two mechanisms produce
+  one outcome, that outcome is evidence about neither.
+- **CAN A BROKEN IMPLEMENTATION SATISFY IT?** answered in the criterion's own text.
+  A criterion whose answer is anything but *no* does not go in.
+
+**AND EACH SAYS WHAT IT COSTS TO RUN** — HEADLESS (a proof under
+`mobile/src/proof/`, no server and no handset), SERVER (a live API, and for the
+mutation halves a SCRATCH database:
+`lessons/README.md § Lessons` "a-mutation-on-a-protected-write-path-needs-a-scratch-database.md — applies before mutating production code"),
+or HANDSET — because a set nobody can afford to run in one sitting is a set that
+gets run in part, and the part that gets dropped is not chosen by its importance.
+
+**NO RAW COUNT OF THE ARTEFACT APPEARS IN ANY OF THEM, INCLUDING IN A NAME**, per
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "A RAW COUNT INSIDE AN ACCEPTANCE CRITERION ROTS".
+Where a number about the tree is needed it is named as a SET and a SOURCE and
+produced when the staging is built — *the assigner's attempt budget, read out of
+`server/app/master.py`* — never written here. A count of a criterion's OWN
+structure (*two cells*, *the four level values*) is kept, because it is a statement
+about the criterion and a reader can finish counting it.
+
+**EVERY ABSENCE ASSERTION CARRIES A PRESENCE SIBLING, IN THE SAME RUN AND OVER THE
+SAME READ.** An absence over an empty queue, an empty response body or an empty
+string is satisfied by silence —
+`lessons/README.md § Lessons` "a-check-that-never-went-red-was-never-observed.md — applies to every assertion",
+ninth mechanism. And every DIFFERENCE is asserted by DIRECTION and never by
+inequality: two wrong values still differ
+(`lessons/README.md § Lessons` "a-green-cell-is-evidence-about-the-assertion-not-the-claim.md — applies to every assertion you are about to cite").
+
+**NO STATEMENT SEQUENCE IS PRINTED** — the constraint the design works under, kept
+here for the same measured reason
+(`lessons/README.md § Lessons` "printed-code-in-a-design-document-is-run-by-nobody.md — applies to every code block written into an artefact nothing executes").
+Types, member names and policy values are stated; dynamics are stated as
+observables.
+
+**WHAT THIS SET INHERITS AND DELIBERATELY DOES NOT RESTATE.** The outbox step's
+criteria already govern every registry member, this one included and by
+construction: the registry is total and is what the drain enumerates, the drain
+advances and terminates, a lost claim is not an outcome, a schedule stays inside
+the horizon, the pass reports what the screen reacts to, and a throw lands in one
+of two places. The seller kind joins those sets on the day it is added and the
+cells below do not repeat them. **TWO OF THEM GAIN THEIR FIRST INSTANCE HERE**,
+and both are named at the criterion that supplies it: the boot-recovery
+criterion's residual, which held because no kind with DURABLE in-flight state
+existed; and the throw criterion's stated limit, that `resendIsIdempotent` is a
+declaration nothing measures.
+
+---
+
+**A-CODE-HAS-ONE-HOLDER-AND-KEEPS-IT.** *(SERVER, scratch)* The reservation
+relation's whole invariant, which is the thing the owner's decision buys.
+**Staging:** a tenant, a device identity, and a block of codes issued to it; then
+a second insert of one of those `(tenant_id, code)` pairs attempted directly
+against the relation. **Observable, two cells.** (1) The second insert is REFUSED
+by the primary key and no second row exists — **with the presence sibling in the
+same run: the identical statement for a code NOT in the relation SUCCEEDS**, so
+the refusal is evidence about the key and not about a broken connection or a
+mistyped table. (2) Two issue calls to the same tenant, for two different device
+identities, return code sets whose INTERSECTION IS EMPTY *and* whose UNION has the
+size of the two sets added together — **equality, because a containment or
+disjointness test answers what is present and only equality answers what is in
+EXCESS**
+(`lessons/README.md § Lessons` "a-check-that-never-went-red-was-never-observed.md — applies to every assertion",
+fourteenth mechanism), with both sets asserted non-empty in the same read.
+**RED CASE, NAMED:** a relation keyed `(tenant_id, token)` with the code merely
+indexed — the shape a reader reaches for because the token is what the create
+carries. It admits two holders for one code, which is the defect S22 was taken to
+remove, written down as a schema. **THE CASE THAT DISCRIMINATES:** a single-block
+staging passes under BOTH keys, because one block never collides with itself; the
+second cell is the only one that separates them, and it needs two blocks in one
+tenant. **CAN A BROKEN IMPLEMENTATION SATISFY IT? No** — the token key reddens
+cell 2, and a relation with no key at all reddens cell 1.
+
+**A-SPENT-RESERVATION-NAMES-A-ROW-THAT-EXISTS.** *(SERVER, scratch)* The design's
+rule that nothing outside the seller INSERT may write `spent`, and that a spent
+reservation is a record of a row that is really there. **Staging:** one reservation
+issued and then spent by a create that succeeds, and a SECOND reservation issued to
+the same device and left untouched. **Observable, three cells, all read out of
+Postgres and none off a response.** (1) The spent reservation's `seller_id` EQUALS
+the created row's id, **and the same cell asserts the id is non-null** — two
+derivations of one event both return null when the event did not happen, and
+`None == None` is the most convincing green available
+(`lessons/README.md § Lessons` "a-check-that-never-went-red-was-never-observed.md — applies to every assertion",
+tenth mechanism). Both operands are PRINTED beside the verdict. (2) The presence
+sibling for the state: the second reservation is still `held` in the same read, so
+"spent" is a fact about the first row rather than a column defaulted for every row.
+(3) The two invariant queries return EMPTY — no reservation `spent` with a null
+`seller_id`, and no `sellers` row whose code is in the relation while that
+reservation is still `held` — **each with its complementary query returning the
+correctly-paired row in the same pass**, because an empty result from a query that
+never matched anything is indistinguishable from an invariant that holds.
+**RED CASE, NAMED:** an INSERT of the seller followed by a separate UPDATE of the
+reservation, which is the natural two-statement shape. **THE CASE THAT
+DISCRIMINATES:** from outside, the create succeeded and the seller row exists —
+identical under both implementations. What separates them is the reservation's
+state after a failure between the two statements: the code is then USED and still
+`held`, so a later replay carrying that token finds a reservation it can spend
+again and mints a SECOND seller for one person. Cell 3 is the only reading that
+sees it. **CAN A BROKEN IMPLEMENTATION SATISFY IT? No**, and cell 2 is why: a
+`spent` written unconditionally satisfies cell 1 and reddens cell 2.
+
+**A-SUPPLIED-RESERVED-CODE-IS-REFUSED, AND TODAY THE SERVER TAKES IT.** *(SERVER,
+scratch)* The first of the two decisions the design says the reservation requires,
+and **the evidence is the PAIR and not either half**, so both halves are RUN and
+both are reported. **Staging:** code `C` reserved to device D; then a STAFF session
+posts `POST /sellers` supplying `C`, carrying no token, and carrying an
+`id_number` and an `address`. **Observable.** (a) **ADMITTED UNDER THE SERVER AS IT
+STANDS** — run first, against the unmodified route: 201, and a `sellers` row
+carrying `C` exists. That half is what makes the other half a measurement rather
+than a restatement of the new code's own behaviour. (b) **REFUSED UNDER THE NEW
+RULE** — the same request is refused, the refusal carries a machine-readable `code`
+of its OWN that is not `duplicate_code`, and NO `sellers` row carrying `C` exists
+afterwards. **Presence sibling, same run:** a create supplying a code that is NOT
+reserved still returns 201 and its row is readable, so the refusal is about the
+reservation and not about the route having stopped working. (c) **THE BODY DOES
+NOT ECHO THE REQUEST** — neither the supplied `id_number` nor the supplied
+`address` appears anywhere in the response bytes, **with the presence sibling that
+the body is non-empty and names the code**, because an absence over an empty body
+is satisfied by silence. **RED CASE, NAMED:** the refusal implemented as an
+ordinary duplicate-code answer, reached by inserting the reservation's code into
+`sellers` at issue time so the existing unique constraint fires. **THE CASE THAT
+DISCRIMINATES:** from outside, a refusal is a refusal. What separates them is that
+under the design the reserved code is NOT in `sellers` at the moment of the
+refusal — so the staging asserts the code's absence from `sellers` immediately
+before the request, and the refusal's own `code` value is the second discriminator.
+A shop that later spends the reservation would otherwise find its own code already
+taken by a placeholder. **CAN A BROKEN IMPLEMENTATION SATISFY IT? No** — a server
+that refuses every supplied code reddens the presence sibling, a server that
+refuses nothing reddens (b), and the placeholder implementation reddens the
+absence-from-`sellers` assertion.
+
+**A-MINTED-CODE-SKIPS-WHAT-IS-RESERVED, AND TODAY IT DOES NOT.** *(SERVER, scratch)*
+The second required decision, and the design calls it the worse of the two because
+it needs nobody to make a mistake. **Staging:** a block reserved to device D, then a
+STAFF session posts `POST /sellers` with NO code at all, which is the path
+`_next_seller_code` owns. **Observable.** (a) **ADMITTED UNDER THE SERVER AS IT
+STANDS** — run first: the minted code IS a member of the reserved block, and the
+row exists. That is the defect reproduced, and it is what the second half is
+measured against. (b) **UNDER THE NEW RULE** the minted code is NOT a member of the
+relation for that tenant, **and the create still SUCCEEDS** — the presence sibling,
+because a route that started refusing this path would satisfy any assertion phrased
+as "no reserved code was minted". (c) **THE SAME TRANSACTION.** With a refill and a
+no-code create driven CONCURRENTLY behind a start barrier
+(`lessons/README.md § Lessons` "concurrency-tests-need-a-barrier.md — applies to any test asserting behaviour under concurrency"),
+and the overlap evidence PRINTED, the set of codes in `sellers` and the set in the
+reservation relation share no member afterwards, with both sets asserted non-empty.
+**RED CASE, NAMED:** a SELECT that excludes reserved codes, executed as its own
+statement before the INSERT, with no lock and no re-check — which is what "skip
+codes present in the reservation relation" reads like if the second half of the
+sentence is not read. **THE CASE THAT DISCRIMINATES:** sequentially it is
+indistinguishable from a correct implementation; only a reservation committed
+between the SELECT and the INSERT separates them, and only cell (c) stages that.
+**CAN A BROKEN IMPLEMENTATION SATISFY IT? No** — the check-then-insert shape passes
+(a) and (b) completely and reddens (c), which is exactly why (c) is not optional.
+
+**THE-ASSIGNER-STILL-TERMINATES-ABOVE-A-RESERVED-BLOCK.** *(SERVER, scratch)*
+**This criterion exists because of a finding against the design, recorded below,
+and it is the one a reasonable implementation of the criterion above will fail.**
+`_next_seller_code` derives its candidate from `max(code)` over `sellers` alone and
+`create_seller`'s no-code path retries a BOUNDED number of times, re-deriving from
+the same unchanged table each time; a reserved block sits immediately above that
+maximum. So a skip implemented as a post-check plus the existing retry exhausts its
+budget over a long enough block and answers 409 `code_assignment_failed` — to an
+ONLINE caller at the counter, who supplied nothing and did nothing wrong.
+**Staging:** a reserved block LONGER than the assigner's attempt budget, the budget
+read out of `server/app/master.py` when the staging is built and never written into
+this criterion; then a staff session posts `POST /sellers` with no code.
+**Observable, two cells.** (1) 201, and the minted code sits ABOVE the reserved
+block — not merely outside it, because *above* is the only answer consistent with
+the sequence the shop's paper slips carry. (2) **The presence sibling and the
+control in one:** with NO reservations held for that tenant, the identical call
+mints the successor of the `sellers` maximum, so cell 1 is measuring the skip and
+not a server that has started minting from an unrelated place. **RED CASE, NAMED:**
+the post-check-and-retry implementation. **THE CASE THAT DISCRIMINATES:** a fixture
+that reserves one or two codes passes it completely, and one that reserves a real
+holding does not — the discriminator is the LENGTH of the block relative to the
+budget, which is why the staging derives the length from the artefact instead of
+picking a number. **CAN A BROKEN IMPLEMENTATION SATISFY IT? No**, and this is the
+only criterion in the set that separates a skip living in the candidate derivation
+from a skip living in the retry loop.
+
+**A-REPLAY-CARRYING-THE-TOKEN-IS-ANSWERED-WITH-THE-FIRST-ROW.** *(SERVER, scratch)*
+Hard rule 4's shape, extended to this route by decision, and the thing that removes
+settle-on-409 from the design entirely. **Staging:** device D holds code `C` with
+token `T`; a create carrying both is sent, then the BYTE-IDENTICAL request is sent
+again. **Observable, three cells.** (1) The second answer carries the SAME
+`seller.id` as the first — **with the presence sibling that a DIFFERENT create in
+the same run returns a DIFFERENT id**, because "the same id" is satisfied by a
+server returning a constant. (2) Read out of Postgres: the number of `sellers` rows
+in that tenant carrying `C` is one, and the number carrying the other create's code
+is one — a pair of readings rather than a single zero-or-one. (3) The reservation is
+`spent` after the first request and STILL `spent`, with the same `seller_id`, after
+the second. **RED CASE, NAMED — TWO:** a route that answers the replay 409
+`duplicate_code`, which is the behaviour the tree has today and which the design
+says must not be settled on; and a route that ignores the token, mints a new code
+and returns 201, which is the quieter half already recorded at the closed
+offline-seller-code entry — no error, no collision, two sellers for one person.
+**THE CASE THAT DISCRIMINATES:** both wrong routes and the right one produce a
+successful-looking client. What separates them is the ROW COUNT in Postgres and the
+returned id, neither of which the client can see, which is why this criterion is
+SERVER and not HEADLESS. **CAN A BROKEN IMPLEMENTATION SATISFY IT? No** — the 409
+route reddens (1), the mint-again route reddens (2), and a route that returns a
+constant id reddens the presence sibling.
+
+**NO-ARM-OF-THIS-KIND-SETTLES-A-409.** *(HEADLESS)* The design's rule, and the
+whole point of the step: an unreachable state that has been reached is an invariant
+violation, and settling on it is the binding this work exists to prevent.
+**Staging:** the seller kind driven against a fake transport that answers 409, with
+a second local seller owed beside it. **Observable, three cells.** (1)
+`classify` of the kind's 409 outcome EQUALS `needs_review` — a positive assertion
+against one named member, not the exclusion of `settled` from a union of six.
+(2) After the pass, the row is STILL returned by `owedCount()` and is
+operator-visible, **with the presence sibling that a second row settled by a staged
+success in the same run is NOT returned by `owedCount()`** — otherwise "still owed"
+is satisfied by a drain that recorded nothing at all. (3) The local row carries NO
+server seller id, and the bills parked behind it are STILL parked — the release
+belongs to a settle and to nothing else. **RED CASE, NAMED — TWO, AND THE SECOND IS
+THE ONE A NARROWER WORDING LETS THROUGH:** `classify` returning `settled`, which
+binds this device's seller to a row it did not create; and `classify` returning
+`terminal`, which is the cheapest way to satisfy any cell phrased as *the row is not
+settled* — it also takes the row out of the queue, it also clears nothing, and it
+looks from outside exactly like a correct refusal to settle. **THE CASE THAT
+DISCRIMINATES:** `needs_review` leaves the row OWED and `terminal` does not, so cell
+2's `owedCount()` reading is the only thing between them; cell 1 alone is satisfied
+by neither and cell 2 alone by neither, and the pair is the evidence. **CAN A
+BROKEN IMPLEMENTATION SATISFY IT? No.**
+
+**THE-TOKEN-IS-ON-THE-WIRE.** *(HEADLESS, plus SERVER for the pair)* **This closes
+a limit the outbox step states about itself and could not close: `resendIsIdempotent`
+is a DECLARATION, and an author who sets it wrong and writes `classify` to match is
+not caught.** On this kind the declaration is `true` for exactly one reason — the
+reservation token — so a `perform` that omits the token from the request compiles,
+classifies identically, drains identically, and is green in every existing cell,
+while every replay after a lost response creates a second seller row.
+**Staging:** the seller kind performed against a recording transport. **Observable,
+two cells.** (1) The RECORDED REQUEST carries the reservation token, read off the
+request and never off the local row — **with the presence sibling that the same
+recorded request carries the reserved code**, so the cell is reading a request that
+was actually made. (2) The SERVER pair: the byte-identical replay staging of
+`A-REPLAY-CARRYING-THE-TOKEN-IS-ANSWERED-WITH-THE-FIRST-ROW`, driven through this
+kind's own `perform` rather than through a hand-built request, so what is proven
+idempotent is the thing that ships. **RED CASE, NAMED:** `resendIsIdempotent: true`
+beside a `perform` that sends only the code. **THE CASE THAT DISCRIMINATES:** from
+outside, every pass on a working network is identical under both; the difference
+appears only when a response is lost, which no ordinary run produces. Reading the
+request is what turns an invisible difference into a cell. **CAN A BROKEN
+IMPLEMENTATION SATISFY IT? No.** **ITS BOUND:** it measures that the token is sent,
+not that the server keys on it — cell 2 is what measures that, and it needs a live
+API.
+
+**THE-OUTCOME-UNION-IS-THIS-KIND-S-OWN.** *(HEADLESS)* The design forbids reusing
+`CreateSellerOutcome`: it would import a member this path cannot produce, and one
+whose meaning changes underneath. **Staging:** the kind's outcome type as declared,
+and one value constructed against it on purpose — no store, no transport and no
+pass, because the state this criterion is about is one the kind cannot reach at run
+time. **Observable, two cells, and the first is a
+compile cell of the shape the registry criterion already uses.** (1) A value of the
+kind's outcome type is constructed carrying `code_assignment_failed` ON PURPOSE;
+BOTH mobile typecheck programs must exit non-zero, with the reported error set
+REQUIRED TO INCLUDE the file and symbol where the kind's union is declared —
+*include*, not *equal*, because the mapped `OutboxResult` entry reddens too and an
+exclusive test would argue against a correct implementation; the value is then
+removed and the exit-0 pair re-run. **Presence sibling in the same cell:** the
+identical construction using a member the kind's union DOES declare compiles.
+(2) `classify` is driven over every member of the kind's own union, each verdict
+asserted, and the operands PRINTED. **RED CASE, NAMED:** `OutboxResult`'s
+`seller_create` entry set to `CreateSellerOutcome`. **THE CASE THAT DISCRIMINATES:**
+the reused union drains correctly on every green path and differs only where the
+device supplied a code and the server answered about one it minted — a state this
+kind cannot produce, so no behavioural staging reaches it. The compile cell is the
+only instrument that can, and it works precisely BECAUSE `code_assignment_failed`
+is a member of the union being wrongly reused. **CAN A BROKEN IMPLEMENTATION
+SATISFY IT? No.**
+
+**A-BILL-BEHIND-AN-UNCREATED-SELLER-IS-NEVER-OFFERED.** *(HEADLESS, plus SERVER for
+the release)* And it is released by the settle and by nothing else. **THE CRITERION
+THAT COSTS REAL MONEY IF IT REGRESSES.** `POST /bills` classifies an unresolvable
+`seller_id` as 422, PERMANENT and terminal, on a premise stated in its own header,
+and offline seller creation falsifies that premise
+(`lessons/README.md § Lessons` "unavailable-is-not-rejected.md — applies to every sync/retry path").
+**Staging:** a local seller created offline and still owed; a bill `X` weighed
+against it; a second bill `Y` weighed against a seller the server already knows;
+one pass. **Observable, six cells over one staging, and `Y` is the presence sibling for the
+first two of them.** (1) `X` is ABSENT from the
+sendable queue **and `Y` is PRESENT in the same read** — a queue holding one row
+makes "it dams nothing" vacuously true. (2) NO request is made for `X` in that pass
+**and a request IS made for `Y`** — this is the cell that keeps the server's 422
+from ever being seen, and the design's own words are that no request is spent
+discovering what the device already knows. (3) `X`'s `sync_state` is `pending` —
+NOT `failed`, and not a value outside the set `local_bills`'s CHECK already
+declares. (4) `X` IS counted in the owed count, so nothing on the device claims the
+work is done. (5) The parked-release cadences that exist today are run while the
+seller is still owed, and `X` stays out of the sendable queue — the *by nothing
+else* half, which no assertion about the settle can reach. (6) After the seller
+kind settles, `X` is in the sendable queue, carries the SERVER's seller id on its
+local row, and sends; the counter's MOVEMENT is reported and never the doc_no's
+existence. **RED CASE, NAMED — THREE.** The bill left in the queue and refused
+422, marked terminally `failed` for cash already paid on a row hard rule 5 forbids
+deleting; the bill excluded by a NEW `sync_state` value, which needs a table
+rebuild on a database holding a shop's unsynced bills; and **the bill parked using
+the EXISTING master-data park and one of the codes already in `MASTER_DATA_CODES`.**
+**THE CASE THAT DISCRIMINATES, and it is the third one:** a bill parked on the
+existing code satisfies cells 1, 2, 4 and 6 exactly — same queue behaviour, same
+count, same release — and it is wrong in the one place no queue reading looks, the
+SENTENCE. That is why the wording has a criterion of its own immediately below.
+Between the first red case and a correct park, the discriminators are cell 3 (the
+state) and cell 2 (whether a request was made at all): neither bill has a doc_no, so
+a doc_no assertion is evidence about neither. **CAN A BROKEN IMPLEMENTATION SATISFY
+IT? No.**
+
+**THE-PARKED-SENTENCE-SENDS-NOBODY-TO-THE-OFFICE.** *(HEADLESS)* The design requires
+a NEW code with a NEW sentence, because every parked sentence today says the OFFICE
+must act and here nobody must — the bill resolves itself when the device reaches the
+server. **S10 defers the DRAWING and not this:** the wording functions are pure
+modules with headless proofs already pointed at them, so the sentence is testable
+the day it is written. **Staging:** a bill parked on an uncreated local seller,
+rendered through the wording function, and a bill parked on a genuine master-data
+code, rendered in the same run. **Observable, three cells.** (1) The new sentence's
+rendered concatenation, in draw order, contains NO instruction to contact the
+office — asserted NEGATIVELY over the whole concatenation, **with the presence
+sibling in the same string: the sentence that names what is actually happening**,
+because an absence over an empty render is satisfied by silence. (2) The two
+renders DIFFER BY DIRECTION and not by inequality: the office-owed render contains
+the office phrase and the new one does not; the new render contains its own
+distinctive phrase and the office-owed one does not. Two directed assertions,
+because two wrong strings still differ. (3) The new code is NOT rendered through the
+unknown-code fallback — the fallback is cause-neutral by design, so a code nobody
+added to the known list produces a plausible, non-committal sentence and satisfies
+cell 1 completely. Asserted by the render carrying the new code's OWN text.
+**RED CASE, NAMED:** the new state given a code and no entry in the known list.
+**THE CASE THAT DISCRIMINATES:** the fallback render and the correct render both
+avoid naming the office; only cell 3's positive assertion on the new text separates
+them. **CAN A BROKEN IMPLEMENTATION SATISFY IT? No.**
+
+**THE-RESERVE-LEVEL-IS-REQUIRED-AND-EVERY-VALUE-HAS-ITS-OWN-SENTENCE.** *(HEADLESS)*
+The design makes the level a REQUIRED input, never optional with a default, so that
+every call site becomes a compile error until somebody writes its sentence — which
+is how the sweep is known to be complete rather than remembered. **Staging:** the
+wording function driven directly, with no screen and no server, over a device whose
+holding is set in turn to each value's own precondition — at target, below target
+and above zero, zero after at least one successful refill, and never having reached
+the server at all — plus one deliberate edit at a named call site for the compile
+cell. **Observable, four
+cells.** (1) **THE COMPILE CELL.** The level argument is removed at one named call
+site on purpose; both typecheck programs must exit non-zero, the reported error set
+required to INCLUDE that file and symbol; restored, and the exit-0 pair re-run.
+A defaulted parameter reddens nothing here, which is the whole point. (2) **TOTAL
+OVER THE VALUES** `ample`, `low`, `exhausted` and `never_provisioned` — the set is
+enumerated here rather than counted, and the cell iterates the union so a fifth
+value is covered by construction. Each render is asserted to carry its own
+distinctive text. (3) **`never_provisioned` IS NOT `exhausted`**, asserted by
+DIRECTION in both directions: each render carries its own phrase and does not carry
+the other's. Collapsing them ships a confident lie to an operator about something
+they never did. (4) **`exhausted` PROMISES NO WAIT AND NAMES WHAT IS STILL
+POSSIBLE** — the negative asserted over the whole concatenation in draw order, with
+the presence sibling being the sentence naming what the yard CAN still do, and a
+second negative that it does NOT offer picking a different seller for this load,
+which is the wrong seller on a cash purchase this whole step exists to prevent.
+Tone is asserted alongside: `low` amber, `exhausted` red. **RED CASE, NAMED — TWO:**
+an optional parameter with a default, which leaves every existing call site
+compiling clean while rendering the wrong sentence; and a mapping that takes a
+diagnostic as well as the level, so the sentence can be derived from the common
+cause instead of from the actual one. **THE CASE THAT DISCRIMINATES:** a defaulted
+parameter and a required one are indistinguishable at every call site that passes
+the argument — every site the author wrote. Only cell 1's deliberate removal
+separates them, and only at a site named in advance. **CAN A BROKEN IMPLEMENTATION
+SATISFY IT? No.**
+
+**A-REFILL-ASKS-FOR-THE-SHORTFALL, AND FOR NOTHING WHEN THERE IS NONE.**
+*(HEADLESS)* **THE DESIGN NAMES NO THRESHOLD AND EXPLICITLY REFUSES ONE**, so a
+criterion phrased as "the trigger fires at the threshold and not above it" has no
+staging in this design and is not written; what replaces it measures the same
+hazard through the quantity asked for. **Staging:** a device holding a known number
+of codes against a per-tenant target, driven through three passes with the transport
+recording every request — holding below target, holding equal to target, and the
+device offline. **Observable, three cells.** (1) Below target: exactly one refill
+request, asking for the SHORTFALL, read off the recorded request rather than
+inferred from the resulting holding. (2) At target: NO refill request in that pass
+— **with the presence sibling that a queued bill's send request IS recorded in the
+same pass**, because an absence over a transport that made no calls at all is
+satisfied by an offline device. (3) Offline: no refill request and the holding
+unchanged. **RED CASE, NAMED — TWO:** a low-water threshold, which is what the
+design refused and which reddens cell 1 for every holding between the threshold and
+the target; and **a refill that asks for the TARGET on every pass rather than the
+shortfall.** **THE CASE THAT DISCRIMINATES, and it is the second one:** the holding
+is topped up either way, the operator sees `ample` either way, and every reading on
+the device agrees. The difference is invisible on the device and lives entirely in
+the reservation relation — nothing is ever re-issued, so each surplus block leaks
+for ever. The discriminator is therefore a SERVER-side reading in the same staging:
+after several passes with no seller created, the relation's row count for that
+tenant is UNCHANGED from after the first pass, with the presence sibling that the
+first pass DID create rows. **CAN A BROKEN IMPLEMENTATION SATISFY IT? No** — and
+cell 2 alone cannot see the second red case, which is why the relation is read.
+
+**A-FAILED-REFILL-IS-AN-UNKNOWN-OUTCOME-AND-COSTS-NOTHING-ELSE.** *(HEADLESS)*
+Classified by the three-way rule this repository already holds, a failed refill is
+UNAVAILABLE: the outcome is unknown, it is asked again next pass, for ever, with no
+attempt cap, and it is NEVER terminal and NEVER parked — there is no payload to be
+permanently wrong and no master data for an office to fix. **The design's own rule
+is that a refill failure never blocks, parks or fails any other unit of work, and
+getting it wrong strands a device that could still trade on the codes it already
+holds.** **Staging:** the refill route refused by the transport while the send route
+works, a queued bill owed, a full holding on the device, and several passes.
+**Observable, four cells.** (1) The refill is attempted in the LAST pass as well as
+the first — no cap — with the attempt count asserted EQUAL to the number of passes
+the proof ran, a number produced by the staging and not written here. (2) The queued
+bill reaches the server in the same pass in which the refill was refused. (3) The
+owed count summed over every registry member is UNCHANGED across the refused refill
+— **with the presence sibling that queueing one more bill DOES move that same number
+in the same run** — so a refill has no queue entry, cannot refuse a sign-out and
+cannot colour the strip over work nobody is waiting for. (4) **THE LEVEL IS DERIVED
+FROM THE HOLDING AND NOT FROM THE LAST OUTCOME:** with a full holding and a refused
+refill the level is `ample`, and in the same run, with an empty holding, it is
+`exhausted`. **RED CASE, NAMED — TWO:** the refill modelled as an outbox kind, so a
+bounce writes attempt and error columns and enters the owed counts; and a level
+computed from the last refill's success, which reports `exhausted` while a full
+holding sits in SQLite. **THE CASE THAT DISCRIMINATES, and it is the second:** both
+implementations show a red badge on a device that has lost the network, and the
+operator's first reading is identical. What separates them is whether the yard can
+still create a walk-in — a state cell 4 reads directly and no badge reading can.
+**CAN A BROKEN IMPLEMENTATION SATISFY IT? No.**
+
+**THIS-KIND-KEEPS-EVERY-POLICY-DIFFERENCE-THE-DESIGN-NAMES.** *(HEADLESS)* The
+differences are ENUMERATED here rather than counted, and the enumeration is the
+criterion: `blocking: "independent"`, `rereadAfterEach: false`,
+`concurrency: "parallel_rows"`, an `inFlightKey` that PREFIXES the row id with a
+prefix distinct from the void kind's, and `resendIsIdempotent: true`.
+**Observable, four cells.** (1) **`independent` MEANS THE SECOND ROW GOES IN THE
+SAME PASS:** two local sellers owed, the first bouncing `retry`, and the second is
+attempted in that same pass. (2) **A HELD ROW IS ADVANCED PAST:** a second pass
+entered while the first seller's request is in flight attempts the SECOND seller,
+with the presence sibling that the first is performed exactly ONCE across both
+passes. (3) **THE PREFIX GETS A BEHAVIOURAL CELL, WHICH THE VOID KIND COULD NOT
+HAVE.** The void's prefix is asserted as a declaration only, because a send and a
+void of one bill are never simultaneously actionable and the state that would
+separate a prefixed key from a bare one is unrepresentable. Here it IS
+representable: a local seller id and a local bill id come from ONE generator and
+live in two tables, so a fixture can give a local seller and an unparked bill the
+SAME id, leave both owed, and hold one in flight — under a bare key the other is
+skipped, under the prefix it is performed. (4) The policy object is asserted FIELD
+BY FIELD against the list above. **RED CASE, NAMED — TWO:** `blocking:
+"head_blocks"` on this kind, which every single-row staging passes because a lone
+row has nothing behind it to block; and the bare `inFlightKey` the send kind uses.
+**THE CASE THAT DISCRIMINATES:** one owed seller behaves identically under
+`head_blocks` and `independent`, so cells 1 and 2 need two rows by construction.
+**CAN A BROKEN IMPLEMENTATION SATISFY IT? No.** **ITS BOUND:** cell 4 compares
+against a list written by the same author in the same commit, so it catches a LATER
+edit and not this one's own error; cells 1 to 3 carry the claim today.
+
+**THIS-KIND-DRAINS-BEFORE-BILLS-IN-ONE-PASS.** *(HEADLESS)* The registry literal's
+member ORDER is load-bearing: a seller created and a bill weighed in one offline
+stretch both become actionable in one pass only if the seller goes first.
+**Staging:** one local seller owed, one bill weighed against it, both released
+online, then exactly ONE pass — one by construction, so a second pass cannot be run
+to reach green. **Observable:** at the end of that single pass the seller is settled
+AND the bill carries a doc_no, **with the presence sibling in the same pass report:
+one seller settled and one bill sent, reported together and keyed by kind.**
+**RED CASE, NAMED:** a registry literal listing `bill_send` before `seller_create`,
+which is a reordering with no diff anywhere else. Under it the bill is still parked
+when the send kind's `owed()` runs, so it is not returned; the seller then settles;
+and the pass ends with the bill owed until the next tick. **THE CASE THAT
+DISCRIMINATES:** over two passes both orders reach the same end state, and every
+assertion on the final queue is green under both. Only the ONE-pass staging
+separates them. **CAN A BROKEN IMPLEMENTATION SATISFY IT? No.** **ITS BOUND:** it
+pins the ORDER of these two kinds, not adjacency — a runner draining a third kind
+between them still satisfies it, and should.
+
+**OWED-ASKS-WHO-CREATED-THE-SELLER, AND THE RELEASE DOES NOT.** *(HEADLESS)* The
+owner predicate is a requirement on every kind and this kind asks a THIRD question:
+the send kind filters on who WEIGHED the bill, the void kind on who ORDERED the
+reversal, and this one on **who CREATED the seller.** **AND THE RELEASE CROSSES
+THAT FILTER, WHICH IS THE HALF NO SINGLE-KIND FIXTURE REACHES.** **Staging:** two
+identities on one device; a local seller created by A; a bill weighed by A against
+it; a bill weighed by B against the same local seller; a second local seller created
+by B. **Observable, four cells.** (1) With A signed in, `owed()` and `owedCount()`
+for this kind return A's seller and NOT B's — an absence with its presence sibling
+in the same call. (2) With NO identity stored, `owed()` is EMPTY for this kind, which
+is the fail-closed direction. (3) **THE RELEASE IS NOT OWNER-FILTERED:** when A's
+seller settles, BOTH bills lose their park and both carry the server's seller id —
+**and B's bill is still absent from A's sendable queue**, because the queue's own
+owner predicate holds it, and it enters that queue when B signs in. (4) The presence
+sibling for cell 3: B's own seller, untouched, is still owed and its bills are still
+parked. **RED CASE, NAMED:** a release that carries the owner predicate, written by
+somebody sweeping this store for statements missing one — which is a real sweep this
+repository has run before, at the sites the queue and the void list were
+hand-repaired at. **THE CASE THAT DISCRIMINATES:** with one identity the filtered
+and unfiltered releases are identical. With two, the filtered release strands B's
+bill FOR EVER — the seller settles exactly once and there is no second event to
+release it — for cash already paid, on a row hard rule 5 forbids deleting. **CAN A
+BROKEN IMPLEMENTATION SATISFY IT? No**, and cell 3 is the only one that sees it: a
+kind filtered by the BILL's owner passes cells 1 and 2 completely.
+
+**THIS-KIND-RECOVERS-AT-BOOT-AND-THE-SWEEP-IS-REAL.** *(HEADLESS)* **This supplies
+the outbox step's stated residual its first instance.** That step's boot criterion
+asserts the boot's return map is keyed by kind and its key set EQUALS the member
+set — which measures that the boot ENUMERATES — and records that nothing measures
+that a second kind's recovery WORKS, because no kind with DURABLE in-flight state
+existed. This kind has one: `claim` is a conditional UPDATE and `recover` is a real
+sweep, unlike the void kind's correct no-op. **Staging:** a local seller left in its
+in-flight state, the process killed, the app reopened, one pass run. **Observable,
+two cells.** (1) The row is ATTEMPTED in that pass. (2) The id set `recover` returned
+EQUALS the set of rows that were in flight — **equality, never containment, because
+containment asks what is present and only equality asks what is in excess**, so a
+sweep that returns every owed row rather than the stranded ones reddens it, and a
+seller that was NOT in flight is the presence sibling on the other side of that
+equality. **RED CASE, NAMED:** `recover` returning an empty array — the void kind's
+correct answer copied into a kind that has durable state. **THE CASE THAT
+DISCRIMINATES:** the empty array satisfies the inherited key-set cell completely,
+because that cell asks whether the boot visited the kind and not what the visit did.
+This is the first cell in the tree that can tell them apart. **CAN A BROKEN
+IMPLEMENTATION SATISFY IT? No.**
+
+**THE-LOCAL-ROW-SURVIVES-A-REFRESH-THAT-DELETES.** *(HEADLESS)* `saveSellers` runs
+an unconditional `DELETE FROM cached_sellers` before inserting, and the design does
+NOT weaken it: an unsettled local seller lives in a table of its own beside
+`local_bills`, where owed work lives. **Staging:** a local seller created offline; a
+decoy row written into `cached_sellers` before the refresh; then a refresh whose
+payload contains neither. **Observable, four cells.** (1) The local row still exists
+and is still owed. (2) **THE DELETE STILL RUNS, and this is cell 1's presence
+sibling rather than a separate check** — the decoy is GONE after the refresh and a
+seller that WAS in the payload is present, both read in the same pass; without that
+pair cell 1 is satisfied by a refresh that did nothing at all. (3) The picker offers
+the local seller
+after the refresh. (4) **THE WINDOW:** after the seller settles but BEFORE any
+refresh has carried the server's row down, the picker STILL offers it — the design
+says the local row stops being offered once it has settled AND the server row has
+arrived, never at settle alone. **RED CASE, NAMED — TWO:** an origin marker put on
+`cached_sellers`, which delete-and-reinsert DESTROYS rather than wrongly carries
+forward — a third rewrite shape no DO UPDATE list covers; and the local row dropped
+from the picker at settle. **THE CASE THAT DISCRIMINATES, and it is the second:** in
+any staging where a refresh follows the settle immediately, dropping at settle and
+dropping at arrival are indistinguishable, because the server's row is there either
+way. Only a refresh-free interval between the two separates them, and in that
+interval the seller the yard has just created disappears from the picker while a
+truck is on the weighbridge. **CAN A BROKEN IMPLEMENTATION SATISFY IT? No.**
+
+**THE-LOCAL-SCHEMA-ADDS-AND-DOES-NOT-REBUILD.** *(HEADLESS)* The design's answer to
+the survey's `sync_state` CHECK bullet is that nothing touches it: the new table is
+created with the CHECK it needs, `local_bills`'s CHECK is not altered, and the park
+is a nullable column PAIR added by the migrator that asks `PRAGMA table_info` what
+the table already has. **Staging:** a database written at the PREVIOUS schema
+version, holding unsynced bills, opened by the new build. **Observable, three
+cells.** (1) `local_bills`'s CHECK member set, read out of the live schema and not
+off the source file, is EQUAL to the set it held before — equality and not
+containment, because a rebuild that ADDED a state passes a containment test and is
+exactly what the design forbids. (2) The rows that were owed before the upgrade are
+still present and still owed, **with the presence sibling that the new columns exist
+on those rows and are null.** (3) The new table's own CHECK member set is asserted.
+**RED CASE, NAMED:** `local_bills` rebuilt to widen its CHECK so the park can be a
+new `sync_state` value. **THE CASE THAT DISCRIMINATES:** a rebuild that copies rows
+correctly passes cell 2 completely and is still the operation the design refuses to
+perform on a database holding a shop's unsynced bills; cell 1's equality is what
+sees it. **CAN A BROKEN IMPLEMENTATION SATISFY IT? No.**
+
+**THE-DEVICE-IDENTITY-OUTLIVES-A-SIGN-OUT.** *(HEADLESS)* The holder is a DEVICE,
+the tree has no device identity, and the design puts the new one in SQLite and never
+in the keystore, because reserved codes must outlive a sign-out. **Staging:** a
+device identity minted, codes reserved against it, a sign-out performed, the app
+reopened. **Observable, three cells.** (1) The identity read after the sign-out
+EQUALS the one read before — **with the presence sibling that the keystore entry the
+sign-out DOES delete is gone in the same run**, because "equal before and after" is
+satisfied by a sign-out that did nothing at all. (2) The reserved codes are still
+readable and still spendable afterwards. (3) It is minted ONCE: a second open of the
+same database returns the same value, and no second row exists. **RED CASE, NAMED:**
+the identity kept beside the token in the keystore, which passes every reading taken
+inside one signed-in session and loses the device's whole holding at the first
+sign-out — unrecoverably, because nothing is ever re-issued. **THE CASE THAT
+DISCRIMINATES:** within a session the two storages are indistinguishable; only a
+sign-out separates them, which is why the sign-out is IN the staging rather than a
+follow-up. **CAN A BROKEN IMPLEMENTATION SATISFY IT? No.** **AND ITS BOUND, STATED
+RATHER THAN HIDDEN, BECAUSE IT IS THE HALF THAT WILL ROT:** the SQLite database is
+measured untouched by a sign-out today, and the sign-out clearing this project still
+owes is unbuilt — so cell 1 is currently kept green by the ABSENCE of a feature and
+not by anything protecting these two tables. A cell held up by a second mechanism is
+evidence about whichever mechanism still works. Whoever builds that clearing must be
+told, at the tables themselves, that these two are exempt; this criterion cannot
+make them so.
+
+**EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL.** *(HANDSET, plus HEADLESS for the
+contract)* **The seller kind is the FIRST kind whose rows are not in `local_bills`**,
+and the surfaces are one statement over that table. `UnsentBreakdown`'s own type
+text claims its counts are DISJOINT and COMPLETE over every unsent row; the day this
+kind lands that claim is false, and the sign-out gate refuses or permits on a number
+computed from it. **The design's refill argument already depends on this** — it
+refuses to make a refill a kind precisely because a failed refill would then enter
+the owed counts, refuse a sign-out and colour the strip — so an owed seller create
+reaching those counts is assumed by the design and stated by it nowhere.
+**Staging, one:** one local seller owed, NO bill pending, and no terminally failed
+bill on the device. **Observable, six parts, ALL IN ONE RUN over that one staging**,
+because a defect living between two correct renderers is invisible to either alone.
+(1) The gate REFUSES the sign-out. (2) The sheet, READ ON THE HANDSET and reported
+VERBATIM in Thai, must not carry `บิลทั้งหมดส่งขึ้นระบบครบแล้ว`, **with a presence sibling in
+the same concatenation naming the owed seller** — a card naming nothing satisfies an
+absence. (3) The strip, read on the same handset in the same staging and reported
+verbatim, must not carry `ส่งครบแล้ว`, with the same presence sibling. (4) **THE
+PRESENCE SIBLING HAS ITS OWN CONTROL:** a SECOND staging with nothing owed at all, in
+which that sentence is ABSENT from both surfaces, or a line added unconditionally to
+every card satisfies (2) and (3) everywhere including where the surfaces are right.
+(5) The gate and the sheet read the SAME value, asserted as an equality between the
+two inputs in one render. (6) `UnsentBreakdown`'s completeness claim is re-derived
+and either re-scoped in the type's own text or the type is split, and whatever value
+the gate reads is DECLARED on the `LocalStore` contract. **RED CASE, NAMED:** the
+bill-only statement used unchanged — the strip says the work is sent, the gate
+permits the sign-out, and the seller create drains later under whoever signs in
+next. **THE CASE THAT DISCRIMINATES:** a build that counts the seller in the gate but
+not in the strip is green on (1) and red on (3) alone, which is the seam the parts
+share a staging in order to reach. **CAN A BROKEN IMPLEMENTATION SATISFY IT? No.** And **before any device reading
+here is believed**, state which bundle and which server
+process produced it — `npx expo start -c` and a full reload BEFORE the staging that
+produces the reading, and the server's start time postdating the commit under test
+with a request through the changed path
+(`CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING").
+
+---
+
+#### WHAT THIS SELLER-KIND SET DOES NOT COVER, SAID BEFORE ANYONE RUNS IT
+
+- **HOW MANY CODES A DEVICE SHOULD HOLD.** The mechanism is measured; the number is
+  an assumption the design labels as one, and no criterion here can move it. It
+  needs a shop trading, which is P2.4's.
+- **WHETHER EXHAUSTION WILL BE RARE.** A frequency claim needs a real shop. What is
+  covered is the MECHANISM that produces the reserve level and the sentences derived
+  from it — legible, which the design claims, and not rare, which it does not.
+- **A SECOND DEVICE AND A SECOND PROCESS.** Every staging above is one device and
+  one process. The reservation relation's primary key is what holds across devices
+  and it is asserted at the relation, not across two handsets.
+- **THE DESKTOP.** P1.15 creates sellers online and holds no reservation. The
+  supplied-code refusal above is the only place the two paths meet, and it is
+  asserted from a staff session rather than from the desktop client.
+- **THE SELLER FACE PHOTOGRAPH.** A fourth kind with a payload measured in
+  megabytes. Nothing here stages one, and this kind's row carrying its own payload
+  is an argument that explicitly does not transfer to it.
+- **A CALLER WHO INVENTS DEVICE IDENTITIES.** Named in the findings below as a
+  bound rather than measured: nothing above stages a caller minting reservations
+  under identities it makes up.
+- **A KIND WHOSE RE-SEND IS NOT IDEMPOTENT.** This kind declares
+  `resendIsIdempotent: true`, so the outbox step's `needs_review` arm is STILL
+  asserted over no kind after this one lands. That residual is unchanged and is not
+  closed here.
+
+---
+
+#### WHAT THE DESIGN LEAVES UNTESTABLE OR UNDECIDED — findings, reported and not applied
+
+**These are FINDINGS against the design, produced by writing criteria from it.
+Nothing here edits it, and nothing here is authorised work.** Each says what a
+criterion could not be written for and why, so a later reader can see which gaps
+were known before the build started.
+
+- **THE ASSIGNER'S ATTEMPT BUDGET AND A RESERVED BLOCK, AND THIS IS THE ONE THAT
+  BREAKS THE COUNTER.** The design states the second required decision as *the
+  minting path must SKIP reserved codes in the same transaction that inserts*, and
+  says nothing about WHERE the skip lives. `_next_seller_code` derives its candidate
+  from `max(code)` over `sellers` alone, and the no-code path retries a bounded
+  number of times over an unchanged table; a reserved block sits immediately above
+  that maximum. **A skip implemented as a post-check plus the existing retry
+  therefore refuses an ONLINE create as soon as one handset holds a block longer
+  than that budget** — the yard's counter stops being able to add a seller because a
+  phone is carrying codes, which is the failure this step exists to remove arriving
+  from the other end. `THE-ASSIGNER-STILL-TERMINATES-ABOVE-A-RESERVED-BLOCK` above
+  measures it; the design does not name it.
+- **A LOST REFILL RESPONSE BURNS A WHOLE BLOCK, SILENTLY AND REPEATEDLY, AND NO
+  CRITERION CAN BE WRITTEN FOR IT.** *An unused reserved code leaks for ever* and
+  *if the refill fails, nothing else is affected* are both true OF THE DEVICE and
+  jointly false of the CODE SPACE. A refill whose response is lost after the server
+  committed leaves the device's shortfall unchanged, so the next pass asks again and
+  the server mints again; nothing is ever reclaimed, and nothing anywhere prints a
+  number that moved. **The cheapest bound is to make the refill route idempotent for
+  a device — ensure this device holds its target and return what it holds — which is
+  hard rule 4's shape and would cost a lookup.** That is a DESIGN decision and is not
+  taken here: a criterion written for it would be the decision, which is the one
+  thing this step must not do.
+- **THE BRIEF FOR THIS STEP ASKED FOR A REFILL THRESHOLD, AND THE DESIGN REFUSED
+  ONE.** Recorded because the two disagree in writing and a later reader will meet
+  both. The design decides *every sync pass, while online, tops the holding back up
+  to the target*, and rejects a low-water threshold as a second unmeasured constant.
+  So "a refill that fires on every pass" is not a wrong behaviour to be caught, it
+  IS the design, and a criterion staging a reserve one unit either side of a
+  threshold has nothing to stage.
+  `A-REFILL-ASKS-FOR-THE-SHORTFALL, AND FOR NOTHING WHEN THERE IS NONE` replaces it
+  and reaches the same hazard through the quantity requested.
+- **`low` IS THE NORMAL STATE OF A WORKING DEVICE, FOR AS LONG AS A POLL INTERVAL.**
+  The level's own definitions make `ample` mean *at target* and `low` mean *below
+  target and still able*, and the refill tops up every pass — so an online device
+  that has just created one walk-in is `low`, in amber, until its next pass, over a
+  condition that needs nobody and resolves itself. The design's tone rule is that
+  amber and red divide on whether something needs a human now, and this is the one
+  state that meets neither reading. **Nothing here changes it**; it is recorded
+  because the sentence written for `low` will be read far more often than the design
+  expects, and because a warning that fires routinely is a warning people stop
+  reading.
+- **A PERMANENTLY REFUSED CREATE LEAVES A RESERVATION HELD AND A CODE THE DEVICE
+  CANNOT SPEND.** The states are `held` and `spent` with one transition, and there
+  is no state for *the create was refused on the payload's own merits and this
+  reservation will never be spent*. Under no-reclaim that is simply another leak and
+  is consistent. What the design does not say is what the DEVICE does with the code:
+  keep it, and the reserve level over-counts what the yard can actually do; drop it,
+  and the next pass tops up, which is right. No criterion is written because either
+  answer is a decision.
+- **THE RELEASE'S OWNER QUESTION IS NOT ANSWERED IN THE DESIGN.** `record` releases
+  *every bill parked behind* a settling seller, and `owed()` is filtered to the
+  creating identity. Whether the release carries that filter decides whether a bill
+  weighed by a second person against the same local seller is released or stranded
+  for ever. `OWED-ASKS-WHO-CREATED-THE-SELLER, AND THE RELEASE DOES NOT` above takes
+  the only answer that does not strand a bill, and says so out loud rather than
+  leaving it to be inferred — because every neighbouring statement in that store was
+  hand-repaired to ADD an owner predicate, and the next sweep for a missing one will
+  find this statement and be wrong.
+- **THE SURFACES ARE DEFERRED AND DEPENDED ON IN THE SAME DOCUMENT.** The design's
+  not-covered list defers any screen and any Thai sentence to S10, and its refill
+  argument simultaneously relies on an owed unit of work reaching the owed counts,
+  refusing a sign-out and colouring the strip. Both cannot hold. The outbox step's
+  own surfaces criterion was left unlanded there by scope and is inherited here,
+  where it stops being avoidable: this is the first kind whose rows are not in
+  `local_bills`, and the type carrying the counts states a completeness claim that
+  becomes false the day the kind lands. `EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL`
+  above is written on the reading that a GATE DECISION is not a drawing; if the owner
+  reads S10 the other way, that criterion is the one to drop, and dropping it ships a
+  sign-out that loses work.
+- **A CALLER CAN MINT RESERVATIONS UNDER IDENTITIES IT INVENTS.** The refill route
+  takes the same gate as `POST /sellers`, so staff may call it, and the device
+  identity is client-minted and client-supplied. The design's not-covered list bounds
+  the token — a caller inside the tenant who obtained another device's token could
+  spend that reservation, and that caller can already create sellers — and that
+  argument does not reach this one: creating sellers by hand costs one request per
+  visible row, while minting under invented identities consumes the code space in
+  blocks and leaves only gaps. **Recorded as a bound and not as a stop**, because
+  every caller here is already inside the tenant; it becomes sharper if the assigner
+  finding above is repaired by anything short of a derivation that skips the whole
+  relation.
+- **WHAT WAS CHECKED AND FOUND SOUND, said so the list is not read as one-sided.**
+  The reservation's key choice, the two-state machine and the rejection of a third
+  state, the no-reclaim decision and its stated cost, the device-not-user holder
+  argument, the outcome union's separation from `CreateSellerOutcome`, the registry
+  member order, the local-table-beside-`local_bills` choice and its dissolution of
+  the survey's first two bullets, and the decision to park the bill on the device
+  rather than re-answer the server's 422 — each was read against the artefact it
+  claims about, and each held. The 422 half in particular is what stops the first
+  offline walk-in becoming a terminally failed bill for cash already paid.
+
 ### P1.9 — Price editing on the phone
 
 **What it is.** The shop owner changing a buy price without anyone running a request

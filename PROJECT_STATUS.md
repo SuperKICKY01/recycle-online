@@ -57,6 +57,179 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P-SELLERKIND-CRITERIA — THE SELLER KIND HAS ACCEPTANCE CRITERIA, AND WRITING
+THEM FOUND THAT THE SKIP THE DESIGN REQUIRES CAN REFUSE AN ONLINE CREATE.
+DOCUMENTATION ONLY, 2026-08-24. One commit.** This supersedes the
+P-SELLERKIND-DESIGN entry below as the current phase; that entry's record of the
+design stands unchanged, and **not one line of the design was edited** — findings
+against it are reported beside it and applied nowhere.
+
+**THE CRITERIA LIVE AT
+`ROADMAP.md § P1.8 — Seller creation from the phone` "THE SELLER-KIND CRITERIA, DERIVED FROM THE DESIGN ABOVE",
+beside the design they are derived from.** They were written by a session that did
+not write the design, which is the whole reason this is a separate step: criteria
+written by a design's own author inherit its blind spots, and the outbox step wrote
+criteria ahead of its own design and had to rebuild them twice.
+
+**NO FILE UNDER `mobile/`, `server/`, `packages/`, `desktop/` OR `tools/` MOVED.**
+No source file, no migration, no type, no route. No database was touched, live or
+scratch. **NO PROOF AND NO TYPECHECK WAS RUN. That is a fact about this phase and
+not an omission from it:** no code was touched, so neither instrument would have
+carried information about the change. **Every dated green in Baseline observations
+keeps its own date and NONE is refreshed by this work.**
+
+**WHAT EVERY CRITERION CARRIES, because the shape is the deliverable and not the
+prose.** The staging that produces its case, named before the assertion — a
+criterion demanding a state the design forbids is UNPERFORMABLE, and one outbox
+commit shipped three such sites in the same file as the paragraph forbidding the
+state. A RED CASE written as an implementation somebody would plausibly build. The
+case that DISCRIMINATES — the wrong behaviour that looks identical from outside,
+and the observation that separates it — which is what an independent pass fired the
+stop on when the outbox criteria could not supply it. And *can a broken
+implementation satisfy it?* answered in the criterion's own text. Every absence
+assertion carries a presence sibling in the same read; every difference is asserted
+by DIRECTION and never by inequality; no statement sequence is printed anywhere; and
+no raw count of the artefact appears in any of them, per
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "A RAW COUNT INSIDE AN ACCEPTANCE CRITERION ROTS".
+
+**HOW MANY THERE ARE IS RECORDED HERE ONCE AND NOWHERE ELSE, which is this
+repository's third repair form for a number that can grow.** Twenty-two criteria at
+this commit, counted two independent ways in the same pass — by the bolded name that
+opens each, and by the cost label (HEADLESS, SERVER or HANDSET) that follows it —
+and the two agreed at twenty-two. The first spelling of that instrument counted
+twenty-one, because one criterion's name wrapped across two lines and the pattern
+required the closing marker on the opening line: **the splitter failed by finding
+LESS, silently, and reported OK about a piece that had swallowed the missing one.**
+It was caught only because a second count disagreed. The criterion was renamed to
+fit one line, which is also what makes it citable.
+
+**THE FINDING THIS PHASE EXISTED TO PRODUCE, AND IT IS AGAINST THE DESIGN RATHER
+THAN AGAINST THE OWNER'S DECISION.** The design requires that the minting path SKIP
+codes present in the reservation relation, and says nothing about WHERE the skip
+lives. `_next_seller_code` derives its candidate from `max(code)` over `sellers`
+alone, and `create_seller`'s no-code path retries a BOUNDED number of times over an
+unchanged table — so a reserved block, which sits immediately above that maximum,
+defeats a skip implemented as a post-check plus the existing retry. **The result is
+a 409 `code_assignment_failed` answered to an ONLINE caller at the counter who
+supplied nothing and did nothing wrong:** the yard's counter stops being able to add
+a seller because a phone is carrying codes, which is this step's own failure
+arriving from the other end.
+
+**AND THE ARITHMETIC MAKES IT A CERTAINTY RATHER THAN A RISK, WHICH IS HOW THIS
+ENTRY FIRST STATED IT AND WAS TOO SOFT. Corrected 2026-08-24 on the owner's
+instruction, with both numbers RE-DERIVED HERE at their own sites rather than
+carried from the advising session that raised it.** `_ASSIGN_ATTEMPTS = 8` at
+`server/app/master.py:897`, which is the loop bound at `:1017` and the figure echoed
+into the 409 body at `:1045`; the target holding the design proposes is **20**, at
+`ROADMAP.md:2163`, labelled there as an assumption no measurement supports. **A
+fully provisioned handset therefore holds a contiguous reserved block two and a half
+times the assigner's ENTIRE budget**, so every one of those attempts lands inside
+the block and the refusal is not a hazard the loop might hit — it is what the loop
+does. **Sharper still, and it is the half the first wording missed:** because
+`_next_seller_code` reads `sellers` alone and a post-check changes nothing in that
+table, such an implementation does not even WALK the block — it re-derives the same
+candidate on every pass and spends its whole budget on one value.
+
+**THE ONE CONDITION UNDER WHICH IT IS ONLY A RISK, STATED SO THE CERTAINTY IS NOT
+OVERSOLD:** the target holding is a per-tenant column with a floor of 1, so a shop
+configured below the assigner's budget would leave gaps the loop can reach. At the
+design's own proposed default it cannot. **Both figures rot** — the budget is a
+constant somebody may change and the target is an assumption the design says a
+trading shop will settle — which is why they are pinned to this dated entry and to
+this site alone.
+
+**THE CRITERION CARRIES THE SAME DEFECT WITHOUT THE DIGITS, DELIBERATELY, AND THE
+TWO ARE NOT IN DISAGREEMENT.** `THE-ASSIGNER-STILL-TERMINATES-ABOVE-A-RESERVED-BLOCK`
+states the condition — a block longer than the budget — and derives the block length
+from the artefact when the staging is built, because a raw count inside an
+acceptance criterion rots and this one has two that will. The arithmetic showing the
+condition is MET at the design's proposed default lives here, in a dated record,
+and nowhere else.
+
+**AND SEVEN MORE, EACH RECORDED AT THE STEP RATHER THAN RESTATED HERE.** The three
+that change what a reader would otherwise expect:
+
+- **A LOST REFILL RESPONSE BURNS A WHOLE BLOCK, SILENTLY AND REPEATEDLY, AND NO
+  CRITERION CAN BE WRITTEN FOR IT.** *An unused reserved code leaks for ever* and
+  *if the refill fails, nothing else is affected* are both true of the DEVICE and
+  jointly false of the CODE SPACE: the device's shortfall is unchanged, so the next
+  pass asks again and the server mints again, and nothing anywhere prints a number
+  that moved. The cheapest bound is a refill route made idempotent for a device,
+  which is hard rule 4's shape — **and that is a DESIGN decision, so no criterion is
+  written for it.** Writing one would take the decision, which is the one thing a
+  criteria step must not do.
+- **THE BRIEF FOR THIS PHASE ASKED FOR A REFILL THRESHOLD AND THE DESIGN REFUSES
+  ONE.** The design decides that every sync pass tops the holding back up to the
+  target and rejects a low-water threshold as a second unmeasured constant, so *a
+  refill that fires on every pass* — which the brief named as the wrong behaviour to
+  be caught — IS the design. The criterion was re-derived onto the QUANTITY
+  REQUESTED, where the same hazard is reachable: a refill asking for the target
+  rather than the shortfall tops the device up identically, shows `ample`
+  identically, and leaks a block per pass into a relation nothing ever reclaims.
+  **WHERE THAT PREMISE CAME FROM IS NAMED RATHER THAN LEFT AS A SLIP, confirmed by
+  the owner 2026-08-24: it was the ADVISING SESSION'S OWN MODEL of how a refill
+  would work, promoted into a prompt, and not a reading of the design it was
+  briefing against.** That is the failure the Workflow rule below describes in its
+  own words — a report read, believed, and written into the next brief as a premise,
+  after which nothing checks it because the brief is the authority and the artefact
+  is never reopened. **It was caught only because this step re-derived the design
+  before writing a criterion from it**, which is the order the brief itself
+  demanded; had the criterion been written obediently it would have staged a reserve
+  either side of a threshold that does not exist, and nothing would have run.
+- **`low` IS THE NORMAL STATE OF A WORKING DEVICE, FOR AS LONG AS A POLL INTERVAL.**
+  `ample` means at target and `low` means below target and still able, and the
+  refill tops up every pass — so an online handset that has just created one
+  walk-in is amber until its next pass, over a condition that needs nobody. Nothing
+  here changes it; it is recorded because the sentence written for `low` will be
+  read far more often than the design expects.
+
+The other four are a permanently refused create leaving a reservation held and a
+code the device cannot spend; the release's owner question, which decides whether a
+second person's bill is released or stranded for ever; the surfaces, deferred and
+depended on in the same document; and a caller minting reservations under device
+identities it invents, recorded as a bound rather than a stop.
+
+**AND WHAT WAS CHECKED AND HELD, said so the list is not read as one-sided.** The
+reservation's key choice, the two-state machine and the rejection of a third state,
+no-reclaim and its stated cost, the device-not-user holder argument, the outcome
+union's separation from `CreateSellerOutcome`, the registry member order, the
+local-table-beside-`local_bills` choice, and the decision to park the bill on the
+DEVICE rather than re-answer the server's 422 — each was read against the artefact
+it claims about, and each held.
+
+**TWO OF THE OUTBOX STEP'S OWN STATED RESIDUALS GET THEIR FIRST INSTANCE HERE**, and
+both are named at the criterion that supplies it: its boot-recovery criterion's
+residual, which stood because no kind with DURABLE in-flight state existed, and its
+throw criterion's stated limit, that `resendIsIdempotent` is a declaration nothing
+measures. The second is closed by reading the REQUEST rather than the row — a
+`perform` that omits the reservation token compiles, classifies identically and is
+green in every existing cell, while every replay after a lost response creates a
+second seller for one person.
+
+**IS A LESSON OWED? NO, and the two-homes test is applied by name rather than
+asserted.** Nothing found here is a MACHINE FOOTGUN: none of it is a property of
+this box and all of it would read identically on any machine. And nothing found here
+is a LESSON, because each shape this phase met is already written down and a second
+note about a rule already written is what
+`lessons/README.md § Lessons` "a-warning-in-one-file-does-not-protect-the-next.md — applies to every hazard this repo has already paid for"
+says does not work. The brief's threshold premise is a report promoted into a
+prompt, which `CLAUDE.md § Workflow` "A REPORT IS A CLUE, NOT A SOURCE" already
+covers in those words. A criterion green over the ABSENCE of a feature — the device
+identity survives a sign-out today because the sign-out clearing this project still
+owes is unbuilt — is the third mechanism of
+`lessons/README.md § Lessons` "a-green-cell-is-evidence-about-the-assertion-not-the-claim.md — applies to every assertion you are about to cite",
+and it is recorded as that criterion's own stated bound. The splitter that failed by
+finding less is the oldest shape in
+`lessons/README.md § Lessons` "a-check-that-never-went-red-was-never-observed.md — applies to every assertion",
+caught by the remedy that file already prescribes: a second, independent count.
+
+**WHAT THIS PHASE DID NOT DO.** It built nothing, minted no P-number and no
+S-number, edited no line of the design, reopened no decision of the owner's, and
+answered none of the design's own not-covered list. It ran no proof, no typecheck,
+no server and no handset, so nothing in it carries an exit code except the checkers
+below. And it did not touch `ARCHITECTURE.md` or `BRIEFING.md`: neither architecture
+nor a hard rule moves here, which was checked rather than assumed.
+
 **P-SELLERKIND-DESIGN — THE SELLER KIND IS DESIGNED, AND THE DESIGN FOUND THAT THE
 OWNER'S DECISION DOES NOT MAKE SETTLE-ON-409 SAFE ON ITS OWN. DOCUMENTATION ONLY,
 2026-08-23. One commit.** This supersedes the P-SELLERCODE-DECIDED entry below as
