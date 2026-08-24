@@ -171,9 +171,30 @@ def sql(query: str, params: dict | None = None) -> list:
 def max_assigned_number() -> int:
     """The highest S<n> tenant A currently holds, 0 if none. READ FROM POSTGRES,
     because the number the server will assign is a function of the database's
-    state and not of anything this script chose."""
-    rows = sql("SELECT max(substring(code from 2)::numeric) AS m FROM sellers"
-               " WHERE code ~ '^S[0-9]+$'")
+    state and not of anything this script chose.
+
+    IT READS BOTH TABLES SINCE MIGRATION 0012, and the change is to the RULE
+    rather than to this script's opinion of it. `sellers` stopped being the whole
+    of the assigned code space the day a seller code could be RESERVED to a
+    handset that has not come back: such a code is one that handset will write
+    into `sellers`, so a server that derived above `sellers` alone would propose
+    it to somebody at the counter. Reading one table here would now assert the
+    OLD rule against a server that correctly follows the new one -- which is
+    exactly how this cell went red: it expected S845 while the server minted
+    S1010 above a thousand reservations, and the server was right.
+
+    THIS IS STILL THIS CHECKER'S OWN STATEMENT OF THE RULE. The SQL is written
+    out here rather than imported from app.master, so a checker that agrees with
+    the code by construction is still avoided
+    (lessons/a-checker-must-not-share-the-code-it-checks.md); what is shared is
+    the DECISION, which is in ROADMAP under P1.8.
+    """
+    rows = sql("SELECT greatest("
+               " coalesce((SELECT max(substring(code from 2)::numeric)"
+               "             FROM sellers WHERE code ~ '^S[0-9]+$'), 0),"
+               " coalesce((SELECT max(substring(code from 2)::numeric)"
+               "             FROM seller_code_reservations"
+               "            WHERE code ~ '^S[0-9]+$'), 0)) AS m")
     m = rows[0]["m"]
     return 0 if m is None else int(m)
 
@@ -449,7 +470,9 @@ def main() -> int:
             # the number moves every run (lessons/proof-must-run-twice.md).
             check(m is not None and int(m.group(1)) == before + 1,
                   f"cell1: the assigned number is the one after the highest that "
-                  f"existed ({assigned!r} vs before={before})")
+                  f"existed IN EITHER TABLE ({assigned!r} vs before={before}) -- "
+                  "a reserved code is one a handset will write into `sellers`, so "
+                  "the sequence the server continues spans both")
             seller1_id = b1.get("id")
             # `assigned is not None` IS THE CELL, not decoration. Without it a
             # refused create leaves assigned=None and stored_code(None)=None, and

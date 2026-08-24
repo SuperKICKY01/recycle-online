@@ -74,7 +74,7 @@ import uuid
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -158,6 +158,42 @@ def _conflict(entity: str, code_value: str) -> HTTPException:
             "code": "duplicate_code",
             "message": f"รหัสนี้ถูกใช้ไปแล้ว: {code_value}",
             "entity": entity,
+            "conflicting_code": code_value,
+        },
+    )
+
+
+def _code_reserved(code_value: str) -> HTTPException:
+    """A SUPPLIED seller code that a handset is holding offline.
+
+    A CODE OF ITS OWN, and never `duplicate_code`. The two are different facts
+    and a client that cannot tell them apart cannot act on either: a duplicate
+    means the code is ALREADY ON A SELLER and the shop must pick another
+    permanently; this means the code is spoken for by a device that has not come
+    back yet, and the row it will become does not exist. Reusing
+    `duplicate_code` here would also be a lie about `sellers`, where the code is
+    provably absent at the moment of the refusal.
+
+    IT NAMES THE CODE AND NOTHING ELSE FROM THE REQUEST. A create on this route
+    carries a seller's name, and where the shop asks for them an ID CARD NUMBER
+    and a home ADDRESS; a refusal that echoed its input would put those in a
+    response body, which is the defect main.py's validation handler exists to
+    close for pydantic's errors (lessons/a-refusal-hands-back-what-it-refused.md).
+    The code is the one field the caller needs back to know which value was
+    refused, and it is the field they typed.
+
+    IT DOES NOT SAY WHOSE. Which device holds the reservation is not the
+    caller's business and naming it would be a fact about another handset
+    obtained by guessing a code. It also could not be said honestly: the holder
+    may be the caller's own device, which simply failed to send its token.
+    """
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        detail={
+            "kind": "conflict",
+            "code": "code_reserved",
+            "message": f"รหัสนี้ถูกจองไว้แล้ว กรุณาใช้รหัสอื่น: {code_value}",
+            "entity": "seller",
             "conflicting_code": code_value,
         },
     )
@@ -766,6 +802,19 @@ IdNumber = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
 Address = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 VehicleNo = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
 
+# The opaque secret naming a reservation. BOUNDED at the edge like every other
+# string here, and for the ordinary reason: an unbounded field is a request body
+# a caller chooses the size of. 200 is comfortably above the 43 characters
+# secrets.token_urlsafe(32) produces, so the bound cannot become the thing that
+# refuses a legitimate token if the mint ever widens.
+#
+# NO SHAPE CONSTRAINT. The server compares it against a stored value; it never
+# parses it, and a client-side pattern would be this module guessing at how the
+# refill mints. Migration 0012 gives the same argument at the column.
+ReservationToken = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+]
+
 
 class SellerCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -775,6 +824,17 @@ class SellerCreate(BaseModel):
     # supplies its own and keeps it; a shop without one never has to invent a
     # unique string at the weighbridge with a truck waiting.
     code: Code | None = None
+    # THE RESERVATION THIS CREATE SPENDS, and the reason a repeat of this request
+    # is not a second seller. A yard phone that created the seller offline holds
+    # a code AND the token the server minted with it; carrying the token makes a
+    # replay recognisable BY THE SERVER as the same create, so a response lost on
+    # a bad connection costs a lookup instead of a duplicate person.
+    #
+    # ABSENT IS THE ORDINARY CASE and always will be: the desktop, the counter
+    # and every online create send no token. Present WITHOUT `code` is refused —
+    # a token names exactly one code, and a request that carries the secret but
+    # not the value it unlocks is incoherent rather than merely incomplete.
+    reservation_token: ReservationToken | None = None
     name: Name
     phone: Phone | None = None
     # Optional at create, and NOT defaulted. A seller with no grade is refused at
@@ -898,48 +958,23 @@ _ASSIGNED_CODE_WIDTH = 3             # S001, widening on its own past S999
 _ASSIGN_ATTEMPTS = 8
 
 
-async def _next_seller_code(conn: AsyncConnection) -> str:
-    """The next `S<n>` for THIS tenant. RLS scopes the maximum; no WHERE here.
-
-    ONLY codes of the assigned shape take part. A shop running its own paper
-    codes — `A-12`, a name, a national id — keeps them, and they neither move
-    this number nor are moved by it. `S006` typed by hand DOES take part, which
-    is the point: the assigner must see it, or it would propose it again.
-
-    IT READS `sellers` ALONE, AND THAT IS NOW A KNOWN HOLE RATHER THAN A
-    SIMPLIFICATION. A code reserved to a handset is not a row in `sellers`, so
-    this maximum does not see one, and the loop below will hand a RESERVED code
-    to an online caller who supplied none. Nobody has to make a mistake for that
-    to happen. _next_assigned_codes above derives above BOTH tables and is what
-    the refill route uses; moving the create path onto it is a change to
-    behaviour that already works, so it is not in the commit that added the
-    relation.
-    """
-    highest = (
-        await conn.execute(
-            text(
-                "SELECT max(substring(code from 2)::numeric) FROM sellers"
-                " WHERE code ~ :shape"
-            ),
-            {"shape": _ASSIGNED_CODE_SHAPE},
-        )
-    ).scalar_one()
-    nxt = 1 if highest is None else int(highest) + 1
-    candidate = f"S{nxt:0{_ASSIGNED_CODE_WIDTH}d}"
-    if len(candidate) > _CODE_MAX_LENGTH:
-        # Reachable only if a shop has typed an absurdly long S-code by hand.
-        # REFUSE rather than mint a value this module's own edge type would
-        # reject — the reasoning provision_shop.py gives for having no fallback:
-        # a code the database accepts but the rest of the system does not expect
-        # is silent and permanent, because it goes onto paper.
-        raise _invalid(
-            "code_assignment_overflow",
-            "ไม่สามารถออกรหัสผู้ขายอัตโนมัติได้ กรุณาระบุรหัสเอง",
-            entity="seller",
-            candidate_length=len(candidate),
-            max_length=_CODE_MAX_LENGTH,
-        )
-    return candidate
+# `_next_seller_code` STOOD HERE AND IS GONE. It derived the candidate from
+# `max(code)` over `sellers` ALONE, which stopped being the whole of the assigned
+# code space the day migration 0012 landed: a code reserved to a handset is a
+# code that handset WILL write into `sellers`, and a maximum that cannot see one
+# proposes it to somebody at the counter with nobody making a mistake.
+#
+# IT IS DELETED RATHER THAN LEFT UNUSED, and that is the point of removing it at
+# all. An unused function that reads one of the two tables, sitting beside the
+# one that reads both, is not dead weight — it is the function the next writer
+# calls, because it has the obvious name and it compiles. The replacement is
+# _next_assigned_codes below.
+#
+# ROADMAP's design states the required decision as "`_next_seller_code` must skip
+# codes present in the reservation relation" and names it there. The JOB moved
+# and the NAME did not survive; the design is not edited for it, and the stale
+# reference is recorded at the phase boundary rather than repaired by keeping a
+# wrapper alive to make a document's noun resolve.
 
 
 # ---------------------------------------------------------------------------
@@ -1083,56 +1118,146 @@ async def _lock_shop_for_code_assignment(conn: AsyncConnection) -> int:
     return int(row["seller_code_target_holding"])
 
 
+# The seller INSERT, held ONCE. Two writers use it — the ordinary create and the
+# one that spends a reservation in the same statement — and a second copy of this
+# column list is a second place for a column to be forgotten the day one is added.
+_SELLER_INSERT = (
+    f"INSERT INTO sellers (tenant_id, code, name, phone, grade,"
+    f" id_number, address, vehicle_no, created_by)"
+    f" VALUES ({_TENANT}, :code, :name, :phone, :grade,"
+    f" :id_number, :address, :vehicle_no, :created_by)"
+    f" RETURNING id, code, name, phone, grade, id_number,"
+    f" address, vehicle_no, is_active"
+)
+
+
+def _seller_insert_params(
+    body: SellerCreate, code: str, principal: Principal
+) -> dict:
+    """The bound values for _SELLER_INSERT. TAKES THE PRINCIPAL, not a uuid —
+    `created_by` is the SESSION that created this seller and there must be no
+    argument through which a different author could be supplied. Migration 0011
+    states the same bound in the column comment; this signature is what makes it
+    hold in the code.
+    """
+    return {
+        "code": code,
+        "name": body.name,
+        "phone": body.phone,
+        "grade": body.grade,
+        "id_number": body.id_number,
+        "address": body.address,
+        "vehicle_no": body.vehicle_no,
+        # THE SESSION THAT CREATED THIS SELLER, and never a field from
+        # the body. SellerCreate carries no user of any kind and must
+        # not: a client-supplied author is an author the client chooses.
+        # principal.user_id has already been proven to name a live user
+        # IN THIS TENANT by get_principal, which re-reads the users row
+        # under tenant context — so the composite (tenant_id, created_by)
+        # FK cannot fail here. Same argument bills.py makes at its own
+        # INSERT, and it matters for the same reason: an unhandled 500 on
+        # this path is `unavailable` to a yard phone with a truck on the
+        # weighbridge.
+        #
+        # NOT in RETURNING and NOT in _seller_payload. The column is
+        # written by the server and read from the database; putting it in
+        # the response is a product decision with a screen attached, and
+        # there is no screen.
+        "created_by": principal.user_id,
+    }
+
+
 async def _insert_seller(
     conn: AsyncConnection, body: SellerCreate, code: str, principal: Principal
 ) -> Any:
-    """Write the row. TAKES THE PRINCIPAL, not a uuid — `created_by` is the
-    SESSION that created this seller and there must be no argument through which
-    a different author could be supplied. Migration 0011 states the same bound in
-    the column comment; this signature is what makes it hold in the code.
-    """
+    """Write the row, spending no reservation. The online path."""
     return (
         await conn.execute(
-            text(
-                f"INSERT INTO sellers (tenant_id, code, name, phone, grade,"
-                f" id_number, address, vehicle_no, created_by)"
-                f" VALUES ({_TENANT}, :code, :name, :phone, :grade,"
-                f" :id_number, :address, :vehicle_no, :created_by)"
-                f" RETURNING id, code, name, phone, grade, id_number,"
-                f" address, vehicle_no, is_active"
-            ),
-            {
-                "code": code,
-                "name": body.name,
-                "phone": body.phone,
-                "grade": body.grade,
-                "id_number": body.id_number,
-                "address": body.address,
-                "vehicle_no": body.vehicle_no,
-                # THE SESSION THAT CREATED THIS SELLER, and never a field from
-                # the body. SellerCreate carries no user of any kind and must
-                # not: a client-supplied author is an author the client chooses.
-                # principal.user_id has already been proven to name a live user
-                # IN THIS TENANT by get_principal, which re-reads the users row
-                # under tenant context — so the composite (tenant_id, created_by)
-                # FK cannot fail here. Same argument bills.py makes at its own
-                # INSERT, and it matters for the same reason: an unhandled 500 on
-                # this path is `unavailable` to a yard phone with a truck on the
-                # weighbridge.
-                #
-                # NOT in RETURNING and NOT in _seller_payload. The column is
-                # written by the server and read from the database; putting it in
-                # the response is a product decision with a screen attached, and
-                # there is no screen.
-                "created_by": principal.user_id,
-            },
+            text(_SELLER_INSERT), _seller_insert_params(body, code, principal)
         )
     ).mappings().one()
 
 
+# ONE STATEMENT, and the whole reason this is not two.
+#
+# `held -> spent` happens ONLY inside the same statement that INSERTs the seller.
+# The natural shape is an INSERT followed by a separate UPDATE, and from outside
+# the two are indistinguishable: the create succeeds and the row exists either
+# way. What separates them is an UPDATE that matches NOTHING and is not looked
+# at — the code is then USED and the reservation is still `held`, so a later
+# replay carrying that token finds a reservation it can spend AGAIN and mints a
+# SECOND seller for one person.
+#
+# A data-modifying CTE removes the possibility rather than guarding against it.
+# Postgres executes every data-modifying sub-statement in a WITH exactly once,
+# and they all see the SAME snapshot — the UPDATE cannot see the row the INSERT
+# is writing, and does not need to: it takes the new id from the INSERT's own
+# RETURNING. The rowcount comes back in the same result, so a zero cannot go
+# unread.
+#
+# The UPDATE is keyed on the TOKEN and on `state = 'held'`, which makes it a
+# compare-and-set: if a concurrent replay spent this reservation between the read
+# above and this statement, it matches nothing, the caller sees `spent_rows = 0`
+# and the whole thing rolls back. RLS scopes both halves to the caller's tenant.
+_SPEND_RESERVATION = (
+    f"WITH ins AS ({_SELLER_INSERT}), spend AS ("
+    f" UPDATE seller_code_reservations"
+    f" SET state = 'spent', seller_id = (SELECT id FROM ins)"
+    f" WHERE token = :reservation_token AND state = 'held'"
+    f" RETURNING code)"
+    f" SELECT ins.*, (SELECT count(*) FROM spend) AS spent_rows FROM ins"
+)
+
+
+async def _insert_seller_spending(
+    conn: AsyncConnection, body: SellerCreate, code: str, principal: Principal,
+    token: str,
+) -> Any:
+    row = (
+        await conn.execute(
+            text(_SPEND_RESERVATION),
+            {**_seller_insert_params(body, code, principal),
+             "reservation_token": token},
+        )
+    ).mappings().one()
+    if row["spent_rows"] != 1:
+        # AN UNREACHABLE STATE THAT HAS BEEN REACHED. The reservation was `held`
+        # a moment ago and is not now, and no unique violation fired, so the code
+        # this row carries is not the one that reservation names. Refuse and take
+        # the seller down with it: a create this server cannot bind to the
+        # reservation it claims to spend is exactly the wrong-seller binding the
+        # whole step exists to prevent.
+        #
+        # 409 AND NOT 500. A 500 is `unavailable` to a yard phone and is retried
+        # for ever; a 409 on this kind is `needs_review`, which leaves the row
+        # owed and operator-visible instead of settling it or jamming the queue.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "kind": "conflict",
+                "code": "reservation_not_held",
+                "message": "รหัสที่จองไว้ถูกใช้ไปแล้ว กรุณาตรวจสอบ",
+                "entity": "seller",
+                "spent_rows": str(row["spent_rows"]),
+            },
+        )
+    return row
+
+
+# The reservation this create claims, read before anything is written. Keyed on
+# the TOKEN, which is unique per tenant; RLS scopes it, so a token from another
+# shop resolves to nothing rather than to somebody else's row.
+_RESERVATION_BY_TOKEN = (
+    "SELECT code, state, seller_id FROM seller_code_reservations"
+    " WHERE token = :reservation_token"
+)
+
+
 @router.post("/sellers", status_code=status.HTTP_201_CREATED)
 async def create_seller(
-    body: SellerCreate, principal: Principal = Depends(get_principal)
+    body: SellerCreate,
+    response: Response,
+    principal: Principal = Depends(get_principal),
 ) -> dict:
     """Create a seller. STAFF MAY DO THIS — and this is the ONLY write here that
     staff may do.
@@ -1150,9 +1275,162 @@ async def create_seller(
     re-code it, or retire it. That asymmetry is deliberate — creating a row is
     additive and a wrong one is retired by an admin; editing one rewrites a fact
     other rows already point at.
+
+    THREE PATHS, AND THE TOKEN DECIDES BETWEEN THEM:
+
+      * `reservation_token` present — a handset spending a code it reserved
+        before it went offline. The seller and the reservation move in ONE
+        statement, and a REPLAY is answered 200 with the row the first attempt
+        produced. That is hard rule 4's "already created" extended to this route
+        by decision, and it is what makes a lost response cost a lookup instead
+        of a second person.
+      * `code` supplied without a token — the counter, the desktop, a shop with
+        its own paper codes. REFUSED with `code_reserved` if a handset is holding
+        that code offline; otherwise exactly one attempt, as before.
+      * neither — the server mints, above BOTH tables.
+
+    IT TAKES THE PER-TENANT LOCK ON EVERY PATH, unconditionally, before it reads
+    anything. Two of the three write an assigned-shape code into `sellers` and
+    the third could — `S042` typed by hand is an assigned-shape code — so a rule
+    conditioned on the shape or on the path is a rule with an arm somebody gets
+    wrong later. The cost is that two seller creates in ONE shop serialise, which
+    `uq_sellers_tenant_code` already made them do at the INSERT, and the mode is
+    FOR NO KEY UPDATE so nothing else in the shop waits at all.
     """
     async with tenant_connection(principal.tenant_id) as conn:
+        # THE LOCK FIRST. Everything below either derives a code from a maximum
+        # or checks a code against the reservation relation, and both are only
+        # answers if nothing can write that namespace between the read and the
+        # INSERT. The target holding it returns is the refill's business, not
+        # this route's, and is deliberately unused here.
+        await _lock_shop_for_code_assignment(conn)
+
+        if body.reservation_token is not None:
+            if body.code is None:
+                # A token names exactly one code. A request carrying the secret
+                # and not the value it unlocks cannot be completed by guessing,
+                # and inferring the code FROM the token would make the token the
+                # source of the code — which is the one thing the device is
+                # supposed to be holding independently.
+                raise _invalid(
+                    "reservation_token_without_code",
+                    "คำขอนี้ไม่มีรหัสผู้ขาย",
+                    entity="seller",
+                )
+            held = (
+                await conn.execute(
+                    text(_RESERVATION_BY_TOKEN),
+                    {"reservation_token": body.reservation_token},
+                )
+            ).mappings().first()
+            if held is None:
+                # 422 AND NOT A RETRY. Nothing re-issues a reservation, so a
+                # token this shop does not hold will never become one it does:
+                # the payload can never be valid, which is exactly what a 422
+                # means here and what makes it terminal on the device rather than
+                # retried for ever.
+                #
+                # THE BODY NAMES NEITHER THE TOKEN NOR THE CODE. The token is a
+                # secret and echoing one into a response is how a log or a crash
+                # report comes to hold it.
+                raise _invalid(
+                    "reservation_not_found",
+                    "ไม่พบรหัสที่จองไว้สำหรับคำขอนี้",
+                    entity="seller",
+                )
+            if held["code"] != body.code:
+                # The two halves disagree, so one of them is wrong and this
+                # server cannot tell which. Spending the reservation onto the
+                # supplied code would file the row under a code no reservation
+                # names; spending it onto the reservation's code would file it
+                # under one the device did not ask for and whose slip may already
+                # be written. Refuse and name neither value.
+                raise _invalid(
+                    "reservation_code_mismatch",
+                    "รหัสที่ส่งมาไม่ตรงกับรหัสที่จองไว้",
+                    entity="seller",
+                )
+            if held["state"] == "spent":
+                # THE ORDINARY REPLAY, and it never reaches an INSERT. The first
+                # attempt committed and its response was lost; the row it made is
+                # the answer. 200, not 201: this request created nothing.
+                response.status_code = status.HTTP_200_OK
+                existing = await _read_seller(conn, held["seller_id"])
+                if existing is not None:
+                    return existing
+                # UNREACHABLE BY CONSTRUCTION and refused rather than assumed
+                # away: ck_reservations_spent_consistency makes `spent` with a
+                # null seller_id impossible, and the composite FK makes the id
+                # name a row in this tenant. Reaching here means one of those is
+                # gone, and answering 201 by falling through would create a
+                # SECOND seller for a person who already has one.
+                raise _invalid(
+                    "reservation_spent_row_missing",
+                    "รหัสที่จองไว้อ้างถึงผู้ขายที่ไม่พบ",
+                    entity="seller",
+                )
+            try:
+                # A SAVEPOINT for the same reason the mint loop below has one: a
+                # 23505 aborts the whole transaction, and the re-read afterwards
+                # would run against a dead one.
+                async with conn.begin_nested():
+                    row = await _insert_seller_spending(
+                        conn, body, body.code, principal, body.reservation_token
+                    )
+            except IntegrityError as e:
+                # ASK THE AUTHORITY, DO NOT RECOGNISE THE SYMPTOM — the rule
+                # db.constraint_name_of and bills.py's own race handler both
+                # state. Two byte-identical creates can overlap; the loser's
+                # INSERT collides on uq_sellers_tenant_code, and whether this
+                # reservation is now spent is one SELECT away.
+                again = (
+                    await conn.execute(
+                        text(_RESERVATION_BY_TOKEN),
+                        {"reservation_token": body.reservation_token},
+                    )
+                ).mappings().first()
+                if (again is not None and again["state"] == "spent"
+                        and again["seller_id"] is not None):
+                    winner = await _read_seller(conn, again["seller_id"])
+                    if winner is not None:
+                        response.status_code = status.HTTP_200_OK
+                        return winner
+                # NOT the replay. The code is in `sellers` and this reservation
+                # did not put it there — the state the two guards on this route
+                # exist to make unreachable. It keeps its 409: an unreachable
+                # state that has been reached must never be settled on.
+                _raise_for_integrity(e, body.code)
+                raise
+            return _seller_payload(row)
+
         if body.code is not None:
+            # THE FIRST OF THE TWO GUARDS. A supplied code that a handset is
+            # holding offline is REFUSED, and the refusal has a code of its own.
+            # Without it, somebody at the counter types the code a phone is
+            # carrying, the row is created because the reservation is not in
+            # `sellers` and uq_sellers_tenant_code is the only arbiter, and the
+            # phone then drains onto a seller it did not create — the measured
+            # defect, reproduced under the new design.
+            #
+            # `held` ONLY, and never `spent`. A spent reservation's code IS in
+            # `sellers` by construction, so the unique constraint answers it and
+            # `duplicate_code` is the honest word for that; this refusal is for
+            # a code that is spoken for and provably absent from `sellers`.
+            #
+            # CHECK-THEN-INSERT IS ONLY SAFE UNDER THE LOCK taken at the top of
+            # this handler. Without it a refill could commit this very code
+            # between the two statements and the create would write a reserved
+            # code with nobody making a mistake.
+            reserved = (
+                await conn.execute(
+                    text("SELECT 1 FROM seller_code_reservations"
+                         " WHERE code = :c AND state = 'held'"),
+                    {"c": body.code},
+                )
+            ).first()
+            if reserved is not None:
+                raise _code_reserved(body.code)
+
             # SUPPLIED — exactly one attempt, and a collision is the caller's 409.
             # RETRYING HERE WOULD BE THE ONE OUTCOME WORSE THAN THE REFUSAL: it
             # would file the row under a code the shop did not choose, while the
@@ -1165,8 +1443,22 @@ async def create_seller(
                 raise
             return _seller_payload(row)
 
+        # THE SECOND GUARD, AND IT IS THE WORSE OF THE TWO because it needs
+        # nobody to make a mistake. The candidate is derived above BOTH tables,
+        # IN THE DERIVATION and never as a post-check on top of this loop: the
+        # retry survives a lost race only because the winner's COMMIT moves the
+        # table the candidate is read from, and a reservation moves nothing in
+        # `sellers`. A post-check would therefore re-derive the identical string
+        # on all eight attempts and answer 409 code_assignment_failed to an
+        # online caller at the counter — with ONE code reserved, not a long block.
+        #
+        # THE BUDGET KEEPS THE JOB IT ALREADY HAD. Under the lock this loop
+        # should never take a second attempt; it stays because the lock is a rule
+        # a future writer can forget and no constraint refuses them, and because
+        # a hand-typed `S006` can still collide. Over the union it still ADVANCES
+        # for the original reason: the winner's row lands in `sellers`.
         for _ in range(_ASSIGN_ATTEMPTS):
-            candidate = await _next_seller_code(conn)
+            candidate = (await _next_assigned_codes(conn, 1))[0]
             try:
                 # A SAVEPOINT, so a lost race costs this INSERT and not the
                 # request. Without it the 23505 aborts the whole transaction and
