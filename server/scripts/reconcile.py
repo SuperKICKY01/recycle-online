@@ -290,6 +290,23 @@ DOC_NO_RE = re.compile(r"^B-(\d{4})-([1-9]\d*)$")
 TENANT_TABLES = [
     "users", "uoms", "product_categories", "products", "product_prices",
     "sellers", "purchase_bills", "purchase_bill_items", "doc_no_counters",
+    # Migration 0012. Added the day the relation landed, because S2 goes red on
+    # a table it has never heard of and its own row says to add it here — that
+    # red is the checker working, not a regression, and this is the repair it
+    # prescribes. Being in this list is NOT a bookkeeping entry: it is what puts
+    # the relation under S1's tenant_id check, S3's RLS check, B1's blind read
+    # and X2's completeness sum. It carries no per-tenant SQL check yet; the
+    # invariant worth one spans `sellers` and this table and cannot be true
+    # until the create path spends a reservation.
+    #
+    # ITS CONSTRAINTS AND ITS INDEX ARE DELIBERATELY NOT IN REQUIRED_CONSTRAINTS
+    # OR REQUIRED_INDEXES, the same decision 0005, 0006 and 0011 recorded for
+    # theirs: prove_reconcile.py restores a COPY from a dump, and a dump taken
+    # before 0012 has neither, so S5 would go red on every such copy for a reason
+    # that has nothing to do with money. Wake condition, the same as its three
+    # twins: a dump taken AFTER 0012 becoming the oldest one anyone restores
+    # from.
+    "seller_code_reservations",
 ]
 ALL_RLS_TABLES = ["tenants", *TENANT_TABLES]
 
@@ -594,15 +611,23 @@ SELECT (SELECT count(*) FROM purchase_bills)                              AS bil
        (SELECT count(*) FROM product_categories)                          AS categories,
        (SELECT count(*) FROM uoms)                                        AS uoms,
        (SELECT count(*) FROM users)                                       AS users,
-       (SELECT count(*) FROM doc_no_counters)                             AS counters
+       (SELECT count(*) FROM doc_no_counters)                             AS counters,
+       (SELECT count(*) FROM seller_code_reservations)                    AS reservations
 """
 
 # Which SCOPE_SQL column feeds each table's running total for X2.
+#
+# EVERY TABLE IN TENANT_TABLES MUST HAVE AN ENTRY HERE, and the failure of
+# forgetting one is silent in the direction that reads as a defect: X2 sums the
+# per-tenant sweep against the global count, so a table listed above with no
+# column here contributes 0 to `seen` and reports every row it holds as UNSEEN —
+# a red about tenant isolation raised by a missing dictionary key.
 SCOPE_COLUMN = {
     "purchase_bills": "bills", "purchase_bill_items": "items", "sellers": "sellers",
     "products": "products", "product_prices": "prices",
     "product_categories": "categories", "uoms": "uoms", "users": "users",
     "doc_no_counters": "counters",
+    "seller_code_reservations": "reservations",
 }
 
 CHECKS_PER_TENANT = len(SQL_CHECKS) + 4      # T0 + the SQL checks + T7/T8/T9
@@ -1081,7 +1106,8 @@ async def sweep(rep: Report, tenants: Sequence[uuidlib.UUID],
                 print(f"      scope: {scope['bills']} bills ({scope['voided']} voided),"
                       f" {scope['items']} items, {scope['sellers']} sellers,"
                       f" {scope['products']} products, {scope['prices']} prices,"
-                      f" {scope['counters']} counter rows, {scope['users']} users")
+                      f" {scope['counters']} counter rows, {scope['users']} users,"
+                      f" {scope['reservations']} code reservations")
             for r in results:
                 rep.add(str(tid), r, quiet=True)
             if (verbose or has_rows or failed) and not failed and not verbose:

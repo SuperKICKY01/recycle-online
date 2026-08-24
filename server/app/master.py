@@ -69,6 +69,7 @@ precisely the drift this project forbids.
 """
 from __future__ import annotations
 
+import secrets
 import uuid
 from decimal import Decimal
 from typing import Annotated, Any, Literal
@@ -904,6 +905,15 @@ async def _next_seller_code(conn: AsyncConnection) -> str:
     codes — `A-12`, a name, a national id — keeps them, and they neither move
     this number nor are moved by it. `S006` typed by hand DOES take part, which
     is the point: the assigner must see it, or it would propose it again.
+
+    IT READS `sellers` ALONE, AND THAT IS NOW A KNOWN HOLE RATHER THAN A
+    SIMPLIFICATION. A code reserved to a handset is not a row in `sellers`, so
+    this maximum does not see one, and the loop below will hand a RESERVED code
+    to an online caller who supplied none. Nobody has to make a mistake for that
+    to happen. _next_assigned_codes above derives above BOTH tables and is what
+    the refill route uses; moving the create path onto it is a change to
+    behaviour that already works, so it is not in the commit that added the
+    relation.
     """
     highest = (
         await conn.execute(
@@ -930,6 +940,147 @@ async def _next_seller_code(conn: AsyncConnection) -> str:
             max_length=_CODE_MAX_LENGTH,
         )
     return candidate
+
+
+# ---------------------------------------------------------------------------
+# THE ASSIGNED CODE SPACE HAS TWO WRITERS, AND THIS IS THE DERIVATION THEY MUST
+# SHARE (ROADMAP P1.8b, the seller-kind design)
+# ---------------------------------------------------------------------------
+# `sellers` is no longer the only table holding an assigned-shape code. A code
+# reserved to a handset is a code that handset WILL write into `sellers` when it
+# comes back, so the next candidate has to be derived above BOTH tables or the
+# server hands a device's code to somebody at the counter -- and neither of them
+# does anything wrong.
+#
+# THE MAXIMUM IS TAKEN IN ONE EXPRESSION, over the UNION, and the candidate is
+# its successor. That is a decision and not a style: the alternative -- derive
+# from `sellers`, then check the candidate against the reservations and retry --
+# CANNOT WORK, and the reason is arithmetic rather than a risk to be sized. The
+# retry above it survives a lost race because the WINNER'S COMMIT MOVES THE
+# TABLE THE CANDIDATE IS DERIVED FROM. A reservation moves nothing in `sellers`,
+# so a post-check re-derives the IDENTICAL value on every one of its attempts
+# and spends the whole budget on one number. ONE reserved code is enough to
+# refuse an online create at the counter with certainty.
+#
+# Deriving ABOVE the whole block rather than merely OUTSIDE it is also the only
+# answer consistent with the sequence a shop's paper slips carry.
+#
+# THE SHAPE FILTER IS ON BOTH SIDES, AND IT IS WHAT KEEPS THE CAST TOTAL. Every
+# code in the reservation relation is minted by this function, so today the
+# filter changes nothing there -- but `substring('A-12' from 2)::numeric` RAISES,
+# and a 500 on this path is `unavailable` to a yard phone. A shop running its own
+# paper codes keeps them, and they neither move this number nor are moved by it.
+#
+# RLS scopes both halves; there is no WHERE tenant_id here and there must not be.
+_ASSIGNED_CODE_UNION = (
+    "SELECT max(substring(code from 2)::numeric) FROM ("
+    " SELECT code FROM sellers WHERE code ~ :shape"
+    " UNION ALL"
+    " SELECT code FROM seller_code_reservations WHERE code ~ :shape"
+    ") AS assigned"
+)
+
+
+def _format_assigned_code(number: int) -> str:
+    """`S007` from 7, or the same refusal `_next_seller_code` raises.
+
+    Split out so the two writers of this namespace cannot disagree about the
+    width, the prefix, or what happens at the edge type's limit. Reachable only
+    if a shop has typed an absurdly long S-code by hand.
+    """
+    candidate = f"S{number:0{_ASSIGNED_CODE_WIDTH}d}"
+    if len(candidate) > _CODE_MAX_LENGTH:
+        raise _invalid(
+            "code_assignment_overflow",
+            "ไม่สามารถออกรหัสผู้ขายอัตโนมัติได้ กรุณาระบุรหัสเอง",
+            entity="seller",
+            candidate_length=len(candidate),
+            max_length=_CODE_MAX_LENGTH,
+        )
+    return candidate
+
+
+async def _next_assigned_codes(conn: AsyncConnection, count: int) -> list[str]:
+    """The next `count` assigned codes for THIS tenant, above BOTH tables.
+
+    ONE read for the whole block: consecutive successors of one maximum. That is
+    correct only while nothing else can write this namespace between the read and
+    the INSERT, which is what _lock_shop_for_code_assignment below is for. A
+    caller that does not hold that lock is minting on a hope.
+    """
+    highest = (
+        await conn.execute(
+            text(_ASSIGNED_CODE_UNION), {"shape": _ASSIGNED_CODE_SHAPE}
+        )
+    ).scalar_one()
+    nxt = 1 if highest is None else int(highest) + 1
+    return [_format_assigned_code(nxt + i) for i in range(count)]
+
+
+async def _lock_shop_for_code_assignment(conn: AsyncConnection) -> int:
+    """Serialise this tenant's writers of the assigned code space, and return the
+    target holding while the lock is held.
+
+    WHY A LOCK AT ALL, when the unique index is the arbiter everywhere else in
+    this module: because it is the arbiter for TWO CREATES and is SILENT about a
+    create racing a refill. Those two write DIFFERENT TABLES, so both commit,
+    and a reserved code lands in `sellers` with nobody making a mistake. There is
+    no constraint that can see across the two, so there has to be a lock.
+
+    WHY THE TENANT'S OWN ROW. It is an object that already exists; it is already
+    under a tenant-keyed RLS policy, so a mistake cannot reach another shop's
+    row; the refill has to read this row anyway for the target; and it is
+    released by the COMMIT rather than at some later moment nobody owns. An
+    advisory key was weighed and refused -- it is not RLS-scoped, and a lock that
+    appears nowhere in the schema is a lock the next writer does not know to take.
+
+    ITS RESIDUAL, STATED RATHER THAN HIDDEN: this is a rule a future writer can
+    forget, and no constraint refuses them. A third path that mints an
+    assigned-shape code without taking this lock is not a compile error and not a
+    violated key -- it is a silent re-opening of the hole. What would remove the
+    residual entirely is a single relation holding every assigned code, so that a
+    primary key is the arbiter for both writers and no lock is remembered
+    anywhere; that is a larger design, and its price is a nullable holder, a
+    token for rows that have no device, and a backfill across every seller a shop
+    already has.
+
+    FOR NO KEY UPDATE, AND NOT FOR UPDATE, AND THE DIFFERENCE IS NOT A DETAIL.
+    `tenants.id` is referenced by a foreign key from EVERY tenant-scoped table,
+    and an INSERT's FK check takes FOR KEY SHARE on the parent row. FOR UPDATE
+    conflicts with FOR KEY SHARE; FOR NO KEY UPDATE does not. So FOR UPDATE here
+    would serialise the two code writers AND stall every insert of every
+    tenant-scoped row in the shop -- a bill on the weighbridge included -- for the
+    length of a refill, on every sync pass from every device.
+
+    MEASURED ON THIS CLUSTER, PostgreSQL 16.14, 2026-08-24, with a 1.5 s hold and
+    a no-holder control reading 3-5 ms:
+
+        holder mode            INSERT of a child row     the other writer's lock
+        ------------------     ----------------------    ----------------------
+        (nobody)                      4.6 ms  free              2.7 ms  free
+        FOR UPDATE                 1506.0 ms  BLOCKED        1508.8 ms  BLOCKED
+        FOR NO KEY UPDATE             3.2 ms  free           1511.5 ms  BLOCKED
+
+    The bottom row is exactly what this lock is for: the two writers of the
+    assigned code space wait for each other and nothing else waits at all.
+
+    No WHERE and no tenant_id, for the reason _read_shop has none: the tenants
+    policy is FORCED and this connection carries SET LOCAL app.tenant_id, so
+    exactly one row is visible. Asserting that is what turns "the policy is doing
+    its job" from an assumption into a check -- 0 would mean no tenant context.
+    """
+    row = (
+        await conn.execute(
+            text("SELECT seller_code_target_holding FROM tenants"
+                 " FOR NO KEY UPDATE")
+        )
+    ).mappings().first()
+    if row is None:
+        # The same named refusal update_shop raises for the same condition, and
+        # for its reason: an unhandled 500 here is `unavailable` to a client,
+        # which retries it forever.
+        raise _invalid("shop_not_scoped", "ไม่พบร้านของผู้ใช้นี้", rowcount="0")
+    return int(row["seller_code_target_holding"])
 
 
 async def _insert_seller(
@@ -1080,6 +1231,171 @@ async def activate_seller(
     async with tenant_connection(principal.tenant_id) as conn:
         await _set_active(conn, "sellers", "seller", seller_id, True)
         return await _read_seller(conn, seller_id)
+
+
+# ---------------------------------------------------------------------------
+# seller code reservations — the codes a handset carries offline
+#
+# A yard phone that is offline cannot ask the server for a code, and it must not
+# invent one: two handsets inventing codes in one shop collide days later and
+# bind one device's local seller to a row somebody else created — a wrong seller
+# on a cash purchase. So the codes are MINTED HERE, IN ADVANCE, and reserved to
+# one device. Migration 0012 holds the relation and the reasoning behind its
+# shape; this is the only route that writes it.
+#
+# THE ROUTE IS A TOP-UP TO A TARGET, NOT AN ISSUE OF N, AND THAT IS THE WHOLE
+# DESIGN OF IT.
+#
+#   * WHAT IDENTIFIES A REQUEST: (tenant, device) and nothing else. No request
+#     id, no idempotency key, no quantity. THE THING BEING ASKED FOR IS A LEVEL
+#     AND NOT AN EVENT, and a level is idempotent by construction: *make this
+#     device hold its target*, asked twice, is the same sentence as asked once.
+#     A key would make a repeated ISSUE recognisable; making it a top-up means
+#     there is no issue to repeat.
+#
+#   * WHAT IS MINTED: the shortfall THIS SERVER COMPUTES — the tenant's target
+#     minus what this device currently holds — and never a number the caller
+#     sent. A quantity on the wire is a field the server must either trust,
+#     which is the leak, or ignore, which is a field nothing reads.
+#
+#   * WHAT IS ANSWERED, and this is the load-bearing half: EVERYTHING THE DEVICE
+#     CURRENTLY HOLDS, never only what was just minted. A route that returned
+#     only the new block answers a repeat with an EMPTY set — the server has
+#     already topped this device up, so it mints nothing and says nothing, the
+#     device's holding never grows, it asks again every pass for ever, and a
+#     full block sits `held` in its name that no reclaim will ever return.
+#     ONE ROUTE, TWO OPPOSITE FAILURES: mint-again burns the code space,
+#     return-nothing strands the device. Only *return what it holds* is safe
+#     against both, and hard rule 4's "already created" is the shape it borrows.
+#
+# STAFF MAY CALL IT, the same gate POST /sellers takes and for D1's argument
+# unchanged: a yard that cannot obtain codes cannot buy a load.
+#
+# WHAT THIS ROUTE DOES NOT DO. It reclaims nothing — a code issued to a device
+# that never comes back leaks for ever, which is migration 0012's decision and is
+# not softened here. And it bounds ONE identity, not the NUMBER of identities: a
+# caller minting reservations under device ids it invents is unaffected, and that
+# is a recorded bound rather than a hole, because every such caller can already
+# create sellers.
+# ---------------------------------------------------------------------------
+class ReservationTopUp(BaseModel):
+    """The whole request. One field, and the absence of the others is the design.
+
+    NO quantity: the server computes the shortfall. NO idempotency key: a level
+    asked for twice is the same sentence. `extra="forbid"` so a client that sends
+    one is refused loudly rather than having it silently ignored — a field that
+    is accepted and dropped is a field the client believes in.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    # Minted ON the handset and stored in its SQLite. Not a user and not a
+    # tenant: the codes physically live in one device, so a person signing out
+    # here and in on a spare handset must not take the holding with them.
+    device_id: uuid.UUID
+
+
+# Bytes of entropy per reservation token, before base64url encoding — 32 bytes
+# is 256 bits and renders as 43 characters, well inside the column's text type.
+# NOT a length: secrets.token_urlsafe takes a BYTE count and returns a longer
+# string, and a constant named for the wrong unit is how a 32-character token
+# gets shipped by somebody who read this line as the answer.
+#
+# There is no CHECK constraint enforcing it and there deliberately is not one:
+# the property required is ENTROPY, no CHECK expresses entropy, and a
+# minimum-length CHECK would read as coverage while admitting a counter of the
+# same width. Migration 0012 says the same at the column comment.
+_TOKEN_BYTES = 32
+
+
+def _reservation_payload(r: Any) -> dict:
+    return {"code": r["code"], "token": r["token"]}
+
+
+# ORDER BY code is a DISPLAY order over a SET and nothing depends on it: the
+# device spends whichever it likes. It is deliberately lexical rather than
+# `substring(code from 2)::numeric`, which would sort correctly past the S999
+# width boundary and RAISE on any row whose code is not of the assigned shape —
+# trading a cosmetic ordering defect for a 500 on the route a yard phone needs.
+_HELD_BY_DEVICE = (
+    "SELECT code, token FROM seller_code_reservations"
+    " WHERE device_id = :d AND state = 'held'"
+    " ORDER BY code"
+)
+
+
+@router.post("/seller-code-reservations")
+async def top_up_seller_code_reservations(
+    body: ReservationTopUp, principal: Principal = Depends(get_principal)
+) -> dict:
+    """Make this device hold its shop's target number of reserved seller codes.
+
+    200 AND NEVER 201, INCLUDING ON THE CALL THAT MINTS A WHOLE BLOCK. The
+    response describes a STATE — what this device holds — and a status that
+    alternated with the number of rows written would put the quantity back on the
+    wire in the one place the design took it off.
+    """
+    async with tenant_connection(principal.tenant_id) as conn:
+        # THE LOCK FIRST, BEFORE ANYTHING IS READ. Everything below derives from
+        # a maximum, and a derivation is only an answer if nothing can write this
+        # namespace between the read and the INSERT.
+        target = await _lock_shop_for_code_assignment(conn)
+
+        held = (
+            await conn.execute(text(_HELD_BY_DEVICE), {"d": body.device_id})
+        ).mappings().all()
+
+        # max(), not a bare subtraction. A device holding MORE than target is not
+        # an error to refuse — an operator lowering the target leaves every
+        # handset above it — and a negative count would ask for a block of
+        # nothing in a statement that must not run at all.
+        shortfall = max(0, target - len(held))
+        if shortfall:
+            codes = await _next_assigned_codes(conn, shortfall)
+            await conn.execute(
+                text(
+                    f"INSERT INTO seller_code_reservations"
+                    f" (tenant_id, code, device_id, token, state, issued_by)"
+                    f" VALUES ({_TENANT}, :code, :device_id, :token, 'held',"
+                    f" :issued_by)"
+                ),
+                [
+                    {
+                        "code": code,
+                        "device_id": body.device_id,
+                        # ONE FRESH SECRET PER ROW, from a CSPRNG, never derived
+                        # from the code or from anything the caller sent. This
+                        # token is the whole of the guard on the reservation:
+                        # a create carrying it is recognised as the SAME create,
+                        # which is what stops a lost response producing a second
+                        # seller for one person.
+                        "token": secrets.token_urlsafe(_TOKEN_BYTES),
+                        # THE SESSION THAT ASKED, never a field from the body,
+                        # for the reason _insert_seller gives at its own
+                        # created_by: a client-supplied author is an author the
+                        # client chooses. get_principal has already proven this
+                        # names a live user IN THIS TENANT, so the composite
+                        # (tenant_id, issued_by) FK cannot fail here.
+                        "issued_by": principal.user_id,
+                    }
+                    for code in codes
+                ],
+            )
+
+        # READ BACK, ALWAYS, AND NOT ONLY WHEN SOMETHING WAS MINTED. This is the
+        # answer the design requires — the device's WHOLE holding — and taking it
+        # from the table rather than from `held + codes` means a repeat after a
+        # lost response is repaired from the server's own view.
+        rows = (
+            await conn.execute(text(_HELD_BY_DEVICE), {"d": body.device_id})
+        ).mappings().all()
+
+    return {
+        "device_id": str(body.device_id),
+        # The level the holding is measured against, so the device does not have
+        # to hold a second copy of a number the shop can change.
+        "target_holding": target,
+        "reservations": [_reservation_payload(r) for r in rows],
+    }
 
 
 # ---------------------------------------------------------------------------
