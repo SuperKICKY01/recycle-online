@@ -57,6 +57,178 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.8b SERVER — THE RESERVATION RELATION, THE TOP-UP ROUTE, AND THE TWO GUARDS.
+BUILT AND PROVEN, 2026-08-24/25. Three commits: `a60aef5` additive, `b8b557f` the
+guards, and the documentation commit carrying this entry.** This supersedes the
+P-SELLERKIND-DESIGN-AMEND entry below as the current phase; that entry's record
+stands unchanged. **NO SHA IS GIVEN FOR THE THIRD COMMIT**, deliberately — the work
+carrying this sentence is uncommitted at the moment it is written, so the only sha
+available is the one that does NOT contain it, which is the corollary
+`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT" records.
+
+**WHAT EXISTS NOW THAT DID NOT.** Migration `0012` creates
+`seller_code_reservations`, keyed `PRIMARY KEY (tenant_id, code)` with
+`UNIQUE (tenant_id, token)` beside it, two states and one transition, and
+`ck_reservations_spent_consistency` tying `spent` to a non-null `seller_id` in both
+directions. `tenants` gains `seller_code_target_holding`, `NOT NULL DEFAULT 20`,
+floor of 1. `POST /seller-code-reservations` tops a device up to that target,
+mints the shortfall IT computes, and answers with the device's WHOLE holding.
+`POST /sellers` gained three paths: a reservation token that spends a code and
+answers a replay 200 with the first attempt's row; a supplied code REFUSED
+`code_reserved` when a handset holds it; and a no-code mint derived above BOTH
+tables under a per-tenant lock. `_next_seller_code` is DELETED — an unused function
+reading one of the two tables, beside the one reading both, is the one the next
+writer calls.
+
+**THE DESIGN WAS AMENDED BY ONE CLAUSE, ON A MEASUREMENT, AND THE OWNER RULED IT.**
+`ROADMAP.md`'s lock decision said *taken FOR UPDATE*; it is now FOR NO KEY UPDATE.
+`tenants.id` is referenced by **ELEVEN foreign keys — ten in `public`, one in
+`directory`, `purchase_bills` and `purchase_bill_items` among them** (re-derived
+from `pg_constraint` at `b8b557f`, and re-derived independently by the advising
+session, which is why the figure is stated rather than carried). An INSERT's FK
+check takes `FOR KEY SHARE` on the parent and `FOR UPDATE` conflicts with it, so
+the clause as written would have stalled every insert in the shop for the length of
+a refill, on every sync pass, with nothing going red. **MEASURED, 1.5 s hold,
+control 3-5 ms: a child INSERT is 4.6 ms with nobody holding, 1506.0 ms under
+`FOR UPDATE`, 3.2 ms under `FOR NO KEY UPDATE`, while the other writer's lock is
+blocked under both.** Written as a dated supersession at the site of the sentence
+it corrects; `git diff --numstat -- ROADMAP.md` reads **58 insertions and ZERO
+deletions**, and **no heading was added** (`grep -c "^+#"` over the diff returns 0),
+so the blast radius on every citation into that file is zero.
+
+**THE PROOFS, AND BOTH RUN TWICE AGAINST A LIVE SCRATCH DATABASE WITH NO RESEED.**
+`prove_seller_code_reservations.py` — 52 cells, exit 0 twice, from a different code
+maximum each run. `prove_seller_code_guards.py` — exit 0 twice, from different
+starting states (`S014` and `S056`). Both REFUSE the live database and start their
+own uvicorn, because an API process is bound to its database at startup; both
+require a sentinel written before the server started to come back through the
+route.
+
+**THE GUARDS ARE MEASURED AS PAIRS AGAINST A REAL OLD SERVER, not against a
+description of one.** `prove_seller_code_guards.py` starts TWO uvicorns on ONE
+scratch database — one from a git worktree at `a60aef5`, the commit before the
+guards, one from the tree as it stands. ADMITTED: the old server takes a supplied
+reserved code (201, row created) and MINTS A CODE FROM INSIDE the reserved block.
+REFUSED: the new one answers 409 `code_reserved` with no row, and mints above the
+whole relation. Pointing `--old-tree` at the current tree reddens the ADMITTED
+cells, which is the instrument checking itself.
+
+**ELEVEN DISPROOFS ACROSS THE PHASE, EACH NAMING ITS CELL BEFORE RUNNING, every one
+against a SCRATCH database, with `master.py` restored byte-exact after each
+(sha256 verified either side).** The ones worth reading: the NON-WALKING POST-CHECK
+reddens the assigner cell exactly as the design predicts — with EXACTLY ONE code
+reserved, 409 `code_assignment_failed` and nothing minted; the union half dropped
+in the additive commit reddened WIDE (14 cells) because the primary key refused the
+write, so a second mutation the key ADMITS (`max + 2`) was run and reddened ONE cell
+naming its values; the spend written as a separate unchecked UPDATE reddens the
+spent-reservation cell at `seller_id (None)` against a real created id.
+
+**AND ONE DISPROOF THAT CORRECTLY STAYED GREEN, WHICH IS THE FINDING.** Disabling
+ONLY the `spent` fast path left the replay cells green — the IntegrityError re-read
+answered 200 with the same id on its own. So the fast path is an OPTIMISATION and
+the re-read is the GUARANTEE, and that mutation is the staging that makes the
+re-read arm EXECUTE. Both had to be disabled before the cell moved. It has its own
+lesson.
+
+**TWO LESSONS WERE WRITTEN, AND ONE OF THEM COST THREE REWRITES OF THE SAME CELL.**
+A per-tenant lock cannot be proven by a race: a start barrier synchronises the
+REQUESTS while the section the lock protects is a sub-millisecond SELECT behind an
+auth round trip, so with the lock deleted the barrier race stayed green and, across
+five runs, collided ONCE. The second attempt — hold the row `FOR UPDATE` and time
+the route — was green with the lock deleted too, because the route's INSERT was
+blocked by the proof's OWN holder through the foreign key. The third — time an
+unrelated write while the create was blocked — could not fail either, because a
+request WAITING for a lock holds nothing. What works is a PAIR OF HOLDS.
+
+**WHAT THE SERVER-LABELLED CRITERIA NOW HAVE, EACH NAMED.**
+`A-CODE-HAS-ONE-HOLDER-AND-KEEPS-IT` — both cells, the primary key refusing a second
+holder with its presence sibling, and two devices in one tenant whose sets are
+disjoint AND whose union is the sum of their sizes.
+`A-SPENT-RESERVATION-NAMES-A-ROW-THAT-EXISTS` — all three cells, with the invariant
+queries SCOPED TO THE RUN'S OWN DEVICES (see the queue entry; the shop-wide version
+is not built). `A-SUPPLIED-RESERVED-CODE-IS-REFUSED`, `A-MINTED-CODE-SKIPS-WHAT-IS-
+RESERVED` and `THE-ASSIGNER-STILL-TERMINATES-ABOVE-A-RESERVED-BLOCK` — the pairs
+above, the third with all three cells including the single-code staging the
+amendment added. `A-REPLAY-CARRYING-THE-TOKEN-IS-ANSWERED-WITH-THE-FIRST-ROW` — all
+three cells plus a concurrent replay behind a barrier. **The HEADLESS and HANDSET
+criteria are untouched and none is claimed.**
+
+**THE SCHEMA WAS AUDITED FIELD BY FIELD OUT OF POSTGRES, NOT OFF THE MIGRATION, and
+it caught something.** The `state` membership CHECK landed AUTO-NAMED
+(`seller_code_reservations_state_check`) beside an explicitly named sibling; it is
+now `ck_reservations_state`, the convention `0003` and `0010` already follow. Grants
+read back from `information_schema`: `recycle_app` holds INSERT, SELECT, UPDATE and
+**no DELETE**, so the REVOKE did the work the GRANT could not — 0008's measurement,
+confirmed again.
+
+**THE BACKUP/RESTORE KEY SPACE WAS WALKED ON THE COMMIT THAT WIDENED IT.**
+`pg_dump` emits a COPY block for the EMPTY new table, so the key space widened at
+MIGRATION time and not at first-row time; the manifest key is BARE because the
+relation is in `public`, so both sides read it out of `public` and there is no
+disagreement to find. Restore into a scratch database: `[OK] dump=0 restored=0`
+across 14 keys, `RESTORE_EXIT=0`, RLS **11 ENABLE / 11 FORCE / 11 policies** where
+it was 10/10/10.
+
+**`reconcile.py` WENT RED AND THAT WAS THE CHECKER WORKING.** S2 — *no table exists
+that this checker does not know about* — reported exactly one violation naming the
+new table and prescribing the repair, with S1, S3, S4, S5, B1 and all 68 per-tenant
+checks still green. The table is now in `TENANT_TABLES`, which is not bookkeeping:
+it puts the relation under S1, S3, B1 and X2, and `SCOPE_COLUMN` gained the entry X2
+needs or every row it holds would report as UNSEEN. Its constraints and its index
+stay OUT of `REQUIRED_CONSTRAINTS`/`REQUIRED_INDEXES`, the decision `0005`, `0006`
+and `0011` each recorded, with the same wake condition.
+
+**EIGHTEEN PRE-EXISTING SERVER PROOFS RUN TWICE, BEFORE AND AFTER THE RISKY HALF.
+SEVENTEEN EXIT 0 BOTH TIMES.** `prove_master_write.py` is RED and **was already
+red** — four cells, the first being `POST /sellers -> 403` against a 201.
+Established by MEASUREMENT rather than by comparing dates: run against HEAD's code
+on a server confirmed to answer 404 on the new route, it produces the same four
+cells at the same lines with the same text. Queued, not fixed.
+
+**`prove_seller_create.py` WAS UPDATED BECAUSE THE RULE CHANGED, not because it was
+wrong.** Its expectation read `max(code)` over `sellers` alone, so it expected
+`S845` while the server correctly minted `S1010` above a thousand reservations. The
+new SQL is written out in the checker rather than imported, so it remains that
+checker's own statement of the rule; what is shared is the DECISION. It was the ONLY
+proof encoding that derivation — `grep -rn "max(substring" server/scripts/`.
+
+**THE DEV DATABASE IS AT 0012 AND HOLDS ZERO RESERVATIONS.** Read back:
+`reservations=0, rev=0012, targets=20`. Nothing was minted into `recycle` by any of
+this, deliberately — a reservation is never reclaimed, so a refill against dev would
+burn a stretch of its seller code sequence permanently, which is the refusal the
+proof script carries in its own words. The handler is proven against scratch and the
+dev server's liveness was established through the changed path without writing a
+row: `POST /sellers` carrying a `reservation_token` answered a LIST-shaped 422
+`extra_forbidden` before the restart and a DICT-shaped 422 `reservation_not_found`
+after it, from the same process family, with the probe writing 0 rows.
+
+**NOTHING WAS MINTED, EACH COUNT WITH ITS TOOL AND ITS DEFINITION.** S-numbers
+**22 → 22**, `grep -c '^\*\*S[0-9]\+ — '`. P-number headings **37 → 37**,
+`grep -c '^### P[0-9]'`. Both taken against `git show HEAD:ROADMAP.md` and the
+working tree.
+
+**THIS PHASE LEFT SIX SCRATCH DATABASES ON THE CLUSTER, RE-DERIVED AGAINST
+`pg_database` RATHER THAN COUNTED FROM MEMORY — and the first attempt at this
+figure said FOUR and then listed six, which is why it is written with its
+command.** `SELECT count(*) FILTER (WHERE datname LIKE 'recycle_p18b_%'), count(*)
+FILTER (WHERE datname NOT LIKE 'recycle_p18b_%'), count(*) FROM pg_database WHERE
+datname LIKE 'recycle%'` returns **6 / 10 / 16**. The six are
+`recycle_p18b_break`, `_clock`, `_gbreak`, `_guards`, `_scratch` and `_users`, all
+restored from one backup taken after migration `0012`; `_break` and `_gbreak` hold
+deliberate mutation debris and `_guards` holds the invariant violation its
+ADMITTED cells create, so none of the six is a clean copy of anything.
+**THE OTHER TEN ARE `recycle` ITSELF AND NINE THAT PREDATE THIS WORK**, and they
+are NOT this phase's to remove — no retention rule exists for scratch databases at
+all, which is queued separately and is where that decision belongs.
+
+**WHAT THIS PHASE DID NOT BUILD, AND NONE OF IT IS CLAIMED.** Nothing under
+`mobile/`, `packages/` or `desktop/` moved — the device identity, the
+`seller_create` outbox kind and the local schema are the NEXT step, and this one
+gives them a server to talk to. The surfaces, the reserve-level wording and the bill
+that parks behind an uncreated seller are the third. No screen exists and no Thai
+sentence was written for one. Both mobile typecheck programs exit 0 bare, which for
+a server-only change is a regression check and evidence about nothing else.
+
 **P-SELLERKIND-DESIGN-AMEND — THE THREE HOLES THE CRITERIA REVIEW OPENED ARE CLOSED
 IN THE DESIGN, `low` STOPS BEING A WARNING, AND THE SURFACES QUESTION IS RULED.
 DOCUMENTATION ONLY, 2026-08-24. One commit.** This supersedes the P-SELLERKIND-CRITERIA
@@ -5186,6 +5358,18 @@ however carefully done.
 | `GET /bills` limit | **50 default, 200 max** | `bills.py:490` | **unrecorded — chosen without a written reason.** Note it is a different pair from the daily report's 200/500 in `reports.py`, with nothing recorded about why the two listing endpoints differ | 1 |
 | `_DEFAULT_LINE_LIMIT` / `_MAX_LINE_LIMIT` | **200 / 500** | `reports.py:205-206` | the money is never paged — every total is a SQL aggregate over the whole day, computed independently of the line list, so a truncated list cannot produce a short total by construction. Only the LINES page | 1 |
 | `_VOID_CAP` | **500** | `reports.py:210` | not paging, deliberately: "truncating the fraud-surveillance list is exactly the wrong thing to truncate, and voids are rare by nature". A hard cap purely so the response cannot grow unbounded; "a day that hits it is itself the finding" | 1 |
+| `seller_code_target_holding` | **20** (per tenant, `NOT NULL DEFAULT 20`, floor of 1) | migration `0012`, column on `tenants` | **labelled an ASSUMPTION by the migration that creates it, in those words, which is what separates it from every "unrecorded" row above** — the reasoning is written down and says it is not a measurement. "The right target is a function of the walk-in rate and the longest offline stretch, and this repository measures neither." 20 is "a day's walk-ins at a yard busy enough to matter and small enough that the gaps from a lost handset are unremarkable". **THE FIRST ROW IN THIS TABLE THAT IS PER-TENANT AND CHANGEABLE WITHOUT A RELEASE** — every other value here is a literal in source, so a trial on this one is an UPDATE and leaves no commit for `git log -S` to find; a trial on it must be recorded HERE or nowhere. What settles it is a shop trading (P2.4); the floor of 1 is enforced by `ck_tenants_seller_code_target_holding` because zero would make offline seller creation permanently impossible while every screen reported a healthy device | 1 |
+
+**THE DESIGN POINTS AT THE WRONG FILE FOR THIS LEDGER, AND THE POINTER IS LOOSE
+RATHER THAN WRONG — noted 2026-08-25, and the design is NOT edited for it.**
+`ROADMAP.md`'s seller-kind design says the target holding's value "belongs in this
+file's tuned-constants ledger the day it lands", and *this file* there means
+`ROADMAP.md`, which has no such ledger. The ledger is here, and `ROADMAP.md` itself
+cites it correctly elsewhere as
+`PROJECT_STATUS.md § Tuned constants — trial ledger`. The row above is recorded
+where the ledger actually is. Recorded rather than repaired because the design was
+already amended once this phase, by ruling, on one clause; a second edit for a
+pointer would make "the design was amended" a sentence nobody can bound.
 
 ### Derived, NOT judgement — excluded on purpose
 

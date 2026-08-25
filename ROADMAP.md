@@ -2634,6 +2634,64 @@ amendment takes, and its price is a nullable holder, a token for rows that have 
 device, and a backfill across every seller a shop already has. **Recorded as the
 alternative that was weighed, so a later reader does not have to rediscover it.**
 
+**AMENDED (P1.8b SERVER, 2026-08-25) — ONE CLAUSE: THE LOCK MODE. `FOR UPDATE`
+BECOMES `FOR NO KEY UPDATE`, AND THE DIFFERENCE IS NOT A DETAIL.** The words
+superseded are *The lock is the tenant's own row, taken FOR UPDATE* in the
+paragraph above. Everything else in this subsection stands: that the two writers
+serialise per tenant, that the lock is transaction-scoped and taken BEFORE the
+derivation by BOTH of them, that the object is the tenant's own row, that an
+advisory key was weighed and refused, and the residual immediately above.
+
+**WHY THE CLAUSE IS WRONG. `tenants.id` is referenced by a foreign key from
+essentially every table in this database, and an INSERT's foreign-key check takes
+`FOR KEY SHARE` on the parent row. `FOR UPDATE` conflicts with `FOR KEY SHARE`;
+`FOR NO KEY UPDATE` does not.** So the clause as written serialises the two code
+writers AND stalls every insert of every tenant-scoped row in the shop — a bill on
+the weighbridge included — for the length of a refill, on every sync pass from
+every device, with nothing going red anywhere.
+
+**THE FOREIGN KEYS, RE-DERIVED AT `b8b557f` AND NOT CARRIED FROM ANYWHERE:**
+`SELECT ... FROM pg_constraint WHERE contype='f' AND confrelid='public.tenants'::regclass`
+returns **ELEVEN — ten in `public`, one in `directory`** —
+`directory.shop_codes`, `doc_no_counters`, `product_categories`, `product_prices`,
+`products`, `purchase_bill_items`, `purchase_bills`, `seller_code_reservations`,
+`sellers`, `uoms`, `users`. **`purchase_bills` and `purchase_bill_items` are both
+in that list, which is the whole of the argument**: writing a bill is what would
+have waited. Ten of the eleven predate this step; the eleventh is migration 0012's
+own.
+
+**MEASURED ON THIS CLUSTER, PostgreSQL 16.14, 2026-08-24, a 1.5 s hold with a
+no-holder control:**
+
+| holder on the tenant row | INSERT of a child row (FK `KEY SHARE`) | the other writer's lock |
+| --- | --- | --- |
+| nobody | 4.6 ms | 2.7 / 4.1 ms |
+| `FOR UPDATE` | **1506.0 ms BLOCKED** | 1508.8 ms BLOCKED |
+| `FOR NO KEY UPDATE` | **3.2 ms free** | 1511.5 ms BLOCKED |
+
+The bottom row is exactly what this decision asked for and nothing wider: the two
+writers of the assigned code space wait for each other, and nothing else waits at
+all. The mode is carried in `_lock_shop_for_code_assignment`'s own docstring with
+this table in it, so it cannot be tidied back by somebody who has not run it.
+
+**AND A SEPARATE MEASUREMENT, RECORDED HERE AND DELIBERATELY NOT AMENDED, because
+this is a one-clause change and that sentence is a different clause.** The RULE
+above states its red as *a refill and a no-code create driven concurrently behind
+a start barrier, with the overlap evidence printed*. **That observable was measured
+NOT TO DISCRIMINATE.** A start barrier synchronises the REQUESTS, while the section
+this lock protects is a sub-millisecond SELECT sitting behind an auth round trip —
+so with the lock deleted from the route the barrier race stayed GREEN, and across
+five runs of the same mutation it collided ONCE. It is a real observable and an
+intermittent one, which is worse than none because its greens read as evidence. The
+red that DOES discriminate is a pair of HOLDS — hold the tenant row the way the
+other writer holds it and the route must wait; hold it the way an ordinary
+uncommitted child INSERT holds it and the route must NOT — and it is built at
+`prove_seller_code_reservations.py` D5 and `prove_seller_code_guards.py` G7. The
+reasoning is at
+`lessons/README.md § Lessons` "a-lock-is-proven-by-what-waits-not-by-a-race.md".
+**Whether the RULE's own sentence should move is the owner's, and nothing here
+touches it.**
+
 ---
 
 #### The local schema — an origin marker, a refresh that deletes, and a CHECK

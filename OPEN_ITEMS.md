@@ -1229,6 +1229,89 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   that for one refusal species the answer no longer depends on the inventory,
   because the removal is unconditional rather than per field.
 
+- **`prove_master_write.py` IS RED, AND IT WAS ALREADY RED BEFORE P1.8b TOUCHED
+  ANYTHING — measured 2026-08-24, and the instrument matters more than the
+  finding.** Four cells fail, the first being `POST /sellers -> 403, naming its
+  kind` against an observed **201**. That gate moved off `require_admin` and onto
+  `get_principal` on **2026-08-17 in `2f88403`** (P1.8a, "staff can create a
+  seller"), and the proof was last modified on **2026-07-29 in `af11f71`** — so it
+  has been asserting the OLD gate for the whole time the new one has been shipped.
+  **ESTABLISHED BY RUNNING IT, NOT BY COMPARING DATES.** Two dates are an argument;
+  what was done instead was to stash the phase's working tree, restart uvicorn on
+  HEAD's code, CONFIRM that server answered **404** on the route P1.8b adds — so it
+  is provably the old code — and run the proof against it. It produced the SAME
+  FOUR cells, at the same line numbers, with the same text, `MASTERWRITE_EXIT=1`.
+  The working tree was then restored and both files verified byte-exact by sha256.
+  **The other three cells are downstream of the first**: with the create
+  succeeding, "no row was created by any refused POST" is false, and the two C1
+  cells comparing a 403 against a 424 are comparing a 201 instead.
+  **NOTHING RECORDED IT.** Searched `PROJECT_STATUS.md`, `OPEN_ITEMS.md` and
+  `ROADMAP.md` for `master_write` and `master-write`: nine hits, none of them a red
+  after 2026-08-17 — **not found with these words**, which is a different statement
+  from "there is no record". *Not done:* the four assertions still describe the
+  pre-D1 gate. *Unblocks:* the repair is to assert what D1 actually decided — that
+  `POST /sellers` is the ONE write on that router staff may do — which means cell
+  R1's list loses `POST /sellers` and gains a positive assertion that staff CAN
+  create one, and C1's five-way discrimination needs a different route to supply
+  its 403. **Not this phase's to fix**, and deliberately not swept into it: the
+  phase that broke it is closed, and a proof edited inside an unrelated commit is
+  a proof nobody reviewed.
+
+- **NO STANDING CHECK EXISTS FOR THE ONE INVARIANT THAT SPANS `sellers` AND
+  `seller_code_reservations`, and the reason it does not is legitimate — raised
+  2026-08-25.** The invariant is: *no `sellers` row carries a code whose
+  reservation is still `held`.* No CHECK constraint can express it, because it
+  spans two tables; migration `0012` says so at
+  `ck_reservations_spent_consistency`, which holds the other half — that `spent`
+  and a non-null `seller_id` move together — and states in its own docstring that
+  the cross-table half is beyond it. **So the only instrument that could hold it
+  is `reconcile.py`, and it does not.**
+  **WHY THE PROOF CANNOT SUPPLY IT.** `prove_seller_code_guards.py` asserts the
+  invariant, and its queries are SCOPED TO THAT RUN'S OWN DEVICE IDENTITIES. That
+  scoping is forced rather than lazy: the same proof's ADMITTED halves deliberately
+  drive the OLD server into the defect — writing a `sellers` row carrying a code a
+  device is still holding — because that is what makes each guard a measured pair
+  rather than a restatement of the new code. Those rows are never reclaimed, so an
+  unscoped query would read every earlier run's deliberate damage and the proof
+  could not pass twice (`lessons/README.md § Lessons` "proof-must-run-twice.md").
+  What is measured today is therefore that the CREATE PATH holds the invariant for
+  the rows IT wrote, which is a smaller claim than the invariant.
+  **IT IS INVISIBLE FROM EVERY INSTRUMENT THAT EXISTS.** `reconcile.py` now knows
+  the relation — S1, S2, S3, B1 and X2 all cover it — but every one of those is
+  about tenant_id, RLS, or the completeness of the sweep. **None of them compares
+  the two tables**, and the per-tenant `SQL_CHECKS` set has no member touching
+  reservations at all. *Not done:* a T-check pairing the two. *Unblocks:* it would
+  have to enumerate, per tenant, every reservation in state `held` whose `code`
+  appears in `sellers`, and report the pair — and it needs its complementary query
+  in the same pass, or an empty result from a query that never matched anything is
+  indistinguishable from an invariant that holds. **It also needs a decision this
+  entry does not take:** the dev database is clean today, but any database a
+  guards-proof run has ever touched holds deliberate violations, so the check would
+  be red on every scratch copy and a reader would learn to ignore it — which is the
+  failure `lessons/README.md § Lessons` "a-round-trip-must-agree-on-its-key-space.md"
+  records as the slow way to arrive at no check at all.
+
+- **TWO SCRATCH DATABASES ARE FOUR MIGRATIONS STALE, AND ONE OF THEM SILENTLY
+  COSTS A PROOF — found 2026-08-24, pre-existing, not caused by P1.8b.**
+  `recycle_users_scratch` and `recycle_clock_scratch` are both at **`0008`**, read
+  from their own `alembic_version`, against a head of `0012`.
+  `prove_user_create.py --database recycle_users_scratch` cannot run at all:
+  uvicorn starts, the clock guard cannot evaluate because
+  `server_clock_watermark` does not exist, `/health` never answers, and the script
+  exits **2** — "could not run", which is the honest classification and is NOT a
+  pass. `recycle_clock_scratch` is worse-shaped: `prove_docno_clock.py` runs green
+  against it, so the staleness is INVISIBLE there, while anything needing a server
+  bound to it would fail on `tenants.default_grade` (migration `0010`). Both proofs
+  were run for this phase against freshly restored copies (`recycle_p18b_users`,
+  `recycle_p18b_clock`) rather than by disturbing these two. *Not done:* nothing
+  refreshes a scratch database and nothing reports one as stale. *Unblocks:* the
+  cheap half is a line in the runbook; the real one is that a proof taking
+  `--database` has no way to say "this copy is too old for me", so the honest fix
+  is for a script that starts its own server to compare the target's
+  `alembic_version` against the migration head and refuse with the restore command
+  printed — the shape `prove_docno_clock.py` already uses for the LIVE database,
+  pointed at a different fact.
+
 ## Code debt found and left in place
 
 - **EVERY PROOF EXCEPT `proveOutbox.ts` CAN EXIT 0 WITH ITS RUN INCOMPLETE —
@@ -4795,6 +4878,96 @@ with no feature of its own.
   elsewhere in the tree, and reproducing it verbatim here makes it match twice
   and breaks every citation pointing at it. That happened in the first draft of
   this very entry.
+
+- **A MACHINE FOOTGUN IS OWED TO `CLAUDE.md § Machine footguns`: CODEPAGE 874 AS A
+  WRITER DOES NOT ALWAYS TRANSCODE SILENTLY — SOMETIMES IT KILLS THE PROCESS.
+  Measured 2026-08-24. Queued rather than written, because `CLAUDE.md` was not in
+  the bounds of the phase that found it, and it is queued WITH ITS MEASUREMENT so a
+  later phase can write it without re-measuring.**
+  **THE TWO-HOMES CALL IS SETTLED AND IS NOT A LESSON.** It is a property of THIS
+  BOX — the ANSI codepage is 874 — so it goes to Machine footguns and gets no
+  lesson file, per `CLAUDE.md § Workflow` "Two homes, one test".
+  **IT IS THE OPPOSITE HALF OF THE ENTRY ALREADY THERE, WHICH IS WHY IT IS NOT A
+  DUPLICATE.** That entry's whole argument is that **CP874 represents every
+  character in a Thai name, so NOTHING IS LOST** — no error, no `?????`, no
+  mojibake, and it breaks only when something downstream decodes the stream as
+  UTF-8. This is a character CP874 **cannot represent at all**, and the failure is
+  immediate, loud and fatal.
+  **THE OBSERVATION, VERBATIM.** `prove_backup_restore.py` exited 1 with
+  `UnicodeEncodeError: 'charmap' codec can't encode character '�' in position
+  209: character maps to <undefined>`, raised inside
+  `Lib/encodings/cp874.py:19`, from `run_script`'s own `print(f"    | {line}")` at
+  `prove_backup_restore.py:269` — that is, while relaying a CHILD script's output.
+  Everything up to that line had already printed, including a full `[OK]` table, so
+  the traceback sits under what looks like a healthy run.
+  **THE MECHANISM, AND BOTH HALVES ARE NEEDED.** (1) `sys.stdout.encoding` is
+  `cp874` whenever stdout is a redirected non-tty, which is every run captured to a
+  file. (2) The character is U+2014 EM DASH, which has no CP874 mapping, and it is
+  in `restore_db.py`'s own `cannot_see()` text — the second bullet, whose position
+  209 is exactly where the dash falls. **Neither file was edited by the phase that
+  hit this**; the text has been there since the restore script was written, and it
+  had simply never been relayed through a redirected pipe before.
+  **THE REPRODUCTION, one line:**
+  `uv run python scripts/prove_backup_restore.py > out.txt 2>&1` from `server/`
+  — exit 1 with the traceback above. **THE CONTROL:**
+  `PYTHONIOENCODING=utf-8 uv run python scripts/prove_backup_restore.py > out.txt 2>&1`
+  — **exit 0**, all cells green, same code, same database. That pair is what
+  establishes the fault is in the INSTRUMENT and not in the backup.
+  **WHY IT IS WORTH AN ENTRY RATHER THAN A SHRUG.** It fails in the direction that
+  reads as a defect in the thing under test: a backup/restore proof that dies
+  mid-report looks like a broken restore, and the traceback names an encoding
+  nobody was thinking about while they were reading row counts. It also generalises
+  past this one script — ANY script here that relays a child's output through
+  `print` is exposed the moment that child's text carries a character outside
+  CP874, and several do.
+  *Not done:* the footgun is unwritten and no script sets its own encoding.
+  *Unblocks:* the entry itself, plus a decision on the remedy — `PYTHONIOENCODING`
+  in the runbook is the cheap half, and the real one is that a relaying script
+  should reconfigure its own stdout rather than depend on whoever invoked it.
+
+- **A SEVENTH BROKEN CITATION EXISTS, IT ARRIVED AFTER THE SURVEY ABOVE WAS
+  DECLARED CLOSED, AND IT IS A DIFFERENT ITEM RATHER THAN A RESTATEMENT OF THE
+  SIX — re-measured 2026-08-25.** The entry above is pinned at `0241cc8` and
+  reports six over the six root documents that carry citations. **It was correct
+  there and it is not correct about today**, which is the distinction that makes
+  this a new line rather than a duplicate: the sentence saying the survey is
+  closed and nobody should survey these a fourth time is a claim about a sha, and
+  a claim about a sha does not rot — what rots is reading it as a claim about now.
+  **RE-MEASURED OVER THE SAME SIX-DOCUMENT CORPUS, with the call operator and
+  `SOURCES=` read and confirmed as 6 before anything else: `CITATIONS=498
+  BROKEN=7`**, against that entry's `CITATIONS=227 BROKEN=6`. The corpus has more
+  than doubled; the breaks went up by one.
+  **THE SETS WERE COMPARED BY IDENTITY AND NOT BY THE COUNT AGREEING**, because
+  two unrelated sixes would look identical from a total. All six the entry
+  itemises are still present and unrepaired — both stage-1 ones, the stage-3 wrap
+  breaking after `User`, the workflow wrap breaking after `the owner`, the
+  `RED_TEAM.md` one whose target is punctuated differently, and the wrapped
+  SECTION name in `SRS_MAP.md`. **THE SEVENTH IS IN `PROJECT_STATUS.md`: the
+  citation that names THIS file's code-debt section, whose section name breaks
+  after the word `Code` so it spans two lines and resolves to nothing.** Same
+  mechanism as three of the six; a different instance.
+  **IT IS DATED, NOT GUESSED.** `git log -S` on the citing text against
+  `PROJECT_STATUS.md` returns `1d8a92c`, 2026-08-24 — **fourteen days after the
+  survey was closed.** So the entry above did not miss it; it did not exist yet.
+  **WHY NOTHING SAW IT ARRIVE, AND THIS IS THE PART WORTH ACTING ON.** The
+  checker's DEFAULT source list is two files. The three largest documents that
+  carry citations are not in it, and **381 of the 498 citations live in those
+  three** — so a break introduced in any of them is invisible to every run nobody
+  hand-typed a source list for, which is every run. That is why the count could
+  move by one over fourteen days with no instrument moving at all.
+  **NOT REPAIRED HERE, DELIBERATELY.** Repairing one of seven piecemeal, inside a
+  commit about something else, is the half-sweep that entry's own done-condition
+  is written against; and the count is the thing whoever closes it will read.
+  **AND NO CITATION IS RENDERED IN CITATION FORM ANYWHERE IN THIS ENTRY**, for the
+  reason the entry above gives — describing a broken citation in citation form
+  parses it, counts it, and raises `BROKEN`. This line was written to add ZERO
+  parsed citations, so re-running the checker after it lands is a check on the
+  edit as well as on the tree: the total must not move.
+  *Not done:* seven breaks, none repaired. *Unblocks:* two decisions that are one
+  piece of work — repair the seven at their sources together, and settle whether
+  the checker's default source list should be the six rather than the two, since a
+  done-condition nobody can reach by running the default command is a
+  done-condition that will be read off the wrong number.
 
 
 ## What a product sold to strangers needs and this one has not built

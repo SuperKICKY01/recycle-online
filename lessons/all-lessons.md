@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 23 across 13 files, counted from the source headings and
+**Amendments:** 24 across 14 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -41,7 +41,7 @@ line instead of by heading depth.
 - `a-column-that-describes-content-must-follow-a-rewrite.md` -- A column that describes the row's CONTENT must follow a rewrite; one that records its ORIGIN never may
 - `a-control-must-contain-what-fooled-you.md` *(1 amendment)* -- A control must contain the thing that fools the counter
 - `a-default-exit-code-is-a-default-verdict.md` -- A default exit code is a default verdict
-- `a-defaulted-getattr-is-a-silent-dead-branch.md` -- A defaulted `getattr` is a silent dead branch
+- `a-defaulted-getattr-is-a-silent-dead-branch.md` *(1 amendment)* -- A defaulted `getattr` is a silent dead branch
 - `a-differential-control-is-only-as-good-as-its-weaker-side.md` -- A differential control is only as good as its weaker side
 - `a-docstring-that-states-a-filter-is-a-claim-about-its-caller.md` -- A docstring that states a FILTER is a claim about its CALLER, and nothing checks it
 - `a-gate-that-matches-a-keyword-misses-its-aliases.md` -- A gate that matches a keyword misses the engine's aliases for it
@@ -2604,6 +2604,86 @@ that proves nothing, because the code under test was unreachable. Both come from
 the same move: believing a story about the system instead of observing it. When a
 conditional guards something expensive to get wrong, the question is not "is the
 condition right?" but **"have I ever seen this branch execute?"**
+
+## AMENDED (P1.8b SERVER, 2026-08-25) — a FAST PATH in front of the safety branch is what stops any SINGLE mutation from reaching it
+
+The rule above says a safety branch with no proof that ENTERS it is not a safety
+branch, and prescribes running the race. **What it does not say is how to get in
+when something correct answers first** — and reason 2 of *Why it hid for so long*
+is exactly that obstacle, named and then left standing: *"`create_bill` pre-checks
+the key with a SELECT, so a sequential replay returns 200 without ever raising.
+`prove_bills` CASE 2 tests exactly that and passes — it never reaches the
+handler."*
+
+**The same structure, built deliberately this time.** `POST /sellers` learned to
+answer a replay carrying a reservation token, and it has two mechanisms that
+produce the identical answer:
+
+1. a **fast path** — the reservation is read first, and if it is already `spent`
+   the row it names is returned without attempting an INSERT at all;
+2. a **fallback** — the INSERT is attempted, collides on
+   `uq_sellers_tenant_code`, and the handler re-reads the reservation and returns
+   the winner. The same *ask the authority* shape the rules above prescribe.
+
+**MEASURED, and the pair is the point.** Disabling ONLY the fast path left every
+replay cell GREEN: `first=201 id=3bacda99…`, `replay=200 id=3bacda99…`, whole
+suite exit 0. Disabling ONLY the fallback would have done the same. **Both had to
+go before the cell moved** — with neither, the replay came back `409` and the cell
+printed `the replay carries the SAME seller.id (None)`.
+
+**So a single mutation proves nothing about either, and two mutations tell you
+which one is load-bearing.** Here the answer was not the obvious one: the fast
+path is an OPTIMISATION and the fallback is the GUARANTEE, because a genuinely
+concurrent replay reads `held` in its own SELECT and can only be saved by the
+collision.
+
+**AND THAT MUTATION IS THE WAY IN.** Deleting the fast path makes the fallback the
+only thing that can produce the outcome, so the branch is *known* to have executed
+rather than hoped to have. It is deterministic, where the race this file already
+prescribes is not: the barrier race staged for the same commit's lock collided
+**once in five runs** of the same mutation
+([[a-lock-is-proven-by-what-waits-not-by-a-race]]).
+
+### The rule
+
+- **Where two mechanisms produce the same answer, mutate them ONE AT A TIME.** A
+  cell green under a single mutation is evidence about the pair and about neither
+  member. Ask which one you would still have if the other were deleted.
+- **To enter a branch a fast path hides, delete the fast path.** Do not reach for
+  the race first — a race is an intermittent instrument, and its greens read as
+  evidence.
+- **Then say which one carries the guarantee, at the site.** Nothing in the code
+  distinguishes an optimisation from a guarantee, and the next reader deleting
+  "the redundant one" has a suite that will agree with them either way.
+
+### NOT the seventh mechanism of `a-check-that-never-went-red-was-never-observed`, and the separation runs the OPPOSITE way
+
+That mechanism is titled *the guard is reachable, but a SIBLING GUARD gets there
+first*, **and that title fits this word for word, which is the trap.** Its BODY
+does not, on all three of its load-bearing claims:
+
+| the seventh mechanism | this |
+| --- | --- |
+| *"unreachable through every path the product has… no input exists"* | reachable, by a genuinely concurrent replay, which the proof stages |
+| *"deleting it changes nothing observable at all"* | deleting it changes a 200 into a 409 — measured |
+| its value is *"FORWARD-LOOKING"* | it is the guarantee TODAY; the sibling is the optimisation |
+
+**And neither of its two rules can be applied here.** Rule 10 says order the guard
+naming the durable fact first — but ordering is not the question, and both orders
+return the same answer. Rule 11 says *assert on the field that DISCRIMINATES, not
+the field they share* — and **there is no discriminating field**: both mechanisms
+return 200 with the same `seller.id` and a byte-identical body. The seventh's
+remedy has nothing to attach to, which is the test that settles where this
+belongs.
+
+**THE PRACTICAL COST OF FILING IT THERE.** In the seventh, the FIRST guard is
+load-bearing and the second earns its place forward-looking. Here it is inverted.
+A maintainer who read this as the seventh would delete the second one — the
+fallback — as the decorative member, and every test would agree with them.
+
+Related: [[a-check-that-never-went-red-was-never-observed]] (the seventh mechanism
+this separates from), [[a-lock-is-proven-by-what-waits-not-by-a-race]] (why the
+race is not the way in), [[concurrency-tests-need-a-barrier]].
 
 ---
 
