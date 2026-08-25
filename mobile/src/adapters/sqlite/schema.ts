@@ -297,6 +297,192 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
      tenant_id  TEXT    NOT NULL,
      updated_at TEXT    NOT NULL
    ) STRICT`,
+
+  /*
+   * WHAT THIS INSTALLATION IS — the holder a reserved seller code belongs to.
+   *
+   * A THIRD one-row table, and the same argument that already separated the two
+   * above it: local_identity's lifetime ends at a SIGN-OUT, local_shop's ends
+   * when the device leaves the shop, and this one ends when the INSTALL is
+   * removed. Three events, three tables. Fusing this into either would give the
+   * device a new identity at an event that has nothing to do with the install —
+   * and a device that re-mints does not get a duplicate, it becomes a SECOND
+   * HOLDER: the codes it was already carrying stay `held` on the server under a
+   * name it no longer answers to, and nothing re-issues them.
+   *
+   * NOT THE KEYSTORE, for the reason local_identity gives one paragraph up and
+   * with a sharper cost. A sign-out DELETES the keystore entry
+   * (session/signOut.ts calls tokens.clear() and touches nothing else), and the
+   * design puts reserved codes on the far side of a sign-out because the device
+   * is still holding them. The whole argument is at src/session/deviceIdentity.ts.
+   *
+   * MINTED ONCE BY THE SCHEMA, NOT BY THE CALLER REMEMBERING. only_row is the
+   * primary key with CHECK (only_row = 1), and SqliteDeviceStore writes it with
+   * ON CONFLICT DO NOTHING — so two concurrent boots race into ONE row and the
+   * loser reads the winner's value rather than replacing it. A second identity
+   * is unrepresentable rather than merely unwritten, exactly as a second
+   * local_identity is.
+   *
+   * Needs no migration list entry, for local_shop's reason: a table that never
+   * existed is created by this statement on an upgraded device exactly as on a
+   * fresh one.
+   */
+  `CREATE TABLE IF NOT EXISTS local_device (
+     only_row  INTEGER NOT NULL PRIMARY KEY CHECK (only_row = 1),
+     device_id TEXT    NOT NULL,
+     minted_at TEXT    NOT NULL
+   ) STRICT`,
+
+  /*
+   * A SELLER THIS DEVICE CREATED THAT THE SERVER HAS NOT SEEN YET.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY IT IS A NEW TABLE AND NOT A COLUMN ON cached_sellers
+   * ---------------------------------------------------------------------------
+   * `ROADMAP.md § P1.8` "AN UNSETTLED LOCAL SELLER NEVER ENTERS `cached_sellers`".
+   * The design dissolves the survey's first two bullets rather than patching
+   * them, and BOTH halves matter:
+   *
+   *   cached_sellers needs NO ORIGIN MARKER, because nothing local is in there
+   *   to mark. It stays what it is — a copy of the server's list.
+   *
+   *   saveSellers's unconditional `DELETE FROM cached_sellers` DOES NOT CHANGE.
+   *   A cache is content that follows a rewrite wholesale, and weakening the
+   *   refresh to protect a local row would be the wrong repair to the wrong
+   *   statement.
+   *
+   * AND AN ORIGIN MARKER ON THAT TABLE WOULD HAVE FAILED IN A THIRD WAY THAT NO
+   * `DO UPDATE` LIST COVERS, which is worth knowing before somebody proposes it
+   * again: cached_sellers is DELETEd and re-INSERTed, never upserted, so a
+   * marker there is DESTROYED rather than wrongly carried forward.
+   * lessons/a-column-that-describes-content-must-follow-a-rewrite.md names two
+   * failure directions; delete-and-reinsert is a third rewrite shape and neither
+   * of them reaches it.
+   *
+   * ---------------------------------------------------------------------------
+   * OWED WORK LIVES BESIDE local_bills, AND ITS CHECK IS ITS OWN
+   * ---------------------------------------------------------------------------
+   * This table is created WITH the CHECK it needs, so local_bills's CHECK is not
+   * altered and the question of what happens to rows in flight during a rebuild
+   * never arises. That is one of the design's stated reasons for a new table
+   * over a widened one, on a database that is already holding a shop's unsynced
+   * bills.
+   *
+   * THE STATE NAMES ARE local_bills's, DELIBERATELY. 'synced' is this table's
+   * word for the design's "settled" — one vocabulary across both tables, so a
+   * reader does not have to learn which of two spellings a given table uses.
+   *
+   * `needs_review_at` IS A COLUMN AND NOT A FIFTH STATE, for exactly the reason
+   * master_data_missing_at is one on local_bills: the CHECK is baked into CREATE
+   * TABLE and SQLite cannot alter one without rebuilding. It also has to behave
+   * like the park rather than like a terminal: a 409 leaves the row STILL OWED
+   * and operator-visible (`NO-ARM-OF-THIS-KIND-SETTLES-A-409`), so it takes the
+   * row out of the ACTIONABLE set while leaving it inside the owed COUNT.
+   *
+   * MONEY AND WEIGHT DO NOT APPEAR HERE AT ALL. A seller carries no amounts, so
+   * the TEXT rule this file opens with has nothing to bite on — stated because
+   * its ABSENCE from a new table in this file would otherwise read as an
+   * oversight.
+   *
+   * THE OWNER PAIR IS ORIGIN. It records who CREATED this seller, and no later
+   * edit makes that untrue — so it must never appear in a rewrite of the row,
+   * exactly as local_draft's owner pair does not. Nullable for local_bills's two
+   * reasons: an unknown owner is a real answer, and a guess here manufactures
+   * provenance indistinguishable from a record.
+   *
+   * server_seller_id IS ORIGIN TOO, and of the strongest kind — WHICH SERVER ROW
+   * THIS LOCAL ROW BECAME. Written once, at settle, by id; it is in no upsert
+   * anywhere and there is no statement that could move it.
+   */
+  `CREATE TABLE IF NOT EXISTS local_sellers (
+     id                TEXT    NOT NULL PRIMARY KEY,
+     /* The reserved code being spent, and the token that proves this device
+        holds it. UNIQUE on the code because one code produces one seller: a
+        second local row on the same code is the wrong-seller binding this whole
+        step exists to prevent, and the index refuses it rather than a rule
+        somebody remembers. */
+     code              TEXT    NOT NULL UNIQUE,
+     reservation_token TEXT    NOT NULL,
+     name              TEXT    NOT NULL,
+     phone             TEXT,
+     grade             TEXT,
+     id_number         TEXT,
+     address           TEXT,
+     vehicle_no        TEXT,
+     sync_state        TEXT    NOT NULL,
+     attempt_count     INTEGER NOT NULL DEFAULT 0,
+     last_error        TEXT,
+     created_at        TEXT    NOT NULL,
+     next_attempt_at   TEXT    NOT NULL,
+     /* ORIGIN. Which server row this local row became. Written once at settle. */
+     server_seller_id  TEXT,
+     settled_at        TEXT,
+     /* Non-null ⟺ the server answered 409 — a state the two server-side guards
+        make unreachable, so reaching it is an invariant violation and never a
+        settle. The row stays 'pending' and stays owed; this takes it out of the
+        actionable set so nothing re-asks a settled question. */
+     needs_review_at   TEXT,
+     needs_review_code TEXT,
+     /* ORIGIN — who created this seller. Never in a rewrite. */
+     owner_tenant_id   TEXT,
+     owner_user_id     TEXT,
+     CHECK (sync_state IN ('pending', 'syncing', 'synced', 'failed'))
+   ) STRICT`,
+
+  // Drives listSellersToCreate. Same column order and same reasoning as
+  // ix_local_bills_ready: state first, then the schedule, then creation order.
+  `CREATE INDEX IF NOT EXISTS ix_local_sellers_owed
+     ON local_sellers (sync_state, next_attempt_at, created_at)`,
+
+  /*
+   * THE CODES THIS DEVICE IS HOLDING — one row per reservation the server
+   * minted for it.
+   *
+   * NO OWNER COLUMNS, AND THAT IS A DECISION RATHER THAN AN OMISSION. The
+   * holder is a DEVICE (src/session/deviceIdentity.ts): the codes physically
+   * live in this SQLite file, they must outlive a sign-out, and an owner
+   * predicate here would hide a device's own holding from the next person to
+   * sign in — losing it for ever, because nothing re-issues a reservation.
+   * Every other owed-work table in this file carries the pair; this one must
+   * not, and a sweep adding predicates to statements that lack one would be
+   * wrong here.
+   *
+   * `spent_on` IS CONTENT, AND IT IS LOCAL. It says what the code is attached
+   * to NOW, which is why a refill's answer must never rewrite it: the server
+   * re-sends the device's WHOLE holding on every top-up, including codes this
+   * device has already bound to a local seller, and the server knows nothing
+   * about that binding. SqliteLocalSellerStore therefore writes reservations
+   * with ON CONFLICT DO NOTHING and no set-list at all.
+   *
+   * `token` IS ORIGIN — the server minted it WITH the code and it never changes.
+   * Same DO NOTHING covers it, and for the stronger reason: a token that moved
+   * would be a create the server could no longer recognise as a replay.
+   *
+   * SPENDABLE IS `spent_on IS NULL`, ONE PREDICATE. That is a deliberate
+   * simplification of the design's sentence, which reads "codes this device
+   * holds that are not bound to a create that has SETTLED or is IN FLIGHT" and
+   * is ambiguous about a create that is merely OWED. Taken literally it would
+   * make an owed create's code spendable again — two sellers on one code, the
+   * exact harm the mechanism exists to prevent — so it is not taken literally.
+   * Instead the code is UNBOUND by a write when its create goes terminal, which
+   * is what the design's amendment asks for ("THE CODE GOES BACK INTO THE
+   * DEVICE'S SPENDABLE HOLDING"), and the count then needs no case analysis.
+   *
+   * The FK is what makes `spent_on` unable to name a seller row that is not
+   * there; PRAGMA foreign_keys = ON in CONNECTION_PRAGMAS is what enforces it.
+   * local_sellers is created ABOVE this statement for that reason.
+   */
+  `CREATE TABLE IF NOT EXISTS local_seller_codes (
+     code        TEXT NOT NULL PRIMARY KEY,
+     token       TEXT NOT NULL UNIQUE,
+     received_at TEXT NOT NULL,
+     spent_on    TEXT REFERENCES local_sellers(id)
+   ) STRICT`,
+
+  // Drives the spendable count and the pick. Partial on purpose: the question
+  // asked of this table is almost always "what is still free".
+  `CREATE INDEX IF NOT EXISTS ix_local_seller_codes_free
+     ON local_seller_codes (code) WHERE spent_on IS NULL`,
 ];
 
 /**
@@ -374,6 +560,32 @@ const ADDED_BILL_COLUMNS: readonly { name: string; ddl: string }[] = [
   // means UNKNOWN and parks; nothing is attributed to whoever is signed in.
   { name: "owner_tenant_id", ddl: "owner_tenant_id TEXT" },
   { name: "owner_user_id", ddl: "owner_user_id TEXT" },
+  /*
+   * P1.8b: THE BILL IS WAITING ON A SELLER THIS DEVICE CREATED.
+   *
+   * A NULLABLE PAIR AND EMPHATICALLY NOT A NEW sync_state VALUE. The CHECK on
+   * local_bills is baked into CREATE TABLE and SQLite cannot alter one without
+   * rebuilding the table — on a database already holding the shop's unsynced
+   * bills. That is the same argument master_data_missing_at gives above, and
+   * `THE-LOCAL-SCHEMA-ADDS-AND-DOES-NOT-REBUILD` is the criterion that measures
+   * it: local_bills's CHECK member set must be EQUAL to the set it held before,
+   * not merely a superset, because a rebuild that ADDED a state passes a
+   * containment test and is exactly what the design refuses to do.
+   *
+   * ADDITIVE, so it needs no rebuild at all: the migrator asks PRAGMA
+   * table_info what the table already has, and every existing row gets NULL.
+   *
+   * WHAT READS THEM TODAY: NOTHING, and that is deliberate rather than an
+   * oversight. The park's BEHAVIOUR — a bill held out of the sendable queue and
+   * released when its seller settles — is the surfaces phase, and it is not
+   * built here. These two columns are the storage half, landed with the rest of
+   * the schema so an upgraded handset gains them in one migration instead of
+   * two. Nothing between here and there may read their absence as evidence a
+   * bill has no local seller, which is the rule the owner pair already states
+   * one entry up.
+   */
+  { name: "local_seller_id", ddl: "local_seller_id TEXT" },
+  { name: "local_seller_parked_at", ddl: "local_seller_parked_at TEXT" },
 ];
 
 /**
