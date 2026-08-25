@@ -46,40 +46,68 @@
  */
 
 import type { LocalBill, SendOutcome, VoidOutcome } from "./types.js";
+import type { LocalSeller } from "./localSeller.js";
+import type { SellerCreateOutcome } from "./sellerCreate.js";
 import type { SyncRunResult } from "./engine.js";
 
 /**
  * EVERY KIND OF WORK THE DEVICE OWES THE SERVER.
  *
- * TWO members, deliberately. `seller_create` was declared in stage 1 and is
- * REMOVED by the stage-2 design: what identifies a locally created seller
- * across offline devices is an OPEN DECISION of the owner's
- * (`OPEN_ITEMS.md § Decisions open`, the two-handsets seller-code finding), and
- * a union member nobody may build makes the registry literal a permanent red or
- * a permanent excuse to leave it unbuilt. The kind returns in the step that
- * answers the decision. The generalisation is demonstrated by the COMPILE
- * ERROR adding a member produces, not by a third runtime kind.
+ * THREE members as of P1.8b.
+ *
+ * SUPERSEDED 2026-08-25, and the superseded text is kept because it records why
+ * the member was absent rather than forgotten. It read: "TWO members,
+ * deliberately. `seller_create` was declared in stage 1 and is REMOVED by the
+ * stage-2 design: what identifies a locally created seller across offline
+ * devices is an OPEN DECISION of the owner's, and a union member nobody may
+ * build makes the registry literal a permanent red or a permanent excuse to
+ * leave it unbuilt. The kind returns in the step that answers the decision."
+ *
+ * THE DECISION WAS ANSWERED AND THE KIND HAS RETURNED, under its own name —
+ * `ROADMAP.md § P1.8` "The member is named `seller_create`", the name the union
+ * carried before the removal, so it comes back as itself rather than acquiring
+ * a second spelling. What identifies a locally created seller is a SERVER-MINTED
+ * RESERVATION: a code held by one device for ever, and an opaque token that
+ * makes a repeat of the create recognisable BY THE SERVER as the same create.
+ *
+ * WHAT THE OLD PARAGRAPH CLAIMED THAT IS NOW MEASURED RATHER THAN PREDICTED:
+ * "the generalisation is demonstrated by the COMPILE ERROR adding a member
+ * produces, not by a third runtime kind." Adding this member produced compile
+ * errors in `OutboxRow`, `OutboxResult`, the registry literal, and every one of
+ * the 67 `new SyncEngine` sites that had to supply the kind's store. There is
+ * now a third runtime kind as well, and the compile error is what found every
+ * site rather than anybody remembering them.
  */
-export type OutboxKind = "bill_send" | "bill_void";
+export type OutboxKind = "bill_send" | "bill_void" | "seller_create";
 
 /**
- * Each kind's own row type. Both bill kinds carry LocalBill today; the map
- * exists so a kind with a DIFFERENT row (a photo descriptor, a local seller)
- * is three one-line edits in this file, each demanded by the compiler.
+ * Each kind's own row type. The two bill kinds carry LocalBill; `seller_create`
+ * is the FIRST kind whose row is not a bill and not in `local_bills` — which is
+ * what the map existed for, and is also the reason the surfaces criterion
+ * `EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL` becomes reachable the day this
+ * lands. That criterion is NOT met here; it belongs to the phase that draws the
+ * surfaces, and the gap is real in the meantime.
  */
 export interface OutboxRow {
   bill_send: LocalBill;
   bill_void: LocalBill;
+  seller_create: LocalSeller;
 }
 
 /**
  * Each kind's own transport-outcome union. Kept per kind so the drain never
  * learns what a status means: "409 settles here and retries there" is two
  * lines in two different `classify` functions, never a drain branch.
+ *
+ * `seller_create` IS THE CASE THAT MAKES THAT RULE PAY. A 409 settles nowhere
+ * on this kind — it is `needs_review`, an invariant violation — while the void
+ * kind's 409 is `already_voided` and SETTLES. One status, two opposite
+ * dispositions, two `classify` functions, no drain branch.
  */
 export interface OutboxResult {
   bill_send: SendOutcome;
   bill_void: VoidOutcome;
+  seller_create: SellerCreateOutcome;
 }
 
 /**
@@ -344,5 +372,75 @@ export const BILL_VOID: OutboxPolicy = {
   inFlightKey: (rowId) => `void:${rowId}`,
   // a repeat is answered 409, which httpTransport.voidBill maps to
   // `already_voided` and the void kind's classify settles.
+  resendIsIdempotent: true,
+};
+
+/**
+ * THE SELLER-CREATE POLICY. Five axes, each RE-DERIVED from the design's own
+ * table, and the THREE that are worth a sentence are the two that DIFFER from
+ * `bill_send` and the one that agrees for a different reason.
+ *
+ * ---------------------------------------------------------------------------
+ * DIFFERENT #1 — `blocking: "independent"`, where `bill_send` is `head_blocks`
+ * ---------------------------------------------------------------------------
+ * `head_blocks` exists on the send kind because A BILL'S ARRIVAL ORDER DECIDES
+ * ITS `doc_no`, AND A `doc_no` IS A LEGAL DOCUMENT — two bills weighed 73
+ * seconds apart took their numbers in the wrong order before that ordering
+ * existed.
+ *
+ * A SELLER HAS NO `doc_no` AND NO ARRIVAL-ORDERED NUMBER OF ANY KIND. Its code
+ * came from a reservation minted long before the create is sent, so the order
+ * in which two creates reach the server changes nothing about either. The whole
+ * argument for head-of-line is absent, and keeping it would mean ONE REFUSED
+ * SELLER HOLDS ANOTHER — a walk-in at the gate waiting on a stranger's row.
+ *
+ * ---------------------------------------------------------------------------
+ * DIFFERENT #2 — `inFlightKey` is PREFIXED, where `bill_send` uses the bare id
+ * ---------------------------------------------------------------------------
+ * One in-flight set is keyed by more than one kind, so the key spaces must not
+ * collide. A LOCAL SELLER ID AND A LOCAL BILL ID COME FROM THE SAME GENERATOR —
+ * `app/ids.ts`, one `newId()` for both — and they live in two different tables,
+ * so nothing stops the same string naming a row of each.
+ *
+ * AND UNLIKE THE VOID KIND'S PREFIX, THIS ONE HAS A BEHAVIOURAL CELL. A send
+ * and a void of ONE bill are never simultaneously actionable, so the void's
+ * prefix can only ever be asserted as a declaration. Here the state IS
+ * representable: give a local seller and an unparked bill the SAME id, leave
+ * both owed, and hold one in flight — under a bare key the other is skipped,
+ * under the prefix it is performed.
+ *
+ * ---------------------------------------------------------------------------
+ * SAME VALUE, DIFFERENT REASON — `resendIsIdempotent: true`
+ * ---------------------------------------------------------------------------
+ * THE SINGLE MOST LOAD-BEARING CONSEQUENCE OF THE OWNER'S DECISION, and it is
+ * not the same fact as the bill's. A bill is idempotent because HARD RULE 4
+ * PUTS A KEY ON IT — a column, in the schema, that the server dedups by.
+ * `sellers` HAS NO SUCH COLUMN: read forward through the whole migration stack,
+ * there is no idempotency key on that table and there never was.
+ *
+ * WHAT MAKES IT TRUE HERE IS THE RESERVATION TOKEN, and only that. The create
+ * carries it, the server recognises the repeat as the same create, and answers
+ * 200 with the row the first attempt produced. WITHOUT THE TOKEN ON THE WIRE
+ * THIS FIELD WOULD BE FALSE and the kind would have to classify a throw as
+ * `needs_review` instead of `retry`.
+ *
+ * That is why `THE-TOKEN-IS-ON-THE-WIRE` exists as a criterion: this field is a
+ * DECLARATION the drain reads no branch of, so an author who sets it right and
+ * writes a `perform` that omits the token compiles, classifies identically,
+ * drains identically, and is green everywhere — while every replay after a lost
+ * response creates a second seller for one person.
+ *
+ * ---------------------------------------------------------------------------
+ * The remaining two agree with the void kind and need no argument beyond it:
+ * `rereadAfterEach: false` is FORCED — `independent` with a re-read is the
+ * legal-but-slow pair that drains one row per pass, because a row that stays
+ * owed heads every re-read. `concurrency: "parallel_rows"` because the rows are
+ * unrelated and a held row must not stop another.
+ */
+export const SELLER_CREATE: OutboxPolicy = {
+  blocking: "independent",
+  rereadAfterEach: false,
+  concurrency: "parallel_rows",
+  inFlightKey: (rowId) => `seller:${rowId}`,
   resendIsIdempotent: true,
 };

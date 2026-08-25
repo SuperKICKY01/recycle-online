@@ -18,6 +18,13 @@ import type {
   UnsentBreakdown,
   VoidOutcome,
 } from "../sync/types.js";
+import type {
+  CreateLocalSellerResult,
+  LocalSeller,
+  LocalSellerStore,
+  ReservedCode,
+} from "../sync/localSeller.js";
+import type { SellerCreateOutcome, SellerCreateTransport } from "../sync/sellerCreate.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
 
@@ -1105,4 +1112,142 @@ export function mulberry32(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/* ------------------------------------------------------ the seller kind -- */
+
+/**
+ * A `LocalSellerStore` THAT HOLDS NOTHING AND REFUSES EVERY WRITE.
+ *
+ * WHAT IT IS FOR. `OutboxRegistry` is total over `OutboxKind`, so every
+ * `new SyncEngine` in this suite must supply a seller store — including the
+ * ~60 of them that are about bills, backoff, voids, clocks and cold starts and
+ * have no seller in them at all.
+ *
+ * WHY THE READS ARE EMPTY AND THE WRITES THROW, WHICH IS NOT AN ARBITRARY
+ * MIXTURE. The reads are empty because that is TRUE of those proofs: they hold
+ * no local sellers, so an empty queue and a zero count are the correct answers,
+ * and `recover` returning nothing is the correct sweep of nothing. The WRITES
+ * throw because a bill proof reaching one would mean the seller kind acted on a
+ * row that does not exist — so this doubles as a standing assertion, in ~60
+ * places, that the third kind stays out of the way of the other two. A silent
+ * no-op there would let a real defect pass as a green.
+ *
+ * IT IS NOT A DEFAULT. It is supplied EXPLICITLY at every site, by name, which
+ * is the difference between a call site that has answered the question and one
+ * that never saw it.
+ */
+export class EmptySellerStore implements LocalSellerStore {
+  private refuse(method: string): never {
+    throw new Error(
+      `EmptySellerStore.${method}: a proof with no local sellers reached the` +
+        " seller kind's writer. That is the third kind acting on a row that does" +
+        " not exist, not a fixture that needs widening.",
+    );
+  }
+
+  saveReservations(): Promise<number> {
+    return this.refuse("saveReservations");
+  }
+  listReservations(): Promise<ReservedCode[]> {
+    return Promise.resolve([]);
+  }
+  spendableCount(): Promise<number> {
+    return Promise.resolve(0);
+  }
+  createLocalSeller(): Promise<CreateLocalSellerResult> {
+    return this.refuse("createLocalSeller");
+  }
+  getLocalSeller(): Promise<LocalSeller | null> {
+    return Promise.resolve(null);
+  }
+  listSellersToCreate(): Promise<LocalSeller[]> {
+    return Promise.resolve([]);
+  }
+  countSellersOwed(): Promise<number> {
+    return Promise.resolve(0);
+  }
+  claimSellerCreate(): Promise<boolean> {
+    return this.refuse("claimSellerCreate");
+  }
+  markSellerCreated(): Promise<void> {
+    return this.refuse("markSellerCreated");
+  }
+  markSellerCreateRefused(): Promise<void> {
+    return this.refuse("markSellerCreateRefused");
+  }
+  markSellerCreateNeedsReview(): Promise<void> {
+    return this.refuse("markSellerCreateNeedsReview");
+  }
+  markSellerCreateAttemptFailed(): Promise<void> {
+    return this.refuse("markSellerCreateAttemptFailed");
+  }
+  /**
+   * THE ONE WRITER THAT DOES NOT THROW, and the exception is required rather
+   * than convenient: `recoverAll` calls every kind's `recover` at boot, and
+   * many of these proofs boot. An empty sweep of an empty table is the correct
+   * answer and writes nothing.
+   */
+  resetSyncingSellersToPending(): Promise<string[]> {
+    return Promise.resolve([]);
+  }
+}
+
+/**
+ * A `SellerCreateTransport` that refuses to be called.
+ *
+ * The companion to `EmptySellerStore`: with no rows there is nothing to
+ * perform, so a call here is the same defect the store's writers catch, one
+ * layer out — and catching it at BOTH layers is what makes either of them
+ * evidence rather than a hope.
+ */
+export class RefusingSellerTransport implements SellerCreateTransport {
+  createSeller(): Promise<SellerCreateOutcome> {
+    throw new Error(
+      "RefusingSellerTransport.createSeller: a proof with no local sellers" +
+        " performed a seller create.",
+    );
+  }
+}
+
+/**
+ * The seller-kind deps for a proof that has no sellers in it.
+ *
+ * A FUNCTION AND NOT A SHARED CONST, so no two engines in one proof can share
+ * a double and no state can leak between cases even if these ever gain any.
+ */
+export function noSellerKind(): {
+  sellerStore: LocalSellerStore;
+  sellerTransport: SellerCreateTransport;
+} {
+  return { sellerStore: new EmptySellerStore(), sellerTransport: new RefusingSellerTransport() };
+}
+
+/**
+ * A `SellerCreateTransport` whose answer is SCRIPTED, and which RECORDS the row
+ * it was handed.
+ *
+ * `recorded` is what `THE-TOKEN-IS-ON-THE-WIRE` reads for its headless cell —
+ * but note carefully what this class can and cannot establish. It records the
+ * ROW, so it proves what `perform` was GIVEN and not what went on the wire. The
+ * wire is read off `HttpSellerTransport` through a recording `fetchImpl`, which
+ * is the only instrument that can see a `perform` that quietly drops the token.
+ */
+export class ScriptedSellerTransport implements SellerCreateTransport {
+  readonly recorded: LocalSeller[] = [];
+  private queue: SellerCreateOutcome[] = [];
+
+  constructor(private readonly fallback: SellerCreateOutcome) {}
+
+  /** Answers to give, in order, before the fallback takes over. */
+  script(...outcomes: SellerCreateOutcome[]): this {
+    this.queue.push(...outcomes);
+    return this;
+  }
+
+  createSeller(row: LocalSeller): Promise<SellerCreateOutcome> {
+    this.recorded.push(row);
+    const next = this.queue.shift();
+    return Promise.resolve(next ?? this.fallback);
+  }
 }

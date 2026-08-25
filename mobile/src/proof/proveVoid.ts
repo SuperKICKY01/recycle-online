@@ -25,11 +25,12 @@ import { isVoided } from "../sync/types.js";
 import {
   FakeClock,
   FakeServer,
+  noSellerKind,
   OfflineTransport,
   OnlineTransport,
+  PROOF_OWNER,
   SeqIds,
   VoidLosesFirstAckTransport,
-  PROOF_OWNER,
 } from "./fakes.js";
 import { FileServer } from "./fileServer.js";
 import { signInProofDevice } from "./proofDevice.js";
@@ -245,7 +246,7 @@ async function v1VoidSyncedBill(): Promise<void> {
   const clock = new FakeClock();
   const server = new FakeServer();
   const transport = new CountingTransport(new OnlineTransport(server));
-  const engine = new SyncEngine({ store, transport, clock, backoffBaseMs: 1000 });
+  const engine = new SyncEngine({ ...noSellerKind(), store, transport, clock, backoffBaseMs: 1000 });
 
   const bill = await makeBill(store, clock, new SeqIds("v1"));
   await engine.runUntilQuiescent();
@@ -295,7 +296,7 @@ async function v2VoidNeverSyncedBill(): Promise<void> {
 
   // Offline: the bill cannot reach the server, and the owner voids it anyway.
   const offline = new CountingTransport(new OfflineTransport());
-  const offlineEngine = new SyncEngine({ store, transport: offline, clock, backoffBaseMs: 1 });
+  const offlineEngine = new SyncEngine({ ...noSellerKind(), store, transport: offline, clock, backoffBaseMs: 1 });
   const bill = await makeBill(store, clock, new SeqIds("v2"));
   await offlineEngine.runOnce();
   await store.requestVoid(bill.id, "ลูกค้าเปลี่ยนใจ", clock.now());
@@ -322,7 +323,7 @@ async function v2VoidNeverSyncedBill(): Promise<void> {
 
   // Network returns. One quiescent run must sync it AND void it.
   const online = new CountingTransport(new OnlineTransport(server));
-  const onlineEngine = new SyncEngine({ store, transport: online, clock, backoffBaseMs: 1 });
+  const onlineEngine = new SyncEngine({ ...noSellerKind(), store, transport: online, clock, backoffBaseMs: 1 });
   const run = await onlineEngine.runUntilQuiescent();
   const final = await store.getBill(bill.id);
   const onServer = server.findById(bill.id);
@@ -360,7 +361,7 @@ async function v3VoidRetryAfterLostAck(): Promise<void> {
   const clock = new FakeClock();
   const server = new FakeServer();
   const transport = new VoidLosesFirstAckTransport(server);
-  const engine = new SyncEngine({ store, transport, clock, backoffBaseMs: 1 });
+  const engine = new SyncEngine({ ...noSellerKind(), store, transport, clock, backoffBaseMs: 1 });
 
   const bill = await makeBill(store, clock, new SeqIds("v3"));
   await engine.runUntilQuiescent();
@@ -457,7 +458,7 @@ async function v4CrashBetweenSyncAndVoid(): Promise<void> {
     "void_requested_at is written before any network call, so the UI shows ยกเลิกแล้ว throughout",
   );
 
-  const engine2 = new SyncEngine({
+  const engine2 = new SyncEngine({ ...noSellerKind(),
     store: store2,
     transport: new (await import("./fileServer.js")).FileServerTransport(server),
     clock,

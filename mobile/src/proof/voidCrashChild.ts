@@ -17,6 +17,7 @@ import { NodeSqliteDriver } from "../adapters/sqlite/nodeDriver.js";
 import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { SyncEngine } from "../sync/engine.js";
 import { systemClock } from "../sync/systemClock.js";
+import { noSellerKind } from "./fakes.js";
 import { FileServer, FileServerTransport } from "./fileServer.js";
 import { signInProofDevice } from "./proofDevice.js";
 
@@ -31,7 +32,7 @@ async function main(): Promise<void> {
   await signInProofDevice(driver);
   const server = new FileServer(serverFile);
 
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store,
     transport: new FileServerTransport(server, () => {
       console.log("CHILD: bill is synced; killing before the void is sent");

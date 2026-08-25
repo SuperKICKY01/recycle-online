@@ -17,13 +17,24 @@
 
 import { VOID_REJECTED_CODE } from "./types.js";
 import type { Clock, LocalBill, LocalStore, SendOutcome, Transport, VoidOutcome } from "./types.js";
-import { BILL_SEND, BILL_VOID } from "./outbox.js";
+import { BILL_SEND, BILL_VOID, SELLER_CREATE } from "./outbox.js";
 import type { OutboxDisposition, OutboxHandler, OutboxRegistry } from "./outbox.js";
+import type { LocalSeller, LocalSellerStore } from "./localSeller.js";
+import { classifySellerCreate } from "./sellerCreate.js";
+import type { SellerCreateOutcome, SellerCreateTransport } from "./sellerCreate.js";
 
 /**
  * What every handler closes over. The knob values are REQUIRED — the defaults
  * live on `SyncEngine`'s constructor (which also enforces the horizon bound on
  * them), and a second copy of a default here would be a number free to drift.
+ *
+ * THE TWO SELLER FIELDS ARE REQUIRED, AND THAT IS THE WHOLE MECHANISM. An
+ * optional field with a default would leave every existing construction site
+ * compiling clean while the seller kind quietly drained against a store that is
+ * not the device's — which is the defect this project's design names in its own
+ * words about a defaulted parameter. Required, they turned all 67
+ * `new SyncEngine` sites into compile errors, and the compiler is what found
+ * every one of them rather than anybody remembering.
  */
 export interface OutboxDeps {
   readonly store: LocalStore;
@@ -34,6 +45,13 @@ export interface OutboxDeps {
   readonly backoffMaxMs: number;
   /** The parked-bill slow cadence. Deliberately not a backoff. */
   readonly masterDataRetryMs: number;
+  /**
+   * The seller kind's own store — a SEPARATE contract from `LocalStore`,
+   * because `local_sellers` and `local_seller_codes` are not `local_bills`.
+   * See `sync/localSeller.ts` for the argument and for what it costs.
+   */
+  readonly sellerStore: LocalSellerStore;
+  readonly sellerTransport: SellerCreateTransport;
 }
 
 /** Same rendering `engine.ts` uses for a thrown transport error today. */
@@ -294,6 +312,166 @@ export function billVoidHandler(deps: OutboxDeps): OutboxHandler<LocalBill, Void
   };
 }
 
+/* -------------------------------------------------------- seller_create -- */
+
+/**
+ * THE SELLER KIND. Its policy lives on `SELLER_CREATE` in ./outbox.js, where
+ * the two axes that differ from a bill are argued at the constant; its
+ * `classify` lives in ./sellerCreate.js, where the outcome union it switches
+ * over is declared. What is here is the wiring, and the two members that do
+ * something neither bill kind does.
+ */
+export function sellerCreateHandler(
+  deps: OutboxDeps,
+): OutboxHandler<LocalSeller, SellerCreateOutcome> {
+  const backoffFor = (attempt: number): number => {
+    const raw = deps.backoffBaseMs * 2 ** Math.max(0, attempt - 1);
+    return Math.min(raw, deps.backoffMaxMs);
+  };
+  return {
+    kind: "seller_create",
+    policy: SELLER_CREATE,
+    /**
+     * OWED AND ACTIONABLE, and THIS KIND ASKS A THIRD OWNER QUESTION.
+     * `bill_send` filters on who WEIGHED the bill, `bill_void` on who ORDERED
+     * THE REVERSAL, and this on who CREATED THE SELLER. Three questions, three
+     * filters, each written by hand at its own site — and the filter and the
+     * order both live in the QUERY, because a sort cannot order a row the
+     * query did not return.
+     */
+    owed: (limit) => deps.sellerStore.listSellersToCreate(deps.clock.now(), limit),
+    /**
+     * WIDER than `owed`, as the rule requires: a claimed (syncing) row and a
+     * row held for review are both still owed. A kind whose two methods share
+     * a predicate is a screen that goes quiet exactly while work is happening.
+     */
+    owedCount: () => deps.sellerStore.countSellersOwed(),
+    /**
+     * A REAL SWEEP, UNLIKE THE VOID KIND'S — and this kind is the first in the
+     * tree that can tell the two apart.
+     *
+     * The void's `recover` correctly returns an empty array: its in-flight
+     * guard is the runner's IN-MEMORY key set, and a void stays owed across a
+     * kill with or without any sweep because `void_requested_at` is never
+     * cleared. NEITHER IS TRUE HERE. `claim` is a conditional UPDATE that
+     * writes `syncing` to disk, and `listSellersToCreate` returns only
+     * `pending` rows — which is exactly what makes the claim work and exactly
+     * what strands the row. Nothing would ever look at it again.
+     *
+     * An empty array here would satisfy the inherited boot criterion
+     * completely, because that criterion asks whether the boot VISITED the kind
+     * and not what the visit did.
+     */
+    recover: (now) => deps.sellerStore.resetSyncingSellersToPending(now),
+    rowId: (s) => s.id,
+    attempt: (s) => s.attempt_count,
+    /** A real schedule, unlike the void kind's null: an offline device must not
+        hammer a route it cannot reach. */
+    dueAt: (s) => s.next_attempt_at,
+    claim: (s) => deps.sellerStore.claimSellerCreate(s.id, deps.clock.now()),
+    perform: (s) => deps.sellerTransport.createSeller(s),
+    /**
+     * THE KIND'S OWN `unavailable`, CARRYING NO `reachable`.
+     *
+     * That omission is deliberate and is not a shortcut. `reachable` drives the
+     * POISON ALARM — the "call support" state raised when a REACHABLE server
+     * keeps refusing a BILL. A seller create bouncing must not feed it: the
+     * alarm is about a dammed money queue, and this kind is `independent` and
+     * dams nothing.
+     *
+     * `classify(onThrow(x))` is `retry`, which is ONLY legal because the resend
+     * is idempotent — and it is idempotent only because the request carries the
+     * reservation token. The two facts are one fact.
+     */
+    onThrow: (err) => ({ kind: "unavailable", reason: describeError(err) }),
+    classify: classifySellerCreate,
+    nextAttemptAt: (_row, d, attempt, now) => {
+      switch (d.next) {
+        case "retry":
+          return new Date(now.getTime() + backoffFor(attempt));
+        default:
+          // settled and terminal leave the queue; needs_review leaves the
+          // ACTIONABLE set by its own column and is never re-asked, so a
+          // schedule on it would be a number pretending the row waits for
+          // time. halt_kind is held by the runner, not by a delay.
+          return null;
+      }
+    },
+    /**
+     * THE KIND'S ONLY WRITER.
+     *
+     * IT TOUCHES NO COUNTER ON `SyncRunResult`, AND THAT IS DELIBERATE RATHER
+     * THAN AN OMISSION. `result.attempted` is documented on the send kind as
+     * "bills this pass actually claimed and sent", send-only on purpose,
+     * because `App.tsx`'s `attempted === 0` early-return decides whether a pass
+     * may draw conclusions about the CONNECTION — and a void-only pass must not
+     * count. A seller-only pass must not count for the same reason. The
+     * per-kind report the runner already returns (`performed`, keyed by kind)
+     * is where this kind's work is visible, and the counters a SCREEN reads
+     * belong with the screen that reads them, which is the surfaces phase.
+     *
+     * WHAT IT DOES THAT NEITHER BILL KIND DOES: on settling it writes the
+     * SERVER's seller id onto the local row.
+     *
+     * WHAT IT DOES NOT DO YET, SAID PLAINLY: the design also has this writer
+     * release every bill parked behind the settling seller. THAT PARK IS NOT
+     * BUILT — its columns exist on `local_bills` and nothing reads them, and
+     * the behaviour belongs to the phase that builds the surfaces. A release
+     * written here now would be a statement over a park no bill can be in.
+     */
+    record: async (row, o, _d, attempt, next, now, _result) => {
+      switch (o.kind) {
+        case "created":
+        case "already_created":
+          // Both are success and both write the SERVER's id. `already_created`
+          // is the replay the reservation token bought: the server created
+          // nothing this time and handed back the row the first attempt made.
+          await deps.sellerStore.markSellerCreated(row.id, o.server_seller_id, attempt, now);
+          return;
+        case "invalid":
+          // TERMINAL, and the store's own writer returns the reserved code to
+          // the device's spendable holding — the reservation was never spent,
+          // because the server moves one to `spent` only inside the seller
+          // INSERT. A LOST refusal is NOT this arm: it is `unavailable`, and
+          // nothing is returned.
+          await deps.sellerStore.markSellerCreateRefused(row.id, o.reason, attempt, now);
+          return;
+        case "conflict":
+          // STILL OWED, out of the actionable set, operator-visible, and the
+          // code stays BOUND — the server may hold a row under it.
+          await deps.sellerStore.markSellerCreateNeedsReview(
+            row.id,
+            o.code,
+            o.reason,
+            attempt,
+            now,
+          );
+          return;
+        case "session_expired":
+        case "unavailable":
+        case "ambiguous":
+          // All three are unknown-or-retryable and all three keep the row owed
+          // with the SAME code and the SAME token. They stay separate members
+          // so a later reader can tell an outage from an expired session from
+          // an unreadable 2xx.
+          await deps.sellerStore.markSellerCreateAttemptFailed(
+            row.id,
+            o.reason,
+            attempt,
+            next ?? now,
+          );
+          return;
+        case "forbidden":
+          // The KIND halts, durably, in the runner. The ROW keeps its schedule
+          // and stays owed: nothing about this row is wrong, and the refusal is
+          // retracted by a sign-in or a sign-out.
+          await deps.sellerStore.markSellerCreateAttemptFailed(row.id, o.reason, attempt, now);
+          return;
+      }
+    },
+  };
+}
+
 /* -------------------------------------------------------- the registry -- */
 
 /**
@@ -309,9 +487,25 @@ export function billVoidHandler(deps: OutboxDeps): OutboxHandler<LocalBill, Void
  * that window looks exactly like a bill the owner cancelled while the server
  * still shows it as active (`SENDS-SETTLE-BEFORE-VOIDS-ARE-READ`; the
  * crash-window argument is engine.ts's own comment above its applyVoids call).
+ *
+ * `seller_create` IS FIRST, AND FOR THE SAME SHAPE OF REASON ONE STEP EARLIER
+ * IN THE CHAIN. A seller created and a bill weighed in ONE offline stretch both
+ * become actionable in one pass only if the seller goes first: the bill is
+ * waiting on that seller, and the seller's settle is what releases it.
+ * Reversed, every such bill waits a whole poll interval behind a seller that
+ * had already settled in the same pass (`THIS-KIND-DRAINS-BEFORE-BILLS-IN-ONE-PASS`).
+ *
+ * THE ORDER IS PINNED, NOT THE ADJACENCY. A runner draining a fourth kind
+ * between these still satisfies the rule, and should.
+ *
+ * AND THIS IS A REORDERING WITH NO DIFF ANYWHERE ELSE, which is exactly what
+ * makes it worth a paragraph: swap two lines here and every assertion about the
+ * final queue stays green over two passes. Only a ONE-pass staging separates
+ * the two orders.
  */
 export function buildOutboxRegistry(deps: OutboxDeps): OutboxRegistry {
   return {
+    seller_create: sellerCreateHandler(deps),
     bill_send: billSendHandler(deps),
     bill_void: billVoidHandler(deps),
   };

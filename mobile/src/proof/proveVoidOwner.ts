@@ -29,7 +29,13 @@ import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
 import type { LocalBill, RowOwner, SendOutcome, Transport, VoidOutcome } from "../sync/types.js";
-import { FakeClock, FakeServer, OnlineTransport, SeqIds } from "./fakes.js";
+import {
+  FakeClock,
+  FakeServer,
+  noSellerKind,
+  OnlineTransport,
+  SeqIds,
+} from "./fakes.js";
 
 let failures = 0;
 
@@ -124,7 +130,7 @@ async function syncedBill(x: Bench, owner: RowOwner): Promise<string> {
     { seller_id: "s-1", vehicle_no: null, items: [ITEM], total_amount: "150.00", master_as_of: null },
     owner,
   );
-  const e = new SyncEngine({
+  const e = new SyncEngine({ ...noSellerKind(),
     store: x.store,
     transport: new OnlineTransport(new FakeServer()),
     clock: x.clock,
@@ -219,7 +225,7 @@ async function w1SelectionByRequester(): Promise<void> {
   console.log(`  no requester: ${JSON.stringify(await voidCols(x, billX))}`);
 
   const transport = new VoidCounter();
-  const engine = new SyncEngine({ store: x.store, transport, clock: x.clock });
+  const engine = new SyncEngine({ ...noSellerKind(), store: x.store, transport, clock: x.clock });
   for (let i = 0; i < PASSES; i += 1) await engine.runOnce();
 
   const a = transport.count(billA);
@@ -296,7 +302,7 @@ async function w2BothMechanismsAtOnce(): Promise<void> {
   await x.store.requestVoid(billOk, "B ยกเลิก 2", x.clock.now());
 
   const transport = new VoidCounter(new Set([billRefused]));
-  const engine = new SyncEngine({ store: x.store, transport, clock: x.clock });
+  const engine = new SyncEngine({ ...noSellerKind(), store: x.store, transport, clock: x.clock });
   for (let i = 0; i < PASSES; i += 1) await engine.runOnce();
 
   const r = transport.count(billRefused);
@@ -358,7 +364,7 @@ async function w3SignInDoesNotReleaseAnothersVoids(): Promise<void> {
 
   // B signs in.
   await x.identity.save(OWNER_B);
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: x.store,
     transport: new VoidCounter(),
     clock: x.clock,

@@ -84,9 +84,10 @@ import {
   ExpiredSessionTransport,
   FakeClock,
   FakeServer,
+  noSellerKind,
   OfflineTransport,
-  SeqIds,
   PROOF_OWNER,
+  SeqIds,
 } from "./fakes.js";
 import { signInProofDevice } from "./proofDevice.js";
 import type { LocalBill, SendOutcome, Transport, VoidOutcome } from "../sync/types.js";
@@ -504,7 +505,7 @@ async function s4NoRequestsAfterwards(): Promise<void> {
     await signInProofDevice(driver);
     const transport = new CountingTransport();
     const clock = new FakeClock("2026-08-06T01:00:00.000Z");
-    const engine = new SyncEngine({ store, transport, clock });
+    const engine = new SyncEngine({ ...noSellerKind(), store, transport, clock });
 
     // A bill that then DRAINS, so the queue is empty and the gate lets us out.
     await createLocalBill(
@@ -605,7 +606,7 @@ async function s4bInFlightPass(): Promise<void> {
       voidBill: (): Promise<VoidOutcome> =>
         Promise.resolve({ kind: "voided", doc_no: "B-2569-99" }),
     };
-    const engine = new SyncEngine({ store, transport, clock });
+    const engine = new SyncEngine({ ...noSellerKind(), store, transport, clock });
 
     await createLocalBill(
       { clock, ids: new SeqIds("s4b"), store },
@@ -743,7 +744,7 @@ async function s8SendForbiddenCleared(): Promise<void> {
       voidBill: (): Promise<VoidOutcome> =>
         Promise.resolve({ kind: "voided", doc_no: "B-2569-1" }),
     };
-    const engine = new SyncEngine({ store, transport, clock });
+    const engine = new SyncEngine({ ...noSellerKind(), store, transport, clock });
 
     const make = async (tag: string): Promise<void> => {
       await createLocalBill(
@@ -1273,7 +1274,7 @@ async function s9SessionDrivesTheSheet(): Promise<void> {
     const server = new FakeServer();
     const transport = new ExpiredSessionTransport(server);
     const clock = new FakeClock("2026-08-07T04:16:00.000Z");
-    const engine = new SyncEngine({ store, transport, clock });
+    const engine = new SyncEngine({ ...noSellerKind(), store, transport, clock });
 
     const ids = new SeqIds("s9d");
     const queued: string[] = [];
@@ -1441,7 +1442,7 @@ async function s9SessionDrivesTheSheet(): Promise<void> {
     const liveStore = await SqliteLocalStore.open(liveDriver);
     await signInProofDevice(liveDriver);
     const liveClock = new FakeClock("2026-08-07T04:16:00.000Z");
-    const liveEngine = new SyncEngine({
+    const liveEngine = new SyncEngine({ ...noSellerKind(),
       store: liveStore,
       transport: new OfflineTransport(),
       clock: liveClock,

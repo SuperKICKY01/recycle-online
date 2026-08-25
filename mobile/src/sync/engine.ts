@@ -15,6 +15,8 @@
  */
 import { SEND_SCHEDULE_HORIZON_MS } from "../time/clockSanity.js";
 import type { Clock, LocalStore, Transport } from "./types.js";
+import type { LocalSellerStore } from "./localSeller.js";
+import type { SellerCreateTransport } from "./sellerCreate.js";
 import { buildOutboxRegistry } from "./outboxHandlers.js";
 import { OutboxRunner } from "./outboxRunner.js";
 import type { OutboxKind } from "./outbox.js";
@@ -23,6 +25,22 @@ export interface SyncEngineOptions {
   store: LocalStore;
   transport: Transport;
   clock: Clock;
+  /**
+   * THE SELLER KIND'S STORE AND TRANSPORT — REQUIRED, not optional.
+   *
+   * `OutboxRegistry` is total over `OutboxKind`, so a third member means this
+   * engine cannot build a registry without a store for it. Making these
+   * optional with a default would leave every existing construction site
+   * compiling clean while the kind drained against something that is not the
+   * device's database — which is the defect the design names in its own words,
+   * one level down, about a defaulted parameter.
+   *
+   * Required, they turned all 67 existing `new SyncEngine` sites into compile
+   * errors. That sweep IS the mechanism: it is how the set of call sites is
+   * known to be complete rather than remembered.
+   */
+  sellerStore: LocalSellerStore;
+  sellerTransport: SellerCreateTransport;
   /** First retry delay; doubles per attempt up to backoffMaxMs. */
   backoffBaseMs?: number;
   backoffMaxMs?: number;
@@ -106,9 +124,9 @@ export class SyncEngine {
   private readonly clock: Clock;
 
   /**
-   * THE MECHANISM. One registry — `bill_send` before `bill_void`, because the
-   * literal's member order is the cross-kind drain order — and one generic
-   * runner. The runner owns what the two hand-written loops used to: the
+   * THE MECHANISM. One registry — `seller_create`, then `bill_send`, then
+   * `bill_void`, because the literal's member order IS the cross-kind drain
+   * order — and one generic runner. The runner owns what the two hand-written loops used to: the
    * in-flight key set, the per-kind halted set (the successor of the
    * `sendForbidden` flag this class carried until stage 3 — the whole
    * argument, including why a halt is in memory and not persisted, lives on
@@ -164,6 +182,8 @@ export class SyncEngine {
         backoffBaseMs,
         backoffMaxMs,
         masterDataRetryMs,
+        sellerStore: opts.sellerStore,
+        sellerTransport: opts.sellerTransport,
       }),
       clock: opts.clock,
       batchLimit,
@@ -253,6 +273,13 @@ export class SyncEngine {
    * plain state reset rather than a distributed query. The void kind reports
    * an empty list: its in-flight guard is in-memory, and a void stays owed
    * across a kill with or without any sweep.
+   *
+   * `seller_create` SWEEPS FOR REAL, as of P1.8b, and it is the SECOND kind
+   * with durable in-flight state rather than the first. Its `claim` writes
+   * `syncing` to disk and its queue reads only `pending`, so a row stranded by
+   * a kill is invisible to everything until this runs. Re-sending carries the
+   * same reservation TOKEN — the seller path's answer to what an idempotency
+   * key is for a bill — so recovery is the same plain state reset.
    */
   async recoverInterrupted(): Promise<{ readonly [K in OutboxKind]: readonly string[] }> {
     return this.runner.recoverAll(this.clock.now());
@@ -261,9 +288,10 @@ export class SyncEngine {
   /**
    * One pass: the parked bills whose slow cadence has come due rejoin the
    * queue first, then the runner drains every kind in registry order —
-   * `bill_send` to its stop before `bill_void`'s owed rows are read, which
-   * is the cross-kind rule the registry literal's member order carries (the
-   * crash-window argument sits on the literal in ./outboxHandlers.js).
+   * `seller_create` to its stop, then `bill_send` to its stop before
+   * `bill_void`'s owed rows are read, which is the cross-kind rule the registry
+   * literal's member order carries (both arguments sit on the literal in
+   * ./outboxHandlers.js).
    *
    * The release stays HERE rather than in any handler because it is not a
    * drain step: it mutates which rows are OWED before the pass reads them.

@@ -156,8 +156,9 @@ export class OutboxRunner {
 
   /**
    * One pass: every kind, in registry order, each drained to its stop.
-   * `bill_send` therefore settles before `bill_void`'s owed rows are read —
-   * the cross-kind rule — because the send literal precedes the void literal.
+   * `seller_create` therefore settles before `bill_send` reads its owed rows,
+   * and `bill_send` settles before `bill_void` reads its own — the cross-kind
+   * rule — because each literal precedes the next.
    */
   async runPass(): Promise<OutboxPassReport> {
     const result = emptyRunResult();

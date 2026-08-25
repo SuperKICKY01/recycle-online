@@ -61,7 +61,13 @@ import { buildLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
 import { statusNotice } from "../sync/statusNotice.js";
 import { systemClock } from "../sync/systemClock.js";
-import { FakeClock, PROOF_OWNER, RejectingTransport, SeqIds } from "./fakes.js";
+import {
+  FakeClock,
+  noSellerKind,
+  PROOF_OWNER,
+  RejectingTransport,
+  SeqIds,
+} from "./fakes.js";
 import { signInProofDevice } from "./proofDevice.js";
 
 let failures = 0;
@@ -820,7 +826,7 @@ async function c7DeletedSellerFailsVisibly(): Promise<void> {
   );
   await store.putBill(bill, PROOF_OWNER);
 
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store,
     // 422: "seller_id does not exist in this tenant" — the real server answer.
     transport: new RejectingTransport(),
@@ -1007,7 +1013,7 @@ async function c8ColdStartNoServer(): Promise<void> {
     (await draftStore.load()).draft === null);
 
   /* ---- the engine tries, against the dead port. */
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: billStore,
     transport,
     clock: systemClock,

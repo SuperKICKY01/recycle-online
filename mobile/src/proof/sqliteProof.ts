@@ -15,7 +15,14 @@ import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
 import type { BillItemPayload, LocalBill } from "../sync/types.js";
 import type { ClaimWorkerData, ClaimWorkerResult } from "./claimWorker.js";
-import { FakeClock, FakeServer, OnlineTransport, PROOF_OWNER, SeqIds } from "./fakes.js";
+import {
+  FakeClock,
+  FakeServer,
+  noSellerKind,
+  OnlineTransport,
+  PROOF_OWNER,
+  SeqIds,
+} from "./fakes.js";
 import { signInProofDevice } from "./proofDevice.js";
 
 let failures = 0;
@@ -365,7 +372,7 @@ async function s4DurabilityAcrossRestart(): Promise<void> {
   );
 
   // S5, on the same reopened file: the stranded bill is recovered and syncs.
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: store2,
     transport: new OnlineTransport(server),
     clock,

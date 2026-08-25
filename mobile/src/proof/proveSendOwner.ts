@@ -39,7 +39,13 @@ import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
 import type { LocalBill, RowOwner } from "../sync/types.js";
-import { FakeClock, FakeServer, OnlineTransport, SeqIds } from "./fakes.js";
+import {
+  FakeClock,
+  FakeServer,
+  noSellerKind,
+  OnlineTransport,
+  SeqIds,
+} from "./fakes.js";
 
 let failures = 0;
 
@@ -99,7 +105,7 @@ async function bench(name: string): Promise<Bench> {
   const clock = new FakeClock();
   const ids = new SeqIds(name);
   const server = new FakeServer();
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store,
     transport: new OnlineTransport(server),
     clock,

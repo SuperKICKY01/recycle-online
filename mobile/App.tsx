@@ -46,7 +46,9 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import { HttpTransport } from "./src/adapters/httpTransport";
+import { HttpSellerTransport } from "./src/adapters/httpSellerTransport";
 import { SqliteDraftStore } from "./src/adapters/sqlite/SqliteDraftStore";
+import { SqliteLocalSellerStore } from "./src/adapters/sqlite/SqliteLocalSellerStore";
 import { SqliteIdentityStore } from "./src/adapters/sqlite/SqliteIdentityStore";
 import type { LocalIdentity } from "./src/adapters/sqlite/SqliteIdentityStore";
 import { ownerForNewRow } from "./src/session/rowOwner";
@@ -649,6 +651,29 @@ export default function App() {
             getToken: () => Promise.resolve(tokenRef.current),
             fetchImpl: (input, init) => fetch(input, init),
           }),
+          /*
+           * THE SELLER KIND, wired to the SAME driver as the bill store —
+           * these are two tables in one file, and a second driver would be a
+           * second connection able to see a different committed state.
+           *
+           * NO open() OF ITS OWN, for the reason the identity store above
+           * gives: the tables are created by initConnection, which the three
+           * stores above have already run through this driver.
+           *
+           * WHAT THIS DOES AND DOES NOT TURN ON. It makes the engine able to
+           * drain a local seller and to top the code holding up. It does NOT
+           * give anybody a way to CREATE one — no screen writes
+           * `local_sellers` yet — so on today's build this queue is always
+           * empty and the kind drains nothing. The surfaces are the next
+           * phase; this is here because the registry is total over the kinds
+           * and an engine cannot be built without it.
+           */
+          sellerStore: SqliteLocalSellerStore.open(driver),
+          sellerTransport: new HttpSellerTransport({
+            baseUrl: API_BASE_URL,
+            getToken: () => Promise.resolve(tokenRef.current),
+            fetchImpl: (input, init) => fetch(input, init),
+          }),
           clock: systemClock,
           backoffBaseMs: 2000,
           backoffMaxMs: 30000,
@@ -656,8 +681,13 @@ export default function App() {
 
         const recovered = await engineRef.current.recoverInterrupted();
         // A map keyed by kind since P1.18 stage 3 — the boot sweeps THROUGH
-        // the registry. The toast counts every kind's rows; today only the
-        // send kind has durable in-flight state to sweep.
+        // the registry. The toast counts every kind's rows.
+        //
+        // SUPERSEDED 2026-08-25: this said "today only the send kind has
+        // durable in-flight state to sweep", which stopped being true the day
+        // `seller_create` landed. That kind's `claim` writes `syncing` to disk
+        // and its queue reads only `pending`, so it sweeps for real — and a
+        // stranded local seller is counted here exactly as a stranded bill is.
         const recoveredCount = Object.values(recovered).reduce(
           (n, ids) => n + ids.length,
           0,

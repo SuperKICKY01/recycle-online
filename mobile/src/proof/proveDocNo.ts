@@ -50,7 +50,12 @@ import { buildLocalBill, createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
 import { systemClock } from "../sync/systemClock.js";
 import type { BillItemPayload, LocalBill } from "../sync/types.js";
-import { InMemoryStore, PROOF_OWNER, SeqIds } from "./fakes.js";
+import {
+  InMemoryStore,
+  noSellerKind,
+  PROOF_OWNER,
+  SeqIds,
+} from "./fakes.js";
 import { signInProofDevice } from "./proofDevice.js";
 
 let failures = 0;
@@ -197,7 +202,7 @@ async function d2ToD5EngineAndStore(stub: ScriptedServer): Promise<void> {
     });
     // backoffBaseMs 1: the awaits between passes outlast the first backoff, so
     // the second pass is due without faking a clock.
-    const engine = new SyncEngine({
+    const engine = new SyncEngine({ ...noSellerKind(),
       store,
       transport,
       clock: systemClock,

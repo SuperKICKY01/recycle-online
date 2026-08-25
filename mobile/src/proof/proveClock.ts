@@ -61,13 +61,14 @@ import {
 } from "../time/clockSanity.js";
 import {
   FakeClock,
+  FakeServer,
   HeadFailingTransport,
   InMemoryStore,
+  noSellerKind,
   OfflineTransport,
   OnlineTransport,
-  FakeServer,
-  SeqIds,
   PROOF_OWNER,
+  SeqIds,
 } from "./fakes.js";
 
 let failures = 0;
@@ -167,7 +168,7 @@ async function k1BackoffSurvivesAStableClock(): Promise<void> {
 
   const r = rig("k1");
   const bill = await makeBill(r);
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: new OfflineTransport(),
     clock: r.clock,
@@ -282,7 +283,7 @@ async function k2BackwardsJumpDoesNotStrandTheQueue(): Promise<void> {
   // THE PHONE IS 14h FAST. The bill bounces and takes a next_attempt_at stamped
   // from that fast clock — legitimate at the moment it is written.
   r.clock.advance(SKEW);
-  const offlineEngine = new SyncEngine({
+  const offlineEngine = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: new OfflineTransport(),
     clock: r.clock,
@@ -319,7 +320,7 @@ async function k2BackwardsJumpDoesNotStrandTheQueue(): Promise<void> {
   );
 
   // The real path, against a reachable server.
-  const online = new SyncEngine({
+  const online = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: new OnlineTransport(r.server),
     clock: r.clock,
@@ -362,7 +363,7 @@ async function k2BackwardsJumpDoesNotStrandTheQueue(): Promise<void> {
     r2.clock.advance(60_000);
   }
   r2.clock.advance(SKEW);
-  await new SyncEngine({
+  await new SyncEngine({ ...noSellerKind(),
     store: r2.store,
     transport: new OfflineTransport(),
     clock: r2.clock,
@@ -420,7 +421,7 @@ async function k3ForwardJumpRaisesNoFalseAlarm(): Promise<void> {
 
   // ONE bounce against a REACHABLE server (a 5xx). This stamps
   // first_server_error_at and sets server_error_attempts = 1.
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: new HeadFailingTransport(r.server, head.id),
     clock: r.clock,
@@ -539,7 +540,7 @@ async function k3ForwardJumpRaisesNoFalseAlarm(): Promise<void> {
     two.push(await makeBill(r4));
     r4.clock.advance(60_000);
   }
-  const twoEngine = new SyncEngine({
+  const twoEngine = new SyncEngine({ ...noSellerKind(),
     store: r4.store,
     transport: new HeadFailingTransport(r4.server, two[0]!.id),
     clock: r4.clock,
@@ -571,7 +572,7 @@ async function k3ForwardJumpRaisesNoFalseAlarm(): Promise<void> {
     poison.push(await makeBill(r3));
     r3.clock.advance(60_000);
   }
-  const poisonEngine = new SyncEngine({
+  const poisonEngine = new SyncEngine({ ...noSellerKind(),
     store: r3.store,
     transport: new HeadFailingTransport(r3.server, poison[0]!.id),
     clock: r3.clock,

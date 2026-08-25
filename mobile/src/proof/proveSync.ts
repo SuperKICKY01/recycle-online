@@ -24,15 +24,16 @@ import {
   GatedTransport,
   HeadFailingTransport,
   LegacyUnauthorizedTransport,
-  MasterDataMissingTransport,
   LostAckTransport,
+  MasterDataMissingTransport,
+  mulberry32,
+  noSellerKind,
   OfflineTransport,
   OnlineTransport,
+  PROOF_OWNER,
   RejectingTransport,
   SendCounter,
   SeqIds,
-  mulberry32,
-  PROOF_OWNER,
 } from "./fakes.js";
 import type { StoreHarness, StoreSession } from "./harness.js";
 import { memoryHarness, sqliteHarness } from "./harness.js";
@@ -151,7 +152,7 @@ async function case1Happy(harness: StoreHarness): Promise<void> {
   header("CASE 1: happy path");
   const r = await rig(harness, "bill-h");
   const counter = new SendCounter();
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: new OnlineTransport(r.server, counter),
     clock: r.clock,
@@ -181,7 +182,7 @@ async function case2OfflineThenRestored(harness: StoreHarness): Promise<void> {
   const created = await createBills(r, 1);
   const bill = created[0]!;
 
-  const offline = new SyncEngine({
+  const offline = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: new OfflineTransport(),
     clock: r.clock,
@@ -200,7 +201,7 @@ async function case2OfflineThenRestored(harness: StoreHarness): Promise<void> {
   r.clock.advance(1000);
 
   const counter = new SendCounter();
-  const online = new SyncEngine({
+  const online = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: new OnlineTransport(r.server, counter),
     clock: r.clock,
@@ -222,7 +223,7 @@ async function case3LostResponse(harness: StoreHarness): Promise<void> {
   const bill = created[0]!;
   const counter = new SendCounter();
 
-  const lossy = new SyncEngine({
+  const lossy = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: new LostAckTransport(r.server, counter),
     clock: r.clock,
@@ -234,7 +235,7 @@ async function case3LostResponse(harness: StoreHarness): Promise<void> {
   check("client does not know it and stays pending", afterLoss?.sync_state === "pending", `state=${afterLoss?.sync_state} last_error=${String(afterLoss?.last_error)}`);
 
   r.clock.advance(1000);
-  const retry = new SyncEngine({
+  const retry = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: new OnlineTransport(r.server, counter),
     clock: r.clock,
@@ -266,7 +267,7 @@ async function case4CrashDuringSyncing(harness: StoreHarness): Promise<void> {
   openSessions.push(restarted);
   const rebooted = restarted.store;
   const counter = new SendCounter();
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: rebooted,
     transport: new OnlineTransport(r.server, counter),
     clock: r.clock,
@@ -290,8 +291,13 @@ async function case4CrashDuringSyncing(harness: StoreHarness): Promise<void> {
     `recovered=${JSON.stringify(recovered)}`,
   );
   check(
+    // SUPERSEDED 2026-08-25 (P1.8b): this read "bill_send,bill_void". A third
+    // kind, `seller_create`, joined the union. THE COMPILER COULD NOT SEE THIS
+    // — it is a string comparison — and it was found by a run going red, not by
+    // a search, which is the whole subject of
+    // lessons/a-quantified-sentence-names-no-member.md.
     "the recovery map's key set EQUALS the kind set",
-    Object.keys(recovered).sort().join(",") === "bill_send,bill_void",
+    Object.keys(recovered).sort().join(",") === "bill_send,bill_void,seller_create",
     JSON.stringify(Object.keys(recovered)),
   );
 
@@ -309,7 +315,7 @@ async function case5FlakyMany(harness: StoreHarness, seed: number, count: number
   const created = await createBills(r, count);
   const counter = new SendCounter();
   const transport = new FlakyTransport(r.server, mulberry32(seed), counter);
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport,
     clock: r.clock,
@@ -366,7 +372,7 @@ async function case6DoubleTrigger(harness: StoreHarness): Promise<void> {
   const bill = created[0]!;
   const counter = new SendCounter();
   const gated = new GatedTransport(r.server, counter);
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: gated,
     clock: r.clock,
@@ -443,7 +449,7 @@ async function case8WeighingOrder(harness: StoreHarness): Promise<void> {
   }
 
   // All five fail while offline, collecting a backoff.
-  const offline = new SyncEngine({
+  const offline = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: new OfflineTransport(),
     clock: r.clock,
@@ -461,7 +467,7 @@ async function case8WeighingOrder(harness: StoreHarness): Promise<void> {
   console.log(`  weighing order: ${byWeighing.map((b) => b.device_created_at.slice(11, 19)).join(" < ")}`);
 
   // Network returns.
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: new OnlineTransport(r.server),
     clock: r.clock,
@@ -500,7 +506,7 @@ async function case8WeighingOrder(harness: StoreHarness): Promise<void> {
 
   // A is weighed, and its send fails — it now sits behind a 30s backoff.
   const a = (await createBills(q, 1))[0]!;
-  const offlineEngine = new SyncEngine({
+  const offlineEngine = new SyncEngine({ ...noSellerKind(),
     store: q.store,
     transport: new OfflineTransport(),
     clock: q.clock,
@@ -513,7 +519,7 @@ async function case8WeighingOrder(harness: StoreHarness): Promise<void> {
   q.clock.advance(10_000);
   const b = (await createBills(q, 1))[0]!;
 
-  const onlineEngine = new SyncEngine({
+  const onlineEngine = new SyncEngine({ ...noSellerKind(),
     store: q.store,
     transport: new OnlineTransport(q.server),
     clock: q.clock,
@@ -601,7 +607,7 @@ async function case9OfflineVsPoison(harness: StoreHarness): Promise<void> {
     );
     off.clock.advance(60_000);
   }
-  const offlineEngine = new SyncEngine({
+  const offlineEngine = new SyncEngine({ ...noSellerKind(),
     store: off.store,
     transport: new OfflineTransport(),
     clock: off.clock,
@@ -667,7 +673,7 @@ async function case9OfflineVsPoison(harness: StoreHarness): Promise<void> {
   // A is the poison pill: the REACHABLE server errors on it every time — a 5xx,
   // so `unavailable` with reachable:true, NOT rejected. It retries forever.
   const failing = new HeadFailingTransport(r.server, a.id);
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: failing,
     clock: r.clock,
@@ -755,7 +761,7 @@ async function case9OfflineVsPoison(harness: StoreHarness): Promise<void> {
 
   // NON-VACUITY: the poisoned queue is jammed, not dead. Fix the server and the
   // whole backlog drains — in weighing order, A first now that it can send.
-  const online = new SyncEngine({
+  const online = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: new OnlineTransport(r.server),
     clock: r.clock,
@@ -828,7 +834,7 @@ async function case9dAttemptTrigger(harness: StoreHarness): Promise<void> {
   const head = created[0]!;
 
   const failing = new HeadFailingTransport(r.server, head.id);
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: failing,
     clock: r.clock,
@@ -892,7 +898,7 @@ async function case9dAttemptTrigger(harness: StoreHarness): Promise<void> {
   );
     off.clock.advance(1_000);
   }
-  const offEngine = new SyncEngine({
+  const offEngine = new SyncEngine({ ...noSellerKind(),
     store: off.store,
     transport: new OfflineTransport(),
     clock: off.clock,
@@ -925,7 +931,7 @@ async function case9dAttemptTrigger(harness: StoreHarness): Promise<void> {
 
   /* ---- and a recovery resets the count, so a blip cannot accumulate ---- */
 
-  const recovered = new SyncEngine({
+  const recovered = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: new OnlineTransport(r.server),
     clock: r.clock,
@@ -992,7 +998,7 @@ async function case10ResolvableVsPermanent(harness: StoreHarness): Promise<void>
   const originalKey = a.idempotency_key;
 
   const transport = new MasterDataMissingTransport(r.server, a.id);
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport,
     clock: r.clock,
@@ -1123,7 +1129,7 @@ async function case10ResolvableVsPermanent(harness: StoreHarness): Promise<void>
     PROOF_OWNER,
   );
   const t2 = new MasterDataMissingTransport(s.server, only.id);
-  const e2 = new SyncEngine({
+  const e2 = new SyncEngine({ ...noSellerKind(),
     store: s.store,
     transport: t2,
     clock: s.clock,
@@ -1161,7 +1167,7 @@ async function case10ResolvableVsPermanent(harness: StoreHarness): Promise<void>
     { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(p.itemIds), total_amount: null, master_as_of: null },
     PROOF_OWNER,
   );
-  const permEngine = new SyncEngine({
+  const permEngine = new SyncEngine({ ...noSellerKind(),
     store: p.store,
     transport: new RejectingTransport(),
     clock: p.clock,
@@ -1226,7 +1232,7 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
   const oneCreated = await createBills(one, 1);
   const solo = oneCreated[0]!;
   const t1 = new ExpiredSessionTransport(one.server);
-  const e1 = new SyncEngine({
+  const e1 = new SyncEngine({ ...noSellerKind(),
     store: one.store,
     transport: t1,
     clock: one.clock,
@@ -1297,7 +1303,7 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
 
   const legacyOne = await rig(harness, "bill-s1L");
   await createBills(legacyOne, 1);
-  const legacyRun = await new SyncEngine({
+  const legacyRun = await new SyncEngine({ ...noSellerKind(),
     store: legacyOne.store,
     transport: new LegacyUnauthorizedTransport(),
     clock: legacyOne.clock,
@@ -1345,7 +1351,7 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
     many.clock.advance(60_000); // weighed a minute apart, so order is unambiguous
   }
   const t3 = new ExpiredSessionTransport(many.server);
-  const e3 = new SyncEngine({
+  const e3 = new SyncEngine({ ...noSellerKind(),
     store: many.store,
     transport: t3,
     clock: many.clock,
@@ -1428,7 +1434,7 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
   );
     legacyMany.clock.advance(60_000);
   }
-  const eLegacy = new SyncEngine({
+  const eLegacy = new SyncEngine({ ...noSellerKind(),
     store: legacyMany.store,
     transport: new LegacyUnauthorizedTransport(),
     clock: legacyMany.clock,
@@ -1520,7 +1526,7 @@ async function case7RejectionIsNotRetry(harness: StoreHarness): Promise<void> {
   const r = await rig(harness, "bill-r");
   const created = await createBills(r, 1);
   const bill = created[0]!;
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: r.store,
     transport: new RejectingTransport(),
     clock: r.clock,

@@ -65,6 +65,7 @@ import {
   HeadFailingTransport,
   InMemoryStore,
   MasterDataMissingTransport,
+  noSellerKind,
   OfflineTransport,
   OnlineTransport,
   PROOF_OWNER,
@@ -283,7 +284,7 @@ function rig(opts?: {
   const server = new FakeServer();
   const transport = new MutableTransport(opts?.inner ?? new OnlineTransport(server));
   const recorder = new RecordingTransport(transport);
-  const deps: OutboxDeps = {
+  const deps: OutboxDeps = { ...noSellerKind(),
     store,
     transport: recorder,
     clock,
@@ -316,10 +317,25 @@ async function o1RegistryAndRecovery(): Promise<void> {
   header("O1: the runner enumerates the registry; every kind recovers at boot");
   const r = rig({ prefix: "o1" });
 
+  /*
+   * SUPERSEDED 2026-08-25 (P1.8b): this asserted `kinds.length === 2` with
+   * bill_send first. A THIRD kind, `seller_create`, joined the union and the
+   * registry literal puts it FIRST — a seller created and a bill weighed in one
+   * offline stretch both become actionable in one pass only if the seller goes
+   * first, because the bill is waiting on that seller.
+   *
+   * THE COMPILER DID NOT CATCH THIS ONE, and that is why it is worth a note. It
+   * caught 67 construction sites; it cannot see a string comparison or a
+   * cardinality, so this cell and the one below were found by SEARCHING for
+   * sentences that quantify over the kind set, not by a red build.
+   */
   const kinds = Object.keys(r.registry);
   check(
-    "registry member order is bill_send then bill_void — LOAD-BEARING, the runner drains in this order",
-    kinds.length === 2 && kinds[0] === "bill_send" && kinds[1] === "bill_void",
+    "registry member order is seller_create, bill_send, bill_void — LOAD-BEARING, the runner drains in this order",
+    kinds.length === 3 &&
+      kinds[0] === "seller_create" &&
+      kinds[1] === "bill_send" &&
+      kinds[2] === "bill_void",
     JSON.stringify(kinds),
   );
 
@@ -356,10 +372,13 @@ async function o1RegistryAndRecovery(): Promise<void> {
     `attempted=${String(rep.result.attempted)} synced=${String(rep.result.synced)}`,
   );
   check(
-    "the pass report is keyed by kind, both kinds present",
-    Object.keys(rep.performed).sort().join(",") === "bill_send,bill_void" &&
+    "the pass report is keyed by kind, EVERY kind present",
+    Object.keys(rep.performed).sort().join(",") === "bill_send,bill_void,seller_create" &&
       rep.performed.bill_send === 1 &&
-      rep.performed.bill_void === 0,
+      rep.performed.bill_void === 0 &&
+      // A kind the runner drained and found nothing for is a visible ZERO,
+      // never an absent key. That is the whole observable a no-op kind has.
+      rep.performed.seller_create === 0,
     JSON.stringify(rep.performed),
   );
 }
@@ -947,7 +966,7 @@ async function o10OwedCarriesTheOwnerPredicate(): Promise<void> {
     const clock = new FakeClock();
     const server = new FakeServer();
     const ids = new SeqIds("o10");
-    const deps: OutboxDeps = {
+    const deps: OutboxDeps = { ...noSellerKind(),
       store,
       transport: new OnlineTransport(server),
       clock,

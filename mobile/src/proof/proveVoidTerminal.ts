@@ -32,7 +32,14 @@ import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
 import type { LocalBill, SendOutcome, Transport, VoidOutcome } from "../sync/types.js";
-import { FakeClock, FakeServer, OnlineTransport, PROOF_OWNER, SeqIds } from "./fakes.js";
+import {
+  FakeClock,
+  FakeServer,
+  noSellerKind,
+  OnlineTransport,
+  PROOF_OWNER,
+  SeqIds,
+} from "./fakes.js";
 import { signInProofDevice } from "./proofDevice.js";
 
 let failures = 0;
@@ -141,7 +148,7 @@ async function bench(): Promise<Bench> {
   }
 
   // Phase one: get them all onto the server so each has a doc_no.
-  const syncEngine = new SyncEngine({
+  const syncEngine = new SyncEngine({ ...noSellerKind(),
     store,
     transport: new OnlineTransport(new FakeServer()),
     clock,
@@ -152,7 +159,7 @@ async function bench(): Promise<Bench> {
   for (const id of made) await store.requestVoid(id, "ลูกค้าขอยกเลิก", clock.now());
 
   const transport = new VoidScriptTransport(rejected, unavailable);
-  const engine = new SyncEngine({ store, transport, clock });
+  const engine = new SyncEngine({ ...noSellerKind(), store, transport, clock });
   return { dir, d, store, clock, transport, engine, rejected, unavailable, succeeds };
 }
 

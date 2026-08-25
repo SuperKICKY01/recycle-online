@@ -71,7 +71,13 @@ import type {
 import { statusNotice } from "../sync/statusNotice.js";
 import type { StatusInput } from "../sync/statusNotice.js";
 import type { SyncState } from "../sync/types.js";
-import { FakeClock, PROOF_OWNER, RejectingTransport, SeqIds } from "./fakes.js";
+import {
+  FakeClock,
+  noSellerKind,
+  PROOF_OWNER,
+  RejectingTransport,
+  SeqIds,
+} from "./fakes.js";
 import { signInProofDevice } from "./proofDevice.js";
 
 let failures = 0;
@@ -1164,7 +1170,7 @@ async function n5ReachableAndRendered(): Promise<void> {
   // that hides the failure if `voided` outranks `failed`.
   await store.requestVoid(bill.id, "ชั่งผิด", clock.now());
 
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store,
     transport: new RejectingTransport(),
     clock,

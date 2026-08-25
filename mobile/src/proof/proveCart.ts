@@ -31,7 +31,14 @@ import { sumAmounts } from "../money/money.js";
 import { Decimal } from "decimal.js";
 import { buildLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
-import { FakeClock, FakeServer, OnlineTransport, PROOF_OWNER, SeqIds } from "./fakes.js";
+import {
+  FakeClock,
+  FakeServer,
+  noSellerKind,
+  OnlineTransport,
+  PROOF_OWNER,
+  SeqIds,
+} from "./fakes.js";
 import { signInProofDevice } from "./proofDevice.js";
 
 let failures = 0;
@@ -271,7 +278,7 @@ async function c4EngineNeverSeesADraft(): Promise<void> {
   const draftStore = await SqliteDraftStore.open(driver);
   const clock = new FakeClock();
   const server = new FakeServer();
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: billStore,
     transport: new OnlineTransport(server),
     clock,
@@ -288,8 +295,14 @@ async function c4EngineNeverSeesADraft(): Promise<void> {
   const pending = await billStore.listByState("pending");
   // A map keyed by kind since P1.18 stage 3; summed here because this cell is
   // about NOTHING being recovered, whichever kind it would have come from.
+  //
+  // SUMMED OVER `Object.values` AND NOT OVER TWO NAMED KINDS, as of P1.8b. It
+  // named `bill_send` and `bill_void` by hand, which compiled perfectly well
+  // after a THIRD kind joined the union and silently stopped counting it — the
+  // cell would have reported "nothing was recovered" over a recovered seller.
+  // Summing the map's own values makes a fourth kind covered by construction.
   const recovered = await engine.recoverInterrupted();
-  const recoveredCount = recovered.bill_send.length + recovered.bill_void.length;
+  const recoveredCount = Object.values(recovered).reduce((n, ids) => n + ids.length, 0);
   const run = await engine.runOnce();
 
   console.log(`  draft rows: 1 header, ${String(draftLineCount)} lines`);

@@ -51,9 +51,10 @@ import {
   FakeServer,
   ForbiddenTransport,
   LegacyForbiddenTransport,
+  noSellerKind,
   OnlineTransport,
-  SeqIds,
   PROOF_OWNER,
+  SeqIds,
 } from "./fakes.js";
 import { signInProofDevice } from "./proofDevice.js";
 
@@ -174,7 +175,7 @@ async function f1VoidRefused(): Promise<void> {
   // The bill itself goes through: staff may create bills. This is what makes the
   // refusal specific rather than "the phone cannot talk to the server".
   const transport = new ForbiddenTransport(server, { sends: false, voids: true });
-  const engine = new SyncEngine({ store, transport, clock, backoffBaseMs: 1000 });
+  const engine = new SyncEngine({ ...noSellerKind(), store, transport, clock, backoffBaseMs: 1000 });
 
   const bill = await makeBill(store, clock, new SeqIds("f1"));
   await engine.runUntilQuiescent();
@@ -340,7 +341,7 @@ async function f2SignInRetracts(): Promise<void> {
   const clock = new FakeClock();
   const server = new FakeServer();
   const transport = new ForbiddenTransport(server, { sends: false, voids: true });
-  const engine = new SyncEngine({ store, transport, clock, backoffBaseMs: 1000 });
+  const engine = new SyncEngine({ ...noSellerKind(), store, transport, clock, backoffBaseMs: 1000 });
 
   const bill = await makeBill(store, clock, new SeqIds("f2"));
   await engine.runUntilQuiescent();
@@ -409,7 +410,7 @@ async function f3SendRefused(): Promise<void> {
   const clock = new FakeClock();
   const server = new FakeServer();
   const transport = new ForbiddenTransport(server, { sends: true, voids: true });
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store, transport, clock, backoffBaseMs: 1000, backoffMaxMs: 30_000, batchLimit: 50,
   });
 
@@ -591,14 +592,14 @@ async function f5Disproof(): Promise<void> {
 
   // Sync the bill with a working transport first, then swap in the legacy 403 —
   // the old mapping refused the VOID, not the send.
-  const setup = new SyncEngine({
+  const setup = new SyncEngine({ ...noSellerKind(),
     store: storeV, transport: new OnlineTransport(serverV), clock: clockV, backoffBaseMs: 1,
   });
   const billV = await makeBill(storeV, clockV, new SeqIds("f5v"));
   await setup.runUntilQuiescent();
   await storeV.requestVoid(billV.id, "ชั่งผิด", clockV.now());
 
-  const legacyEngine = new SyncEngine({
+  const legacyEngine = new SyncEngine({ ...noSellerKind(),
     store: storeV, transport: legacyV, clock: clockV, backoffBaseMs: 1000,
   });
   const PASSES = 20;
@@ -644,7 +645,7 @@ async function f5Disproof(): Promise<void> {
   await signInProofDevice(driverS);
   const clockS = new FakeClock();
   const legacyS = new LegacyForbiddenTransport();
-  const engineS = new SyncEngine({
+  const engineS = new SyncEngine({ ...noSellerKind(),
     store: storeS, transport: legacyS, clock: clockS,
     backoffBaseMs: 1000, backoffMaxMs: 5000, batchLimit: 50,
   });

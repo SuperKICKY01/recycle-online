@@ -53,6 +53,7 @@ import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
 import { systemClock } from "../sync/systemClock.js";
 import type { Clock, IdSource, RowOwner } from "../sync/types.js";
+import { noSellerKind } from "./fakes.js";
 
 let failures = 0;
 
@@ -454,7 +455,7 @@ async function s4Shift(): Promise<void> {
     `A=${String(aBefore)} B=${String(bBefore)}`,
   );
 
-  const engine = new SyncEngine({
+  const engine = new SyncEngine({ ...noSellerKind(),
     store: b.bills,
     transport: new HttpTransport({
       baseUrl: API,
@@ -496,7 +497,7 @@ async function s4Shift(): Promise<void> {
 
   // 4g — CONTROL FOR THE WHOLE PASS: A signs back in and A's bill SENDS -------
   await b.identity.save(shop.a);
-  const sender = new SyncEngine({
+  const sender = new SyncEngine({ ...noSellerKind(),
     store: b.bills,
     transport: new HttpTransport({
       baseUrl: API,
