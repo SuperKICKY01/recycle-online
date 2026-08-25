@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 24 across 14 files, counted from the source headings and
+**Amendments:** 26 across 15 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -55,7 +55,7 @@ line instead of by heading depth.
 - `a-platform-can-refuse-an-effect-and-record-it-as-done.md` -- A platform can refuse an effect and record it as done
 - `a-proof-fixture-must-be-a-row-the-product-could-produce.md` -- A proof fixture must be a row the product could have produced
 - `a-proof-must-establish-what-it-is-talking-to.md` -- A proof must establish WHAT IT IS TALKING TO before it asserts anything about the answers
-- `a-quantified-sentence-names-no-member.md` -- A sentence that quantifies over a set names no member of it
+- `a-quantified-sentence-names-no-member.md` *(2 amendments)* -- A sentence that quantifies over a set names no member of it
 - `a-refusal-hands-back-what-it-refused.md` *(1 amendment)* -- A 422 is a MIRROR — the framework hands back the value it refused, and one of those values is a password
 - `a-report-is-many-reads-that-must-agree.md` -- A report is many reads; under READ COMMITTED they are many moments
 - `a-round-trip-must-agree-on-its-key-space.md` -- A round trip must agree on its key space
@@ -4382,6 +4382,138 @@ applied it, and it did not reach the defect higher up the page.
    authored by somebody who knew the set had changed, in the commit that changed it.
    No later reader has the context that makes the contradiction visible.
 
+## AMENDED (P1.8b MOBILE, 2026-08-25) — A SWEEP IS A TERM **AND A DOMAIN**, AND ONLY THE TERM IS WRITTEN DOWN
+
+**The instance is this file's own subject, committed by a session that had this
+file loaded and had already cited it.** `seller_create` was ADDED back to
+`OutboxKind` at `1d7f638`. The sweep this file prescribes was run BEFORE the
+member landed — and it was run over `proveOutbox.ts` and the `.md` documents, and
+over nothing else. **It came back clean across FIVE broken sites in the proof
+tree**, and the first anyone knew of it was `prove:sync` going red after the
+change.
+
+**THE TERM WAS RIGHT. THE CORPUS WAS WRONG.** Every rule in *How to apply* above
+answers WHICH WORDS to grep for, and not one of them answers WHICH TREE. That is
+the new half: a sweep has two parameters, this file names one, and a search with
+the right needle in the wrong haystack returns exactly what a search with the
+wrong needle returns — nothing — and is indistinguishable from a clean result.
+
+### The four instruments, measured over the pre-change tree at `8d979f2`
+
+Corpus `mobile/src`, tool `git grep` against the committed blob so the figures
+name an object rather than a working tree. Five sites were broken by the
+addition: `proveSync.ts:294`, `proveCart.ts:292`, `engine.ts:109`,
+`engine.ts:264`, `outboxRunner.ts:159`.
+
+| instrument | of the 5 | what it missed |
+|---|---|---|
+| the TYPECHECKER | **0** | all five — measured: with all five present and the construction sites fixed, `npm run typecheck` exited **0** |
+| grep the MEMBER (`seller_create`) | **0** | all five — **one hit in the whole tree**, the declaration's own comment |
+| grep the QUANTIFIER — this file's own remedy | **2** | `proveSync`, `proveCart`, `engine.ts:109`. Caught only `engine.ts:264` and `outboxRunner.ts:159`, both of which happen to say *every kind* |
+| grep the SURVIVING MEMBER PAIR (`bill_send.*bill_void`) | **5** | nothing — over the RIGHT DOMAIN |
+
+**AND THE RATIO CORRECTS A GUESS THAT WAS MADE BEFORE IT WAS MEASURED: ZERO of
+the five were compiler-visible, not one.** The typechecker caught 67 OTHER sites —
+every construction site that had to supply the new kind's store — and that large,
+loud, successful sweep is exactly what made the five feel covered. **A compiler
+that finds sixty-seven real sites is not evidence about the sites it cannot
+see.**
+
+### The half that is worse: `grep the QUANTIFIER` scored 2 of 5, and this file says to sweep by the quantifier and NEVER by the member
+
+**Both halves of that sentence are still right for the case this file was written
+about, and both are wrong here, for one reason: THE DIRECTION OF THE CHANGE
+DECIDES WHICH INSTRUMENT WORKS.**
+
+- The original instance was a **REMOVAL**, and its broken sentences were PROSE
+  quantifying in natural language — *a non-bill kind* — which by construction
+  contains no member name. Grepping the member was useless there and the
+  quantifier was the only handle.
+- This instance is an **ADDITION to a set of two**, and its broken sites are
+  CODE: an assertion and a sum that enumerate the surviving members BY NAME. A
+  two-member set leaves the PAIR as a fingerprint, and the pair found all five.
+
+**So the rule is not "quantifier, never member". It is: grep the quantifier for
+the prose, AND grep the SURVIVING members for the code — the ones that stay, never
+the one that moves.** The member that moves has no occurrences yet if you are
+adding it, and none left if you are removing it; the members that STAY are the
+ones a hand-written enumeration names.
+
+## AMENDED (P1.8b MOBILE, 2026-08-25) — A HAND-WRITTEN SUM OVER AN ENUMERABLE SET IS INVISIBLE TO **BOTH** INSTRUMENTS
+
+**`proveCart.ts:292` is the site that matters and it is worse than the string
+comparison, which at least failed loudly.** It read:
+
+    const recoveredCount = recovered.bill_send.length + recovered.bill_void.length;
+
+**It compiled. It ran. It stayed GREEN. And it silently stopped counting the
+third kind** — so the cell, whose stated claim is that NOTHING was recovered,
+would have reported nothing over a RECOVERED SELLER.
+
+**WHY NEITHER INSTRUMENT REACHES IT.**
+
+- **The typechecker cannot.** `recovered` is a total map over the union, so
+  reading two of its three keys is perfectly well typed. Adding a member widens
+  the map and invalidates nothing already written. There is no error to produce.
+- **The grep cannot, except by accident.** It contains no quantifier and not the
+  new member's name. It was caught here ONLY because both surviving member names
+  happened to land on ONE LINE and the pattern was line-oriented. **Written across
+  two lines it escapes every sweep in this file**, and nothing else would have
+  looked at it:
+
+      const sent = recovered.bill_send.length;
+      const voided = recovered.bill_void.length;
+
+- **And the test run cannot.** The cell went green, before and after. Only
+  `prove:sync`'s neighbouring STRING comparison went red, and that red is the
+  entire reason anybody looked at `proveCart.ts` at all. **A defect found by its
+  neighbour is a defect that was not found.**
+
+**THE REMEDY, AND IT IS A WRITING RULE RATHER THAN A SEARCHING ONE.** Enumerate
+the set AT RUN TIME instead of summing its members by hand, so the next member is
+covered by CONSTRUCTION rather than by somebody remembering:
+
+    const recoveredCount = Object.values(recovered).reduce((n, ids) => n + ids.length, 0);
+
+This is the same shape as the two cells in `proveOutbox.ts` that needed NO edit
+at all when the member landed — `O6` and `O10` iterate
+`Object.keys(registry)` — and which consequently began covering the new kind on
+their own. **In one commit the same file shows both outcomes: the loops that
+enumerate gained coverage for free, and the sum that named members by hand went
+quietly wrong.** That contrast is the argument.
+
+## The nearest neighbour, and the separation
+
+**The neighbour is THIS FILE'S OWN REMEDY**, *How to apply* step 1, and the
+separation is one word: that step is about the search **TERM**, and both
+amendments above are about the search **DOMAIN** and about sites no term reaches.
+
+- Step 1 tells you to grep for *every &lt;set&gt;*, the complement noun and the
+  count words, case-insensitively. It is right, it was FOLLOWED, and it scored
+  **2 of 5** here — because it names no corpus and because two of the five sites
+  contain no prose at all.
+- **The separation is not "step 1 is wrong".** It is that a sweep has two
+  parameters and this file supplied one, and that a set can be broken at a site
+  containing neither a quantifier nor a member — an enumeration written out by
+  hand.
+
+**Not the never-went-red family, and the discriminator is the same one this file
+already draws.** That family is about an instrument that RAN and produced a
+reading carrying no information. Here `proveCart.ts`'s cell ran and its reading
+was WRONG rather than empty: it asserted a true thing about a set it had silently
+narrowed. Nothing was vacuous and nothing was unstageable.
+
+**Not `a-label-is-a-reference-with-no-checker`.** Its remedy needs the broken
+sentence to contain the label; `proveCart.ts:292` contains neither the label nor
+the member that moved.
+
+**THIS FILE HAS NO DESIGNATED SINGLE COUNT SITE**, checked rather than assumed —
+searched for the sentence-shape its own step 3 names, *the ONLY place in this file
+that says how many*, and for a declared instance count: **not found with those
+words.** Its sections are named and not numbered, so this amendment adds two
+without a number to edit. The neighbouring file that DOES have one is named in
+step 3 and is untouched here.
+
 ## Bounds
 
 - **The removal is documentation-only.** `mobile/src/sync/outbox.ts:59` still declares
@@ -4398,6 +4530,28 @@ applied it, and it did not reach the defect higher up the page.
 - **The figures are pinned** to `952c1cf:ROADMAP.md` because that file was being
   rewritten while they were taken, which is also why no line number here names the
   working tree.
+
+- **SUPERSEDED — the first bullet of the Bounds above, and the way it went wrong
+  is worth more than the correction.** It read: *"The removal is
+  documentation-only. `mobile/src/sync/outbox.ts:59` still declares
+  `"bill_send" | "bill_void" | "seller_create"`. The member is forbidden by the
+  design and present in the tree."* That was true when written. `47d17ab` then
+  deleted the member from the tree, and `1d7f638` put it back. **So the sentence
+  reads TRUE again today and means the OPPOSITE**: the member is present because
+  the design now REQUIRES it, not in spite of the design forbidding it. A reader
+  checking that bound finds a real file and a real member and concludes it holds.
+  **A present-tense claim that becomes false and then true again for a different
+  reason is the worst case the pin-a-claim convention describes**, and it is why
+  that convention asks for the anchored form.
+- **The figures in the table above are pinned to `8d979f2`** and the five sites
+  were repaired at `1d7f638`. They will not rot, because both are statements
+  about objects that have already happened.
+- **STILL NO INSTRUMENT, and this amendment makes that worse rather than
+  better.** The original file could at least say "grep the quantifier". This one
+  adds "over the right domain" and "and a hand-written enumeration escapes both",
+  neither of which a checker can enforce. **The only mechanical defence found here
+  is the WRITING rule** — enumerate at run time — which removes the site instead
+  of detecting it.
 
 ---
 

@@ -57,6 +57,133 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.8b MOBILE — THE DEVICE IDENTITY, THE LOCAL SCHEMA, AND THE `seller_create`
+KIND. BUILT AND PROVEN, 2026-08-25. Three commits: `8d979f2` storage and
+identity, `1d7f638` the kind, and the documentation commit carrying this entry.**
+This supersedes the P1.8b SERVER entry below as the current phase; that entry's
+record stands unchanged. **NO SHA IS GIVEN FOR THE THIRD COMMIT**, deliberately —
+the work carrying this sentence is uncommitted at the moment it is written, so the
+only sha available is the one that does NOT contain it, which is the corollary
+`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT" records.
+
+**WHAT EXISTS NOW THAT DID NOT.** Three local tables: `local_device` (a v4 uuid
+minted once, keyed `only_row` with `CHECK (only_row = 1)`, written
+`ON CONFLICT DO NOTHING`), `local_sellers` (owed work beside `local_bills`, with
+its OWN `sync_state` CHECK), and `local_seller_codes` (the holding, with no owner
+columns by decision). `local_bills` gained a nullable park PAIR by the
+`PRAGMA table_info` migrator and **nothing reads it yet**. `OutboxKind` carries a
+THIRD member, `seller_create`, first in the registry literal, with its own row
+type, its own outcome union, its own handler and its own policy. `refillOnce` and
+the reserve level exist; `HttpSellerTransport` speaks both server routes.
+
+**THE OBSERVATIONS, every command bare with its status read in the same
+invocation.** `npm run typecheck` and `npm run typecheck:app` each exit 0.
+`npm run prove:sellerstore` exits 0 twice with 56 OK / 0 FAIL and
+`SELLERSTORE_EXIT=0` on both; `npm run prove:sellerkind` exits 0 twice with
+69 OK / 0 FAIL and `SELLERKIND_EXIT=0` on both. Both proofs CREATE their own
+fixtures and both PRESET `process.exitCode = 1` at entry. Twenty-six pre-existing
+mobile proofs are green twice with cell counts identical to the pre-phase
+baseline, with one exception recorded below.
+
+**`prove:outbox` MOVED 75 -> 77 AND NO CELL WAS ADDED TO IT.** `O6` and `O10`
+enumerate the REGISTRY rather than naming kinds, so two inherited criteria began
+covering `seller_create` with no edit at all. That is the generalisation paying
+rather than costing, and it is recorded because a moved count is otherwise
+indistinguishable from a proof somebody quietly widened.
+
+---
+
+### THE CRITERION ENUMERATION — every HEADLESS-labelled criterion, met or not, by name
+
+**THE CLAUSE THIS PHASE WAS ACCEPTED UNDER, corrected by the owner on 2026-08-25
+after the brief was found to contradict itself.** The brief's `Prove:` block asked
+for *every HEADLESS-labelled criterion* while its OUT OF BOUNDS placed the
+surfaces and the parked bill in a later phase — and some HEADLESS criteria live
+there. The corrected clause: **this phase meets every HEADLESS-labelled criterion
+THAT FALLS INSIDE ITS DECLARED SCOPE, and enumerates the rest BY NAME with the
+phase that owns each and why it cannot be reached from here.** An unenumerated
+criterion is the one nobody notices is unmet.
+
+**MET, INSIDE SCOPE — nine.**
+
+- `THE-DEVICE-IDENTITY-OUTLIVES-A-SIGN-OUT` — all three cells; the named red case
+  (identity in the keystore) RUN, and it destroys the identity as the design says.
+- `THE-LOCAL-SCHEMA-ADDS-AND-DOES-NOT-REBUILD` — all three cells against a
+  database hand-staged at the ORIGINAL ten-column shape holding unsynced bills;
+  cell 1 is equality off the live `sqlite_master`, and the forbidden rebuild is
+  staged so cell 1 is SEEN to go red, with a further cell showing a CONTAINMENT
+  test would have passed it.
+- `NO-ARM-OF-THIS-KIND-SETTLES-A-409` — all three cells, with BOTH named red cases
+  staged, including `terminal`, which is the one a narrower wording lets through.
+- `THE-OUTCOME-UNION-IS-THIS-KIND-S-OWN` — cell 2 in the proof; cell 1 is a
+  COMPILE cell and was run BY HAND, below.
+- `THE-TOKEN-IS-ON-THE-WIRE` — the HEADLESS cell, read off the request the
+  shipping HTTP client actually built, with the named red case staged. Its SERVER
+  pair is not run here and the criterion's own text says that half needs a live
+  API.
+- `THIS-KIND-KEEPS-EVERY-POLICY-DIFFERENCE-THE-DESIGN-NAMES` — four cells,
+  including the behavioural prefix cell the void kind could not have.
+- `THIS-KIND-RECOVERS-AT-BOOT-AND-THE-SWEEP-IS-REAL` — both cells through the
+  runner, plus the store layer in the other proof; the empty-`recover` red case is
+  staged beside the inherited key-set cell, which stays GREEN under it.
+- `A-REFILL-ASKS-FOR-THE-SHORTFALL, AND FOR NOTHING WHEN THERE IS NONE` — the
+  three corrected cells, read out of a modelled relation because the
+  discriminator is a server-side row count no device can see.
+- `A-FAILED-REFILL-IS-AN-UNKNOWN-OUTCOME-AND-COSTS-NOTHING-ELSE` — four cells,
+  with the attempt count asserted EQUAL to the number of passes the staging ran.
+
+**THE COMPILE CELL, RUN BY HAND AND NOT BY THE PROOF.** A node proof cannot
+perform it without writing into `src/` mid-run and shelling out to `tsc` twice,
+which would make a green depend on the proof successfully un-editing the source
+tree. Staged instead: a value carrying `code_assignment_failed`, typed through
+`OutboxResult["seller_create"]`. **Both programs exit 2** and the error set
+INCLUDES `src/sync/sellerCreate.ts(53,3)`. Under the named red case — that entry
+set to `CreateSellerOutcome` — **the same error DISAPPEARS**: one occurrence under
+the correct union, zero under the reused one. Both files restored, `cmp`
+byte-identical, both programs green again.
+
+**NOT MET, AND WHY — each named, with the phase that owns it.**
+
+- `A-BILL-BEHIND-AN-UNCREATED-SELLER-IS-NEVER-OFFERED` — **the surfaces phase.**
+  Needs the bill park: a bill held out of the sendable queue until its seller
+  settles. The park's COLUMNS exist as of `8d979f2` and nothing reads them. NOT
+  asserted here in any weaker form.
+- `THE-PARKED-SENTENCE-SENDS-NOBODY-TO-THE-OFFICE` — **the surfaces phase.** It is
+  a wording criterion over a park that does not exist.
+- `THE-RESERVE-LEVEL-IS-REQUIRED-AND-EVERY-VALUE-HAS-ITS-OWN-SENTENCE` — **the
+  surfaces phase.** The LEVEL is built and proven, because a refill cell reads it;
+  the four sentences, the tone mapping and the compile cell on a call site that
+  renders them are not, and no wording function was written.
+- `THIS-KIND-DRAINS-BEFORE-BILLS-IN-ONE-PASS` — **PARTLY MET; the release half is
+  the surfaces phase.** The member ORDER is asserted in one pass — the seller is
+  performed BEFORE the bill — but the criterion's own staging needs a bill WAITING
+  on that seller, which needs the park. Under the staging available here the bill
+  would have sent under either order.
+- `OWED-ASKS-WHO-CREATED-THE-SELLER, AND THE RELEASE DOES NOT` — **PARTLY MET;
+  cells 3 and 4 are the surfaces phase.** Cells 1 and 2 are asserted at the store
+  and again through the kind, in both directions plus the fail-closed direction.
+  Cells 3 and 4 turn on the release crossing the owner filter, which needs the
+  park.
+- `THE-LOCAL-ROW-SURVIVES-A-REFRESH-THAT-DELETES` — **PARTLY MET; cells 3 and 4
+  are the surfaces phase.** Cells 1 and 2 are storage and are met, including the
+  presence sibling that the DELETE still runs. Cells 3 and 4 ask what the PICKER
+  offers, and the picker's union of the cache with the unsettled local rows is not
+  built.
+- `EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL` — **the surfaces phase, and it is
+  labelled HANDSET rather than HEADLESS.** Listed here anyway because it BECAME
+  REACHABLE the day this kind landed: `seller_create` is the first kind whose rows
+  are not in `local_bills`, and `UnsentBreakdown`'s completeness claim is false
+  from `1d7f638` onward. **This is a REAL gap in the shipped tree, not a
+  theoretical one** — the sign-out gate counts bills only, so a device owing a
+  seller create and no bills would permit a sign-out that leaves the work behind.
+
+**THE SERVER-LABELLED CRITERIA are met by the server half and are recorded at its
+own entry below; nothing in this phase re-measures them.**
+
+---
+
+## The phase immediately before this — P1.8b SERVER
+
 **P1.8b SERVER — THE RESERVATION RELATION, THE TOP-UP ROUTE, AND THE TWO GUARDS.
 BUILT AND PROVEN, 2026-08-24/25. Three commits: `a60aef5` additive, `b8b557f` the
 guards, and the documentation commit carrying this entry.** This supersedes the
@@ -4214,6 +4341,15 @@ dated entry at the end of Baseline observations. Nothing in this subsection is a
 claim that was not run.
 
 ## Previous phase
+
+**THIS HEADING IS THE A-LOG'S AND IS NOT THE PHASE IMMEDIATELY BEFORE THE CURRENT
+ONE — noted 2026-08-25, and the heading itself is deliberately NOT renamed.** The
+phase immediately before the current one is P1.8b SERVER, under
+`## The phase immediately before this — P1.8b SERVER` near the top of this file.
+**The name here is load-bearing:** `tools/verify_citations.ps1` resolves a section
+by prefix, so a second heading beginning "Previous phase" makes every citation to
+this one resolve to TWO — measured on 2026-08-25, when exactly that was tried and
+took BROKEN from 6 to 7. The section above was renamed instead.
 
 **A2 — reconciliation. Server only, one script, no endpoint and no schedule.
 COMPLETE. The checker is GREEN and its green means something.**

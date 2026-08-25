@@ -1945,6 +1945,31 @@ both routes can show that about one running server.
 **P1.8b — offline seller creation — is untouched by this closure and remains
 outstanding. Its survey below stands exactly as written.**
 
+**P1.8b's SERVER AND MOBILE HALVES HAVE LANDED — 2026-08-25. THE SURFACES HAVE
+NOT, AND ONE FUNCTION IS DELIBERATELY LEFT WITH NO CALLER.** The server half is at
+`a60aef5` and `b8b557f`; the mobile half is at `8d979f2` (storage and the device
+identity) and `1d7f638` (the `seller_create` kind, its handler and registry entry,
+and the refill client).
+
+**`refillOnce` IS BUILT, PROVEN, AND CALLED BY NOTHING — a deliberate stop, not an
+oversight, and it is recorded here because an unwired function with a green proof
+is exactly what a later reader takes for finished.** `mobile/src/sync/sellerRefill.ts`
+at `1d7f638` exports it; a tree-wide search for a call site outside its own proof
+returns none.
+
+**WHY IT WAS NOT WIRED INTO THE SYNC TICK.** The refill mints REAL reserved codes
+against the shop's own code space, and nothing on the device can yet spend one —
+no screen writes `local_sellers` — nor show the reserve level the codes produce.
+Wiring it now would have every handset consume a block of the shop's seller-code
+sequence, on every device, for a capability nobody can use, leaving permanent gaps
+in a sequence that prints on slips this system never sees again. **Nothing
+re-issues a reservation, so that burn is not recoverable.**
+
+**WHICH PHASE OWNS THE CALL SITE: the SURFACES phase, the same one that owns the
+sentence derived from the level.** The two belong together — a refill with no way
+to see its result is a request whose only observable is in the phase after — and
+that phase is also where `EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL` is met.
+
 **P1.8b — OFFLINE SELLER CREATION, AND IT IS A SUBSYSTEM RATHER THAN A
 FOLLOW-UP.** Measured 2026-08-17 by a read-only survey. The split is not
 arbitrary, and the reason is that every item below is a change to something the
@@ -2361,6 +2386,51 @@ therefore differ by exactly the creates in flight, transiently and by constructi
 > presence sibling in the same run: the same device with one create SETTLED is one
 > below target and is topped up by one.** A level that never moves and a level that
 > moves for the wrong event print the same digit on the refused case alone.
+
+**AMENDED (P1.8b MOBILE, 2026-08-25) — ONE CLAUSE: WHAT THE COUNT IS TAKEN OVER.
+THE SENTENCE ABOVE IS KEPT AND IS NOT REWRITTEN, because it was written to answer
+what happens to a REFUSED create's code and it answers that correctly. What is
+superseded is only its PREDICATE — the words *not bound to a create that has
+SETTLED or is IN FLIGHT* — and nothing else in this subsection moves: what the
+level is a count OF, that a terminally refused create's code is spendable, that a
+settled one's is not, that an in-flight one's is not, and that the device's count
+and the server's `held` count differ by exactly the creates in flight all stand.**
+
+**WHY THE CLAUSE IS WRONG, AND IT IS NOT A WORDING PREFERENCE.** Read literally,
+the predicate enumerates the states that DISQUALIFY a code as *settled* and *in
+flight* — so a code bound to a create that is merely OWED qualifies as spendable.
+That create has not settled and is not in flight; it is sitting in the queue
+waiting for a network. **The next create would then pick the same code, and one
+reserved code would produce TWO local sellers** — a wrong seller on a cash
+purchase, which is the precise harm this whole step exists to remove, reachable
+from the document the implementation reads.
+
+**DECISION. THE COUNT IS TAKEN OVER CODES BOUND TO NOTHING — one predicate, and
+the binding is what carries the state.** A code is bound when a local seller
+spends it and unbound by a WRITE when that create goes terminal, which is what
+this subsection's own decision already asks for (*the code goes back into the
+device's spendable holding*). The three cases the sentence above enumerates then
+fall out with no case analysis at all: a settled create's code stays bound, an
+in-flight create's stays bound, an owed create's stays bound, and a terminally
+refused create's is unbound at the moment of refusal.
+
+**AND THE REASON IT IS ONE PREDICATE RATHER THAN A TIDIER LIST is the failure
+mode of a list.** A predicate that enumerates disqualifying states is wrong the
+moment a state is added and nobody revisits it; the omission is silent, and its
+symptom is two sellers on one code rather than an error. A predicate that asks
+only *is this bound to anything* cannot acquire that hole, because a new state is
+still a binding.
+
+**MEASURED, at `1d7f638`.** `mobile/src/adapters/sqlite/SqliteLocalSellerStore.ts`
+implements the count as `spent_on IS NULL` and states this derivation at the
+statement; `schema.ts` states it at `local_seller_codes`; and
+`mobile/src/proof/proveSellerStore.ts` S7 drives all four transitions in one run —
+a refusal returns the code, a 409 does not, a settle does not, and an unknown
+outcome does not.
+
+**WHAT IS NOT DECIDED HERE.** The residual immediately below — a bill parked
+behind a create that is permanently refused, whose seller will never settle — is
+untouched by this amendment and remains open exactly as recorded.
 
 **AND THE RESIDUAL THIS DECISION CREATES IS ABOUT MONEY AND IS NOT ANSWERED HERE.** A
 bill weighed against a local seller whose create is then permanently refused is
@@ -2833,6 +2903,15 @@ Said before anyone reads it as complete.
   2026-08-24 by the amendment below, which found it while deciding what happens to
   that create's reserved code. The release fires on a settle, and that seller never
   settles. Recorded at the decision that produced it and answered nowhere.
+- **THE REFILL'S CALL SITE.** Added 2026-08-25, when the mobile half landed with
+  `refillOnce` built, proven and called by NOTHING. It belongs to the phase that
+  draws the surfaces, because it must arrive together with the thing that SHOWS
+  the level it produces: a refill wired earlier mints real reserved codes, on
+  every device and every pass, for a capability nobody can use — and nothing
+  re-issues a reservation, so the gaps it burns into the shop's code sequence are
+  permanent. The full argument is at the phase entry above; it is repeated here
+  because this is the list a reader checks before believing the design is
+  covered, and an unwired function with a green proof reads as finished.
 
 **AMENDED (P-SELLERKIND-DESIGN-AMEND, 2026-08-24) — S10 AND THE SIGN-OUT GATE,
 RULED, SO THE CRITERIA'S OPEN QUESTION BELOW IS CLOSED.** The second bullet above

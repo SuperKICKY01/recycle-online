@@ -508,6 +508,32 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Verification gaps — built, not proven
 
+- **`prove_seller_code_guards.py` IS NO LONGER A BARE RE-RUN, AND A PROOF THAT
+  CANNOT RUN BARE IS A PROOF THAT GETS SKIPPED. Measured 2026-08-25 at the P1.8b
+  MOBILE boundary; a MEASUREMENT and not a fix.** The script requires a git
+  worktree at the P1.8b server phase's FIRST commit, passed as `--old-tree`,
+  because its whole method is differential: it drives the same staging against
+  the pre-guard server and the post-guard one and reads which answers MOVED.
+  **That worktree was REMOVED on instruction**, so the script's default
+  invocation no longer has the thing it compares against.
+  **IT IS REPRODUCIBLE AND THAT IS NOT THE SAME AS RUNNABLE.** The proof's own
+  docstring carries the command that recreates the worktree, so nothing is lost
+  and no evidence has decayed — what changed is the COST of the first run, from
+  one command to two, one of which nobody will think to issue. Every other proof
+  in this repository is `uv run python scripts/prove_<name>.py` and this one is
+  not, so a session sweeping the suite runs the others and skips this one
+  without noticing that it did.
+  **WHY IT IS RECORDED HERE RATHER THAN REPAIRED.** Whether the proof should
+  BUILD ITS OWN WORKTREE is a change to a differential checker, and a checker
+  that creates the object it measures against is a different instrument with its
+  own failure modes — `a-checker-must-not-share-the-code-it-checks` is the
+  argument that has to be made before it, not after. That is a later decision
+  and this entry does not take it.
+  **THE HALF THAT IS NOT A GAP, said so the entry is not read as one:** the
+  guards themselves are proven. `b8b557f` landed them with the differential run
+  green at the time; what is unavailable today is the cheap RE-run, not the
+  original observation.
+
 - **TWO THINGS THE P1.8a DEVICE PASS DID NOT OBSERVE, 2026-08-17 — and both
   are about the SAME card, which is why they are one entry rather than two.**
   The bill landed and the row is in `recycle`; what is missing is what a
@@ -4035,6 +4061,55 @@ with no feature of its own.
   already landed.
 
 ## Documentation
+
+- **`CLAUDE.md § Machine footguns` SAYS `lessons/README.md` IS THE ONE FILE IN
+  `lessons/` WHOSE WORKING-TREE COPY CARRIES CRLF. THAT CLAUSE IS NOW FALSE.
+  Measured 2026-08-25 at the P1.8b MOBILE boundary. `CLAUDE.md` and `EVIDENCE.md`
+  were OUT OF BOUNDS for the phase that turned it, so this is the queue entry and
+  not the repair.**
+  **THE NUMBERS, EACH NAMED TO THE OBJECT IT DESCRIBES**, which is the rule that
+  entry itself gives and the one everybody editing the passage has disregarded.
+  Working tree, bytes on disk: **CR=0**, LF=66. Blob at `1d7f638`,
+  `git cat-file blob` captured as BYTES and counted there: **CR=0**, LF=66. BOM,
+  first three bytes of both: **`efbbbf`, present**. Counted with
+  `tr -cd '\r' | wc -c`, which was checked against a file known to carry CRLF and
+  returned 2 there — a `grep -c $'\r'` form was tried first, returned the FILE'S
+  LINE COUNT on both files, and was discarded as a broken instrument rather than
+  believed.
+  **THE MECHANISM IS NOT IN DISPUTE AND THE ENTRY IS NOT WRONG ABOUT IT.** The
+  cause was a `git stash push` / `git stash pop` — a CHECKOUT — and `.gitattributes`
+  `eol=lf` makes a checkout write LF, which is exactly what that same entry says a
+  checkout does. What has rotted is a PRESENT-TENSE clause about a working-tree
+  artefact, which is the pin-a-claim convention's own case: the sentence was true
+  when written, nothing announced that it turned, and the entry's reasoning
+  survives it intact.
+  **THE BLOB NEVER CHANGED AND THERE IS NO DAMAGE TO REPAIR.** `text=auto`
+  normalises on the way into the index, so this path's blob has never held a CR —
+  0 before, 0 after — and the diff over the change that observed this is one
+  insertion and one deletion, the index line, with no line-ending noise. Nothing
+  is to be restored, re-normalised or reverted; the working tree simply now agrees
+  with `.gitattributes` where before it did not.
+  **THE EXCLUSION OF `README.md` FROM `all-lessons.md` IS NOT TO BE REMOVED, AND
+  THIS IS THE HALF MOST LIKELY TO BE GOT WRONG NEXT.** That entry gives the
+  exclusion TWO reasons — it is the INDEX rather than a lesson, and it is the only
+  source that would drag a BOM and CRLF into the generated file — and warns in its
+  own words against removing it on the strength of refuting one. **Exactly one has
+  just been refuted.** The index reason is untouched, and the BOM half is MEASURED
+  INTACT at `efbbbf` in both objects, so the generator would still pull a BOM in.
+  Whoever reads the CRLF clause next will reach for that exclusion; this sentence
+  exists to stop them.
+  **AND A CONTROL THIS REPOSITORY USES IS NOW DEAD.** `lessons/README.md` was the
+  positive control for the CR-aware / CR-blind reader distinction — the file you
+  point an instrument at to confirm it can SEE a CR before trusting it to report
+  their absence elsewhere. With CR=0 in both objects, every such instrument now
+  returns the same answer on it, so the two can no longer be told apart there and
+  a run using it learns nothing while looking exactly like a run that did.
+  **A REPLACEMENT CONTROL IS OWED AND NONE IS NAMED HERE** — choosing one is a fix,
+  and a fix inside a queue line is how a decision gets taken by whoever was
+  writing rather than by whoever owns it.
+  **WHERE THE REPAIR GOES.** A later phase that has `CLAUDE.md` in scope, together
+  with the CP874 crash already queued for that same section, so the entry is
+  opened once rather than twice.
 
 - **NOTHING AT A PHASE BOUNDARY RUNS `build_all_lessons.py --check`, AND THE FILE
   IT GUARDS WAS MEASURED STALE.** Found 2026-08-18. `START_HERE.md § 4`'s Commands
