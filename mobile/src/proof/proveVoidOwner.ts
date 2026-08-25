@@ -127,7 +127,7 @@ async function syncedBill(x: Bench, owner: RowOwner): Promise<string> {
   await x.identity.save(owner);
   const bill = await createLocalBill(
     { store: x.store, clock: x.clock, ids: x.ids },
-    { seller_id: "s-1", vehicle_no: null, items: [ITEM], total_amount: "150.00", master_as_of: null },
+    { seller: { kind: "server", seller_id: "s-1" }, vehicle_no: null, items: [ITEM], total_amount: "150.00", master_as_of: null },
     owner,
   );
   const e = new SyncEngine({ ...noSellerKind(),
@@ -149,7 +149,7 @@ async function syncedBill(x: Bench, owner: RowOwner): Promise<string> {
 async function stagedUnownedSyncedBill(x: Bench): Promise<string> {
   const bill = await createLocalBill(
     { store: x.store, clock: x.clock, ids: x.ids },
-    { seller_id: "s-1", vehicle_no: null, items: [ITEM], total_amount: "150.00", master_as_of: null },
+    { seller: { kind: "server", seller_id: "s-1" }, vehicle_no: null, items: [ITEM], total_amount: "150.00", master_as_of: null },
     null,
   );
   await x.d.run(

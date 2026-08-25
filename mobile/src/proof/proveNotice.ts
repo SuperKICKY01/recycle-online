@@ -27,8 +27,9 @@
  * of one card TOGETHER. N2b now does.
  *
  * THE MATRIX
- *   card   sync_state(4) x attempt_count(0,>0) x parked(2) x voided(2)
- *          x session(3) x account(2) x void_refused(2)           = 384 cells
+ *   card   sync_state(4) x attempt_count(0,>0) x parked(2)
+ *          x local-seller-parked(2) x voided(2)
+ *          x session(3) x account(2) x void_refused(2)           = 768 cells
  *   void   sync_state(4) x doc_no(2) x void_requested(2) x settled(2)
  *          x refused(2)                                          =  64 cells
  *   card+void together  void cells x session(3) x account(2)     = 384 cells
@@ -191,6 +192,17 @@ interface CardCell {
   sync_state: SyncState;
   attempts: number;
   parked: boolean;
+  /**
+   * THE SECOND PARK — waiting on a seller this device created, P1.8b.
+   *
+   * A DIMENSION AND NOT A CASE, on this file's own rule. It is a different
+   * park with a different actor: `parked` above waits on the OFFICE and this
+   * one waits on nobody, so every property this matrix asserts — no leaked
+   * diagnostic, the tone rules, what a failed or refused-void card may say —
+   * has to hold over it too, and a state added as one staged cell is a state
+   * only the assertions somebody remembered will cover.
+   */
+  localSellerParked: boolean;
   voided: boolean;
   session: SessionState;
   account: AccountState;
@@ -202,6 +214,7 @@ const cardInput = (c: CardCell): NoticeInput => ({
   attempt_count: c.attempts,
   master_data_missing_at: c.parked ? "2026-07-27T02:00:00.000Z" : null,
   master_data_code: c.parked ? "seller_grade_unset" : null,
+  local_seller_parked_at: c.localSellerParked ? "2026-07-27T02:01:00.000Z" : null,
   void_requested_at: c.voided ? "2026-07-27T02:05:00.000Z" : null,
   void_refused_at: c.voidRefused ? "2026-07-27T02:07:00.000Z" : null,
   void_refused_code: c.voidRefused ? "admin_required" : null,
@@ -236,6 +249,14 @@ function expectedTone(c: CardCell): NoticeTone {
   // the server still holds as live money.
   if (c.voidRefused) return "forbidden";
   if (c.voided) return "none";
+  // P1.8b: the SECOND park, ABOVE the master-data one. Both cannot be set on a
+  // real row — a bill parked here never reaches the server, so it can never
+  // collect a 424 — but the matrix stages the impossible pair on purpose, and
+  // the ranking has to be stated rather than left to whichever branch is first
+  // in the file. If both were somehow true, THIS is the one holding the bill out
+  // of the queue, and naming the other would send the yard to the office over a
+  // bill the office cannot move.
+  if (c.localSellerParked) return "parked";
   if (c.parked) return "parked";
   if (c.sync_state !== "pending" && c.sync_state !== "syncing") return "none";
   if (c.session !== "active") return "session";
@@ -247,22 +268,28 @@ function expectedTone(c: CardCell): NoticeTone {
 }
 
 function n1CardMatrix(): CardCell[] {
-  header("N1: the bill card, over all 384 states");
+  // 384 until P1.8b, x2 for the second park. THE NUMBER IS IN THE HEADING AND
+  // IN THE not-empty CELLS BELOW; they move together or the sweep has quietly
+  // halved, which reads exactly like a sweep that passed.
+  header("N1: the bill card, over all 768 states");
 
   const cells: CardCell[] = [];
   for (const sync_state of STATES) {
     for (const attempts of ATTEMPTS) {
       for (const parked of BOOLS) {
+        for (const localSellerParked of BOOLS) {
         for (const voided of BOOLS) {
           for (const session of SESSIONS) {
             for (const account of ACCOUNTS) {
               for (const voidRefused of BOOLS) {
                 cells.push({
-                  sync_state, attempts, parked, voided, session, account, voidRefused,
+                  sync_state, attempts, parked, localSellerParked, voided, session,
+                  account, voidRefused,
                 });
               }
             }
           }
+        }
         }
       }
     }
@@ -279,6 +306,10 @@ function n1CardMatrix(): CardCell[] {
           const tones = SESSIONS.map((session) =>
             cardTone({
               sync_state, attempts, parked, voided, session,
+              // The printed table holds the P1.8b dimension at its neutral value,
+              // exactly as it holds the two 2c-9 ones: it is for READING the
+              // ranking, and the sweeps below carry the coverage.
+              localSellerParked: false,
               account: "ok", voidRefused: false,
             }).padEnd(7),
           ).join(" ");
@@ -296,8 +327,8 @@ function n1CardMatrix(): CardCell[] {
   for (const account of ACCOUNTS) {
     for (const voidRefused of BOOLS) {
       const cell: CardCell = {
-        sync_state: "pending", attempts: 1, parked: false, voided: voidRefused,
-        session: "active", account, voidRefused,
+        sync_state: "pending", attempts: 1, parked: false, localSellerParked: false,
+        voided: voidRefused, session: "active", account, voidRefused,
       };
       const n = billNotice(cardInput(cell), cell.session, cell.account);
       console.log(`  account=${account.padEnd(15)} void_refused=${String(voidRefused).padEnd(5)} tone=${n.tone}`);
@@ -350,8 +381,9 @@ function n1CardMatrix(): CardCell[] {
   );
   check(
     "...and that sweep was not empty",
-    // 24 before Phase 2c-9; x2 for account and x2 for void_refused.
-    failedCells.length === 96,
+    // 24 before Phase 2c-9; x2 for account and x2 for void_refused; x2 again for
+    // P1.8b's second park.
+    failedCells.length === 192,
     `${String(failedCells.length)} failed cells covered`,
   );
 
@@ -444,9 +476,12 @@ function n1CardMatrix(): CardCell[] {
   );
   check(
     "...and those sweeps were not empty",
-    // 144 refused-void cells (every non-failed combination) + 4 submit-refused
-    // ones (pending/syncing x attempts, everything else neutral).
-    forbiddenCells.length === 148,
+    // 288 refused-void cells (every non-failed combination) + 4 submit-refused
+    // ones (pending/syncing x attempts, everything else neutral). The first
+    // number doubled with P1.8b's second park dimension; the second did NOT,
+    // because a submit-refused card is ranked BELOW both parks, so a parked cell
+    // never reaches that branch and the count of cells that do is unchanged.
+    forbiddenCells.length === 292,
     `${String(forbiddenCells.length)} of ${String(cells.length)} cells are forbidden`,
   );
 
@@ -718,6 +753,10 @@ function n2bWholeCard(voidCells: readonly VoidCell[]): void {
         attempt_count: 2,
         master_data_missing_at: null,
         master_data_code: null,
+        // N2b is about the VOID regions of one card. The local-seller park is
+        // ranked below both void branches, so a non-null here would change
+        // nothing and a zero keeps this matrix about what it is named for.
+        local_seller_parked_at: null,
         void_requested_at: c.v.requested ? "2026-07-27T02:05:00.000Z" : null,
         void_refused_at: c.v.refused ? "2026-07-27T02:07:00.000Z" : null,
         void_refused_code: c.v.refused ? "admin_required" : null,
@@ -1149,8 +1188,8 @@ function n4Disproof(): void {
   const OFFLINE_ERROR = "network: Network request failed";
   const before = preFixCard(OFFLINE_ERROR, false, false);
   const afterCell: CardCell = {
-    sync_state: "pending", attempts: 3, parked: false, voided: false, session: "active",
-    account: "ok", voidRefused: false,
+    sync_state: "pending", attempts: 3, parked: false, localSellerParked: false,
+    voided: false, session: "active", account: "ok", voidRefused: false,
   };
   const after = cardText(afterCell);
   console.log(`  offline bill, BEFORE:\n    ${before}`);
@@ -1264,7 +1303,7 @@ async function n5ReachableAndRendered(): Promise<void> {
   const bill = await createLocalBill(
     { store, clock, ids },
     {
-      seller_id: "s-001",
+      seller: { kind: "server", seller_id: "s-001" },
       vehicle_no: "70-1234",
       total_amount: "150.05",
       master_as_of: null,

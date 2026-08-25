@@ -139,6 +139,56 @@ export interface LocalBill {
    * never rendered as "fresh".
    */
   master_as_of: string | null;
+
+  /* ------------------------------ waiting on a seller this device made ---- */
+  /*
+   * A BILL CAN NAME A SELLER THE SERVER HAS NEVER SEEN, AND WITHOUT THESE TWO
+   * IT IS TERMINALLY FAILED WITH THE CASH ALREADY PAID.
+   *
+   * `server/app/bills.py` classifies an unresolvable `seller_id` as 422 —
+   * PERMANENT, terminal — on a premise it states in its own header: the device
+   * got those ids from this tenant's own /sellers, so a miss means corruption
+   * rather than a setup gap. Offline seller creation falsifies that premise and
+   * edits nothing at either end. Left alone, the first offline walk-in produces
+   * a terminally failed bill for money already out of the drawer, on a row hard
+   * rule 5 forbids deleting
+   * (`ROADMAP.md § P1.8` "A BILL CAN NAME A SELLER THE SERVER HAS NEVER SEEN").
+   *
+   * SO THE BILL IS PARKED ON THE DEVICE FROM THE MOMENT IT IS WEIGHED, and the
+   * request the server would misclassify is never made. The repair is here and
+   * NOT on the server, because that rule is still right for the corruption it
+   * was written for.
+   *
+   * IT REUSES THE ORDERING EXEMPTION `local_bills` ALREADY HAS rather than
+   * inventing a second one: a seller that does not exist yet IS master data
+   * that is not set up, which is the one exception
+   * `lessons/doc-no-is-arrival-order-not-event-time.md` permits — and that
+   * lesson's bound holds, because this is that exemption's own case and not a
+   * new skippable state.
+   *
+   * AND IT IS NOT A NEW `sync_state` VALUE, for the reason `schema.ts` gives at
+   * the columns: the CHECK is baked into CREATE TABLE and SQLite cannot alter
+   * one without rebuilding the table, on a database already holding a shop's
+   * unsynced bills.
+   */
+  /**
+   * ORIGIN — WHICH local seller this bill named when it was weighed. Written
+   * once, never rewritten, and kept after the release: it is the record of
+   * where the bill's seller came from, not of what it is waiting for.
+   */
+  local_seller_id: string | null;
+  /**
+   * Non-null ⟺ the bill is held OUT OF THE SENDABLE QUEUE waiting for that
+   * seller to settle. Cleared by the seller kind's own writer, for every bill
+   * behind that seller, WITHOUT an owner filter — a second person's bill
+   * filtered out here is stranded for ever, because a seller settles once and
+   * there is no second event to release it.
+   *
+   * The bill stays `pending` throughout: still owed, still counted, never
+   * terminal.
+   */
+  local_seller_parked_at: string | null;
+
   /** Assigned by the server at sync time; null while the bill is offline. */
   doc_no: string | null;
   synced_at: string | null;
@@ -478,7 +528,23 @@ export interface QueueHead {
  * it never will."
  */
 export interface UnsentBreakdown {
-  /** MINE and sendable. Waits on a CONNECTION. Goes down on its own. */
+  /**
+   * MINE, and waiting on a CONNECTION. Goes down on its own, with nobody
+   * acting.
+   *
+   * IT SAID "MINE AND SENDABLE" AND THAT WORD HAD TO GO. This count has never
+   * been the sendable queue — it includes a `syncing` row, which is in flight
+   * rather than sendable — and P1.8b added a second kind of row it holds that
+   * `QUEUED` does not: a bill parked behind a seller this device created. Both
+   * belong here rather than in `mineBlocked`, because the split is BY REMEDY
+   * and the remedy for both is the same one: wait, and the network does it. A
+   * bill waiting on its own seller is emphatically NOT waiting on the office,
+   * and putting it in `mineBlocked` would send somebody to ring them.
+   *
+   * The field is what it always was; only the sentence describing it is now
+   * true of the values it receives
+   * (`lessons/README.md § Lessons` "a-docstring-that-states-a-filter-is-a-claim-about-its-caller.md — applies to every comment saying what a value EXCLU").
+   */
   mine: number;
   /**
    * MINE, parked on master data the office has not set up. Waits on the OFFICE.
@@ -660,6 +726,40 @@ export interface LocalStore {
    * pending. Returns the ids that were recovered. Never silent.
    */
   resetSyncingToPending(now: Date): Promise<string[]>;
+  /**
+   * THE SELLER SETTLED. Release every bill parked behind it, and give each one
+   * the SERVER's seller id. Returns how many were released.
+   *
+   * ---------------------------------------------------------------------------
+   * NO OWNER FILTER, AND THAT IS THE WHOLE DECISION
+   * ---------------------------------------------------------------------------
+   * `owed()` on the seller kind asks who CREATED the seller; this asks nothing
+   * about who did anything. A bill weighed by a SECOND person against the same
+   * local seller must be released too — a seller settles exactly ONCE and there
+   * is no later event to release anything, so a bill filtered out here is
+   * stranded FOR EVER, for cash already paid, on a row hard rule 5 forbids
+   * deleting
+   * (`ROADMAP.md § P1.8` "OWED-ASKS-WHO-CREATED-THE-SELLER, AND THE RELEASE DOES NOT").
+   *
+   * THE NEXT PERSON TO SWEEP THIS FILE FOR A MISSING OWNER PREDICATE WILL FIND
+   * THIS STATEMENT AND BE WRONG. Every neighbouring statement here was
+   * hand-repaired to ADD one in P1.7, so the shape of this method is exactly
+   * what that sweep was looking for. It is written down here because the sweep
+   * is a real thing this repository has run and will run again. The released
+   * bill does NOT thereby become sendable under the wrong person: `QUEUED`
+   * carries its own owner predicate, so B's bill enters B's queue and nobody
+   * else's.
+   *
+   * ONE STATEMENT, the shape `clearBackoffForPending` already has. It rewrites
+   * the payload's `seller_id` to the server's, because a bill released still
+   * carrying the LOCAL id is a bill that reaches the server and is refused 422 —
+   * which is the defect the park exists to prevent, arriving one step later.
+   */
+  releaseBillsParkedOnLocalSeller(
+    localSellerId: string,
+    serverSellerId: string,
+    now: Date,
+  ): Promise<number>;
 
   /* ------------------------------------------------------------- void ---- */
   /**

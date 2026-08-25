@@ -154,7 +154,7 @@ function billFor(b: Bench, draft: Draft): LocalBill {
   return buildLocalBill(
     { clock, ids: b.ids },
     {
-      seller_id: draft.seller_id,
+      seller: { kind: "server", seller_id: draft.seller_id },
       vehicle_no: "70-1234",
       items: [],
       total_amount: "90.00",

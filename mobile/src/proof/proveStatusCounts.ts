@@ -131,7 +131,7 @@ async function makeBill(b: Bench, owner: RowOwner | null): Promise<LocalBill> {
   return createLocalBill(
     { store: b.store, clock, ids: b.ids },
     {
-      seller_id: "sell-1",
+      seller: { kind: "server", seller_id: "sell-1" },
       vehicle_no: null,
       items: [{ ...ITEM, id: b.ids.newId() }],
       total_amount: "150.00",

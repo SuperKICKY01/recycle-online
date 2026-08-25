@@ -105,7 +105,7 @@ async function createBills(r: Rig, n: number): Promise<LocalBill[]> {
       await createLocalBill(
         { store: r.store, clock: r.clock, ids: r.billIds },
         {
-          seller_id: "sell-aaaa-0001",
+          seller: { kind: "server", seller_id: "sell-aaaa-0001" },
           vehicle_no: "1กก-1234",
           items: items(r.itemIds),
           total_amount: null,
@@ -442,7 +442,7 @@ async function case8WeighingOrder(harness: StoreHarness): Promise<void> {
     created.push(
       await createLocalBill(
         { store: r.store, clock: r.clock, ids: r.billIds },
-        { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(r.itemIds), total_amount: null, master_as_of: null },
+        { seller: { kind: "server", seller_id: "sell-aaaa-0001" }, vehicle_no: null, items: items(r.itemIds), total_amount: null, master_as_of: null },
     PROOF_OWNER,
   ),
     );
@@ -602,7 +602,7 @@ async function case9OfflineVsPoison(harness: StoreHarness): Promise<void> {
     offBills.push(
       await createLocalBill(
         { store: off.store, clock: off.clock, ids: off.billIds },
-        { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(off.itemIds), total_amount: null, master_as_of: null },
+        { seller: { kind: "server", seller_id: "sell-aaaa-0001" }, vehicle_no: null, items: items(off.itemIds), total_amount: null, master_as_of: null },
     PROOF_OWNER,
   ),
     );
@@ -660,7 +660,7 @@ async function case9OfflineVsPoison(harness: StoreHarness): Promise<void> {
     created.push(
       await createLocalBill(
         { store: r.store, clock: r.clock, ids: r.billIds },
-        { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(r.itemIds), total_amount: null, master_as_of: null },
+        { seller: { kind: "server", seller_id: "sell-aaaa-0001" }, vehicle_no: null, items: items(r.itemIds), total_amount: null, master_as_of: null },
     PROOF_OWNER,
   ),
     );
@@ -826,7 +826,7 @@ async function case9dAttemptTrigger(harness: StoreHarness): Promise<void> {
     created.push(
       await createLocalBill(
         { store: r.store, clock: r.clock, ids: r.billIds },
-        { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(r.itemIds), total_amount: null, master_as_of: null },
+        { seller: { kind: "server", seller_id: "sell-aaaa-0001" }, vehicle_no: null, items: items(r.itemIds), total_amount: null, master_as_of: null },
     PROOF_OWNER,
   ),
     );
@@ -894,7 +894,7 @@ async function case9dAttemptTrigger(harness: StoreHarness): Promise<void> {
   for (let i = 0; i < 3; i += 1) {
     await createLocalBill(
       { store: off.store, clock: off.clock, ids: off.billIds },
-      { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(off.itemIds), total_amount: null, master_as_of: null },
+      { seller: { kind: "server", seller_id: "sell-aaaa-0001" }, vehicle_no: null, items: items(off.itemIds), total_amount: null, master_as_of: null },
     PROOF_OWNER,
   );
     off.clock.advance(1_000);
@@ -987,7 +987,7 @@ async function case10ResolvableVsPermanent(harness: StoreHarness): Promise<void>
     created.push(
       await createLocalBill(
         { store: r.store, clock: r.clock, ids: r.billIds },
-        { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(r.itemIds), total_amount: null, master_as_of: null },
+        { seller: { kind: "server", seller_id: "sell-aaaa-0001" }, vehicle_no: null, items: items(r.itemIds), total_amount: null, master_as_of: null },
     PROOF_OWNER,
   ),
     );
@@ -1126,7 +1126,7 @@ async function case10ResolvableVsPermanent(harness: StoreHarness): Promise<void>
   const s = await rig(harness, "bill-md2");
   const only = await createLocalBill(
     { store: s.store, clock: s.clock, ids: s.billIds },
-    { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(s.itemIds), total_amount: null, master_as_of: null },
+    { seller: { kind: "server", seller_id: "sell-aaaa-0001" }, vehicle_no: null, items: items(s.itemIds), total_amount: null, master_as_of: null },
     PROOF_OWNER,
   );
   const t2 = new MasterDataMissingTransport(s.server, only.id);
@@ -1165,7 +1165,7 @@ async function case10ResolvableVsPermanent(harness: StoreHarness): Promise<void>
   const p = await rig(harness, "bill-perm");
   const bad = await createLocalBill(
     { store: p.store, clock: p.clock, ids: p.billIds },
-    { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(p.itemIds), total_amount: null, master_as_of: null },
+    { seller: { kind: "server", seller_id: "sell-aaaa-0001" }, vehicle_no: null, items: items(p.itemIds), total_amount: null, master_as_of: null },
     PROOF_OWNER,
   );
   const permEngine = new SyncEngine({ ...noSellerKind(),
@@ -1353,7 +1353,7 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
     created.push(
       await createLocalBill(
         { store: many.store, clock: many.clock, ids: many.billIds },
-        { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(many.itemIds), total_amount: null, master_as_of: null },
+        { seller: { kind: "server", seller_id: "sell-aaaa-0001" }, vehicle_no: null, items: items(many.itemIds), total_amount: null, master_as_of: null },
     PROOF_OWNER,
   ),
     );
@@ -1442,7 +1442,7 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
   for (let i = 0; i < 3; i += 1) {
     await createLocalBill(
       { store: legacyMany.store, clock: legacyMany.clock, ids: legacyMany.billIds },
-      { seller_id: "sell-aaaa-0001", vehicle_no: null, items: items(legacyMany.itemIds), total_amount: null, master_as_of: null },
+      { seller: { kind: "server", seller_id: "sell-aaaa-0001" }, vehicle_no: null, items: items(legacyMany.itemIds), total_amount: null, master_as_of: null },
     PROOF_OWNER,
   );
     legacyMany.clock.advance(60_000);

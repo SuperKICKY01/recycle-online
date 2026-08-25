@@ -142,7 +142,7 @@ async function makeBill(r: Rig): Promise<LocalBill> {
   return createLocalBill(
     { store: r.store, clock: r.clock, ids: r.billIds },
     {
-      seller_id: "sell-aaaa-0001",
+      seller: { kind: "server", seller_id: "sell-aaaa-0001" },
       vehicle_no: null,
       items: items(r.itemIds),
       total_amount: null,

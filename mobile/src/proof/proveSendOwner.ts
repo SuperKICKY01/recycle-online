@@ -118,7 +118,7 @@ async function bench(name: string): Promise<Bench> {
       const bill: LocalBill = await createLocalBill(
         { store, clock, ids },
         {
-          seller_id: "sell-1",
+          seller: { kind: "server", seller_id: "sell-1" },
           vehicle_no: null,
           items: [ITEM],
           total_amount: "150.00",

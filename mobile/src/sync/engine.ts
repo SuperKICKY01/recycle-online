@@ -17,6 +17,9 @@ import { SEND_SCHEDULE_HORIZON_MS } from "../time/clockSanity.js";
 import type { Clock, LocalStore, Transport } from "./types.js";
 import type { LocalSellerStore } from "./localSeller.js";
 import type { SellerCreateTransport } from "./sellerCreate.js";
+import { refillOnce } from "./sellerRefill.js";
+import type { ReservationTransport } from "./sellerRefill.js";
+import type { DeviceIdentityStore } from "../session/deviceIdentity.js";
 import { buildOutboxRegistry } from "./outboxHandlers.js";
 import { OutboxRunner } from "./outboxRunner.js";
 import type { OutboxKind, OwedByKind } from "./outbox.js";
@@ -40,7 +43,24 @@ export interface SyncEngineOptions {
    * known to be complete rather than remembered.
    */
   sellerStore: LocalSellerStore;
-  sellerTransport: SellerCreateTransport;
+  /**
+   * IT SPEAKS BOTH SELLER ROUTES, since P1.8b GATES. `SellerCreateTransport`
+   * is the create; `ReservationTransport` is the top-up the pass now performs.
+   * ONE object rather than two options because ONE class already implements
+   * both (`adapters/httpSellerTransport.ts`), they share a base URL and a
+   * token, and two fields would let a construction site point them at
+   * different servers — which is a device creating sellers against one shop
+   * while holding codes reserved by another.
+   */
+  sellerTransport: SellerCreateTransport & ReservationTransport;
+  /**
+   * WHICH INSTALLATION THIS IS. Required, for the same reason the two above
+   * are: a reservation is held BY A DEVICE, and an engine that could not name
+   * the device would have to invent an identity or skip the top-up silently.
+   * The second is worse — a handset that never asks is a handset that can
+   * never buy from a walk-in, with nothing on any screen to say so.
+   */
+  deviceStore: DeviceIdentityStore;
   /** First retry delay; doubles per attempt up to backoffMaxMs. */
   backoffBaseMs?: number;
   backoffMaxMs?: number;
@@ -122,6 +142,10 @@ const emptyResult = (): SyncRunResult => ({
 export class SyncEngine {
   private readonly store: LocalStore;
   private readonly clock: Clock;
+  /** The three the top-up needs. Held, not rebuilt: one device, one holding. */
+  private readonly sellerStore: LocalSellerStore;
+  private readonly sellerTransport: ReservationTransport;
+  private readonly deviceStore: DeviceIdentityStore;
 
   /**
    * THE MECHANISM. One registry — `seller_create`, then `bill_send`, then
@@ -138,6 +162,9 @@ export class SyncEngine {
   constructor(opts: SyncEngineOptions) {
     this.store = opts.store;
     this.clock = opts.clock;
+    this.sellerStore = opts.sellerStore;
+    this.sellerTransport = opts.sellerTransport;
+    this.deviceStore = opts.deviceStore;
     const backoffBaseMs = opts.backoffBaseMs ?? 1_000;
     const backoffMaxMs = opts.backoffMaxMs ?? 5 * 60_000;
     const batchLimit = opts.batchLimit ?? 100;
@@ -328,7 +355,58 @@ export class SyncEngine {
     const released = await this.store.releaseMasterDataBlocked(this.clock.now(), false);
     const report = await this.runner.runPass();
     report.result.masterDataReleased += released;
+    await this.topUpReservations();
     return report.result;
+  }
+
+  /**
+   * TOP THE DEVICE'S HOLDING OF RESERVED SELLER CODES BACK UP — the refill's
+   * call site, and it lands in P1.8b GATES rather than earlier.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY IT WAS BUILT AT `1d7f638` AND DELIBERATELY LEFT WITH NO CALLER
+   * ---------------------------------------------------------------------------
+   * A refill mints REAL reserved codes against the shop's own code sequence, and
+   * NOTHING RE-ISSUES A RESERVATION — every code a device holds and never spends
+   * is a permanent gap in a sequence that prints on slips this system never sees
+   * again. Wiring it while no screen could write `local_sellers` would have had
+   * every handset burn a block per pass for a capability nobody could use.
+   *
+   * WHAT CHANGED. A gate now refuses a sign-out that would strand an owed seller
+   * create, and a bill can park behind one instead of dying on the server's 422.
+   * The codes therefore have something to be spent on and something protecting
+   * the work they produce. FROM THIS COMMIT ONWARD ANY HANDSET RUNNING THIS
+   * BUILD AGAINST A REAL SERVER CONSUMES CODE SPACE — that is the intended
+   * consequence, not a side effect, and it is irreversible.
+   *
+   * ---------------------------------------------------------------------------
+   * AFTER THE DRAIN, NEVER BEFORE IT
+   * ---------------------------------------------------------------------------
+   * The design's rule is that a refill failure never blocks, parks or fails any
+   * other unit of work. Running it AFTER the pass makes that structural rather
+   * than argued: it cannot delay a bill send by even one round trip, on the one
+   * path where a delay is money sitting on a device. A top-up is for the NEXT
+   * walk-in and can wait a pass; a queued bill cannot.
+   *
+   * IT TOUCHES NO COUNTER AND RETURNS NOTHING. A refill is what the device WANTS
+   * from the server, not what it OWES — so it has no queue entry, cannot refuse
+   * a sign-out and cannot colour the strip over work nobody is waiting for. That
+   * is the design's own reason for refusing to make it an outbox kind, and it
+   * only holds while this method stays silent.
+   *
+   * EVERY NON-ANSWER IS `unavailable`, FOR EVER, WITH NO CAP. `refillOnce`
+   * catches its own throw, so an offline device, a dead token and a 500 all cost
+   * exactly one attempt and leave one trace: the holding did not grow. A device
+   * that gave up asking is a device that silently stops being able to buy from a
+   * walk-in.
+   */
+  private async topUpReservations(): Promise<void> {
+    const deviceId = await this.deviceStore.ensure(this.clock.now());
+    await refillOnce(
+      { transport: this.sellerTransport, store: this.sellerStore },
+      deviceId,
+      this.clock.now(),
+    );
   }
 
   /**

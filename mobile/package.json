@@ -44,7 +44,8 @@
     "prove:outbox": "npm run build && node dist/proof/proveOutbox.js",
     "prove:sellerstore": "npm run build && node dist/proof/proveSellerStore.js",
     "prove:sellerkind": "npm run build && node dist/proof/proveSellerKind.js",
-    "prove:owedsurfaces": "npm run build && node dist/proof/proveOwedSurfaces.js"
+    "prove:owedsurfaces": "npm run build && node dist/proof/proveOwedSurfaces.js",
+    "prove:parkedbill": "npm run build && node dist/proof/proveParkedBill.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

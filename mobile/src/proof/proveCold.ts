@@ -812,7 +812,7 @@ async function c7DeletedSellerFailsVisibly(): Promise<void> {
   const bill = buildLocalBill(
     { clock: systemClock, ids },
     {
-      seller_id: "sell-002", // deleted at the office while the yard was offline
+      seller: { kind: "server", seller_id: "sell-002" }, // deleted at the office while the yard was offline
       vehicle_no: "70-1234",
       total_amount: "30000.00",
       items: [
@@ -993,7 +993,7 @@ async function c8ColdStartNoServer(): Promise<void> {
   const bill = buildLocalBill(
     { clock: systemClock, ids },
     {
-      seller_id: draft.seller_id,
+      seller: { kind: "server", seller_id: draft.seller_id },
       vehicle_no: "70-1234",
       total_amount: cartTotal(draft),
       items: toBillItems(draft),
@@ -1145,7 +1145,7 @@ async function c9ProvenanceSurvives(): Promise<void> {
   const bill = buildLocalBill(
     { clock: new FakeClock(NOW), ids },
     {
-      seller_id: "sell-001", vehicle_no: null,
+      seller: { kind: "server", seller_id: "sell-001" }, vehicle_no: null,
       total_amount: cartTotal(afterRefresh!),
       items: toBillItems(afterRefresh!),
       master_as_of: afterRefresh!.master_as_of,

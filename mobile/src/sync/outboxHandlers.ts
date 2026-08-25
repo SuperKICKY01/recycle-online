@@ -411,13 +411,34 @@ export function sellerCreateHandler(
      * belong with the screen that reads them, which is the surfaces phase.
      *
      * WHAT IT DOES THAT NEITHER BILL KIND DOES: on settling it writes the
-     * SERVER's seller id onto the local row.
+     * SERVER's seller id onto the local row, AND RELEASES EVERY BILL PARKED
+     * BEHIND THAT SELLER.
      *
-     * WHAT IT DOES NOT DO YET, SAID PLAINLY: the design also has this writer
-     * release every bill parked behind the settling seller. THAT PARK IS NOT
-     * BUILT — its columns exist on `local_bills` and nothing reads them, and
-     * the behaviour belongs to the phase that builds the surfaces. A release
-     * written here now would be a statement over a park no bill can be in.
+     * THE RELEASE ARRIVED IN P1.8b GATES; the paragraph that stood here said it
+     * was not built and that "a release written here now would be a statement
+     * over a park no bill can be in". Both halves were true and both have
+     * stopped being: `local_bills` has the park, `QUEUED` honours it, and
+     * `createBill` writes it from a `BillSeller` union.
+     *
+     * IT IS THE SECOND STATEMENT IN THIS ARM AND THAT IS DELIBERATE, not an
+     * oversight of the one-statement habit. The two writes are to DIFFERENT
+     * TABLES — `local_sellers` and `local_bills` — so no single statement could
+     * do both, and the design puts the release in this writer precisely so
+     * there is one producer of "the seller settled" rather than a second
+     * mechanism watching for it.
+     *
+     * WHAT A CRASH BETWEEN THEM COSTS, said rather than left to be found: the
+     * seller is settled and its bills are still parked. They are NOT lost — the
+     * park is visible, the bills are counted, the card says what they are
+     * waiting for — but nothing releases them, because a seller settles once.
+     * That window is real and is NOT closed here; it is reported with the other
+     * findings this phase produced rather than repaired by a mechanism the
+     * design does not have.
+     *
+     * `already_created` RELEASES TOO, and it must: it is the replay the
+     * reservation token bought, the server holds the row, and a bill parked
+     * behind a seller that is already on the server is stranded exactly as hard
+     * as one behind a seller that never settled.
      */
     record: async (row, o, _d, attempt, next, now, _result) => {
       switch (o.kind) {
@@ -427,6 +448,16 @@ export function sellerCreateHandler(
           // is the replay the reservation token bought: the server created
           // nothing this time and handed back the row the first attempt made.
           await deps.sellerStore.markSellerCreated(row.id, o.server_seller_id, attempt, now);
+          // ...and every bill that was waiting on this seller rejoins the queue
+          // carrying the id the server just gave us. NOT owner-filtered: a
+          // seller settles once, so a bill filtered out here has no second
+          // event to release it (see the store contract for the whole
+          // argument).
+          await deps.store.releaseBillsParkedOnLocalSeller(
+            row.id,
+            o.server_seller_id,
+            now,
+          );
           return;
         case "invalid":
           // TERMINAL, and the store's own writer returns the reserved code to

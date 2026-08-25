@@ -63,6 +63,8 @@ interface BillRow {
   master_data_missing_at: string | null;
   master_data_code: string | null;
   master_as_of: string | null;
+  local_seller_id: string | null;
+  local_seller_parked_at: string | null;
 }
 
 const COLUMNS =
@@ -71,7 +73,8 @@ const COLUMNS =
   " void_reason, void_requested_at, voided_at, void_attempts, void_last_error," +
   " void_refused_at, void_refused_code," +
   " first_attempt_at, first_server_error_at, server_error_attempts," +
-  " master_data_missing_at, master_data_code, master_as_of";
+  " master_data_missing_at, master_data_code, master_as_of," +
+  " local_seller_id, local_seller_parked_at";
 
 /**
  * The head-of-line queue excludes parked bills, in ONE place, reused by every
@@ -160,8 +163,31 @@ export function ownerParams(owner: RowOwner | null): SqlValue[] {
  * code will not open that file, which is why the hazard is stated here and not
  * only pointed at.
  */
+/*
+ * `local_seller_parked_at IS NULL` — P1.8b, AND IT IS THE SECOND PARK RATHER
+ * THAN A SECOND EXEMPTION.
+ *
+ * A bill weighed against a seller this device created is held out of this queue
+ * from the moment it is saved, so no request is ever spent discovering what the
+ * device already knows — and the server's 422 rule, which would classify that
+ * bill PERMANENT and terminal, is never reached. It goes back into the queue
+ * when the seller settles and by nothing else.
+ *
+ * IT IS THE SAME ORDERING TRADE THE LINE ABOVE ALREADY MAKES and not a new one:
+ * `lessons/doc-no-is-arrival-order-not-event-time.md` permits exactly ONE
+ * exception, a bill out of the sendable queue on missing master data, and warns
+ * that any further skippable bill needs its own argument. A seller that does not
+ * exist yet IS master data that is not set up. So this bill also takes a HIGHER
+ * doc_no than loads weighed after it, for the same reason and at the same price.
+ *
+ * AND IT IS VISIBLE, WHICH IS WHAT SEPARATES IT FROM THE SILENT AUTO-SKIP
+ * `queue-jam-must-be-visible.md` forbids: the bill stays `pending`, stays inside
+ * `unsentBreakdown().mine`, stays inside `bill_send`'s `owedCount`, and carries
+ * its own sentence on the card. Nothing on the device claims the work is done.
+ */
 const QUEUED =
-  `sync_state = 'pending' AND master_data_missing_at IS NULL AND ${OWNED_BY_CURRENT}`;
+  "sync_state = 'pending' AND master_data_missing_at IS NULL" +
+  ` AND local_seller_parked_at IS NULL AND ${OWNED_BY_CURRENT}`;
 
 /**
  * "The scheduled time has come, OR the schedule is not believable."
@@ -212,7 +238,7 @@ function dueParams(now: Date): [string, string] {
  */
 export const BILL_INSERT_SQL =
   `INSERT INTO local_bills (${COLUMNS}, owner_tenant_id, owner_user_id)` +
-  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 /**
  * `owner` is REQUIRED and nullable — never optional, and never two loose
@@ -255,6 +281,11 @@ export function billInsertParams(bill: LocalBill, owner: LocalIdentity | null): 
     bill.master_data_missing_at,
     bill.master_data_code,
     bill.master_as_of,
+    // The park pair, in COLUMNS order. Both or neither: buildLocalBill derives
+    // them from one BillSeller, so a row cannot name a local seller and be
+    // unparked, which is the arrangement that reaches the server and is refused.
+    bill.local_seller_id,
+    bill.local_seller_parked_at,
     // Expanded from the pair at exactly ONE point in the codebase, which is why
     // the two columns can never disagree about whether an owner is known.
     owner === null ? null : owner.tenant_id,
@@ -291,6 +322,8 @@ function toBill(row: BillRow): LocalBill {
     master_data_missing_at: row.master_data_missing_at,
     master_data_code: row.master_data_code,
     master_as_of: row.master_as_of,
+    local_seller_id: row.local_seller_id,
+    local_seller_parked_at: row.local_seller_parked_at,
   };
 }
 
@@ -1137,5 +1170,52 @@ export class SqliteLocalStore implements LocalStore {
       [now.toISOString()],
     );
     return rows.map((r) => r.id).sort();
+  }
+
+  /**
+   * THE SELLER SETTLED — release every bill behind it, and give each the
+   * SERVER's id. ONE statement, and it must stay one.
+   *
+   * ---------------------------------------------------------------------------
+   * WHY THE PAYLOAD IS REWRITTEN AND NOT JUST THE PARK CLEARED
+   * ---------------------------------------------------------------------------
+   * `local_bills` has no `seller_id` column: the id the server will be sent
+   * lives inside `payload_json`, and while the bill is parked that id is the
+   * LOCAL one, which the server has never seen. Clearing the park alone would
+   * put the bill back in the queue carrying an id `POST /bills` answers 422 —
+   * PERMANENT, terminal — which is the exact defect the park exists to prevent,
+   * one step later and with the cash already paid.
+   *
+   * `json_set` does it inside the same UPDATE, so there is no read-then-write
+   * window in which a bill is unparked and still carrying the local id. WHAT
+   * THIS DOES NOT ESTABLISH: json_set is measured working on node:sqlite
+   * (3.50.4, SQLite's JSON1); the handset runs expo-sqlite and its build is
+   * UNVERIFIED here, exactly as every other SQLite claim in this tree is.
+   *
+   * NO OWNER CLAUSE. The contract states the whole argument; the short of it is
+   * that a seller settles ONCE, so a bill filtered out here has no second event
+   * to release it and is stranded for ever. `QUEUED` still carries its own owner
+   * predicate, so a released bill enters its own owner's queue and nobody
+   * else's.
+   *
+   * `next_attempt_at` IS RESET TO NOW so a released bill is due immediately: it
+   * has never been attempted, its schedule is the stamp it was created with, and
+   * leaving a stale one would hold the yard's oldest bill behind a delay that
+   * was never about it.
+   */
+  async releaseBillsParkedOnLocalSeller(
+    localSellerId: string,
+    serverSellerId: string,
+    now: Date,
+  ): Promise<number> {
+    const r = await this.db.run(
+      `UPDATE local_bills
+       SET payload_json = json_set(payload_json, '$.seller_id', ?),
+           local_seller_parked_at = NULL,
+           next_attempt_at = ?
+       WHERE local_seller_id = ? AND local_seller_parked_at IS NOT NULL`,
+      [serverSellerId, now.toISOString(), localSellerId],
+    );
+    return r.changes;
   }
 }

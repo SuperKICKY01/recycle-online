@@ -65,7 +65,7 @@ async function makeBill(store: SqliteLocalStore, clock: FakeClock, ids: SeqIds):
   return createLocalBill(
     { store, clock, ids },
     {
-      seller_id: "sell-1", vehicle_no: null, items: [ITEM],
+      seller: { kind: "server", seller_id: "sell-1" }, vehicle_no: null, items: [ITEM],
       total_amount: "150.05", master_as_of: null,
     },
     PROOF_OWNER,

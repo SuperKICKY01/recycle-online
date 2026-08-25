@@ -305,7 +305,7 @@ async function s4Shift(): Promise<void> {
   await b.identity.save(shop.a);
   const aBill = await createLocalBill(
     { store: b.bills, clock, ids },
-    { seller_id: seller.id, vehicle_no: null, items: [realItem()], total_amount: "150.00", master_as_of: null },
+    { seller: { kind: "server", seller_id: seller.id }, vehicle_no: null, items: [realItem()], total_amount: "150.00", master_as_of: null },
     shop.a,
   );
   const aDraft: Draft = newDraft(ids.newId(), seller.id, new Date().toISOString(), null);
@@ -331,7 +331,7 @@ async function s4Shift(): Promise<void> {
   // 4b ---------------------------------------------------------------------
   const bBill = await createLocalBill(
     { store: b.bills, clock, ids },
-    { seller_id: seller.id, vehicle_no: null, items: [realItem()], total_amount: "150.00", master_as_of: null },
+    { seller: { kind: "server", seller_id: seller.id }, vehicle_no: null, items: [realItem()], total_amount: "150.00", master_as_of: null },
     shop.b,
   );
   const queue = await b.bills.listPendingOldestFirst(100);

@@ -321,7 +321,7 @@ async function c4EngineNeverSeesADraft(): Promise<void> {
   const bill = buildLocalBill(
     { clock, ids: new SeqIds("promoted") },
     {
-      seller_id: loaded!.seller_id,
+      seller: { kind: "server", seller_id: loaded!.seller_id },
       vehicle_no: null,
       items: toBillItems(loaded!),
       total_amount: cartTotal(loaded!),

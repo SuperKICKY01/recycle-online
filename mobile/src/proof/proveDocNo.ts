@@ -143,7 +143,7 @@ function newBill(ids: SeqIds): LocalBill {
   return buildLocalBill(
     { clock: systemClock, ids },
     {
-      seller_id: "sell-001",
+      seller: { kind: "server", seller_id: "sell-001" },
       vehicle_no: "70-1234",
       items: [oneItem(ids)],
       total_amount: "150.00",
@@ -214,7 +214,7 @@ async function d2ToD5EngineAndStore(stub: ScriptedServer): Promise<void> {
     const bill = await createLocalBill(
       { clock: systemClock, ids, store },
       {
-        seller_id: "sell-001",
+        seller: { kind: "server", seller_id: "sell-001" },
         vehicle_no: "70-1234",
         items: [oneItem(ids)],
         total_amount: "150.00",
@@ -265,7 +265,7 @@ async function d2ToD5EngineAndStore(stub: ScriptedServer): Promise<void> {
     const control = await createLocalBill(
       { clock: systemClock, ids, store },
       {
-        seller_id: "sell-001",
+        seller: { kind: "server", seller_id: "sell-001" },
         vehicle_no: "70-1234",
         items: [oneItem(ids)],
         total_amount: "150.00",
@@ -329,7 +329,7 @@ async function syncedTotal(driver: NodeSqliteDriver): Promise<number> {
 
 function billInput(ids: SeqIds): Parameters<typeof createLocalBill>[1] {
   return {
-    seller_id: "sell-001",
+    seller: { kind: "server", seller_id: "sell-001" },
     vehicle_no: "70-1234",
     items: [oneItem(ids)],
     total_amount: "150.00",

@@ -126,7 +126,7 @@ async function makeBill(
   return createLocalBill(
     { store, clock, ids },
     {
-      seller_id: "sell-1",
+      seller: { kind: "server", seller_id: "sell-1" },
       vehicle_no: null,
       items: [{ ...ITEM, id: ids.newId() }],
       total_amount: "150.05",
@@ -800,6 +800,13 @@ async function f6LiveServer(): Promise<void> {
     server_error_attempts: 0,
     master_data_missing_at: null,
     master_data_code: null,
+    // A bill against a SERVER seller: `SELLER_A` is seeded and this row is
+    // driven at the real API, so it must not be parked behind anything. A
+    // hand-built row is exactly where a field added later goes missing, which
+    // is why the compiler is asked rather than the author
+    // (`lessons/README.md § Lessons` "a-proof-fixture-must-be-a-row-the-product-could-produce.md — applies to every proof/seed/test").
+    local_seller_id: null,
+    local_seller_parked_at: null,
     master_as_of: null,
     doc_no: null,
     synced_at: null,

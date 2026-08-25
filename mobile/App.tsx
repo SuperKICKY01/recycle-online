@@ -48,6 +48,7 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { HttpTransport } from "./src/adapters/httpTransport";
 import { HttpSellerTransport } from "./src/adapters/httpSellerTransport";
 import { SqliteDraftStore } from "./src/adapters/sqlite/SqliteDraftStore";
+import { SqliteDeviceStore } from "./src/adapters/sqlite/SqliteDeviceStore";
 import { SqliteLocalSellerStore } from "./src/adapters/sqlite/SqliteLocalSellerStore";
 import { SqliteIdentityStore } from "./src/adapters/sqlite/SqliteIdentityStore";
 import type { LocalIdentity } from "./src/adapters/sqlite/SqliteIdentityStore";
@@ -688,6 +689,17 @@ export default function App() {
            * and an engine cannot be built without it.
            */
           sellerStore: SqliteLocalSellerStore.open(driver),
+          /*
+           * WHICH INSTALLATION THIS IS, on the SAME driver again — the identity
+           * and the codes reserved against it are two tables in one file, and a
+           * device that read its id through a second connection could see a
+           * different committed state from the holding that id owns.
+           *
+           * `ensure` is called by the pass, not here: minting on boot would put
+           * a device id in the database of every handset that opens the app,
+           * including ones that never reach a server.
+           */
+          deviceStore: new SqliteDeviceStore(driver, deviceIds),
           sellerTransport: new HttpSellerTransport({
             baseUrl: API_BASE_URL,
             getToken: () => Promise.resolve(tokenRef.current),
@@ -1650,9 +1662,24 @@ export default function App() {
         const bill = buildLocalBill(
           { clock: systemClock, ids: deviceIds },
           {
-            // The DRAFT's seller, not a component variable: it is what was
-            // persisted, and it is what the operator confirmed in the dialog.
-            seller_id: draft.seller_id,
+            /*
+             * The DRAFT's seller, not a component variable: it is what was
+             * persisted, and it is what the operator confirmed in the dialog.
+             *
+             * ALWAYS `server` TODAY, AND THIS IS THE ONE PLACE THAT CHANGES WHEN
+             * THE PICKER DOES. The cart's `Draft` carries a bare `seller_id`
+             * that can only have come from `cached_sellers` — the picker offers
+             * the server's list and nothing else, because the union with the
+             * unsettled local rows is S10's rework and is not built. So no bill
+             * this app can produce is parked, and the park is exercised by
+             * proofs alone.
+             *
+             * WHOEVER BUILDS THAT PICKER MEETS A COMPILE ERROR HERE, which is
+             * why `BillSeller` is a union rather than a nullable field beside
+             * the id: the question cannot be skipped, and it cannot be answered
+             * inconsistently.
+             */
+            seller: { kind: "server", seller_id: draft.seller_id },
             // Trimmed here as well as on blur, because save can be tapped with
             // the field still focused and never blurred.
             vehicle_no: cleanVehicleNo(draft.vehicle_no),

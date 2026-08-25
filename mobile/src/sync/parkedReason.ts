@@ -134,6 +134,88 @@ const BY_CODE: Record<MasterDataCode, { badge: string; what: string }> = {
 const isKnown = (code: string): code is MasterDataCode =>
   (MASTER_DATA_CODES as readonly string[]).includes(code);
 
+/* ------------------------------ waiting on a seller this device made ------ */
+
+/**
+ * THE NAME OF THE SECOND PARK, AND IT IS DELIBERATELY NOT IN
+ * `MASTER_DATA_CODES`.
+ *
+ * A bill parked behind a seller this device created has no server code, because
+ * no request was made — the device parked it before asking. The name exists
+ * anyway, for two reasons: a state a proof can only refer to by its column is a
+ * state nobody can talk about, and the RED CASE this wording has to survive is
+ * precisely somebody routing the new state through `parkedReason(THIS_CODE)`
+ * and getting the cause-neutral office fallback.
+ *
+ * IF IT EVER JOINS `MASTER_DATA_CODES` THE SENTENCE BECOMES A LIE. Everything
+ * in that table says the OFFICE must act, and `REASSURE` says so again — and
+ * here nobody must. A proof asserts the absence.
+ */
+export const LOCAL_SELLER_PENDING_CODE = "local_seller_pending";
+
+/**
+ * WHAT THE YARD IS TOLD ABOUT A BILL WAITING ON ITS OWN SELLER.
+ *
+ * ---------------------------------------------------------------------------
+ * IT MUST NOT BORROW THE MASTER-DATA WORDING, AND THE REASON IS NOT STYLE
+ * ---------------------------------------------------------------------------
+ * Every sentence in `BY_CODE` names the office, and `REASSURE` promises the
+ * bill goes "เมื่อสำนักงานแก้ให้แล้ว" — once the office has fixed it. On this
+ * state nobody at the office has anything to fix: the bill resolves itself the
+ * moment this device reaches the server, which is the same event that was
+ * already going to happen. Telling a yard to ring the office about a bill that
+ * needs no call is the confidently-wrong instruction
+ * `lessons/correct-classification-can-still-render-as-an-error.md` has already
+ * been paid for twice — and worse here than there, because the office would
+ * look, find nothing wrong, and learn to ignore the next one.
+ *
+ * IT ALSO PROMISES NOTHING IT CANNOT PERFORM. The bill really does send itself,
+ * with no operator action and no office action, as soon as the seller reaches
+ * the server. That is a wait the system can keep, unlike the one on a failed
+ * bill's card — and the sentence says WHY it is waiting, so the wait is
+ * auditable rather than merely requested.
+ *
+ * `ราย` FOR THE SELLER AND `ใบ` FOR THE BILL, because they are a person and a
+ * document.
+ */
+/**
+ * NOT ONE OF THESE THREE STRINGS CONTAINS THE WORD สำนักงาน, and the first
+ * draft did — as a NEGATION, "ไม่ต้องแจ้งสำนักงาน", which reads as helpful and
+ * is the wrong call.
+ *
+ * The reasoning that lost: pre-empting the habit is worth a mention. The
+ * reasoning that won, and it is the criterion's own: the assertion here is
+ * NEGATIVE over the whole concatenation, and a banned-substring check cannot
+ * tell a negated mention from an instruction — which is the rider
+ * `correct-classification-can-still-render-as-an-error.md` already carries
+ * about `รวม 500 ใบ` being read as a leaked 5xx. Weakening the check to allow
+ * the negation would weaken it for every future sentence too. And the product
+ * argument agrees: a card is READ AT A GLANCE with wet hands, the noun is what
+ * a glance catches, and the sentence loses nothing by naming only what the
+ * SYSTEM will do.
+ */
+const LOCAL_SELLER_PARK: ParkedReason = {
+  badge: "รอส่งผู้ขายรายใหม่ขึ้นระบบ",
+  what: "บิลนี้เป็นของผู้ขายที่เพิ่งเพิ่มใหม่ในเครื่องนี้ ระบบยังไม่มีผู้ขายรายนี้",
+  reassure:
+    "บิลถูกเก็บไว้ครบแล้ว ไม่ต้องชั่งใหม่และไม่ต้องทำอะไรที่หน้าลาน" +
+    " เมื่อเครื่องนี้เชื่อมต่อได้ ระบบจะส่งผู้ขายและบิลให้เองตามลำดับ",
+  unknown: false,
+};
+
+/**
+ * The sentence for a bill parked behind an uncreated local seller.
+ *
+ * TAKES NOTHING, and that is the guarantee. `parkedReason` takes a code because
+ * the server names the cause; here the device already knows it, so there is no
+ * parameter through which a code, a body or an id could reach the screen — and
+ * no way for a caller to route this state through the office wording by passing
+ * the wrong argument.
+ */
+export function localSellerParkReason(): ParkedReason {
+  return { ...LOCAL_SELLER_PARK };
+}
+
 /**
  * The operator-facing reason a bill is parked.
  *
@@ -427,6 +509,17 @@ export interface NoticeInput {
   attempt_count: number;
   master_data_missing_at: string | null;
   master_data_code: string | null;
+  /**
+   * Set ⟺ the bill is waiting on a seller THIS DEVICE created. A different park
+   * with a different actor: the master-data one waits on the office, this one
+   * waits on nobody.
+   *
+   * REQUIRED, never optional — an optional field would leave every existing
+   * call site compiling clean while a parked bill rendered whatever the branch
+   * below it happens to say, which for a never-attempted bill is NOTHING AT ALL:
+   * a card with no notice on a bill that is not going anywhere.
+   */
+  local_seller_parked_at: string | null;
   void_requested_at: string | null;
   /** Set ⟺ the server refused to void this bill because of who asked (403). */
   void_refused_at: string | null;
@@ -524,6 +617,21 @@ export function billNotice(
   // A voided bill has its own region (the reason the owner gave). Nothing about
   // a send failure is worth saying about a bill that has been reversed.
   if (bill.void_requested_at !== null) return NO_NOTICE;
+
+  /*
+   * WAITING ON A SELLER THIS DEVICE CREATED — ABOVE the master-data park.
+   *
+   * The two cannot both be set on one row today and the ranking is stated
+   * rather than assumed: a bill parked here never reaches the server, so it can
+   * never collect a 424, and a bill released from here that then gets one has
+   * had this column cleared by the release. If they ever were both set, THIS is
+   * the one holding the bill out of the queue, and naming the other would send
+   * the yard to the office over a bill the office cannot move.
+   */
+  if (bill.local_seller_parked_at !== null) {
+    const r = localSellerParkReason();
+    return { tone: "parked", badge: r.badge, lines: [r.what, r.reassure] };
+  }
 
   if (bill.master_data_missing_at !== null) {
     const r = parkedReason(bill.master_data_code);

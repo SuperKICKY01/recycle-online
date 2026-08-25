@@ -27,6 +27,8 @@ import type {
   ReservedCode,
 } from "../sync/localSeller.js";
 import type { SellerCreateOutcome, SellerCreateTransport } from "../sync/sellerCreate.js";
+import type { RefillOutcome, ReservationTransport } from "../sync/sellerRefill.js";
+import type { DeviceId, DeviceIdentityStore } from "../session/deviceIdentity.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
 
@@ -449,6 +451,33 @@ export class InMemoryStore implements LocalStore {
     return Promise.resolve(recovered.sort());
   }
 
+  /**
+   * Mirrors SqliteLocalStore.releaseBillsParkedOnLocalSeller, INCLUDING the
+   * absence of an owner filter — a fake that quietly filtered would make the
+   * one cell that matters (a second person's bill released) pass here and fail
+   * on the real store, which is the direction that strands money.
+   *
+   * The payload rewrite is the same rewrite: the id the server will be sent is
+   * inside the payload, and releasing without replacing it hands the queue a
+   * bill the server answers 422.
+   */
+  releaseBillsParkedOnLocalSeller(
+    localSellerId: string,
+    serverSellerId: string,
+    now: Date,
+  ): Promise<number> {
+    let released = 0;
+    for (const row of this.rows.values()) {
+      if (row.local_seller_id !== localSellerId) continue;
+      if (row.local_seller_parked_at === null) continue;
+      row.payload = { ...row.payload, seller_id: serverSellerId };
+      row.local_seller_parked_at = null;
+      row.next_attempt_at = now.toISOString();
+      released += 1;
+    }
+    return Promise.resolve(released);
+  }
+
   requestVoid(id: string, reason: string, now: Date): Promise<boolean> {
     const row = this.require(id);
     if (row.void_requested_at !== null) return Promise.resolve(false);
@@ -587,7 +616,12 @@ export class InMemoryStore implements LocalStore {
  * other for reasons that have nothing to do with the engine.
  */
 const queuedIgnoringOwner = (b: LocalBill): boolean =>
-  b.sync_state === "pending" && b.master_data_missing_at === null;
+  b.sync_state === "pending" &&
+  b.master_data_missing_at === null &&
+  // The SECOND park, P1.8b. Both stores must agree on what the queue holds:
+  // a bill waiting on a seller this device created is out of it, and a case
+  // that passed here and failed on SQLite would be about the fake.
+  b.local_seller_parked_at === null;
 
 const byCreatedAt = (a: LocalBill, b: LocalBill): number =>
   a.created_at === b.created_at
@@ -1214,12 +1248,49 @@ export class EmptySellerStore implements LocalSellerStore {
  * layer out — and catching it at BOTH layers is what makes either of them
  * evidence rather than a hope.
  */
-export class RefusingSellerTransport implements SellerCreateTransport {
+export class RefusingSellerTransport implements SellerCreateTransport, ReservationTransport {
   createSeller(): Promise<SellerCreateOutcome> {
     throw new Error(
       "RefusingSellerTransport.createSeller: a proof with no local sellers" +
         " performed a seller create.",
     );
+  }
+
+  /**
+   * ANSWERS `unavailable` AND DOES NOT THROW, which is the opposite of its
+   * sibling above and is deliberate.
+   *
+   * Since P1.8b GATES every pass tops the holding up, so a call here is NORMAL
+   * on a proof with no sellers rather than the defect `createSeller`'s throw
+   * catches. What such a proof models is a device that cannot reach the
+   * reservation route at all — which is exactly `unavailable`, costs nothing,
+   * writes nothing, and never reaches `EmptySellerStore.saveReservations`,
+   * whose throw would otherwise fire on every pass of half this suite.
+   */
+  topUp(): Promise<RefillOutcome> {
+    return Promise.resolve({
+      kind: "unavailable",
+      reason: "RefusingSellerTransport: no reservation route in this proof",
+    });
+  }
+}
+
+/**
+ * A device identity that is already minted and never changes.
+ *
+ * `ensure` is idempotent by construction on the real store (the table is keyed
+ * `only_row`), so a fake that minted per call would be a different contract:
+ * the one property this value has is that it is the SAME for ever, and a
+ * handset that re-minted would leave its whole holding `held` in a name it no
+ * longer answers to.
+ */
+export class FixedDeviceStore implements DeviceIdentityStore {
+  constructor(private readonly id: DeviceId = "00000000-0000-4000-8000-0000000d0001") {}
+  load(): Promise<DeviceId | null> {
+    return Promise.resolve(this.id);
+  }
+  ensure(): Promise<DeviceId> {
+    return Promise.resolve(this.id);
   }
 }
 
@@ -1231,9 +1302,19 @@ export class RefusingSellerTransport implements SellerCreateTransport {
  */
 export function noSellerKind(): {
   sellerStore: LocalSellerStore;
-  sellerTransport: SellerCreateTransport;
+  sellerTransport: SellerCreateTransport & ReservationTransport;
+  deviceStore: DeviceIdentityStore;
 } {
-  return { sellerStore: new EmptySellerStore(), sellerTransport: new RefusingSellerTransport() };
+  return {
+    sellerStore: new EmptySellerStore(),
+    sellerTransport: new RefusingSellerTransport(),
+    // P1.8b GATES: the pass tops the holding up, so an engine cannot be built
+    // without a device to hold it. Supplied HERE rather than at each site, so
+    // the ~70 `new SyncEngine` calls that spread this helper needed no edit —
+    // and the ones that do NOT spread it are exactly the sites that had to
+    // answer the question, which is the sweep working as intended.
+    deviceStore: new FixedDeviceStore(),
+  };
 }
 
 /**

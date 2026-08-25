@@ -512,7 +512,7 @@ async function s4NoRequestsAfterwards(): Promise<void> {
     await createLocalBill(
       { clock, ids: new SeqIds("s4"), store },
       {
-        seller_id: "seller-1",
+        seller: { kind: "server", seller_id: "seller-1" },
         vehicle_no: null,
         items: [],
         total_amount: "0.00",
@@ -612,7 +612,7 @@ async function s4bInFlightPass(): Promise<void> {
     await createLocalBill(
       { clock, ids: new SeqIds("s4b"), store },
       {
-        seller_id: "seller-1",
+        seller: { kind: "server", seller_id: "seller-1" },
         vehicle_no: null,
         items: [],
         total_amount: "0.00",
@@ -751,7 +751,7 @@ async function s8SendForbiddenCleared(): Promise<void> {
       await createLocalBill(
         { clock, ids: new SeqIds(tag), store },
         {
-          seller_id: "seller-1",
+          seller: { kind: "server", seller_id: "seller-1" },
           vehicle_no: null,
           items: [],
           total_amount: "0.00",
@@ -1295,7 +1295,7 @@ async function s9SessionDrivesTheSheet(): Promise<void> {
       const bill = await createLocalBill(
         { clock, ids, store },
         {
-          seller_id: "seller-1",
+          seller: { kind: "server", seller_id: "seller-1" },
           vehicle_no: null,
           items: [],
           total_amount: "880.00",
@@ -1465,7 +1465,7 @@ async function s9SessionDrivesTheSheet(): Promise<void> {
       await createLocalBill(
         { clock: liveClock, ids: liveIds, store: liveStore },
         {
-          seller_id: "seller-1",
+          seller: { kind: "server", seller_id: "seller-1" },
           vehicle_no: null,
           items: [],
           total_amount: "880.00",

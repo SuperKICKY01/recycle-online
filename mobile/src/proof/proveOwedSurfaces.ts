@@ -144,7 +144,7 @@ const DRAFT: LocalSellerDraft = {
 };
 
 const BILL_DRAFT: BillDraft = {
-  seller_id: "sell-1",
+  seller: { kind: "server", seller_id: "sell-1" },
   vehicle_no: null,
   items: [
     {

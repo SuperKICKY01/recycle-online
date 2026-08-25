@@ -684,6 +684,11 @@ function s7ParkedIsNotAnError(): void {
     attempt_count: 1,
     master_data_missing_at: "2026-08-18T02:00:00.000Z",
     master_data_code: "seller_grade_unset",
+    // This case is about the MASTER-DATA park and its two remedies. The
+    // local-seller park is a different park with a different actor and is
+    // ranked above this one, so a non-null here would displace the sentence
+    // under test entirely.
+    local_seller_parked_at: null,
     void_requested_at: null,
     void_refused_at: null,
     void_refused_code: null,
@@ -911,7 +916,7 @@ async function s8RetryWindowLeaksNothing(): Promise<void> {
   const bill = buildLocalBill(
     { clock: new FakeClock(), ids: new SeqIds("retry") },
     {
-      seller_id: "s-005",
+      seller: { kind: "server", seller_id: "s-005" },
       vehicle_no: "S005-TEST",
       total_amount: "150.05",
       master_as_of: null,
@@ -1024,6 +1029,7 @@ async function s8RetryWindowLeaksNothing(): Promise<void> {
       attempt_count: 1,
       master_data_missing_at: "t",
       master_data_code: code,
+      local_seller_parked_at: null,
       void_requested_at: voided ? "t" : null,
       void_refused_at: null,
       void_refused_code: null,
@@ -1033,8 +1039,8 @@ async function s8RetryWindowLeaksNothing(): Promise<void> {
     parkedRow("parked", "seller_grade_unset", false),
     parkedRow("parked + unknown code", "future_code", false),
     parkedRow("parked + null code", null, false),
-    { label: "never attempted", b: { sync_state: "pending", attempt_count: 0, master_data_missing_at: null, master_data_code: null, void_requested_at: null, void_refused_at: null, void_refused_code: null } },
-    { label: "terminally failed (422)", b: { sync_state: "failed", attempt_count: 1, master_data_missing_at: null, master_data_code: null, void_requested_at: null, void_refused_at: null, void_refused_code: null } },
+    { label: "never attempted", b: { sync_state: "pending", attempt_count: 0, master_data_missing_at: null, master_data_code: null, local_seller_parked_at: null, void_requested_at: null, void_refused_at: null, void_refused_code: null } },
+    { label: "terminally failed (422)", b: { sync_state: "failed", attempt_count: 1, master_data_missing_at: null, master_data_code: null, local_seller_parked_at: null, void_requested_at: null, void_refused_at: null, void_refused_code: null } },
     parkedRow("voided while parked", "seller_grade_unset", true),
   ];
   for (const { label, b } of combos) {

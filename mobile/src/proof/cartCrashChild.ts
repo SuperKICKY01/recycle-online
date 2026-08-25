@@ -140,7 +140,7 @@ async function main(): Promise<void> {
   const bill = buildLocalBill(
     { clock: new FakeClock(), ids: new FixedIds([billId, idemKey]) },
     {
-      seller_id: draft.seller_id,
+      seller: { kind: "server", seller_id: draft.seller_id },
       vehicle_no: draft.vehicle_no,
       items: toBillItems(draft),
       total_amount: cartTotal(draft),

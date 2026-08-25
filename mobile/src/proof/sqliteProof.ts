@@ -155,7 +155,7 @@ async function s2DecimalRoundTrip(): Promise<void> {
   const created = await createLocalBill(
     { store, clock, ids: new SeqIds("bill-dec") },
     {
-      seller_id: "sell-aaaa-0001",
+      seller: { kind: "server", seller_id: "sell-aaaa-0001" },
       vehicle_no: "1กก-1234",
       items: [HOSTILE_ITEM],
       total_amount: "0.30",
@@ -216,7 +216,7 @@ async function s3ConcurrentClaims(workers: number, bills: number): Promise<void>
       await createLocalBill(
         { store, clock, ids },
         {
-          seller_id: "sell-aaaa-0001",
+          seller: { kind: "server", seller_id: "sell-aaaa-0001" },
           vehicle_no: null,
           items: [{ ...HOSTILE_ITEM, id: `item-${i}` }],
           total_amount: "0.30",
@@ -319,7 +319,7 @@ async function s4DurabilityAcrossRestart(): Promise<void> {
     createLocalBill(
       { store: store1, clock, ids },
       {
-        seller_id: "sell-aaaa-0001",
+        seller: { kind: "server", seller_id: "sell-aaaa-0001" },
         vehicle_no: "1กก-1234",
         items: [HOSTILE_ITEM],
         total_amount: "0.30",
