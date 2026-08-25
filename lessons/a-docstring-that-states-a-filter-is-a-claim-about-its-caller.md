@@ -94,3 +94,76 @@ Not [[a-green-cell-is-evidence-about-the-assertion-not-the-claim]]. Every
 mechanism in that file is an ASSERTION that fires and measures something
 adjacent to what you meant. This is not an assertion at all — nothing executes a
 docstring, so there was never a cell to be green.
+
+## AMENDED (P1.8b GATES, 2026-08-25) — THE CLAIM IS NOT ALWAYS PROSE. IT CAN BE A VALUE IN A TOTAL MAPPING, AND THEN IT IS EXECUTABLE
+
+**The instance is this file's own subject wearing the ONE disguise its How-to-apply
+recommends as the cure.** Item 2 above says: *where a precondition genuinely must
+be stated, make it a type or a check.* Here the claim IS in a type — in the
+literal of a mapped type over a union — and the type still cannot see it.
+
+`mobile/src/sync/statusNotice.ts` gained a wording table when the status strip had
+to stop claiming the work was sent while a non-bill kind was owed:
+
+```ts
+const OWED_STRIP_LINE: { readonly [K in OutboxKind]: ((n: number) => string) | null } = {
+  bill_send: null,              // `pending`, `waitingOnMasterData` and `failed` above say it
+  bill_void: (n) => `รอแจ้งยกเลิกบิล ${n} ใบ`,
+  seller_create: (n) => `รอส่งผู้ขายที่เพิ่มใหม่ ${n} ราย`,
+};
+```
+
+The mapped type does exactly what it is reached for: a FOURTH kind is a compile
+error until somebody writes its line. **That guarantee is over the KEY SET and it
+stops there.** `bill_send: null` is not a line — it is a SENTENCE, in executable
+form, asserting that three separate inputs of a different function already speak
+for that kind's rows. It is true today. It could become false without this file
+changing, which is this file's own discriminator, answered *yes*: the three
+inputs are supplied by `App.tsx`.
+
+**MEASURED, as the mistake a reader makes rather than as a strawman.** The same
+entry, on the wrong member — which is what somebody adding a kind copies from its
+neighbour:
+
+    OWED_STRIP_LINE.seller_create = null
+      npm run typecheck      -> exit 0
+      npm run typecheck:app  -> exit 0
+
+and the strip went straight back to saying `ส่งครบแล้ว` over a device owing a
+seller create: the exact sentence the table had been added to stop.
+
+### What this ADDS to the file, rather than repeating it
+
+- **Item 2's remedy has no move here.** "Name the filtered value instead" and
+  "make it a type" both assume you can decline to make the claim. A TOTAL mapping
+  forces an entry for every member; there is no way to say nothing. So the rule
+  gains a clause: **when a total mapping forces an entry, the entries that mean
+  *handled elsewhere* are the claims — mark them, say WHICH code has to stay true,
+  and give them a cell.**
+- **The "why every instrument is blind to it" section has a bullet that is FALSE
+  of this instance.** It says *a control cannot reach it — there is no instrument
+  here at all, so there is nothing for a control to be about.* Here there IS an
+  instrument: a 1152-cell cross product over the strip, with a control, both
+  green. It could not resolve the defect for a reason that belongs to
+  [[a-green-cell-is-evidence-about-the-assertion-not-the-claim]] and is recorded
+  there — the sweep's own dimension moved two members together, so no cell in it
+  could separate them. **The two halves of this instance separate exactly along
+  the two files' own boundary**, and the measurement lives there.
+- **The totality mechanism is what makes it comfortable.** A literal that reddens
+  the moment the union grows reads as a literal somebody is checking. Nothing is
+  checking the values.
+
+### Separated from the two neighbours it is nearest
+
+- **NOT [[a-narrowing-type-is-not-a-barrier-to-the-object]].** That is about
+  NARROWING — a type with fewer fields refuses to let you NAME the missing ones
+  and does not refuse to CARRY them. This is TOTALITY, the opposite operation, and
+  its compile-time promise is kept in full. There the false belief is about what
+  the type keeps OUT of a passed object; here it is about what an entry the type
+  demanded happens to SAY. Its remedy — convert at the boundary, field by field,
+  never by a spread — has nothing to convert.
+- **NOT [[a-check-that-never-went-red-was-never-observed]].** Every mechanism
+  there is an instrument that ran and produced a reading carrying no information.
+  The 1152 cells ran and every reading was TRUE — the strip really did avoid the
+  sentence in all of them — and the negative had a control that fired correctly.
+  Nothing was vacuous and nothing was unstageable.

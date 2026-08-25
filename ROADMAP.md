@@ -2913,6 +2913,39 @@ Said before anyone reads it as complete.
   because this is the list a reader checks before believing the design is
   covered, and an unwired function with a green proof reads as finished.
 
+- **THE CRASH WINDOW BETWEEN THE SETTLE AND THE RELEASE.** Added 2026-08-25 by
+  P1.8b GATES, which built both. `record` writes the server id onto the local
+  seller and then releases the bills parked behind it, and the two are writes to
+  DIFFERENT TABLES — `local_sellers` and `local_bills` — so no single statement
+  can do both. A kill between them leaves a seller `synced` and its bills still
+  parked. **They are not lost**: the park is visible, the bills stay `pending`
+  and stay inside `owedCount`, and the card says what they are waiting for. But
+  nothing releases them, because a seller settles ONCE and the release has no
+  second trigger. **This is the subject of
+  `lessons/README.md § Lessons` "sync-state-needs-startup-recovery.md — applies to any" and "nothing polls it, so a crash strands the record forever"**
+  — an in-progress state nothing polls, which a crash strands for ever unless a
+  startup sweep puts it back. Whether this design owes such a sweep is a DESIGN
+  question and P1.8b GATES does not answer it: the boot already sweeps
+  `syncing` rows per kind, and a bill parked behind a SETTLED seller is a
+  different shape of stranding that no existing `recover` looks for. Queued at
+  `OPEN_ITEMS.md § Decisions open — the owner's, not the code's`
+  "A CRASH BETWEEN THE SELLER SETTLE AND THE BILL RELEASE STRANDS THE BILLS".
+- **A LOCAL SELLER HELD FOR REVIEW IS OWED AND NEVER ACTIONABLE.** Added
+  2026-08-25 by P1.8b GATES, which widened that gate to every kind. A 409 leaves
+  the row `pending` with `needs_review_at` set — **both halves required**, by
+  `NO-ARM-OF-THIS-KIND-SETTLES-A-409` cell 2 (it must stay inside `owedCount`)
+  and by `SELLER_ACTIONABLE` (it must never be re-asked). So it is counted owed
+  and is never actionable, and a gate that refuses on owed work refuses for ever,
+  under a sheet saying *รอให้ส่งครบก่อน* — a wait that cannot end, on a device
+  nobody can hand over. **The design holds the state unreachable** behind the two
+  server-side guards, so this is conditional on an invariant violation rather
+  than on ordinary use. Nothing in P1.8b GATES treats it as an ordinary end
+  state: inventing a disposal would be a design decision, and the two candidates
+  — a fourth seller state, or a gate that distinguishes owed-and-drainable from
+  owed-and-stuck — are opposite answers with different costs. Queued at
+  `OPEN_ITEMS.md § Decisions open — the owner's, not the code's`
+  "A LOCAL SELLER HELD FOR REVIEW HOLDS THE SIGN-OUT GATE SHUT FOR EVER".
+
 **AMENDED (P-SELLERKIND-DESIGN-AMEND, 2026-08-24) — S10 AND THE SIGN-OUT GATE,
 RULED, SO THE CRITERIA'S OPEN QUESTION BELOW IS CLOSED.** The second bullet above
 defers any screen and any Thai sentence to S10, and the refill argument two
@@ -3585,6 +3618,43 @@ dropping at arrival are indistinguishable, because the server's row is there eit
 way. Only a refresh-free interval between the two separates them, and in that
 interval the seller the yard has just created disappears from the picker while a
 truck is on the weighbridge. **CAN A BROKEN IMPLEMENTATION SATISFY IT? No.**
+
+> **HAZARD FOUND WHILE BUILDING THE PARK (P1.8b GATES, 2026-08-25) — CELL 4, AS
+> WRITTEN AND CORRECTLY IMPLEMENTED, CREATES A PATH TO A TERMINALLY FAILED BILL
+> FOR CASH ALREADY PAID.** Recorded HERE, at the criterion, and not only in the
+> queue: a session building the rework will read this criterion, build exactly
+> what it says, and ship the hole with every test agreeing — and it will not be
+> editing the file a queue line lives in.
+>
+> **THE WINDOW CELL 4 REQUIRES IS THE WINDOW.** It demands that the picker go on
+> offering the local row after the seller has SETTLED and before a refresh has
+> carried the server's row down, and it is right to: dropping at settle makes
+> the seller vanish while a truck is on the weighbridge. But a bill weighed
+> INSIDE that window is weighed against the LOCAL id, and:
+>
+> - it is **NOT PARKED**, because `buildLocalBill` parks a bill whose seller is
+>   local and the park's release has already run — the seller is `synced`;
+> - **NOTHING RELEASES IT**, because the release fires inside the seller kind's
+>   `record` on the settle, and that settle has already happened. A seller
+>   settles ONCE and there is no second event;
+> - so it enters the sendable queue carrying an id the server has never seen,
+>   and `POST /bills` answers **422 — PERMANENT, terminal** — which is the exact
+>   outcome the park exists to prevent, arriving from the other end.
+>
+> **UNREACHABLE AT `48c422a`, AND ONLY BECAUSE NO PICKER EXISTS.** Nothing in the
+> app can weigh a bill against a local seller at all: the cart's `Draft` carries
+> a bare `seller_id` that can only have come from `cached_sellers`, and
+> `App.tsx`'s one call site passes `{ kind: "server", … }`. The hole opens on the
+> day the union in cell 3 is built, which is the day this criterion is
+> implemented.
+>
+> **NO MECHANISM IS INVENTED HERE, and that is deliberate.** Naming the window
+> and the condition is the whole of what the building phase owed; choosing
+> between the candidates — resolving the id at send time, a release that also
+> runs on the pass, or a picker that hands out the SERVER id once it has one — is
+> a design decision and belongs to whoever takes it. Queued at
+> `OPEN_ITEMS.md § Decisions open — the owner's, not the code's`
+> "A BILL WEIGHED IN THE PICKER'S SETTLE-TO-REFRESH WINDOW IS NOT PARKED AND IS NOT RELEASED".
 
 **THE-LOCAL-SCHEMA-ADDS-AND-DOES-NOT-REBUILD.** *(HEADLESS)* The design's answer to
 the survey's `sync_state` CHECK bullet is that nothing touches it: the new table is

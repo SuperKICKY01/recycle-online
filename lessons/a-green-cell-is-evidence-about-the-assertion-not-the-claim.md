@@ -191,6 +191,61 @@ proof got to before it failed.
 principals are read from `/whoami` rather than from seeddata: a differential
 whose sides are literals measures the literals.
 
+## AMENDED (P1.8b GATES, 2026-08-25) — A SWEEP DIMENSION THAT MOVES TWO MEMBERS TOGETHER FIRES ABOUT THEIR DISJUNCTION
+
+**A NEW SHAPE OF THE SAME END, and it is added as an amendment rather than as a
+sixth numbered mechanism ON PURPOSE: the count sentence at the head of this file
+reads "FIVE mechanisms produced that gap in ONE phase (P1.7's ownership work)",
+which is scoped to that phase and stays exactly true.** Checked rather than
+assumed, because a heading and a count line disagreeing is precisely
+[[a-quantified-sentence-names-no-member]]'s subject.
+
+**The instance.** `proveNotice`'s strip matrix gained a dimension for owed
+non-bill work, and the negative it carries reads: *with non-bill work owed, NO
+strip message claims the work is all sent.* One boolean sets BOTH non-bill kinds:
+
+```ts
+owed: owedWith({ bill_void: c.owedOther, seller_create: c.owedOther })
+```
+
+Under a mutation that stopped the strip drawing the SELLER's line at all, **that
+cell stayed GREEN over all 1152 cells** — because in every cell where the seller
+is owed the VOID is owed too, its line fires, and the message is not the all-sent
+sentence. The assertion fired, correctly, about the DISJUNCTION of two kinds.
+That is adjacent to the claim it was being cited for, which is this file's whole
+subject.
+
+**A DIMENSION THAT MOVES N MEMBERS TOGETHER HAS N−1 DIFFERENCES NO CELL IN IT CAN
+DISTINGUISH.** And the SIZE is what makes it hard to doubt: 1152 green cells is a
+number nobody re-reads.
+
+### The four instruments, one mutation, measured
+
+| instrument | cells red | what it could see |
+|---|---|---|
+| both mobile typecheck programs | **0** | nothing — the mapped type is still total |
+| the 1152-cell negative | **0** | nothing — its dimension moves both kinds together |
+| the same sweep's BOTH-KINDS presence sibling | **1** | that ONE of the two stopped being named |
+| a per-kind staging, one seller owed and nothing else | **3** | which kind, and which sentence |
+
+**The negative was worthless here and the PRESENCE SIBLING carried the whole
+claim** — the inverse of this directory's usual advice, where the negative is the
+assertion that can fail and the sibling is only the guard against silence. Both
+are needed and neither is the strong one by default.
+
+**How to apply, and it is one line of staging.** A cross-product dimension is for
+interactions BETWEEN axes. It is the wrong instrument for *does each member get
+its own answer* — that needs a per-member staging, enumerated FROM the set
+(`for (const k of Object.keys(registry))`) so the next member joins with no edit.
+And if a staging must set two members at once, write down what it costs: every
+assertion over that sweep is about their disjunction.
+
+**Where the other half of this instance lives.** The DEFECT was an entry in a
+total mapping meaning *a branch above already says this* — a claim about other
+code, in executable form, that no instrument reads. That is
+[[a-docstring-that-states-a-filter-is-a-claim-about-its-caller]] and is recorded
+there; what belongs here is only why the sweep could not see it.
+
 ## The rule
 
 An assertion is a sentence, and a green is evidence about that sentence and

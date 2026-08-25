@@ -2782,6 +2782,56 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
 
 ## Decisions open — the owner's, not the code's
 
+- **P1.8b HAS NO DONE WHEN, SO NOTHING CAN SAY WHEN THE OFFLINE HALF IS FINISHED.**
+  Raised 2026-08-25 by P1.8b GATES while re-deriving the step's closure at the
+  phase boundary. MEASURED: `grep -n "DONE WHEN"` over `### P1.8`'s body returns
+  three lines — the step's own criterion, the sentence recording that P1.8a met
+  it, and a mention of the P1.18 planning step's — and no fourth. The split of
+  2026-08-17 assigned the one criterion to P1.8a in its own words, because it
+  *says nothing about offline*, and left P1.8b with a STATUS and no criterion.
+  So three phases of offline work have landed against nothing that can say when
+  they are finished, and the criteria set is doing a job it was not written for
+  — it measures DECISIONS, not the step's closure. THE DECISION is whether P1.8b
+  gets a DONE WHEN of its own and what it names; minting one inside a phase that
+  would then be measured by it is the one thing a building phase must not do.
+  The full re-derivation is at `PROJECT_STATUS.md § Current phase`
+  "IS P1.8's DONE WHEN MET? RE-DERIVED HERE, AND THE STEP IS NOT CLOSED BY THIS PHASE".
+  NOTHING IS AUTHORISED.
+- **A BILL WEIGHED IN THE PICKER'S SETTLE-TO-REFRESH WINDOW IS NOT PARKED AND IS NOT RELEASED.**
+  Raised 2026-08-25 by P1.8b GATES while building the park. **The full record is
+  AT THE CRITERION, deliberately, because a session building the rework reads the
+  criterion and not this file** —
+  `ROADMAP.md § P1.8` "HAZARD FOUND WHILE BUILDING THE PARK (P1.8b GATES, 2026-08-25) — CELL 4, AS".
+  In one line: `THE-LOCAL-ROW-SURVIVES-A-REFRESH-THAT-DELETES` cell 4 REQUIRES the
+  picker to keep offering a local seller after it has settled and before a refresh
+  arrives, and a bill weighed in that window carries the local id, is not parked
+  (the seller is already `synced`) and is released by nothing (the release fired on
+  the settle, which has already happened) — so it reaches `POST /bills` and is
+  answered 422, PERMANENT and terminal, for cash already paid. UNREACHABLE at
+  `48c422a` only because no picker exists; it opens on the day cell 3 is built.
+  THE DECISION is which repair: resolve the id at send time, run the release on
+  every pass as well, or have the picker hand out the SERVER id once there is one.
+  NOTHING IS AUTHORISED.
+- **A CRASH BETWEEN THE SELLER SETTLE AND THE BILL RELEASE STRANDS THE BILLS.**
+  Raised 2026-08-25 by P1.8b GATES, which built both halves. Recorded against the
+  design at
+  `ROADMAP.md § P1.8` "THE CRASH WINDOW BETWEEN THE SETTLE AND THE RELEASE".
+  The two writes are to DIFFERENT TABLES so no single statement covers them; a kill
+  between leaves a `synced` seller with its bills still parked — visible, counted,
+  not lost, and released by nothing, because a seller settles once.
+  `lessons/README.md § Lessons` "sync-state-needs-startup-recovery.md — applies to any" and "nothing polls it, so a crash strands the record forever"
+  is exactly this subject: an in-progress state nothing polls. THE DECISION is
+  whether this design owes a startup sweep, and no existing `recover` looks for a
+  bill parked behind a settled seller. NOTHING IS AUTHORISED.
+- **A LOCAL SELLER HELD FOR REVIEW HOLDS THE SIGN-OUT GATE SHUT FOR EVER.** Raised
+  2026-08-25 by P1.8b GATES, which widened the gate to every registry kind.
+  Recorded against the design at
+  `ROADMAP.md § P1.8` "A LOCAL SELLER HELD FOR REVIEW IS OWED AND NEVER ACTIONABLE".
+  A 409 leaves the row counted by `owedCount` and outside `SELLER_ACTIONABLE`, and
+  BOTH halves are required by criteria — so the gate refuses for ever under a sheet
+  asking the operator to wait for something that cannot arrive. Conditional on an
+  invariant violation the design holds unreachable, which is why it is a decision
+  and not a defect. NOTHING IS AUTHORISED.
 - **TWO OFFLINE HANDSETS CAN MINT THE SAME SELLER CODE, AND THE RULE THE P1.18
   CRITERIA MANDATE THEN BINDS ONE OF THEM TO THE OTHER'S SELLER.** Raised
   2026-08-18 by the independent review of P1.18's acceptance criteria, and filed

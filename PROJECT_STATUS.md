@@ -57,6 +57,359 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.8b GATES — THE SIGN-OUT GATE, THE PARKED BILL, AND THE REFILL'S CALL SITE.
+BUILT AND PROVEN, 2026-08-25. Three commits: `ea567e9` the gate, `48c422a` the
+park and the release and the call site, and the documentation commit carrying
+this entry.** This supersedes the P1.8b MOBILE entry below as the current phase;
+that entry's record stands unchanged. **NO SHA IS GIVEN FOR THE THIRD COMMIT**,
+deliberately — the work carrying this sentence is uncommitted at the moment it is
+written, so the only sha available is the one that does NOT contain it, which is
+the corollary `CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT" records.
+
+**WHAT EXISTS NOW THAT DID NOT.** The sign-out gate reads `OwedByKind` — a map
+the runner builds by WALKING THE REGISTRY, so its key set is the member set by
+construction — and `totalOwed` reduces it with `Object.values(...).reduce(...)`
+and never by naming a member. The gate and the sign-out sheet take THE SAME
+value. The sheet says one sentence per owed kind from a table total over
+`OutboxKind`; the strip has one new branch, below every existing one, so
+`ส่งครบแล้ว` is no longer reachable while a kind it has no line for is owed. A
+bill weighed against a seller this device created PARKS from the moment it is
+saved, is held out of `QUEUED`, stays `pending` and counted, carries its own
+sentence, and is released — payload rewritten to the server's id, WITHOUT an
+owner filter — by the seller kind's own writer. `refillOnce` has a call site at
+the end of every pass.
+
+### IS P1.8's DONE WHEN MET? RE-DERIVED HERE, AND THE STEP IS NOT CLOSED BY THIS PHASE
+
+**READ THIS BEFORE CONCLUDING ANYTHING FROM THREE GREEN PHASES IN A ROW.** The
+server half, the mobile half and now the gates half have all landed and all
+reported green, and a reader arriving at that will assume the step closed. It did
+not, and the two halves of the answer are different in kind.
+
+**FIRST HALF — P1.8 HAS EXACTLY ONE `DONE WHEN`, IT IS AN ONLINE CRITERION, AND
+IT WAS MET IN AUGUST BY P1.8a. NOTHING IN THIS PHASE TOUCHES IT.** Measured
+rather than recalled: `grep -n "DONE WHEN"` over `### P1.8`'s body returns THREE
+lines — the step's own criterion, the sentence recording that P1.8a met it, and a
+mention of the P1.18 planning step's — and no fourth. Clause by clause, from
+`ROADMAP.md § P1.8` "the second half being the control":
+
+- *a **staff** (not admin) session creates a seller from the handset* — **MET at
+  P1.8a**, closed 2026-08-17 by the running server's own log, seller `S006`.
+  **NOT re-taken here**, and nothing in these three commits touches the online
+  create path.
+- *a bill for that seller posts and comes back with a doc_no* — **MET at P1.8a**,
+  bill `54b8b684…` carrying `B-2569-382` with the counter moving 381 → 382.
+  **NOT re-taken here, and this phase DID change code on that path**: `QUEUED`
+  gained `local_seller_parked_at IS NULL`. A bill against a SERVER seller carries
+  null there and is unaffected by construction, and the headless proofs over that
+  path — `prove:sync`, `prove:docno`, `prove:sendowner` — are green with cell
+  counts identical to the pre-phase baseline. **That is not the same observation
+  as the clause's**, which was a real bill through a real server on a handset, and
+  a measurement is true at the moment it was taken.
+- *a staff token is still refused on a price write in the same pass* — **MET at
+  P1.8a**, a 403 with `code=admin_required` at `PUT /products/{id}/prices/{grade}`
+  with a 200 to `GET /products` in the same run as the control. Server-side, and
+  untouched by a phase that is mobile-only.
+
+So `ROADMAP.md § P1.8` "P1.8a's DONE WHEN IS MET — 2026-08-17" stands, unchanged
+and unre-measured, and this phase neither closes it nor needs to.
+
+**SECOND HALF, AND IT IS THE ANSWER TO THE QUESTION A READER IS ACTUALLY ASKING —
+P1.8b HAS NO `DONE WHEN` AT ALL, SO IT CANNOT BE DECLARED MET.** The split of
+2026-08-17 says in its own words that the criterion above *says nothing about
+offline* and that **P1.8a closes it as written**, and it left P1.8b with
+`ROADMAP.md § P1.8` "is untouched by this closure and remains" — a status, not a
+criterion. **Nothing in this repository states what would close P1.8b.** That is
+a gap and it is recorded as one: `START_HERE.md § 3` requires a phase to carry a
+boundary it stops at, and an offline sub-step tracked only by the sentence
+*remains outstanding* has no observable anybody can run. **Minting one is not
+this phase's to do** — it is a planning step's, and inventing a criterion inside
+the phase that would be measured by it is the one thing a building phase must
+not do.
+
+**WHAT DOES DECIDE P1.8b TODAY IS THE CRITERIA SET, AND AGAINST IT THE STEP IS
+OPEN.** The enumeration further down this entry is the full accounting; the short
+form is that four things are outstanding and none of them is a defect:
+
+- **WAITING ON A HANDSET:** the HANDSET half of
+  `EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL`. Its parts 2 and 3 require the
+  sheet and the strip to be READ ON A PHONE and reported verbatim in Thai. No
+  device pass is claimed by any of these three commits.
+- **WAITING ON A SCRATCH DATABASE:** cell 6's SERVER half of
+  `A-BILL-BEHIND-AN-UNCREATED-SELLER-IS-NEVER-OFFERED` — a released bill reaching
+  a real `POST /bills` with the `doc_no_counters` row MOVING. It needs a real
+  reservation, and nothing re-issues one, so every run burns shop code space
+  permanently.
+- **WAITING ON S10's REWORK:**
+  `THE-RESERVE-LEVEL-IS-REQUIRED-AND-EVERY-VALUE-HAS-ITS-OWN-SENTENCE` in full,
+  and cells 3 and 4 of `THE-LOCAL-ROW-SURVIVES-A-REFRESH-THAT-DELETES`. These are
+  the DRAWING and the PICKER, which S10 defers and this phase does not take.
+- **WAITING ON A DECISION OF THE OWNER'S:** the three findings at the foot of
+  this entry. One of them — the settle-to-refresh window — means the picker
+  cannot simply be built to cell 4 as written without opening a path to a
+  terminal bill for cash already paid.
+
+**SO: P1.8's DONE WHEN IS MET AND HAS BEEN SINCE 2026-08-17; P1.8b IS NOT DONE,
+HAS NO CRITERION THAT WOULD SAY WHEN IT IS, AND THE STEP AS A WHOLE MUST NOT BE
+READ AS CLOSED.** The gap — an offline sub-step with no DONE WHEN — is queued at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's`
+"P1.8b HAS NO DONE WHEN, SO NOTHING CAN SAY WHEN THE OFFLINE HALF IS FINISHED".
+
+---
+
+### THREE THINGS FOUND BY BUILDING, EACH OF WHICH CHANGED THE WORK
+
+**1. `countVoidsOwed` HAD A ROW THAT COULD NEVER DRAIN, AND WIDENING THE GATE IS
+WHAT MADE IT MATTER. THE FILE SET WAS EXTENDED FOR IT, IN WRITING, BEFORE THE
+EDIT.** That method earns its missing `synced` clause with one sentence — *it
+becomes actionable the instant the send settles* — and that sentence is FALSE of
+a terminally failed bill. **The reachability path: void a bill while it is still
+`pending`, then have the server refuse it 422.** `markFailed` does not clear
+`void_requested_at`, `listVoidsToApply` requires `synced`, and nothing moves a
+failed bill there — so the void was counted owed FOR EVER and never once offered
+to the drain. Until this phase nothing outside a proof read that number. The gate
+now does, so an un-drainable count is a device nobody can hand over, under a
+sheet saying `รอให้ส่งครบก่อน` — a wait that cannot end.
+**THE DISPROOF PRINTED THE CONSEQUENCE IN THE PRODUCT'S OWN WORDS**, with the
+clause removed: `ยังออกจากระบบไม่ได้ มีบิลรอแจ้งยกเลิก 1 ใบ … รอให้ส่งครบก่อน แล้วจึงออกจากระบบได้ มีบิลที่ระบบไม่รับ 1 ใบค้างอยู่ในเครื่อง — ออกจากระบบได้ แต่ต้องแจ้งสำนักงาน`.
+**This was an EXTENSION to the declared file set and not an adjacent defect swept
+in:** the widening is this phase's own change, so shipping without the clause
+would have left the tree strictly worse than it was found. Recorded here so a
+later reader does not read it as opportunistic.
+
+**2. THE GATE AND THE SHEET WERE ALREADY READING TWO DIFFERENT NUMBERS, AND THAT
+HAD SHIPPED — ON BILLS ALONE.** `onSignOut` was handed `mine + mineBlocked` and
+`signOutCard` was handed `mine`. ONE BILL PARKED ON MISSING MASTER DATA makes
+those differ, so the sheet drew the CONFIRMATION card, with a working-looking
+ออกจากระบบ button, over a gate that answered `refused_pending` — which the
+handler swallows with a bare `return`. A green button that does nothing, which
+`lessons/README.md § Lessons` "correct-classification-can-still-render-as-an-error.md — applies to every internally-distinguished state"
+calls a worse defect than the one being fixed. Found by WIDENING the gate, not by
+looking for it: the criterion's cell 5 asks the gate and the sheet to read the
+same value, and the two inputs did not.
+
+**3. THE SEAM REMEDY PAID OUT A SECOND TIME.**
+`lessons/README.md § Lessons` "two-green-proofs-do-not-cover-the-seam.md — applies to any behaviour passing through more than one proven component"
+already records one payout and NAMES `gate/sheet` as a boundary where two correct
+halves compose into a screen that lies. Its prescribed measurement was run
+unchanged, against the committed blobs at `0aed50f`, with a positive control in
+the same pass: `signOut` in `proveSellerKind` → 0, `OutboxKind` in `proveSignOut`
+→ 0, CONTROL `OutboxKind` in `proveSellerKind` → 2, CONTROL `SyncEngine` in
+`proveSignOut` → 8. Zero both ways with the instrument shown to work, so the seam
+was unproven; the case that drives both sides in one run then found finding 2
+above. **A second payout is evidence the rule works**, and it is recorded beside
+the work rather than inside the rule — a second note in a file that already says
+this is what
+`lessons/README.md § Lessons` "a-warning-in-one-file-does-not-protect-the-next.md — applies to every hazard this repo has already paid for"
+says does not help.
+
+---
+
+### COSTS THIS PHASE ADDED, RECORDED AS COSTS AND NOT AS PROSE
+
+- **`SqliteDeviceStore.ensure` NOW RUNS TWICE PER FOUR-SECOND TICK.** The refill's
+  call site asks the device for its identity on every pass, and `ensure` is an
+  `INSERT … ON CONFLICT DO NOTHING` followed by a `SELECT` — deliberately two
+  statements, for the reason its own header gives. So the sync tick gained two
+  SQLite statements and one discarded `Crypto.randomUUID()`. **Not measured on a
+  handset.** Left as it is rather than optimised: a branch added on no measurement
+  is a tuned constant with no ledger entry.
+- **THE `BillSeller` SWEEP WAS 21 FILES**, plus one compile error in `App.tsx`.
+  `BillDraft.seller_id: string` became a discriminated union, and the compiler
+  named every construction site in the tree: 44 literals across 21 proof files,
+  every one of which had to say which KIND of seller it names. **A 21-file sweep
+  forced by a type change is the evidence the type was load-bearing** — the
+  alternative, a required `local_seller_id: string | null` beside the id, proves
+  the caller ANSWERED and not that they answered CORRECTLY, and the wrong answer
+  is a 422 on cash already paid.
+- **ANY HANDSET RUNNING THIS BUILD AGAINST A REAL SERVER NOW CONSUMES SHOP CODE
+  SPACE, IRREVERSIBLY.** That is the intended consequence of wiring `refillOnce`,
+  not a side effect: nothing re-issues a reservation, so every code a device
+  holds and never spends is a permanent gap in a sequence that prints on slips
+  this system never sees again. It lands now because a gate protects the owed
+  work and a bill can park behind it.
+
+---
+
+### THE OBSERVATIONS, every command bare with its status read in the same invocation
+
+`npm run typecheck` and `npm run typecheck:app` each exit 0. **THIRTY mobile
+proofs green TWICE with identical counts between runs.** Two are new —
+`prove:owedsurfaces` at 51 cells and `prove:parkedbill` at 58 — and both PRESET
+`process.exitCode = 1` at entry and create their own fixtures. Of the twenty-eight
+pre-existing, twenty-six are identical to the pre-phase baseline and two are
+recorded:
+
+- **`prove:notice` 72 → 77 OK lines, and its two matrices grew.** The STRIP sweep
+  went 576 → 1152 on an owed-work dimension and the CARD sweep 384 → 768 on the
+  second park, with the precedence rule extended and four designated counts moved
+  with them (expired 384 → 768, permission 72 → 144, failed 96 → 192, forbidden
+  148 → 292). The OK count is per ASSERTION, so it moved only by the five cells
+  added.
+- **`prove:outbox` 77, UNCHANGED**, recorded because it moved 75 → 77 in the
+  previous phase for a structural reason and did not move again.
+
+**NOT RUN, AND NOTHING HERE IS EVIDENCE ABOUT THEM.** `prove:login`,
+`prove:loginscreen` and `prove:sellercreate` need a scratch API on their own ports
+and refuse the live one by design — `proveLoginScreen` is EDITED by the
+`BillSeller` sweep and therefore compiled but not executed. `prove:forbidden` WAS
+run green (65 cells) against uvicorn on `:8000`, started in this session, over
+`recycle_pg (healthy) 5544->5432`.
+
+**FIVE DISPROOFS, EACH NAMING ITS CELLS BEFORE THE MUTATION RAN.**
+
+1. `totalOwed` as a hand-written sum over two of three members — **COMPILED under
+   both programs**, reddened 8 of the 8 named cells plus one unpredicted, while
+   the strip's own run-time enumeration stayed green. That split is the
+   discriminator.
+2. `OWED_STRIP_LINE.seller_create` set to `null` — compiled, reddened exactly the
+   3 named cells and nothing else, **and `prove:notice`'s 1152-cell negative
+   stayed GREEN**. That is the measurement behind this phase's lesson work.
+3. The `sync_state <> 'failed'` clause removed — exactly the 2 named cells, both
+   printing the value they found, every presence sibling holding.
+4. The release given an owner predicate — the criterion's OWN named red case —
+   exactly 2 cells, both in P3, printing `parked=2026-07-21T00:00:00.000Z seller=p3-…`:
+   a second person's bill parked for ever with the local id. Every P1 cell green,
+   which is the criterion's stated discriminator.
+5. The release's `json_set` removed — exactly 3 cells, **and NOT ONE QUEUE
+   READING**: the bill was released, offered, accepted and came back with
+   `B-2569-2` still naming a seller the server has never heard of.
+
+Every mutated file was restored by copy and verified byte-identical with `cmp`
+(exit 0), and both typecheck programs and the affected proofs were green again
+afterwards.
+
+**TWO THINGS THIS PHASE GOT WRONG AND FIXED, recorded because a phase that
+reports only its successes is reporting half a measurement.** The parked
+sentence's first draft read `ไม่ต้องแจ้งสำนักงาน` — the office NEGATED, which
+reads as helpful and is not: the assertion is negative over the whole
+concatenation and cannot tell a negated mention from an instruction, and a card
+is read at a glance with wet hands. And a proof FIXTURE broke its own stated
+contract: the device-id source spliced the case name into a UUID, so case `p5`
+minted `…-p50000000000` — `p` is not a hex digit, and `ReservationTopUp` declares
+`device_id: uuid.UUID`. Every cell was green over it; it was found by READING the
+printed value, and there is now a cell asserting the shape with a control that
+rejects the exact string that fooled it.
+
+---
+
+### THE CRITERION ENUMERATION — every criterion this phase reaches, and every one it does not
+
+**MET IN FULL — six.**
+
+- `EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL` — **its HEADLESS half, all six
+  parts over ONE staging**, in `prove:owedsurfaces` W1, with the named red case
+  (the bill-only statement used unchanged) run in W2. Part 6's re-scoping is in
+  `UnsentBreakdown`'s own text and the value the gate reads is declared on
+  `OutboxHandler`. **ITS HANDSET HALF IS NOT MET** — see below.
+- `A-BILL-BEHIND-AN-UNCREATED-SELLER-IS-NEVER-OFFERED` — **all six cells over one
+  staging**, in `prove:parkedbill` P1, with ALL THREE named red cases staged in
+  P1r, including the database itself refusing a new `sync_state` value with
+  `CHECK constraint failed`. **Cell 6's SERVER half is NOT RUN** — see below.
+- `THE-PARKED-SENTENCE-SENDS-NOBODY-TO-THE-OFFICE` — three cells, P2, with the
+  named red case (the new state routed through `parkedReason` and reaching the
+  cause-neutral office fallback) staged, plus a cell asserting the new code is
+  deliberately absent from `MASTER_DATA_CODES`.
+- `OWED-ASKS-WHO-CREATED-THE-SELLER, AND THE RELEASE DOES NOT` — **now complete**:
+  cells 1 and 2 were met at `1d7f638`, and cells 3 and 4 are met in P3 with two
+  identities on one device. The named red case was RUN as disproof 4.
+- `THIS-KIND-DRAINS-BEFORE-BILLS-IN-ONE-PASS` — **now complete**: previously
+  PARTLY MET because the staging needed a bill WAITING on the seller, which needed
+  the park. P4 runs exactly ONE pass and reads both halves.
+- `A-REFILL-ASKS-FOR-THE-SHORTFALL, AND FOR NOTHING WHEN THERE IS NONE` and
+  `A-FAILED-REFILL-IS-AN-UNKNOWN-OUTCOME-AND-COSTS-NOTHING-ELSE` — met at
+  `1d7f638` against `refillOnce` DIRECTLY, and re-driven here through the shipping
+  CALL SITE (`SyncEngine.runOnce`) in P5, which is the half a direct call cannot
+  reach: at `1d7f638` a tree-wide search for a caller returned none.
+
+**NOT MET, AND WHY — each named, with the phase that owns it.**
+
+- `EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL`, **the HANDSET half** — **the
+  device pass.** Its parts 2 and 3 ask for the sheet and the strip to be READ ON
+  THE HANDSET and reported verbatim in Thai. What is asserted here is the pure
+  renderers' output, byte for byte, from state reached through the real stores.
+  **No device pass is claimed**, and until one is run nothing here is evidence
+  about what a phone draws — `CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING".
+- `A-BILL-BEHIND-AN-UNCREATED-SELLER-IS-NEVER-OFFERED`, **cell 6's SERVER half** —
+  **a phase with a scratch database.** The released bill reaching a real
+  `POST /bills` and the `doc_no_counters` row MOVING needs a settled seller on a
+  real server, which needs a real reservation — and nothing re-issues one, so
+  every run would burn a block of the shop's code sequence permanently. What is
+  asserted instead is the last step before the wire.
+- `THE-RESERVE-LEVEL-IS-REQUIRED-AND-EVERY-VALUE-HAS-ITS-OWN-SENTENCE` — **S10's
+  rework.** The LEVEL is built and proven; the four sentences, the tone mapping
+  and the compile cell on a call site that renders them are the DRAWING, which
+  this phase does not take.
+- `THE-LOCAL-ROW-SURVIVES-A-REFRESH-THAT-DELETES`, **cells 3 and 4** — **S10's
+  rework.** They ask what the PICKER offers, and the union of the cache with the
+  unsettled local rows is not built. **AND CELL 4 CARRIES A HAZARD FOUND HERE**,
+  recorded at the criterion itself: implemented as written it creates a path to a
+  terminally failed bill for cash already paid.
+- **Every SERVER-labelled criterion** — met by the server half at `a60aef5` and
+  `b8b557f` and recorded at its own entry; nothing here re-measures them.
+
+---
+
+### FINDINGS REPORTED AND NOT FIXED — three, each recorded where it will be met
+
+**No mechanism was invented for any of them; naming the condition is what a
+building phase owes.** Each is recorded against the DESIGN or the CRITERION it
+belongs to, and each also has a queue line at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's`.
+
+1. **A bill weighed in the picker's settle-to-refresh window is not parked and is
+   not released.** `THE-LOCAL-ROW-SURVIVES-A-REFRESH-THAT-DELETES` cell 4 REQUIRES
+   that window; a bill weighed inside it carries the local id, is not parked (the
+   seller is already `synced`) and is released by nothing (the release fired on
+   the settle). 422, PERMANENT, terminal. Unreachable at `48c422a` only because no
+   picker exists. **Recorded at the criterion and not only in the queue**, because
+   a session building the rework reads the criterion and will not be editing the
+   queue's file.
+2. **A crash between the seller settle and the bill release strands the bills.**
+   Two writes to two tables, so no single statement covers them; a kill between
+   leaves a `synced` seller with its bills still parked — visible, counted, not
+   lost, released by nothing.
+3. **A local seller held for review holds the sign-out gate shut for ever.** Both
+   halves are required by criteria, and the design holds the state unreachable
+   behind two server-side guards.
+
+---
+
+### IS A LESSON OWED? ANSWERED, AND THE ANSWER IS THAT THE FIRST DRAFT COLLAPSED
+
+A lesson was written in `ea567e9` —
+`a-total-mapping-guarantees-the-keys-not-the-values.md` — and the boundary review
+required it to be separated from three named neighbours or moved. **It did not
+survive, and it collapsed into TWO files rather than one.** It carried two claims:
+
+- that an entry in a total mapping meaning *a branch somewhere else already says
+  this* is an unverifiable claim about other code — which is
+  `a-docstring-that-states-a-filter-is-a-claim-about-its-caller.md`'s subject
+  exactly, answered *yes* by that file's own discriminator;
+- that a sweep dimension moving two members together fires about their
+  DISJUNCTION — which is
+  `a-green-cell-is-evidence-about-the-assertion-not-the-claim.md`'s subject, a
+  file that opens by separating itself from the never-went-red family in these
+  words: *there the instrument is structurally incapable of firing; here it
+  fires, correctly, about something adjacent to what you meant.*
+
+Both files are AMENDED with the halves and the measurements, the new file and its
+index line are DELETED, and each amendment separates itself from
+`a-narrowing-type-is-not-a-barrier-to-the-object.md` (narrowing, the opposite
+operation, whose compile promise is the one that fails — here totality is kept in
+full and the belief is about an entry's CONTENT) and from
+`a-check-that-never-went-red-was-never-observed.md` (all 1152 cells ran and every
+reading was TRUE). **No count moved**: the green-cell file's count is scoped —
+*FIVE mechanisms in ONE phase* — so the amendment is a dated section and not a
+sixth numbered mechanism. Checked rather than assumed. The lessons corpus went 60
+files to 59, and 26 amendments across 15 files to 28 across 16.
+
+**A MACHINE FOOTGUN IS NOT OWED**, by `CLAUDE.md § Workflow` "Two homes, one test":
+nothing in either amendment is a property of this box — no codepage, no shell, no
+line endings — and writing both is the ceremony that rule forbids.
+
+---
+
 **P1.8b MOBILE — THE DEVICE IDENTITY, THE LOCAL SCHEMA, AND THE `seller_create`
 KIND. BUILT AND PROVEN, 2026-08-25. Three commits: `8d979f2` storage and
 identity, `1d7f638` the kind, and the documentation commit carrying this entry.**
