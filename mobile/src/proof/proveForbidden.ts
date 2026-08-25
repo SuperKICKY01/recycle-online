@@ -42,6 +42,7 @@ import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
 import { billNotice, canRequestVoid, voidProgressLine } from "../sync/parkedReason.js";
 import { POISON_ALARM_ATTEMPTS, assessQueue } from "../sync/queueHealth.js";
+import { NOTHING_OWED } from "../sync/outbox.js";
 import { statusNotice } from "../sync/statusNotice.js";
 import type { StatusInput } from "../sync/statusNotice.js";
 import type { LocalBill, LocalStore } from "../sync/types.js";
@@ -145,6 +146,10 @@ function strip(over: Partial<StatusInput>): string {
     pending: 0,
     parkedForAnother: 0,
     parkedUnknownOwner: 0,
+    // Nothing owed beyond the bills this case stages. The strip's owed-work
+    // branch sits BELOW every branch this file asserts on, so a zero map keeps
+    // it out of the way; it is driven in proveOwedSurfaces.
+    owed: NOTHING_OWED,
     failed: 0,
     blocked: null,
     waitingOnMasterData: 0,
@@ -669,6 +674,10 @@ async function f5Disproof(): Promise<void> {
     pending: 3,
     parkedForAnother: 0,
     parkedUnknownOwner: 0,
+    // Nothing owed beyond the bills this case stages. The strip's owed-work
+    // branch sits BELOW every branch this file asserts on, so a zero map keeps
+    // it out of the way; it is driven in proveOwedSurfaces.
+    owed: NOTHING_OWED,
     failed: 0,
     blocked: healthS.alarm
       ? {

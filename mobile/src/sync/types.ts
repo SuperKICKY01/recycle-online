@@ -441,11 +441,35 @@ export interface QueueHead {
 /**
  * EVERY UNSENT BILL ON THE DEVICE, SPLIT BY WHAT IT IS WAITING FOR.
  *
- * Four counts over `sync_state IN ('pending','syncing')`, DISJOINT and COMPLETE:
- * every unsent row is in exactly one, and the four sum to the old undivided
- * total. That is the property that makes them safe to show side by side — a
- * breakdown that double-counts or drops a row would put a number on the strip
- * that no arithmetic reconciles.
+ * Four counts over `local_bills`, `sync_state IN ('pending','syncing')`,
+ * DISJOINT and COMPLETE **OVER THAT TABLE**: every unsent BILL is in exactly
+ * one, and the four sum to the old undivided total. That is the property that
+ * makes them safe to show side by side — a breakdown that double-counts or
+ * drops a row would put a number on the strip that no arithmetic reconciles.
+ *
+ * ---------------------------------------------------------------------------
+ * THE SCOPE OF "COMPLETE" WAS RE-DERIVED IN P1.8b, AND IT HAD TO BE NARROWED
+ * ---------------------------------------------------------------------------
+ * This paragraph said "every unsent row", with no table named. That was true
+ * for as long as every unit of work the device owed the server was a row in
+ * `local_bills` — which stopped being true at `1d7f638`, when `seller_create`
+ * joined `OutboxKind` as the first kind whose rows are somewhere else
+ * (`local_sellers`). The sentence did not change and nothing went red; it
+ * simply began quantifying over a set it no longer covered.
+ *
+ * THE CLAIM IS RE-SCOPED RATHER THAN THE STATEMENT WIDENED, and the choice is
+ * deliberate. Widening the SQL would mean one statement joining two tables with
+ * different key spaces, different owner questions and different states, to
+ * produce a number whose parts no longer reconcile with anything — and the
+ * completeness this type owes its caller is exactly that the parts reconcile.
+ * What the device owes ACROSS KINDS is `OwedByKind` in `sync/outbox.ts`,
+ * produced by walking the registry, and that is what the sign-out gate and the
+ * strip read. This type stays the bill store's own answer about the bill store,
+ * and `bill_send`'s `owedCount` is `mine + mineBlocked` off it.
+ *
+ * SO NOTHING HERE MAY BE READ AS A STATEMENT ABOUT THE DEVICE'S WHOLE DEBT.
+ * A caller that wants "is anything owed" must ask the registry; a caller that
+ * asks these four gets bills, and only bills.
  *
  * THE SPLIT IS BY REMEDY, NOT BY STATE, and that is the whole reason it exists.
  * `ROADMAP.md` section P1.7: "One waits for a connection and the other waits for

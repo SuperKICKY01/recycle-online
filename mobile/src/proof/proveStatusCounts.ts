@@ -32,9 +32,19 @@
  * "not sent" figure — ROADMAP.md section P1.7: "A combined total makes the
  * operator wait for the wrong thing."
  *
- * WHAT THIS DOES NOT ESTABLISH: App.tsx is outside this program, so that it
- * passes `ownUnsentCount` to signOut and `pendingCount` to the strip is a call
- * site, not a proven link.
+ * WHAT THIS DOES NOT ESTABLISH: App.tsx is outside this program, so which value
+ * it hands to which renderer is a call site here and not a proven link.
+ *
+ * SUPERSEDED 2026-08-25 — the sentence above said "it passes `ownUnsentCount`
+ * to signOut and `pendingCount` to the strip", and that pair was the DEFECT
+ * rather than the arrangement: the sign-out SHEET was handed `pendingCount`
+ * while the GATE was handed `ownUnsentCount`, so one bill parked on master data
+ * drew a confirmation card over a gate that refused. `ownUnsentCount` no longer
+ * exists; the gate and the sheet take one `OwedByKind` off the registry, and
+ * `pendingCount` reaches the strip alone. The limitation is unchanged and is why
+ * the sentence is corrected rather than deleted: nothing in this program can see
+ * App.tsx, so the pairing is asserted in proveOwedSurfaces over the renderers
+ * themselves and remains a call site here.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -47,6 +57,8 @@ import { signOut } from "../session/signOut.js";
 import type { SignOutOutcome } from "../session/signOut.js";
 import { MemoryTokenStore } from "../session/tokenStore.js";
 import { createLocalBill } from "../sync/createBill.js";
+import { NOTHING_OWED } from "../sync/outbox.js";
+import { owedWith } from "./fakes.js";
 import { statusNotice } from "../sync/statusNotice.js";
 import type { Clock, IdSource, LocalBill, RowOwner, UnsentBreakdown } from "../sync/types.js";
 
@@ -233,6 +245,11 @@ async function s4abTwoNumbersMoveApart(): Promise<void> {
     blocked: null,
     waitingOnMasterData: after.mineBlocked,
     masterDataCodes: [],
+    // This file is about the BILL breakdown. The strip does not read this map
+    // for `bill_send` — `pending` and `waitingOnMasterData` above are its lines
+    // — so a zero map neither adds a sentence nor removes one here. The owed
+    // branch is driven in proveOwedSurfaces.
+    owed: NOTHING_OWED,
   });
   console.log(`  the strip reads: ${notice.message}`);
   check(
@@ -278,6 +295,8 @@ async function s4cUnknownOwner(): Promise<void> {
     session: "active", account: "ok", voidsRefused: 0, online: true,
     pending: 0, parkedForAnother: 0, parkedUnknownOwner: u.unknownOwner,
     failed: 0, blocked: null, waitingOnMasterData: 0, masterDataCodes: [],
+    // Bills only in this file; the strip reads no `bill_send` line off this map.
+    owed: NOTHING_OWED,
   });
   console.log(`  the strip reads: ${notice.message}`);
   check(
@@ -336,7 +355,7 @@ async function s4dSignOut(): Promise<void> {
   console.log(`  the old, unfiltered number would have been     = ${String(await unsentOnDisk(b))}`);
 
   const canOut: SignOutOutcome = await signOut({
-    pending: ownB,
+    owed: owedWith({ bill_send: ownB }),
     failed: 0,
     setSyncPaused: () => undefined,
     tokens: new MemoryTokenStore("a-token"),
@@ -359,7 +378,7 @@ async function s4dSignOut(): Promise<void> {
   show("B, now with one of their own unsent", asB2);
   const ownB2 = asB2.mine + asB2.mineBlocked;
   const refused: SignOutOutcome = await signOut({
-    pending: ownB2,
+    owed: owedWith({ bill_send: ownB2 }),
     failed: 0,
     setSyncPaused: () => undefined,
     tokens: new MemoryTokenStore("a-token"),
@@ -396,6 +415,8 @@ async function s4eNothing(): Promise<void> {
     session: "active", account: "ok", voidsRefused: 0, online: true,
     pending: 0, parkedForAnother: 0, parkedUnknownOwner: 0,
     failed: 0, blocked: null, waitingOnMasterData: 0, masterDataCodes: [],
+    // Bills only in this file; the strip reads no `bill_send` line off this map.
+    owed: NOTHING_OWED,
   });
   console.log(`  the strip reads: ${notice.message}`);
   check(

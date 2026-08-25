@@ -974,20 +974,53 @@ export class SqliteLocalStore implements LocalStore {
 
   /**
    * How many voids the current identity still owes. DELIBERATELY WIDER than
-   * listVoidsToApply's predicate: no sync_state and no doc_no clause, because
-   * a void requested on a bill that has not synced yet is owed work even
-   * though it is not yet actionable — it becomes actionable the instant the
-   * send settles, and a count that shared the actionable predicate would read
-   * zero over a device that owes a cancellation (the same owed/owedCount rule
-   * as the send queue, P1.18). The refused exclusion and the requester clause
-   * are the SAME two as listVoidsToApply's, for the same reasons written
-   * there.
+   * listVoidsToApply's predicate: no doc_no clause and no `sync_state='synced'`
+   * clause, because a void requested on a bill that has not synced yet is owed
+   * work even though it is not yet actionable — it becomes actionable the
+   * instant the send settles, and a count that shared the actionable predicate
+   * would read zero over a device that owes a cancellation (the same
+   * owed/owedCount rule as the send queue, P1.18). The refused exclusion and
+   * the requester clause are the SAME two as listVoidsToApply's, for the same
+   * reasons written there.
+   *
+   * ---------------------------------------------------------------------------
+   * `sync_state <> 'failed'` — ADDED P1.8b, AND IT IS THIS METHOD'S OWN
+   * JUSTIFICATION APPLIED TO THE ROW IT DOES NOT COVER
+   * ---------------------------------------------------------------------------
+   * The paragraph above earns the missing `synced` clause with one sentence:
+   * *it becomes actionable the instant the send settles*. **That sentence is
+   * FALSE of a terminally failed bill.** `markFailed` does not clear
+   * `void_requested_at`, nothing anywhere moves a `failed` bill to `synced`,
+   * and `listVoidsToApply` requires `synced` — so a bill void-requested while
+   * still pending and then refused 422 was counted OWED FOR EVER and was never
+   * once offered to the drain. It is the same fact
+   * `lessons/correct-classification-can-still-render-as-an-error.md` records in
+   * its 2c-7 amendment about the card that promised an automatic cancel on a
+   * bill that could never sync.
+   *
+   * WHAT MADE IT MATTER RATHER THAN MERELY BEING UNTIDY. Until P1.8b nothing
+   * outside a proof read this number. The sign-out gate now walks the registry,
+   * so this number decides whether a device can be handed over — and a count
+   * that can never reach zero is a device nobody can sign out of, under a sheet
+   * saying *รอให้ส่งครบก่อน*, which is a wait that cannot end. `signOut.ts` has
+   * refused to block on terminal rows since R1b, in its own words: failed bills
+   * never drain, so blocking on them would make sign-out impossible for ever.
+   * This clause is that rule reaching the void a failed bill still carries.
+   *
+   * THE WORK IS NOT HIDDEN BY THIS, WHICH IS THE WHOLE TEST OF THE CHANGE. The
+   * bill is in `failed`, so it is on the strip (`ระบบไม่รับบิล N ใบ`) and named
+   * on the sign-out sheet, both of which send the operator to the office — and
+   * the office is who has to act, because the server holds no record of the
+   * purchase at all. The request itself is untouched: `void_requested_at` and
+   * the owner's own words stay on the row, exactly as `markVoidRefused` leaves
+   * them.
    */
   async countVoidsOwed(): Promise<number> {
     const rows = await this.db.all<{ n: number }>(
       `SELECT COUNT(*) AS n FROM local_bills
        WHERE void_requested_at IS NOT NULL AND voided_at IS NULL
          AND void_refused_at IS NULL
+         AND sync_state <> 'failed'
          AND void_requested_by_tenant_id = ? AND void_requested_by_user_id = ?`,
       ownerParams(await this.currentOwner()),
     );

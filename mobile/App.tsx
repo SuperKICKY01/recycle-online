@@ -100,6 +100,8 @@ import { shopCodeNotice } from "./src/session/shopCode";
 import { signInAndRecord, signInNotice } from "./src/session/signInIdentity";
 import { buildLocalBill } from "./src/sync/createBill";
 import { SyncEngine } from "./src/sync/engine";
+import { NOTHING_OWED } from "./src/sync/outbox";
+import type { OwedByKind } from "./src/sync/outbox";
 import type { AccountState, SessionState } from "./src/sync/parkedReason";
 import { assessQueue } from "./src/sync/queueHealth";
 import type { QueueHealth } from "./src/sync/queueHealth";
@@ -479,19 +481,36 @@ export default function App() {
    */
   const [parkedUnknownOwner, setParkedUnknownOwner] = useState(0);
   /**
-   * EVERY unsent bill OF THIS PERSON'S — sendable plus parked on master data.
-   * The number the SIGN-OUT REFUSAL reads, and deliberately not the one the
-   * strip reads.
+   * EVERY KIND OF WORK THIS PERSON STILL OWES THE SERVER, off the registry.
+   *
+   * THE ONE VALUE THE SIGN-OUT GATE AND THE SIGN-OUT SHEET BOTH READ, and
+   * deliberately not the one the strip's `pending` line reads.
    *
    * The refusal exists because an unsynced bill is cash already out of the till
    * and a load already tipped on the pile, so the person who wrote it should not
    * walk away from it. That argument reaches every bill THEY are responsible
-   * for, parked or not — which is why this includes `mineBlocked` while
-   * `pendingCount` above does not. It reaches no further: another account's
-   * bills cannot drain under this person and never could, so refusing over them
-   * would strand the device without protecting anything.
+   * for, parked or not — which is why `bill_send`'s count is `mine + mineBlocked`
+   * while `pendingCount` above is `mine` alone. It reaches no further: another
+   * account's rows cannot drain under this person and never could, so refusing
+   * over them would strand the device without protecting anything, and every
+   * kind's `owed`/`owedCount` carries its own owner filter.
+   *
+   * ---------------------------------------------------------------------------
+   * IT WAS `ownUnsentCount`, ONE NUMBER OFF `unsentBreakdown`, AND TWO THINGS
+   * WERE WRONG WITH IT
+   * ---------------------------------------------------------------------------
+   * It counted `local_bills` and nothing else, so once `seller_create` landed a
+   * device owing a seller create and no bills signed out cleanly and left the
+   * work behind. And the SHEET was handed `pendingCount` while the GATE was
+   * handed this — two different numbers for one decision, so a single bill
+   * parked on missing master data drew the confirmation card with a working-
+   * looking ออกจากระบบ button over a gate that answered `refused_pending`,
+   * which `onSignOut` below handles with a bare return. Nothing on the screen.
+   *
+   * Both are fixed by there being ONE value with ONE producer: the runner walks
+   * the registry, and no site here sums it.
    */
-  const [ownUnsentCount, setOwnUnsentCount] = useState(0);
+  const [owed, setOwed] = useState<OwedByKind>(NOTHING_OWED);
   const [failedCount, setFailedCount] = useState(0);
   /** Bills whose void the server refused (403). See refresh(). */
   const [voidsRefusedCount, setVoidsRefusedCount] = useState(0);
@@ -788,7 +807,22 @@ export default function App() {
     setPendingCount(unsent.mine);
     setParkedForAnother(unsent.otherAccount);
     setParkedUnknownOwner(unsent.unknownOwner);
-    setOwnUnsentCount(unsent.mine + unsent.mineBlocked);
+    /*
+     * THE WHOLE DEBT, OFF THE REGISTRY, ONCE PER TICK.
+     *
+     * `unsentBreakdown` above is the bill store's answer about the bill store,
+     * and since `seller_create` landed it is no longer the whole answer — the
+     * completeness its own type claims is scoped to `local_bills` and says so.
+     * The gate, the sheet and the strip all take THIS value, so the three
+     * renderers of one fact read one number rather than three that can drift.
+     *
+     * Before the boot block has built the engine there is nothing to ask, and
+     * the map stays NOTHING_OWED. That window is the one the app already has
+     * for every count here: the ticker below is gated on `ready`, which the
+     * boot sets AFTER the engine, so nothing renders a gate decision from it.
+     */
+    const engine = engineRef.current;
+    if (engine) setOwed(await engine.owedByKind());
     setFailedCount(failed?.length ?? 0);
     // Read the last successful sync from storage rather than from a variable,
     // so it survives a restart instead of resetting to "never".
@@ -1272,11 +1306,15 @@ export default function App() {
     setBusy(true);
     try {
       const outcome = await signOut({
-        // THIS PERSON'S unsent bills, not the device's. It was the unfiltered
-        // total, so a sign-out could be refused over bills the person in front
-        // of it neither owned nor could send — and no action of theirs would
-        // ever clear it, which is a device nobody can hand over.
-        pending: ownUnsentCount,
+        // THIS PERSON'S owed work, of every kind, not the device's. It was the
+        // unfiltered total, so a sign-out could be refused over bills the person
+        // in front of it neither owned nor could send — and no action of theirs
+        // would ever clear it, which is a device nobody can hand over. Every
+        // kind's own count carries that filter now.
+        //
+        // THE SAME OBJECT the sheet is rendered from, twenty lines further down:
+        // not a copy, not a recomputation, the same value.
+        owed,
         failed: failedCount,
         setSyncPaused: (paused) => {
           syncPausedRef.current = paused;
@@ -1718,7 +1756,15 @@ export default function App() {
    * the confirmation by itself, with no tap.
    */
   const signOutSheetCard = signOutCard({
-    pending: pendingCount,
+    /*
+     * THE VALUE THE GATE READS, and it was not, until P1.8b. This said
+     * `pending: pendingCount` — `UnsentBreakdown.mine` — while `onSignOut`
+     * above passed `mine + mineBlocked`, so one bill parked on missing master
+     * data rendered the CONFIRMATION card, with its ออกจากระบบ button, over a
+     * gate that was going to answer `refused_pending`. One value now, read by
+     * both, and a proof asserts the equality in one render.
+     */
+    owed,
     failed: failedCount,
     failure: signOutFailure,
     /*
@@ -2057,6 +2103,15 @@ export default function App() {
            */
           parkedForAnother={parkedForAnother}
           parkedUnknownOwner={parkedUnknownOwner}
+          /*
+           * THE WHOLE DEBT, so the strip stops claiming the work is sent while
+           * a kind it has no line for is still owed. The same value the gate and
+           * the sheet read. It does NOT replace `pending` above: that one is
+           * this person's bills waiting on a CONNECTION, which is a narrower and
+           * more useful fact, and statusNotice reads this map only for the kinds
+           * no line above has spoken for.
+           */
+          owed={owed}
           /*
            * THE STRIP CAN NO LONGER SIGN ANYBODY IN, and that is the honest
            * change rather than a loss. Signing in now needs a username and a

@@ -14,6 +14,7 @@ import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
 import { billNotice } from "../sync/parkedReason.js";
 import { assessQueue, POISON_ALARM_ATTEMPTS, POISON_ALARM_MS } from "../sync/queueHealth.js";
+import { NOTHING_OWED } from "../sync/outbox.js";
 import { statusNotice } from "../sync/statusNotice.js";
 import type { BillItemPayload, LocalBill, LocalStore } from "../sync/types.js";
 import {
@@ -1274,6 +1275,10 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
     pending: 1,
     parkedForAnother: 0,
     parkedUnknownOwner: 0,
+    // Nothing owed beyond the bills this case stages. The strip's owed-work
+    // branch sits BELOW every branch this file asserts on, so a zero map keeps
+    // it out of the way; it is driven in proveOwedSurfaces.
+    owed: NOTHING_OWED,
     failed: 0,
     blocked: soloHealth.alarm
       ? { behind: soloHealth.behind, forMs: soloHealth.poisonedForMs, attempts: soloHealth.serverErrorAttempts }
@@ -1318,6 +1323,10 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
     pending: 1,
     parkedForAnother: 0,
     parkedUnknownOwner: 0,
+    // Nothing owed beyond the bills this case stages. The strip's owed-work
+    // branch sits BELOW every branch this file asserts on, so a zero map keeps
+    // it out of the way; it is driven in proveOwedSurfaces.
+    owed: NOTHING_OWED,
     failed: 0,
     blocked: null,
     waitingOnMasterData: 0,
@@ -1406,6 +1415,10 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
     pending: 3,
     parkedForAnother: 0,
     parkedUnknownOwner: 0,
+    // Nothing owed beyond the bills this case stages. The strip's owed-work
+    // branch sits BELOW every branch this file asserts on, so a zero map keeps
+    // it out of the way; it is driven in proveOwedSurfaces.
+    owed: NOTHING_OWED,
     failed: 0,
     blocked: manyHealth.alarm
       ? { behind: manyHealth.behind, forMs: manyHealth.poisonedForMs, attempts: manyHealth.serverErrorAttempts }
@@ -1456,6 +1469,10 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
     pending: 3,
     parkedForAnother: 0,
     parkedUnknownOwner: 0,
+    // Nothing owed beyond the bills this case stages. The strip's owed-work
+    // branch sits BELOW every branch this file asserts on, so a zero map keeps
+    // it out of the way; it is driven in proveOwedSurfaces.
+    owed: NOTHING_OWED,
     failed: 0,
     blocked: legacyHealth.alarm
       ? { behind: legacyHealth.behind, forMs: legacyHealth.poisonedForMs, attempts: legacyHealth.serverErrorAttempts }

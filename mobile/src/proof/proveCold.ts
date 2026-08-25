@@ -59,6 +59,7 @@ import type { MasterProduct, MasterSeller } from "../master/types.js";
 import { MemoryTokenStore } from "../session/tokenStore.js";
 import { buildLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
+import { NOTHING_OWED } from "../sync/outbox.js";
 import { statusNotice } from "../sync/statusNotice.js";
 import { systemClock } from "../sync/systemClock.js";
 import {
@@ -1050,6 +1051,10 @@ async function c8ColdStartNoServer(): Promise<void> {
     pending: 1,
     parkedForAnother: 0,
     parkedUnknownOwner: 0,
+    // Nothing owed beyond the bills this case stages. The strip's owed-work
+    // branch sits BELOW every branch this file asserts on, so a zero map keeps
+    // it out of the way; it is driven in proveOwedSurfaces.
+    owed: NOTHING_OWED,
     failed: 0,
     blocked: null,
     waitingOnMasterData: 0,

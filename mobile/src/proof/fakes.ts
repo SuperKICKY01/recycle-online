@@ -3,6 +3,8 @@
  * production adapters are expo-sqlite (Phase 2b) and HttpTransport.
  */
 import { scheduledInstantIsDue } from "../time/clockSanity.js";
+import { NOTHING_OWED } from "../sync/outbox.js";
+import type { OwedByKind } from "../sync/outbox.js";
 import { VOID_REJECTED_CODE } from "../sync/types.js";
 import type {
   BillPayload,
@@ -483,10 +485,16 @@ export class InMemoryStore implements LocalStore {
 
   /**
    * Mirrors SqliteLocalStore.countVoidsOwed: requested, not settled, not
-   * refused, ordered by the current identity — and DELIBERATELY no sync_state
-   * clause, unlike listVoidsToApply above, because a void on a still-unsent
-   * bill is owed even though it is not yet actionable. Both stores must agree
-   * on the width of "owed" or the same count case would lie on one of them.
+   * refused, not on a TERMINALLY FAILED bill, ordered by the current identity —
+   * and DELIBERATELY no `synced` clause, unlike listVoidsToApply above, because
+   * a void on a still-unsent bill is owed even though it is not yet actionable.
+   * Both stores must agree on the width of "owed" or the same count case would
+   * lie on one of them.
+   *
+   * THE `failed` EXCLUSION IS P1.8b's AND IT IS NOT A SHORTCUT HERE. The whole
+   * argument is on the SQLite method; what matters at this copy is that the two
+   * must not disagree, because the sign-out gate now reads this number through
+   * the registry and the proofs drive both stores.
    */
   countVoidsOwed(): Promise<number> {
     let n = 0;
@@ -494,6 +502,11 @@ export class InMemoryStore implements LocalStore {
       if (b.void_requested_at === null || b.voided_at !== null || b.void_refused_at !== null) {
         continue;
       }
+      // A void on a bill the server permanently refused can never be applied:
+      // listVoidsToApply requires 'synced' and nothing moves a failed bill
+      // there. Owed-for-ever is not owed; it is office work, and the failed
+      // bill itself is what says so on the screen.
+      if (b.sync_state === "failed") continue;
       if (!sameOwner(this.voidRequesters.get(b.id) ?? null, this.identity)) continue;
       n += 1;
     }
@@ -1250,4 +1263,22 @@ export class ScriptedSellerTransport implements SellerCreateTransport {
     const next = this.queue.shift();
     return Promise.resolve(next ?? this.fallback);
   }
+}
+
+/**
+ * AN `OwedByKind` FOR A PROOF THAT ONLY CARES ABOUT SOME OF IT.
+ *
+ * `owedWith({ seller_create: 1 })` — everything else zero. Built by spreading
+ * `NOTHING_OWED`, which is the TOTAL literal in `sync/outbox.ts`, so a fourth
+ * kind is a compile error THERE and every fixture built here follows it without
+ * a second edit. Written out by hand at each of the forty-odd call sites, the
+ * kind that mattered would be the one somebody forgot.
+ *
+ * IT DOES NOT WEAKEN THE COMPILE GUARANTEE THE GATE RESTS ON. What must be
+ * total is the map the RUNNER produces and the wording tables that speak from
+ * it; a proof fixture naming one kind and defaulting the rest is exactly the
+ * staging a criterion asks for.
+ */
+export function owedWith(over: Partial<OwedByKind>): OwedByKind {
+  return { ...NOTHING_OWED, ...over };
 }

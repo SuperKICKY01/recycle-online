@@ -18,6 +18,7 @@
  */
 import { parkedSummary } from "./parkedReason.js";
 import type { AccountState, SessionState } from "./parkedReason.js";
+import type { OutboxKind, OwedByKind } from "./outbox.js";
 
 export type StatusTone = "bad" | "warn" | "busy" | "good" | "idle";
 
@@ -111,6 +112,79 @@ export interface StatusInput {
   waitingOnMasterData: number;
   /** The server's `code` per parked bill — codes only, never a response body. */
   masterDataCodes: readonly string[];
+  /**
+   * EVERY KIND OF WORK THE DEVICE OWES, straight off the registry.
+   *
+   * REQUIRED, never optional with a zero map as its default — an optional field
+   * would leave every existing call site compiling clean while the strip went on
+   * saying `ส่งครบแล้ว` over an owed seller, which is precisely the
+   * defaulted-parameter failure this file's neighbours have been repaired for
+   * twice (`session` on `SignOutCardInput`, `action` on `forbiddenReason`).
+   * Making it required turned every construction site in the tree into a
+   * compile error, and that is how the sweep is known to be complete rather
+   * than remembered.
+   *
+   * IT OVERLAPS `pending` AND THAT IS DELIBERATE, so read the pair carefully.
+   * `pending` is `UnsentBreakdown.mine` — MY bills waiting on a CONNECTION —
+   * and it, `waitingOnMasterData` and `failed` are the three lines that already
+   * speak for the bill kinds above. This map is the whole debt, and it is read
+   * by ONE branch, low down, for the kinds no line above has spoken for. Which
+   * kinds those are is written out in OWED_STRIP_LINE, not decided here.
+   */
+  owed: OwedByKind;
+}
+
+/**
+ * WHAT THE STRIP SAYS ABOUT EACH KIND'S OWED WORK — `null` where a branch above
+ * already says it. TOTAL over `OutboxKind`.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS TABLE EXISTS AT ALL
+ * ---------------------------------------------------------------------------
+ * The strip's ordered branch was written when every unit of owed work was a
+ * bill, so `pending`, `waitingOnMasterData` and `failed` between them covered
+ * everything the device could owe, and the tail branches could truthfully say
+ * `ส่งครบแล้ว`. `bill_void` was already outside that (a device owing a
+ * cancellation read "sent everything" — recorded, and left, when the outbox
+ * landed), and `seller_create` widened the same gap rather than opening a new
+ * one. The tail branches now state something FALSE, and this table is the
+ * minimum that stops them.
+ *
+ * `null` IS A CLAIM ABOUT THE BRANCHES ABOVE, not an omission, and it is the
+ * entry a later reader must not copy blindly: it says *this kind's owed work is
+ * already on the strip somewhere*, and it is only true of `bill_send` because
+ * three separate inputs carry those rows. A fourth kind gets a compile error
+ * here and has to answer the same question.
+ *
+ * NO TOTAL IS RENDERED, for the reason `OwedByKind` gives: it counts units of
+ * WORK, and one bill can be owed twice at once.
+ */
+const OWED_STRIP_LINE: { readonly [K in OutboxKind]: ((n: number) => string) | null } = {
+  // Already said, three times over and more precisely than a debt count could:
+  // `pending` (waiting on a connection), `waitingOnMasterData` (waiting on the
+  // office, with its own retry button) and `failed` (waiting on nobody). Adding
+  // a fourth sentence about the same rows would be the double-count the strip's
+  // own breakdown exists to prevent.
+  bill_send: null,
+  bill_void: (n) => `รอแจ้งยกเลิกบิล ${String(n)} ใบ`,
+  seller_create: (n) => `รอส่งผู้ขายที่เพิ่มใหม่ ${String(n)} ราย`,
+};
+
+/**
+ * The owed work no line above speaks for, in registry order.
+ *
+ * ENUMERATES THE MAP'S OWN KEYS. Written as
+ * `owed.bill_void + owed.seller_create` it would compile for ever and silently
+ * stop covering the next kind, which is this repository's oldest failure shape
+ * and was measured at five sites one commit ago.
+ */
+function unspokenOwed(owed: OwedByKind): readonly string[] {
+  const parts: string[] = [];
+  for (const kind of Object.keys(owed) as OutboxKind[]) {
+    const line = OWED_STRIP_LINE[kind];
+    if (line !== null && owed[kind] > 0) parts.push(line(owed[kind]));
+  }
+  return parts;
 }
 
 export function statusNotice(s: StatusInput): StatusNotice {
@@ -274,6 +348,39 @@ export function statusNotice(s: StatusInput): StatusNotice {
 
   if (s.pending > 0) {
     return { tone: "busy", message: `กำลังส่ง ${String(s.pending)} ใบ`, action: null };
+  }
+
+  /*
+   * OWED WORK NO LINE ABOVE HAS SPOKEN FOR — the non-bill kinds.
+   *
+   * WHY IT IS HERE AND NOT HIGHER. Every branch above is either a fact that
+   * outranks it (no session, a dammed queue, a refused account) or a MORE
+   * SPECIFIC statement about the same rows (the office, the failed bills, the
+   * outage, this person's own queue). Placed above any of them it would displace
+   * a message the operator can act on with one they cannot.
+   *
+   * WHY IT IS HERE AND NOT LOWER, WHICH IS THE WHOLE POINT OF THE BRANCH. Every
+   * branch BELOW claims the work is done — `งานของคุณส่งครบแล้ว`, `ส่งครบแล้ว` —
+   * and that is a false sentence on a device that owes a seller create or a
+   * cancellation. It was true for as long as the only kind was `bill_send`. It
+   * stopped being true at `1d7f638` and nothing went red, because the sentence
+   * quantifies over the work and names no kind
+   * (`ROADMAP.md § P1.8` "The seller kind is the FIRST kind whose rows are not in `local_bills`").
+   *
+   * `busy`, THE SAME TONE AS `กำลังส่ง`. This is work in flight that drains
+   * itself the moment the device reaches the server; it needs nobody, so it is
+   * not amber, and a warning that fires routinely is a warning people stop
+   * reading. And no action: there is nothing to press, exactly as with the
+   * sending line above it.
+   *
+   * IT DOES NOT OUTRANK `ออฟไลน์`, and that is deliberate rather than an
+   * oversight. `ออฟไลน์ — บันทึกได้ตามปกติ` states nothing false about owed work
+   * and is the bigger fact for somebody standing at the weighbridge; changing it
+   * would be redrawing a screen this phase is not redrawing.
+   */
+  const unspoken = unspokenOwed(s.owed);
+  if (unspoken.length > 0) {
+    return { tone: "busy", message: unspoken.join(" · "), action: null };
   }
 
   /*

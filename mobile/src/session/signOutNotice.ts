@@ -21,6 +21,8 @@
  * NO SERVER PROSE. Every sentence here is the client's. The server sends kind
  * and code; what the yard is told is decided here, in Thai, where the screen is.
  */
+import { totalOwed } from "../sync/outbox.js";
+import type { OutboxKind, OwedByKind } from "../sync/outbox.js";
 import type { SessionState } from "../sync/parkedReason.js";
 import type { SignOutFailure } from "./signOut.js";
 
@@ -44,8 +46,24 @@ export interface SignOutCard {
 }
 
 export interface SignOutCardInput {
-  /** Bills queued to send. > 0 refuses the sign-out. */
-  pending: number;
+  /**
+   * EVERY KIND OF WORK THE DEVICE STILL OWES. Anything > 0 refuses the sign-out.
+   *
+   * THE SAME VALUE THE GATE READS, and that is a requirement rather than a
+   * convenience. It was `pending: number`, and App.tsx handed the GATE
+   * `mine + mineBlocked` while handing THIS `mine` — so a device holding one
+   * bill parked on missing master data drew the confirmation card, with an
+   * ออกจากระบบ button, over a gate that was going to refuse: a green button
+   * that does nothing, which
+   * lessons/correct-classification-can-still-render-as-an-error.md's R2b
+   * amendment calls a worse defect than the one being fixed. One type, one
+   * value, passed to both.
+   *
+   * IT IS A MAP AND NOT A TOTAL because the wording is derived from the CAUSE:
+   * "N bills are waiting to be sent" is a false sentence over an owed seller,
+   * and a total cannot be un-summed. See OWED_LINE below.
+   */
+  owed: OwedByKind;
   /** Terminally failed bills. Named, never a blocker. */
   failed: number;
   /** Set once an attempt has failed to clear the keystore. */
@@ -77,6 +95,60 @@ const NEEDS_NETWORK = "การเข้าสู่ระบบครั้ง
 
 /** Never "ติดต่อฝ่ายสนับสนุน": no support desk can clear a keystore or a queue. */
 const THE_OWNER = "เจ้าของร้าน";
+
+/**
+ * ONE SENTENCE PER KIND OF OWED WORK, AND THE TABLE IS TOTAL OVER `OutboxKind`.
+ *
+ * WHY A TABLE RATHER THAN A COUNT. `มีบิลรอส่งขึ้นระบบ N ใบ` was the only
+ * sentence this sheet had, because for as long as the gate counted bills the
+ * only thing it could be refusing over was a bill. It is now refusing over a
+ * SELLER as well, and `ใบ` is the classifier for a document — a seller is a
+ * person, counted `ราย` — so the old sentence would be wrong in its grammar
+ * before it was wrong in its meaning. A message that names what to wait for
+ * must be DERIVED from the cause
+ * (lessons/correct-classification-can-still-render-as-an-error.md, point 3).
+ *
+ * WHY IT IS TOTAL AND NOT A LOOKUP WITH A FALLBACK. A fallback is a sentence
+ * the fourth kind would inherit silently, which is the defaulted-parameter
+ * failure this project has now paid for three times. Typed as a mapped type
+ * over the union, a fourth kind is a COMPILE ERROR here until somebody writes
+ * its sentence — the same move as `forbiddenReason`'s required `action` and the
+ * required `session` on this very input.
+ *
+ * NO TOTAL IS EVER RENDERED. `OwedByKind` counts units of WORK, not rows: a
+ * bill saved offline and cancelled before it synced is owed by `bill_send` and
+ * by `bill_void` at once, and both are true. Summing them onto the screen would
+ * print a number of "bills" that the yard cannot reconcile with anything it can
+ * see.
+ */
+const OWED_LINE: { readonly [K in OutboxKind]: (n: number) => string } = {
+  // Unchanged, word for word, including the classifier — this is the sentence
+  // the sheet has carried since R1b and the one a proof already asserts the
+  // count inside.
+  bill_send: (n) => `มีบิลรอส่งขึ้นระบบ ${String(n)} ใบ`,
+  // A cancellation the yard has ordered and the server has not been told about.
+  // It says แจ้ง (tell) rather than ส่ง (send) because the bill itself may
+  // already be on the server — what is owed is the reversal, not the document.
+  bill_void: (n) => `มีบิลรอแจ้งยกเลิก ${String(n)} ใบ`,
+  // ราย, not ใบ: a seller is a person. And "เพิ่มใหม่ในเครื่อง" says where it
+  // was created, because that is the whole reason the server has not got it.
+  seller_create: (n) => `มีผู้ขายที่เพิ่มใหม่ในเครื่องรอส่งขึ้นระบบ ${String(n)} ราย`,
+};
+
+/**
+ * The owed lines, in registry order, one per kind that has any.
+ *
+ * ENUMERATED AT RUN TIME over the map's own keys. A hand-written list of three
+ * calls would compile for ever and stop mentioning the fourth kind, with the
+ * gate still refusing over it — a refusal whose reason is not on the screen,
+ * which is the state the R2b amendment describes as a sentence asking for
+ * patience with no control to audit.
+ */
+function owedLines(owed: OwedByKind): readonly string[] {
+  return (Object.keys(owed) as OutboxKind[])
+    .filter((kind) => owed[kind] > 0)
+    .map((kind) => OWED_LINE[kind](owed[kind]));
+}
 
 function failedLine(failed: number): readonly string[] {
   if (failed <= 0) return [];
@@ -141,7 +213,7 @@ export function signOutCard(input: SignOutCardInput): SignOutCard {
    * only while `token !== null` — but a union with three members gets three,
    * rather than a branch that is correct only while a distant condition holds.
    */
-  if (input.pending > 0) {
+  if (totalOwed(input.owed) > 0) {
     const noSession = input.session !== "active";
     /*
      * THE SAME HEAD SPLIT statusNotice.ts MAKES, and for the same reason: one
@@ -159,25 +231,37 @@ export function signOutCard(input: SignOutCardInput): SignOutCard {
       // reason and the way out differ.
       title: "ยังออกจากระบบไม่ได้",
       lines: [
-        `มีบิลรอส่งขึ้นระบบ ${String(input.pending)} ใบ`,
+        // ONE LINE PER KIND, in registry order. Not one summed sentence: see
+        // OWED_LINE. This is also the presence sibling the surfaces criterion
+        // requires — a sheet that merely STOPPED saying "everything is sent"
+        // and named nothing would satisfy every absence assertion and tell the
+        // operator nothing about why they are being refused.
+        ...owedLines(input.owed),
         ...(noSession
           ? [
               // The head is statusNotice.ts's, word for word, and ยังอยู่ครบ is
               // the strip's too: one fact must not carry two words on one
               // screen. ยังอยู่ครบ is needed HERE rather than left to the strip
               // because this sheet is a modal that COVERS the strip while it is
-              // open — told only that the bills will not be sent, an operator
-              // can read that as "the bills are gone".
-              `${head} — บิลยังอยู่ครบ แต่จะไม่ถูกส่ง`,
+              // open — told only that the work will not be sent, an operator
+              // can read that as "the work is gone".
+              //
+              // งานที่ค้างอยู่, not บิล, since P1.8b: the refusal is no longer
+              // always about bills, and this line has no count to make it
+              // specific. The per-kind lines above say WHAT is waiting; this one
+              // says it is all still here.
+              `${head} — งานที่ค้างอยู่ยังอยู่ครบ แต่จะไม่ถูกส่ง`,
               // The ACCOUNT is named because the queue carries no identity of
-              // its own (see THE GATE in signOut.ts): these bills drain under
-              // whoever is signed in when they go.
-              "ต้องเข้าสู่ระบบใหม่ด้วยบัญชีเดิม บิลจึงจะถูกส่ง",
+              // its own (see THE GATE in signOut.ts): this work drains under
+              // whoever is signed in when it goes.
+              "ต้องเข้าสู่ระบบใหม่ด้วยบัญชีเดิม จึงจะถูกส่ง",
             ]
           : [
-              // Unchanged, and true HERE: the session works, so the network
-              // coming back really is the whole of the wait.
-              `${NEEDS_NETWORK}อยู่แล้ว และเมื่อเชื่อมต่อได้ บิลจะส่งเองภายในไม่กี่วินาที`,
+              // True HERE: the session works, so the network coming back really
+              // is the whole of the wait. ระบบจะส่งให้เอง, not บิลจะส่งเอง — the
+              // promise is about whatever the lines above named, and naming
+              // bills inside it was false the day a seller could be owed.
+              `${NEEDS_NETWORK}อยู่แล้ว และเมื่อเชื่อมต่อได้ ระบบจะส่งให้เองภายในไม่กี่วินาที`,
               "รอให้ส่งครบก่อน แล้วจึงออกจากระบบได้",
             ]),
         ...failedLine(input.failed),

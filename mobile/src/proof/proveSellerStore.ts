@@ -53,6 +53,7 @@ import { SqliteMasterStore } from "../adapters/sqlite/SqliteMasterStore.js";
 import { initConnection } from "../adapters/sqlite/schema.js";
 import type { DeviceId, DeviceIdentityStore } from "../session/deviceIdentity.js";
 import { signOut } from "../session/signOut.js";
+import { NOTHING_OWED } from "../sync/outbox.js";
 import { MemoryTokenStore } from "../session/tokenStore.js";
 import type { LocalSellerDraft } from "../sync/localSeller.js";
 import type { IdSource, RowOwner } from "../sync/types.js";
@@ -192,7 +193,7 @@ async function s1DeviceIdentityOutlivesSignOut(): Promise<void> {
 
     const tokens = new MemoryTokenStore("a-live-token");
     const outcome = await signOut({
-      pending: 0,
+      owed: NOTHING_OWED,
       failed: 0,
       setSyncPaused: () => undefined,
       tokens,
@@ -260,7 +261,7 @@ async function s1DeviceIdentityOutlivesSignOut(): Promise<void> {
     const red = new KeystoreDeviceStore(redTokens, new UuidIds("cc"));
     const redBefore = await red.ensure(NOW);
     await signOut({
-      pending: 0,
+      owed: NOTHING_OWED,
       failed: 0,
       setSyncPaused: () => undefined,
       tokens: redTokens,

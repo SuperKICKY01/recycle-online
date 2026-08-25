@@ -444,3 +444,59 @@ export const SELLER_CREATE: OutboxPolicy = {
   inFlightKey: (rowId) => `seller:${rowId}`,
   resendIsIdempotent: true,
 };
+
+/* ------------------------------------------------- what the device owes -- */
+
+/**
+ * HOW MANY UNITS OF WORK THE DEVICE STILL OWES, PER KIND.
+ *
+ * A MAPPED TYPE over `OutboxKind` and never a hand-written triple, for the same
+ * reason `OutboxRegistry` is one: a member added to the union is a compile
+ * error at every literal of this type, so a kind cannot join the outbox and be
+ * silently left out of the number a sign-out turns on.
+ *
+ * IT IS A COUNT OF WORK AND NOT A COUNT OF ROWS, and the difference is not
+ * pedantry. A bill saved offline and cancelled before it synced is owed TWICE —
+ * once by `bill_send` and once by `bill_void` — and both are real: the server
+ * has to receive the bill and then be told it is void. Nothing may therefore
+ * present the SUM of these numbers to an operator as a quantity of bills; the
+ * sum answers "is anything owed" and nothing else, and every surface that
+ * SPEAKS about the work says one sentence per kind.
+ */
+export type OwedByKind = { readonly [K in OutboxKind]: number };
+
+/**
+ * Nothing owed. A TOTAL literal, so a fourth kind is a compile error here.
+ *
+ * Exported for the surfaces and for proof fixtures that need a device with a
+ * quiet outbox: written out by hand at each site, it is exactly the omission
+ * this file's mapped types exist to prevent.
+ */
+export const NOTHING_OWED: OwedByKind = {
+  bill_send: 0,
+  bill_void: 0,
+  seller_create: 0,
+};
+
+/**
+ * IS ANYTHING OWED, AND HOW MUCH — by ENUMERATING the map at RUN TIME.
+ *
+ * `Object.values(...).reduce(...)` and emphatically NOT
+ * `o.bill_send + o.bill_void + o.seller_create`. A hand-written sum over an
+ * enumerable set compiles perfectly, keeps running, and silently stops counting
+ * the next member — this repository measured exactly that in the commit before
+ * this one, at five sites of which ZERO were compiler-visible, and the whole of
+ * `lessons/a-quantified-sentence-names-no-member.md`'s second amendment is
+ * about it. The typechecker cannot help: reading two keys of a total map is
+ * perfectly well typed, and widening the map invalidates nothing already
+ * written.
+ *
+ * The counterpart guarantee — that the map ITSELF has an entry for every kind —
+ * is `OutboxRunner.owedCountByKind`, which builds it by walking the registry,
+ * and is asserted as a SET EQUALITY against the registry's members rather than
+ * as a containment (containment answers what is present; only equality answers
+ * what is missing).
+ */
+export function totalOwed(o: OwedByKind): number {
+  return Object.values(o).reduce<number>((n, v) => n + v, 0);
+}

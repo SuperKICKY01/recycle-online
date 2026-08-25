@@ -34,7 +34,14 @@
  *   card+void together  void cells x session(3) x account(2)     = 384 cells
  *   strip  session(3) x online(3) x pending(2) x failed(2)
  *          x blocked(2) x master-data(2) x account(2)
- *          x voids_refused(2)                                    = 576 cells
+ *          x voids_refused(2) x owed-non-bill-work(2)            = 1152 cells
+ *
+ * P1.8b ADDED THE LAST STRIP DIMENSION, and it is here for the reason the 2c-9
+ * dimensions are: `seller_create` gave the device a kind of owed work whose rows
+ * are not bills, and every branch at the BOTTOM of the strip — the ones that say
+ * the work is all sent — went on saying it. Nothing could go red, because those
+ * sentences quantify over the work and name no kind. A dimension, not a case:
+ * the question that catches this class is what the screen says for EVERY state.
  *
  * Some cells are unreachable in production (a 'synced' bill that is also parked
  * cannot exist — markSynced clears the parked columns). They are included
@@ -74,6 +81,7 @@ import type { SyncState } from "../sync/types.js";
 import {
   FakeClock,
   noSellerKind,
+  owedWith,
   PROOF_OWNER,
   RejectingTransport,
   SeqIds,
@@ -763,6 +771,23 @@ interface StripCell {
   masterData: number;
   account: AccountState;
   voidsRefused: number;
+  /**
+   * OWED WORK THAT IS NOT A PENDING BILL — a cancellation the server has not
+   * been told about, and a seller created on this device.
+   *
+   * A DIMENSION OF THE SWEEP AND NOT A CASE OF ITS OWN, on this file's own
+   * rule: the 2c-7 amendment to
+   * lessons/correct-classification-can-still-render-as-an-error.md says the
+   * question that catches a defect is "what does the screen say for EVERY
+   * state", answered by enumeration and not by inspection. `seller_create`
+   * arrived as a state nothing here had, and the branches at the bottom of the
+   * strip went on saying the work was sent.
+   *
+   * It carries BOTH non-bill kinds at once so both sentences and the separator
+   * between them are swept, rather than one kind's phrase being the only one
+   * anybody looks at.
+   */
+  owedOther: number;
 }
 
 const stripInput = (c: StripCell): StatusInput => ({
@@ -779,15 +804,24 @@ const stripInput = (c: StripCell): StatusInput => ({
   blocked: c.blocked ? { behind: 2, forMs: 120_000, attempts: 6 } : null,
   waitingOnMasterData: c.masterData,
   masterDataCodes: c.masterData > 0 ? ["seller_grade_unset", "seller_grade_unset"] : [],
+  // `bill_send` is left at zero on purpose: the strip does not read this map for
+  // that kind — `pending`, `waitingOnMasterData` and `failed` above are its
+  // lines, and putting a number here too would assert a double-count the strip
+  // is written not to make.
+  owed: owedWith({ bill_void: c.owedOther, seller_create: c.owedOther }),
 });
 
 const describeStrip = (c: StripCell): string =>
   `${c.session}/online=${String(c.online)}/pend${String(c.pending)}/fail${String(c.failed)}/` +
   `${c.blocked ? "blocked" : "-"}/md${String(c.masterData)}/${c.account}/` +
-  `vr${String(c.voidsRefused)}`;
+  `vr${String(c.voidsRefused)}/other${String(c.owedOther)}`;
 
 function n3StripMatrix(): void {
-  header("N3: the status strip, over all 576 states");
+  // 576 until P1.8b, x2 for the owed-work dimension. THE NUMBER IS IN THE
+  // HEADING AND IN TWO not-empty CELLS BELOW, and all three move together: a
+  // sweep that quietly halved would otherwise read exactly like a sweep that
+  // passed.
+  header("N3: the status strip, over all 1152 states");
 
   const cells: StripCell[] = [];
   for (const session of SESSIONS) {
@@ -798,10 +832,12 @@ function n3StripMatrix(): void {
             for (const masterData of [0, 2]) {
               for (const account of ACCOUNTS) {
                 for (const voidsRefused of [0, 2]) {
-                  cells.push({
-                    session, online, pending, failed, blocked, masterData,
-                    account, voidsRefused,
-                  });
+                  for (const owedOther of [0, 1]) {
+                    cells.push({
+                      session, online, pending, failed, blocked, masterData,
+                      account, voidsRefused, owedOther,
+                    });
+                  }
                 }
               }
             }
@@ -816,7 +852,7 @@ function n3StripMatrix(): void {
   for (const session of SESSIONS) {
     const worst: StripCell = {
       session, online: false, pending: 2, failed: 1, blocked: true, masterData: 2,
-      account: "submit_refused", voidsRefused: 2,
+      account: "submit_refused", voidsRefused: 2, owedOther: 1,
     };
     const n = statusNotice(stripInput(worst));
     console.log(`  ${session.padEnd(11)} tone=${n.tone.padEnd(5)} action=${n.action?.kind ?? "-"}`);
@@ -835,6 +871,7 @@ function n3StripMatrix(): void {
     const n = statusNotice(
       stripInput({
         session: "active", online: false, failed: 0, blocked: false, masterData: 0,
+        owedOther: 0,
         ...cell,
       }),
     );
@@ -876,8 +913,9 @@ function n3StripMatrix(): void {
   );
   check(
     "...and that sweep was not empty",
-    // 96 before Phase 2c-9; x2 for account and x2 for voids_refused.
-    expired.length === 384,
+    // 96 before Phase 2c-9; x2 for account and x2 for voids_refused; x2 again
+    // for P1.8b's owed-work dimension.
+    expired.length === 768,
     `${String(expired.length)} of ${String(cells.length)} cells have no session`,
   );
 
@@ -904,6 +942,75 @@ function n3StripMatrix(): void {
     cells,
     (c) => statusNotice(stripInput(c)).message.trim().length > 0,
     describeStrip,
+  );
+
+  /* ------------------------------------------- P1.8b: owed work that is not a bill -- */
+
+  /*
+   * THE SENTENCE THAT BECAME FALSE, ASSERTED NEGATIVELY OVER THE WHOLE SWEEP.
+   *
+   * `ส่งครบแล้ว` is the claim that the device owes the server nothing. It was
+   * true while every kind's rows were bills; `bill_void` already broke it and
+   * `seller_create` widened the break. The negative is over the WHOLE message
+   * and not over the branch, because `งานของคุณส่งครบแล้ว` contains it too and
+   * an enumeration of the branches somebody remembers is the shape this file
+   * exists to refuse.
+   */
+  const owingOther = cells.filter((c) => c.owedOther > 0);
+  checkAll(
+    "with non-bill work owed, NO strip message claims the work is all sent",
+    owingOther,
+    (c) => !statusNotice(stripInput(c)).message.includes("ส่งครบแล้ว"),
+    (c) => `${describeStrip(c)} -> ${statusNotice(stripInput(c)).message}`,
+  );
+  check(
+    "...and that sweep was not empty",
+    owingOther.length === cells.length / 2,
+    `${String(owingOther.length)} of ${String(cells.length)}`,
+  );
+  /*
+   * THE CONTROL FOR THE NEGATIVE ABOVE, and without it that assertion is
+   * satisfied by a strip that has stopped saying the sentence anywhere. Same
+   * inputs, owedOther flipped, and the sentence must come BACK.
+   */
+  const quiet: StripCell = {
+    session: "active", online: true, pending: 0, failed: 0, blocked: false,
+    masterData: 0, account: "ok", voidsRefused: 0, owedOther: 0,
+  };
+  check(
+    "CONTROL: with nothing owed at all, the strip DOES say it",
+    statusNotice(stripInput(quiet)).message.includes("ส่งครบแล้ว"),
+    statusNotice(stripInput(quiet)).message,
+  );
+  /*
+   * AND THE PRESENCE SIBLING: an absence is satisfied by silence, so the cells
+   * where nothing above the owed branch fires must NAME what is owed — both
+   * kinds, because both are staged.
+   */
+  const owedDecides = owingOther.filter(
+    (c) =>
+      c.session === "active" &&
+      !c.blocked &&
+      c.account === "ok" &&
+      c.voidsRefused === 0 &&
+      c.masterData === 0 &&
+      c.failed === 0 &&
+      c.pending === 0 &&
+      c.online !== false,
+  );
+  checkAll(
+    "...and where no line above it fires, the strip NAMES the owed work, both kinds",
+    owedDecides,
+    (c) => {
+      const m = statusNotice(stripInput(c)).message;
+      return m.includes("ยกเลิกบิล") && m.includes("ผู้ขายที่เพิ่มใหม่");
+    },
+    (c) => `${describeStrip(c)} -> ${statusNotice(stripInput(c)).message}`,
+  );
+  check(
+    "...and THAT sweep was not empty either",
+    owedDecides.length === 2,
+    `${String(owedDecides.length)} cells where the owed branch decides the line`,
   );
   // Red is reserved. An ended session is amber: it is a waiting state with a
   // known fix, like an outage and like parking.
@@ -994,10 +1101,10 @@ function n3StripMatrix(): void {
   );
   check(
     "...and those sweeps were not empty",
-    // online(3) x pending(2) x failed(2) x masterData(2) x the 3 of 4
-    // account/voids-refused combinations that carry a refusal, with an active
-    // session and no alarm above them.
-    permission.length === 72,
+    // online(3) x pending(2) x failed(2) x masterData(2) x owedOther(2) x the
+    // 3 of 4 account/voids-refused combinations that carry a refusal, with an
+    // active session and no alarm above them.
+    permission.length === 144,
     `${String(permission.length)} cells where a permission refusal decides the line`,
   );
 }
@@ -1069,12 +1176,18 @@ function n4Disproof(): void {
   const oneBill: StripCell = {
     session: "expired", online: false, pending: 1, failed: 0, blocked: false, masterData: 0,
     account: "ok", voidsRefused: 0,
+    // This disproof is about the 401 classification and the bill counts; the
+    // owed-work branch is below every branch it exercises.
+    owedOther: 0,
   };
   // With several bills the old 401 classification (unavailable, reachable:true)
   // ran the poison clock and the counter, so the alarm fired: blocked = true.
   const threeBills: StripCell = {
     session: "expired", online: true, pending: 3, failed: 0, blocked: true, masterData: 0,
     account: "ok", voidsRefused: 0,
+    // This disproof is about the 401 classification and the bill counts; the
+    // owed-work branch is below every branch it exercises.
+    owedOther: 0,
   };
 
   for (const [label, cell] of [["1 queued bill", oneBill], ["3 queued bills", threeBills]] as const) {

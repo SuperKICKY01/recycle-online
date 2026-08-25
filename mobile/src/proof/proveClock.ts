@@ -53,6 +53,7 @@ import {
   POISON_ALARM_ATTEMPTS,
   POISON_ALARM_MS,
 } from "../sync/queueHealth.js";
+import { NOTHING_OWED } from "../sync/outbox.js";
 import { statusNotice } from "../sync/statusNotice.js";
 import type { BillItemPayload, LocalBill } from "../sync/types.js";
 import {
@@ -462,6 +463,10 @@ async function k3ForwardJumpRaisesNoFalseAlarm(): Promise<void> {
     pending: snap.pendingCount,
     parkedForAnother: 0,
     parkedUnknownOwner: 0,
+    // Nothing owed beyond the bills this case stages. The strip's owed-work
+    // branch sits BELOW every branch this file asserts on, so a zero map keeps
+    // it out of the way; it is driven in proveOwedSurfaces.
+    owed: NOTHING_OWED,
     failed: 0,
     blocked: oldAlarm
       ? {
@@ -504,6 +509,10 @@ async function k3ForwardJumpRaisesNoFalseAlarm(): Promise<void> {
     pending: snap.pendingCount,
     parkedForAnother: 0,
     parkedUnknownOwner: 0,
+    // Nothing owed beyond the bills this case stages. The strip's owed-work
+    // branch sits BELOW every branch this file asserts on, so a zero map keeps
+    // it out of the way; it is driven in proveOwedSurfaces.
+    owed: NOTHING_OWED,
     failed: 0,
     blocked: afterJump.alarm
       ? {

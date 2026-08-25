@@ -22,7 +22,7 @@
 import { SEND_SCHEDULE_HORIZON_MS, scheduledInstantIsDue } from "../time/clockSanity.js";
 import type { Clock } from "./types.js";
 import type { SyncRunResult } from "./engine.js";
-import type { OutboxHandler, OutboxKind, OutboxRegistry } from "./outbox.js";
+import type { OutboxHandler, OutboxKind, OutboxRegistry, OwedByKind } from "./outbox.js";
 
 /**
  * What one pass reports. `result` is the floor — every field the screen reacts
@@ -136,6 +136,38 @@ export class OutboxRunner {
    */
   retractHalts(): void {
     this.halted.clear();
+  }
+
+  /**
+   * HOW MUCH WORK THE DEVICE STILL OWES, PER KIND — BY WALKING THE REGISTRY.
+   *
+   * The one producer of that number, and the reason it is here rather than in
+   * the screen that reads it: the registry is the only thing in this tree that
+   * knows what the kinds ARE. A caller that asked each handler it could name
+   * would be a hand-written enumeration, which compiles, runs, and stops
+   * covering the next kind with nothing going red — this repository measured
+   * that at five sites one commit ago, and none of the five was
+   * compiler-visible (`lessons/a-quantified-sentence-names-no-member.md`, the
+   * hand-written-sum amendment).
+   *
+   * THE KEY SET IS THE MEMBER SET BY CONSTRUCTION, exactly as `recoverAll`'s
+   * map is, because the loop below visits every registry key and the registry's
+   * own type is total over `OutboxKind`. That is what a proof asserts as an
+   * EQUALITY against the members — containment would answer what is present and
+   * only equality answers what is missing.
+   *
+   * IT IS `owedCount` AND NOT `owed`, deliberately: `owed` is filtered by what
+   * can be ATTEMPTED right now, and a queue that has gone quiet because every
+   * row is in flight or parked still owes every one of them. A gate reading
+   * `owed` would let a sign-out through in the middle of a pass.
+   */
+  async owedCountByKind(): Promise<OwedByKind> {
+    const out: Partial<Record<OutboxKind, number>> = {};
+    for (const kind of this.kinds()) {
+      out[kind] = await this.registry[kind].owedCount();
+    }
+    // Complete by construction: same argument as recoverAll's map below.
+    return out as OwedByKind;
   }
 
   /**

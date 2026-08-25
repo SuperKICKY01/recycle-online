@@ -37,6 +37,8 @@
  * failure leaves the operator SIGNED IN and says so.
  */
 import type { SyncRunResult } from "../sync/engine.js";
+import { totalOwed } from "../sync/outbox.js";
+import type { OwedByKind } from "../sync/outbox.js";
 import type { SessionState } from "../sync/parkedReason.js";
 import type { ClearOutcome, TokenStore } from "./tokenStore.js";
 
@@ -187,8 +189,14 @@ export function sessionEndedAfterPass(wasEnded: boolean, r: PassEvidence): boole
 export type SignOutFailure = { kind: "clear_failed"; reason: string };
 
 export type SignOutOutcome =
-  /** The queue is not empty. Nothing was touched — the session is unchanged. */
-  | { kind: "refused_pending"; pending: number; failed: number }
+  /**
+   * Work is still owed. Nothing was touched — the session is unchanged.
+   *
+   * It carries the WHOLE per-kind map and not a total, because the sheet has to
+   * say one sentence per kind and a total cannot be un-summed. The member name
+   * keeps `pending` out of it now that the number is not a bill count.
+   */
+  | { kind: "refused_pending"; owed: OwedByKind; failed: number }
   /** The keystore refused to forget the token. STILL SIGNED IN. */
   | { kind: "failed"; failure: SignOutFailure }
   /** Done. The caller must now apply CLEARED_SESSION. */
@@ -308,8 +316,25 @@ export const CLEARED_SESSION: ClearedSession = {
 };
 
 export interface SignOutDeps {
-  /** Bills queued to send (pending + syncing). The gate. */
-  pending: number;
+  /**
+   * EVERY KIND OF WORK THIS DEVICE STILL OWES THE SERVER. The gate.
+   *
+   * A MAP OVER THE REGISTRY'S MEMBERS AND NOT A BILL COUNT, since P1.8b. It was
+   * `pending: number`, fed from one statement over `local_bills`, and
+   * `seller_create` is the first kind whose rows are not in that table — so a
+   * device owing a seller create and no bills passed the gate, and the create
+   * was left behind for whoever signed in next
+   * (`ROADMAP.md § P1.8` "EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL").
+   *
+   * TAKING THE WHOLE MAP RATHER THAN A TOTAL IS THE POINT. A caller that summed
+   * it before calling would put a hand-written enumeration at the call site,
+   * which is the shape that compiles and quietly stops counting the next
+   * member; and the sheet needs the parts anyway, so gate and sheet read ONE
+   * value rather than two numbers that can disagree — which they did, measured
+   * at `1d7f638`: the gate read `mine + mineBlocked` and the sheet read `mine`,
+   * so one parked bill drew a confirmation card whose button did nothing.
+   */
+  owed: OwedByKind;
   /** Terminally failed bills. NAMED on screen, never a blocker — see the gate. */
   failed: number;
   /** Pause/resume the 4-second sync tick. Called with true BEFORE the clear. */
@@ -320,7 +345,26 @@ export interface SignOutDeps {
 }
 
 /**
- * THE GATE: a non-empty send queue refuses the sign-out.
+ * THE GATE: any owed work, of ANY KIND, refuses the sign-out.
+ *
+ * ---------------------------------------------------------------------------
+ * IT WAS "A NON-EMPTY SEND QUEUE", AND THAT SENTENCE NAMED A SET IT NO LONGER
+ * COVERED
+ * ---------------------------------------------------------------------------
+ * The gate has always meant *do not hand this device over with work on it*, and
+ * for as long as every unit of work was a row in `local_bills` a bill count was
+ * that. `seller_create` landed at `1d7f638` with its rows in `local_sellers`,
+ * and the gate went on reading the bill statement: a device owing a seller
+ * create and nothing else signed out cleanly, and the create then sat behind an
+ * owner filter belonging to somebody who had left. Nothing went red, because
+ * nothing was wrong with the statement — it was the QUANTIFIER above it that
+ * had stopped being true.
+ *
+ * SO THE PREDICATE IS `totalOwed`, WHICH WALKS THE MAP, over a map the runner
+ * builds by walking the REGISTRY. Neither this file nor its callers may name a
+ * kind: a hand-written sum is the failure this repository measured at five
+ * sites in the commit before this one, and not one of the five was
+ * compiler-visible.
  *
  * An unsynced bill is a load already tipped on the pile and cash already out of
  * the till. The queue carries no identity of its own — HttpTransport resolves
@@ -348,12 +392,29 @@ export interface SignOutDeps {
  * FAILED bills do NOT block. They never drain, so blocking on them would make
  * sign-out permanently impossible on a device holding one. Their count is put on
  * the screen instead.
+ *
+ * THAT RULE IS ABOUT ROWS THAT CANNOT DRAIN, NOT ABOUT THE WORD "failed", and
+ * widening the gate is what forced it to be said properly. Every kind's
+ * `owedCount` excludes its own terminal rows, and P1.8b had to add one that was
+ * missing: a void requested on a bill the server then refused 422 could never be
+ * applied — `listVoidsToApply` requires `synced` — and would have held this gate
+ * shut for ever (the clause and its argument are on
+ * `SqliteLocalStore.countVoidsOwed`).
+ *
+ * ONE ROW THIS GATE CAN STILL BLOCK FOR EVER, SAID RATHER THAN LEFT TO BE MET:
+ * a local seller whose create was answered 409 is `needs_review` — still
+ * `pending`, so `countSellersOwed` counts it, and out of `SELLER_ACTIONABLE`, so
+ * nothing ever attempts it again. Both halves are required by
+ * `NO-ARM-OF-THIS-KIND-SETTLES-A-409`, and the design holds the state
+ * unreachable behind two server-side guards, so reaching it is an invariant
+ * violation rather than an ordinary end state. Nothing here treats it as one:
+ * inventing a disposal would be a design decision, and it is reported instead.
  */
 export async function signOut(deps: SignOutDeps): Promise<SignOutOutcome> {
-  if (deps.pending > 0) {
+  if (totalOwed(deps.owed) > 0) {
     // NOTHING has been touched at this point — not the loop, not the keystore.
     // A refusal must leave the session exactly as it found it.
-    return { kind: "refused_pending", pending: deps.pending, failed: deps.failed };
+    return { kind: "refused_pending", owed: deps.owed, failed: deps.failed };
   }
 
   // STEP 2, before the keystore: no pass may be in flight with a token that is

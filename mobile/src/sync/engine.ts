@@ -19,7 +19,7 @@ import type { LocalSellerStore } from "./localSeller.js";
 import type { SellerCreateTransport } from "./sellerCreate.js";
 import { buildOutboxRegistry } from "./outboxHandlers.js";
 import { OutboxRunner } from "./outboxRunner.js";
-import type { OutboxKind } from "./outbox.js";
+import type { OutboxKind, OwedByKind } from "./outbox.js";
 
 export interface SyncEngineOptions {
   store: LocalStore;
@@ -283,6 +283,30 @@ export class SyncEngine {
    */
   async recoverInterrupted(): Promise<{ readonly [K in OutboxKind]: readonly string[] }> {
     return this.runner.recoverAll(this.clock.now());
+  }
+
+  /**
+   * WHAT THIS DEVICE STILL OWES THE SERVER, PER KIND — the number the sign-out
+   * gate turns on and the number the surfaces speak from.
+   *
+   * A PASS-THROUGH TO THE RUNNER AND NOTHING ELSE. It adds no arithmetic of its
+   * own on purpose: the moment this class summed the map, the sum would be a
+   * hand-written enumeration living one layer away from the registry that
+   * defines the set, and the next kind would join the outbox without joining
+   * the gate. `totalOwed` in ./outbox.js is the only reducer, and it walks the
+   * map at run time.
+   *
+   * WHY THE GATE READS IT FROM HERE RATHER THAN FROM `LocalStore`. Until P1.8b
+   * every kind's rows were in `local_bills`, so one statement over that table
+   * WAS the whole answer and the gate could take it from the bill store.
+   * `seller_create` is the first kind whose rows are not there
+   * (`ROADMAP.md § P1.8` "The seller kind is the FIRST kind whose rows are not in `local_bills`"),
+   * and its store is a separate contract by design. There is no longer a single
+   * table to ask. The registry is what knows the set, so the registry is what
+   * is asked.
+   */
+  async owedByKind(): Promise<OwedByKind> {
+    return this.runner.owedCountByKind();
   }
 
   /**
