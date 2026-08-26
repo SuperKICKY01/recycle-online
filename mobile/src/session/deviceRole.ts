@@ -172,3 +172,37 @@ export function readTokenRole(token: string | null): DeviceRole {
 export function mayVoid(role: DeviceRole): boolean {
   return role !== "staff";
 }
+
+/**
+ * May this device OFFER to change a price?
+ *
+ * P1.9. The same rule as `mayVoid` and, deliberately, a SEPARATE function
+ * rather than a shared `isNotStaff`: these are two product decisions that
+ * happen to agree today, and collapsing them would mean the day one moves the
+ * other moves silently with it. The server gates them on two different
+ * dependencies and could diverge without anyone editing this file.
+ *
+ * WHY IT MATCHES `mayVoid` RATHER THAN THE ยอดวันนี้ BUTTON, which is the other
+ * precedent in this app and points the other way. That button is offered to
+ * everybody because opening a read-only report costs one refused GET and one
+ * plain sentence. A price WRITE is an ACTION: a staff session pressing save
+ * gets a 403 from `require_admin`, and finding out that way is finding out
+ * after deciding a price was changed. So the control is not drawn.
+ *
+ * IT FAILS OPEN, exactly as the header of this file argues and for the same
+ * reason: only a DEFINITE "staff" hides the control. An unparseable token, an
+ * absent claim, or a role this build does not recognise all read as unknown,
+ * and unknown offers it. The claim is up to an hour stale while the server
+ * re-reads the role from the users row on every request — so an owner promoted
+ * this morning is admin to the server and still `staff` in their token, and
+ * failing closed would lock a real shop owner out of their own prices, with a
+ * metal market moving, until the token expired. The cost the other way is one
+ * refused write and one plain sentence, which `priceSaveScreen`'s 403 branch
+ * draws.
+ *
+ * NOTHING IS AUTHORISED ON THIS VALUE. `require_admin` is, on every request,
+ * against the database row.
+ */
+export function mayEditPrices(role: DeviceRole): boolean {
+  return role !== "staff";
+}

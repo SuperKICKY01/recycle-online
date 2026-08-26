@@ -57,6 +57,210 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.9 — PRICE EDITING ON THE PHONE. BUILT, PROVEN, AND OBSERVED ON A HANDSET.
+`DONE WHEN` MET 2026-08-26.** This supersedes the P1.8b GATES entry below as the
+current phase; that entry's record stands unchanged. **NO SHA IS GIVEN**,
+deliberately — the work carrying this sentence is uncommitted at the moment it is
+written, so the only sha available is the one that does NOT contain it
+(`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT").
+
+### THE DEVICE OBSERVATION — P1.9's `DONE WHEN`, MET
+
+Re-derived from `ROADMAP.md § P1.9` rather than recalled: *the owner changes a
+price on the handset and the next bill entered carries the new value in
+`purchase_bill_items.list_price`, read back out of Postgres rather than off the
+screen.*
+
+**THE READING, taken by psql under tenant `11111111-…1111` (Shop A) and re-taken
+by this session before being written down.** Without `SET LOCAL app.tenant_id`
+the same query returns zero rows — forced RLS, which reads exactly like "no
+bills":
+
+| doc_no | product | grade | unit_price | list_price | server_received_at |
+|---|---|---|---|---|---|
+| **B-2569-542** | FE-STEEL | B | **16.25** | **16.25** | 2026-08-26 10:16:09.947734+00 |
+| B-2569-541 | FE-STEEL | B | 15.00 | 15.00 | 2026-08-25 17:41:12.136953+00 |
+| B-2569-540 | FE-STEEL | B | 15.00 | 15.00 | 2026-08-25 17:39:08.605722+00 |
+
+`product_prices` for that tenant, read in the same pass:
+FE-STEEL **A 15.50, B 16.25, C 14.50, D 14.00**.
+
+**THE READING PROVES THREE THINGS, NOT ONE**, and a reader who takes only the
+first will not know the other two were observed:
+
+1. **The price changed from the handset, and ONLY grade B moved.** The tier map
+   before the pass was A 15.50, B 15.00, C 14.50, D 14.00 — measured by this
+   session through `GET /products` earlier the same day. A, C and D are
+   unchanged. That is the evidence that the delete-all-then-insert-all refresh
+   did not disturb the rest of the tier map: a refresh that dropped or rewrote
+   its siblings would show here and does not.
+2. **The next bill carried the NEW value, so the device's cached list really did
+   refresh.** A stale cache would have produced `list_price 15.00` on
+   `B-2569-542`, because the server stamps `list_price` from the CURRENT list at
+   sync time and discards whatever the client sent. That divergence is the exact
+   failure this phase exists to prevent, and it is the one that is
+   indistinguishable from a deliberate override afterwards
+   (`lessons/README.md § Lessons` "cached-master-data-is-a-price-claim.md").
+3. **The two earlier bills still hold 15.00 — hard rule 6 OBSERVED rather than
+   asserted.** A historical bill is not recomputed from current prices. Nothing
+   in this phase touches a written row, and the reading is what says so.
+
+**THE ATTESTATIONS, KEPT APART FROM THE READING, AND LABELLED BY WHO MEASURED
+THEM.** The distinction is the point: a reading is only about the code that was
+running, and everything establishing WHICH code that was came from the owner.
+
+| attestation | measured by |
+|---|---|
+| `recycle_pg` `(healthy)` on `5544->5432` | **MEASURED here**, `docker ps` |
+| the API process predates no relevant commit; `server/` clean and unchanged by this phase | **MEASURED here** |
+| the reading itself, and the tier map | **MEASURED here**, psql under Shop A's tenant |
+| the pre-pass tier map (B was 15.00) | **MEASURED here**, `GET /products` |
+| Metro restarted with `npx expo start -c`, transform cache confirmed empty | **THE OWNER'S REPORT.** Not measured by this session |
+| a full reload on the handset | **THE OWNER'S REPORT** |
+| the bundle identified | **THE OWNER'S REPORT** |
+
+**SAID PLAINLY: this session did not watch the handset.** The three bundle
+attestations are the owner's and are recorded as such, because
+`CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING" makes them the
+condition under which the reading is evidence about THIS build at all. The
+reading is a fact about Postgres either way; what the attestations buy is the
+link from that fact to the code below.
+
+**WHAT EXISTS NOW THAT DID NOT.** A `prices` sheet on the phone, reachable from
+a header control that is NOT DRAWN for a definite `staff` role. Its every
+decision is in `mobile/src/master/priceEdit.ts` — a pure module a headless proof
+drives — and `mobile/app/PricesSheet.tsx` renders what that returns and decides
+nothing. One tier is written per request, matching the route. The input is
+bounded by `parseTierPrice`, which is `parseDecimal(raw, MONEY_DP,
+MONEY_MAX_INT_DIGITS)` and therefore `numeric(14,2)` by construction rather than
+by a second copy of 12 and 2. After a 2xx the whole product list is re-read
+through the EXISTING `SqliteMasterStore.saveProducts`, which is delete-all +
+insert-all + stamp in one transaction; the single-product body the route returns
+is deliberately NOT used to patch the cache, because that write would land
+outside that transaction. `refreshMaster` now returns a `CacheRefresh` of
+`refreshed` / `failed` / `skipped`, and a save the server took which this device
+did not re-read renders as `stale`, never as success.
+
+### OBSERVED, WITH THE COMMAND THAT PRODUCED IT
+
+Every command bare, status read in the same invocation.
+
+| observation | result |
+|---|---|
+| `docker ps` | `recycle_pg` `Up 2 days (healthy)`, `0.0.0.0:5544->5432` |
+| `npm run typecheck` (`mobile/`) | exit 0 |
+| `npm run typecheck:app` (`mobile/`) | exit 0 |
+| `npm run prove:prices` twice, no reseed | exit 0 twice, **155 cells** both runs, 0 fail |
+| the whole mobile suite, twice, no reseed | **34 proofs, 0 moved between passes** |
+| `tools/verify_shared_checks.py` | exit 0, `IDENTICAL: 4 items` |
+| `build_all_lessons.py --check` | exit 0 after `--write`, 60 lesson files |
+| `verify_citations.ps1 -Source @(4 files)` | `SOURCES=4 CITATIONS=326 BROKEN=2` |
+
+**THE LIVE API, THROUGH THE PRODUCT'S OWN ROUTE.** The running uvicorn started
+2026-08-25 21:18:58; the last commit touching `server/` is `b8b557f`,
+2026-08-25 06:53:44 — 14h25m earlier — and `git status --porcelain -- server/`
+is empty. Both halves of `CLAUDE.md § Boot check` "WHICH CODE THE SERVER IS
+RUNNING" hold, and the requests below are the sufficient condition it names.
+**No server file was changed by this phase.**
+
+| request | answer |
+|---|---|
+| `PUT /products/{id}/prices/A` with a **staff** token | **403**, `code=admin_required` |
+| CONTROL — `GET /products` with the SAME staff token | **200** |
+| `PUT …/prices/A` `price=1.005` | **422** `decimal_max_places` |
+| `PUT …/prices/A` `price=-1.00` | **422** `greater_than_equal` |
+| `PUT …/prices/A` `price=1234567890123.00` | **422** `decimal_whole_digits`, naming 12 |
+| after all four refusals | the tier map is **byte-identical** to before |
+| CONTROL — the SAME route, the CURRENT value re-sent | **200** |
+
+The 422s matter as a CLASS and not as a status: a `numeric(14,2)` column ROUNDS
+`1.005` to `1.01` rather than refusing it, and a CHECK violation would arrive as
+a 500 — `unavailable` to a client, never `rejected`. The four refusals are
+terminal and visible. **The edge that produces them was already correct at
+`master.py:121` before this phase; nothing here changed it, and the probes are
+the first record of it being exercised for these values.**
+
+### NOT OBSERVED — SAID PLAINLY
+
+- **Anything a phone drew.** `provePrices` asserts the pure renderer's output,
+  byte for byte, from states reached through the real predicate. That is the
+  contract half and no more.
+- **`prove:sellercreate`** exits 2 in both passes: it requires a SCRATCH
+  database and its own header says DEV IS NOT SCRATCH. Not run, not satisfied,
+  and deliberately not pointed at dev.
+- **`prove:loginscreen`** exits 1 with 6 failing cells in both passes,
+  PRE-EXISTING and untouched by this phase: it expects shop code `K7M2P9QB` and
+  `directory.shop_codes` holds `53R42Z7S`, `R6VD7RAC`, `VRG5QWBU`. A data fact,
+  measured, not a regression.
+
+### FINDINGS
+
+- **`proveSheets` moved 57 cells to 61, and 8 reachable stacks to 9 — measured,
+  not inferred.** The baseline was taken by reverting `App.tsx`,
+  `proveSheets.ts` and `sheetStack.ts` to HEAD and running: **57 OK, 0 FAIL,
+  `walked 8, expected 8`.** The move is the hand-written `EXPECTED_REACHABLE`
+  doing its job. **A free negative control fell out of it:** with only the two
+  `src/` files reverted and the new `App.tsx` in place, S10 went RED —
+  `every name App.tsx dispatches is declared in sheetStack.ts — undeclared:
+  open_prices` — so that proof really does observe this change.
+- **A FIFTH SITE NOW ENCODES THE GRADE SET, AND IT IS THE FIRST ON A CLIENT.**
+  `GRADES` in `priceEdit.ts`. `OPEN_ITEMS.md` counts four, all server-side, all
+  opened by S16. **It cannot be avoided today:** `GET /products` returns
+  `prices` as a map of the tiers that HAVE ROWS, so an unpriced tier is not on
+  the wire, and deriving the list from those keys would make a never-priced
+  grade impossible to see and therefore impossible to set — the screen could not
+  fix the one state it exists to fix. **The API does not expose the grade set.**
+- **A defect was found in this phase's own code by reading, and the cells that
+  catch it were written afterwards and WATCHED failing.** The
+  `อัปเดตรายการราคา` button re-reads the list and sends nothing, so it holds no
+  `PriceWrite`; it passed `{kind:"ok"}` to `priceSaveScreen`, and a failed
+  re-read after a **404** then rendered `บันทึกราคาใหม่ขึ้นระบบแล้ว` — *the new
+  price has been saved* — about a write the server REFUSED. Repaired with
+  `priceRefreshScreen`. Re-introducing the call reddens **4 cells**, printing
+  that sentence as the failure detail. **Recorded as the P1.9 amendment to
+  `lessons/correct-classification-can-still-render-as-an-error.md`, and NOT as a
+  new lesson.** It was first written as one, separated from
+  `fallback-default-is-a-wrong-number.md`; that is the wrong neighbour. The
+  right one is this file's own rule — *a message naming an action must be
+  DERIVED FROM THE CAUSE* — and the finding is a seventh mechanism of it rather
+  than a new rule, so the repository's convention applies and the standalone
+  file was deleted. What the amendment carries that its siblings do not: every
+  one of them is a renderer with TOO LITTLE input, repaired by making the
+  missing input required; here the renderer had every input and the CALLER had
+  not witnessed the event, so there is nothing to make required and the repair
+  is a SECOND FUNCTION. It is also the first member about the PAST — 2c-7 and
+  R2b are promises, repaired by not promising, and a false report of a completed
+  action cannot be un-promised.
+- **A proof assertion of mine was wrong in the safe direction and went red
+  immediately.** It counted the substring `"0.00"` over the joined screen text
+  and expected 1; it measured 2, because `"60.00"` CONTAINS `"0.00"`. The claim
+  was true and the instrument was not. Re-written to count TIER VALUES and to
+  use a needle that cannot be a substring of another price (`"C 0.00"`).
+- **`lessons/README.md` CARRIES NO CR, AND THIS PHASE DID NOT CAUSE THAT — A
+  CORRECTION TO THIS SESSION'S OWN FIRST REPORT.** It was reported here as
+  something this phase's generator had done, on the strength of having written
+  the file with `newline="\n"` and then measuring `CR=0`. That is a cause
+  inferred from an edit and a reading taken AFTER it, which cannot separate
+  "I did this" from "it was already so" — the measurement needed was one taken
+  BEFORE the write, and it was not. **It was already LF.**
+  `OPEN_ITEMS.md § Documentation` "WHOSE WORKING-TREE COPY CARRIES CRLF" carries
+  the finding, measured **2026-08-25** at the P1.8b MOBILE boundary, with the
+  cause named: a `git stash push` / `git stash pop`, which is a CHECKOUT, and
+  `.gitattributes` `eol=lf` makes a checkout write LF. That entry's figures are
+  working tree `CR=0, LF=66` and blob `CR=0, LF=66` at `1d7f638`; this session
+  measured `CR=0, LF=67` — **the same file, one line longer, because of the
+  index line added here.** **NO SECOND QUEUE LINE IS ADDED**, and the entry
+  needs no amendment: it already states the blob never changed, that there is
+  nothing to repair, and that the `all-lessons.md` exclusion is not to be
+  removed because the BOM half is measured intact. Confirmed here at `efbbbf`.
+- **Two broken citations in `PROJECT_STATUS.md`, both PRE-EXISTING.** Measured
+  before this file was touched: `ROADMAP.md § STAGE 1` handle
+  `"prove_reconcile.py back to green"` at `hits=0` (the target heading carries
+  backticks the handle omits), and one section-only citation into OPEN_ITEMS's
+  code-debt section, whose name the checker's own output truncates.
+  **`ROADMAP.md` reads `BROKEN=0`** after this phase's insert, so every citation
+  in the new S10 block resolves. Not repaired here — out of this step's scope.
+
 **P1.8b GATES — THE SIGN-OUT GATE, THE PARKED BILL, AND THE REFILL'S CALL SITE.
 BUILT AND PROVEN, 2026-08-25. Three commits: `ea567e9` the gate, `48c422a` the
 park and the release and the call site, and the documentation commit carrying

@@ -209,12 +209,30 @@ function walk(): { readonly stacks: readonly SheetStack[]; readonly keys: readon
  *   seller_picker              the start-bill button, or CartScreen's change-seller
  *   seller_picker>add_seller   `+ เพิ่มผู้ขาย`, INSIDE the picker. The one two-deep
  *                              stack in the app, and the pair observed broken
+ *   prices                     the ราคารับซื้อ button, in the header (P1.9)
  *   sign_out                   the ออกจากระบบ button, in the header
  *
  * NOT REACHABLE, and each absence is a claim: no stack holds two dialogs, none
  * is three deep, and nothing sits over `confirm_save`, `daily`, `bills`,
- * `sign_out` or `confirm_seller_change` — every control that opens a sheet is
- * either in the body, which a sheet covers, or in the picker.
+ * `prices`, `sign_out` or `confirm_seller_change` — every control that opens a
+ * sheet is either in the body, which a sheet covers, or in the picker.
+ *
+ * ---------------------------------------------------------------------------
+ * THIS LIST MOVED FROM EIGHT TO NINE AT P1.9, AND THE MOVE IS THE ASSERTION
+ * ---------------------------------------------------------------------------
+ * `prices` was added deliberately, by hand, after reading App.tsx's header —
+ * which is what this constant is for. It is NOT computed from `SHEET_KINDS`,
+ * so adding a kind reddens S1 until a person has decided the new stack really
+ * is reachable and really does close where they say. That red is the feature:
+ * the count moving on its own would mean a screen appeared that nobody wrote
+ * down.
+ *
+ * `prices` IS DRAWN ONLY FOR SOME SESSIONS — the header control is hidden from
+ * a definite `staff` role — and that does NOT belong in this table. These are
+ * stacks the APP can reach, not stacks a given ACCOUNT can reach; the role gate
+ * is asserted where it is enforced, on the rendered screen, in
+ * `npm run prove:prices`. Writing it in here would make this table a claim
+ * about permissions that no reducer implements.
  */
 const EXPECTED_REACHABLE: readonly string[] = [
   "-",
@@ -222,6 +240,7 @@ const EXPECTED_REACHABLE: readonly string[] = [
   "confirm_save",
   "confirm_seller_change",
   "daily",
+  "prices",
   "seller_picker",
   "seller_picker>add_seller",
   "sign_out",
@@ -238,6 +257,11 @@ const EXPECTED_CLOSE: readonly (readonly [string, string, string])[] = [
     "BACK TO THE CART, not the picker: the operator already picked somebody, and ยกเลิก means keep the seller the bill had",
   ],
   ["daily", "-", "back to the cart"],
+  [
+    "prices",
+    "-",
+    "back to the cart. The price list is not a step in anything — an owner who has finished changing prices is finished, and there is nothing underneath it to return to",
+  ],
   ["seller_picker", "-", "back to the cart with no pick made"],
   [
     "seller_picker>add_seller",
@@ -290,7 +314,14 @@ function s1Reachable(keys: readonly string[]): void {
   header("S1 every stack the app can reach");
   for (const k of keys) console.log(`  ${k}`);
   check(
-    "the reachable set is exactly the eight stacks written down",
+    /*
+     * THE NUMBER IS DERIVED, NOT SPELLED. This label read "the eight stacks"
+     * until P1.9 made it nine, which is a sentence that goes stale silently
+     * while the assertion beside it stays correct — a label naming a count the
+     * check does not use is the label a reader trusts and the check ignores
+     * (CLAUDE.md § Shared checks, "Does every counting name its tool").
+     */
+    `the reachable set is exactly the ${String(EXPECTED_REACHABLE.length)} stacks written down`,
     keys.length === EXPECTED_REACHABLE.length && keys.every((k, i) => k === EXPECTED_REACHABLE[i]),
     `walked ${String(keys.length)}, expected ${String(EXPECTED_REACHABLE.length)}`,
   );

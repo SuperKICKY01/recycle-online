@@ -283,6 +283,49 @@ blocked:** it does not defer the WORK a screen will need. A grade default, a
 per-tenant settings home, photo columns and `sellers.created_by` are all
 internals and all land now. What waits is the drawing.
 
+**A TARGETED EXCEPTION, GRANTED 2026-08-25, FOR P1.9 AND FOR NO OTHER SCREEN.**
+This does not settle anything new and mints no S-number; it BOUNDS the decision
+above at one place. S10 otherwise stands whole, and the drawings deferred by
+P1.8b stay deferred.
+
+**WHAT THE OWNER WAS SHOWN, AND WHAT CAME BACK.** He was shown three options —
+a targeted exception for P1.9, defining the UX rework so that it has a P-number
+of its own, or keeping S10 whole — and chose the first. **NO PROSE CAME BACK,
+and none is invented here.** There is no paragraph in this block headed "the
+owner's reasoning", because there is no reasoning to record: what is recorded is
+the choice, and the material it was made against. Whoever later wants that
+paragraph must ask him for it rather than reconstruct it.
+
+**WHAT WAS SHOWN ALONGSIDE THE OPTIONS**, recorded as what was SHOWN and not as
+a finding of the owner's. S10's argument is that a screen drawn now is drawn
+twice, because the state behind it is still moving. The state behind THIS screen
+has not moved:
+
+- **The price WRITE PATH last changed 2026-07-28.** Re-derived while building
+  P1.9, not carried from the advising session that first claimed it:
+  `git log -L :set_product_price:server/app/master.py` returns two commits,
+  `9592140` and `4fb1354`, both dated 2026-07-28, and nothing since. The FILE is
+  much newer — `b8b557f`, 2026-08-25 — so a whole-file log would have given the
+  wrong answer, and does.
+- **`product_prices` has never been re-shaped.** Three migrations mention it and
+  only ONE touches its DDL: `0001_initial_schema.py`, 2026-07-20, which declares
+  `price numeric(14, 2) NOT NULL CHECK (price >= 0)`. `0003`, 2026-07-21, moved
+  the GRADE that keys the tier lookup but altered no column here; `0010`,
+  2026-08-18, names the table only in prose. **The advising session's figure was
+  2026-07-21 and the correction matters in the direction that strengthens the
+  case, not weakens it:** the table's own shape is a day OLDER than claimed, and
+  untouched for over five weeks.
+
+**WHAT THE EXCEPTION DOES NOT COVER.** It is for the price-editing screen on the
+phone. It is not a precedent for the next screen, it does not define the rework,
+and it does not reduce S10 to a formality — the gate is still undefined, and the
+audit further down this file still records that as the load-bearing gap.
+
+**NOT PINNED TO A SHA.** This block ships in the commit that carries P1.9, so no
+sha yet means what the sentence would need it to mean, and HEAD names the commit
+that does NOT contain it — `CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT".
+The date stands instead; anchor it in a later pass.
+
 **S11 — every capability SHIPS, and each shop configures it.** The provider is
 not in the loop for a shop's own choices, and the product must not slow a shop's
 workflow in order to ask. **This EXTENDS S6 rather than repeating it.** S6 is

@@ -558,3 +558,99 @@ sentence must name them all, or name who chooses — never the first one somebod
 implemented. And when a SERVER change narrows a refusal, sweep the client
 wording for that code in the same pass: nothing will go red, nothing will fail
 to compile, and the sentence will still be true.
+
+## Amendment (P1.9, 2026-08-26): the caller had NO cause, and invented one
+
+Point 3 says a message naming an action must be DERIVED FROM THE CAUSE. Every
+amendment above is about the derivation having **too little input**: 2d added the
+call site, R2b added a device-global state, P1.8a phase 2 found a status that
+could not name its own code, P-GRADECARD found a cause that was right and a
+remedy set that was larger. **This one is the floor of that series. The caller
+had no cause AT ALL — it had not witnessed the event the function reports — and
+it supplied one so the call would compile.**
+
+`priceSaveScreen({ write, refresh })` renders the outcome of a price write.
+`write` is a `PriceWrite`: `ok` / `http` / `unreachable` / `no_token`. Every
+refusal screen it produces offers one button — `อัปเดตรายการราคา`, re-read the
+price list — because a 404, a 5xx and a stale cache are all resolved by learning
+what the server currently holds. **That button sends no price.** Its handler has
+a `refresh` and no `write`, and it needed one:
+
+```ts
+setPriceOutcome(
+  refresh === "refreshed" ? null : priceSaveScreen({ write: { kind: "ok", body: null }, refresh }),
+);
+```
+
+Press it after a **404**, have the re-read fail, and the screen says:
+
+```
+บันทึกราคาใหม่ขึ้นระบบแล้ว แต่รายการราคาในเครื่องนี้ยังเป็นราคาเดิม
+```
+
+*The new price has been saved to the system* — about a write the server
+**REFUSED**, on the one screen an owner prices a yard from. Every layer beneath
+was correct, which is this file's whole subject: the transport classified the
+404, the classifier had a right answer for a 404, and the re-read really did run.
+The lie was manufactured at the one point where a function was called by
+something that had not seen what it describes.
+
+**THREE PROPERTIES, AND THEY ARE WHY IT SURVIVES A READING.**
+
+1. **The natural placeholder is the STRONGEST CLAIM AVAILABLE.** Faced with a
+   union, an author reaches for the non-error member — it feels like "nothing
+   bad to report". On a screen that REPORTS, the non-error member is the most
+   confident sentence the file can produce. The safest-looking literal is the
+   most dangerous one.
+2. **The happy path is silent.** When the re-read succeeds the branch returns
+   `null` and no sentence is drawn, so exercising the feature the way it is
+   meant to work CANNOT show it. It needs two failures stacked — a refused write
+   and then a failed refresh — which is past where reading stops.
+3. **The types are satisfied.** `{kind:"ok", body: null}` is a valid
+   `PriceWrite`; `body: unknown` accepts `null`. `strict`,
+   `exactOptionalPropertyTypes` and `noUnusedLocals` are all green. **A
+   discriminated union constrains the SHAPE of an answer and never its TRUTH** —
+   which is the same gap between a correct classification and a wrong screen that
+   this file opens with, arriving this time through the type system rather than
+   past it.
+
+**WHY 2d's AND R2b's REPAIR INVERTS HERE, and reaching for it is the obvious
+move.** Both fix a missing input by making it a REQUIRED parameter, so the next
+call site is a compile error until somebody writes its sentence. **There is
+nothing to make required.** The retry caller cannot be handed a `PriceWrite`,
+because no `PriceWrite` means "I did not write" — and adding a fifth member for
+that would be modelling a write that is not a write, which puts the same
+incoherence one level deeper and hands every existing branch a case it must now
+pretend to have an opinion about. P-GRADECARD had no input to add either and
+answered by naming BOTH remedies; that does not work here, because there is
+nothing to name: a re-read has no opinion about a save. **The repair is a SECOND
+FUNCTION.** `priceRefreshScreen(refresh)` takes only what a re-read knows and
+says only what a re-read supports — *the list could not be re-read, so what is
+shown may not be current* — and asserts nothing about any save, because it is
+reachable from a save that succeeded, one that was refused, and no save at all,
+and it cannot tell which.
+
+**AND IT IS THE FIRST MEMBER OF THIS FAMILY ABOUT THE PAST.** 2c-7's rule —
+never promise what the system cannot perform — and R2b's extension of it to a
+wait are both about the FUTURE: an offered action, a promised completion. Both
+are repaired by not promising. **A false report of a completed action cannot be
+un-promised**, because it does not describe anything the system is going to do;
+the money has either moved or it has not, and the operator's next act is taken
+on the strength of the sentence. R2b's diagnostic — *does the renderer have
+every input its sentences depend on?* — returns YES here and waves this straight
+through. The one that catches it is different:
+
+> **Did the caller WITNESS the event this function describes?** If not, it is not
+> a caller. If you do not have the input, you do not have the report.
+
+Ask it of every argument you are about to synthesise, and then do the cheap
+thing: take the literal you are about to write, find the branch it selects, and
+**read the string that branch produces out loud**. Not *is this value acceptable
+to the type* — the type is why the question is needed.
+
+**FOUND BY READING, NOT BY A RED — so the cells were written afterwards and
+WATCHED failing** ([[a-check-that-never-went-red-was-never-observed]]).
+Re-introducing the `{kind:"ok"}` call reddens exactly four cells in
+`provePrices`, printing the sentence above as the failure detail; the positive
+control is the SAVE screen, which must still say `บันทึก`, or "claims nothing
+about a save" would be true of a module that never says it at all.

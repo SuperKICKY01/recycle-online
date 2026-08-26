@@ -65,6 +65,8 @@ export const SHEET_KINDS = [
   "confirm_save",
   "daily",
   "bills",
+  /** P1.9. The shop's own price list, and the one screen that MOVES it. */
+  "prices",
 ] as const;
 
 export type SheetKind = (typeof SHEET_KINDS)[number];
@@ -195,6 +197,23 @@ export const SHEET_TRANSITIONS = {
     action: { kind: "open", sheet: "bills" },
     from: [null],
     site: "App.tsx the latest-bill Pressable",
+  },
+  /**
+   * Header ราคารับซื้อ (P1.9). In the BODY's header, so it is reachable only
+   * from the app's own screen — a sheet covers it, exactly like ยอดวันนี้ and
+   * ออกจากระบบ beside it.
+   *
+   * THE CONTROL IS NOT ALWAYS DRAWN, and that is not what `from` records. It is
+   * hidden from a definite `staff` role (`mayEditPrices`), so the transition is
+   * reachable from `null` for the sessions that HAVE the button and from
+   * nowhere for the ones that do not. `from` is a claim about WHICH SHEET is on
+   * screen when a control is pressed, not about who may press it — the honest
+   * home for the role gate is the render, where the proof asserts its absence.
+   */
+  open_prices: {
+    action: { kind: "open", sheet: "prices" },
+    from: [null],
+    site: "App.tsx header, the ราคารับซื้อ Pressable",
   },
   /**
    * A DIFFERENT SELLER WAS PICKED FOR A CART THAT ALREADY HAS LINES.

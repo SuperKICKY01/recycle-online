@@ -5,6 +5,7 @@
  * Every price arrives as a decimal STRING and stays one. Nothing in this file
  * parses money into a number.
  */
+import type { PriceWrite } from "../src/master/priceEdit";
 import type { DailyFetch } from "../src/reports/dailyView";
 import { exchangeShopCode } from "../src/session/shopCode";
 import type { ShopCodeResult } from "../src/session/shopCode";
@@ -212,6 +213,89 @@ export function login(
 
 export const fetchProducts = (token: string): Promise<Product[]> =>
   getJson<{ products: Product[] }>("/products", token).then((b) => b.products);
+
+/**
+ * PUT /products/{id}/prices/{grade} — TRANSPORT ONLY. P1.9.
+ *
+ * It does NOT use `getJson` above and it throws nothing. Every outcome comes
+ * back as a value, including a body that will not parse, for the reason
+ * `fetchDailyReport` gives below: a thrown error has to be classified by the
+ * caller, and `instanceof` plus a status number is how a screen ends up
+ * branching on transport internals. The classification lives in
+ * `src/master/priceEdit.ts`, where a headless proof can enumerate it; this file
+ * cannot be reached by the proofs (it pulls in expo-constants through ./config).
+ *
+ * ONE TIER PER REQUEST, because that is what the route is: `grade` is a PATH
+ * parameter and the body carries a single `price`. Editing four tiers is four
+ * writes with four outcomes, and this function deliberately does not hide that
+ * behind a loop — a partial success is a real state the operator has to be told
+ * about, and a helper that returned one answer for four writes would have to
+ * invent which one.
+ *
+ * THE PRICE IS A STRING AND STAYS ONE. It is placed on the wire exactly as the
+ * keypad produced it and this file never parses it — hard rule 1, and the same
+ * discipline the header of this file states for every price arriving the other
+ * way. `JSON.stringify` of a string emits a JSON string, so `numeric(14,2)`
+ * receives the digits that were typed and not a double's idea of them.
+ */
+export async function setProductPrice(
+  token: string,
+  productId: string,
+  grade: string,
+  price: string,
+): Promise<PriceWrite> {
+  /*
+   * A TIMEOUT, like the daily report and unlike the master-data reads. Somebody
+   * is standing in front of this screen having just typed a price; a fetch that
+   * hangs leaves them unable to tell a slow server from a changed price. An
+   * abort lands in the `unreachable` branch, which says plainly that NOTHING
+   * was changed — which is true, because a request that never completed cannot
+   * have been answered, and this path never queues.
+   */
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  let res: Response;
+  try {
+    res = await fetch(
+      `${API_BASE_URL}/products/${encodeURIComponent(productId)}/prices/${encodeURIComponent(grade)}`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ price }),
+        signal: controller.signal,
+      },
+    );
+  } catch {
+    return { kind: "unreachable" };
+  } finally {
+    clearTimeout(timer);
+  }
+
+  let body: unknown = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+
+  if (res.ok) return { kind: "ok", body };
+
+  /*
+   * The server's `code` is read from FastAPI's nested `detail` for the UI's
+   * WORDING only; the class is decided on the STATUS, which survives a body
+   * that fails to parse entirely. Same rule as fetchDailyReport and
+   * httpTransport's 403/424 path.
+   */
+  let code: string | null = null;
+  if (typeof body === "object" && body !== null && "detail" in body) {
+    const detail = (body as { detail: unknown }).detail;
+    if (typeof detail === "object" && detail !== null && "code" in detail) {
+      const raw = (detail as { code: unknown }).code;
+      if (typeof raw === "string") code = raw;
+    }
+  }
+  return { kind: "http", status: res.status, code };
+}
 
 export const fetchSellers = (token: string): Promise<Seller[]> =>
   getJson<{ sellers: Seller[] }>("/sellers", token).then((b) => b.sellers);

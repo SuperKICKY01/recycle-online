@@ -93,9 +93,16 @@ import {
 import { SellerApi } from "./src/master/createSeller";
 import type { CreatedSeller, SellerDraft } from "./src/master/createSeller";
 import { pickableSeller } from "./src/master/sellerForm";
+import {
+  GRADES,
+  priceListScreen,
+  priceRefreshScreen,
+  priceSaveScreen,
+} from "./src/master/priceEdit";
+import type { CacheRefresh, PriceProduct, PriceScreen, PriceWrite } from "./src/master/priceEdit";
 import { dailyScreen } from "./src/reports/dailyView";
 import type { DailyScreen as DailyScreenModel } from "./src/reports/dailyView";
-import { readTokenRole } from "./src/session/deviceRole";
+import { mayEditPrices, readTokenRole } from "./src/session/deviceRole";
 import type { DeviceRole } from "./src/session/deviceRole";
 import { shopCodeNotice } from "./src/session/shopCode";
 import { signInAndRecord, signInNotice } from "./src/session/signInIdentity";
@@ -117,6 +124,7 @@ import {
   isUnauthorized,
   login,
   resolveShopCode,
+  setProductPrice,
 } from "./app/api";
 import { AddSellerSheet } from "./app/AddSellerSheet";
 import { BillsPanel } from "./app/BillsPanel";
@@ -128,6 +136,7 @@ import { API_BASE_URL } from "./app/config";
 import { LoginScreen } from "./app/LoginScreen";
 import { deviceIds } from "./app/ids";
 import { MasterDataStrip } from "./app/MasterDataStrip";
+import { PricesSheet } from "./app/PricesSheet";
 import { SellerPicker } from "./app/SellerPicker";
 /*
  * THE ONE MODAL. Every sheet below is a plain view now and none of them presents
@@ -270,6 +279,22 @@ export default function App() {
   // comment gives.
   const [dailyDate, setDailyDate] = useState<string | null>(null);
   const [daily, setDaily] = useState<DailyScreenModel | null>(null);
+  /**
+   * THE OUTCOME OF THE LAST PRICE SAVE, or null while the LIST is what the
+   * prices sheet shows (P1.9).
+   *
+   * PAYLOAD, NOT VISIBILITY — the same rule `pendingChange` states below.
+   * Whether the sheet is on screen is the stack's business; this only says
+   * which of its two faces is drawn.
+   *
+   * IT IS CLEARED ON EVERY OPEN, never cached across them. An outcome sentence
+   * is true about one write at one moment, and the one it would be wrong about
+   * is the dangerous one: `stale` says "do not open a bill with this price yet",
+   * which is a claim about a refresh that a later, successful one has already
+   * fixed. A stale warning left on screen trains the yard to ignore it.
+   */
+  const [priceOutcome, setPriceOutcome] = useState<PriceScreen | null>(null);
+  const [priceBusy, setPriceBusy] = useState(false);
   /**
    * A seller change the operator has been warned about but not yet confirmed.
    *
@@ -585,11 +610,42 @@ export default function App() {
    * routed to the same device-global state a 401 on a SEND produces, so the
    * strip says "sign in" and carries the button, rather than blaming the
    * network. lessons/401-is-about-the-caller-not-the-bill.md.
+   *
+   * ---------------------------------------------------------------------------
+   * IT NOW REPORTS WHAT HAPPENED TO THE PRODUCT LIST (P1.9), AND THE THIRD VALUE
+   * IS THE POINT
+   * ---------------------------------------------------------------------------
+   * Every caller before P1.9 was a fire-and-forget `void refreshMaster(t)`: the
+   * cache getting newer is a background convenience and a failed refresh is
+   * already visible as a growing age on the strip. The price screen is the one
+   * caller for which that is not true. A price the server has taken and this
+   * device has NOT re-read means the next bill written here is priced from the
+   * old number and stamped by the server with the new one — `unit_price !=
+   * list_price`, byte-identical to a deliberate override and unrecoverable
+   * afterwards (lessons/cached-master-data-is-a-price-claim.md).
+   *
+   * `skipped` is a REAL case and not a defensive third arm: the guard on the
+   * next line returns immediately when a refresh is already in flight, which is
+   * ordinary — the picker, the boot path and the draft path all start one. A
+   * save landing inside that window would otherwise report success over a list
+   * that was never re-read, silently, which is the exact shape this whole file
+   * spends its comments refusing.
+   *
+   * NOTHING ELSE CHANGES. The existing callers ignore the value, the two lists
+   * are still fetched and saved independently, and a failure is still never
+   * destructive.
    */
-  const refreshMaster = useCallback(async (token: string): Promise<void> => {
+  const refreshMaster = useCallback(async (token: string): Promise<CacheRefresh> => {
     const store = masterStoreRef.current;
-    if (!store || refreshingRef.current) return;
+    if (!store || refreshingRef.current) return "skipped";
     refreshingRef.current = true;
+    /*
+     * THE PRODUCT HALF ONLY. `answered` below is true if EITHER list came back,
+     * which is right for the online/offline decision and wrong for this one:
+     * prices live on products, and a successful seller fetch says nothing about
+     * whether the tier map on this device is current.
+     */
+    let productsRefreshed = false;
     let answered = false;
     let expired = false;
     let failed = false;
@@ -606,6 +662,9 @@ export default function App() {
         // leaving that list another shop's — which is the half-refresh case.
         setProductsFromOtherShop(false);
         answered = true;
+        // Set AFTER the store write, never before it: what the price screen
+        // needs to know is that the rows are on disk, not that a fetch returned.
+        productsRefreshed = true;
       } catch (err) {
         if (isUnauthorized(err)) expired = true;
         else failed = true;
@@ -631,14 +690,15 @@ export default function App() {
     if (expired) {
       setSessionEnded(true);
       setOnline(true); // the server answered, promptly. This is not an outage.
-      return;
+      return productsRefreshed ? "refreshed" : "failed";
     }
     if (answered) {
       setOnline(true);
       setSessionEnded(false);
-      return;
+      return productsRefreshed ? "refreshed" : "failed";
     }
     if (failed) setOnline(false);
+    return "failed";
   }, []);
 
   /* ---------------------------------------------------------------- boot -- */
@@ -1046,6 +1106,148 @@ export default function App() {
     },
     [loadDaily],
   );
+
+  /* ------------------------------------------------------------ prices -- */
+
+  /**
+   * THE PRICE LIST AS THE SHEET DRAWS IT, from the cache this device already
+   * holds. P1.9.
+   *
+   * NO FETCH. Opening this screen asks the server nothing, and that is a
+   * decision rather than an omission: these are the exact rows the cart screen
+   * prices bills from, so showing anything else would put a number on the
+   * prices screen that the bill screen disagrees with. The AGE of the list is
+   * already the master-data strip's job, and the refresh after a save is where
+   * currency is bought.
+   *
+   * `haveProducts` distinguishes "this device has never downloaded a product
+   * list" from "this shop has no products" — the same distinction the picker's
+   * `neverFetched` draws, and for the same reason: they are the same empty
+   * screen with opposite fixes.
+   *
+   * THE FOUR TIERS COME FROM `GRADES` and not from the keys of `prices`, which
+   * is what makes an UNPRICED tier visible at all. Iterating the map would
+   * simply omit a grade nobody has priced, and the screen would then be silent
+   * about the one state that stops a bill (424 product_price_unset).
+   */
+  const priceList = useMemo<PriceScreen>(() => {
+    const rows: PriceProduct[] = products.map((p) => ({
+      id: p.id,
+      code: p.code,
+      name: p.name,
+      tiers: GRADES.map((g) => ({
+        grade: g,
+        // ?? null, never ?? "0.00" and never another tier: an absent row is an
+        // absent price. lessons/fallback-default-is-a-wrong-number.md.
+        price: p.prices[g] ?? null,
+      })),
+    }));
+    return priceListScreen({ role, products: rows, haveProducts: freshness.haveProducts });
+  }, [products, role, freshness.haveProducts]);
+
+  const openPrices = useCallback(() => {
+    // Cleared BEFORE the transition, so the list is what the sheet mounts on
+    // and no previous outcome is ever the first thing read.
+    setPriceOutcome(null);
+    sheet("open_prices");
+  }, [sheet]);
+
+  /**
+   * ONE TIER, WRITTEN, AND THEN THIS DEVICE'S OWN LIST RE-READ.
+   *
+   * THE ORDER IS THE WHOLE FUNCTION. The write is what the shop decided; the
+   * refresh is what this handset knows about it. They are separate facts, they
+   * can disagree, and the sentence on screen is built from BOTH — a save that
+   * the server took and this phone did not re-read reports as `stale`, with the
+   * instruction not to open a bill yet, and never as success
+   * (lessons/cached-master-data-is-a-price-claim.md).
+   *
+   * THE REFRESH IS THE WHOLE-LIST ONE, deliberately, and NOT a patch of the
+   * edited row from the route's response — which does return the full product.
+   * `SqliteMasterStore.saveProducts` is delete-all + insert-all + stamp in ONE
+   * transaction precisely so a list can never wear a timestamp describing data
+   * other than the data that is there; writing one row outside that transaction
+   * would put a fresh stamp on a list that is half old, which its own header
+   * calls strictly worse than no cache at all.
+   *
+   * NOTHING IS QUEUED. A price write is not offline work. The outbox exists for
+   * money already promised at a weighbridge; a price change applied hours later,
+   * after bills have been written at the old number, is worse than one that
+   * plainly did not happen. `unreachable` therefore says "unchanged, try again".
+   */
+  const savePrice = useCallback(
+    async (productId: string, grade: string, price: string): Promise<void> => {
+      const t = tokenRef.current;
+      if (t === null) {
+        setPriceOutcome(priceSaveScreen({ write: { kind: "no_token" }, refresh: "skipped" }));
+        return;
+      }
+      setPriceBusy(true);
+      let write: PriceWrite;
+      let refresh: CacheRefresh = "skipped";
+      try {
+        write = await setProductPrice(t, productId, grade, price);
+        // ONLY after a 2xx. Re-reading the list after a refusal would be honest
+        // but pointless, and it would let a successful refresh dress a failed
+        // write in a reassuring second sentence.
+        if (write.kind === "ok") refresh = await refreshMaster(t);
+      } finally {
+        setPriceBusy(false);
+      }
+      setPriceOutcome(priceSaveScreen({ write, refresh }));
+      /*
+       * The device-global session state, on the same axes every other caller
+       * uses. A 401 is the caller, not the network
+       * (lessons/401-is-about-the-caller-not-the-bill.md); a 403 is neither and
+       * deliberately touches nothing — this account may not move a price, which
+       * says nothing about whether it may weigh and send bills.
+       */
+      if (write.kind === "unreachable") {
+        setOnline(false);
+        return;
+      }
+      setOnline(true);
+      if (write.kind === "http" && write.status === 401) setSessionEnded(true);
+      else if (write.kind === "ok") setSessionEnded(false);
+    },
+    [refreshMaster],
+  );
+
+  /**
+   * THE ACTION ON A PRICE OUTCOME THAT IS NOT A RETRY OF THE WRITE.
+   *
+   * Every `retry` this screen offers means "re-read the list", never "send that
+   * price again" — a 404, a 5xx and a stale cache are all resolved by knowing
+   * what the server currently holds, and re-sending a price whose fate is
+   * unknown is how one edit becomes two. On success the outcome is cleared and
+   * the LIST comes back, which is the honest answer to "what is the price now".
+   */
+  const retryPriceRefresh = useCallback(() => {
+    const t = tokenRef.current;
+    if (t === null) {
+      setPriceOutcome(priceSaveScreen({ write: { kind: "no_token" }, refresh: "skipped" }));
+      return;
+    }
+    setPriceBusy(true);
+    void (async () => {
+      try {
+        /*
+         * `priceRefreshScreen`, NOT `priceSaveScreen`. This button re-reads the
+         * list; it sends no price. Reporting it through the save screen means
+         * passing a `PriceWrite` this code does not have, and the only value to
+         * hand is `ok` — which on a failed refresh renders "saved on the
+         * server" over a write that may have been REFUSED. See the defect note
+         * at priceRefreshScreen.
+         *
+         * null means the re-read landed: the outcome is cleared and the LIST
+         * comes back, now carrying the values just fetched.
+         */
+        setPriceOutcome(priceRefreshScreen(await refreshMaster(t)));
+      } finally {
+        setPriceBusy(false);
+      }
+    })();
+  }, [refreshMaster]);
 
   /**
    * The office has added the missing price; release every parked bill at once
@@ -2011,6 +2213,43 @@ export default function App() {
           ),
         };
 
+      /*
+        THE PRICE LIST (P1.9), or the outcome of the last save. `priceOutcome`
+        is payload and this stack entry is visibility, exactly like
+        `pendingChange` above — but the guard is the opposite way round and
+        there is no null case to defend: a null outcome is the NORMAL state and
+        means "show the list", which is a screen about something.
+      */
+      case "prices":
+        return {
+          animation: "slide",
+          back: closeTopSheet,
+          content: (
+            <PricesSheet
+              screen={priceOutcome ?? priceList}
+              busy={priceBusy}
+              onClose={closeTopSheet}
+              /* Every retry on this screen re-reads the LIST. It never re-sends
+                 a price whose fate is unknown — see retryPriceRefresh. */
+              onRetry={retryPriceRefresh}
+              /*
+               * Closes the sheet to reveal the login screen, exactly as the
+               * daily report does. It cannot sign in itself, and it must not
+               * re-send the price afterwards: the person who signs back in may
+               * be somebody else, and a write that replayed on their session
+               * would attribute a price change to an account that never made one.
+               */
+              onSignIn={closeTopSheet}
+              /* Drop the outcome and show the list again, WITHOUT closing the
+                 sheet: an owner repricing four tiers should not have to reopen
+                 the screen between each one. The list it comes back to is the
+                 refreshed one, because the refresh already ran. */
+              onBack={() => setPriceOutcome(null)}
+              onSave={(productId, grade, price) => void savePrice(productId, grade, price)}
+            />
+          ),
+        };
+
       case "bills":
         return {
           animation: "slide",
@@ -2072,6 +2311,33 @@ export default function App() {
             <Pressable style={styles.dailyBtn} onPress={openDaily}>
               <Text style={styles.dailyBtnText}>ยอดวันนี้ ›</Text>
             </Pressable>
+            {/*
+              PRICES (P1.9). NOT OFFERED TO EVERY ACCOUNT, and it is the ยกเลิกบิลนี้
+              rule rather than the ยอดวันนี้ rule above — the paragraph beside that
+              button is the argument for the opposite case, so the two are worth
+              reading together.
+
+              ยอดวันนี้ opens a READ. It costs one refused GET and one plain sentence,
+              so gating it on a claim that is up to an hour stale would lock the owner
+              out of their own takings for no gain. This button opens a screen whose
+              purpose is a WRITE that `require_admin` refuses, and a staff session
+              pressing save would learn its account cannot do this by watching a save
+              fail — which is precisely how they must not find out.
+
+              So `mayEditPrices` decides, and it is the SAME predicate the sheet's own
+              render uses (priceListScreen takes `role`), which is what stops the
+              button and the screen behind it from disagreeing. It fails OPEN on an
+              unknown role, and the 403 branch of priceSaveScreen is where that lands
+              — a plain sentence, no red, no sign-in button.
+
+              With no token there is no role and no shop to price, and the login
+              screen is already the whole body of the app.
+            */}
+            {token !== null && mayEditPrices(role) ? (
+              <Pressable style={styles.dailyBtn} onPress={openPrices}>
+                <Text style={styles.dailyBtnText}>ราคารับซื้อ ›</Text>
+              </Pressable>
+            ) : null}
             {/*
               SIGN OUT (R1b). Offered only while there IS a session — with no
               token the login button is already the whole screen, and a sign-out
