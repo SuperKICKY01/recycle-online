@@ -57,6 +57,90 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.23 COMMIT 1 — THE THREE RECORDED SCREEN DEFECTS, FIXED BY CAUSE. DONE
+2026-08-27.** This supersedes the B1 entry below as the current phase; that
+entry's record stands unchanged. **NO SHA IS GIVEN**, deliberately — the work
+carrying this sentence is uncommitted at the moment it is written, so the only
+sha available is the one that does NOT contain it
+(`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT"). This is the FIRST commit
+of `ROADMAP.md § P1.23` (DONE WHEN item 1); the deferred drawings and the
+consistency pass are LATER commits and are untouched.
+
+**EACH DEFECT WAS RE-DERIVED LIVE BEFORE ANY EDIT — the records are clues, not
+sources. Two were still live and one had already been repaired:**
+
+- **The save-confirmation contradiction — STILL LIVE, now FIXED BY CAUSE.**
+  `mobile/app/ConfirmSaveDialog.tsx` still drew, for a grade-less seller, a red
+  box saying the bill WAITS for the office beside an UNCONDITIONAL amber box
+  saying it enters the system IMMEDIATELY (`:88-92` and `:102-104`, the record's
+  line numbers rotted). The "does it enter now" claim now comes from the grade,
+  in the pure `mobile/src/master/saveConfirmNotice.ts`, and the irreversibility
+  is the one thing both branches share — so the two claims can never co-occur.
+  Proven by the new `npm run prove:saveconfirm`, which asserts the forbidden
+  pairing NEGATIVELY over the concatenation in draw order with the shipped
+  composition kept as a literal control. Closed by dated supersession in
+  `OPEN_ITEMS.md § Code debt found and left in place`.
+- **The `forbidden` false-permission promise — STILL LIVE, now FIXED.**
+  `sellerCreateNotice.ts`'s `admin_required` wording said `ให้เปิดสิทธิ์ให้บัญชีนี้`
+  — a permission the two-value role schema (`admin`/`staff`) has no verb for; it
+  now names the ROLE, `ให้ตั้งบัญชีนี้เป็นผู้ดูแลระบบ`. `proveSellerNotice` N6
+  asserts it by cause. Closed by dated supersession. **A SIBLING of the same
+  class was found and LEFT — surfaced, not silently fixed:** the identical
+  `เปิดสิทธิ์` promise on the bill-send 403 path (`parkedReason.ts:546`), a fourth
+  screen outside this commit's three-screen scope, recorded as new code debt.
+- **The two disagreeing unsent counts — ALREADY FIXED, closed by supersession,
+  NO REPAIR INVENTED.** Re-derived by DRIVING it: `App.tsx onSignOut` and the
+  sign-out sheet read ONE `OwedByKind` off the registry, and the strip's
+  `pending` is `unsentBreakdown().mine` — all owner-filtered. `proveOwedSurfaces`
+  W3 and `proveStatusCounts` 4d both green. Closed in this file's `§ The two
+  on-screen unsent counts still disagree`; it was resolved by P1.7 step 7 +
+  P1.8b, and the record that said "STILL OWED" was a stale report, not a source.
+
+**THE OBSERVATIONS, every command bare with its status read in the same
+invocation. No server, no device: wording and its proof.**
+
+- Both TypeScript programs exit 0, each run bare — `npm run typecheck` and
+  `npm run typecheck:app` (before the edits and after).
+- `npm run prove:saveconfirm` (new) exit 0 TWICE, no reseed; the disproof —
+  staging the shipped contradiction back into the module — reddened exactly S1's
+  NEGATIVE and PAIRING cells, 2 of them, no neighbours.
+- `npm run prove:sellernotice` exit 0 TWICE; the disproof — reverting to the
+  shipped `เปิดสิทธิ์` — reddened exactly the two named N6 cells, no neighbours.
+- `npm run prove:owedsurfaces` and `npm run prove:statuscounts` exit 0 — driving
+  defect 3's already-fixed state.
+- `npm run prove:sellercreate` exits 2 (could-not-run: it requires a live server
+  bound to a scratch DB, which this commit does not run), consistent both runs
+  and unrelated to this change.
+- The staged set EQUALS the declared file set (below), read bare and staged by
+  explicit path.
+- `verify_citations.ps1 -Source @('PROJECT_STATUS.md','OPEN_ITEMS.md')` (call
+  operator so `[string[]]` binds, SOURCES=2 read first): CITATIONS=272,
+  BROKEN=6. All six broken are PRE-EXISTING and confirmed present in HEAD, none
+  touched by this commit. The five citations this commit added to
+  `PROJECT_STATUS.md` all resolve (124→129); `OPEN_ITEMS.md` gained 0 parsed
+  citations (143 unchanged — its additions are bare path refs). One added
+  citation FIRST wrapped across two lines (the pin-a-claim footgun); it was
+  caught by this run and reflowed onto one line before BROKEN was read as 6.
+- `verify_shared_checks.py` exit 0; `build_all_lessons.py --check` exit 0, no
+  `--write`.
+
+**FILE SET, eight paths:** `mobile/src/master/saveConfirmNotice.ts` (new),
+`mobile/src/proof/proveSaveConfirm.ts` (new), `mobile/app/ConfirmSaveDialog.tsx`,
+`mobile/package.json`, `mobile/src/master/sellerCreateNotice.ts`,
+`mobile/src/proof/proveSellerNotice.ts`, `OPEN_ITEMS.md`, `PROJECT_STATUS.md`.
+
+**IS A LESSON OWED? NO, BY `CLAUDE.md § Workflow` "Two homes, one test".**
+Nothing here is a property of this box — no codepage, shell or line-ending trap —
+so no footgun. Both fixes RE-APPLY existing lessons rather than teaching a new
+one: `lessons/correct-classification-can-still-render-as-an-error.md` (one card,
+two renderers; derive the wording from the cause) and
+`lessons/403-is-about-what-the-caller-may-do.md` (name the role, never a
+permission). The `parkedReason` sibling is a new INSTANCE of an already-recorded
+class, surfaced as code debt per _a report is a clue, not a source_, not a new
+lesson.
+
+---
+
 **B1 — DEFINE THE UX REWORK, AND MINT P1.8b's DONE WHEN. A PLANNING PHASE. DONE
 2026-08-27.** This supersedes the P1.9 entry below as the current phase; that
 entry's record stands unchanged. **NO SHA IS GIVEN**, deliberately — the work
@@ -3903,6 +3987,24 @@ recoverable; a mispriced load is neither. Recorded at the reader itself, in
 `SqliteMasterStore.ts`'s `readStamp`, so it is met by whoever would relax it.
 
 ### The two on-screen unsent counts still disagree, and the operator still sees the wrong one
+
+**RESOLVED 2026-08-27 (P1.23 commit 1) — RE-DERIVED FIXED, NO REPAIR INVENTED.
+This section, and the P1.7-block duplicate below (`THE TWO ON-SCREEN UNSENT
+COUNTS NOW DISAGREE BY DESIGN`), are both closed by this note; the originals
+stand unchanged and were true when written.** The defect was that the status
+strip and the sign-out gate both read the UNFILTERED `listByState` total,
+including bills belonging to other accounts. It was resolved across P1.7 step 7
+(the status strip split) and P1.8b (the owed registry): `App.tsx onSignOut` and
+the sign-out sheet now read ONE `OwedByKind` off the registry — the SAME object,
+`bill_send`'s count carrying the owner filter — and the strip's `pending` is
+`unsentBreakdown().mine`, all owner-filtered so no count carries another
+account's rows. Driven, not argued: `npm run prove:owedsurfaces` W3 (the shipped
+gate/sheet disagreement over one parked bill: button offered THEN, not offered
+NOW, from the same store) and `npm run prove:statuscounts` 4d (B can sign out
+over A's parked bills, and is refused over their own) both exit 0. The phase
+record below that said "STILL OWED" was a stale report, not a source
+(`CLAUDE.md § Workflow` "A REPORT IS A CLUE, NOT A SOURCE"). The paragraphs that
+follow are the original 2026-08-11 record, left verbatim.
 
 **UNCHANGED BY THIS PHASE AND STILL OWED.** `pendingQueueSnapshot` counts what
 CAN send and carries the owner filter; `listByState` is `WHERE sync_state = ?`

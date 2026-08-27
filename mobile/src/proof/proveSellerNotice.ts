@@ -524,6 +524,29 @@ function n6Meaning(rows: readonly { kind: string; notice: SellerCreateNotice; te
     "N6: `forbidden` names the shop OWNER, who can change a role",
     forbidden.includes("เจ้าของร้าน"),
   );
+  /*
+   * THE ACTION IT NAMES IS A ROLE, NOT A PERMISSION. The role schema is two
+   * values (users_role_check is admin/staff, not a permission system), so the
+   * owner's only move is making the account an admin — `ผู้ดูแลระบบ`, the server's
+   * own word. The shipped wording said `ให้เปิดสิทธิ์ให้บัญชีนี้`, promising a
+   * permission the schema has no verb for, and a wrong instruction the office
+   * ACTS ON is worse than a vague one (OPEN_ITEMS "the `forbidden` SENTENCE
+   * PROMISES SOMETHING THE SYSTEM CANNOT DO"). Presence sibling + negative.
+   */
+  check(
+    "N6: `forbidden` names the ROLE the owner can set the account to (ผู้ดูแล)",
+    forbidden.includes("ผู้ดูแล"),
+    forbidden,
+  );
+  check(
+    "N6: and it does NOT promise `เปิดสิทธิ์` — a permission the two-value schema cannot grant",
+    !forbidden.includes("เปิดสิทธิ์"),
+    forbidden,
+  );
+  check(
+    "N6: CONTROL — the banned phrase IS detectable, so the absence above is not vacuous",
+    "ยังไม่ได้เพิ่มผู้ขายรายนี้ — ต้องแจ้งเจ้าของร้านให้เปิดสิทธิ์ให้บัญชีนี้".includes("เปิดสิทธิ์"),
+  );
   check(
     "N6: and offers no button — no tap on this device grants a role",
     noticeOf("forbidden")?.action === null,
@@ -823,6 +846,14 @@ async function main(): Promise<number> {
   console.log(failures === 0 ? "ALL CELLS PASSED" : `FAILED — ${String(failures)} check(s)`);
   return failures === 0 ? 0 : 1;
 }
+
+/*
+ * PRESET TO RED, per lessons/a-default-exit-code-is-a-default-verdict.md. A
+ * top-level `await main()` that never settles drains node's event loop and the
+ * process exits with the DEFAULT code 0 — a stall would print no exit line and
+ * report GREEN. Set before the await so only main() completing can clear it.
+ */
+process.exitCode = 1;
 
 const exitCode = await main().catch((err: unknown) => {
   console.log("");

@@ -1482,6 +1482,27 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   **WHAT MUST SURVIVE INTO THE PLANNED UX REWORK IS THE STRUCTURE, NOT THE
   WORDING.** A rework that rewrites both sentences without knowing the cause
   reproduces the contradiction in new words.
+  **RESOLVED 2026-08-27 — REPAIRED (P1.23 commit 1), BY CAUSE AND NOT BY
+  WORDING.** Re-derived live first: the two boxes were still present and still
+  contradicting, at `mobile/app/ConfirmSaveDialog.tsx:88-92` (red park, grade-
+  conditional) and `:102-104` (amber warn, unconditional `ส่งเข้าระบบทันที`) — the
+  record's `:86-88`/`:99-101` had rotted. THE CAUSE was that the "does the bill
+  enter the system now" claim was baked UNCONDITIONALLY into the amber line while
+  a separate conditional red line said the opposite. The decision now lives in
+  the pure `mobile/src/master/saveConfirmNotice.ts`: that claim is DERIVED FROM
+  THE GRADE (immediate for a graded seller; "waits, not sent yet" for a
+  grade-less one, `:98`) and the irreversibility (`แก้ไขไม่ได้ — หากผิดต้องยกเลิกบิล
+  และออกใบใหม่`) is the one thing shared by both. The claim it enters now is
+  produced by ONE branch and the claim it waits by the OTHER, so the two can
+  never appear on one card; the dialog renders what the module returns
+  (`ConfirmSaveDialog.tsx:108`). Proven by `npm run prove:saveconfirm` (new,
+  registered in `mobile/package.json`): it asserts the forbidden pairing
+  NEGATIVELY over the concatenation in draw order, with the SHIPPED composition
+  kept as a literal control (`contradicts()` fires on it — `enters=true
+  waits=true`) and presence siblings against silence. Green twice, no reseed; the
+  disproof (staging the shipped contradiction back into the module) reddened
+  exactly S1's NEGATIVE and PAIRING cells, 2 of them, no neighbours. Both
+  TypeScript programs exit 0.
 
 - **THE `forbidden` SENTENCE PROMISES SOMETHING THE SYSTEM CANNOT DO — found
   2026-08-17, NOT REPAIRED.** `mobile/src/master/sellerCreateNotice.ts` tells
@@ -1499,6 +1520,48 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   it is wrong.
   *Not done:* the wording should speak of changing a ROLE rather than opening
   a permission, and must not promise a granularity the schema does not have.
+  **RESOLVED 2026-08-27 — REPAIRED (P1.23 commit 1).** Re-derived live first: the
+  sentence was still assembled and still shown — the `YARD_FORBIDDEN.admin_required`
+  entry in `mobile/src/master/sellerCreateNotice.ts` built
+  `ยังไม่ได้เพิ่มผู้ขายรายนี้ — ต้องแจ้งเจ้าของร้านให้เปิดสิทธิ์ให้บัญชีนี้` from
+  `ASK_THE_OWNER` + `ให้เปิดสิทธิ์ให้บัญชีนี้`. The wording now names the ROLE the
+  owner can set the account to, not a permission to open:
+  `ต้องแจ้งเจ้าของร้านให้ตั้งบัญชีนี้เป็นผู้ดูแลระบบ` (`:174`). `ผู้ดูแลระบบ` is the
+  server's own word for the admin role (`mobile/src/proof/fakes.ts`'s 403 body,
+  `required_role: admin`). A fourth wording rule was added to the file, and
+  `proveSellerNotice.ts` N6 now asserts, by cause, that `forbidden` names the ROLE
+  (`ผู้ดูแล`) and does NOT promise `เปิดสิทธิ์`, with a literal control that the
+  banned phrase is detectable. `npm run prove:sellernotice` green twice; the
+  disproof (reverting the wording to the shipped `เปิดสิทธิ์`) reddened exactly
+  those two N6 cells, no neighbours. Both TypeScript programs exit 0.
+  **THE SIBLING IS NOT CLOSED — see the entry directly below.**
+
+- **THE SAME `เปิดสิทธิ์` FALSE-PERMISSION PROMISE SURVIVES ON THE BILL-SEND 403
+  PATH — found 2026-08-27 during P1.23 commit 1's sweep, NOT REPAIRED, and it is
+  the CLASS of the entry above.** `mobile/src/sync/parkedReason.ts:546`
+  (`SUBMIT_REFUSED.what`, line re-derived today) builds
+  `บัญชีนี้ไม่มีสิทธิ์ส่งบิลเข้าระบบ — ต้องแจ้งเจ้าของร้านให้เปิดสิทธิ์` — the
+  identical "open a permission" the two-value role schema cannot grant, one
+  surface over (the send-path 403 notice on the bill card). The exact `เปิดสิทธิ์`
+  phrase appears in EXACTLY these two sites across `mobile/` (measured today), so
+  fixing only `sellerCreateNotice.ts` would be fixing the instance and leaving the
+  class — this repo's named failure. It is a FOURTH screen, outside P1.23 commit
+  1's stated three-screen scope, so it is SURFACED here rather than silently
+  fixed (silently widening a scoped commit is the same failure from the other
+  side). The `forbiddenReason` tables above it (`:340` `void_bill`, `:371`
+  `daily_report`) are already clean: they say `ไม่มีสิทธิ์ทำ X — ต้องแจ้งเจ้าของร้าน`
+  without promising a permission.
+  *Not urgent:* like its sibling, this path is UNREACHABLE on today's server —
+  `POST /bills` is open to staff
+  (`lessons/403-is-about-what-the-caller-may-do.md`, "not reachable on today's
+  server"), so nobody can currently be handed the wrong instruction.
+  *Not done:* rewrite `SUBMIT_REFUSED.what` to name the ROLE (making the account
+  an admin) rather than a permission, exactly as `sellerCreateNotice.ts`'s
+  `admin_required` entry now does, and add the negative assertion (no `เปิดสิทธิ์`)
+  where the send-forbidden card is proven (`proveNotice`, which already sweeps the
+  forbidden card for owner-naming and the no-false-promise rule). The owner can
+  fold it into P1.23's later consistency pass or authorise it as a follow-up to
+  this commit.
 
 - **A UVICORN PAIR HAS BEEN SERVING THIS REPOSITORY'S OWN API ON 127.0.0.1:8137
   SINCE 2026-08-07, RUNNING CODE THAT PREDATES SEVERAL COMMITS — and two of the

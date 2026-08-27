@@ -16,6 +16,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { pricingProvenanceLine } from "../src/master/freshness";
 import type { PricingProvenance } from "../src/master/freshness";
+import { saveConfirmNotice } from "../src/master/saveConfirmNotice";
 
 /**
  * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
@@ -55,6 +56,15 @@ export function ConfirmSaveDialog({
   onConfirm,
 }: Props) {
   const pricedLine = pricedFrom === null ? null : pricingProvenanceLine(pricedFrom);
+  /*
+   * WHAT THIS BILL'S FATE IS, in words, decided by the ONE fact that decides it.
+   * The red "waits for the office" line and the amber "cannot edit" line used to
+   * be two independent renderers here and contradicted each other for a seller
+   * with no grade. Both now come from one pure function under a proof, so the
+   * claim that the bill enters the system now and the claim that it waits can
+   * never appear on one card. See src/master/saveConfirmNotice.ts.
+   */
+  const fate = saveConfirmNotice(sellerGrade);
   return (
     <View style={styles.backdrop}>
       <View style={styles.card}>
@@ -85,11 +95,7 @@ export function ConfirmSaveDialog({
           </Text>
         </View>
 
-        {sellerGrade === null ? (
-          <Text style={styles.park}>
-            ผู้ขายรายนี้ยังไม่มีเกรด — บันทึกได้ แต่บิลจะค้างรอสำนักงานกำหนดเกรดก่อนจึงจะส่งเข้าระบบ
-          </Text>
-        ) : null}
+        {fate.park !== null ? <Text style={styles.park}>{fate.park}</Text> : null}
 
         {/*
           The prices on this bill came from data that was not current. Said
@@ -99,9 +105,7 @@ export function ConfirmSaveDialog({
         */}
         {pricedLine !== null ? <Text style={styles.priced}>{pricedLine}</Text> : null}
 
-        <Text style={styles.warn}>
-          บันทึกแล้วจะส่งเข้าระบบทันที แก้ไขไม่ได้ — หากผิดต้องยกเลิกบิลและออกใบใหม่
-        </Text>
+        <Text style={styles.warn}>{fate.warn}</Text>
 
         <View style={styles.buttons}>
           <Pressable style={[styles.btn, styles.cancel]} onPress={onCancel} disabled={busy}>

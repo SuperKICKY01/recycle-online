@@ -142,8 +142,8 @@ type SiteWording = {
 /**
  * WHAT A 403 SAYS, per server code, at THIS site.
  *
- * Three rules, all of them things the wrong wording would cost real money or
- * real trust — the same three `sync/parkedReason.ts` states for `forbiddenReason`
+ * Four rules, all of them things the wrong wording would cost real money or
+ * real trust — the same rules `sync/parkedReason.ts` states for `forbiddenReason`
  * and for the same reasons:
  *
  *   1. It never says "error". Nothing is broken. This account simply may not do
@@ -152,6 +152,13 @@ type SiteWording = {
  *      with a person in it: the same account comes back with the same role.
  *   3. It names the shop OWNER. Not support, who cannot grant a role, and not
  *      the office, who set prices and grades.
+ *   4. It names the ROLE the owner can change it to, and NEVER a permission to
+ *      "open". The role schema is two values — `users_role_check` is
+ *      `admin`/`staff`, not a permission system — so the only move that resolves
+ *      this is making the account an admin (`ผู้ดูแลระบบ`, the server's own word
+ *      for it). Saying "open a permission for this account" named an action the
+ *      schema has no verb for, and a wrong instruction the office ACTS ON is
+ *      worse than a vague one (the 2c-6 finding).
  *
  * AND THE FALLBACK DOES NOT PRINT THE CODE, which is where this DIVERGES from
  * `billNotice`, deliberately. That function appends `รหัส: <code>` for an
@@ -163,7 +170,8 @@ type SiteWording = {
 const YARD_FORBIDDEN: Record<string, { headline: string; what: string }> = {
   admin_required: {
     headline: "บัญชีนี้ไม่มีสิทธิ์เพิ่มผู้ขาย",
-    what: `${NOT_CREATED} — ${ASK_THE_OWNER}ให้เปิดสิทธิ์ให้บัญชีนี้`,
+    // Rule 4 above: name the ROLE, not a permission the schema cannot grant.
+    what: `${NOT_CREATED} — ${ASK_THE_OWNER}ให้ตั้งบัญชีนี้เป็นผู้ดูแลระบบ`,
   },
 };
 
