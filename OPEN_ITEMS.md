@@ -2812,6 +2812,14 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   THE DECISION is which repair: resolve the id at send time, run the release on
   every pass as well, or have the picker hand out the SERVER id once there is one.
   NOTHING IS AUTHORISED.
+
+  **RESOLVED 2026-08-27 (B1): RESOLVE THE ID AT SEND TIME.** The owner's answer:
+  the bill carries the local seller id and the sender swaps in the server id once
+  it exists, so the picker may quote a seller mid-settle without a 422 ever
+  reaching a terminal bill — the window is safe by construction. The same
+  sentence lands at `ROADMAP.md § P1.23` "resolve the id at send time", where a
+  builder reads it at the step. The paragraph above is left verbatim, as every
+  supersession in this repo is.
 - **A CRASH BETWEEN THE SELLER SETTLE AND THE BILL RELEASE STRANDS THE BILLS.**
   Raised 2026-08-25 by P1.8b GATES, which built both halves. Recorded against the
   design at
@@ -2823,6 +2831,14 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   is exactly this subject: an in-progress state nothing polls. THE DECISION is
   whether this design owes a startup sweep, and no existing `recover` looks for a
   bill parked behind a settled seller. NOTHING IS AUTHORISED.
+
+  **RESOLVED 2026-08-27 (B1): YES, A STARTUP SWEEP IS OWED.** The owner's answer:
+  recover a bill parked behind an already-settled seller. It is named as a FIFTH
+  outstanding item in P1.8b's DONE WHEN — not one of the seller-kind criteria,
+  owed before P1.8b closes. It is named at
+  `ROADMAP.md § P1.8` "A FIFTH ITEM, AND IT IS NOT ONE OF THE SELLER-KIND CRITERIA".
+  The sweep is DESIGN-authorised here and BUILT later; its shape is the lesson the
+  paragraph above already cites. The paragraph is left verbatim.
 - **A LOCAL SELLER HELD FOR REVIEW HOLDS THE SIGN-OUT GATE SHUT FOR EVER.** Raised
   2026-08-25 by P1.8b GATES, which widened the gate to every registry kind.
   Recorded against the design at
@@ -2832,6 +2848,11 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   asking the operator to wait for something that cannot arrive. Conditional on an
   invariant violation the design holds unreachable, which is why it is a decision
   and not a defect. NOTHING IS AUTHORISED.
+
+  **RESOLVED 2026-08-27 (B1): ACCEPTED AS UNREACHABLE.** The owner's answer: no
+  build obligation, conditional on the invariant violation the design holds
+  unreachable behind two server guards. **If that invariant ever becomes
+  reachable, this reopens.** The paragraph above is left verbatim.
 - **TWO OFFLINE HANDSETS CAN MINT THE SAME SELLER CODE, AND THE RULE THE P1.18
   CRITERIA MANDATE THEN BINDS ONE OF THEM TO THE OTHER'S SELLER.** Raised
   2026-08-18 by the independent review of P1.18's acceptance criteria, and filed

@@ -57,6 +57,70 @@ not read the green as re-run.**
 
 ## Current phase
 
+**B1 — DEFINE THE UX REWORK, AND MINT P1.8b's DONE WHEN. A PLANNING PHASE. DONE
+2026-08-27.** This supersedes the P1.9 entry below as the current phase; that
+entry's record stands unchanged. **NO SHA IS GIVEN**, deliberately — the work
+carrying this sentence is uncommitted at the moment it is written, so the only
+sha available is the one that does NOT contain it
+(`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT").
+
+**WHAT IT PRODUCED. No code** — `git status --porcelain=v1 -- mobile server
+packages desktop tools` was empty before and after. Three documents changed:
+
+- **S10's undefined gate became a defined step.** `ROADMAP.md § P1.23` — the
+  mobile UX rework — is minted, with a bar the owner settled, the B1 screen
+  inventory as its SET, and an observable DONE WHEN. S10 is unchanged: it still
+  defers, and P1.23 is what it defers to. The P-count rose 37 → 38 and no
+  S-number was minted.
+- **P1.8b gained a DONE WHEN.** The split of 2026-08-17 had left it a status and
+  no criterion (`OPEN_ITEMS.md § Decisions open` "P1.8b HAS NO DONE WHEN"). The
+  new criterion is the seller-kind set at its stated cost, partitioned by what
+  each outstanding piece waits on — the rework (P1.23), a handset pass, a
+  scratch-DB server pass — plus a fifth item that is not a criterion: the startup
+  sweep the crash-window finding now owes.
+- **Three owner decisions closed the three P1.8b findings**, by dated
+  supersession in `OPEN_ITEMS.md § Decisions open — the owner's, not the code's`:
+  the settle-to-refresh window is repaired by RESOLVING THE ID AT SEND TIME (so
+  the picker may quote a seller mid-settle without a terminal bill); the crash
+  window OWES A STARTUP SWEEP; and the held-for-review gate is ACCEPTED AS
+  UNREACHABLE, reopening only if the invariant it rests on becomes reachable.
+
+**WHAT STAYS OPEN, said so it is not read as settled:** the two homing questions
+— whether the shop-owner dashboard is a new mobile screen or an extension of
+`DailyScreen`, and whether the settings surface homes on the phone or the
+desktop — which P1.23's DONE WHEN item 4 carries as conditional; and the TAP_MIN
+queue line in `OPEN_ITEMS.md § Code debt found and left in place`, which names
+two of the three files that define the constant and is short by one
+(`mobile/app/AddSellerSheet.tsx`), left recorded and not fixed because it is out
+of this commit's purpose.
+
+**THE OBSERVATIONS, every command bare with its status read in the same
+invocation.** _Recorded at the close of B1, after the edits:_
+
+- `git status --porcelain=v1 -- mobile server packages desktop tools` — empty,
+  no code moved.
+- The staged set EQUALS the declared three-path file set: `ROADMAP.md`,
+  `PROJECT_STATUS.md`, `OPEN_ITEMS.md`.
+- P-count re-derived by `^### P<n>.<m>` over `ROADMAP.md`: 37 before, 38 after —
+  rose by exactly one, `P1.23`, no S-number.
+- `verify_citations.ps1` over all seven citing sources, SOURCES read first:
+  SOURCES=7, CITATIONS 543 → 557, BROKEN 6 → 6. The rise is exactly what B1 added
+  per file — ROADMAP 153 → 159, PROJECT_STATUS 118 → 124, OPEN_ITEMS 141 → 143 —
+  and every added citation resolves; the six broken are the pre-existing ones B1
+  did not touch and was out of scope to fix.
+- `verify_shared_checks.py` exit 0 (IDENTICAL: 4 items); `build_all_lessons.py
+  --check` exit 0 (CHECK OK, 59 lesson files), no `--write`.
+
+**IS A LESSON OWED? NO, BY `CLAUDE.md § Workflow` "Two homes, one test".** Nothing
+here is a property of this box — no codepage, shell or line-ending trap — so no
+footgun. And this planning phase made no mistake-and-fix and uncovered no
+non-obvious reusable constraint: the two small record-vs-artefact gaps it hit
+(the brief citing OPEN_ITEMS for the two-unsent-counts defect that in fact lives
+in this file, and the TAP_MIN queue line short by one) are instances of the
+already-recorded _a report is a clue, not a source_ rule, not new lessons.
+
+---
+
 **P1.9 — PRICE EDITING ON THE PHONE. BUILT, PROVEN, AND OBSERVED ON A HANDSET.
 `DONE WHEN` MET 2026-08-26.** This supersedes the P1.8b GATES entry below as the
 current phase; that entry's record stands unchanged. **NO SHA IS GIVEN**,

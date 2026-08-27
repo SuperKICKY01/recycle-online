@@ -2033,6 +2033,47 @@ sentence derived from the level.** The two belong together — a refill with no 
 to see its result is a request whose only observable is in the phase after — and
 that phase is also where `EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL` is met.
 
+**P1.8b's DONE WHEN — MINTED 2026-08-27 (B1), because the split of 2026-08-17
+left P1.8b a status and no criterion** (`OPEN_ITEMS.md § Decisions open` "P1.8b HAS NO DONE WHEN").
+P1.8a closed the one DONE WHEN above as written, and it says nothing about
+offline; three phases of offline work then landed against nothing that could say
+when they were finished. This ends that. **P1.8b is DONE when every criterion in
+the seller-kind set below — `THE SELLER-KIND CRITERIA, DERIVED FROM THE DESIGN
+ABOVE` — passes at its stated cost.** The SET is the SOURCE and no count is
+written here. Re-derived at B1 from the three landed phases' own enumerations,
+the outstanding work is partitioned by what each piece waits on:
+
+- **Waits on the UX rework (P1.23):** `THE-RESERVE-LEVEL-IS-REQUIRED-AND-EVERY-VALUE-HAS-ITS-OWN-SENTENCE`
+  in full, and `THE-LOCAL-ROW-SURVIVES-A-REFRESH-THAT-DELETES` cells 3 and 4 —
+  the reserve sentences and the picker union, which are the drawing S10 defers.
+  **CELL 4 NO LONGER WAITS ON A DECISION:** the settle-to-refresh repair is
+  settled (finding below, 2026-08-27) — the sender swaps the local seller id for
+  the server id at send — so the picker may quote a seller mid-settle without a
+  422 ever reaching a terminal bill.
+- **Waits on a handset device pass:** `EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL`
+  parts 2 and 3 — the sheet and the strip read on a phone and reported verbatim
+  in Thai, under the bundle and server attestations
+  `CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING" requires.
+- **Waits on a scratch-database server pass:** `THE-TOKEN-IS-ON-THE-WIRE` cell 2,
+  and `A-BILL-BEHIND-AN-UNCREATED-SELLER-IS-NEVER-OFFERED` cell 6's server half —
+  a released bill reaching a real `POST /bills` with the `doc_no_counters` row
+  MOVING, staged once on scratch because each run burns reserved code space
+  permanently.
+- **A FIFTH ITEM, AND IT IS NOT ONE OF THE SELLER-KIND CRITERIA:** a startup
+  sweep that recovers a bill parked behind an already-settled seller — the crash
+  window (finding below, 2026-08-27: a sweep is owed). It is DESIGN-authorised
+  here and BUILT later; its shape is
+  `lessons/README.md § Lessons` "sync-state-needs-startup-recovery.md". It is
+  owed before P1.8b closes.
+- **Already met and not re-opened:** every other criterion in the set, at its
+  own recorded entry — the headless criteria proven twice at P1.8b MOBILE and
+  GATES, the server criteria proven on a scratch database at P1.8b SERVER.
+
+When all of these are green at their stated cost, P1.8b is DONE. **NOT PINNED TO
+A SHA:** this block ships in the B1 commit, so HEAD names the commit that does
+not contain it; the date stands, anchor it in a later pass
+(`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT").
+
 **P1.8b — OFFLINE SELLER CREATION, AND IT IS A SUBSYSTEM RATHER THAN A
 FOLLOW-UP.** Measured 2026-08-17 by a read-only survey. The split is not
 arbitrary, and the reason is that every item below is a change to something the
@@ -6499,6 +6540,75 @@ same output on a positive case, and only the negative case separates them. The
 SET is the three signals the owner named, its SOURCE this entry, and no count is
 written into the criterion because the set is enumerated in the sentence above
 it.
+
+### P1.23 — The mobile UX rework: the deferred screens, drawn to one bar
+
+**What it is.** The phase S10 has always pointed at and never defined — the
+drawing pass every new mobile screen has been deferred to. It fixes the screen
+defects recorded before it, draws the surfaces whose state has now settled,
+introduces the shared presentation layer the app has never had, and makes one
+consistency pass to an agreed bar. It touches no proven logic: every screen
+already opens "THIS FILE DECIDES NOTHING" and every wording and state decision
+lives under `mobile/src/` behind headless proofs, so this redraws presentation
+only. **Minted 2026-08-27 by B1; this is the definition S10 lacked, and S10
+itself is unchanged — it still defers, and this is what it defers to.**
+
+**THE BAR — settled with the owner 2026-08-27 (B1).** A 5am yard tool:
+legibility at arm's length in sun; wet-hand tap targets (`TAP_MIN` = 56 is the
+stated standard, honoured in a few controls and undercut across most others, and
+the whole prices screen declares no floor at all); refusals in Thai derived from
+the cause; calm offline states; one consistent vocabulary. NOT animation,
+branding, onboarding tours, or consumer-app polish. Order of work: recorded
+defects first, deferred drawings second, one consistency pass last. **The bar is
+the owner's and can be raised or lowered; this records where it stands.**
+
+**Depends on:**
+- The internals each surface reads — the seller kind, the park and the reserve
+  level (all landed); the dashboard's aggregation by `created_by` (buildable,
+  not built) IF the owner homes the dashboard here; the phone's `/shop` settings
+  calls IF the owner homes the settings surface here.
+- **The settle-to-refresh repair, settled at B1: resolve the id at send time** —
+  the bill carries the local seller id and the sender swaps in the server id
+  once it exists, so the picker may quote a seller mid-settle without a 422 ever
+  reaching a terminal bill. Without this the picker could not be built as its
+  criterion is written; with it, the picker is safe by construction.
+
+**Unblocks:** the head of the mobile queue and, under S8, the whole client
+chain — P1.8b's picker, reserve and surfaces criteria close; the camera phone
+half gains its screen; P1.21's drawing half; and every screen S10 holds.
+
+**DONE WHEN** — the SET is the B1 screen inventory, the SOURCE is this entry, and
+no count is written into the criterion:
+
+1. The three recorded screen defects are fixed by cause and not by wording: the
+   save-confirmation contradiction in `mobile/app/ConfirmSaveDialog.tsx` (the
+   unconditional warning that a saved bill enters the system at once, beside the
+   grade-conditional one that it waits for the office); the `forbidden` sentence
+   in `mobile/src/master/sellerCreateNotice.ts` that tells the operator to open a
+   permission the two-value role schema does not have, rewritten to speak of a
+   ROLE; and the two disagreeing unsent counts — the status strip and sign-out
+   fed from the unfiltered total while queue health uses the owner-filtered one
+   (`PROJECT_STATUS.md § The two on-screen unsent counts still disagree`) —
+   reconciled to one number the operator can act on.
+2. The P1.8b seller surfaces are drawn and their criteria close: the picker
+   union of the cache and the unsettled local rows, the four reserve-level
+   sentences with their tone mapping and the compile cell on a call site that
+   renders them, and the parked-bill wording surfaced — built to the
+   settle-to-refresh repair in Depends-on above.
+3. One consistency pass over the existing screen inventory to the bar: `TAP_MIN`
+   honoured on every tappable control, one shared presentation layer replacing
+   the per-file `StyleSheet` duplication, one vocabulary.
+4. If the owner homes them on mobile, the shop-owner dashboard and/or the phone
+   settings surface are drawn.
+
+**WHAT THIS DOES NOT INCLUDE, said before it is built:** the camera screens
+(S12 — they draw once a binary-payload mechanism exists) and P1.21's
+seller-history drawing (it needs its reading endpoint, which does not exist).
+Both are new screens S10 hands this rework's successor, not this phase.
+
+**NOT PINNED TO A SHA:** this step ships in the B1 commit, so HEAD names the
+commit that does not contain it; the date stands
+(`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT").
 
 ### `GET /users` — landed 2026-08-07, and it is NOT a step in this file
 
