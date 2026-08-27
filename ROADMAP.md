@@ -168,6 +168,18 @@ mobile app, the desktop application, and a provider web application. The father 
 paying for a finished product, not an instalment. A handover that leaves the owner
 running SQL for shop number two is a debt taken on with money already received.
 
+**EXTENDED 2026-08-26 — WHY THE DESKTOP CANNOT FALL AWAY: IT HOLDS LICENCE
+ACTIVATION AND THE SHOP'S CASH CLOSE, NOT ONLY SLIP PRINTING. This is the
+owner's reason S1 is locked, confirmed 2026-08-26; it is recorded as an
+extension to S1 and mints no S-number, the way S10's targeted exception and
+S12's third photograph do.** The desktop application holds licence activation
+and the shop's finances — the cash close — so every shop needs it whether or not
+that shop prints a slip; slip printing (S3) is therefore one of the desktop's
+duties and not the reason it exists, and the three-deliverable scope above cannot
+fall to two, because a shop with no printer still needs the program that
+activates its licence and closes its day. This records only the owner's reason;
+the full design is captured when the desktop phase is built.
+
 **S2 — a pilot shop is part of the path, not the end of it.** What must be complete
 before a PILOT is a different and smaller bar than what must be complete before the
 product is SOLD to a stranger. Those two bars plus the pilot between them are why
@@ -254,6 +266,14 @@ application exists (P3.5), activating a key creates one. Two paths reaching the
 SAME state is fine. Two paths that can reach DIFFERENT states is the defect, so
 whatever P3.1 settles as licence state has to be written by both paths or by
 neither — and P3.1 is where that belongs, not here.
+
+**FLAGGED 2026-08-26, TO BE RECONCILED AT P3.1 OR THE DESKTOP PHASE — NOT
+HERE.** The owner's decision recorded at S1 above (EXTENDED 2026-08-26) names the
+DESKTOP as where a licence is activated, while the sentence above names the
+provider web at P3.5 — so the activation SURFACE (which program the owner
+activates from) and where licence STATE is written (P3.1's job, as this block
+already sends it) are two separate questions that P3.1 or the desktop phase must
+settle together, and this commit only names the tension rather than resolving it.
 
 **WHAT IS TRUE TODAY, so the size of this change is not underestimated.** There
 are TWO roles and not three: migration 0001 creates
