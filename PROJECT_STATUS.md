@@ -57,6 +57,98 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.23 c4 — THE FOUR RESERVE-LEVEL SENTENCES, THEIR TONE, AND THE COMPILE CELL.
+DONE 2026-08-28.** This supersedes the P1.23 c3 entry below as the current phase;
+that entry's record stands unchanged. **NO SHA IS GIVEN**, deliberately — the work
+carrying this sentence is uncommitted at the moment it is written, so the only sha
+available is the one that does NOT contain it
+(`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT"). It closes
+`THE-RESERVE-LEVEL-IS-REQUIRED-AND-EVERY-VALUE-HAS-ITS-OWN-SENTENCE`, a headless
+criterion; the legibility layer that must exist before offline creation spends a
+reserved code.
+
+**WHAT IT BUILT, stated as values and a rule, each paired with the cell that
+reddens** (`lessons/printed-code-in-a-design-document-is-run-by-nobody.md`: no
+sentence sequences here).
+
+- **Four values, four sentences, one each.** `mobile/src/master/reserveNotice.ts`
+  maps `reserveLevel`'s four values — `ample`, `low`, `exhausted`,
+  `never_provisioned` — each to its own Thai sentence, derived from the CAUSE of
+  that state. `low` NAMES how many codes remain, a REAL count off the holding,
+  never defaulted (`fallback-default-is-a-wrong-number`). RED CELL: R2 asserts all
+  four are distinct and drives `reserveSurface` over each value's precondition
+  holding; the disproof collapsing `never_provisioned` into `exhausted` reddened
+  R2's distinct cell and R3's direction cell, 2 of them.
+- **`never_provisioned` is NOT `exhausted`.** A device that has spent nothing must
+  not be told it used up its codes. RED CELL: R3 asserts by DIRECTION both ways —
+  each names its own state (`ยังไม่เคยรับ` / `หมด`) and not the other's.
+- **Tone by one question — does this state need a person NOW — and there is no
+  amber.** `ample` no, `low` no (the next online pass tops it up), `exhausted`
+  yes, `never_provisioned` yes: the four tones are none, none, red, red. An amber
+  on `low`, the normal state of a working device, is a red its reader is trained
+  to ignore. RED CELL: R4 asserts the tone over ALL FOUR values; the disproof
+  giving `low` a red tone reddened exactly `tone(low) === none`.
+- **`exhausted` promises no wait and names what is still possible.** No passive
+  refill promise; it names a bill against an existing seller as still possible;
+  it does NOT offer picking a different seller for this load. RED CELL: R4's
+  negatives, each with a control — the ban on the passive-refill phrase is not
+  vacuous because `low` legitimately carries it, and the presence sibling names
+  the still-possible action; the disproof adding a passive-refill promise to
+  `exhausted` reddened exactly that one negative.
+- **The level is a REQUIRED, closed union.** A value it cannot express fails to
+  compile. RED CELL is the COMPILE CELL, run by hand.
+
+**THE OBSERVATIONS, every command bare with its status read in the same
+invocation. No server, no device.**
+
+- Both TypeScript programs exit 0, each bare, before and after.
+- `npm run prove:reservenotice` (new) exit 0 TWICE, own fixture (pure — no store,
+  no reseed), preset red at entry. 20 cells.
+- **The three disproofs, cell named before each run:** (A) `never_provisioned`
+  collapsed into `exhausted` → exactly R2-distinct and R3-direction (2); (B) `low`
+  given a red tone → exactly `tone(low)` (1); (C) a passive-refill promise added
+  to `exhausted` → exactly the no-passive-refill negative (1), the control on
+  `low` staying green.
+- **The COMPILE CELL, run by hand** (the outcome-union shape). `reserveLevelNotice("amber", 5)`
+  — a tone mistaken for a level, a value the closed union cannot express — made
+  BOTH programs exit 2 with `src/master/reserveNotice.ts(121,27): error TS2345:
+  Argument of type '"amber"' is not assignable to parameter of type 'ReserveLevel'`,
+  the file and symbol named. THE VANISHING-ERROR DISCRIMINATOR: the SAME `"amber"`
+  under the wider type `string` compiles — both programs exit 0 — so the closed
+  union is what excludes it.
+- **Every pre-existing headless proof green TWICE, real `process.exitCode`, counts
+  identical between runs and unchanged from the c3 baseline** — 32 of them,
+  including `provePickerSeller` 15, `proveParkedBill` 58, `proveSellerKind` 69,
+  `proveOutbox` 77, `proveSync` 247 — because c4 changed no existing module. The
+  new `proveReserveNotice` is 20.
+
+**FILE SET, six paths.** New: `mobile/src/master/reserveNotice.ts`,
+`mobile/src/proof/proveReserveNotice.ts`. Edited: `mobile/package.json`,
+`ROADMAP.md`, `PROJECT_STATUS.md`, `OPEN_ITEMS.md`.
+
+**WHAT STAYS OPEN, said so it is not read as settled.** The criterion is HEADLESS
+and closes, but the level is shown on NO screen yet: `reserveSurface` needs the
+device's `target`, which arrives only in a refill answer `refillOnce` discards
+today, and `refillOnce`'s call site is the next unit's — so the continuous strip
+that the B1 legibility finding calls for is owed with the offline-creation wiring.
+Recorded in `OPEN_ITEMS.md § Code debt` and in `ROADMAP.md § P1.8`'s partition.
+
+**IS A LESSON OWED? NO, BY `CLAUDE.md § Workflow` "Two homes, one test".** Nothing
+here is a property of this box — no codepage, shell or line-ending trap. Every
+discipline leaned on is an existing lesson RE-APPLIED:
+`correct-classification-can-still-render-as-an-error` (derive the sentence from
+the cause, assert negatively over the concatenation),
+`fallback-default-is-a-wrong-number` (`low`'s count is real, never defaulted),
+`a-narrowing-type-is-not-a-barrier-to-the-object` (the signature bars a diagnostic
+because neither parameter's type admits one — stated precisely), and
+`printed-code-in-a-design-document-is-run-by-nobody` (this record states values
+and a rule, no statement sequence). One operational slip, caught: a proof was run
+from a STALE `dist/` after a source edit and gave the previous disproof's result
+until re-run through `npm run prove:*` — the exact hazard `START_HERE.md § 4`
+already warns of, not a new lesson.
+
+---
+
 **P1.23 c3 — THE PICKER UNION AND SEND-TIME ID RESOLUTION. DONE 2026-08-27.**
 This supersedes the P1.23 COMMIT 1 entry below as the current phase; that entry's
 record stands unchanged. **NO SHA IS GIVEN**, deliberately — the work carrying

@@ -48,6 +48,7 @@
     "prove:owedsurfaces": "npm run build && node dist/proof/proveOwedSurfaces.js",
     "prove:parkedbill": "npm run build && node dist/proof/proveParkedBill.js",
     "prove:pickerseller": "npm run build && node dist/proof/provePickerSeller.js",
+    "prove:reservenotice": "npm run build && node dist/proof/proveReserveNotice.js",
     "prove:prices": "npm run build && node dist/proof/provePrices.js"
   },
   "dependencies": {

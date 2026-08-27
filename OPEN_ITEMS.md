@@ -1359,6 +1359,22 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   re-pick, or offer a void — each a different operator story, none urgent while
   the row fails safe. Whoever takes it re-reads `mobile/src/sync/resolveParkedSeller.ts`
   first.
+- **THE RESERVE LEVEL IS DRAWN BUT SHOWN ON NO SCREEN — the continuous display is
+  owed, blocked on the device holding no `target`. Recorded 2026-08-28 (P1.23
+  c4), and it is not a defect.** `mobile/src/master/reserveNotice.ts` maps each of
+  `reserveLevel`'s four values to its sentence and tone (proven by
+  `prove:reservenotice`), and `reserveSurface(holding)` is the render composition
+  a strip will call. Nothing renders it yet: `reserveSurface` needs a full
+  `HoldingCounts`, and `target` arrives ONLY in a refill answer that `refillOnce`
+  DISCARDS — `sellerRefill.ts`'s `refillOnce` saves the reservations and drops
+  `holding.target`, and no device column holds it. Rendering a level without a
+  real target would invent a number an operator acts on
+  (`lessons/fallback-default-is-a-wrong-number.md`), so nothing is shown until the
+  target is persisted. *Not done:* persist `target` and add the strip that reads
+  it. *Unblocks / who owns it:* the NEXT unit — offline creation and `refillOnce`'s
+  call site — because the reserve display and the code-spending it guards are the
+  same wiring; the B1 legibility finding (shown continuously, before a refusal)
+  lands with it.
 - **EVERY PROOF EXCEPT `proveOutbox.ts` CAN EXIT 0 WITH ITS RUN INCOMPLETE —
   found 2026-08-19 by a disproof that READ AS A PASS, and swept nowhere.**
   Each proof assigns its verdict in a trailing `.then`, and node's natural

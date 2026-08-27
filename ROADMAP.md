@@ -2057,6 +2057,18 @@ the outstanding work is partitioned by what each piece waits on:
   branded `ResolvedSellerId` path in `mobile/src/sync/resolveParkedSeller.ts`.
   What still waits on the rework is `THE-RESERVE-LEVEL-…` alone — the four
   sentences, the next commit. NOT PINNED TO A SHA — it ships in the c3 commit.
+  **SUPERSEDED 2026-08-28 (P1.23 c4): `THE-RESERVE-LEVEL-…` IS BUILT.** The four
+  values each carry their own sentence, the tone is derived from the level by one
+  question — does this state need a person now — yielding none, none, red, red
+  (no amber), and the compile cell holds: all in
+  `mobile/src/master/reserveNotice.ts`, proven headless by `prove:reservenotice`.
+  The criterion is HEADLESS and CLOSES. **What is NOT built, and is owed with the
+  next unit, is the CONTINUOUS on-screen display:** `reserveSurface` needs the
+  device's `target`, which arrives only in a refill answer `refillOnce` discards
+  today, and `refillOnce`'s call site is out of this legibility layer's bounds —
+  so the strip that shows the level continuously is wired alongside offline
+  creation, the sixth item below. Both this item's criteria are now met; what
+  remains for it is that sixth item's wiring. NOT PINNED TO A SHA.
 - **Waits on a handset device pass:** `EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL`
   parts 2 and 3 — the sheet and the strip read on a phone and reported verbatim
   in Thai, under the bundle and server attestations
