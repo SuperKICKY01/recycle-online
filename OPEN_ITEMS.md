@@ -1562,6 +1562,21 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   forbidden card for owner-naming and the no-false-promise rule). The owner can
   fold it into P1.23's later consistency pass or authorise it as a follow-up to
   this commit.
+  **RESOLVED 2026-08-27 (P1.23 commit 2) — THE CLASS SWEEP IS COMPLETE.**
+  `SUBMIT_REFUSED.what` (`mobile/src/sync/parkedReason.ts:559`, re-derived) now
+  reads `บัญชีนี้ไม่มีสิทธิ์ส่งบิลเข้าระบบ — ต้องแจ้งเจ้าของร้านให้ตั้งบัญชีนี้เป็นผู้ดูแลระบบ`
+  — naming the ROLE (`ผู้ดูแลระบบ`), matching `sellerCreateNotice.ts`'s shape.
+  Re-derived the site first: `grep -rn "เปิดสิทธิ์"` over `mobile/src`+`mobile/app`
+  outside proofs returned EXACTLY this one production hit (the near-variant sweep
+  `ให้สิทธิ์|มอบสิทธิ์|เพิ่มสิทธิ์|ขอสิทธิ์` found nothing; `ปลดล็อก` is the
+  unrelated price-lock feature), so the class is now clean. The status strip
+  (`statusNotice.ts`) never carried the promise; `priceEdit.ts`'s 403 and the
+  `forbiddenReason` void/daily tables were already clean. `proveNotice` gained a
+  class-wide NEGATIVE (no forbidden card contains `เปิดสิทธิ์`, 292 cells) plus a
+  presence sibling that the send-refusal card names `ผู้ดูแล` (its 4 cells) and a
+  literal control; green twice, and the disproof (the shipped `ให้เปิดสิทธิ์`)
+  reddened exactly those two named cells on precisely the 4 send-refused cells,
+  the 288 void cards staying clean. Both TypeScript programs exit 0.
 
 - **A UVICORN PAIR HAS BEEN SERVING THIS REPOSITORY'S OWN API ON 127.0.0.1:8137
   SINCE 2026-08-07, RUNNING CODE THAT PREDATES SEVERAL COMMITS — and two of the

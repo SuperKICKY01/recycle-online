@@ -541,9 +541,22 @@ const NOTHING_OWED_BY_YOU =
 const VOID_REFUSED_STILL_LIVE =
   "บิลใบนี้ยังอยู่ในระบบตามเดิม ยังไม่ถูกยกเลิก";
 
+/*
+ * NAMES THE ROLE, NOT A PERMISSION TO OPEN. The role schema is two values —
+ * `users_role_check` is admin/staff, not a permission system — so the owner's
+ * only move is making the account an admin (`ผู้ดูแลระบบ`, the server's own word
+ * for it). This said `ให้เปิดสิทธิ์`, promising a permission the schema has no
+ * verb for, and a wrong instruction the office ACTS ON is worse than a vague one
+ * (lessons/403-is-about-what-the-caller-may-do.md;
+ * lessons/correct-classification-can-still-render-as-an-error.md). Same class and
+ * same shape as `sellerCreateNotice.ts`'s admin_required fix (P1.23 commit 1);
+ * this is the send-path sibling that completes the sweep. The status strip's own
+ * submit-refused sentence (`statusNotice.ts`) never carried the false promise —
+ * it already ended `— ต้องแจ้งเจ้าของร้าน` — so only this card changes.
+ */
 const SUBMIT_REFUSED = {
   badge: "ไม่มีสิทธิ์ส่งบิล",
-  what: `บัญชีนี้ไม่มีสิทธิ์ส่งบิลเข้าระบบ — ${ASK_THE_OWNER}ให้เปิดสิทธิ์`,
+  what: `บัญชีนี้ไม่มีสิทธิ์ส่งบิลเข้าระบบ — ${ASK_THE_OWNER}ให้ตั้งบัญชีนี้เป็นผู้ดูแลระบบ`,
 };
 
 const SESSION_TEXT: Record<Exclude<SessionState, "active">, { badge: string; what: string }> = {

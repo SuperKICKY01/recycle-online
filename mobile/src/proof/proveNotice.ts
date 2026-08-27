@@ -485,6 +485,58 @@ function n1CardMatrix(): CardCell[] {
     `${String(forbiddenCells.length)} of ${String(cells.length)} cells are forbidden`,
   );
 
+  /* ------------------------------------------ P1.23 c2: role, not permission -- */
+
+  /*
+   * A 403 CARD NAMES THE ROLE THE OWNER CAN SET, NEVER A PERMISSION TO OPEN. The
+   * send-path 403 card said `...ให้เปิดสิทธิ์`, promising a permission the
+   * two-value admin/staff role schema (`users_role_check`) has no verb for — the
+   * same class commit 1 fixed on the add-seller 403, now
+   * `...ให้ตั้งบัญชีนี้เป็นผู้ดูแลระบบ`. Asserted over the CONCATENATION in draw
+   * order (lessons/403-is-about-what-the-caller-may-do.md,
+   * lessons/correct-classification-can-still-render-as-an-error.md).
+   */
+  const OPEN_PERMISSION = "เปิดสิทธิ์";
+  const THE_ROLE = "ผู้ดูแล";
+
+  // NEGATIVE, over the whole class: no forbidden card promises a permission to open.
+  checkAll(
+    "no forbidden card promises `เปิดสิทธิ์` — a permission the two-value role schema cannot grant",
+    forbiddenCells,
+    (c) => !cardText(c).includes(OPEN_PERMISSION),
+    (c) => `${describeCard(c)} -> ${cardText(c)}`,
+  );
+
+  /*
+   * The SEND-refusal card is the one this fix is about. Identify it by what it
+   * DRAWS — the void cards say ยกเลิกบิล, this one ส่งบิล — so the subset is what
+   * is actually rendered, not a re-derivation of the ranking. Four cells:
+   * pending/syncing x attempts, everything else neutral (the 4 of 288+4 above).
+   */
+  const sendRefusedCards = forbiddenCells.filter((c) => cardText(c).includes("ไม่มีสิทธิ์ส่งบิล"));
+  check(
+    "CONTROL: the send-refusal subset is exactly those 4 cells — a presence over an empty set is vacuous",
+    sendRefusedCards.length === 4,
+    `${String(sendRefusedCards.length)} of ${String(forbiddenCells.length)} forbidden`,
+  );
+  // PRESENCE SIBLING: it names the ROLE the owner can set the account to.
+  checkAll(
+    "the send-refusal card names the ROLE the owner can set (ผู้ดูแล), not an action to perform",
+    sendRefusedCards,
+    (c) => cardText(c).includes(THE_ROLE),
+    (c) => `${describeCard(c)} -> ${cardText(c)}`,
+  );
+  /*
+   * CONTROL that the class-wide negative is not vacuous: after the fix the live
+   * function can no longer produce `เปิดสิทธิ์`, so the only input the instrument
+   * is known to catch is the SHIPPED phrasing, kept here as a literal
+   * (lessons/correct-classification-can-still-render-as-an-error.md, P-GRADECARD).
+   */
+  check(
+    "CONTROL: `เปิดสิทธิ์` is detectable, so the class-wide negative above is not vacuous",
+    "บัญชีนี้ไม่มีสิทธิ์ส่งบิลเข้าระบบ — ต้องแจ้งเจ้าของร้านให้เปิดสิทธิ์".includes(OPEN_PERMISSION),
+  );
+
   return cells;
 }
 
@@ -1412,6 +1464,14 @@ async function main(): Promise<number> {
   console.log(failures === 0 ? "ALL NOTICE CASES PASSED" : `FAILED — ${failures} check(s)`);
   return failures === 0 ? 0 : 1;
 }
+
+/*
+ * PRESET TO RED, per lessons/a-default-exit-code-is-a-default-verdict.md. A
+ * top-level `await main()` that never settles drains node's event loop and the
+ * process exits with the DEFAULT code 0 — a stall would print no exit line and
+ * report GREEN. Set before the await so only main() completing can clear it.
+ */
+process.exitCode = 1;
 
 const code = await main();
 console.log(`NOTICE_EXIT=${code}`);
