@@ -1340,6 +1340,25 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Code debt found and left in place
 
+- **A PICKED LOCAL SELLER THAT LATER GOES `failed` LEAVES ITS BILL PARKED FOR
+  EVER — found 2026-08-27 (P1.23 c3), FAILS SAFE, NOT REPAIRED.** The picker never
+  OFFERS a `failed` seller (`listForPicker` returns only pending/syncing/synced),
+  so this needs a pick-then-fail SEQUENCE: the operator weighs a bill against a
+  local seller while its create is still owed, and the server then REFUSES that
+  create on its merits (`markSellerCreateRefused` → `sync_state='failed'`,
+  `server_seller_id` still null). The bill parked behind it is never resolved,
+  because `resolveParkedBehindSettled`'s `fromSettledSeller` returns null on a row
+  that never settled, so it stays parked. **IT FAILS SAFE, AND THE DIRECTION IS
+  THE WHOLE POINT:** the bill is parked, VISIBLE and COUNTED (in `unsentBreakdown`
+  and the sign-out gate), never a terminal 422 on cash already paid — the OPPOSITE
+  direction from finding 1's original hazard, which let a local id reach `POST
+  /bills` and took a terminal bill. This is a NEW INSTANCE of the
+  parked-behind-a-seller-that-will-never-settle class the crash-window finding
+  named, reached from a refused create rather than a crash. *Not done, and the
+  remedy is a later DECISION and not a mechanism:* retry the create, prompt a
+  re-pick, or offer a void — each a different operator story, none urgent while
+  the row fails safe. Whoever takes it re-reads `mobile/src/sync/resolveParkedSeller.ts`
+  first.
 - **EVERY PROOF EXCEPT `proveOutbox.ts` CAN EXIT 0 WITH ITS RUN INCOMPLETE —
   found 2026-08-19 by a disproof that READ AS A PASS, and swept nowhere.**
   Each proof assigns its verdict in a trailing `.then`, and node's natural
@@ -2898,6 +2917,13 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   sentence lands at `ROADMAP.md § P1.23` "resolve the id at send time", where a
   builder reads it at the step. The paragraph above is left verbatim, as every
   supersession in this repo is.
+
+  **BUILT 2026-08-27 (P1.23 c3).** `mobile/src/sync/resolveParkedSeller.ts` is the
+  resolver: it mints a branded `ResolvedSellerId` only from a settled seller and
+  un-parks a window bill on `bill_send.owed()`, and the picker union
+  (`mobile/src/cart/pickerSellers.ts`) offers the seller mid-settle. Proven
+  headless by `prove:pickerseller` (R2 drives the send path, U4 the window). NOT
+  PINNED TO A SHA — it ships in the c3 commit.
 - **A CRASH BETWEEN THE SELLER SETTLE AND THE BILL RELEASE STRANDS THE BILLS.**
   Raised 2026-08-25 by P1.8b GATES, which built both halves. Recorded against the
   design at
@@ -2917,6 +2943,12 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   `ROADMAP.md § P1.8` "A FIFTH ITEM, AND IT IS NOT ONE OF THE SELLER-KIND CRITERIA".
   The sweep is DESIGN-authorised here and BUILT later; its shape is the lesson the
   paragraph above already cites. The paragraph is left verbatim.
+
+  **BUILT 2026-08-27 (P1.23 c3), BY COMPOSITION.** "Later" is now. The sweep is the
+  SAME `resolveParkedBehindSettled` finding 1's send path uses, reached at boot
+  through `bill_send`'s `recover` — one function, two entry points, not a second
+  mechanism watching for the settle. `prove:pickerseller` R3 drives it and R4 is
+  its negative. NOT PINNED TO A SHA — it ships in the c3 commit.
 - **A LOCAL SELLER HELD FOR REVIEW HOLDS THE SIGN-OUT GATE SHUT FOR EVER.** Raised
   2026-08-25 by P1.8b GATES, which widened the gate to every registry kind.
   Recorded against the design at
@@ -2931,6 +2963,22 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   build obligation, conditional on the invariant violation the design holds
   unreachable behind two server guards. **If that invariant ever becomes
   reachable, this reopens.** The paragraph above is left verbatim.
+- **WHO MAY WEIGH A WALK-IN CREATED BY ANOTHER OPERATOR ON THE SAME DEVICE,
+  BEFORE IT SYNCS — an OPEN product question, recorded 2026-08-27 (P1.23 c3) with
+  a SAFE default already in place.** The picker's `listForPicker` is
+  OWNER-FILTERED, so a local seller operator A created offline is offered to A and
+  not to B until it settles and a refresh carries the server row down, after which
+  both see it as the cache's. **THE DEFAULT IS SAFE and nothing rests on changing
+  it:** no row is lost, no bill is misattributed, and B simply cannot quote A's
+  not-yet-synced seller — B waits for the sync, or re-creates. But WHETHER two
+  operators on one handset should share a not-yet-synced walk-in is a WORKFLOW
+  DIFFERENCE BETWEEN SHOPS — the S6 shape, one shop's shared counter against
+  another's per-operator till — and the filter has picked one answer. *Not put to
+  the owner now, deliberately:* the safe default ships and this line records that
+  it was a CHOICE, so a later shop's need is met as a decision and not discovered
+  as a surprise. *The decision, if it is ever taken:* widen `listForPicker` from
+  the identity to the device, and state what that does to the `created_by` a bill
+  still carries. NOTHING IS AUTHORISED.
 - **TWO OFFLINE HANDSETS CAN MINT THE SAME SELLER CODE, AND THE RULE THE P1.18
   CRITERIA MANDATE THEN BINDS ONE OF THEM TO THE OTHER'S SELLER.** Raised
   2026-08-18 by the independent review of P1.18's acceptance criteria, and filed

@@ -57,6 +57,119 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.23 c3 — THE PICKER UNION AND SEND-TIME ID RESOLUTION. DONE 2026-08-27.**
+This supersedes the P1.23 COMMIT 1 entry below as the current phase; that entry's
+record stands unchanged. **NO SHA IS GIVEN**, deliberately — the work carrying
+this sentence is uncommitted at the moment it is written, so the only sha
+available is the one that does NOT contain it
+(`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT"). This is the deferred
+DRAWING half of `ROADMAP.md § P1.23` (DONE WHEN item 2); the four reserve-level
+sentences are the next commit and the two homing surfaces a later one.
+
+**WHAT IT BUILT, and it closes TWO of the P1.8b findings by BUILDING them, not
+by deciding them again.**
+
+- **The picker union — `THE-LOCAL-ROW-SURVIVES-A-REFRESH-THAT-DELETES` cells 3
+  and 4.** The pure `mobile/src/cart/pickerSellers.ts` merges the cached server
+  sellers with the device's local rows, resolved at read time, and drops a local
+  row only once its `server_seller_id` has arrived in the cache — never at settle
+  alone (cell 4, the window). `SqliteLocalSellerStore.listForPicker` supplies the
+  local rows; `App.tsx` computes the union and hands `SellerPicker` the options
+  and a `localIds` origin set (a "ยังไม่ขึ้นระบบ" marker, slate not red). The origin
+  marker is NOT a column on `cached_sellers` — the RED CASE the criterion names,
+  since delete-and-reinsert would destroy it.
+- **Send-time id resolution — finding 1 (settle-to-refresh) BUILT.** A bill
+  weighed against a settled local seller carries the LOCAL id; the sender swaps
+  in the server id at send. `mobile/src/sync/resolveParkedSeller.ts` is the ONE
+  resolver, reached from `bill_send.owed()` (the drain — finding 1) AND
+  `bill_send.recover()` (the boot sweep — finding 2). The server id it writes is
+  a `ResolvedSellerId` (`resolvedSellerId.ts`), a class with a PRIVATE
+  constructor whose one factory takes a SETTLED seller — so a hardcoded id cannot
+  be minted into the type nor reach `applyResolvedSellerId`, which is the route
+  proof `a-value-comparison-cannot-prove-a-path` asks for.
+- **The crash-window startup sweep — finding 2 BUILT, by composition.** It is
+  the SAME `resolveParkedBehindSettled`, reached at boot through `recover`, not a
+  second sweep. `OPEN_ITEMS.md` recorded it "DESIGN-authorised here and BUILT
+  later"; later is now.
+
+**THE OBSERVATIONS, every command bare with its status read in the same
+invocation. No server, no device: headless surfaces + proofs.**
+
+- Both TypeScript programs exit 0, each run bare — `npm run typecheck` and
+  `npm run typecheck:app`, before and after the edits.
+- `npm run prove:pickerseller` (new) exit 0 TWICE, own fixture (a fresh temp
+  database per case), preset red (`process.exitCode = 1` at entry). 15 cells:
+  the union (U3, U4 including the window and both named red cases), the
+  provenance type (R1), and the resolver reached from BOTH `owed()` and
+  `recover()` (R2-R4).
+- **The disproofs, cell named before each run.** (A) The shared resolver made a
+  no-op reddened exactly R2's two un-park cells AND R3's two — one break, both
+  callers, which is the composition evidence
+  (`two-green-proofs-do-not-cover-the-seam`); R2's control and both R4 cells
+  (which expect *parked*) stayed green. (B) The union made to drop at settle
+  reddened exactly U4's window cell and its drop-at-settle red case, 2 cells; the
+  first attempt tripped `noUnusedLocals` and measured nothing (the compile-error
+  trap) until `cachedIds` was kept referenced.
+- **The compile cell, run by hand** (the route half, the shape
+  `proveSellerKind`'s outcome-union cell uses). A hardcoded string passed to
+  `applyResolvedSellerId` made BOTH typecheck programs exit 2 with
+  `src/sync/resolveParkedSeller.ts(68,48): error TS2345: Argument of type
+  'string' is not assignable to parameter of type 'ResolvedSellerId'` — the file
+  and symbol named; removing it, the SAME error DISAPPEARS and both exit 0.
+- **Every pre-existing headless mobile proof green TWICE, real `process.exitCode`
+  read, counts identical between the two runs.** 31 of them, unchanged from the
+  pre-phase baseline: `proveSync` 247, `proveSeller` 109, `provePrices` 155,
+  `proveDaily` 104, `proveCold` 98, `proveNotice` 81, `proveOutbox` 77,
+  `proveSellerKind` 69, `proveMigration` 63, `proveSellerNotice` 62, `proveSheets`
+  61, `proveParkedBill` 58, `proveSellerStore` 56, `proveVoid` 54,
+  `proveCacheTenant` 53, `proveOwedSurfaces` 51, `proveCart` 40, `proveMoney` 36,
+  `proveEntry` 36, `proveDraftOwner` 34, `proveClock` 32, `proveDocNo` 28,
+  `proveOwner` 27, `proveTime` 26, `proveStatusCounts` 26, `proveSendOwner` 23,
+  `proveVoidOwner` 22, `sqliteProof` 21, `proveVoidTerminal` 15, `proveSaveConfirm`
+  13, and `proveSignOut` 151 (whose five `[FAIL]` are the quoted-prose contaminant
+  `a-control-must-contain-what-fooled-you` records, not failures — the exit code
+  is the authority). `proveParkedBill` is the one most exposed to the change (it
+  drives the park through the runner); its 58 cells did not move, because the
+  resolver acts only on a bill parked behind an ALREADY-settled seller, and its
+  cell 5 keeps an unsettled-seller bill parked while cell 6's settle-release
+  un-parks before `owed()` runs.
+- **NOT RUN, and nothing here is evidence about them:** `prove:forbidden`,
+  `prove:login`, `prove:loginscreen`, `prove:sellercreate` need a scratch API on
+  their own ports and refuse the live one by design; this commit touches none of
+  their paths.
+
+**FILE SET, thirteen paths.** New: `mobile/src/sync/resolvedSellerId.ts`,
+`mobile/src/sync/resolveParkedSeller.ts`, `mobile/src/cart/pickerSellers.ts`,
+`mobile/src/proof/provePickerSeller.ts`. Edited: `mobile/src/sync/types.ts`,
+`mobile/src/sync/localSeller.ts`,
+`mobile/src/adapters/sqlite/SqliteLocalStore.ts`,
+`mobile/src/adapters/sqlite/SqliteLocalSellerStore.ts`,
+`mobile/src/proof/fakes.ts`, `mobile/src/sync/outboxHandlers.ts`,
+`mobile/app/SellerPicker.tsx`, `mobile/App.tsx`, `mobile/package.json`. Plus the
+docs at the boundary: `ROADMAP.md`, `PROJECT_STATUS.md`, `OPEN_ITEMS.md`.
+
+**WHAT STAYS OPEN, said so it is not read as settled.** No screen CREATES a local
+seller yet — the add-seller sheet still writes through the online `SellerApi` —
+so `local_sellers` is empty on the running build and the picker's union is the
+cache alone; the union LOGIC and the send-time resolution are proven headless
+regardless, and offline creation is a later surface. And a local seller that goes
+`failed` (the server refused the create) AFTER being picked leaves its bill
+parked-forever (the resolver's `fromSettledSeller` returns null on a `failed`
+row); the picker never OFFERS a `failed` seller, so it needs a pick-then-fail
+sequence, and it parks visibly rather than reaching a 422 — surfaced, not fixed.
+
+**IS A LESSON OWED? NO, BY `CLAUDE.md § Workflow` "Two homes, one test".** Nothing
+here is a property of this box — no codepage, shell or line-ending trap — so no
+footgun. Every discipline this commit leaned on is an existing lesson RE-APPLIED,
+not a new one: `a-value-comparison-cannot-prove-a-path` (provenance in a branded
+type, the route not the value), `two-green-proofs-do-not-cover-the-seam` (one
+resolver, both entry points driven in one run), `a-column-that-describes-content-must-follow-a-rewrite`
+(the origin marker classification), and `a-check-that-never-went-red-was-never-observed`
+(the disproof-B compile-error trap, already its own mechanism). The pick-then-fail
+gap is surfaced as code debt per _a report is a clue, not a source_.
+
+---
+
 **P1.23 COMMIT 1 — THE THREE RECORDED SCREEN DEFECTS, FIXED BY CAUSE. DONE
 2026-08-27.** This supersedes the B1 entry below as the current phase; that
 entry's record stands unchanged. **NO SHA IS GIVEN**, deliberately — the work

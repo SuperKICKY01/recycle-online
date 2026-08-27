@@ -220,6 +220,22 @@ export interface LocalSellerStore {
   ): Promise<CreateLocalSellerResult>;
   getLocalSeller(id: string): Promise<LocalSeller | null>;
   /**
+   * THE LOCAL ROWS THE SELLER PICKER MAY OFFER, filtered to the current
+   * identity, in creation order.
+   *
+   * A DIFFERENT QUESTION FROM `listSellersToCreate`, WHICH IS WHY IT IS ITS OWN
+   * METHOD. That one is the send queue — actionable, due, not held for review.
+   * This is what a person may WEIGH A BILL AGAINST: a seller still owed
+   * (`pending`/`syncing`) and one that has SETTLED but whose server row a
+   * refresh has not yet carried down (`synced`). It excludes `failed` (the
+   * server refused the create, so a bill against it is refused too) and rows
+   * held for review (a 409, a settled question). The picker's union
+   * (`cart/pickerSellers.ts`) drops the settled rows the cache already holds; a
+   * row this returns is offered under its LOCAL id, so a bill weighed against it
+   * carries that id and the send path resolves it.
+   */
+  listForPicker(): Promise<LocalSeller[]>;
+  /**
    * Rows owed AND ACTIONABLE NOW, in creation order, filtered to the current
    * identity — the kind's `owed()`.
    *

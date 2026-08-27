@@ -69,6 +69,7 @@ import { withheldDraftNotice } from "./src/cart/draftNotice";
 import { NO_LOCKS, releaseOnSave } from "./src/cart/entry";
 import type { Locks } from "./src/cart/entry";
 import { cleanVehicleNo, gradePrice, indexPlates } from "./src/cart/sellers";
+import { mergeSellersForPicker } from "./src/cart/pickerSellers";
 import type { Draft } from "./src/cart/types";
 import { ExpoSqliteDriver } from "./src/device/expoSqliteDriver";
 import { SecureTokenStore } from "./src/device/secureTokenStore";
@@ -107,6 +108,8 @@ import type { DeviceRole } from "./src/session/deviceRole";
 import { shopCodeNotice } from "./src/session/shopCode";
 import { signInAndRecord, signInNotice } from "./src/session/signInIdentity";
 import { buildLocalBill } from "./src/sync/createBill";
+import type { BillSeller } from "./src/sync/createBill";
+import type { LocalSeller } from "./src/sync/localSeller";
 import { SyncEngine } from "./src/sync/engine";
 import { NOTHING_OWED } from "./src/sync/outbox";
 import type { OwedByKind } from "./src/sync/outbox";
@@ -190,6 +193,14 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [sellers, setSellers] = useState<Seller[]>([]);
+  /**
+   * The local sellers this device created that the server has not sent back yet.
+   * Read from `listForPicker`, refreshed whenever the cache does (the effect
+   * below). Empty on today's build — no screen writes `local_sellers` yet — so
+   * the picker's union is the cache alone until offline creation is wired; the
+   * union LOGIC and the send-time resolution are proven headless regardless.
+   */
+  const [localSellers, setLocalSellers] = useState<LocalSeller[]>([]);
   /*
    * WHEN each cached list was last fetched. Two values, not one: a refresh is
    * two requests and the second can fail alone, so a shared timestamp would
@@ -337,9 +348,55 @@ export default function App() {
    * the wire); this only resolves it to something displayable. May be null if
    * the id is not in the fetched list, which CartScreen treats as "cannot save".
    */
+  /**
+   * The seller picker's list — the cache unioned with the local rows this device
+   * created that the server has not sent back yet, resolved at read time
+   * (`cart/pickerSellers.ts`). `options` is what the picker searches; `localIds`
+   * flags which rows are not yet on the server. A local row is offered under its
+   * LOCAL id, so a bill weighed against it carries that id and the send path
+   * resolves it. `options` is structurally `Seller[]`, so it feeds the picker and
+   * resolves the draft's seller exactly as the raw cache did.
+   */
+  const pickerSellers = useMemo(
+    () =>
+      mergeSellersForPicker(
+        sellers,
+        localSellers.map((s) => ({
+          id: s.id,
+          code: s.code,
+          name: s.name,
+          phone: s.phone,
+          grade: s.grade,
+          server_seller_id: s.server_seller_id,
+        })),
+      ),
+    [sellers, localSellers],
+  );
+
+  /**
+   * Re-read the local sellers whenever the cache changes — boot (the cache loads)
+   * and every refresh. A settle without a refresh needs no re-read: the row stays
+   * `synced` and `listForPicker` keeps returning it, so the picker goes on
+   * offering it (the window) until a refresh carries the server row into `sellers`
+   * and the union drops it. Keyed on `sellers`, never on `localSellers`, so it
+   * cannot loop.
+   */
+  useEffect(() => {
+    const store = sellerStoreRef.current;
+    if (!store) return;
+    let cancelled = false;
+    void (async () => {
+      const rows = await store.listForPicker();
+      if (!cancelled) setLocalSellers(rows);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sellers]);
+
   const seller = useMemo(
-    () => sellers.find((s) => s.id === draft?.seller_id) ?? null,
-    [sellers, draft?.seller_id],
+    () => pickerSellers.options.find((s) => s.id === draft?.seller_id) ?? null,
+    [pickerSellers.options, draft?.seller_id],
   );
 
   /*
@@ -556,6 +613,14 @@ export default function App() {
   /** Which shop this device belongs to. A different lifetime — see the store. */
   const shopStoreRef = useRef<SqliteShopStore | null>(null);
   const masterStoreRef = useRef<SqliteMasterStore | null>(null);
+  /**
+   * The SAME `SqliteLocalSellerStore` instance the engine holds, captured so the
+   * picker can read its rows (`listForPicker`) and the bill build can ask whether
+   * a chosen seller is a local one (`getLocalSeller`). One instance on one
+   * driver — a second would be a second connection able to see a different
+   * committed state than the queue that drains it.
+   */
+  const sellerStoreRef = useRef<SqliteLocalSellerStore | null>(null);
   const engineRef = useRef<SyncEngine | null>(null);
   const tokenRef = useRef<string | null>(null);
   /**
@@ -724,6 +789,11 @@ export default function App() {
         identityStoreRef.current = identityStore;
         shopStoreRef.current = shopStore;
 
+        // Created ONCE, on the SAME driver, and captured so the picker and the
+        // bill build read the exact rows the engine's queue drains.
+        const sellerStore = SqliteLocalSellerStore.open(driver);
+        sellerStoreRef.current = sellerStore;
+
         engineRef.current = new SyncEngine({
           store: billStore,
           transport: new HttpTransport({
@@ -741,14 +811,15 @@ export default function App() {
            * stores above have already run through this driver.
            *
            * WHAT THIS DOES AND DOES NOT TURN ON. It makes the engine able to
-           * drain a local seller and to top the code holding up. It does NOT
-           * give anybody a way to CREATE one — no screen writes
-           * `local_sellers` yet — so on today's build this queue is always
-           * empty and the kind drains nothing. The surfaces are the next
-           * phase; this is here because the registry is total over the kinds
-           * and an engine cannot be built without it.
+           * drain a local seller and to top the code holding up. The picker now
+           * OFFERS the local rows (the union below), but no screen CREATES one —
+           * the add-seller sheet still writes through the online `SellerApi` —
+           * so on today's build `local_sellers` stays empty and the union is the
+           * cache alone. Offline creation is the next surface; this is here
+           * because the registry is total over the kinds and an engine cannot be
+           * built without it.
            */
-          sellerStore: SqliteLocalSellerStore.open(driver),
+          sellerStore,
           /*
            * WHICH INSTALLATION THIS IS, on the SAME driver again — the identity
            * and the codes reserved against it are two tables in one file, and a
@@ -1861,27 +1932,29 @@ export default function App() {
         }
         pendingDraft.current = null;
 
+        /*
+         * WHICH KIND OF SELLER THIS BILL NAMES — the question `BillSeller` refuses
+         * to let a caller skip. The draft carries a bare `seller_id`; the store is
+         * asked whether it is a LOCAL row this device created. It is authoritative
+         * where `pickerSellers.localIds` (a render-time value) is not: a seller
+         * that settled and refreshed out of the union since it was picked is gone
+         * from `localIds` but still in `local_sellers`, and a bill weighed against
+         * its local id must still carry `local` — the send path resolves it. A
+         * seller the store does not hold is the cache's, and the bill is `server`,
+         * exactly as every bill was before the picker offered anything else.
+         */
+        const localSeller = await sellerStoreRef.current?.getLocalSeller(draft.seller_id);
+        const billSeller: BillSeller =
+          localSeller != null
+            ? { kind: "local", local_seller_id: draft.seller_id }
+            : { kind: "server", seller_id: draft.seller_id };
+
         const bill = buildLocalBill(
           { clock: systemClock, ids: deviceIds },
           {
-            /*
-             * The DRAFT's seller, not a component variable: it is what was
-             * persisted, and it is what the operator confirmed in the dialog.
-             *
-             * ALWAYS `server` TODAY, AND THIS IS THE ONE PLACE THAT CHANGES WHEN
-             * THE PICKER DOES. The cart's `Draft` carries a bare `seller_id`
-             * that can only have come from `cached_sellers` — the picker offers
-             * the server's list and nothing else, because the union with the
-             * unsettled local rows is S10's rework and is not built. So no bill
-             * this app can produce is parked, and the park is exercised by
-             * proofs alone.
-             *
-             * WHOEVER BUILDS THAT PICKER MEETS A COMPILE ERROR HERE, which is
-             * why `BillSeller` is a union rather than a nullable field beside
-             * the id: the question cannot be skipped, and it cannot be answered
-             * inconsistently.
-             */
-            seller: { kind: "server", seller_id: draft.seller_id },
+            // The DRAFT's seller, not a component variable: it is what was
+            // persisted, and it is what the operator confirmed in the dialog.
+            seller: billSeller,
             // Trimmed here as well as on blur, because save can be tapped with
             // the field still focused and never blurred.
             vehicle_no: cleanVehicleNo(draft.vehicle_no),
@@ -2066,7 +2139,8 @@ export default function App() {
           back: closeTopSheet,
           content: (
             <SellerPicker
-              sellers={sellers}
+              sellers={pickerSellers.options}
+              localIds={pickerSellers.localIds}
               platesBySeller={platesBySeller}
               currentSellerId={draft?.seller_id ?? null}
               changing={draft !== null}

@@ -6,6 +6,7 @@ import { scheduledInstantIsDue } from "../time/clockSanity.js";
 import { NOTHING_OWED } from "../sync/outbox.js";
 import type { OwedByKind } from "../sync/outbox.js";
 import { VOID_REJECTED_CODE } from "../sync/types.js";
+import type { ResolvedSellerId } from "../sync/resolvedSellerId.js";
 import type {
   BillPayload,
   Clock,
@@ -476,6 +477,44 @@ export class InMemoryStore implements LocalStore {
       released += 1;
     }
     return Promise.resolve(released);
+  }
+
+  /**
+   * Mirrors SqliteLocalStore.listBillsParkedOnLocalSeller — every still-parked
+   * bill, id and the local seller it waits on, in the same device_created_at
+   * order. A parked row always names its seller, so the null-guard is the fake
+   * stating the invariant the real store's WHERE relies on.
+   */
+  listBillsParkedOnLocalSeller(): Promise<
+    { readonly id: string; readonly local_seller_id: string }[]
+  > {
+    const out: { readonly id: string; readonly local_seller_id: string }[] = [];
+    for (const row of [...this.rows.values()].sort(byDeviceCreatedAt)) {
+      if (row.local_seller_parked_at === null) continue;
+      if (row.local_seller_id === null) continue;
+      out.push({ id: row.id, local_seller_id: row.local_seller_id });
+    }
+    return Promise.resolve(out);
+  }
+
+  /**
+   * Mirrors SqliteLocalStore.applyResolvedSellerId — un-park ONE bill and stamp
+   * the server's id (`resolved.value`) onto its payload. The `parked` guard keeps
+   * it idempotent, exactly as the real store's WHERE does.
+   */
+  applyResolvedSellerId(
+    billId: string,
+    resolved: ResolvedSellerId,
+    now: Date,
+  ): Promise<number> {
+    const row = this.rows.get(billId);
+    if (row === undefined || row.local_seller_parked_at === null) {
+      return Promise.resolve(0);
+    }
+    row.payload = { ...row.payload, seller_id: resolved.value };
+    row.local_seller_parked_at = null;
+    row.next_attempt_at = now.toISOString();
+    return Promise.resolve(1);
   }
 
   requestVoid(id: string, reason: string, now: Date): Promise<boolean> {
@@ -1207,6 +1246,9 @@ export class EmptySellerStore implements LocalSellerStore {
   }
   getLocalSeller(): Promise<LocalSeller | null> {
     return Promise.resolve(null);
+  }
+  listForPicker(): Promise<LocalSeller[]> {
+    return Promise.resolve([]);
   }
   listSellersToCreate(): Promise<LocalSeller[]> {
     return Promise.resolve([]);

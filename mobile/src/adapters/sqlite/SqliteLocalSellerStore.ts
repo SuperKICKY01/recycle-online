@@ -368,6 +368,27 @@ export class SqliteLocalSellerStore implements LocalSellerStore {
   }
 
   /**
+   * The rows the picker may offer — a WIDER state set than `listSellersToCreate`
+   * and a DIFFERENT one from `countSellersOwed`. It carries `synced` (a settled
+   * seller the cache has not caught up with — the picker's union drops the ones
+   * it has) and it EXCLUDES `failed` (the server refused the create) and rows
+   * held for review (`needs_review_at`), against either of which a weighed bill
+   * would be refused. Owner-filtered, because a person weighs against sellers
+   * this identity created; no `SELLER_DUE`, because this is a read for a screen
+   * and not the send queue.
+   */
+  async listForPicker(): Promise<LocalSeller[]> {
+    const rows = await this.db.all<SellerRow>(
+      `SELECT ${SELLER_COLUMNS} FROM local_sellers
+       WHERE sync_state IN ('pending', 'syncing', 'synced')
+         AND needs_review_at IS NULL AND ${OWNED_BY_CURRENT}
+       ORDER BY created_at, id`,
+      ownerParams(await this.currentOwner()),
+    );
+    return rows.map(toSeller);
+  }
+
+  /**
    * The kind's `owed()` — actionable NOW, in creation order, mine.
    *
    * ORDER LIVES IN THE QUERY, not in the drain: a sort cannot order a row the

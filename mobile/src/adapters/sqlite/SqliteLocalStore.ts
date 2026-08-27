@@ -25,6 +25,7 @@
  */
 import { SEND_SCHEDULE_HORIZON_MS } from "../../time/clockSanity.js";
 import { VOID_REJECTED_CODE } from "../../sync/types.js";
+import type { ResolvedSellerId } from "../../sync/resolvedSellerId.js";
 import type {
   LocalBill,
   LocalStore,
@@ -1215,6 +1216,54 @@ export class SqliteLocalStore implements LocalStore {
            next_attempt_at = ?
        WHERE local_seller_id = ? AND local_seller_parked_at IS NOT NULL`,
       [serverSellerId, now.toISOString(), localSellerId],
+    );
+    return r.changes;
+  }
+
+  /**
+   * The send-time resolver's READ half. Every still-parked bill, as its id and
+   * the local seller it waits on. `local_seller_parked_at IS NOT NULL` implies
+   * `local_seller_id IS NOT NULL` — the pair is set and cleared together in
+   * `createBill` and the releases — so the cast to a non-null id states a fact
+   * the write path enforces rather than a hope. No owner clause, for the same
+   * reason `releaseBillsParkedOnLocalSeller` has none: an un-parked bill enters
+   * `QUEUED`, which carries its own owner filter, and a stranded bill is stranded
+   * whoever weighed it.
+   */
+  async listBillsParkedOnLocalSeller(): Promise<
+    { readonly id: string; readonly local_seller_id: string }[]
+  > {
+    return this.db.all<{ id: string; local_seller_id: string }>(
+      `SELECT id, local_seller_id FROM local_bills
+       WHERE local_seller_parked_at IS NOT NULL
+       ORDER BY device_created_at, created_at, id`,
+    );
+  }
+
+  /**
+   * The send-time resolver's WRITE half — un-park ONE bill and stamp the
+   * server's id onto its payload. The same `json_set` shape as
+   * `releaseBillsParkedOnLocalSeller`, per bill rather than per seller, because
+   * the resolver has already looked up the settled seller and minted the
+   * `ResolvedSellerId` it hands here; `.value` is the server's id, and it is the
+   * only string this write ever puts on `$.seller_id`.
+   *
+   * `WHERE ... local_seller_parked_at IS NOT NULL` keeps it idempotent: a bill
+   * the settle-time release already un-parked is matched by nothing, so calling
+   * this on every `owed()` never touches a row twice.
+   */
+  async applyResolvedSellerId(
+    billId: string,
+    resolved: ResolvedSellerId,
+    now: Date,
+  ): Promise<number> {
+    const r = await this.db.run(
+      `UPDATE local_bills
+       SET payload_json = json_set(payload_json, '$.seller_id', ?),
+           local_seller_parked_at = NULL,
+           next_attempt_at = ?
+       WHERE id = ? AND local_seller_parked_at IS NOT NULL`,
+      [resolved.value, now.toISOString(), billId],
     );
     return r.changes;
   }

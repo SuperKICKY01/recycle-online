@@ -9,6 +9,7 @@
  */
 
 import type { RowOwner } from "../session/rowOwner.js";
+import type { ResolvedSellerId } from "./resolvedSellerId.js";
 
 export type { RowOwner };
 
@@ -758,6 +759,38 @@ export interface LocalStore {
   releaseBillsParkedOnLocalSeller(
     localSellerId: string,
     serverSellerId: string,
+    now: Date,
+  ): Promise<number>;
+  /**
+   * THE SEND-TIME RESOLVER'S READ HALF. Every bill still parked behind a local
+   * seller, as a bill id and the local seller id it waits on — never null,
+   * because a parked bill always names the seller it parks behind.
+   *
+   * It is the SEND path's own read, distinct from the settle-time release
+   * above: that one fires ONCE per seller, keyed on the seller that just
+   * settled; this reads what is STILL parked so `resolveParkedBehindSettled`
+   * can catch the bill weighed after its seller had already settled (the window
+   * the release cannot see) and the bill left parked by a crash between the two
+   * settle writes.
+   */
+  listBillsParkedOnLocalSeller(): Promise<
+    { readonly id: string; readonly local_seller_id: string }[]
+  >;
+  /**
+   * Un-park ONE bill and stamp the SERVER's seller id onto its payload — the
+   * write half of the send-time resolver.
+   *
+   * The id is a `ResolvedSellerId`, not a string, ON PURPOSE: the only value of
+   * that type anyone can construct is one minted from a seller that has settled
+   * (`resolvedSellerId.ts`), so a raw or hardcoded id cannot reach this write.
+   * A correct server id and a pasted one are the same bytes; the TYPE, not a
+   * comparison, is what proves the id travelled the resolution path
+   * (`lessons/a-value-comparison-cannot-prove-a-path.md`). Returns 1 if it
+   * un-parked the row, 0 if it was already un-parked (idempotent).
+   */
+  applyResolvedSellerId(
+    billId: string,
+    resolved: ResolvedSellerId,
     now: Date,
   ): Promise<number>;
 

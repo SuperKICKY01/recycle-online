@@ -19,6 +19,7 @@ import { VOID_REJECTED_CODE } from "./types.js";
 import type { Clock, LocalBill, LocalStore, SendOutcome, Transport, VoidOutcome } from "./types.js";
 import { BILL_SEND, BILL_VOID, SELLER_CREATE } from "./outbox.js";
 import type { OutboxDisposition, OutboxHandler, OutboxRegistry } from "./outbox.js";
+import { resolveParkedBehindSettled } from "./resolveParkedSeller.js";
 import type { LocalSeller, LocalSellerStore } from "./localSeller.js";
 import { classifySellerCreate } from "./sellerCreate.js";
 import type { SellerCreateOutcome, SellerCreateTransport } from "./sellerCreate.js";
@@ -115,7 +116,21 @@ export function billSendHandler(deps: OutboxDeps): OutboxHandler<LocalBill, Send
     // Strict head-of-line: ALL pending bills in weighing order, backoff
     // ignored — the sender has to SEE the bill it is not allowed to skip
     // (the 73-second incident). Owner filter and order live in the QUERY.
-    owed: (limit) => deps.store.listPendingOldestFirst(limit),
+    //
+    // SEND-TIME ID RESOLUTION (finding 1) runs FIRST, on the SAME per-drain
+    // evaluation point this handler already has. It un-parks every bill whose
+    // local seller has settled and stamps the server's id onto it, so a bill
+    // weighed in the picker's settle-to-refresh window — parked, but with no
+    // second settle event to release it — cannot reach POST /bills carrying an
+    // id the server has never seen. `seller_create` drains before this in the
+    // pass (registry order), so a seller settled this pass is already synced
+    // here; and the resolver is idempotent, so re-reading under `rereadAfterEach`
+    // costs a query and un-parks nothing twice. The SAME resolver is finding 2's
+    // boot sweep in `recover` below — one function, two entry points.
+    owed: async (limit) => {
+      await resolveParkedBehindSettled(deps.store, deps.sellerStore, deps.clock.now());
+      return deps.store.listPendingOldestFirst(limit);
+    },
     // Wider than owed() by two whole classes of row: a claimed (syncing) bill
     // and a parked bill are both still owed. mine + mineBlocked is the pair
     // the sign-out gate already counts (ownUnsentCount in App.tsx).
@@ -126,7 +141,18 @@ export function billSendHandler(deps: OutboxDeps): OutboxHandler<LocalBill, Send
     // The one durable in-flight state there is: rows stranded `syncing` by a
     // crash. Re-sending carries the same idempotency key, so recovery is a
     // plain state reset rather than a distributed query.
-    recover: (now) => deps.store.resetSyncingToPending(now),
+    //
+    // FINDING 2's STARTUP SWEEP, BY COMPOSITION: the SAME resolver `owed` uses,
+    // reached here at boot. A bill left parked by a crash between the seller
+    // settle and its release (two writes to two tables, no second event to
+    // finish them) is un-parked and given the server's id; a send interrupted
+    // by that crash is reset. Both are what a boot owes, and the two ids sets
+    // are disjoint — a bill is `syncing` OR parked, never both.
+    recover: async (now) => {
+      const resolvedIds = await resolveParkedBehindSettled(deps.store, deps.sellerStore, now);
+      const resetIds = await deps.store.resetSyncingToPending(now);
+      return [...resolvedIds, ...resetIds];
+    },
     rowId: (b) => b.id,
     attempt: (b) => b.attempt_count,
     dueAt: (b) => b.next_attempt_at,

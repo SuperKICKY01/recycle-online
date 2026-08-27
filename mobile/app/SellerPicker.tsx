@@ -43,6 +43,14 @@ const TAP_MIN = 56;
  */
 interface Props {
   sellers: Seller[];
+  /**
+   * Which of `sellers` are local rows this device created that the server has
+   * not sent back yet — the union's origin marker (`src/cart/pickerSellers.ts`).
+   * A fact about this read, not a column on the row: a seller once created is a
+   * shop entity, and once its server row arrives it drops out of the union and
+   * out of this set in the same pass.
+   */
+  localIds: ReadonlySet<string>;
   /** Plates this device has seen per seller, newest first. */
   platesBySeller: ReadonlyMap<string, readonly string[]>;
   /** The bill's current seller, so the row can be marked. Null before the pick. */
@@ -75,6 +83,7 @@ interface Props {
 
 export function SellerPicker({
   sellers,
+  localIds,
   platesBySeller,
   currentSellerId,
   changing,
@@ -186,6 +195,15 @@ export function SellerPicker({
                 {item.plates.length > 0 ? ` · ทะเบียน ${item.plates.join(", ")}` : ""}
               </Text>
               {/*
+                Created on THIS device and not yet confirmed by the server. The
+                bill still saves and still sends — it carries the local id and the
+                send path swaps in the server id once the seller settles — but the
+                operator should know the row is not on the system yet.
+              */}
+              {localIds.has(s.id) ? (
+                <Text style={styles.local}>เพิ่มจากเครื่องนี้ — ยังไม่ขึ้นระบบ</Text>
+              ) : null}
+              {/*
                 Said HERE, before the pick, not after the bill is refused: a
                 seller with no grade has no price tier, so the server parks the
                 bill (424 seller_grade_unset) until the office sets one. The
@@ -258,4 +276,9 @@ const styles = StyleSheet.create({
   warn: { fontSize: 12, color: "#7f1d1d", backgroundColor: "#fee2e2", borderRadius: 8,
     paddingHorizontal: 8, paddingVertical: 6, marginTop: 8, fontWeight: "700" },
   current: { fontSize: 12, color: "#0f766e", fontWeight: "800", marginTop: 6 },
+  // Slate, not red: a local seller not yet on the server is a self-resolving
+  // state — it uploads when the device reaches the network — so it is
+  // informational and must not read as the grade warning above it does.
+  local: { fontSize: 12, color: "#334155", backgroundColor: "#e2e8f0", borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 6, marginTop: 8, fontWeight: "700" },
 });

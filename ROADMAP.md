@@ -2050,6 +2050,13 @@ the outstanding work is partitioned by what each piece waits on:
   settled (finding below, 2026-08-27) — the sender swaps the local seller id for
   the server id at send — so the picker may quote a seller mid-settle without a
   422 ever reaching a terminal bill.
+  **SUPERSEDED 2026-08-27 (P1.23 c3):** `THE-LOCAL-ROW-SURVIVES-A-REFRESH-THAT-DELETES`
+  cells 3 and 4 — THE PICKER UNION — are BUILT and proven headless
+  (`prove:pickerseller`: the union cells, plus the send-time resolver reached from
+  both `bill_send.owed()` and `.recover()`). Cell 4's send-time repair is the
+  branded `ResolvedSellerId` path in `mobile/src/sync/resolveParkedSeller.ts`.
+  What still waits on the rework is `THE-RESERVE-LEVEL-…` alone — the four
+  sentences, the next commit. NOT PINNED TO A SHA — it ships in the c3 commit.
 - **Waits on a handset device pass:** `EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL`
   parts 2 and 3 — the sheet and the strip read on a phone and reported verbatim
   in Thai, under the bundle and server attestations
@@ -2065,6 +2072,22 @@ the outstanding work is partitioned by what each piece waits on:
   here and BUILT later; its shape is
   `lessons/README.md § Lessons` "sync-state-needs-startup-recovery.md". It is
   owed before P1.8b closes.
+  **SUPERSEDED 2026-08-27 (P1.23 c3): BUILT.** The sweep is the SAME
+  `resolveParkedBehindSettled` finding 1's send path uses, reached at boot through
+  `bill_send`'s `recover` — one function, two entry points, not a second
+  mechanism watching for the settle. `prove:pickerseller` R3 drives it and R4 is
+  its negative. NOT PINNED TO A SHA — it ships in the c3 commit.
+- **A SIXTH ITEM, ADDED 2026-08-27 (P1.23 c3), AND ALSO NOT ONE OF THE
+  SELLER-KIND CRITERIA: OFFLINE SELLER CREATION IS NOT WIRED.** The picker now
+  OFFERS the local rows (c3), but no screen CREATES one — the add-seller sheet
+  still writes through the online `SellerApi` — so `local_sellers` is empty on the
+  running build and the union is the cache alone. **P1.8b's DEVICE closure — a
+  walk-in created OFFLINE, weighed, and synced — cannot happen until creation is
+  wired**, so this is owed before P1.8b closes even though every headless
+  criterion is met and `prove:pickerseller` is green. It is owed by a LATER P1.23
+  commit — the offline add-seller surface, which routes the sheet to
+  `createLocalSeller` when the device is offline, and on whose flow the
+  reserve-level sentences (the next commit) render. NOT PINNED TO A SHA.
 - **Already met and not re-opened:** every other criterion in the set, at its
   own recorded entry — the headless criteria proven twice at P1.8b MOBILE and
   GATES, the server criteria proven on a scratch database at P1.8b SERVER.
