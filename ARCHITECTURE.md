@@ -840,7 +840,7 @@ what a second session had already put in the working tree while this was being
 written, which is route 1 and nothing else. The reader most likely to be misled is
 the one who goes looking for this in the committed tree: no create-user route and
 no password-change route exists there —
-`PROJECT_STATUS.md § Current phase` "NO ENDPOINT CREATES A USER AND NONE CHANGES A PASSWORD."
+`archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md` "NO ENDPOINT CREATES A USER AND NONE CHANGES A PASSWORD."
 records the measurement. What follows is the shape that work will take, decided in
 advance so that it is not designed under time pressure at P1.5.
 
@@ -912,7 +912,7 @@ data**, on site or over a connection nobody has designed. `provision_shop.py` is
 not the way out either: it creates a shop's FIRST admin from an installer's shell
 and deliberately creates nobody else, and its second run against a shop that
 already has a code refuses and writes nothing
-(`PROJECT_STATUS.md § Current phase` "THE SECOND RUN REFUSED AND WROTE NOTHING").
+(`archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md` "THE SECOND RUN REFUSED AND WROTE NOTHING").
 
 **THE SENTENCE ABOVE IS NOW FALSE IN ITS GENERAL FORM AND TRUE IN A MUCH
 NARROWER ONE. Appended 2026-08-10, not edited, per §13.** "There is no
@@ -1284,7 +1284,8 @@ its own length.
   still answers 404 to every input in production.
   `ROADMAP.md § P1.3 — What identifies a shop at login` is finished by two
   criteria; A is satisfied and **B is outstanding**, which is now the entire
-  meaning of "P1.3 is not done" (`PROJECT_STATUS.md § Current phase`
+  meaning of "P1.3 is not done"
+  (`archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md`
   "OUTSTANDING: CRITERION B, AND ONLY B."). **D1 and D3 remain wholly unbuilt.**
   So §9 and §10's preamble are false about D2 and D4 and TRUE about D1 and D3 —
   half-false, which is the kind of sentence that survives longest, because every

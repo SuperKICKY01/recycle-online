@@ -47,7 +47,7 @@ are `R1 R1b R2 R2b R3 R4 R5 R7`; `R6` and `R8`–`R10` existed only here.
 
 | old | what it was | where it resolves now |
 |---|---|---|
-| R1, R1b | sign-out, and refusing an issued token | CLOSED. The record is `PROJECT_STATUS.md § Current phase` "R1 and R2 are both CLOSED". Not a forward step. |
+| R1, R1b | sign-out, and refusing an issued token | CLOSED. The record is `archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md` "R1 and R2 are both CLOSED". Not a forward step. |
 | R2 | the daily money screen's device gaps | CLOSED, on evidence of unequal strength recorded at the same place. |
 | R2b | the sign-out sheet could not say why the queue was stuck | CLOSED. |
 | R3 | a reachable server, HTTPS, backups that run themselves | **P1.2**, substantially unchanged, with the backup half's classification argued rather than assumed. |
@@ -1006,7 +1006,7 @@ was stated in terms of new screens.
 **AND BUILDING IT EARLY REPRODUCES THE PATTERN `9ad225e` HAS JUST PRODUCED — a
 capability finished on the server that no human can reach.** That instance is
 recorded at
-`PROJECT_STATUS.md § Current phase` "A SHOP-WIDE DEFAULT GRADE IS BUILT, PROVEN, AND UNREACHABLE"
+`archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md` "A SHOP-WIDE DEFAULT GRADE IS BUILT, PROVEN, AND UNREACHABLE"
 — `PATCH /shop` is admin-only and reachable by
 `curl` and by nothing else, `desktop/` holds one 0-byte file, and the phone has no
 admin surface. **Both halves are recorded and NEITHER is recommended.** Which one
@@ -1227,7 +1227,7 @@ say "may void, may not re-price".
 
 **D10 — the pilot runs on the production database, and no rebuild of the
 2026-08-03 kind is available after the first real bill.** That rebuild is recorded
-at `PROJECT_STATUS.md § What the rebuild cost — stated, not glossed` "Also gone:
+at `archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md § What the rebuild cost — stated, not glossed` "Also gone:
 every user id". This is a **constraint on P1.2's hosting choice**, not a note
 beside it: whatever is chosen there must be a thing that can be migrated, backed up
 and restored without being emptied first.
@@ -3107,7 +3107,7 @@ S10's own stated exception — a defect that makes something unusable. **So
 from the instruction that ruled it.** The outbox step closed with its own surfaces
 criterion untouched BY DESIGN — the gate, the sheet and the strip still count bills
 only, and the strip reads `ส่งครบแล้ว` over an owed void
-(`PROJECT_STATUS.md § Current phase` "EVERY-SURFACE-COUNTS-EVERY-KIND is untouched BY DESIGN").
+(`archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md` "EVERY-SURFACE-COUNTS-EVERY-KIND is untouched BY DESIGN").
 **A third kind WIDENS that gap; it does not open a new one.** The strip's wording
 moves only as far as stops it stating something false. It is not redesigned here, and
 no screen is drawn here.
@@ -6577,7 +6577,7 @@ no count is written into the criterion:
    permission the two-value role schema does not have, rewritten to speak of a
    ROLE; and the two disagreeing unsent counts — the status strip and sign-out
    fed from the unfiltered total while queue health uses the owner-filtered one
-   (`PROJECT_STATUS.md § The two on-screen unsent counts still disagree`) —
+   (`archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md § The two on-screen unsent counts still disagree`) —
    reconciled to one number the operator can act on.
 2. The P1.8b seller surfaces are drawn and their criteria close: the picker
    union of the cache and the unsettled local rows, the four reserve-level
@@ -6988,7 +6988,7 @@ know they are known rather than undiscovered.
   "41/41" and "42/42", and it is not.** Measured with `git cat-file -p` against a
   synthetic CRLF positive control, every one of those blobs holds **zero** CR bytes;
   the figures are LINE counts. The measurement, its commits and its control live at
-  `PROJECT_STATUS.md § Baseline observations`
+  `archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md`
   "A THIRD, INCIDENTAL MEASUREMENT, AND IT CONTRADICTS A MACHINE FOOTGUN."
   and are deliberately not restated here. **The working-tree half of that entry is
   correct and unchallenged**, and its operational advice — measure the blob, and

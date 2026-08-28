@@ -1422,7 +1422,7 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   `AddSellerSheet.tsx` render no `<Modal>` at all now — both carry a header
   saying so — and `mobile/App.tsx:1830`, `:1839` and `:1850` are other code.
   **THE DEVICE PASS HAPPENED**, at `72b9881` (2026-08-17 19:10:53 +0700), two
-  hours after the repair: `PROJECT_STATUS.md § Current phase` "THE MODAL-HOST DEVICE PASS".
+  hours after the repair: `archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md` "THE MODAL-HOST DEVICE PASS".
   **RE-MEASURED 2026-08-23, and NO SHA IS GIVEN because this correction was
   uncommitted at the moment the sentence was written** — the only sha available
   is the one that does not contain it. Both typechecks exit 0 run bare;
@@ -2707,7 +2707,7 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   — it measures DECISIONS, not the step's closure. THE DECISION is whether P1.8b
   gets a DONE WHEN of its own and what it names; minting one inside a phase that
   would then be measured by it is the one thing a building phase must not do.
-  The full re-derivation is at `PROJECT_STATUS.md § Current phase`
+  The full re-derivation is at `archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md`
   "IS P1.8's DONE WHEN MET? RE-DERIVED HERE, AND THE STEP IS NOT CLOSED BY THIS PHASE".
   NOTHING IS AUTHORISED.
 - **WHO MAY WEIGH A WALK-IN CREATED BY ANOTHER OPERATOR ON THE SAME DEVICE,
@@ -3297,7 +3297,7 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   the opposite of what the record says.
   **WHEN: 2026-08-07**, on the sign-out work — which is the very candidate the
   *Unblocks:* above nominates. **WHAT IT FOUND**, recorded at
-  `PROJECT_STATUS.md § Previous phase` "The finding, in its own terms": `session`
+  `archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md § Previous phase` "The finding, in its own terms": `session`
   was a **hand-typed literal at all 21** of `proveSignOut.ts`'s `session:` call
   sites, S9's two included. S9 measured `pending` off a real `SqliteLocalStore`
   and then typed the session in beside it — so the one link R2b created, the
@@ -4965,7 +4965,7 @@ below and says so.
   two entries under `OPEN_ITEMS.md § Blocking one real paying shop`, one for the
   schedule and the destination, one for the tooling's inability to reach a
   database that is not local.
-- **Dumps unencrypted** — `PROJECT_STATUS.md § Earlier phases` puts encryption at
+- **Dumps unencrypted** — `archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md § Earlier phases` puts encryption at
   rest on the deliberately-not-built list beside scheduling, off-site upload and
   retention. What that line does not say is WHAT the plaintext holds; that is an
   item below.
