@@ -31,7 +31,7 @@ returns **exit 1** — the string is in no tracked file, `ROADMAP.md` included, 
 draft pasted into a chat window. It is **not recorded here, and its absence is
 not recorded as a stale reference either**, because it was never a fact about
 this repository. This is
-`archive/OPEN_ITEMS-through-2026-08-28-0841d8e.md` "The bill-attribution claim"
+`archive/OPEN_ITEMS_through_2026_08_28_0841d8e.md` "The bill-attribution claim"
 (closed 2026-08-05, archived in the M2 compression) exactly: three files once
 agreed on a sentence none of them had read out of the code.
 
