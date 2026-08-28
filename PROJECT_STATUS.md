@@ -57,6 +57,30 @@ not read the green as re-run.**
 
 ## Current phase
 
+**MAINTENANCE — M0: THE REPOSITORY NOW HAS OFF-MACHINE COPIES. 2026-08-28.**
+Infrastructure maintenance, not a product P-number; it supersedes the P1.8b
+block below ONLY as the current-phase pointer — that record stands, and P1.8b's
+handset and scratch-DB passes remain owed. At session start `git remote -v` was
+EMPTY and all 233 commits (two branches) existed on the E: drive alone. Two
+independent off-machine copies now exist, both verified:
+
+- **A `git bundle --all`** on a different physical drive (C:):
+  `C:\Users\PC\recycle-online-backup\recycle-online-all-2026-08-28-2d9e0f1.bundle`.
+  `git bundle verify` → "The bundle records a complete history … okay", exit 0;
+  4,417,784 bytes; sha256
+  `32f0b38caa28eee2a6d6b82bee903183340f967c242b212031f7504607dc19ba`; refs
+  `main`, `worktree-architecture-d4-correction`, `HEAD`. It lives OUTSIDE the
+  repo by design; this line only records where it is.
+- **A PRIVATE GitHub repository**, `https://github.com/SuperKICKY01/recycle-online`,
+  created under the authenticated `gh` account (`SuperKICKY01`, matches the git
+  user). `git push origin --all` pushed both branches; `git ls-remote origin`
+  matches the local refs exactly. No secret is exposed — only `.env.example`
+  files are tracked, so `server/.env` and `JWT_SECRET` are absent from both the
+  bundle and the push.
+
+The two maintenance commits (this M0 record, and M1's restructure) are NOT yet
+on the remote — they land there after the owner reviews this boundary.
+
 **P1.8b OFFLINE SELLER CREATION — THE CONTINUOUS RESERVE STRIP, THE LAST CODE
 PIECE (commit 2 of 2). DONE 2026-08-28.** This supersedes the commit-1 entry below
 as the current phase; that record stands. **NO SHA IS GIVEN**, deliberately — the
