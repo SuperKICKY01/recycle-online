@@ -15,7 +15,8 @@ that exists on no line of the file it points at.
 In this order. Each line says what that file OWNS.
 
 1. **`CLAUDE.md`** — architecture, the eight hard rules, this box's machine
-   footguns, the workflow, conventions.
+   footguns, the workflow, conventions, engineering conduct. Rules stay here;
+   their incident prose moved to `EVIDENCE.md` on 2026-08-28, fetched on demand.
 2. **`lessons/README.md`** — the index of mistakes already paid for. Open
    an individual lesson only when its index line touches the task.
    (`CLAUDE.md § Workflow` "At the start of every session")
@@ -50,6 +51,8 @@ In this order. Each line says what that file OWNS.
 
 Not in the boot path. Open when the task reaches them:
 
+- **`EVIDENCE.md`** — the dated incidents and measurements behind CLAUDE.md's
+  footgun/workflow/convention rules; open it for a rule's *why*, not to act.
 - **`BRIEFING.md`** — the advisor's handoff. Written for a reader who never
   opens the code; you are not that reader (see §2).
 - **`RED_TEAM.md`** — the definition of a red-team pass. Read it only when

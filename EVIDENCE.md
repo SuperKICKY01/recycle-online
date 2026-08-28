@@ -195,6 +195,48 @@ first-line-only recognition and both remedies stay in that entry.
   string at once and broken it loudly. Evidence for the three-byte branch, not
   proof of it.
 
+## grep -iF Aborted: the locale split and the false zeros
+
+Backs `CLAUDE.md § Machine footguns`. The trap statement, the locale trigger and
+the remedy — never combine `-i` with `-F` here, and a positive control in the
+same invocation — stay in that entry; this is the 2026-08-20 measurement, the
+excluded causes and the measured cost, moved here in the 2026-08-28 compaction.
+
+  Measured 2026-08-20, every invocation bare with the status read in the same
+  call:
+
+      LC_ALL=C            grep -iF "daily money" PROJECT_STATUS.md  -> Aborted, 134
+      env -u LANG -u LC_ALL grep -iF "daily money" PROJECT_STATUS.md -> Aborted, 134
+      LC_ALL=C            grep -F  "daily money" PROJECT_STATUS.md  -> 0, 8 lines
+      LC_ALL=C            grep -i  "daily money" PROJECT_STATUS.md  -> 0, 9 lines
+      LC_ALL=en_US.UTF-8  grep -iF "daily money" PROJECT_STATUS.md  -> 0, 9 lines
+
+  EXCLUDED, each by its own measurement: PATH and aliasing (`type -a grep` shows
+  no alias and no function), the binary (`md5sum /usr/bin/grep` =
+  `65b7eb148ea01dacf451bed0d1a4608e`, identical on both sides and to
+  `/bin/grep`), the absolute path, the file (a two-line file outside the
+  repository aborts identically under `LC_ALL=C`), the needle, and the working
+  directory.
+
+  WHY IT LIES, the entry's whole value: RE-RUNNING IT CANNOT DISCOVER IT. The
+  failure is DETERMINISTIC WITHIN A SESSION and opposite BETWEEN sessions — a
+  session carrying no locale gets 134 every time; a session carrying
+  `LANG=en_US.UTF-8` gets 0 every time and correctly reports no reproduction.
+  On 2026-08-20 that was seven bare aborts in one session against nine bare
+  exit-zeros in another, same repository, same day, same binary. The usual
+  defence, run it again, is the one defence that cannot work.
+
+  And it fails toward a plausible number: under `2>/dev/null` piped to `wc -l`
+  an abort is indistinguishable from "not found", because stderr is discarded
+  and a pipeline's status is the last command's. MEASURED COST — one loop over
+  twelve search terms returned twelve zeros, every one false; the control term
+  in that set is present in six tracked files.
+
+  This supersedes, BY MEASUREMENT, the same-day conclusion that CLAUDE.md should
+  get nothing because the behaviour was not characterised. The open half — which
+  shell exported which locale, and why — stays at
+  `OPEN_ITEMS.md § Documentation`.
+
 ## Boot check: the incidents behind three observables
 
 Backs `CLAUDE.md § Boot check`. Three fragments, one per bullet — the two
@@ -343,3 +385,17 @@ stay in that bullet; these are the two measurements behind it.
   present-tense and went false at `cb11f6a`, and it is the WORSE of the two to
   get wrong because it is a REASON rather than a status — a reader believes a
   reason and then builds on it, where a wrong status merely confuses.
+
+## Co-Authored-By: the trailer census
+
+Backs `CLAUDE.md § Conventions`. The rule — a bare model name, and read the log
+bare before writing a message — and the harness-parenthetical warning stay in
+that entry; this is the census behind them, which rots and is therefore pinned
+here, moved out in the 2026-08-28 compaction.
+
+  Measured 2026-08-17 at `1204081`: 177 commits, 165 carrying the trailer, four
+  distinct values — `Claude Opus 5` 134, `Claude Opus 4.8` 17, `Claude Fable 5`
+  13, and one parenthetical (`Claude Opus 5 (1M context)`, at `56b5008`, landed
+  from a harness default that nothing caught). The MODEL name varies legitimately
+  with whoever did the work; the parenthetical does not. No hook reads the
+  trailer, and a wrong one cannot be amended without rewriting history.

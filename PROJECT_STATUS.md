@@ -81,6 +81,50 @@ independent off-machine copies now exist, both verified:
 The two maintenance commits (this M0 record, and M1's restructure) are NOT yet
 on the remote — they land there after the owner reviews this boundary.
 
+**MAINTENANCE — M1: CLAUDE.md COMPACTED; ITS INCIDENT PROSE RELOCATED TO
+EVIDENCE.md. 2026-08-28.** No rule's content changed — relocation and
+compression only, verified below. Files: CLAUDE.md, EVIDENCE.md, START_HERE.md,
+and these PROJECT_STATUS lines.
+
+- **Boot load, before/after (`wc -l`/`wc -c`, Bash tool).** CLAUDE.md 801 → 324
+  lines, 48,640 → 20,270 bytes — **58% lighter, the real measure** (bytes track
+  tokens; the narrative moved to EVIDENCE.md, which is fetch-on-demand and grew
+  by 3,204 bytes). Boot set (CLAUDE.md + START_HERE.md + lessons/README.md)
+  1029 → 555 lines. The ≤550 line-target is 3 over: the residual is structural —
+  lessons/README.md's 66 lines are out of this phase's scope, and START_HERE
+  gained a two-line EVIDENCE.md pointer a booting session needs. Line count is a
+  proxy; inlining pointers would drop lines without dropping tokens, so it was
+  not done.
+- **Where the prose went.** The 13 machine-footgun entries, the boot-check
+  incidents and the workflow/convention stories were compacted to
+  symptom + remedy + a `→ EVIDENCE.md §` pointer; every rule and every remedy
+  COMMAND stayed in CLAUDE.md, and the narrative moved to EVIDENCE.md — existing
+  per-rule sections, plus two NEW ones minted here (`§ grep -iF Aborted: the
+  locale split and the false zeros`, `§ Co-Authored-By: the trailer census`). An
+  independent read-only pass confirmed no actionable rule lost; it found one
+  dropped remedy command (the Out-File first-byte `BitConverter` check), restored
+  before this commit.
+- **The owner's file-set amendment.** The brief named two NEW files
+  docs/FOOTGUNS.md and docs/CONVENTIONS.md as the narrative's home; a read of the
+  tree showed EVIDENCE.md (committed `1d58899`) already IS that home, with 13
+  inbound `→ EVIDENCE.md §` pointers. The two files were WITHDRAWN by the owner
+  and EVIDENCE.md moved into the file set; docs/ was never created. This is
+  `CLAUDE.md § Workflow` "A REPORT IS A CLUE" working — the brief's premise was
+  re-measured against the artefact before any edit.
+- **Citation integrity (`tools/verify_citations.ps1`, call operator + array, 14
+  sources).** BROKEN was 8 before AND 8 after — zero new breaks; the 8 are
+  pre-existing and target files this phase did not touch. The shared-checks block
+  is byte-identical (`verify_shared_checks.py` IDENTICAL, exit 0), and
+  `build_all_lessons.py --check` exits 0. The code trees (mobile/server/packages/
+  desktop/tools) `git status --porcelain` is empty, so both mobile typechecks are
+  unaffected. One mistake, caught by the checker: two cited handles wrapped across
+  two lines during compaction — exactly what `CLAUDE.md § Conventions`
+  "The target end is the harder one" warns of — re-wrapped, BROKEN back to 8.
+- **IS A LESSON OWED? NO, BY `CLAUDE.md § Workflow` "Two homes, one test".** Both
+  mistakes were of an already-documented class — the handle-wrap is that same
+  pin-a-claim rule, and catching the brief's wrong destination premise is
+  `CLAUDE.md § Workflow` "A REPORT IS A CLUE". Nothing new to relearn.
+
 **P1.8b OFFLINE SELLER CREATION — THE CONTINUOUS RESERVE STRIP, THE LAST CODE
 PIECE (commit 2 of 2). DONE 2026-08-28.** This supersedes the commit-1 entry below
 as the current phase; that record stands. **NO SHA IS GIVEN**, deliberately — the
