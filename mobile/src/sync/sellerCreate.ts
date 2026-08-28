@@ -7,25 +7,21 @@
  * `OutboxHandler` contract requires of it.
  *
  * ===========================================================================
- * WHY THIS UNION EXISTS AND `CreateSellerOutcome` IS NOT REUSED
+ * WHY THIS UNION IS THE KIND'S OWN
  * ===========================================================================
- * `master/createSeller.ts` declares `CreateSellerOutcome` with eight members
- * and it is right for the ONLINE screen. The design forbids reusing it here,
- * and the reason is not tidiness — reuse would import members whose meaning is
- * wrong on this path:
+ * A `POST /sellers` from this kind always SPENDS A RESERVATION — a code the
+ * server minted for this device, sent with its token — so its outcome union is
+ * shaped for exactly that. A generic seller-create union, built for a screen
+ * where a person types a code, would carry members this path can never reach:
  *
- *   `code_assignment_failed` REQUIRES THAT NO CODE WAS SUPPLIED. That module's
- *   own header says so: it separates the two 409s by whether the caller
- *   supplied a code, read off the draft before the request. THIS KIND ALWAYS
- *   SUPPLIES ONE — it is spending a reservation — so that member is
- *   unreachable from here, and a union with an unreachable member is a
+ *   "the server could not mint a code" REQUIRES THAT NO CODE WAS SUPPLIED, and
+ *   this kind always supplies one, so that member would be unreachable here — a
  *   `switch` arm nothing can ever test.
  *
- *   `duplicate_code` CHANGES MEANING UNDERNEATH. Online it means "that code is
- *   taken, pick another", addressed to the person who typed it. Here there is
- *   nobody to address and nothing to re-pick: the code came from a reservation
- *   this device holds, and the server's two guards make a collision on it an
- *   INVARIANT VIOLATION rather than a retryable typo.
+ *   "that code is taken, pick another" CHANGES MEANING. For a person who typed a
+ *   code it is a retryable typo; here the code came from a reservation this
+ *   device holds, and the server's two guards make a collision on it an
+ *   INVARIANT VIOLATION rather than a re-pick.
  *
  * A KIND'S OUTCOME UNION IS THE KIND'S OWN. That is what keeps a 409 from
  * meaning one thing across two kinds.
@@ -33,7 +29,7 @@
  * ===========================================================================
  * NOTHING HERE CARRIES A BODY, A `detail`, OR A STATUS NUMBER
  * ===========================================================================
- * The same rule `createSeller.ts` opens with, and it is URGENT on this route:
+ * A RULE THAT IS URGENT ON THIS ROUTE:
  * a 4xx body on `POST /sellers` can contain an ID CARD NUMBER, because that is
  * a field of the request. `reason` is a short diagnostic for a log and the row's
  * `last_error`; the transport below is what must not put a refused payload into
@@ -101,9 +97,9 @@ export type SellerCreateOutcome =
   /**
    * A 2xx WHOSE BODY COULD NOT BE READ AS A SELLER.
    *
-   * ON THE ONLINE PATH THIS IS THE WORST CASE THERE IS — `createSeller.ts`
-   * gives it a whole paragraph, because `sellers` has no idempotency key and a
-   * lost 2xx can therefore neither be retried nor reported as done.
+   * ON A PATH WITH NO IDEMPOTENCY KEY THIS WOULD BE THE WORST CASE THERE IS:
+   * `sellers` has no such column, so a lost 2xx could neither be retried nor
+   * reported as done.
    *
    * HERE IT IS MERELY A RETRY, and the reason is the single most load-bearing
    * consequence of the reservation design: THIS REQUEST CARRIED A TOKEN. The

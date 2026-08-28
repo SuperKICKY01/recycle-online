@@ -1375,6 +1375,19 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   call site — because the reserve display and the code-spending it guards are the
   same wiring; the B1 legibility finding (shown continuously, before a refusal)
   lands with it.
+  **UPDATED 2026-08-28 (offline-creation wiring): THE CODE-SPENDING HALF IS BUILT;
+  THE STRIP IS STILL OWED, AND ONE PHRASE ABOVE IS CORRECTED.** Offline creation is
+  now wired — the sheet writes a `local_sellers` row on every create and spends a
+  reserved code (`App.tsx` `createSeller` → `SqliteLocalSellerStore.createLocalSeller`),
+  and a refusal already shows the `exhausted`/`never_provisioned` wording BY CAUSE
+  (`master/localSellerCreateNotice.ts`, `prove:localsellercreate`). What is still
+  owed is the CONTINUOUS strip this item names. The phrase "the NEXT unit —
+  offline creation and `refillOnce`'s call site" was imprecise on BOTH halves:
+  `refillOnce` has had a call site since `48c422a` (`engine.ts:405`), and it does
+  NOT discard its own answer — it RETURNS `holding.target`, and its caller
+  `topUpReservations` discards the return value. So what commit 2 owes is to
+  CAPTURE that return and persist `target`, then add the strip. See
+  `PROJECT_STATUS.md § Current phase`'s dated correction.
 - **EVERY PROOF EXCEPT `proveOutbox.ts` CAN EXIT 0 WITH ITS RUN INCOMPLETE —
   found 2026-08-19 by a disproof that READ AS A PASS, and swept nowhere.**
   Each proof assigns its verdict in a trailing `.then`, and node's natural

@@ -2,8 +2,8 @@
  * THE TWO SELLER ROUTES OVER HTTP: `POST /sellers` carrying a reservation, and
  * `POST /seller-code-reservations` to top the holding up.
  *
- * Shaped like `adapters/httpTransport.ts` and `master/createSeller.ts` — a
- * `baseUrl`, an injected `getToken`, an injected `fetchImpl`, a timeout —
+ * Shaped like `adapters/httpTransport.ts` — a `baseUrl`, an injected
+ * `getToken`, an injected `fetchImpl`, a timeout —
  * because that is the shape a proof can point at a real server OR at a
  * recording fake without the module knowing which. That matters more here than
  * usual: `THE-TOKEN-IS-ON-THE-WIRE` is measured by READING THE REQUEST THIS
@@ -13,8 +13,8 @@
  * ===========================================================================
  * IT RETURNS AN OUTCOME. IT NEVER THROWS, AND IT NEVER HANDS BACK A BODY.
  * ===========================================================================
- * `master/createSeller.ts` states the rule and the specific hazard, and both
- * apply unchanged: FastAPI's default validation handler serialises the value it
+ * THE RULE AND ITS SPECIFIC HAZARD, on this route: FastAPI's default validation
+ * handler serialises the value it
  * refused, and ON THIS ROUTE THAT VALUE CAN BE AN ID CARD NUMBER. The server
  * strips pydantic's `input` API-wide; this file does not rely on that. It reads
  * a 4xx body in exactly ONE branch, for exactly ONE short string — a 403's
@@ -78,8 +78,9 @@ function forbiddenCode(body: unknown): string {
  * STRICT ON PURPOSE. A cast would turn an absent field into `undefined` typed
  * as `string` and write it onto the local row as the server's id — a local
  * seller permanently bound to a row that does not exist, with no error
- * anywhere. `readSeller` in `master/createSeller.ts` is strict for the same
- * reason and its header records the void path shipping exactly this defect.
+ * anywhere. Strict for the reason the void path already paid: `adapters/httpTransport.ts`'s
+ * own guard above its 201 branch, where a 2xx whose body lost its doc_no once
+ * fell through to success and markSynced wrote the null permanently.
  *
  * ONLY THE ID IS TAKEN. The online path reads nine fields because a screen
  * renders them; nothing here renders anything, and every other field is already

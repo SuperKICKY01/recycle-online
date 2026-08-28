@@ -57,6 +57,99 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.8b OFFLINE SELLER CREATION — WIRED (commit 1 of 2). DONE 2026-08-28.** This
+supersedes the P1.23 c4 entry below as the current phase; that entry's record
+stands unchanged apart from the dated `refillOnce` correction appended to it.
+**NO SHA IS GIVEN**, deliberately — the work carrying this sentence is uncommitted
+at the moment it is written (`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT").
+It closes the sixth partition item of P1.8b's DONE WHEN — offline creation is
+wired — leaving the reserve strip (commit 2), the device pass, and the scratch-DB
+server pass.
+
+**WHAT IT BUILT.** The add-seller sheet writes LOCAL-FIRST, ALWAYS (hard rule 8;
+the ONE mechanism S14 asks for, not two): every create writes a `local_sellers`
+row binding one reserved code and enqueues the `seller_create` kind, which drains
+immediately when online. This SUPERSEDES P1.8a's direct-online path — the online
+`SellerApi` mint client is REMOVED, not run beside it.
+
+- **Creation spends a reserved code, and exhaustion is a real branch.** `App.tsx`'s
+  `createSeller` calls `SqliteLocalSellerStore.createLocalSeller` (already proven
+  by `prove:sellerstore` S4: binds a code, spendable drops by one, and with the
+  holding empty REFUSES by cause — `no_code`, no fourth row). The refusal is shown
+  BY CAUSE with c4's own `exhausted`/`never_provisioned` wording, derived from
+  `held` with no invented `target`: `master/localSellerCreateNotice.ts`, proven by
+  the new `prove:localsellercreate`. RED CELLS, cell named before each run:
+  `--break=collapse` (render a never-provisioned device as exhausted) reddened
+  C4's two direction cells, C5's two and C6's equality — 5, exactly the
+  never-provisioned family; `--break=leak` (append the reservation token to a
+  created card) reddened EXACTLY C1's no-leak cell and NAMED the value leaked.
+- **The created local seller flows through the c3 send-time resolution.** It is
+  offered under its LOCAL id (`localSellers` state, the union side, never the
+  cache), a bill weighed against it parks, and `resolveParkedSeller` swaps in the
+  server id once it settles — the ROUTE `prove:pickerseller` R1–R4 already proves
+  by the branded `ResolvedSellerId`, unchanged and green.
+- **The code field is gone from the sheet.** A reservation supplies the code, so a
+  code field would be a dead input (`master/sellerForm.ts`, `localSellerDraftFrom`
+  → `LocalSellerDraft`). No grade field either (D1, unchanged).
+- **The online mint path is removed.** `master/createSeller.ts` (`SellerApi`),
+  `master/sellerCreateNotice.ts`, and their proofs `proveSellerCreate` (live
+  server) and `proveSellerNotice` are deleted; every reference in six kept files is
+  restated standalone. P1.8a's DONE WHEN was met AS WRITTEN by the online path
+  (recorded in `ROADMAP.md § P1.8`, unchanged); its live-server proof retires with
+  the mint path it proved. The new path meets the same criterion — a staff session
+  creates a usable seller from the handset — by the local-first mechanism, whose
+  HEADLESS half is proven here and whose server round-trip is the scratch-DB pass,
+  already owed.
+
+**THE OBSERVATIONS, every command bare with its status read in the same
+invocation. No server, no device.**
+
+- Both TypeScript programs exit 0, each bare (`npm run typecheck`,
+  `npm run typecheck:app`), before and after the stale-reference sweep.
+- `npm run prove:localsellercreate` (new) exit 0 TWICE, own fixture (pure — no
+  store, no reseed), preset-red at entry. 27 cells.
+- Every headless mobile proof green TWICE, real exit code, cell counts identical to
+  the c4 baseline and unmoved by this phase — 33 of them, including `proveSync`
+  247, `proveOutbox` 77, `proveSellerKind` 69, `proveParkedBill` 58,
+  `provePickerSeller` 15, `proveReserveNotice` 20, `proveSellerStore` 56. The three
+  auth proofs (`prove:login`, `prove:loginscreen`, `prove:forbidden` F6) exit 1
+  ONLY for want of a live server (`fetch failed`, unreachable) — out of this
+  headless phase's scope and untouched by the change; `prove:forbidden`'s offline
+  cells passed.
+- `verify_shared_checks.py` 0; `build_all_lessons.py --check` 0 (no lesson added).
+- Citation checker over the three edited docs, call operator with an array:
+  `SOURCES=3  CITATIONS=447  BROKEN=6` — all six BROKEN pre-existing (none in a
+  line this phase added, measured against the diff; no heading was added, so none
+  rose), and every citation this phase added resolves.
+
+**FILE SET.** New: `mobile/src/master/localSellerCreateNotice.ts`,
+`mobile/src/proof/proveLocalSellerCreate.ts`. Deleted:
+`mobile/src/master/createSeller.ts`, `mobile/src/master/sellerCreateNotice.ts`,
+`mobile/src/proof/proveSellerCreate.ts`, `mobile/src/proof/proveSellerNotice.ts`.
+Edited: `mobile/App.tsx`, `mobile/app/AddSellerSheet.tsx`,
+`mobile/src/master/sellerForm.ts`, `mobile/package.json`; the stale-reference
+sweep in `mobile/app/api.ts`, `mobile/src/sync/localSeller.ts`,
+`mobile/src/sync/sellerCreate.ts`, `mobile/src/adapters/httpSellerTransport.ts`,
+`mobile/src/master/saveConfirmNotice.ts`, `mobile/src/sync/parkedReason.ts`;
+`PROJECT_STATUS.md`, `ROADMAP.md`, `OPEN_ITEMS.md`.
+
+**WHAT STAYS OPEN.** The CONTINUOUS reserve strip (commit 2 — capture
+`refillOnce`'s answer that `topUpReservations` discards, persist `target`, draw
+the strip); the handset device pass; the scratch-DB server pass. All three are
+recorded in `ROADMAP.md § P1.8`'s partition and `OPEN_ITEMS.md`.
+
+**IS A LESSON OWED? NO, BY `CLAUDE.md § Workflow` "Two homes, one test".** The
+`refillOnce` false claim this phase corrected is a report asserting a wiring state
+nobody verified against the tree — which is already
+`CLAUDE.md § Workflow` "A REPORT IS A CLUE, NOT A SOURCE", extended in that rule to
+a claim a session wrote itself and to status files. It is not a property of this
+box (no lesson home) and
+not opened by a task-specific index line (it applies to every present-tense
+claim), so a lesson would be the ceremony that dilutes the index. Corrected where
+it lives: a dated supersession in this file's c4 entry.
+
+---
+
 **P1.23 c4 — THE FOUR RESERVE-LEVEL SENTENCES, THEIR TONE, AND THE COMPILE CELL.
 DONE 2026-08-28.** This supersedes the P1.23 c3 entry below as the current phase;
 that entry's record stands unchanged. **NO SHA IS GIVEN**, deliberately — the work
@@ -132,6 +225,30 @@ device's `target`, which arrives only in a refill answer `refillOnce` discards
 today, and `refillOnce`'s call site is the next unit's — so the continuous strip
 that the B1 legibility finding calls for is owed with the offline-creation wiring.
 Recorded in `OPEN_ITEMS.md § Code debt` and in `ROADMAP.md § P1.8`'s partition.
+
+**SUPERSEDED 2026-08-28 (offline-creation wiring, this phase): "`refillOnce`'s
+call site is the next unit's" IS FALSE, AND WAS FALSE WHEN THIS c4 ENTRY WAS
+WRITTEN.** Re-derived against the tree, not from a report: `SyncEngine.runOnce`
+(`mobile/src/sync/engine.ts:358`) calls `topUpReservations` (`:403`), which calls
+`refillOnce` (`:405`); `refillOnce` is imported at `engine.ts:20` and defined at
+`sellerRefill.ts:193`. So `refillOnce` has had a LIVE caller at the end of every
+pass since **`48c422a`** ("feat(P1.8b gates, commit 2): … a function proven eight
+days ago finally gets a caller", 2026-08-25) — three days BEFORE this c4 entry was
+written. The P1.8b GATES record further down this file already states it correctly
+("`refillOnce` has a call site at the end of every pass"); the c4 sentence
+restated an unverified report over a fact the tree AND this same file already
+carried — `CLAUDE.md § Workflow` "A REPORT IS A CLUE, NOT A SOURCE".
+
+**WHAT IS ACTUALLY TRUE.** `refillOnce` is LIVE and is KEPT — it is the
+prerequisite this phase spends, minting the reserved codes an offline create
+consumes, against real code space on every online pass since `48c422a`. What
+reaches no screen is `refillOnce`'s ANSWER, not `refillOnce`: it RETURNS a
+`RefillResult` carrying `holding.target`, and its caller `topUpReservations`
+DISCARDS the return value (`engine.ts:405`, the result is not captured). So "a
+refill answer `refillOnce` discards" should read "a refill answer
+`topUpReservations` discards"; the substantive claim — the target reaches no
+`HoldingCounts`, so `reserveSurface` cannot render a continuous strip — stands,
+and that strip is this phase's commit 2, not a missing caller.
 
 **IS A LESSON OWED? NO, BY `CLAUDE.md § Workflow` "Two homes, one test".** Nothing
 here is a property of this box — no codepage, shell or line-ending trap. Every

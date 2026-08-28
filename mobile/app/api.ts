@@ -31,11 +31,12 @@ export interface Product {
  * to be tidied: a structural type describing a subset is a NARROWING, and here
  * the narrowing is a SECURITY PROPERTY. With no `id_number` on the type, no
  * screen can render one and no code can hand one to `saveSellers` by accident
- * — the compiler's half of the guarantee that proveSellerCreate's C6 proves at
- * the cache layer. Widen this and only the runtime proof is left.
+ * — the compiler's half of the guarantee. The runtime half is the store's fixed
+ * INSERT column list (below); widen this type and only that half is left.
  *
- * A form sends those three through `SellerDraft` in `src/master/createSeller.ts`,
- * which has them. Nothing on the app side needs them back.
+ * The add-seller form still holds those three — it sends them through the LOCAL
+ * seller draft (`src/sync/localSeller.ts`, `LocalSellerDraft`), which has them.
+ * Nothing on the app side needs them back.
  *
  * ---------------------------------------------------------------------------
  * SUPERSEDED 2026-08-17 — HALF OF THE PARAGRAPH ABOVE IS FALSE, AND IT IS THE
@@ -53,7 +54,7 @@ export interface Product {
  * A wider object IS assignable to a narrower parameter — that is what
  * structural typing MEANS — and excess-property checking bites only on FRESH
  * OBJECT LITERALS. Measured with `tsc -p tsconfig.node.json --noEmit` over one
- * line per way of moving a nine-field `CreatedSeller` into a five-field
+ * line per way of moving a nine-field server-seller object into a five-field
  * position (the probe used `MasterSeller`, which is these same five fields —
  * `src/master/types.ts` says the two satisfy each other structurally):
  *
@@ -70,8 +71,8 @@ export interface Product {
  * WHERE THE GUARANTEE ACTUALLY LIVES, and it is one layer down from where this
  * paragraph put it: `SqliteMasterStore.saveSellers` writes a fixed INSERT
  * column list into a table that has no `id_number`, `address` or `vehicle_no`
- * column at all. That is a RUNTIME guarantee, and it is the one
- * `proveSellerCreate`'s C6 measures. The security property is real. The
+ * column at all. That is a RUNTIME guarantee, enforced at the cache layer where
+ * the server's `/sellers` refresh is written. The security property is real. The
  * compiler is not what enforces it.
  *
  * AND THE PART THAT IS NOT ABOUT THIS COMMENT: a sentence in a file about what

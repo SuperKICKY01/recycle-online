@@ -1,46 +1,42 @@
 /**
- * ADD A SELLER, FROM THE WEIGHBRIDGE (P1.8a phase 3).
+ * ADD A SELLER, FROM THE WEIGHBRIDGE — LOCAL-FIRST (P1.8b).
  *
  * A walk-in arrives with a load and is not on the shop's list. `fk_bills_seller`
- * refuses a bill for a seller who does not exist, so until this screen existed a
- * shop that could not reach the office in the minute the truck was on the scale
- * could not buy the load at all.
+ * refuses a bill for a seller who does not exist, so a shop that cannot reach the
+ * office in the minute the truck is on the scale could not buy the load at all.
+ *
+ * THIS SCREEN NO LONGER TALKS TO THE SERVER. It writes the seller LOCALLY,
+ * consuming one reserved code, and the `seller_create` outbox sends it (hard rule
+ * 8; `sync/localSeller.ts`). So there are only two outcomes — the row was written
+ * (`created`), or there was no reserved code to spend (`no_code`) — and neither
+ * waits on a network round-trip.
  *
  * THIS FILE DECIDES NOTHING IT SAYS. Every sentence comes from
- * `src/master/sellerCreateNotice.ts`, every field-to-draft conversion from
- * `src/master/sellerForm.ts`, and both are pure and under `src/` for one reason:
+ * `src/master/localSellerCreateNotice.ts`, and the field-to-draft conversion from
+ * `src/master/sellerForm.ts`. Both are pure and under `src/` for one reason:
  * `tsconfig.node.json` has `rootDir: "src"`, so nothing here can be reached by a
  * headless proof. Wording that lives under `app/` is unproven BY CONSTRUCTION,
  * which is how an expired session came to be displayed as ออฟไลน์ with every
  * proof green. Same division as StatusStrip/statusNotice and BillsPanel/billNotice.
  *
- * WHAT IS LEFT HERE IS PRESENTATION AND ONE PIECE OF ROUTING — the action
- * dispatch, which is an exhaustive switch with a `never` arm on purpose: a
- * button kind added to the notice union must be a compile error here rather than
- * a green button that does nothing, which is a worse defect than the one being
- * fixed (lessons/correct-classification-can-still-render-as-an-error.md, the R2b
- * amendment).
- *
  * ===========================================================================
  * THE DRAW ORDER IS PART OF THE CONTRACT: headline, then every line, then the
- * button. `src/proof/proveSellerNotice.ts` asserts the CONCATENATION in exactly
- * that order, because the defect that discipline exists for was one card whose
- * regions were each correct and which contradicted itself as a whole. Nothing
- * mechanical ties the two orders together — this file is outside that program —
- * so reordering here without reordering there leaves the proof measuring the old
- * screen.
+ * button. `src/proof/proveLocalSellerCreate.ts` asserts the CONCATENATION in
+ * exactly that order, because the defect that discipline exists for was one card
+ * whose regions were each correct and which contradicted itself as a whole.
+ * Nothing mechanical ties the two orders together — this file is outside that
+ * program — so reordering here without reordering there leaves the proof
+ * measuring the old screen.
  * ===========================================================================
  *
- * THE NOTICE SITS ABOVE THE FORM AND THE FORM STAYS VISIBLE. That is not layout
- * preference: three of the eight outcomes are fixed by editing a box that is
- * centimetres away, and a sheet that hides the fix while describing the problem
- * is the R2b defect — a refusal standing beside its own exit and unable to see
- * it.
+ * THE NOTICE SITS ABOVE THE FORM AND THE FORM STAYS VISIBLE, so a refusal never
+ * hides the boxes it is about (the R2b defect — a refusal standing beside its own
+ * exit and unable to see it).
  *
- * NO GRADE FIELD. See `src/master/sellerForm.ts`: a grade selects which price
- * tier the yard pays at, ROADMAP D1 settled that a yard phone must not re-price,
- * and the absence is enforced by there being no field rather than by anyone
- * remembering.
+ * NO CODE FIELD AND NO GRADE FIELD. See `src/master/sellerForm.ts`: the code is a
+ * RESERVATION the create binds (not something a person types), and a grade would
+ * be re-pricing at the weighbridge (ROADMAP D1). Both absences are enforced by
+ * there being no field rather than by anyone remembering.
  */
 import { useCallback, useState } from "react";
 import {
@@ -54,10 +50,10 @@ import {
   View,
 } from "react-native";
 
-import type { CreateSellerOutcome, CreatedSeller, SellerDraft } from "../src/master/createSeller";
-import { sellerCreateNotice } from "../src/master/sellerCreateNotice";
-import type { SellerCreateButtonKind, SellerCreateTone } from "../src/master/sellerCreateNotice";
-import { BLANK_SELLER_FORM, sellerDraftFrom, sellerFormReady } from "../src/master/sellerForm";
+import type { CreateLocalSellerResult, LocalSeller, LocalSellerDraft } from "../src/sync/localSeller";
+import { localSellerCreateNotice } from "../src/master/localSellerCreateNotice";
+import type { LocalCreateButton, LocalCreateTone } from "../src/master/localSellerCreateNotice";
+import { BLANK_SELLER_FORM, localSellerDraftFrom, sellerFormReady } from "../src/master/sellerForm";
 import type { SellerFormFields } from "../src/master/sellerForm";
 
 const TAP_MIN = 56;
@@ -70,51 +66,37 @@ const TAP_MIN = 56;
  */
 interface Props {
   /**
-   * The real create. It returns a classified outcome and NEVER THROWS — that is
-   * the documented contract of `SellerApi.createSeller`, and it is why this
-   * component has no catch and no error state of its own. An error state here
-   * would be a ninth situation, worded in a file no proof can reach.
+   * The real create. It writes locally and returns the store's classified
+   * result. It does not reach the network, so it has no session/forbidden/
+   * offline outcome — only `created` or a `no_code` refusal.
    */
-  create: (draft: SellerDraft) => Promise<CreateSellerOutcome>;
-  /** The operator chose to use the seller that was just created. */
-  onPick: (seller: CreatedSeller) => void;
+  create: (draft: LocalSellerDraft) => Promise<CreateLocalSellerResult>;
   /**
-   * No usable session. Closes this sheet AND the picker underneath it, because
-   * both are Modals and the app's usual sign-in — the status strip's button — is
-   * physically beneath them.
+   * How many reserved codes this device holds, spent or not. Only the refusal
+   * reads it, and only to tell a device that used its codes up (`exhausted`) from
+   * one that never received any (`never_provisioned`) — the FALSE SENTENCE the
+   * design refuses to let those two share.
    */
-  onSignIn: () => void;
-  /** Re-read the seller list and go back to the picker to look at it. */
-  onRefreshList: () => void;
+  held: number;
+  /** The operator chose to use the seller that was just created. */
+  onPick: (seller: LocalSeller) => void;
   onClose: () => void;
 }
 
-const TONES: Record<SellerCreateTone, { bg: string; fg: string; border: string }> = {
+const TONES: Record<LocalCreateTone, { bg: string; fg: string; border: string }> = {
   created: { bg: "#dcfce7", fg: "#14532d", border: "#15803d" },
-  // The operator fixes it here, now. Amber: nothing is broken and nothing is lost.
-  fix_form: { bg: "#fef3c7", fg: "#78350f", border: "#b45309" },
-  session: { bg: "#fef3c7", fg: "#78350f", border: "#b45309" },
-  // Red, and not the support alarm: a real disagreement about what this account
-  // may do, which only the shop owner can settle.
-  forbidden: { bg: "#fee2e2", fg: "#7f1d1d", border: "#b91c1c" },
-  retry: { bg: "#fef3c7", fg: "#78350f", border: "#b45309" },
-  // Its own colour, because "we do not know" is not a shade of failure.
-  verify: { bg: "#dbeafe", fg: "#1e3a8a", border: "#1d4ed8" },
+  // Red, and not the support alarm: nothing is broken. The device has no code to
+  // spend, and the only fixes are elsewhere — connect, or add at the counter.
+  blocked: { bg: "#fee2e2", fg: "#7f1d1d", border: "#b91c1c" },
 };
 
-export function AddSellerSheet({
-  create,
-  onPick,
-  onSignIn,
-  onRefreshList,
-  onClose,
-}: Props) {
+export function AddSellerSheet({ create, held, onPick, onClose }: Props) {
   const [form, setForm] = useState<SellerFormFields>(BLANK_SELLER_FORM);
-  const [outcome, setOutcome] = useState<CreateSellerOutcome | null>(null);
+  const [result, setResult] = useState<CreateLocalSellerResult | null>(null);
   const [busy, setBusy] = useState(false);
 
   const ready = sellerFormReady(form);
-  const notice = outcome === null ? null : sellerCreateNotice(outcome, "yard_add_seller");
+  const notice = result === null ? null : localSellerCreateNotice(result, held);
 
   const set = (key: keyof SellerFormFields, value: string): void =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -125,12 +107,16 @@ export function AddSellerSheet({
     // reaches this function without passing the button.
     if (!sellerFormReady(form)) return;
     setBusy(true);
-    // Cleared FIRST: leaving the previous refusal on screen while the next
-    // request is in flight is the half-updated state that produced the 2c-6
-    // repeat — a row saying "not parked" and "here is why it was parked" at once.
-    setOutcome(null);
+    // Cleared FIRST: leaving the previous refusal on screen while the next write
+    // is in flight is the half-updated state that says two things at once.
+    setResult(null);
     try {
-      setOutcome(await create(sellerDraftFrom(form)));
+      setResult(await create(localSellerDraftFrom(form)));
+    } catch {
+      // A local write should not fail; if the device's own database does, the
+      // create did not happen and the form is left exactly as typed for a retry.
+      // There is no operator-actionable cause distinct from "try again", so no
+      // card is drawn.
     } finally {
       setBusy(false);
     }
@@ -138,46 +124,28 @@ export function AddSellerSheet({
 
   const close = useCallback((): void => {
     setForm(BLANK_SELLER_FORM);
-    setOutcome(null);
+    setResult(null);
     onClose();
   }, [onClose]);
 
   /**
-   * WHICH HANDLER THE NOTICE'S BUTTON REACHES. The label travelled with the kind
-   * out of the pure renderer, so this cannot pair "เข้าสู่ระบบ" with the retry.
+   * WHICH HANDLER THE NOTICE'S BUTTON REACHES. Only `created` offers a button
+   * (the pick), and the seller is read off the create RESULT, not off the notice,
+   * so a diagnostic cannot travel with the button.
    */
-  const act = (kind: SellerCreateButtonKind): void => {
-    switch (kind) {
-      case "pick_seller":
-        // Only `created` produces this button and only `created` carries a
-        // seller: this is a narrowing, not a branch — there is no state in which
-        // the button exists and the outcome is something else.
-        if (outcome !== null && outcome.kind === "created") {
+  const act = (button: NonNullable<LocalCreateButton>): void => {
+    switch (button.kind) {
+      case "pick":
+        // Only a `created` result produces this button and only it carries a
+        // seller: a narrowing, not a branch.
+        if (result !== null && result.kind === "created") {
           setForm(BLANK_SELLER_FORM);
-          setOutcome(null);
-          onPick(outcome.seller);
+          setResult(null);
+          onPick(result.seller);
         }
         return;
-      case "back_to_form":
-        // The form is still on screen and still filled in. Dropping the notice
-        // is the whole action.
-        setOutcome(null);
-        return;
-      case "retry":
-        void submit();
-        return;
-      case "sign_in":
-        setForm(BLANK_SELLER_FORM);
-        setOutcome(null);
-        onSignIn();
-        return;
-      case "refresh_list":
-        setForm(BLANK_SELLER_FORM);
-        setOutcome(null);
-        onRefreshList();
-        return;
       default: {
-        const never: never = kind;
+        const never: never = button.kind;
         throw new Error(`unhandled add-seller action: ${JSON.stringify(never)}`);
       }
     }
@@ -219,7 +187,7 @@ export function AddSellerSheet({
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {/*
           THE NOTICE, IN DRAW ORDER: headline, then every line, then the button.
-          proveSellerNotice asserts this concatenation; see the header.
+          proveLocalSellerCreate asserts this concatenation; see the header.
         */}
         {notice !== null ? (
           <View
@@ -240,7 +208,7 @@ export function AddSellerSheet({
               <Pressable
                 style={[styles.noticeBtn, { backgroundColor: TONES[notice.tone].border }]}
                 onPress={() => {
-                  if (notice.action !== null) act(notice.action.kind);
+                  if (notice.action !== null) act(notice.action);
                 }}
               >
                 <Text style={styles.noticeBtnText}>{notice.action.label}</Text>
@@ -250,14 +218,6 @@ export function AddSellerSheet({
         ) : null}
 
         {field("name", "ชื่อผู้ขาย (จำเป็น)", null)}
-        {/*
-          THE HINT PROMISES NOTHING. It says the box may be left empty, and not
-          that the system will succeed in assigning a code — because
-          `code_assignment_failed` is exactly the outcome where it does not, and
-          a form line insisting otherwise two centimetres under that refusal
-          would be one screen holding two opposite claims.
-        */}
-        {field("code", "รหัสผู้ขาย", "เว้นว่างได้ ถ้าร้านไม่ได้ใช้ระบบรหัสของตัวเอง")}
         {field("phone", "เบอร์โทร", null, { keyboardType: "phone-pad" })}
         {field("id_number", "เลขบัตรประชาชนหรือเลขที่เอกสาร", null)}
         {field("address", "ที่อยู่", null, { multiline: true })}

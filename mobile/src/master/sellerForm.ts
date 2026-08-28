@@ -1,17 +1,20 @@
 /**
- * THE ADD-SELLER FORM'S TWO BOUNDARIES, both of them pure. PURE TypeScript — no
- * React Native, no Expo, no node — so the headless proof drives exactly what the
+ * THE ADD-SELLER FORM'S OUTWARD BOUNDARY, pure. PURE TypeScript — no React
+ * Native, no Expo, no node — so the headless proof drives exactly what the
  * phone runs, which nothing under `app/` can be
  * (`tsconfig.node.json` has `rootDir: "src"`).
  *
- *   OUT  what the operator has typed becomes a `SellerDraft`.
- *   BACK what the server created becomes a row the picker can list.
+ *   OUT  what the operator has typed becomes a `LocalSellerDraft`.
  *
- * Neither is bookkeeping. Each one carries a rule that is invisible at the call
- * site and expensive to get wrong, and both are stated below.
+ * There is no inward boundary here any more. A seller created at the weighbridge
+ * is written LOCALLY, consuming a reserved code, and reaches the picker as a
+ * `LocalSeller` through its own store (`sync/localSeller.ts`) — never narrowed
+ * out of a server response. The field narrowing that keeps an id-card number off
+ * the picker's list is done by the union at read time
+ * (`cart/pickerSellers.ts`, which offers five fields and no fourth axis of
+ * identity), not by a function here.
  */
-import type { CreatedSeller, SellerDraft } from "./createSeller.js";
-import type { MasterSeller } from "./types.js";
+import type { LocalSellerDraft } from "../sync/localSeller.js";
 
 /**
  * WHAT THE TEXT BOXES HOLD. Every field is a plain `string`, because that is
@@ -19,30 +22,34 @@ import type { MasterSeller } from "./types.js";
  * decision out to the view.
  *
  * ===========================================================================
- * THERE IS NO `grade`, AND ITS ABSENCE IS THE MECHANISM, NOT A REMINDER
+ * THERE IS NO `code`, AND ITS ABSENCE IS THE MECHANISM, NOT A REMINDER
  * ===========================================================================
- * A seller's grade selects which product price tier the yard pays at
- * (server/app/master.py, `_seller_payload`: "Seller grade selects which
- * product_prices tier applies"). ROADMAP D1 settled that a yard phone must not
- * re-price the shop, and a grade picker at the weighbridge is re-pricing wearing
- * a different label — pick grade A instead of D and the same load is paid at the
- * top tier.
+ * A seller created offline spends a RESERVED code the server minted for this
+ * device (`sync/localSeller.ts`), so there is nothing for a person to type: the
+ * code comes from the reservation the create binds, not from this form. A code
+ * box would be a dead input whose value nothing reads — a client whose screen
+ * and whose request disagree. So there is no field, and `localSellerDraftFrom`
+ * has no code to carry.
  *
- * The server still ACCEPTS a grade from a staff caller on create; that hole is a
- * later server phase's. What closes it on this side is that there is no field
- * here to put one in, so `sellerDraftFrom` has nothing to send and the key is
- * absent from the request body. A rule stated in a comment is a rule somebody
- * can forget; a field that does not exist cannot be filled in.
+ * ===========================================================================
+ * THERE IS NO `grade`, AND ITS ABSENCE IS ALSO THE MECHANISM
+ * ===========================================================================
+ * A seller's grade selects which product price tier the yard pays at. ROADMAP
+ * D1 settled that a yard phone must not re-price the shop, and a grade picker at
+ * the weighbridge is re-pricing wearing a different label — pick grade A instead
+ * of D and the same load is paid at the top tier.
  *
- * The designed path for a grade-less seller already exists and is not a
- * degradation: the bill parks with a named, resolvable 424
- * (`seller_grade_unset`) telling the office to set the grade, and `SellerCreate`
- * records in its own comment why grade is optional and NOT defaulted — guessing
- * one would quote a real price the yard pays cash against.
+ * So there is no field here to put one in, and `localSellerDraftFrom` sends
+ * `grade: null`. A rule stated in a comment is a rule somebody can forget; a
+ * field that does not exist cannot be filled in. The designed path for a
+ * grade-less seller is not a degradation: the bill parks with a named,
+ * resolvable 424 (`seller_grade_unset`) telling the office to set the grade, and
+ * `SellerCreate` on the server records in its own comment why grade is optional
+ * and NOT defaulted — guessing one would quote a real price the yard pays cash
+ * against (`lessons/fallback-default-is-a-wrong-number.md`).
  */
 export interface SellerFormFields {
   name: string;
-  code: string;
   phone: string;
   id_number: string;
   address: string;
@@ -51,7 +58,6 @@ export interface SellerFormFields {
 
 export const BLANK_SELLER_FORM: SellerFormFields = {
   name: "",
-  code: "",
   phone: "",
   id_number: "",
   address: "",
@@ -70,80 +76,28 @@ export function sellerFormReady(form: SellerFormFields): boolean {
 }
 
 /**
- * BLANK MEANS ABSENT, AND ABSENT IS NOT THE SAME AS EMPTY.
- *
- * `createSeller.ts` deliberately normalises nothing: it sends an empty string as
- * an empty string, and the server refuses it at `min_length=1`. That is the
- * right rule THERE — a client that quietly discards what somebody typed is a
- * client whose screen and whose request disagree — and it makes this function
- * load-bearing, because a form leaves blank boxes behind on every field the
- * operator did not fill in.
+ * BLANK MEANS ABSENT. A form leaves an empty string behind on every box the
+ * operator did not fill in, and `LocalSellerDraft`'s optional fields are
+ * `string | null` — so a blank box becomes `null`, not `""`. Trimmed, so a field
+ * holding only spaces is treated as blank.
  */
-const absentIfBlank = (value: string): string | undefined => {
+const nullIfBlank = (value: string): string | null => {
   const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+  return trimmed.length > 0 ? trimmed : null;
 };
 
 /**
- * The typed form as a draft.
- *
- * ===========================================================================
- * THE `code` LINE DECIDES WHICH OF TWO OPPOSITE SENTENCES A 409 PRODUCES
- * ===========================================================================
- * `SellerApi.createSeller` reads `suppliedCode = draft.code !== undefined` once,
- * before the request leaves, and that single boolean is the whole discriminator
- * between `duplicate_code` ("that code is taken, pick another") and
- * `code_assignment_failed` ("the server could not mint one, type one yourself").
- * They are opposite instructions.
- *
- * So a blank box MUST become `undefined` and must never become `""`. Sending
- * `code: ""` would be wrong twice over: the server refuses it at `min_length=1`,
- * which lands the operator on `invalid` — a sentence about bad data — for the
- * entirely normal act of leaving the code blank; and if that refusal were ever a
- * 409 instead, `suppliedCode` would be TRUE and somebody who typed nothing would
- * be told the code they never typed is taken. Both are
- * lessons/correct-classification-can-still-render-as-an-error.md's wrong
- * instruction, produced here, one layer before the classification everyone
- * inspects.
- *
- * The same reading is what makes leaving it blank SAFE at the weighbridge: the
- * server assigns a code, which is the whole of ROADMAP D2 — nobody with a truck
- * waiting has to invent a unique string.
+ * The typed form as a local-first draft. `grade` is `null` unconditionally
+ * because this form offers no grade field (ROADMAP D1, above); nothing else here
+ * invents a value the operator did not type.
  */
-export function sellerDraftFrom(form: SellerFormFields): SellerDraft {
+export function localSellerDraftFrom(form: SellerFormFields): LocalSellerDraft {
   return {
     name: form.name.trim(),
-    code: absentIfBlank(form.code),
-    phone: absentIfBlank(form.phone),
-    id_number: absentIfBlank(form.id_number),
-    address: absentIfBlank(form.address),
-    vehicle_no: absentIfBlank(form.vehicle_no),
-  };
-}
-
-/**
- * THE ROW THE SERVER CREATED, NARROWED TO WHAT THE DEVICE MAY HOLD.
- *
- * FIELD BY FIELD, NEVER A SPREAD, and that is the entire content of this
- * function. `CreatedSeller` carries `id_number`, `address` and `vehicle_no`;
- * `MasterSeller` has no such columns and neither does `cached_sellers` —
- * proveSellerCreate's C6 proves the leak is unrepresentable for the REFRESH
- * path, where the device is handed the server's list.
- *
- * Creating a seller opens a SECOND path by which those three values arrive in
- * the app, and TypeScript's structural typing would not stop them: an object
- * carrying extra properties is assignable to `MasterSeller`, so
- * `const s: MasterSeller = created` compiles, puts an ID card number into the
- * picker's list, and hands it to `saveSellers`. Two green proofs do not cover
- * the seam between them (lessons/two-green-proofs-do-not-cover-the-seam.md);
- * this is the seam, and naming the five fields is what closes it.
- */
-export function pickableSeller(created: CreatedSeller): MasterSeller {
-  return {
-    id: created.id,
-    code: created.code,
-    name: created.name,
-    phone: created.phone,
-    grade: created.grade,
+    phone: nullIfBlank(form.phone),
+    grade: null,
+    id_number: nullIfBlank(form.id_number),
+    address: nullIfBlank(form.address),
+    vehicle_no: nullIfBlank(form.vehicle_no),
   };
 }

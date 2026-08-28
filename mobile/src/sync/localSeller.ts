@@ -129,12 +129,11 @@ export interface LocalSeller {
 /**
  * What a person at the weighbridge typed, before a code has been attached.
  *
- * Deliberately NOT `SellerDraft` from `master/createSeller.ts`. That type is
- * the ONLINE screen's; its `code` field is optional and means "the server
- * assigns one", and this path can never leave a code absent — it always spends
- * a reservation. Reusing it would put a field on this path whose meaning is the
- * opposite of what this path can do, which is the same argument the design
- * makes about reusing that module's OUTCOME union.
+ * IT CARRIES NO `code` FIELD, and that absence is the point of a distinct type.
+ * This path always SPENDS A RESERVATION — a code the server minted for this
+ * device — so there is never a code for a person to supply. A draft type with an
+ * optional code, meaning "the server assigns one", would put a field here whose
+ * meaning is the opposite of what this path can do.
  */
 export interface LocalSellerDraft {
   name: string;

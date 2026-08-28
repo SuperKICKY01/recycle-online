@@ -12,8 +12,9 @@
  * `tsconfig.node.json` sets `rootDir: "src"`, so nothing under `app/` can be
  * compiled by the proof program. A sentence living there is unproven BY
  * CONSTRUCTION — not weakly tested, untested. Same move, same reason, as
- * `sellerCreateNotice.ts`, `sync/parkedReason.ts` and `master/freshness.ts`: the
- * dialog renders whatever this returns and decides nothing.
+ * `master/localSellerCreateNotice.ts`, `sync/parkedReason.ts` and
+ * `master/freshness.ts`: the dialog renders whatever this returns and decides
+ * nothing.
  *
  * ===========================================================================
  * THE DEFECT THIS EXISTS TO KILL — one card, two renderers
@@ -89,8 +90,8 @@ const IRREVERSIBLE = "แก้ไขไม่ได้ — หากผิด�
  * Null is the seller-has-no-grade case (the bill will park); any string is a
  * graded seller (the bill goes on to the queue and syncs). Nothing else is read,
  * so no other value could reach the screen even by accident — the leak is
- * unrepresentable, the same discipline `sellerCreateNotice.ts` applies at its
- * own signature.
+ * unrepresentable, the same discipline `master/localSellerCreateNotice.ts`
+ * applies at its own signature.
  */
 export function saveConfirmNotice(sellerGrade: string | null): SaveConfirmNotice {
   if (sellerGrade === null) {

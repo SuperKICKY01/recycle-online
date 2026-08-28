@@ -2100,6 +2100,21 @@ the outstanding work is partitioned by what each piece waits on:
   commit — the offline add-seller surface, which routes the sheet to
   `createLocalSeller` when the device is offline, and on whose flow the
   reserve-level sentences (the next commit) render. NOT PINNED TO A SHA.
+  **SUPERSEDED 2026-08-28 (offline-creation wiring): BUILT, AND LOCAL-FIRST
+  ALWAYS RATHER THAN "WHEN OFFLINE".** The add-seller sheet writes a
+  `local_sellers` row and binds a reserved code on EVERY create (`App.tsx`
+  `createSeller` → `SqliteLocalSellerStore.createLocalSeller`), then kicks a pass
+  so the `seller_create` outbox drains it — immediately when online. This is hard
+  rule 8 and the ONE mechanism S14 asks for: the online `SellerApi` direct path is
+  REMOVED, not run beside it (`master/createSeller.ts`, `sellerCreateNotice.ts`
+  and their two proofs deleted; P1.8a's live-server proof retired with the mint
+  path it proved). The exhaustion branch is real — no spendable code refuses BY
+  CAUSE with c4's `exhausted`/`never_provisioned` wording
+  (`master/localSellerCreateNotice.ts`, proven headless by
+  `prove:localsellercreate`) — and the created local seller flows through the c3
+  send-time resolution `prove:pickerseller` already proves. WHAT REMAINS for
+  P1.8b: the continuous reserve strip (this phase's commit 2), the handset device
+  pass, and the scratch-DB server pass. NOT PINNED TO A SHA — ships in this commit.
 - **Already met and not re-opened:** every other criterion in the set, at its
   own recorded entry — the headless criteria proven twice at P1.8b MOBILE and
   GATES, the server criteria proven on a scratch database at P1.8b SERVER.

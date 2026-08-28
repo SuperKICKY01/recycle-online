@@ -91,9 +91,6 @@ import {
   masterNotice,
   mayStartBill,
 } from "./src/master/freshness";
-import { SellerApi } from "./src/master/createSeller";
-import type { CreatedSeller, SellerDraft } from "./src/master/createSeller";
-import { pickableSeller } from "./src/master/sellerForm";
 import {
   GRADES,
   priceListScreen,
@@ -109,7 +106,11 @@ import { shopCodeNotice } from "./src/session/shopCode";
 import { signInAndRecord, signInNotice } from "./src/session/signInIdentity";
 import { buildLocalBill } from "./src/sync/createBill";
 import type { BillSeller } from "./src/sync/createBill";
-import type { LocalSeller } from "./src/sync/localSeller";
+import type {
+  CreateLocalSellerResult,
+  LocalSeller,
+  LocalSellerDraft,
+} from "./src/sync/localSeller";
 import { SyncEngine } from "./src/sync/engine";
 import { NOTHING_OWED } from "./src/sync/outbox";
 import type { OwedByKind } from "./src/sync/outbox";
@@ -196,11 +197,20 @@ export default function App() {
   /**
    * The local sellers this device created that the server has not sent back yet.
    * Read from `listForPicker`, refreshed whenever the cache does (the effect
-   * below). Empty on today's build — no screen writes `local_sellers` yet — so
-   * the picker's union is the cache alone until offline creation is wired; the
-   * union LOGIC and the send-time resolution are proven headless regardless.
+   * below). The add-seller sheet writes these (P1.8b); the picker's union offers
+   * them alongside the cache under their LOCAL ids, and the send-time resolution
+   * swaps a local id for the server id once the seller settles.
    */
   const [localSellers, setLocalSellers] = useState<LocalSeller[]>([]);
+  /**
+   * How many reserved seller codes this device holds, spent or not — read
+   * alongside `localSellers`. The add-seller sheet reads it ONLY to tell an
+   * exhausted device (had codes, spent them) from a never-provisioned one (never
+   * received any), a distinction nothing else on the device draws. It moves only
+   * when a refill mints codes, so a value one refresh stale still cannot cross the
+   * held-is-zero boundary that separates those two states.
+   */
+  const [heldCount, setHeldCount] = useState(0);
   /*
    * WHEN each cached list was last fetched. Two values, not one: a refresh is
    * two requests and the second can fail alone, so a shared timestamp would
@@ -387,7 +397,13 @@ export default function App() {
     let cancelled = false;
     void (async () => {
       const rows = await store.listForPicker();
-      if (!cancelled) setLocalSellers(rows);
+      // Held codes, spent or not: only the add-seller refusal reads it, to name
+      // the cause of an empty reserve. A small list (bounded by the shop target).
+      const held = (await store.listReservations()).length;
+      if (!cancelled) {
+        setLocalSellers(rows);
+        setHeldCount(held);
+      }
     })();
     return () => {
       cancelled = true;
@@ -810,14 +826,11 @@ export default function App() {
            * gives: the tables are created by initConnection, which the three
            * stores above have already run through this driver.
            *
-           * WHAT THIS DOES AND DOES NOT TURN ON. It makes the engine able to
-           * drain a local seller and to top the code holding up. The picker now
-           * OFFERS the local rows (the union below), but no screen CREATES one —
-           * the add-seller sheet still writes through the online `SellerApi` —
-           * so on today's build `local_sellers` stays empty and the union is the
-           * cache alone. Offline creation is the next surface; this is here
-           * because the registry is total over the kinds and an engine cannot be
-           * built without it.
+           * WHAT THIS TURNS ON. The engine drains a local seller and tops the
+           * code holding up, the picker OFFERS the local rows (the union below),
+           * and the add-seller sheet CREATES them — `createSeller` above writes a
+           * `local_sellers` row and enqueues the `seller_create` kind (P1.8b),
+           * with no online path beside it.
            */
           sellerStore,
           /*
@@ -1654,28 +1667,33 @@ export default function App() {
   }, [failedCount, pendingCount, sheet]);
 
   /**
-   * THE POST /sellers CALLER (P1.8a). One instance for the app's lifetime:
-   * `getToken` reads `tokenRef` at call time, exactly as the sync engine's
-   * transport does, so a sign-in does not have to rebuild it — and a stale
-   * captured token cannot be sent.
+   * CREATE A SELLER LOCALLY (P1.8b). Writes the row and binds one reserved code
+   * in ONE transaction (`SqliteLocalSellerStore.createLocalSeller`), then kicks a
+   * sync pass so the `seller_create` outbox drains it — immediately when online.
+   * No network call happens here: hard rule 8, and the ONE mechanism S14 asks
+   * for, not a second online path beside the offline one.
    *
-   * `fetchImpl` is wrapped rather than handed over as `globalThis.fetch`, for
-   * the same reason HttpTransport wraps it: an unbound reference to React
-   * Native's fetch is not safe to call.
+   * `currentOwner()` is read HERE, at the create, so the row records WHO created
+   * the seller — origin, written once and never rewritten. A store that is not
+   * ready throws rather than returning `no_code`: a not-yet-open database is a
+   * "try again", not an empty reserve, and the sheet leaves the form for a retry.
    */
-  const sellerApi = useMemo(
-    () =>
-      new SellerApi({
-        baseUrl: API_BASE_URL,
-        getToken: () => Promise.resolve(tokenRef.current),
-        fetchImpl: (input, init) => fetch(input, init),
-      }),
-    [],
-  );
-
   const createSeller = useCallback(
-    (draft: SellerDraft) => sellerApi.createSeller(draft),
-    [sellerApi],
+    async (draft: LocalSellerDraft): Promise<CreateLocalSellerResult> => {
+      const store = sellerStoreRef.current;
+      if (!store) throw new Error("seller store not ready");
+      const result = await store.createLocalSeller(
+        draft,
+        await currentOwner(),
+        deviceIds.newId(),
+        systemClock.now(),
+      );
+      // Kick the pass so the create is sent now if we are online. A no_code
+      // refusal wrote nothing, so there is nothing to drain.
+      if (result.kind === "created") void syncOnce();
+      return result;
+    },
+    [currentOwner, syncOnce],
   );
 
   /**
@@ -1822,49 +1840,46 @@ export default function App() {
   );
 
   /**
-   * A SELLER WAS JUST CREATED ON THE SERVER, AND THE TRUCK IS ON THE
-   * WEIGHBRIDGE (P1.8a phase 3).
+   * A SELLER WAS JUST CREATED LOCALLY, AND THE TRUCK IS ON THE WEIGHBRIDGE
+   * (P1.8b).
    *
-   * THE IN-MEMORY LIST IS UPDATED FIRST, and that is not an optimisation. The
-   * durable cache is written only by `saveSellers`, which runs an UNCONDITIONAL
-   * `DELETE FROM cached_sellers` and re-inserts the server's whole list — so
-   * until a refresh completes the new seller is nowhere on this device. And
-   * `seller` (the useMemo near the top of this component) resolves the draft's
-   * `seller_id` out of THIS array: a draft whose seller is not in it renders as
-   * null and CartScreen treats that as "cannot save". Without this line the
-   * operator would create a seller, start a bill for them, and be unable to
-   * save it.
+   * IT GOES INTO `localSellers` — the LOCAL side of the picker union — and NEVER
+   * into `sellers`, the server cache. `saveSellers` runs an unconditional
+   * `DELETE FROM cached_sellers`, so a local row placed there would be destroyed
+   * by the next refresh; a local seller lives in its own table (`local_sellers`),
+   * and `mergeSellersForPicker` unions the two at read time
+   * (`cart/pickerSellers.ts`). Adding it to the state here makes the picker offer
+   * it at once, under its LOCAL id, and `seller` (the useMemo near the top)
+   * resolves the draft's `seller_id` out of the UNION, so the bill can be saved.
    *
-   * THEN the refresh, which is what makes it durable — it re-reads the server's
-   * list, which now contains this row, and writes the lot to SQLite.
-   *
-   * THE REFRESH CAN FAIL WHILE THE CREATE SUCCEEDED, and nothing here repairs
-   * that: the connection can drop between the two requests, and
-   * `refreshMaster` also returns immediately when one is already in flight. The
-   * seller then exists on the server and only in this app's memory. The bill
-   * still saves and still sends — it carries `seller_id`, and the server
-   * resolves it — but a relaunch before the next successful refresh loses the
-   * local row, and a draft pointing at it becomes unsaveable until one lands.
-   * That fails CLOSED, which is the right direction for money, and it is
-   * recorded rather than fixed here.
+   * NO `refreshMaster` HERE. The server has never heard of this seller, so a
+   * refresh cannot carry it down and cannot drop the local row — the union keeps
+   * offering it until it has SETTLED and the server's row has arrived. A bill
+   * weighed against it carries the local id and PARKS; the send path swaps in the
+   * server id once the seller settles (`sync/resolveParkedSeller.ts`), so the
+   * local id never reaches `POST /bills`.
    */
   const onSellerCreated = useCallback(
-    (created: CreatedSeller) => {
-      // No close of this form here any more. `chooseSeller` below empties the
-      // whole stack — this form AND the picker under it — in one act, so there is
-      // no ordering between two closes to get wrong.
-      // FIVE FIELDS, named one by one. `CreatedSeller` also carries id_number,
-      // address and vehicle_no, and structural typing would let all three into
-      // this list and then into saveSellers — see src/master/sellerForm.ts.
-      const seller = pickableSeller(created);
-      setSellers((prev) => (prev.some((s) => s.id === seller.id) ? prev : [...prev, seller]));
-      const t = tokenRef.current;
-      if (t !== null) void refreshMaster(t);
-      // The operator pressed เลือกผู้ขายรายนี้; this is that pick, going through
-      // the one function that starts or changes a bill.
-      chooseSeller(seller);
+    (created: LocalSeller) => {
+      setLocalSellers((prev) =>
+        prev.some((s) => s.id === created.id) ? prev : [...prev, created],
+      );
+      // The operator pressed เลือกผู้ขายรายนี้; this is that pick, under the
+      // seller's LOCAL id, going through the one function that starts or changes a
+      // bill. `chooseSeller` empties the whole sheet stack — this form AND the
+      // picker under it — in one act, so there is no ordering between two closes
+      // to get wrong. Five fields, named one by one — a `LocalSeller` also carries
+      // id_number, address, vehicle_no, a reservation token and the owner pair,
+      // and none of them belongs in the picker.
+      chooseSeller({
+        id: created.id,
+        code: created.code,
+        name: created.name,
+        phone: created.phone,
+        grade: created.grade,
+      });
     },
-    [chooseSeller, refreshMaster],
+    [chooseSeller],
   );
 
   /* ------------------------------------------------------------ vehicle -- */
@@ -2167,23 +2182,8 @@ export default function App() {
           content: (
             <AddSellerSheet
               create={createSeller}
+              held={heldCount}
               onPick={onSellerCreated}
-              onSignIn={() => {
-                // With no usable session the login screen is already the body of
-                // the app, so surfacing it is the whole action. Nothing here can
-                // supply credentials.
-                sheet("close_every_sheet");
-              }}
-              onRefreshList={() => {
-                // `ambiguous`: the server may or may not have created the seller.
-                // Re-read the list and put the operator back on the picker, where
-                // the search box is, so they can LOOK before adding again — which
-                // is what closing THIS sheet does, because the picker is the frame
-                // underneath it in the stack.
-                sheet("close_top");
-                const t = tokenRef.current;
-                if (t !== null) void refreshMaster(t);
-              }}
               onClose={closeTopSheet}
             />
           ),
