@@ -30,9 +30,10 @@ returns **exit 1** — the string is in no tracked file, `ROADMAP.md` included, 
 `git log --all -S "25-30"` finds no commit that ever removed it. It came from a
 draft pasted into a chat window. It is **not recorded here, and its absence is
 not recorded as a stale reference either**, because it was never a fact about
-this repository. This is `OPEN_ITEMS.md § Documentation` "The bill-attribution
-claim" exactly: three files once agreed on a sentence none of them had read out
-of the code.
+this repository. This is
+`archive/OPEN_ITEMS-through-2026-08-28-0841d8e.md` "The bill-attribution claim"
+(closed 2026-08-05, archived in the M2 compression) exactly: three files once
+agreed on a sentence none of them had read out of the code.
 
 **Evidence standard.** `BRIEFING.md § 3` "Built and proven, versus built and
 unverified": **Proven** = the real path ran and was OBSERVED (an HTTP request and

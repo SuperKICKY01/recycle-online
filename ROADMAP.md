@@ -3097,8 +3097,9 @@ Said before anyone reads it as complete.
   startup sweep puts it back. Whether this design owes such a sweep is a DESIGN
   question and P1.8b GATES does not answer it: the boot already sweeps
   `syncing` rows per kind, and a bill parked behind a SETTLED seller is a
-  different shape of stranding that no existing `recover` looks for. Queued at
-  `OPEN_ITEMS.md § Decisions open — the owner's, not the code's`
+  different shape of stranding that no existing `recover` looks for. Resolved
+  2026-08-27 (B1) and archived in the M2 compression,
+  `archive/OPEN_ITEMS-through-2026-08-28-0841d8e.md`
   "A CRASH BETWEEN THE SELLER SETTLE AND THE BILL RELEASE STRANDS THE BILLS".
 - **A LOCAL SELLER HELD FOR REVIEW IS OWED AND NEVER ACTIONABLE.** Added
   2026-08-25 by P1.8b GATES, which widened that gate to every kind. A 409 leaves
@@ -3112,8 +3113,9 @@ Said before anyone reads it as complete.
   than on ordinary use. Nothing in P1.8b GATES treats it as an ordinary end
   state: inventing a disposal would be a design decision, and the two candidates
   — a fourth seller state, or a gate that distinguishes owed-and-drainable from
-  owed-and-stuck — are opposite answers with different costs. Queued at
-  `OPEN_ITEMS.md § Decisions open — the owner's, not the code's`
+  owed-and-stuck — are opposite answers with different costs. Resolved
+  2026-08-27 (B1) and archived in the M2 compression,
+  `archive/OPEN_ITEMS-through-2026-08-28-0841d8e.md`
   "A LOCAL SELLER HELD FOR REVIEW HOLDS THE SIGN-OUT GATE SHUT FOR EVER".
 
 **AMENDED (P-SELLERKIND-DESIGN-AMEND, 2026-08-24) — S10 AND THE SIGN-OUT GATE,
