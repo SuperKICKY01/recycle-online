@@ -90,6 +90,55 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   rather than only the seller's grade, so the yard is at least told that the
   shop-wide fix exists. *Unblocks:* unchanged in kind — an operator surface,
   which `ROADMAP.md § P1.16` took as scope on the same date.
+  **AMENDED 2026-08-28 — THE BLOCK WAS HIT LIVE ON A HANDSET, AND THE SHOP-DEFAULT
+  FALLBACK RAN FOR THE FIRST TIME. A CONFIRMATION, NOT A NEW FINDING.** Everything
+  above is left exactly as written and was true when written; the three consequences
+  this records were already recorded in this entry and its 2026-08-18 amendment, so
+  no queue line is added. What was owed was DATED EVIDENCE that the recorded block is
+  real on a device rather than inferred from the 2026-08-17 pass. Every figure below
+  is re-derived read-only from Postgres on the dev cluster (`recycle` on 5544),
+  cross-tenant reads taken as the `postgres` superuser because every table here is
+  FORCE ROW LEVEL SECURITY.
+  **THE BLOCK WAS HIT LIVE.** A real purchase bill for cash paid on the yard —
+  `B-2569-543`, total 40.00, one line of `AL-CAN`, against seller `S008` whose
+  `grade` is NULL — was created on a handset at `device_created_at` 2026-08-28
+  12:46:32Z and did not reach the server until `server_received_at` 13:02:52Z, about
+  sixteen minutes later. It sat unsendable, parked on the 424 `seller_grade_unset`,
+  until an admin set the shop default by `PATCH /shop` over curl — the office round
+  trip this entry says "has NO SCREEN behind it on any surface", now confirmed on a
+  device rather than inferred. (Re-derivation caught one advising-session reading
+  that did not hold: seller `S008`'s name is not Thai but the ASCII placeholder
+  `ggghh`, hex-verified `6767676868` — a test name typed on the yard.)
+  **THE FALLBACK WORKS, AND THIS IS ITS FIRST RUN AGAINST A REAL PARKED BILL.**
+  `tenants.default_grade` landed at `9ad225e` (2026-08-18) and until now nothing had
+  exercised it. Setting Shop A's default to `B` released `B-2569-543` unchanged,
+  whose seller's own `grade` is still NULL — the shop-wide fallback, read at bill
+  time, is what priced it. It is the only bill in the cluster that both stands
+  against a NULL-grade seller AND parked: the two other NULL-grade bills
+  (`B-2569-383` and `B-2569-384`, seller `S005`) synced in about 8ms as direct
+  inserts and predate the fallback. Mechanism confirmed; reachability unchanged — it
+  still needs curl.
+  **THE PARK IS CORRECT AND IS NOT THE DEFECT.** The bill waited about sixteen
+  minutes and then sent itself with nothing retyped and no cash record lost — the
+  behaviour the offline-first design intends (hard rule 8). The defect is only that
+  the remedy needs curl, not that the bill parked.
+  **THE OWN-PRICE CASE IS CONFIRMED AT THE COLUMN LEVEL, SHARPER THAN THIS ENTRY
+  STATES IT.** The operator DID set the price — `unit_price` 20.00 — and the bill
+  still could not go. `B-2569-543`'s line carries `list_price` 44.00, exactly the
+  grade-B tier for `AL-CAN` (A 45.00 / B 44.00 / C 43.00 / D 42.00). Hard rule 6
+  stores `list_price` beside `unit_price`, and `list_price` is selected by the grade
+  tier — so a shop pricing one product one way for everyone is blocked not because it
+  cannot set the price, but because the row cannot be completed without a grade. This
+  is the mechanism behind the recorded consequence, not a new one.
+  **EVERY OTHER TENANT IS STILL NULL.** Of the four tenants only Shop A now carries
+  `default_grade` `B`; the other three — Shop B and the two tenants created
+  2026-08-10 — are still NULL, because `provision_shop.py` sets no grade. The next
+  shop provisioned hits this on its first walk-in bill.
+  **WHAT THIS PASS DOES NOT ESTABLISH.** One handset, one tenant, the dev database, a
+  debug build, one operator. Nothing about a release build, iOS, or a second device.
+  The device-pass side of this — the seller reaching the server under its reserved
+  code and the bill syncing — is recorded against P1.8b in
+  `PROJECT_STATUS.md § Current phase`.
 
 - **EIGHT THINGS EACH SHOP CONFIGURES FOR ITSELF, AND NOTHING STORES ANY OF
   THEM — recorded 2026-08-17.** ONE entry and not eight, because they share a

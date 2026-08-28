@@ -136,6 +136,48 @@ the real path. The Windows EPERM on deleting an open SQLite temp dir is the
 established proof pattern already (`await driver.close()` before `rmSync`, as
 `proveSellerStore` does) and a clear error, not a wrong diagnosis — no footgun.
 
+**DEVICE PASS 2026-08-28 — THE HANDSET HALF OF P1.8b's DONE WHEN IS EXERCISED
+END-TO-END, AND THE STEP STILL DOES NOT CLOSE.** Recorded from a read-only
+re-derivation of the dev cluster (`recycle` on 5544, cross-tenant reads as the
+`postgres` superuser under FORCE RLS); this session wrote nothing to any database.
+On 2026-08-28 a seller created OFFLINE on a handset reached the server, and a bill
+weighed against it synced.
+
+- **A seller was created offline under a reserved code.** Seller `S008`
+  (id `5c142ef3`, name the ASCII placeholder `ggghh`) reached the server bound to
+  reservation `S008`, whose `seller_code_reservations` row is now `state=spent` with
+  `seller_id` set — the offline reserved-code path this phase built, not the removed
+  online mint. Codes `S009` through `S028` sit `held`, the 20-code reserve strip.
+- **A bill weighed against it synced.** `B-2569-543` — one `AL-CAN` line, net 2.000,
+  total 40.00 — carries a server-assigned doc_no, and Shop A's `doc_no_counters` row
+  for be_year 2569 reads `last_seq=543`, the counter that names the bill.
+
+**WHICH PART OF P1.8b's DONE WHEN THIS SATISFIES, AND WHICH IT DOES NOT — partition
+re-derived from `ROADMAP.md § P1.8`.** The UX-rework item (P1.23), the startup-sweep
+item and the offline-creation-wiring item are already closed at their own entries.
+Of the two that remained:
+
+- **The handset device pass** is exercised end-to-end on the SERVER/DB side —
+  offline creation, reserved-code spend and bill sync are all confirmed against the
+  live server. What this documentation session does NOT itself carry is the other
+  half of that criterion: the sheet and the strip read on a phone and reported
+  VERBATIM IN THAI under the bundle and server attestations
+  `CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING" requires. That
+  evidence belongs to the device pass's own record, is not re-derivable from
+  Postgres, and is not asserted here.
+- **The scratch-DB server pass STILL DOES NOT.** That clause names a run staged once
+  on a SCRATCH database, because each run burns reserved code space permanently; this
+  pass ran on the dev cluster and ran no such staged proof. A bill did reach
+  `POST /bills` with the counter moving, but the criterion's cost — once, on
+  scratch — is unmet.
+
+**SO P1.8b IS NOT DONE.** One clause is open — the scratch-DB server pass — and the
+device-screen half of the handset pass is attested by the device pass's own record,
+not here. The block this pass also hit — a NULL-grade seller parking the bill until
+an admin set the shop default by curl — is recorded at
+`OPEN_ITEMS.md § Blocking one real paying shop`. **Bounds:** one handset, one tenant,
+the dev database, a debug build, one operator.
+
 ---
 
 **P1.8b OFFLINE SELLER CREATION — WIRED (commit 1 of 2). DONE 2026-08-28.** This
