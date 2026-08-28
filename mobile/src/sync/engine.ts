@@ -388,11 +388,19 @@ export class SyncEngine {
    * path where a delay is money sitting on a device. A top-up is for the NEXT
    * walk-in and can wait a pass; a queued bill cannot.
    *
-   * IT TOUCHES NO COUNTER AND RETURNS NOTHING. A refill is what the device WANTS
-   * from the server, not what it OWES — so it has no queue entry, cannot refuse
-   * a sign-out and cannot colour the strip over work nobody is waiting for. That
-   * is the design's own reason for refusing to make it an outbox kind, and it
-   * only holds while this method stays silent.
+   * IT TOUCHES NO COUNTER AND OWES NOTHING. A refill is what the device WANTS
+   * from the server, not what it OWES — so it has no queue entry and cannot
+   * refuse a sign-out. That is the design's own reason for refusing to make it an
+   * outbox kind, and it is unchanged: this produces no owed count.
+   *
+   * WHAT IT NOW WRITES, AND WHY THAT IS NOT OWED WORK. It captures the answer's
+   * one fact the device cannot know locally — the shop's TARGET — and persists it
+   * (`sellerStore.saveReserveTarget`) so the reserve strip can read the level with
+   * no server. That is a read-only LEGIBILITY write, not a queue entry: it colours
+   * nothing over work anyone is waiting for, and an `unavailable` bounce writes
+   * nothing, leaving the last-known target for the strip itself to age out
+   * (`master/reserveStrip.ts`). The method used to DISCARD `refillOnce`'s answer;
+   * capturing it is the whole of what changed here.
    *
    * EVERY NON-ANSWER IS `unavailable`, FOR EVER, WITH NO CAP. `refillOnce`
    * catches its own throw, so an offline device, a dead token and a 500 all cost
@@ -402,11 +410,18 @@ export class SyncEngine {
    */
   private async topUpReservations(): Promise<void> {
     const deviceId = await this.deviceStore.ensure(this.clock.now());
-    await refillOnce(
+    const now = this.clock.now();
+    const result = await refillOnce(
       { transport: this.sellerTransport, store: this.sellerStore },
       deviceId,
-      this.clock.now(),
+      now,
     );
+    // Persist the shop's target from a `holding` answer, stamped with the same
+    // `now` the refill used so `target_at` is this target's own age. An
+    // `unavailable` bounce carries no target and writes nothing.
+    if (result.outcome.kind === "holding") {
+      await this.sellerStore.saveReserveTarget(result.outcome.holding.target, now);
+    }
   }
 
   /**

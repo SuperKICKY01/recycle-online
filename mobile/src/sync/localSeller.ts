@@ -195,6 +195,31 @@ export interface LocalSellerStore {
    */
   spendableCount(): Promise<number>;
 
+  /* -------------------------------------------------- the reserve target -- */
+
+  /**
+   * THE SHOP'S TARGET FOR THIS DEVICE'S HOLDING, and when it last arrived — or
+   * null when no refill has ever succeeded.
+   *
+   * `spendable` and `held` are LOCAL counts; the target is the one input the
+   * reserve level needs that this device cannot know on its own, so it is
+   * persisted from a refill answer and read here. NULL IS A FIRST-CLASS ANSWER
+   * and means NEVER PROVISIONED — it must never be papered over with a zero or a
+   * default, which would be a target the strip renders a sufficiency claim
+   * against (`lessons/fallback-default-is-a-wrong-number.md`).
+   */
+  loadReserveTarget(): Promise<ReserveTarget | null>;
+  /**
+   * Persist the target a refill answered with, overwriting the single row.
+   *
+   * `now` is stamped as `target_at` so a reader can tell how old the target is:
+   * a refill is a no-op when offline, so this value can go stale, and the strip
+   * refuses to present a stale target as fresh
+   * (`lessons/cached-master-data-is-a-price-claim.md`). A later refill's target
+   * is the current one; there is no history to keep.
+   */
+  saveReserveTarget(target: number, now: Date): Promise<void>;
+
   /* ------------------------------------------------------- the sellers -- */
 
   /**
@@ -316,4 +341,15 @@ export interface LocalSellerStore {
 export interface IssuedCode {
   code: string;
   token: string;
+}
+
+/**
+ * The shop's target for this device's holding, as last received from a refill,
+ * with the device-time instant it arrived. Both are needed by the reserve strip:
+ * the target to classify `ample` vs `low`, and `target_at` to decide whether the
+ * target is fresh enough to make that classification (`master/reserveStrip.ts`).
+ */
+export interface ReserveTarget {
+  target: number;
+  target_at: string;
 }

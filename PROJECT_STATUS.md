@@ -57,6 +57,87 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.8b OFFLINE SELLER CREATION — THE CONTINUOUS RESERVE STRIP, THE LAST CODE
+PIECE (commit 2 of 2). DONE 2026-08-28.** This supersedes the commit-1 entry below
+as the current phase; that record stands. **NO SHA IS GIVEN**, deliberately — the
+work is uncommitted at the moment this is written
+(`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT"). With it, **P1.8b's DONE WHEN
+has NO CODE left**: what remains is the handset device pass and the scratch-DB
+server pass, both needing the owner and live infrastructure.
+
+**WHAT IT BUILT.** The reserve level is shown CONTINUOUSLY, so exhaustion is
+legible before it bites. `topUpReservations` (`engine.ts`) now CAPTURES
+`refillOnce`'s answer — which it used to DISCARD — and persists the shop's TARGET,
+the one input the level needs that the device cannot know locally, to a new one-row
+`local_reserve` table (`spendable` and `held` are LOCAL counts). A third always-on
+strip, `app/ReserveStrip.tsx` on the StatusStrip/MasterDataStrip pattern, renders
+`src/master/reserveStrip.ts`.
+
+- **The four states, and one is suppressed.** `never_provisioned` and `exhausted`
+  are target-INDEPENDENT and exact from the local holding; `low` shows the true
+  count; `ample` renders NOTHING — the calm state, as MasterDataStrip suppresses
+  fresh data. c4's `reserveNotice` supplies the sentences. RED CELLS, named before
+  the run: `--break=amplenull` reddened exactly the three `ample`→null cells.
+- **`never_provisioned` shows NO NUMBER.** A device that has spent nothing has no
+  count, and a zeroed target is never invented (`fallback-default-is-a-wrong-number`):
+  the row is null and the strip is asserted to carry NO DIGIT.
+- **A LEVEL READ IS AN AGE CLAIM, and a stale target is not sold as fresh.** The
+  target arrives only in a refill answer and a refill is a no-op offline, so it can
+  be stale; `target_at` records when it arrived. Only `ample` asserts anything about
+  the target, so past a 12h cutoff — its OWN constant, `freshness.ts`'s
+  anti-conflation rule forbidding reuse of the money one — or when the stamp is in
+  the future (a backwards clock, `pastStampSuspect`), the strip never claims
+  `ample`; it shows the count. RED CELLS: `--break=truststale` reddened exactly the
+  five staleness cells. This is `cached-master-data-is-a-price-claim`'s shape
+  applied to a level.
+- **THE SEAM NO PROOF HAD EVER DRIVEN.** No proof drove `SyncEngine.runOnce` — the
+  refill call site — so `topUpReservations` had never run under a proof, which is
+  the gap the commit-1 "callerless" confusion lived in. `proveReserveStrip`'s
+  integration cell drives a real engine over real SQLite: `runOnce` persists the
+  target, an offline pass leaves the last-known one, and the read-back state feeds
+  the strip.
+
+**THE OBSERVATIONS, every command bare with its status read in the same
+invocation. No server, no device.**
+
+- Both TypeScript programs exit 0, each bare, before and after.
+- `npm run prove:reservestrip` (new, 29 cells, incl. the engine-seam cell) exit 0
+  TWICE, own fixture per run (a fresh temp DB, closed before deletion — Windows
+  refuses to unlink a file SQLite holds open), preset-red. Both disproofs named
+  their cell before running.
+- Every headless mobile proof green TWICE, cell counts identical to the commit-1
+  baseline and UNMOVED — 34 of them, including `proveSync` 247, `proveOutbox` 77,
+  `proveSellerKind` 69, `proveSellerStore` 56, `provePickerSeller` 15,
+  `proveReserveNotice` 20, `proveLocalSellerCreate` 27. The three auth proofs exit
+  1 ONLY for want of a live server — out of scope, untouched.
+- `verify_shared_checks.py` 0; `build_all_lessons.py --check` 0 (no lesson added).
+- Citation checker over the three edited docs: BROKEN unchanged from commit 1's six
+  pre-existing, and every citation this phase added resolves.
+
+**FILE SET.** New: `mobile/src/master/reserveStrip.ts`,
+`mobile/app/ReserveStrip.tsx`, `mobile/src/proof/proveReserveStrip.ts`. Edited:
+`mobile/src/adapters/sqlite/schema.ts`, `mobile/src/sync/localSeller.ts`,
+`mobile/src/adapters/sqlite/SqliteLocalSellerStore.ts`, `mobile/src/sync/engine.ts`,
+`mobile/App.tsx`, `mobile/package.json`, `mobile/src/proof/fakes.ts`;
+`PROJECT_STATUS.md`, `ROADMAP.md`, `OPEN_ITEMS.md`.
+
+**WHAT STAYS OPEN — NO CODE.** The handset device pass (the sheet and the strip
+read on a phone, reported verbatim in Thai, under
+`CLAUDE.md § Boot check` "WHICH BUNDLE THE HANDSET IS RUNNING") and the scratch-DB
+server pass (a released bill reaching a real `POST /bills` with the
+`doc_no_counters` row MOVING). Both need the owner and live infrastructure; neither
+is code. Recorded in `ROADMAP.md § P1.8`'s partition and `OPEN_ITEMS.md`.
+
+**IS A LESSON OWED? NO, BY `CLAUDE.md § Workflow` "Two homes, one test".** The two
+things this phase surfaced are instances, not new lessons. The runOnce-never-driven
+seam is `two-green-proofs-do-not-cover-the-seam` — `refillOnce` and the store were
+each proven and their assembly in `topUpReservations` was not — closed by driving
+the real path. The Windows EPERM on deleting an open SQLite temp dir is the
+established proof pattern already (`await driver.close()` before `rmSync`, as
+`proveSellerStore` does) and a clear error, not a wrong diagnosis — no footgun.
+
+---
+
 **P1.8b OFFLINE SELLER CREATION — WIRED (commit 1 of 2). DONE 2026-08-28.** This
 supersedes the P1.23 c4 entry below as the current phase; that entry's record
 stands unchanged apart from the dated `refillOnce` correction appended to it.
@@ -226,7 +307,7 @@ today, and `refillOnce`'s call site is the next unit's — so the continuous str
 that the B1 legibility finding calls for is owed with the offline-creation wiring.
 Recorded in `OPEN_ITEMS.md § Code debt` and in `ROADMAP.md § P1.8`'s partition.
 
-**SUPERSEDED 2026-08-28 (offline-creation wiring, this phase): "`refillOnce`'s
+**SUPERSEDED 2026-08-28 (offline-creation wiring, `94a0d47`): "`refillOnce`'s
 call site is the next unit's" IS FALSE, AND WAS FALSE WHEN THIS c4 ENTRY WAS
 WRITTEN.** Re-derived against the tree, not from a report: `SyncEngine.runOnce`
 (`mobile/src/sync/engine.ts:358`) calls `topUpReservations` (`:403`), which calls

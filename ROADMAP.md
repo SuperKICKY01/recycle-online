@@ -2069,6 +2069,22 @@ the outstanding work is partitioned by what each piece waits on:
   so the strip that shows the level continuously is wired alongside offline
   creation, the sixth item below. Both this item's criteria are now met; what
   remains for it is that sixth item's wiring. NOT PINNED TO A SHA.
+  **SUPERSEDED 2026-08-28 (reserve strip, commit 2): THE CONTINUOUS DISPLAY IS
+  BUILT, AND THIS ITEM CLOSES.** `topUpReservations` (`engine.ts`) now CAPTURES
+  `refillOnce`'s answer — the imprecise "`refillOnce` discards" above should read
+  "`topUpReservations` discards"; `refillOnce` always returned it — and persists
+  the shop's `target` to a one-row `local_reserve` table. `mobile/app/ReserveStrip.tsx`
+  renders `mobile/src/master/reserveStrip.ts` as a third always-on strip, showing
+  `low`/`exhausted`/`never_provisioned` and suppressing the calm `ample` (the
+  MasterDataStrip pattern). A STALE or clock-suspect target is never presented as a
+  sufficiency claim — past a 12h cutoff (its own constant) or a backwards-clock
+  stamp it shows the count instead of `ample`
+  (`lessons/cached-master-data-is-a-price-claim.md`), and `never_provisioned` shows
+  NO NUMBER (`fallback-default-is-a-wrong-number`). Proven headless by
+  `prove:reservestrip`: the four states, both disproofs named, and an integration
+  cell driving a real `SyncEngine.runOnce` — the refill call site NO proof had ever
+  driven, the seam the commit-1 confusion lived in. NOT PINNED TO A SHA — ships in
+  commit 2.
 - **Waits on a handset device pass:** `EVERY-SURFACE-SEES-A-KIND-THAT-IS-NOT-A-BILL`
   parts 2 and 3 — the sheet and the strip read on a phone and reported verbatim
   in Thai, under the bundle and server attestations

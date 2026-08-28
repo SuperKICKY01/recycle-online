@@ -334,6 +334,36 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
    ) STRICT`,
 
   /*
+   * THE SHOP'S TARGET FOR THIS DEVICE'S RESERVED-CODE HOLDING — the one fact the
+   * reserve level needs that the device cannot know locally.
+   *
+   * `spendable` and `held` are counts over `local_seller_codes`, both LOCAL. The
+   * TARGET is the shop's, and it arrives ONLY in a refill answer
+   * (`sync/sellerRefill.ts` `ReservationHolding.target`); a refill is a no-op when
+   * offline, so this value CAN BE STALE. `target_at` records when it was last
+   * received, so the strip can refuse to present a stale target as a fresh
+   * sufficiency claim (`src/master/reserveStrip.ts`, the age-and-clock rule that
+   * `lessons/cached-master-data-is-a-price-claim.md` prescribes).
+   *
+   * A ONE-ROW TABLE keyed `only_row = 1`, the same shape as local_device /
+   * local_shop / local_identity, and with NO OWNER COLUMN for
+   * `local_seller_codes`' reason: the holding this measures belongs to the
+   * DEVICE, not a person, and must survive a sign-out.
+   *
+   * Needs no migration list entry, for local_shop's reason: a table that never
+   * existed is created by this statement on an upgraded device exactly as on a
+   * fresh one. The value is not backfilled and must not be invented — a device
+   * with no row here has NEVER been provisioned, which is a real state the strip
+   * renders as such rather than defaulting a target
+   * (`lessons/fallback-default-is-a-wrong-number.md`).
+   */
+  `CREATE TABLE IF NOT EXISTS local_reserve (
+     only_row  INTEGER NOT NULL PRIMARY KEY CHECK (only_row = 1),
+     target    INTEGER NOT NULL,
+     target_at TEXT    NOT NULL
+   ) STRICT`,
+
+  /*
    * A SELLER THIS DEVICE CREATED THAT THE SERVER HAS NOT SEEN YET.
    *
    * ---------------------------------------------------------------------------

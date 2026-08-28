@@ -1375,7 +1375,7 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   call site — because the reserve display and the code-spending it guards are the
   same wiring; the B1 legibility finding (shown continuously, before a refusal)
   lands with it.
-  **UPDATED 2026-08-28 (offline-creation wiring): THE CODE-SPENDING HALF IS BUILT;
+  **UPDATED 2026-08-28 (offline-creation wiring, `94a0d47`): THE CODE-SPENDING HALF IS BUILT;
   THE STRIP IS STILL OWED, AND ONE PHRASE ABOVE IS CORRECTED.** Offline creation is
   now wired — the sheet writes a `local_sellers` row on every create and spends a
   reserved code (`App.tsx` `createSeller` → `SqliteLocalSellerStore.createLocalSeller`),
@@ -1388,6 +1388,16 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   `topUpReservations` discards the return value. So what commit 2 owes is to
   CAPTURE that return and persist `target`, then add the strip. See
   `PROJECT_STATUS.md § Current phase`'s dated correction.
+  **DONE 2026-08-28 (reserve strip, commit 2). THIS ITEM CLOSES.** The continuous
+  strip is built: `topUpReservations` (`engine.ts`) captures `refillOnce`'s answer
+  and persists the `target` to a one-row `local_reserve` table; `mobile/app/ReserveStrip.tsx`
+  renders `mobile/src/master/reserveStrip.ts` — the four states, the calm `ample`
+  suppressed, a stale or clock-suspect target shown as the count and never as a
+  sufficiency claim (`cached-master-data-is-a-price-claim`). Proven headless by
+  `prove:reservestrip`, whose integration cell drives a real `SyncEngine.runOnce`
+  — the refill call site no proof had driven. With it, P1.8b's DONE WHEN has NO
+  CODE left: only the handset device pass and the scratch-DB server pass remain.
+  NOT PINNED TO A SHA — ships in commit 2.
 - **EVERY PROOF EXCEPT `proveOutbox.ts` CAN EXIT 0 WITH ITS RUN INCOMPLETE —
   found 2026-08-19 by a disproof that READ AS A PASS, and swept nowhere.**
   Each proof assigns its verdict in a trailing `.then`, and node's natural

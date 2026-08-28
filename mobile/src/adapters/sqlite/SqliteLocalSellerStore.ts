@@ -45,6 +45,7 @@ import type {
   LocalSellerDraft,
   LocalSellerStore,
   ReservedCode,
+  ReserveTarget,
   SellerSyncState,
 } from "../../sync/localSeller.js";
 import type { RowOwner } from "../../sync/types.js";
@@ -264,6 +265,39 @@ export class SqliteLocalSellerStore implements LocalSellerStore {
       "SELECT COUNT(*) AS n FROM local_seller_codes WHERE spent_on IS NULL",
     );
     return rows[0]?.n ?? 0;
+  }
+
+  /* -------------------------------------------------- the reserve target -- */
+
+  /**
+   * The persisted target, or null when no refill has ever succeeded on this
+   * device. NULL IS A REAL STATE — never provisioned — and is returned as null,
+   * never as a zeroed `ReserveTarget`: a caller must be able to tell "never had a
+   * target" from "the target is 0", and only one of those is a thing the shop can
+   * configure.
+   */
+  async loadReserveTarget(): Promise<ReserveTarget | null> {
+    const rows = await this.db.all<ReserveTarget>(
+      "SELECT target, target_at FROM local_reserve WHERE only_row = 1",
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Overwrite the single reserve-target row. `DO UPDATE`, not `DO NOTHING`: both
+   * columns are CONTENT — the target the shop wants NOW and when this device last
+   * heard it — so a later refill's answer must replace an earlier one, and the
+   * stamp must move with it or the strip would compute the age of the target
+   * against a time that is not this target's
+   * (`lessons/a-column-that-describes-content-must-follow-a-rewrite.md`).
+   */
+  async saveReserveTarget(target: number, now: Date): Promise<void> {
+    await this.db.run(
+      `INSERT INTO local_reserve (only_row, target, target_at)
+       VALUES (1, ?, ?)
+       ON CONFLICT(only_row) DO UPDATE SET target = excluded.target, target_at = excluded.target_at`,
+      [target, now.toISOString()],
+    );
   }
 
   /* ------------------------------------------------------- the sellers -- */

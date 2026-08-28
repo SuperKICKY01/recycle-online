@@ -26,6 +26,7 @@ import type {
   LocalSeller,
   LocalSellerStore,
   ReservedCode,
+  ReserveTarget,
 } from "../sync/localSeller.js";
 import type { SellerCreateOutcome, SellerCreateTransport } from "../sync/sellerCreate.js";
 import type { RefillOutcome, ReservationTransport } from "../sync/sellerRefill.js";
@@ -1240,6 +1241,16 @@ export class EmptySellerStore implements LocalSellerStore {
   }
   spendableCount(): Promise<number> {
     return Promise.resolve(0);
+  }
+  // Never provisioned: an empty store has never taken a refill answer, so the
+  // read is null (not a zeroed target), and the write refuses like the other
+  // writers — a proof reaching it has a refill succeeding against a store with no
+  // holding, which noSellerKind's RefusingSellerTransport never lets happen.
+  loadReserveTarget(): Promise<ReserveTarget | null> {
+    return Promise.resolve(null);
+  }
+  saveReserveTarget(): Promise<void> {
+    return this.refuse("saveReserveTarget");
   }
   createLocalSeller(): Promise<CreateLocalSellerResult> {
     return this.refuse("createLocalSeller");

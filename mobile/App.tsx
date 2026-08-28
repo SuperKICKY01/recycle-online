@@ -91,6 +91,7 @@ import {
   masterNotice,
   mayStartBill,
 } from "./src/master/freshness";
+import { reserveStripNotice } from "./src/master/reserveStrip";
 import {
   GRADES,
   priceListScreen,
@@ -140,6 +141,7 @@ import { API_BASE_URL } from "./app/config";
 import { LoginScreen } from "./app/LoginScreen";
 import { deviceIds } from "./app/ids";
 import { MasterDataStrip } from "./app/MasterDataStrip";
+import { ReserveStrip } from "./app/ReserveStrip";
 import { PricesSheet } from "./app/PricesSheet";
 import { SellerPicker } from "./app/SellerPicker";
 /*
@@ -203,14 +205,21 @@ export default function App() {
    */
   const [localSellers, setLocalSellers] = useState<LocalSeller[]>([]);
   /**
-   * How many reserved seller codes this device holds, spent or not — read
-   * alongside `localSellers`. The add-seller sheet reads it ONLY to tell an
-   * exhausted device (had codes, spent them) from a never-provisioned one (never
-   * received any), a distinction nothing else on the device draws. It moves only
-   * when a refill mints codes, so a value one refresh stale still cannot cross the
-   * held-is-zero boundary that separates those two states.
+   * THE DEVICE'S RESERVED-CODE HOLDING, for the continuous reserve strip and the
+   * add-seller refusal. `spendable` and `held` are LOCAL counts; `target` and
+   * `targetAt` are the shop's target and when it last arrived from a refill —
+   * null together until a refill has ever succeeded (NEVER PROVISIONED), never
+   * defaulted. Read by `readReserve` at boot, after every sync pass (a refill may
+   * have moved it), and after a create. The strip decides for itself whether
+   * `target` is fresh enough to trust (`src/master/reserveStrip.ts`); this holds
+   * the raw values.
    */
-  const [heldCount, setHeldCount] = useState(0);
+  const [reserve, setReserve] = useState<{
+    spendable: number;
+    held: number;
+    target: number | null;
+    targetAt: string | null;
+  }>({ spendable: 0, held: 0, target: null, targetAt: null });
   /*
    * WHEN each cached list was last fetched. Two values, not one: a refresh is
    * two requests and the second can fail alone, so a shared timestamp would
@@ -384,12 +393,35 @@ export default function App() {
   );
 
   /**
+   * Read the reserved-code holding for the strip and the add-seller refusal:
+   * spendable and held counts (LOCAL), and the shop's `target` with when it last
+   * arrived — null together until a refill has ever succeeded (never provisioned),
+   * never defaulted. Called at boot, after every sync pass (a refill may have
+   * moved it) and after a create. Stable (`[]`), so it never loops an effect.
+   */
+  const readReserve = useCallback(async () => {
+    const store = sellerStoreRef.current;
+    if (!store) return;
+    const [spendable, reservations, target] = await Promise.all([
+      store.spendableCount(),
+      store.listReservations(),
+      store.loadReserveTarget(),
+    ]);
+    setReserve({
+      spendable,
+      held: reservations.length,
+      target: target?.target ?? null,
+      targetAt: target?.target_at ?? null,
+    });
+  }, []);
+
+  /**
    * Re-read the local sellers whenever the cache changes — boot (the cache loads)
    * and every refresh. A settle without a refresh needs no re-read: the row stays
    * `synced` and `listForPicker` keeps returning it, so the picker goes on
    * offering it (the window) until a refresh carries the server row into `sellers`
    * and the union drops it. Keyed on `sellers`, never on `localSellers`, so it
-   * cannot loop.
+   * cannot loop; the reserve is read here too, and again after each pass/create.
    */
   useEffect(() => {
     const store = sellerStoreRef.current;
@@ -397,18 +429,13 @@ export default function App() {
     let cancelled = false;
     void (async () => {
       const rows = await store.listForPicker();
-      // Held codes, spent or not: only the add-seller refusal reads it, to name
-      // the cause of an empty reserve. A small list (bounded by the shop target).
-      const held = (await store.listReservations()).length;
-      if (!cancelled) {
-        setLocalSellers(rows);
-        setHeldCount(held);
-      }
+      if (!cancelled) setLocalSellers(rows);
     })();
+    void readReserve();
     return () => {
       cancelled = true;
     };
-  }, [sellers]);
+  }, [sellers, readReserve]);
 
   const seller = useMemo(
     () => pickerSellers.options.find((s) => s.id === draft?.seller_id) ?? null,
@@ -1033,6 +1060,9 @@ export default function App() {
     if (!maySync({ paused: syncPausedRef.current, token: tokenRef.current })) return;
     if (!engine) return;
     const r = await engine.runOnce();
+    // A pass tops the holding up (topUpReservations) and persists the target, so
+    // refresh the reserve for the strip and the add-seller refusal.
+    void readReserve();
 
     /*
      * THE SESSION MAY HAVE ENDED WHILE THIS PASS WAS IN FLIGHT.
@@ -1124,7 +1154,7 @@ export default function App() {
       // engine's own gate is lifted by that sign-in.
       setSubmitRefused(false);
     } else if (r.retryable > 0) setOnline(false);
-  }, [refresh]);
+  }, [refresh, readReserve]);
 
   useEffect(() => {
     if (!ready) return undefined;
@@ -1688,12 +1718,16 @@ export default function App() {
         deviceIds.newId(),
         systemClock.now(),
       );
+      // A successful create spent a reserved code, so refresh the holding — the
+      // strip and any next refusal must reflect the drop. Reading after a no_code
+      // refusal changes nothing and is cheap.
+      void readReserve();
       // Kick the pass so the create is sent now if we are online. A no_code
       // refusal wrote nothing, so there is nothing to drain.
       if (result.kind === "created") void syncOnce();
       return result;
     },
-    [currentOwner, syncOnce],
+    [currentOwner, readReserve, syncOnce],
   );
 
   /**
@@ -2182,7 +2216,7 @@ export default function App() {
           content: (
             <AddSellerSheet
               create={createSeller}
-              held={heldCount}
+              held={reserve.held}
               onPick={onSellerCreated}
               onClose={closeTopSheet}
             />
@@ -2515,6 +2549,16 @@ export default function App() {
           outranked. Renders nothing when the data was just refreshed.
         */}
         <MasterDataStrip notice={masterMessage} />
+
+        {/*
+          A THIRD strip, below the other two. StatusStrip answers "are my bills
+          getting out"; MasterDataStrip "is what I am pricing against still true";
+          this "can I still add a walk-in offline". Renders nothing when the
+          reserve is ample. `now` is read at render so the target ages even while
+          the holding itself does not change — the strip decides for itself whether
+          a target is now too old to present as fresh (src/master/reserveStrip.ts).
+        */}
+        <ReserveStrip notice={reserveStripNotice({ ...reserve, now: nowIso() })} />
 
         {bills.length > 0 ? (
           <Pressable style={styles.latest} onPress={() => sheet("open_bills")}>
