@@ -58,6 +58,20 @@ are `R1 R1b R2 R2b R3 R4 R5 R7`; `R6` and `R8`–`R10` existed only here.
 | R8 | thermal slip printing | **P1.17**, moved into stage 1 by S3 — which is the answer to the open question that inverted the old file's whole split. |
 | R9, R10 | sell flow, stock, and the rest of the out-of-MVP list | Off this file. They are `PROJECT_STATUS.md § What is NOT built` "do not build, do not scaffold" and nothing here schedules them. |
 
+### Steps met and archived — one line each
+
+A step whose DONE WHEN is met leaves this live spine WHOLE — with its record and
+any superseded design blocks — to the cold archive under the
+`archive/<SOURCE>_through_<date>_<sha>.md` convention (set 2026-08-28, commit
+`9896041`). History is never carved out of a live step: a met step archives as
+one unit and gains one row here. Live steps, S1-S22 and § Numbering stay in this
+file. This table is the pointer.
+
+| step | what it was | met | full text |
+|---|---|---|---|
+| P1.4 | an account that can be locked, not only signed out | MET 2026-08-07 (migration 0007) | `archive/ROADMAP_through_2026_08_28_9896041.md` "P1.4 — An account that can be locked" |
+| P1.10 | `prove_reconcile.py` back to green | MET 2026-08-07 | `archive/ROADMAP_through_2026_08_28_9896041.md` "the three expectations that expired in the 2026-08-03" |
+
 ---
 
 ## What next, and why that
@@ -1480,45 +1494,6 @@ exactly one meaning now**: not that the server is wrong, but that no shop has a
 code. That is what splitting the criteria was for, and a reader with no memory of
 either commit can tell which half is missing without asking. The queue item is
 `OPEN_ITEMS.md § Blocking one real paying shop` "NOBODY CAN ISSUE A SHOP CODE".
-
-### P1.4 — An account that can be locked, not only signed out
-
-**What it is.** A way to stop a person signing in again, as distinct from ending the
-sessions they hold. `SRS_MAP.md § 6. Security posture, per area` "No account lock"
-records what exists: session revocation, and no `is_active` on `users`, so a
-revoked user can sign in again the same second and the endpoint says so in its own
-docstring.
-
-**Depends on:** P1.3, because an account is created and locked inside a tenant.
-**S5 is what promotes this from a noted absence to a pilot step**: when the shop
-owns the handset, a dismissal ends with taking the handset back. When staff use
-their own phones, nothing is taken back, and the only remaining lever is the
-account. That is a dependency on a decision, not a preference about tidiness.
-
-**Unblocks:** P1.5, and P3.7.
-
-**DONE WHEN:** a locked account's `POST /auth/login` is refused — an observed
-response, not a predicted one — and the proof that establishes it has been seen
-going RED with the lock check removed
-(`lessons/README.md § Lessons` "a-check-that-never-went-red-was-never-observed.md").
-
-**MET 2026-08-07, migration 0007. Both clauses, and the second one twice.** The
-evidence is `PROJECT_STATUS.md § Current phase` "The first P-number recorded as met" and the dated entry it
-points at; it is deliberately NOT restated here, because two copies drift and a
-new session believes whichever it reads first. What this file adds is only the
-two things about the CLOSURE that belong to ordering rather than to evidence:
-
-- **P1.3 was skipped knowingly.** This step's "Depends on" above names it, and
-  it is not done. The capability was built and proven against the login that
-  still takes a uuid, so what P1.4 cannot yet do is be exercised by a human
-  typing a shop code. **The dependency was real and remains owed** — P1.3 will
-  change the login path this step just added a check to, and whoever does it
-  must not lose the check.
-- **The lock has a consequence on the PHONE that nothing fixes yet.** A locked
-  account's handset invites the operator to sign in and the sign-in cannot work.
-  `OPEN_ITEMS.md § Code debt found and left in place` "A LOCKED ACCOUNT'S PHONE"
-  carries it, against **P3.7**, which this step already lists under Unblocks.
-  It is DERIVED from reading the client, not observed on a handset.
 
 ### P1.5 — Account provisioning: a first admin, then a person per phone
 
@@ -4103,60 +4078,6 @@ daily or faster, and a shop that cannot change its own prices cannot trade.
 **DONE WHEN:** the owner changes a price on the handset and the next bill entered
 carries the new value in `purchase_bill_items.list_price`, read back out of Postgres
 rather than off the screen.
-
-### P1.10 — `prove_reconcile.py` back to green
-
-**What it is.** Deriving the three expectations that expired in the 2026-08-03
-rebuild — recorded at `OPEN_ITEMS.md § Verification gaps — built, not proven`
-"`prove_reconcile.py` is RED" — from the restored copy at runtime, instead of
-hardcoding counts of a database that no longer exists.
-
-**Depends on:** nothing. Like P1.2 it can run in parallel with anything. It is in
-stage 1, not stage 2, for one reason: `reconcile.py` is the instrument that will be
-pointed at the shop's real money in P2.2, and `prove_reconcile.py` is what
-establishes that the instrument can go RED. A checker whose own proof is red cannot
-be cited as evidence about a shop's ledger. The money injections still pass today,
-so this is a repair to an instrument, not a defect in the checker.
-
-**Unblocks:** P2.2 meaning anything.
-
-**DONE WHEN:** it exits 0 **twice in a row, bare, against a scratch database, with
-no reseed between** (`lessons/README.md § Lessons` "proof-must-run-twice.md"),
-`git grep -n "T0" -- server/scripts/prove_reconcile.py` no longer shows a hardcoded
-count, **AND the fourth failing cell is green** — `prove_reconcile.py:716`,
-`counts.get("X3") == 1`.
-
-**THAT LAST CLAUSE IS A CORRECTION, made 2026-08-07 while doing the step, and the
-reason it is written into the DONE WHEN rather than into the record is that this
-file is where a future session reads what "finished" means.** As originally
-written this step named THREE expectations and required only that they be derived.
-There were FOUR failing cells, and the fourth is not one of the three: it holds no
-count, so no derivation reaches it. It was red because the X3 probe had stopped
-landing its row inside the window it measures — the checker was working, the proof
-had stopped probing, and nothing had been edited. **Meeting the step as originally
-written would have left the proof red.** The step was one item narrower than the
-step.
-
-**MET 2026-08-07. All three clauses, and the third one was found rather than
-inherited.** The evidence is `PROJECT_STATUS.md § Baseline observations`
-"P1.10, `prove_reconcile.py` back to green" and the phase entry it sits under; it
-is deliberately NOT restated here, because two copies drift and a new session
-believes whichever it reads first. What belongs to ORDERING rather than to
-evidence, and so is added here:
-
-- **P2.2 rests on a NARROWER green at a pilot shop than the one measured here, and
-  the narrowing is structural.** On a one-tenant database three injections cannot
-  fire — S3/T0, S3/X2 and T10, which are the ones that exercise tenant isolation.
-  They now SKIP with the reason printed rather than passing. **A pilot shop's
-  database has one tenant** (D10), so this is the ordinary case there.
-  `OPEN_ITEMS.md § Verification gaps — built, not proven` "ON A ONE-TENANT DATABASE"
-  carries it, with the open question P2.2 has to answer: what the proof is pointed
-  at when the shop's data is real. **The number to read there is the skip count,
-  not the exit code.**
-- **Five residuals are recorded and none is closed.** They are at
-  `OPEN_ITEMS.md § Code debt found and left in place`
-  "FIVE THINGS IT DID NOT REMOVE", and the X3 probe among them remains a race
-  that fails closed.
 
 ### P1.11 — An installable build on staff-owned phones, and the Android answer
 

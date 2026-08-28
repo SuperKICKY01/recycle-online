@@ -78,8 +78,8 @@ Corrections to this file: supersede and date, never rewrite.
   documentation discrepancy with no money consequence, the four failing cells
   are tracked in the entry above, and every injection about money passed in all
   three runs. *Unblocks:* nothing.
-  **`ROADMAP.md § STAGE 1` "Deriving the three expectations" is where it
-  gets settled**, because that step has to read the injection list anyway to
+  **`archive/ROADMAP_through_2026_08_28_9896041.md` "Deriving the three expectations" is where it
+  gets settled** (P1.10, MET 2026-08-07, archived in M2 c2), because that step has to read the injection list anyway to
   derive the three counts that expired in the rebuild; whoever is in there
   should count the injections and correct whichever number is wrong.
 - **THE RESERVE LEVEL IS DRAWN BUT SHOWN ON NO SCREEN — the continuous display is
