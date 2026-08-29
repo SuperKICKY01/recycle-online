@@ -133,6 +133,12 @@ and these PROJECT_STATUS lines.
   unaffected. One mistake, caught by the checker: two cited handles wrapped across
   two lines during compaction — exactly what `CLAUDE.md § Conventions`
   "The target end is the harder one" warns of — re-wrapped, BROKEN back to 8.
+  **SUPERSEDED 2026-08-29 (M6 c3): the bare "14 sources" here did not NAME its list,
+  so the 8 is not reproducible.** The M6 c3 record below re-derives it over a named
+  14-file list and reads 6 — not two healed breaks (no commit sits between) but a
+  different list: `README.md` and `lessons/README.md` carry zero citations and each
+  fires the non-empty control, so any 14 built from them reads higher. The floor is
+  recorded by its FILES there, never again as a bare count.
 - **IS A LESSON OWED? NO, BY `CLAUDE.md § Workflow` "Two homes, one test".** Both
   mistakes were of an already-documented class — the handle-wrap is that same
   pin-a-claim rule, and catching the brief's wrong destination premise is
@@ -174,14 +180,22 @@ recorded rule (spent work measured before deletion; a research artifact kept ins
 the tree rather than left to rot outside it), and nothing new was relearned.
 
 **MAINTENANCE — M6: THE ROADMAP REALIGNMENT ON CLEAN GROUND, AND AN HONEST
-VELOCITY. 2026-08-29.** The last maintenance phase — two documentation commits, no
+VELOCITY. 2026-08-29.** The last maintenance phase — three documentation commits, no
 code and no database. **c1** recorded three owner decisions of 2026-08-28/29 in
 `ROADMAP.md § What the owner has settled` (S23, mobile's bar is a commercial-grade
 general app; S24, the owner dashboard is the superset, absorbing DailyScreen; and a
 D-C extension of S6, settings on both surfaces), swept the decision-audit
 quantifiers to S24, and landed the Gemini-filter verdicts as a research note. **c2**
 wrote `ROADMAP.md § The completion sequence to handover`, minted P1.24 for the grade
-model, and carries this note.
+model, and carries this note. **c3** (2026-08-29) records two more owner decisions
+that had reached no file for days — the domain is bought at the END, not early (an
+extension to S13), and P1.1's schedule is the owner's and not currently taken up —
+homed in `ROADMAP.md § What the owner has settled`,
+`ROADMAP.md § The completion sequence to handover`,
+`ROADMAP.md § P1.1 — The second-hand goods act's record-keeping obligation` and
+`ROADMAP.md § P1.11 — An installable build on staff-owned phones`; it also names the
+citation floor by its file list where c1's inherited figure did not, and queues one
+line of code debt. The detail is the c3 block at the foot of this M6 record.
 
 **THE VELOCITY, STATED AS WORK AND NOT AS TIME — no estimate is dressed as a fact
 here.** Where the project stands, measured: the mobile program has the purchase
@@ -210,6 +224,59 @@ is `CLAUDE.md § Workflow` "A REPORT IS A CLUE" applied (an external proposal
 re-derived against the file's own chains, not obeyed); the citation that wrapped
 across two lines while drafting was the pin-a-claim rule and was caught by the
 checker before it landed. Nothing new to relearn.
+
+**M6 c3 — TWO OWNER DECISIONS THAT LIVED IN NO FILE, AND A CITATION FLOOR NAMED BY
+ITS LIST. 2026-08-29.** Documentation only; files ROADMAP.md, PROJECT_STATUS.md,
+OPEN_ITEMS.md; no code, no database.
+
+- **The two decisions, recorded in `ROADMAP.md` with their reasoning.** (1) The
+  domain is bought at the END, when the app, desktop and web are all finished — an
+  extension to S13 that bounds its timing and mints no S-number, with S13's "worth
+  buying early" paragraph superseded in place and the owner's words kept verbatim.
+  Measured consequence: a tunnel meets P1.2's `https://` and off-box-backup halves
+  with no name, so P1.2 is NOT blocked; what the domain gates is P1.11, because
+  `mobile/app.json` bakes `apiBaseUrl` (today the LAN `http://192.168.1.238:8000`,
+  single reader `mobile/app/config.ts:24`) into the build. (2) P1.1's placement
+  argument — D10 irreversibility — is unchanged, but its schedule is the owner's and
+  as of 2026-08-29 not taken up, so it is no longer presented as "start now". Both
+  were settled in conversation (2026-08-26, reaffirmed 2026-08-28) and reached a file
+  only now, the failure `research/master-plan-2026-08-26.md` § 8 names.
+- **The absence was MEASURED before it was written, with a control.** A search of
+  ROADMAP/PROJECT_STATUS/OPEN_ITEMS for the domain PURCHASE TIMING (`ผมจะซื้อ`,
+  `ซื้อ domain`, `buy the domain`, domain-near-handover) returned nothing; the control
+  `buying early`/`S13` returned 12 hits, so the instrument looked and the decision
+  was absent. The quoted Thai was verified in bytes, not by console — one occurrence,
+  codepoints and UTF-8 bytes equal to the value fixed before the write, with an ASCII
+  control down the same path (`console-is-not-the-observation`).
+- **The citation floor, NAMED BY ITS FILES.** Re-derived at `ffbed78` (clean tree,
+  before c3's edits), call operator, `SOURCES=` read first, over 14 files — the twelve
+  root `.md` that carry citations (ADVISOR, ADVISOR_CHAT_INSTRUCTIONS, ARCHITECTURE,
+  BRIEFING, CLAUDE, EVIDENCE, OPEN_ITEMS, PROJECT_STATUS, RED_TEAM, ROADMAP, SRS_MAP,
+  START_HERE) plus `.claude/agents/metis.md` and `.claude/agents/nemesis.md` —
+  `BROKEN=6`: OPEN_ITEMS ×4, SRS_MAP ×1, nemesis ×1, all REAL broken citations, zero
+  control failures. The M1 record above read 8 over an UNNAMED 14; the gap is the
+  list, not two healed breaks — no commit sits between, and `README.md` and
+  `lessons/README.md` each carry zero citations and fire the non-empty control, so any
+  14 including them reads +1 each. This is OPEN_ITEMS' own warning — which number is
+  correct depends entirely on the source list, read `SOURCES=` first — and the fix it
+  asks for, naming the list, is done here.
+- **c3's own edit adds ZERO NEW BREAKS.** ROADMAP as a source went 192 → 199
+  citations, `BROKEN=0`; the seven new ROADMAP citations each resolve to exactly one
+  target, line numbers read. Re-run after the PROJECT_STATUS and OPEN_ITEMS edits, the
+  named 14-list holds at `BROKEN=6`. `verify_shared_checks.py` IDENTICAL exit 0;
+  `build_all_lessons.py --check` exit 0; the code trees (mobile/server/packages/
+  desktop/tools) `git status --porcelain` empty, so both mobile typechecks are
+  unaffected.
+- **One line of code debt queued, not fixed** — `mobile/app.json`'s `apiBaseUrl`
+  comment names `device/src/config.ts`, a path that does not exist; the real and only
+  reader is `mobile/app/config.ts`. Recorded at
+  `OPEN_ITEMS.md § Code debt found and left in place`, because it misdirects the next
+  reader of the one string the domain decision now gates.
+- **IS A LESSON OWED (M6 c3)? NO, by `CLAUDE.md § Workflow` "Two homes, one test".**
+  Recording decisions that lived nowhere is the failure `research/master-plan-2026-08-26.md`
+  § 8 already names; naming the citation floor by its list rather than a bare count is
+  the pin-a-claim convention and OPEN_ITEMS' own source-list warning; the stale comment
+  is code debt. Nothing new to relearn, and no box-specific trap.
 
 **P1.8b OFFLINE SELLER CREATION — THE CONTINUOUS RESERVE STRIP, THE LAST CODE
 PIECE (commit 2 of 2). DONE 2026-08-28.** This supersedes the commit-1 entry below

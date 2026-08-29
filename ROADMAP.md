@@ -232,6 +232,26 @@ legal answer, first for irreversibility — D10) and
 external lead time, per S13 the owner's own machine). Neither waits on code; both
 have a clock that code does not. P1.10 is met.
 
+**CORRECTED 2026-08-29 — TWO OWNER DECISIONS REACH THIS BAND, AND THE PARAGRAPH
+ABOVE IS LEFT AS WRITTEN.** Both were settled in conversation and are recorded in
+full where they belong — the domain-timing decision at
+`ROADMAP.md § What the owner has settled` (S13's 2026-08-26/28 extension), the
+scheduling decision at
+`ROADMAP.md § P1.1 — The second-hand goods act's record-keeping obligation`. This
+band inherits both:
+
+- **P1.1 is NOT presented as "start now" here.** Its PLACEMENT argument is
+  unchanged — first for irreversibility, D10 — and stands whenever the owner takes
+  it. But the SCHEDULE is his, and as of 2026-08-29 he has not taken it up. Read
+  the band's "start now" as applying to P1.1's argument-readiness, not to a start
+  the owner has authorised.
+- **P1.2's two halves BOTH start now, and the "external lead time" clause above is
+  the domain's — which is no longer bought early.** A tunnel gives the `https://`
+  hostname with no purchase and the off-box backup is a schedule, so neither half
+  waits for the name. The name is deferred to the END (S13's extension) and gates
+  `ROADMAP.md § P1.11 — An installable build on staff-owned phones` in Band 1, not
+  this step — P1.2's own DONE WHEN never needed it.
+
 **Band 1 — the mobile program, finished to the S23 bar (S8: mobile first).** The
 head is `ROADMAP.md § P1.23 — The mobile UX rework`, which draws the deferred
 screens and now carries the S23/S24/D-C surfaces inventoried below; P1.8b's two
@@ -239,7 +259,10 @@ open passes and P1.18's handset criterion close here;
 `ROADMAP.md § P1.21 — Seller history at the weighbridge` gains its drawing half
 once its reading endpoint exists.
 `ROADMAP.md § P1.11 — An installable build on staff-owned phones` (the release
-build) lands after the screens stop moving and before the desktop starts;
+build) lands after the screens stop moving and before the desktop starts, and it
+is where the DOMAIN gates: the build bakes the API address in, so S13's extension
+(the name is bought at the end, not early) binds here and nowhere earlier — not at
+P1.2, whose own DONE WHEN a tunnel hostname satisfies with no name at all;
 `ROADMAP.md § P1.12 — The shared package` is the gate the mobile program clears on
 its way out, and S8 reads P1.12's internal ordering as the whole-programme rule.
 **The bar is S23** — a commercial-grade general app — so this band is not finished
@@ -639,12 +662,53 @@ records that `apiBaseUrl` is baked into the BUILD, so moving the API costs a
 rebuild and a redistribution to every handset rather than a setting on a device.
 A NAME outlives a machine; an address does not.
 
+**SUPERSEDED IN PLACE 2026-08-26/28 — THE PARAGRAPH ABOVE IS KEPT VERBATIM AND ITS
+CONCLUSION NO LONGER HOLDS.** It reasoned purely from LEAD TIME: a name outlives a
+machine, so buy it early. The owner has weighed that against paying for a name
+before the product exists and decided the other way — the domain is bought at the
+END, not early. The reasoning is left standing because it was sound about lead
+time; what changed is that lead time is not the only cost, and the decision that
+now governs is the EXTENSION recorded at the foot of this S13 block.
+
 **WHAT THIS DECISION DOES NOT SETTLE.** P1.2's DONE WHEN is untouched and still
 wants the PHONE getting a 200 from an `https://` URL that is not a LAN address,
 AND a scheduled dump fetched off-box and restored. A tunnel is a route, not a
 certificate and not a backup; and D10's constraint — whatever is chosen must
 survive migration, backup and restore without being emptied — applies to a
 machine the owner already owns exactly as it applies to a rented one.
+
+**EXTENDED 2026-08-26, REAFFIRMED 2026-08-28 — THE DOMAIN IS BOUGHT AT THE END,
+WHEN THE APP, DESKTOP AND WEB ARE ALL FINISHED, NOT EARLY.** The owner's words are
+the record: "ผมจะซื้อ domain ตอนที่ app desktop web เสร็จหมดแล้ว". This BOUNDS S13's timing
+and does not replace its shape — hosting is still the owner's own machine plus a
+domain and a tunnel — so it is recorded as an extension to S13 and mints no
+S-number, the way S1's desktop extension, S6's settings surface, S10's targeted
+exception and S12's third photograph do. **The precedent test, applied and
+stated:** each of those four refined a decision already made on its own subject
+rather than opening a new one, and so extended without minting; this refines S13's
+own subject — the domain — on timing, and passes the same test.
+
+**THE CONSEQUENCE, MEASURED, NOT SOFTENED — AND IT DOES NOT BLOCK P1.2.** A TUNNEL
+satisfies P1.2's `https://` half with a provider-supplied hostname — no purchase —
+and the off-box backup half is a schedule and a destination, not a name. So both
+of P1.2's DONE-WHEN halves start now and NEITHER waits for the domain. **What the
+domain actually gates is P1.11**, because `mobile/app.json` bakes `apiBaseUrl` into
+the BUILD — today the LAN value `http://192.168.1.238:8000`, single reader
+`mobile/app/config.ts:24` — so changing the API address after staff have installed
+the app means a rebuild and a redistribution to every handset
+(`ARCHITECTURE.md § 14.7 What the client requires` "One string, one reader"). The
+name therefore has to be the one baked in at P1.11, which lands at the end of the
+mobile program — which is exactly when the owner buys it.
+
+**BOTH DECISIONS RECORDED THIS PASS — THIS ONE AND P1.1'S SCHEDULE — WERE SETTLED
+IN CONVERSATION AND LIVED IN NO FILE FOR DAYS.** This one was settled 2026-08-26
+and reaffirmed 2026-08-28, and reached a file only now; meanwhile two places in
+this very file (the paragraph superseded above, and Band 0 of the completion
+sequence) went on contradicting the owner. That is the exact failure
+`research/master-plan-2026-08-26.md` § 8 names — a finding produced in a session
+and never written into the repository, so a fresh session cannot find it and the
+knowledge does not compound. The schedule half of it is recorded at
+`ROADMAP.md § P1.1 — The second-hand goods act's record-keeping obligation`.
 
 **SIX MORE (2026-08-17), TAKEN AGAINST THE SIX REVIEW FINDINGS RATHER THAN
 BEFORE THEM.** S7-S13 were settled first and then attacked; these six are the
@@ -1085,7 +1149,7 @@ row count rises by two and not by three.
 | S10 | no new mobile screens until a UX/UI rework | **NONE. The rework is defined nowhere in this file.** `grep -nE '\bS10\b'` → L272 (definition) and L1669, where P1.16 cites it as the reason a shop-settings surface has nowhere to live. Subject search `grep -niE 'UX\|rework\|new mobile screens'` returns those two lines and no third | **NEW STEP** | The internals S10 says come first — P1.18 among them — and the owner's own answer about what the rework covers. **It is a gate with no definition**, which is what makes every screen behind it unschedulable rather than merely unscheduled |
 | S11 | every capability ships; each shop configures it | **NONE by label.** `grep -nE '\bS11\b'` → L286 and L289, both inside the decisions. The eight values it implies are queued at `OPEN_ITEMS.md § Blocking one real paying shop` "EIGHT THINGS EACH SHOP CONFIGURES FOR ITSELF" and scheduled nowhere | **EXTEND P1.16** for the operator surface — it took the shop-settings surface as scope on 2026-08-18 (L1665). The STORAGE is S16's, and each value is pulled by its own feature under S17 | For the surface: S10's undefined rework on the phone, and P1.13 on the desktop |
 | S12 | photographs are part of the workflow — **three of them since 2026-08-18**, per bill, per seller and per staff member | **NONE. P1.18 UNBLOCKS it and refuses to carry it.** `grep -niE 'photograph\|photo\b\|camera'` → L1755 in P1.18's *Unblocks*, and L1745 in the same step saying it carries the mechanism and not the camera. No `### P…` section builds a photograph | **NEW STEP, and more than one** | P1.18's mechanism, S16's storage answer for *which photographs are required*, the UX rework for a camera screen, and S15's unanswered engineering. **The third photograph adds a fourth blocker the other two do not have**: it is taken where an ACCOUNT is created, and no client can create one, so it couples to P3.7 |
-| S13 | hosting is the owner's machine, plus a domain and a tunnel | **P1.2 — established by SUBJECT, because no step names the label.** `grep -niE 'tunnel\|domain\|hosting\|host\b'` → L675, P1.2's own *What it is*: a host, a name, TLS and a scheduler. S13 says at L349–L350 that P1.2's DONE WHEN is untouched by it. **RESIDUAL, and it is a word rather than a gap:** neither "tunnel" nor "domain" occurs anywhere inside P1.2, and that step's title and DONE WHEN are written against "this box" and "off-box" (L871, L921, L923) meaning the DEVELOPMENT box. Once production is the owner's own machine, "off-box" has two candidate referents and nothing in the step says which | — | — |
+| S13 | hosting is the owner's machine, plus a domain and a tunnel | **P1.2 — established by SUBJECT, because no step names the label.** `grep -niE 'tunnel\|domain\|hosting\|host\b'` → L675, P1.2's own *What it is*: a host, a name, TLS and a scheduler. S13 says at L349–L350 that P1.2's DONE WHEN is untouched by it. **RESIDUAL, and it is a word rather than a gap:** neither "tunnel" nor "domain" occurs anywhere inside P1.2, and that step's title and DONE WHEN are written against "this box" and "off-box" (L871, L921, L923) meaning the DEVELOPMENT box. Once production is the owner's own machine, "off-box" has two candidate referents and nothing in the step says which. **EXTENDED 2026-08-26/28 (domain timing):** the owner buys the domain at the END, not early — recorded as an S13 extension in `ROADMAP.md § What the owner has settled`, minting no row of its own. It moves no ownership: a tunnel meets P1.2's halves with no name, and the step the name actually gates is P1.11 (the build bakes the API address in). Totals unchanged — an extension is not a row | — | — |
 | S14 | the device outbox becomes one mechanism carrying kinds | **P1.18.** `grep -nE '\bS14\b'` → L1706 and L1707 (P1.18 mints itself after it), L1754, and L1407 where it reverses P1.8b's cut | — | — |
 | S15 | photographs live beside the database, not in it | **NONE.** `grep -nE '\bS15\b'` → L396 and L408, both inside the decisions | **Goes with S12's step.** It is a storage answer for a capability that has no step, so it cannot be owned before that one exists | S12's step not existing — and *where beside physically is* is a property of the machine, so P1.2 |
 | S16 | the eight per-tenant values are stored by kind | **PARTIAL, and the partial is the finding.** `grep -nE '\bS16\b'` → L413 only. By subject, `grep -niE 'per-tenant\|default_grade\|settings'` → L1665, where P1.16 takes the shop-settings surface as scope — **and does it without naming S16 or S11, and while saying in the same sentence that no step is minted**, so the overlap is by subject and nothing binds the two. **One of the eight is already in the schema and arrived with no step at all** — the shop-wide default grade, at `9ad225e` | **EXTEND P1.16** for shop identity and the surface. **The GRADE MODEL needs its own step**: it replaces a CHECK with a per-tenant table, and `OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "A RAW COUNT INSIDE AN ACCEPTANCE CRITERION ROTS" measures five source sites writing A–D that it opens. **MINTED 2026-08-29 (M6 c2): the grade-model step is now `ROADMAP.md § P1.24 — The per-tenant grade model`; S16 stays PARTIAL, its surface still extends P1.16.** | For the grade model: nothing technical. For the surface: P1.13 on the desktop, or S10's rework on the phone |
@@ -1606,6 +1670,16 @@ answer would have shaped.
 repository — a statute section, or the name and date of the accountant or lawyer who
 gave it — and either a migration exists for what it requires, or a line records that
 it requires nothing.
+
+**THE SCHEDULE IS THE OWNER'S, AND AS OF 2026-08-29 HE HAS NOT TAKEN IT UP.** This
+step has been shown as head-of-queue repeatedly and the owner has not scheduled it;
+asked on 2026-08-29 he said it is not the current topic. **The placement argument
+above is UNCHANGED** — the answer may be a schema change and the pilot's rows cannot
+be repaired afterwards, the same D10 irreparability, and that argument stands
+whenever he schedules it. What is recorded here is only that scheduling is his call
+and it is currently NOT scheduled: this step is not to be presented as "start now"
+again until he says so. The distinction is between the ARGUMENT (sound, unchanged)
+and the SCHEDULE (his, open); the D10 case is not weakened by it.
 
 ### P1.2 — A server a shop can reach, on HTTPS, with a backup that runs itself off this box
 
@@ -4392,6 +4466,18 @@ behaviours named at `OPEN_ITEMS.md § Verification gaps — built, not proven`
 "Android coverage" has either been run on an Android handset or recorded in
 `PROJECT_STATUS.md § Known device gaps` as accepted-unproven with the owner's
 decision beside it.
+
+**THE DOMAIN IS THIS STEP'S GATE — RECORDED 2026-08-29 FROM THE OWNER'S 2026-08-26,
+REAFFIRMED 2026-08-28, DECISION.** "The URL the build bakes in" in *Depends on*
+above is the domain, and the owner buys the domain at the END, when the app,
+desktop and web are all finished (`ROADMAP.md § What the owner has settled`, S13's
+extension). `mobile/app.json` bakes `apiBaseUrl` at build time — today the LAN value
+`http://192.168.1.238:8000`, single reader `mobile/app/config.ts:24` — so an address
+changed after staff install means a rebuild and a redistribution to every handset.
+That is why the name has to be the one THIS step bakes in, and why the purchase
+lands here rather than at P1.2, whose own DONE WHEN a tunnel hostname already
+satisfies with no name at all. This adds no work to the step and moves no bar; it
+records which decision's clock this step is on.
 
 ### P1.12 — The shared package
 

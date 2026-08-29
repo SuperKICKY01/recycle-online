@@ -1347,6 +1347,19 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Code debt found and left in place
 
+- **`mobile/app.json`'s `apiBaseUrl` COMMENT NAMES A MOVED FILE — found 2026-08-29
+  (M6 c3), FAILS SAFE, RECORDED NOT FIXED.** The comment at `mobile/app.json` line 31
+  says the single reader is `device/src/config.ts`; that path does not exist.
+  `mobile/device/src/config.ts` is absent (verified two ways: `test -e` and a
+  `find mobile -name config.ts` outside `node_modules`), and the only `config.ts`
+  under `mobile/` is `mobile/app/config.ts` — which IS the actual and single reader:
+  it reads `expo.extra.apiBaseUrl` and exports `API_BASE_URL`, exactly as
+  `ROADMAP.md § P1.2 — A server a shop can reach` already cites (`mobile/app/config.ts:24`).
+  **IT FAILS SAFE:** the code resolves the value correctly regardless; only the
+  human-facing comment misdirects the next reader — and `apiBaseUrl` is the one
+  string the domain-timing decision now gates (S13's extension, and P1.11 bakes it
+  in). *Remedy is a one-line comment edit* naming `app/config.ts`, left for a phase
+  that touches this file rather than done here.
 - **A PICKED LOCAL SELLER THAT LATER GOES `failed` LEAVES ITS BILL PARKED FOR
   EVER — found 2026-08-27 (P1.23 c3), FAILS SAFE, NOT REPAIRED.** The picker never
   OFFERS a `failed` seller (`listForPicker` returns only pending/syncing/synced),
