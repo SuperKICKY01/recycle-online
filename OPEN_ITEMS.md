@@ -1261,6 +1261,14 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   its 403. **Not this phase's to fix**, and deliberately not swept into it: the
   phase that broke it is closed, and a proof edited inside an unrelated commit is
   a proof nobody reviewed.
+  **REPAIRED IN M4 c2 — 2026-08-29 (unanchored; anchor next pass).** The four
+  assertions now describe the D1 gate: R1 drops `POST /sellers` and asserts staff
+  CAN create a seller (201), C1 sources its 403 from `POST /uoms` (which keeps
+  `require_admin`), and the docstring and cleanup follow. Re-derived at the
+  artefact first — the unrepaired proof produced the same five cells against a
+  :8000 server restarted on HEAD — then green TWICE (fixtures left behind: 0). 12
+  orphan sellers (`NOPE-S-*`/`X-*`) that six prior red runs left in dev, none
+  referenced by a bill, were removed.
 
 - **NO STANDING CHECK EXISTS FOR THE ONE INVARIANT THAT SPANS `sellers` AND
   `seller_code_reservations`, and the reason it does not is legitimate — raised
@@ -2254,6 +2262,15 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   already had to decline it. *Not done:* it takes no `--database`. *Unblocks:*
   either a flag, or an explicit standing statement that this proof is only ever
   run against live and with the owner's knowledge that it spends a doc_no.
+  **CLOSED IN M4 c2 — 2026-08-29 (unanchored; anchor next pass).** It takes a
+  scratch source now: live is DUMPED read-only, restored into scratch-SOURCE, and
+  the marker plus counter bump land there — live is never written. The end cell
+  proves live `purchase_bills` and the `doc_no` counter are identical before and
+  after (576->576, 563->563, cross-checked independently outside the proof). Green
+  TWICE; the vacuity guard is unchanged in kind — the pre-marker dump of
+  scratch-SOURCE becomes scratch-TARGET, so the marker is present in SOURCE and
+  absent in TARGET in one run. The retired per-run cost and its date are recorded
+  in the script header.
 - **`prove_backup_restore.py`'s OWN comparison is NARROWER than the one inside the
   script it exercises, so a table the child would flag passes the parent
   silently.** Measured 2026-08-09 by reading it, and it exists today rather than

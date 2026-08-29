@@ -45,8 +45,15 @@ WHAT IS COMPARED
             recycle_app: no tenant context sees zero rows, tenant A sees
             exactly tenant A
 
-The proof leaves its own dump directory and the scratch database in place as
-evidence; both are safe to delete (the last lines say how).
+The proof leaves its own dump directories and the two scratch databases in
+place as evidence; all are safe to delete (the last lines say how).
+
+RETIRED COST (2026-08-29, M4 c2): this proof used to write one permanent voided
+marker bill to the LIVE dev database per run and spend a live doc_no that hard
+rule 5 could never reissue. It no longer does — the live database is READ
+(dumped) and never written; the marker and the counter bump land in a scratch
+restored from that dump, and the end cell proves the live write count is zero.
+(lessons/a-mutation-on-a-protected-write-path-needs-a-scratch-database.md)
 """
 from __future__ import annotations
 
@@ -56,6 +63,7 @@ import os
 import subprocess
 import sys
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -69,13 +77,15 @@ from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402
 
 from app.bills import _be_year  # noqa: E402  (one BE-year source; never re-derive +543)
 from app.config import APP_DATABASE_URL  # noqa: E402
-from app.db import engine, tenant_connection  # noqa: E402
 from app.seeddata import PRODUCT_A_ID, SELLER_A_ID, TENANT_A_ID, TENANT_B_ID  # noqa: E402
 
 CONTAINER = os.environ.get("RECYCLE_PG_CONTAINER", "recycle_pg")
-SCRATCH_DB = "recycle_restore_scratch"
+# Two scratches, fixed names so restore_db.py OVERWRITES them each run (twice-bare,
+# no accumulation). SOURCE is the only database this proof ever mutates; the live
+# database is only dumped.
+SCRATCH_SOURCE = "recycle_restore_source"
+SCRATCH_TARGET = "recycle_restore_target"
 SUPERUSER = "postgres"
-VOID_REASON = "proof fixture: prove_backup_restore.py marker, not a real purchase"
 
 failures: list[str] = []
 
@@ -168,10 +178,24 @@ def thai_hex(db: str, tenant_id: uuid.UUID) -> list[str]:
     )
 
 
+@asynccontextmanager
+async def _tenant_txn(target_engine, tenant_id: uuid.UUID):
+    """A tenant-scoped transaction on ANY engine — the SET LOCAL app.tenant_id
+    shape of app.db.tenant_connection, but bindable to a scratch database so the
+    marker write lands there and NEVER on live."""
+    async with target_engine.connect() as conn:
+        async with conn.begin():
+            await conn.execute(
+                text("SELECT set_config('app.tenant_id', :t, true)"),
+                {"t": str(tenant_id)},
+            )
+            yield conn
+
+
 # ---------------------------------------------------------------------------
 # fixture: write a bill through the app role, under tenant context
 # ---------------------------------------------------------------------------
-async def insert_bill(tenant_id: uuid.UUID, note: str) -> dict:
+async def insert_bill(target_engine, tenant_id: uuid.UUID, note: str) -> dict:
     """Insert one bill + one item as recycle_app under SET LOCAL, like the runtime.
 
     This is a proof FIXTURE writing rows, not a second implementation of bill
@@ -190,7 +214,7 @@ async def insert_bill(tenant_id: uuid.UUID, note: str) -> dict:
     now = datetime.now(tz=timezone.utc)
     be_year = _be_year(now)
 
-    async with tenant_connection(tenant_id) as conn:
+    async with _tenant_txn(target_engine, tenant_id) as conn:
         await conn.execute(
             text("INSERT INTO doc_no_counters (tenant_id, be_year, last_seq) VALUES (:t, :y, 0)"
                  " ON CONFLICT (tenant_id, be_year) DO NOTHING"),
@@ -222,34 +246,6 @@ async def insert_bill(tenant_id: uuid.UUID, note: str) -> dict:
     return {"bill_id": str(bill_id), "doc_no": doc_no, "be_year": be_year, "seq": int(seq)}
 
 
-async def void_marker(tenant_id: uuid.UUID, bill_id: str) -> None:
-    """Void the marker this run created, so each run cleans up after itself.
-
-    Deliberately NOT POST /bills/{id}/void. This proof is about the database and
-    must keep working when no API is running; acquiring an HTTP dependency for
-    teardown would make it fail for a reason that has nothing to do with
-    backups. prove_bills.py is what proves the endpoint. This writes the same
-    three columns the endpoint writes, by the same route the marker was
-    inserted — fixture teardown, not a second implementation of a business rule.
-
-    The bill is VOIDED rather than deleted. A delete would leave the doc_no
-    sequence gapped while doc_no_counters kept counting, so the dev fixture
-    would contradict the one invariant that counter exists to provide, and any
-    future gap-freedom check would fail on data rather than on code.
-    """
-    async with tenant_connection(tenant_id) as conn:
-        # voided_by must be a user in the SAME tenant (composite FK), and
-        # ck_bills_void_consistency requires all three columns to move together.
-        user_id = (
-            await conn.execute(text("SELECT id FROM users ORDER BY created_at LIMIT 1"))
-        ).scalar_one()
-        await conn.execute(
-            text("UPDATE purchase_bills SET voided_at = now(), voided_by = :by,"
-                 " void_reason = :r WHERE id = :id AND voided_at IS NULL"),
-            {"by": user_id, "r": VOID_REASON, "id": uuid.UUID(bill_id)},
-        )
-
-
 def counter_seq(db: str, tenant_id: uuid.UUID, be_year: int) -> int | None:
     v = scalar(db, "select last_seq::text from public.doc_no_counters where tenant_id ="
                    f" '{tenant_id}' and be_year = {be_year}")
@@ -273,13 +269,24 @@ def run_script(name: str, argv: list[str]) -> subprocess.CompletedProcess[bytes]
     return cp
 
 
+def _one_dump(out_root: Path, label: str) -> Path | None:
+    """The single dump directory whose name ends with `label`, or None if the
+    backup wrote zero or more than one (either is a failure this proof reports)."""
+    dumps = sorted(p for p in out_root.iterdir() if p.name.endswith(label))
+    return dumps[0] if len(dumps) == 1 else None
+
+
 # ---------------------------------------------------------------------------
 async def main() -> int:
-    scratch_engine = None
+    live_db = urlparse(APP_DATABASE_URL).path.lstrip("/")
+    source_url = urlunparse(urlparse(APP_DATABASE_URL)._replace(path=f"/{SCRATCH_SOURCE}"))
+    source_engine = create_async_engine(source_url, pool_pre_ping=True)
+    target_engine = None
     try:
         # ------------------------------------------------------------ P0
-        print("=== P0: the source, before anything ===")
-        live_db = urlparse(APP_DATABASE_URL).path.lstrip("/")
+        # LIVE, read-only. Capture the two figures the end cell must find
+        # UNCHANGED — the whole point of this refactor is that they do not move.
+        print("=== P0: the LIVE source, before anything (READ-ONLY) ===")
         status = subprocess.run(
             ["docker", "ps", "--filter", f"name=^{CONTAINER}$", "--format", "{{.Status}}"],
             capture_output=True,
@@ -290,12 +297,21 @@ async def main() -> int:
             return 1
 
         tables = table_names(live_db)
-        counts_before = row_counts(live_db, tables)
-        print(f"  database {live_db}: {len(tables)} tables,"
-              f" {sum(counts_before.values())} rows")
+        counts_live = row_counts(live_db, tables)
+        print(f"  live database {live_db}: {len(tables)} tables, {sum(counts_live.values())} rows")
 
-        # A witness bill that already exists — a REAL one written by the bills
-        # endpoint in an earlier phase, with whatever rounding history it has.
+        be_year = _be_year(datetime.now(tz=timezone.utc))
+        # THE REFACTOR'S OWN PROOF, captured HERE before anything runs: these two
+        # live figures must be byte-identical at the end.
+        live_bills_p0 = int(scalar(
+            live_db, "select count(*)::text from public.purchase_bills") or "0")
+        live_counter_p0 = counter_seq(live_db, TENANT_A_ID, be_year)
+        print(f"  live purchase_bills={live_bills_p0}; tenant A doc_no counter BE"
+              f" {be_year}: {live_counter_p0}")
+
+        # A witness bill that already exists — a REAL one, with whatever rounding
+        # history it has. Live is never written now, so if there is none this
+        # read-only proof cannot run (dev has bills — this is a guard).
         witness = scalar(
             live_db,
             "select b.id::text from public.purchase_bills b join public.purchase_bill_items i"
@@ -303,114 +319,139 @@ async def main() -> int:
             " group by b.id, b.server_received_at order by b.server_received_at desc limit 1",
         )
         if witness is None:
-            print("  no existing bill for tenant A; writing one as a pre-dump fixture")
-            witness = (await insert_bill(TENANT_A_ID, "witness"))["bill_id"]
-            counts_before = row_counts(live_db, tables)
+            print("\nFAILED: no pre-existing bill for tenant A, and live is READ-ONLY now")
+            return 1
         w_bill = bill_row(live_db, witness)
         w_items = item_rows(live_db, witness)
-        check("a witness bill with items exists in the source",
+        check("a witness bill with items exists in the live source",
               w_bill is not None and len(w_items) > 0,
               f"{w_bill['doc_no'] if w_bill else None}, {len(w_items)} item(s),"
               f" total {w_bill['total_amount'] if w_bill else None}")
-
-        be_year = _be_year(datetime.now(tz=timezone.utc))
-        seq_before = counter_seq(live_db, TENANT_A_ID, be_year)
-        # The number this run must give back. Rows and the counter both advance
-        # by one and stay that way — a voided bill keeps its row and its doc_no,
-        # and the counter is never decremented — but nothing LIVE may be left
-        # behind.
-        live_bills_before = int(scalar(
-            live_db, "select count(*)::text from public.purchase_bills where tenant_id ="
-                     f" '{TENANT_A_ID}' and voided_at is null") or "0")
-        print(f"  doc_no counter for tenant A, BE {be_year}: last_seq={seq_before}")
-        print(f"  live (unvoided) bills for tenant A: {live_bills_before}")
         hex_before = thai_hex(live_db, TENANT_A_ID)
         alembic_before = scalar(live_db, "select version_num from public.alembic_version")
 
-        # ------------------------------------------------------------ P1
-        print("\n=== P1: take the backup ===")
-        label = f"proof-{uuid.uuid4().hex[:8]}"
         out_root = Path(os.environ.get(
             "RECYCLE_BACKUP_DIR", str(SERVER_DIR.parent.parent / "recycle-online-backups")
         )) / "_proof"
-        cp = run_script("backup_db.py", ["--out", str(out_root), "--label", label])
-        check("backup_db.py exited 0", cp.returncode == 0, f"exit={cp.returncode}")
-        if cp.returncode != 0:
-            print("\nFAILED: no dump to restore")
-            return 1
-        dumps = sorted(p for p in out_root.iterdir() if p.name.endswith(label))
-        check("the backup wrote exactly one directory", len(dumps) == 1, str([d.name for d in dumps]))
-        if len(dumps) != 1:
-            return 1
-        dump_dir = dumps[0]
-        manifest = json.loads((dump_dir / "MANIFEST.json").read_text(encoding="utf-8"))
-        in_dump = manifest["row_counts_in_dump"]
 
-        # The counts in the manifest were parsed out of the dump FILE, so this
-        # compares the file against the database rather than the database
-        # against itself.
-        mismatched = {t: (counts_before.get(t), in_dump.get(t))
-                      for t in tables if counts_before.get(t) != in_dump.get(t)}
-        check("every table's row count in the DUMP FILE matches the source",
+        # ------------------------------------------------------------ P1
+        # The ONLY live interaction: a READ-ONLY dump. The manifest-vs-live
+        # row-count comparison (so the FORCE-RLS zero-row trap the dump tooling
+        # guards) is exercised HERE, on the live database.
+        print("\n=== P1: dump the LIVE database (read-only) ===")
+        label = f"proof-{uuid.uuid4().hex[:8]}"
+        cp = run_script("backup_db.py",
+                        ["--db", live_db, "--out", str(out_root), "--label", f"{label}-live"])
+        check("backup_db.py (live) exited 0", cp.returncode == 0, f"exit={cp.returncode}")
+        if cp.returncode != 0:
+            print("\nFAILED: no live dump to restore")
+            return 1
+        dump_live = _one_dump(out_root, f"{label}-live")
+        check("the live backup wrote exactly one directory", dump_live is not None, str(out_root))
+        if dump_live is None:
+            return 1
+        manifest_live = json.loads((dump_live / "MANIFEST.json").read_text(encoding="utf-8"))
+        in_dump_live = manifest_live["row_counts_in_dump"]
+        mismatched = {t: (counts_live.get(t), in_dump_live.get(t))
+                      for t in tables if counts_live.get(t) != in_dump_live.get(t)}
+        check("every table's row count in the LIVE DUMP FILE matches live",
               not mismatched, str(mismatched))
-        check("the dump is not schema-only",
-              sum(in_dump.values()) > 0, f"{sum(in_dump.values())} rows in the file")
-        body = dump_dir / manifest["body_file"]
-        check("the dump body carries the witness bill's id",
-              witness in body.read_text(encoding="utf-8"), witness)
+        check("the live dump is not schema-only",
+              sum(in_dump_live.values()) > 0, f"{sum(in_dump_live.values())} rows in the file")
+        check("the live dump body carries the witness bill's id",
+              witness in (dump_live / manifest_live["body_file"]).read_text(encoding="utf-8"),
+              witness)
+
+        # ------------------------------------------------------------ P1b
+        print("\n=== P1b: restore the live dump into scratch-SOURCE ===")
+        cp = run_script("restore_db.py", [str(dump_live), "--into", SCRATCH_SOURCE])
+        check("restore_db.py (-> scratch-SOURCE) exited 0",
+              cp.returncode == 0, f"exit={cp.returncode}")
+        if cp.returncode != 0:
+            print("\nFAILED: no scratch-SOURCE to mutate")
+            return 1
+        source_tables = table_names(SCRATCH_SOURCE)
+        counts_source_before = row_counts(SCRATCH_SOURCE, source_tables)
+        seq_source_before = counter_seq(SCRATCH_SOURCE, TENANT_A_ID, be_year)
+
+        # ------------------------------------------------------------ P1c
+        # LOAD-BEARING: dump scratch-SOURCE BEFORE the marker. This dump becomes
+        # scratch-TARGET; the vacuity guard lives on its being taken pre-marker.
+        # A dump taken AFTER would carry the marker into TARGET and the "absent
+        # from the restore" check would be vacuous.
+        print("\n=== P1c: dump scratch-SOURCE BEFORE the marker (the vacuity anchor) ===")
+        cp = run_script("backup_db.py",
+                        ["--db", SCRATCH_SOURCE, "--out", str(out_root), "--label", f"{label}-source"])
+        check("backup_db.py (scratch-SOURCE, pre-marker) exited 0",
+              cp.returncode == 0, f"exit={cp.returncode}")
+        if cp.returncode != 0:
+            return 1
+        dump_source = _one_dump(out_root, f"{label}-source")
+        check("the pre-marker source backup wrote exactly one directory",
+              dump_source is not None, str(out_root))
+        if dump_source is None:
+            return 1
+        manifest_source = json.loads((dump_source / "MANIFEST.json").read_text(encoding="utf-8"))
+        in_dump_source = manifest_source["row_counts_in_dump"]
+        source_body = dump_source / manifest_source["body_file"]
 
         # ------------------------------------------------------------ P2
-        print("\n=== P2: mutate the source AFTER the dump ===")
-        marker = await insert_bill(TENANT_A_ID, "marker")
-        seq_after = counter_seq(live_db, TENANT_A_ID, be_year)
-        counts_after = row_counts(live_db, tables)
-        print(f"  marker bill {marker['doc_no']} ({marker['bill_id']})")
-        check("the source's doc_no counter advanced by exactly 1",
-              seq_before is None or seq_after == seq_before + 1,
-              f"{seq_before} -> {seq_after}")
-        check("the source gained one bill and one item",
-              counts_after["purchase_bills"] == counts_before["purchase_bills"] + 1
-              and counts_after["purchase_bill_items"]
-              == counts_before["purchase_bill_items"] + 1,
-              f"bills {counts_before['purchase_bills']}->{counts_after['purchase_bills']},"
-              f" items {counts_before['purchase_bill_items']}"
-              f"->{counts_after['purchase_bill_items']}")
-        check("the marker is NOT in the dump file (it was written after the snapshot)",
-              marker["bill_id"] not in body.read_text(encoding="utf-8"), marker["bill_id"])
+        # The mutation lands in scratch-SOURCE, via a SOURCE-bound engine. Live
+        # is never touched.
+        print("\n=== P2: mutate scratch-SOURCE AFTER its dump ===")
+        marker = await insert_bill(source_engine, TENANT_A_ID, "marker")
+        seq_source_after = counter_seq(SCRATCH_SOURCE, TENANT_A_ID, be_year)
+        counts_source_after = row_counts(SCRATCH_SOURCE, source_tables)
+        print(f"  marker bill {marker['doc_no']} ({marker['bill_id']}) written to {SCRATCH_SOURCE}")
+        check("scratch-SOURCE's doc_no counter advanced by exactly 1",
+              seq_source_before is None or seq_source_after == seq_source_before + 1,
+              f"{seq_source_before} -> {seq_source_after}")
+        check("scratch-SOURCE gained one bill and one item",
+              counts_source_after["purchase_bills"] == counts_source_before["purchase_bills"] + 1
+              and counts_source_after["purchase_bill_items"]
+              == counts_source_before["purchase_bill_items"] + 1,
+              f"bills {counts_source_before['purchase_bills']}->{counts_source_after['purchase_bills']},"
+              f" items {counts_source_before['purchase_bill_items']}"
+              f"->{counts_source_after['purchase_bill_items']}")
+        check("the marker is NOT in the pre-marker source dump (written after the snapshot)",
+              marker["bill_id"] not in source_body.read_text(encoding="utf-8"), marker["bill_id"])
 
         # ------------------------------------------------------------ P3
-        print("\n=== P3: restore into a scratch database ===")
-        cp = run_script("restore_db.py", [str(dump_dir), "--into", SCRATCH_DB])
-        check("restore_db.py exited 0", cp.returncode == 0, f"exit={cp.returncode}")
+        print("\n=== P3: restore the pre-marker source dump into scratch-TARGET ===")
+        cp = run_script("restore_db.py", [str(dump_source), "--into", SCRATCH_TARGET])
+        check("restore_db.py (-> scratch-TARGET) exited 0",
+              cp.returncode == 0, f"exit={cp.returncode}")
         if cp.returncode != 0:
             print("\nFAILED: nothing restored to verify")
             return 1
 
-        # ------------------------------------------------------------ P4
-        print("\n=== P4a: the restore reflects the DUMP's moment, not the source's ===")
-        counts_restored = row_counts(SCRATCH_DB, table_names(SCRATCH_DB))
-        bad = {t: (in_dump.get(t), counts_restored.get(t))
-               for t in tables if in_dump.get(t) != counts_restored.get(t)}
-        check("restored row counts equal the dump file's, table for table",
+        # ------------------------------------------------------------ P4a
+        # THE VACUITY PAIR, in one run: the marker is PRESENT in post-marker
+        # scratch-SOURCE and ABSENT in scratch-TARGET; the counter is +1 in
+        # SOURCE and the pre-marker value in TARGET.
+        print("\n=== P4a: the vacuity PAIR — marker PRESENT in SOURCE, ABSENT in TARGET ===")
+        counts_target = row_counts(SCRATCH_TARGET, table_names(SCRATCH_TARGET))
+        bad = {t: (in_dump_source.get(t), counts_target.get(t))
+               for t in source_tables if in_dump_source.get(t) != counts_target.get(t)}
+        check("restored TARGET row counts equal the pre-marker source dump's, table for table",
               not bad, str(bad))
-        check("restored bills are one FEWER than the source right now",
-              counts_restored["purchase_bills"] == counts_after["purchase_bills"] - 1,
-              f"restored={counts_restored['purchase_bills']},"
-              f" source={counts_after['purchase_bills']}")
-        check("the marker bill is in the SOURCE",
-              bill_row(live_db, marker["bill_id"]) is not None)
-        check("the marker bill is ABSENT from the RESTORE (this is the vacuity check)",
-              bill_row(SCRATCH_DB, marker["bill_id"]) is None,
-              "if this fails the verification is reading the live database")
+        check("TARGET has one FEWER bill than post-marker SOURCE",
+              counts_target["purchase_bills"] == counts_source_after["purchase_bills"] - 1,
+              f"target={counts_target['purchase_bills']},"
+              f" source={counts_source_after['purchase_bills']}")
+        check("the marker bill is PRESENT in post-marker scratch-SOURCE",
+              bill_row(SCRATCH_SOURCE, marker["bill_id"]) is not None)
+        check("the marker bill is ABSENT from scratch-TARGET (the vacuity check)",
+              bill_row(SCRATCH_TARGET, marker["bill_id"]) is None,
+              "if this fails the restore captured a post-dump mutation")
+        seq_target = counter_seq(SCRATCH_TARGET, TENANT_A_ID, be_year)
+        check("TARGET's counter is the pre-marker value, SOURCE's is +1",
+              seq_target == seq_source_before and seq_source_after != seq_source_before,
+              f"pre={seq_source_before}, target={seq_target}, source now={seq_source_after}")
 
-        seq_restored = counter_seq(SCRATCH_DB, TENANT_A_ID, be_year)
-        check("the restored doc_no counter is the dump's value, not the source's",
-              seq_restored == seq_before and seq_restored != seq_after,
-              f"dump={seq_before}, restored={seq_restored}, source now={seq_after}")
-
-        print("\n=== P4b: the witness bill, digit for digit ===")
-        r_bill = bill_row(SCRATCH_DB, witness)
-        r_items = item_rows(SCRATCH_DB, witness)
+        print("\n=== P4b: the witness bill, digit for digit (in scratch-TARGET) ===")
+        r_bill = bill_row(SCRATCH_TARGET, witness)
+        r_items = item_rows(SCRATCH_TARGET, witness)
         check("the witness bill exists in the restore", r_bill is not None)
         if r_bill is not None and w_bill is not None:
             diff = {k: (v, r_bill.get(k)) for k, v in w_bill.items() if r_bill.get(k) != v}
@@ -428,7 +469,7 @@ async def main() -> int:
                   f" list={src['list_price']} amount={src['amount']}")
 
         print("\n=== P4c: Thai master data, compared as UTF-8 hex ===")
-        hex_restored = thai_hex(SCRATCH_DB, TENANT_A_ID)
+        hex_restored = thai_hex(SCRATCH_TARGET, TENANT_A_ID)
         check("every seller and product name is byte-identical",
               hex_restored == hex_before,
               f"{len(hex_before)} names; first differing ="
@@ -436,7 +477,7 @@ async def main() -> int:
         if hex_before:
             print(f"    e.g. {hex_before[0][:80]}")
         check("alembic_version came across",
-              scalar(SCRATCH_DB, "select version_num from public.alembic_version")
+              scalar(SCRATCH_TARGET, "select version_num from public.alembic_version")
               == alembic_before, str(alembic_before))
 
         print("\n=== P4d: the restored copy is still tenant-isolated ===")
@@ -444,10 +485,10 @@ async def main() -> int:
         # there and whose isolation is gone. Check it the only way that counts:
         # connect as the RUNTIME role and see what it can reach.
         parts = urlparse(APP_DATABASE_URL)
-        scratch_engine = create_async_engine(
-            urlunparse(parts._replace(path=f"/{SCRATCH_DB}")), pool_pre_ping=True
+        target_engine = create_async_engine(
+            urlunparse(parts._replace(path=f"/{SCRATCH_TARGET}")), pool_pre_ping=True
         )
-        async with scratch_engine.connect() as conn:
+        async with target_engine.connect() as conn:
             async with conn.begin():
                 who = (await conn.execute(text("select current_user"))).scalar_one()
                 blind = (
@@ -470,9 +511,9 @@ async def main() -> int:
         # What tenant A SHOULD see, measured in the restored database by the
         # superuser (who is not subject to the policy). Comparing the RLS-scoped
         # count against a hardcoded number would only measure the fixture.
-        expect_a = int(scalar(SCRATCH_DB, "select count(*)::text from public.purchase_bills"
-                                          f" where tenant_id = '{TENANT_A_ID}'") or "0")
-        total_restored = counts_restored["purchase_bills"]
+        expect_a = int(scalar(SCRATCH_TARGET, "select count(*)::text from public.purchase_bills"
+                                              f" where tenant_id = '{TENANT_A_ID}'") or "0")
+        total_restored = counts_target["purchase_bills"]
         check("the runtime role can connect to the restored database",
               str(who) == urlparse(APP_DATABASE_URL).username, str(who))
         check("with NO tenant context it sees zero bills (fails closed)", blind == 0,
@@ -485,50 +526,31 @@ async def main() -> int:
         check("it cannot see tenant B's bills while scoped to tenant A", seen_b_rows == 0,
               f"count={seen_b_rows}")
 
-        # ------------------------------------------------------------ cleanup
-        # THIS MUST STAY BELOW P4a. The marker's whole job is to be absent from
-        # the restore, and P4a is the last check that reads it:
-        #   P2  "the marker is NOT in the dump file"   — reads the file
-        #   P4a "the marker bill is in the SOURCE"     — reads it by id
-        #   P4a "the marker bill is ABSENT from the RESTORE"  <- the vacuity check
-        # Voiding above any of those would remove the evidence they look for.
-        # Nothing in P4b/c/d touches the marker, so after P4d is the safe point.
-        # Voiding does not change any row COUNT, so it could not have rescued a
-        # count assertion either way.
-        print("\n=== cleanup: this run voids its own marker ===")
-        await void_marker(TENANT_A_ID, marker["bill_id"])
-        voided = bill_row(live_db, marker["bill_id"])
-        check("the marker is voided, not deleted", voided is not None
-              and voided["voided_at"] is not None, str(voided and voided["voided_at"]))
-        check("it carries the reason a human can act on",
-              voided is not None and voided["void_reason"] == VOID_REASON,
-              str(voided and voided["void_reason"]))
-        check("it keeps its doc_no, so the sequence stays gap-free",
-              voided is not None and voided["doc_no"] == marker["doc_no"], marker["doc_no"])
-        seq_end = counter_seq(live_db, TENANT_A_ID, be_year)
-        check("the counter was NOT decremented (a doc_no is never reused)",
-              seq_end == seq_after, f"{seq_after} -> {seq_end}")
-        live_bills_after = int(scalar(
-            live_db, "select count(*)::text from public.purchase_bills where tenant_id ="
-                     f" '{TENANT_A_ID}' and voided_at is null") or "0")
-        check("the fixture ends where it started: nothing live left behind",
-              live_bills_after == live_bills_before,
-              f"live bills {live_bills_before} -> {live_bills_after}")
+        # ------------------------------------------------------------ end
+        # THE REFACTOR'S OWN PROOF: the live database was READ and never written.
+        # Both figures compared against what P0 captured before anything ran.
+        print("\n=== end: the LIVE database was READ and never written ===")
+        live_bills_end = int(scalar(
+            live_db, "select count(*)::text from public.purchase_bills") or "0")
+        live_counter_end = counter_seq(live_db, TENANT_A_ID, be_year)
+        check("live purchase_bills count is identical to P0 — ZERO live writes",
+              live_bills_end == live_bills_p0, f"{live_bills_p0} -> {live_bills_end}")
+        check("the live doc_no counter is identical to P0 — no doc_no spent",
+              live_counter_end == live_counter_p0, f"{live_counter_p0} -> {live_counter_end}")
 
         print("")
-        print(f"dump directory : {dump_dir}")
-        print(f"scratch database: {SCRATCH_DB} (drop it with:"
-              f' docker exec {CONTAINER} psql -U postgres -c'
-              f' "DROP DATABASE {SCRATCH_DB} WITH (FORCE)")')
-        print(f"marker bill {marker['doc_no']}: voided, not deleted — its row and its"
-              " doc_no stay, so the sequence stays gap-free and nothing live is left behind")
+        print(f"dumps: {dump_live}  and  {dump_source}")
+        print(f"scratch databases: {SCRATCH_SOURCE} (mutated), {SCRATCH_TARGET} (restore target);"
+              f' drop with: docker exec {CONTAINER} psql -U postgres -c'
+              f' "DROP DATABASE <name> WITH (FORCE)"')
+        print(f"marker bill {marker['doc_no']} lives in {SCRATCH_SOURCE} ONLY — dev is untouched")
         print("")
         print("ALL BACKUP/RESTORE CASES PASSED" if not failures else f"FAILED: {failures}")
         return 0 if not failures else 1
     finally:
-        await engine.dispose()
-        if scratch_engine is not None:
-            await scratch_engine.dispose()
+        await source_engine.dispose()
+        if target_engine is not None:
+            await target_engine.dispose()
 
 
 if __name__ == "__main__":

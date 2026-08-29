@@ -6,10 +6,11 @@ Two things, and the second rests on the first.
 
   ROLE   users.role existed since migration 0001 and no code read it, so every
          device was effectively admin: any yard phone could void any bill. Now
-         `admin` is required for void and for every master-data write, and the
-         refusal is a 403 that CANNOT be confused with the rejection species the
-         sync engine already knows (422 permanent, 424 resolvable) or with 401
-         (identity) or 404 (no such row here).
+         `admin` is required for void and for every master-data write EXCEPT
+         POST /sellers — D1 (2f88403, P1.8a) opened that one to staff, the
+         walk-in exception — and the refusal is a 403 that CANNOT be confused
+         with the rejection species the sync engine already knows (422
+         permanent, 424 resolvable) or with 401 (identity) or 404 (no such row).
 
   WRITE  A shop can enter its own uoms, categories, products, price tiers and
          sellers. Admin only, tenant-scoped through the existing RLS path, with
@@ -274,8 +275,18 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
               f"list_price={historical_list_price} seeded={saved_price}")
 
         # ------------------------------------------------------------------ R1
-        header("R1: a staff token is refused on EVERY write endpoint, and on void")
+        header("R1: staff is refused on every master-data write EXCEPT POST /sellers, the D1 exception")
         bogus = str(uuid.uuid4())
+        # D1 (2f88403, P1.8a): POST /sellers moved from require_admin to
+        # get_principal — the ONE write on this router staff may do, because a yard
+        # buys from walk-ins and a seller is not office-curated master data. Every
+        # other write here, PATCH /sellers, and void all keep require_admin, so the
+        # refusals list below asserts the rule and this cell asserts the exception.
+        r = client.post(f"{BASE}/sellers", headers=staff,
+                        json={"code": f"STAFF-SELL-{RUN}", "name": "ผู้ขายที่พนักงานสร้าง", "grade": "A"})
+        check("staff CAN create a seller — the D1 exception, 201 not 403",
+              r.status_code == 201, f"status={r.status_code}")
+        created["seller_staff"] = r.json().get("id", "")
         refusals = [
             ("POST",  "/uoms", {"code": f"NOPE-U-{RUN}", "name": "x"}),
             ("PATCH", f"/uoms/{created['uom']}", {"name": "staff was here"}),
@@ -285,7 +296,6 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
                                     "category_id": created["category"], "uom_id": created["uom"]}),
             ("PATCH", f"/products/{created['product']}", {"name": "staff was here"}),
             ("PUT",   f"/products/{created['product']}/prices/A", {"price": "0.01"}),
-            ("POST",  "/sellers", {"code": f"NOPE-S-{RUN}", "name": "x"}),
             ("PATCH", f"/sellers/{created['seller']}", {"name": "staff was here"}),
             ("POST",  f"/bills/{keep_id}/void", {"reason": "staff should not be able to do this"}),
         ]
@@ -336,7 +346,9 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
         # ------------------------------------------------------------------ C1
         header("C1: a 403 cannot be mistaken for anything else the server says")
         # Four real responses, collected here rather than described.
-        r403 = client.post(f"{BASE}/sellers", headers=staff,
+        # POST /sellers no longer 403s for staff (D1), so the 403 sample comes from
+        # POST /uoms, which keeps require_admin — a refused write leaves no row.
+        r403 = client.post(f"{BASE}/uoms", headers=staff,
                            json={"code": f"X-{RUN}", "name": "x"})
         r401 = client.post(f"{BASE}/sellers",
                            headers={"authorization": "Bearer not-a-real-token"},
@@ -831,7 +843,7 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
         # (This is not hypothetical: an earlier version of V1 wrote an accepted
         # bill against this run's product and died on fk_items_product.)
         for table, key in (("products", "product"), ("sellers", "seller"),
-                           ("sellers", "seller_ident"),
+                           ("sellers", "seller_ident"), ("sellers", "seller_staff"),
                            ("product_categories", "category"), ("uoms", "uom"),
                            ("uoms", "uom_pre"), ("uoms", "uom_back")):
             if created.get(key):
