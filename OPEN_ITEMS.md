@@ -1370,6 +1370,24 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   **NOT CLOSED BY P-SHEETFIRSTPRESS, deliberately.** That phase touched three of
   these files for a different defect and left the preset alone in all three; it
   is still owed everywhere except `proveOutbox.ts`.
+  **SWEPT IN M4 c1 — 2026-08-29 (unanchored; anchor next pass).** The preset is
+  now on 24 entrypoints; `proveTime` carries a documented exclusion at its site
+  (its `process.exit(code)` overrides `process.exitCode`, so a preset there is
+  inert). Per the owner's decision the LATENT files were guarded proactively
+  rather than left unswept: the hazard is latent-not-absent and goes live the
+  first time a cell gains an `await`. Split by this entry's own instrument
+  (`await` reachable in `main()`): 20 LIVE (proveSync 155 down to proveLogin 17),
+  whose preset firing IS observable and WAS staged on `proveCart` — a deadlock in
+  `main()` gave exit 1 with no `CART_EXIT=` line; the identical pattern with no
+  preset gave exit 0, the bug. And 4 LATENT — `proveSheets` (one await, the
+  top-level `await main()`, cells synchronous), `proveMoney`, `proveEntry`,
+  `proveDaily` — whose preset is a future-refactor guard, unobserved by
+  construction exactly as this entry warned. Real-path run: 21 self-contained
+  proofs exit 0 twice; the three integration proofs refuse without their server
+  (`proveForbidden --offline` exits 2; `proveLoginScreen` and `proveLogin` exit
+  non-zero), so no preset broke a completed run. Live-server green is owed:
+  `proveForbidden` rides M4 c2, `proveLoginScreen` and `proveLogin` are
+  server-gated to the next harness pass.
 
 - **THE ADD-SELLER SHEET DOES NOT APPEAR ON THE FIRST PRESS — diagnosed
   2026-08-17 from the source, not guessed from the symptom, and NOT

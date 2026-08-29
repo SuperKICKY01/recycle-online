@@ -466,4 +466,8 @@ async function main(): Promise<number> {
   return failures === 0 ? 0 : 1;
 }
 
+// Preset RED, per lessons/a-default-exit-code-is-a-default-verdict.md: a run
+// that ends before main()'s tally completes exits non-zero, not a default 0.
+process.exitCode = 1;
+
 process.exitCode = await main();

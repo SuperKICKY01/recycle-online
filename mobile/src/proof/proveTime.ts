@@ -324,6 +324,10 @@ function main(): number {
   return 0;
 }
 
+// No preset here, per lessons/a-default-exit-code-is-a-default-verdict.md:
+// process.exit(code) below is this proof's verdict mechanism and overrides
+// process.exitCode, so a preset would be inert. main() is synchronous
+// (function main(): number) — there is no drain path to guard.
 const code = main();
 console.log(`TIME_EXIT=${String(code)}`);
 process.exit(code);
