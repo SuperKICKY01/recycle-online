@@ -173,6 +173,44 @@ NO, by `CLAUDE.md § Workflow` "Two homes, one test"** — each disposition appl
 recorded rule (spent work measured before deletion; a research artifact kept inside
 the tree rather than left to rot outside it), and nothing new was relearned.
 
+**MAINTENANCE — M6: THE ROADMAP REALIGNMENT ON CLEAN GROUND, AND AN HONEST
+VELOCITY. 2026-08-29.** The last maintenance phase — two documentation commits, no
+code and no database. **c1** recorded three owner decisions of 2026-08-28/29 in
+`ROADMAP.md § What the owner has settled` (S23, mobile's bar is a commercial-grade
+general app; S24, the owner dashboard is the superset, absorbing DailyScreen; and a
+D-C extension of S6, settings on both surfaces), swept the decision-audit
+quantifiers to S24, and landed the Gemini-filter verdicts as a research note. **c2**
+wrote `ROADMAP.md § The completion sequence to handover`, minted P1.24 for the grade
+model, and carries this note.
+
+**THE VELOCITY, STATED AS WORK AND NOT AS TIME — no estimate is dressed as a fact
+here.** Where the project stands, measured: the mobile program has the purchase
+flow, offline seller creation (P1.8b — code complete, two device/server passes
+owed) and P1.9 price editing; it is NOT finished to the S23 bar — P1.23's rework,
+the S23/S24/D-C surfaces, P1.18's handset criterion, P1.21 and P1.11 are all live.
+The desktop is one 0-byte file (`desktop/.gitkeep`); stage 3, the provider web, is
+not started; the pilot (stage 2) is held shut by S7 until all three deliverables
+exist. **The remaining shape is the four bands of
+`ROADMAP.md § The completion sequence to handover`** — mobile to the S23 bar, then
+the desktop back office, then the provider web, then the pilot — with hosting (P1.2)
+and the legal answer (P1.1) able to start in parallel now.
+
+**WHY NO DATE, AND IT IS A HONESTY POINT, NOT A HEDGE.** This file has been burned
+by dated claims that outlived their own date: the `Last updated: 2026-08-06` header
+above still sits over 2026-08-29 entries, and the M5 record names a correction
+outlived by a commit on the same day it was written. A completion date computed from
+step counts would be that same shape — a number true only at the instant of writing
+and read later as a promise. The honest statement is the WORK: the four bands, the
+steps still live in each, and the gates the sequence names as owned by no step yet
+(a tenant-isolation/RLS audit, monitoring, PDPA/store-compliance, a support channel)
+— how much is unbuilt, not when it lands. **IS A LESSON OWED (M6)? NO, by
+`CLAUDE.md § Workflow` "Two homes, one test".** The one non-obvious finding — that
+the accepted completion spine violated S7/S8/S13 and its order had to be corrected —
+is `CLAUDE.md § Workflow` "A REPORT IS A CLUE" applied (an external proposal
+re-derived against the file's own chains, not obeyed); the citation that wrapped
+across two lines while drafting was the pin-a-claim rule and was caught by the
+checker before it landed. Nothing new to relearn.
+
 **P1.8b OFFLINE SELLER CREATION — THE CONTINUOUS RESERVE STRIP, THE LAST CODE
 PIECE (commit 2 of 2). DONE 2026-08-28.** This supersedes the commit-1 entry below
 as the current phase; that record stands. **NO SHA IS GIVEN**, deliberately — the

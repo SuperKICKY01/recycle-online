@@ -172,6 +172,181 @@ what kind of outstanding each one is.
 
 ---
 
+## The completion sequence to handover
+
+**Written 2026-08-29 (M6) because it existed only as a proposal, and the proposal
+was wrong on order.** S1 is a three-deliverable handover — the mobile app, the
+desktop application, the provider web — and this section names the sequence from
+today to that handover. It reorders no step and moves no bar: every `### P` entry
+below remains the authority on its own DONE WHEN, its dependencies and its
+argument, exactly as *The four steps to one paying shop* above defers to them. This
+section says only WHAT is done in WHAT order, and it marks the owner decision that
+fixes each ordering. It designs nothing.
+
+**WHAT THIS CORRECTS.** A completion spine was accepted as a PROPOSAL and recorded
+at `research/gemini-filter-verdicts-2026-08-29.md` — *hosting → RLS audit →
+desktop → licensing → release → backup drills → PDPA/store → monitoring →
+support+onboarding*. Verified against this file's own `Depends on` chains and
+against S7, S8 and S13 in `ROADMAP.md § What the owner has settled`, that ORDER
+does not hold, and the corrections are the point of writing the sequence down
+rather than pasting the proposal:
+
+- **It names no MOBILE stage at all, which S8 puts first.** S8 is *mobile, then
+  desktop, then the provider web, and it is SEQUENTIAL* — each waits on the one
+  before. A spine whose first software stage is *desktop* schedules the second
+  deliverable ahead of the first. The mobile program is not finished:
+  `ROADMAP.md § P1.23 — The mobile UX rework`, P1.8b's two open passes, P1.18's
+  handset criterion, P1.21 and P1.11 are all live.
+- **It places *release* after *desktop*, against the mobile program's own
+  ordering.** `ROADMAP.md § P1.11 — An installable build on staff-owned phones` is
+  argued to land *immediately before the desktop, and not earlier* and *after* the
+  mobile screens stop moving — so a distribution round is spent once, not per
+  screen change. Release therefore falls between hosting and desktop, never after
+  licensing.
+- **It omits P1.1, which is first for a reason nothing later can undo.**
+  `ROADMAP.md § P1.1 — The second-hand goods act's record-keeping obligation` is
+  first *because the answer may be a schema change, and the pilot's rows cannot be
+  repaired afterwards* — the same irreparability D10 records. A compliance gate
+  placed after real rows exist sits on the wrong side of that argument.
+- **Its single *backup drills* slot collapses three drills at three clocks.** One
+  is already inside `ROADMAP.md § P1.2 — A server a shop can reach`'s own DONE WHEN
+  (a scheduled dump fetched off-box and restored); a second is
+  `ROADMAP.md § P2.3 — An off-site restore of real shop data`, which cannot precede
+  a trading shop; a third is
+  `ROADMAP.md § P3.8 — Backup, restore and retention, per shop`, which depends on
+  P3.6. They are not one gate and do not share a position.
+- **It orders *desktop* before *licensing* across an unresolved split.** Where a
+  licence is ACTIVATED (the desktop, per S1's extension) and where licence STATE is
+  written (`ROADMAP.md § P3.1 — What a licence is, where its state lives`) are
+  flagged in this file as unreconciled since 2026-08-26. Desktop cannot build an
+  activation surface for state P3.1 has not defined.
+
+**THE SEQUENCE, corrected. Four bands; within a band the steps' own `Depends on`
+chains order them, and the decision that fixes each band is named. The
+S-references resolve at `ROADMAP.md § What the owner has settled`.**
+
+**Band 0 — start now, in parallel, no predecessor.**
+`ROADMAP.md § P1.1 — The second-hand goods act's record-keeping obligation` (the
+legal answer, first for irreversibility — D10) and
+`ROADMAP.md § P1.2 — A server a shop can reach` (hosting, the one step with
+external lead time, per S13 the owner's own machine). Neither waits on code; both
+have a clock that code does not. P1.10 is met.
+
+**Band 1 — the mobile program, finished to the S23 bar (S8: mobile first).** The
+head is `ROADMAP.md § P1.23 — The mobile UX rework`, which draws the deferred
+screens and now carries the S23/S24/D-C surfaces inventoried below; P1.8b's two
+open passes and P1.18's handset criterion close here;
+`ROADMAP.md § P1.21 — Seller history at the weighbridge` gains its drawing half
+once its reading endpoint exists.
+`ROADMAP.md § P1.11 — An installable build on staff-owned phones` (the release
+build) lands after the screens stop moving and before the desktop starts;
+`ROADMAP.md § P1.12 — The shared package` is the gate the mobile program clears on
+its way out, and S8 reads P1.12's internal ordering as the whole-programme rule.
+**The bar is S23** — a commercial-grade general app — so this band is not finished
+when the purchase flow works; it is finished when the surfaces the inventory names
+are drawn. Two capabilities this band needs have NO step yet and are named, not
+minted, except the one below: the grade model (S16 — minted as P1.24) and the
+camera screens (S12 — deferred behind the binary-payload mechanism P1.18 refused
+to carry, and S15's storage answer).
+
+**Band 2 — the desktop back office (S8: then desktop).**
+`ROADMAP.md § P1.13 — The desktop scaffold` through
+`ROADMAP.md § P1.17 — Thermal slip printing from the desktop`, plus the three
+back-office steps whose drawing half is the desktop:
+`ROADMAP.md § P1.19 — The end-of-day cash close` (S1's extension names the desktop
+as holder of the cash close), `ROADMAP.md § P1.20` and
+`ROADMAP.md § P1.22 — Anomaly signals: three named ones`. The settings surface's
+desktop half (D-C) is drawn here — its content is
+`ROADMAP.md § P1.16 — Shop identity a slip header can print`, its shell is
+P1.13/P1.14. The licence-activation surface belongs to this band by S1's
+extension; where its STATE is defined stays with P3.1, and the split flagged
+2026-08-26 is reconciled at whichever lands first.
+
+**Band 3 — the provider web (S8: then the provider web).**
+`ROADMAP.md § P3.1 — What a licence is, where its state lives` through
+`ROADMAP.md § P3.9 — Billing, and the 3% withholding question` in their own chain
+— the licence and its state (P3.1), the enumerating service
+(`ROADMAP.md § P3.2 — What the provider service enumerates shops FROM`,
+`ROADMAP.md § P3.3 — The provider service`), the audit log
+(`ROADMAP.md § P3.4 — The provider audit log`), the provider web itself
+(`ROADMAP.md § P3.5 — The provider web application`), onboarding a shop without SQL
+(`ROADMAP.md § P3.6 — Onboarding a shop without SQL`), user management from a
+screen (`ROADMAP.md § P3.7`), per-shop backup and
+retention (`ROADMAP.md § P3.8 — Backup, restore and retention, per shop`) and
+billing (P3.9). Two operational gates have no step and are named, not minted:
+monitoring (a schedule, not the P3.5 display and not P2.2's person) and a support
+channel (P3.6 owns provisioning, not support).
+
+**Band 4 — the pilot (S7: only after ALL THREE deliverables exist).** S7 holds
+`ROADMAP.md § P2.1 — One shop trades on it, on consecutive days` through
+`ROADMAP.md § P2.6 — The decisions the pilot is the evidence for` shut until the
+three programs are real; S19 holds
+`ROADMAP.md § P2.4 — The residues only real volume can settle` and
+`ROADMAP.md § P2.5 — What the day actually broke` open until a real shop trades,
+and neither is schedulable before then. One gate belongs at the mouth of this band
+and has no step: a tenant-isolation (RLS) audit — the money-critical proof that
+one shop cannot read another's rows — owed before a real shop's data lands, owned
+by no `### P` step today.
+
+**THE NEW SURFACES S23, S24 AND D-C IMPLY, homed as queue entries under the step
+that owns each — S17, schema pulled by the feature that needs it, not pushed as a
+set.** None mints a step of its own; each rides the step named:
+
+- **Under P1.23 (the phone surfaces, per the S23 audit row):** an account-settings
+  screen and the per-account surfaces it reaches — a profile view (who is signed
+  in), a self-service change-own-password surface (the server route
+  `POST /users/me/password` exists and no client calls it; P3.7's admin bar can
+  close without it), and a visual theme (its shared presentation layer is P1.23
+  item 3; a user-selectable theme sits against P1.23's own bar and is the owner's
+  to move). The dashboard screen (S24) and its absorption of `DailyScreen` as a
+  view inside it. The phone settings screen (D-C) and its `GET /shop` / `PATCH
+  /shop` client calls.
+- **Under P1.16 (the shop-identity content):** the address and phone the settings
+  surface edits, which `tenants` does not yet carry; and the still-open owner
+  decision on whether `GET /shop` stays staff-readable while `PATCH /shop` stays
+  admin-only, which now shapes two drawn screens instead of none.
+- **Pulled by P1.23 under S17, a widening not a step:** the dashboard's server
+  reads — aggregation by `created_by` (buildable, not built) and reads across a
+  period and by dimension, which today's single `/reports/daily` route does not do.
+- **No step owns it — the store-compliance surface (S23):** a privacy-policy link
+  at a public URL, terms, and — if the rule binds — an account-deletion path. It is
+  research only today; the build/identity half is P1.11 (no `eas.json`, no bundle
+  identifier, a placeholder display name), and the server-side PDPA erasure it
+  pairs with is a queue entry, not a step.
+
+**THE FREE-NUMBER SPACE, re-derived this pass with its controls, so a future mint
+does not collide.** Used, no gaps: stage 1 P1.1–P1.23, stage 2 P2.1–P2.6, stage 3
+P3.1–P3.9 (P1.4 and P1.10 are used-and-archived, their headings gone from this
+file). The safe next number per stage, and the discipline each carries:
+
+- **Stage 1 (mobile/foundation): P1.24** — its bare `§ P1.24` is a unique heading
+  substring, and its only collateral is on `§ P1.2`, already five-way ambiguous and
+  cited nowhere in bare form. P1.25–P1.29 are equivalent; P1.30+ is strictly worse
+  (it takes `§ P1.3` from one heading to two).
+- **Stage 2: P2.7** — cleanly safe; `§ P2.1` stays unique because *P2.1* is not a
+  substring of *P2.7*. The cliff is P2.10, where `§ P2.1` goes one heading to two.
+- **Stage 3: P3.10** — the next free number, and it is UNAVOIDABLY lossy: *P3.10*
+  contains *P3.1*, so `§ P3.1` goes from one heading to two, and every P3.1x does
+  the same. Nothing goes red today because every live citation naming a stage-3
+  step uses the WIDENED full-heading form. **So a stage-3 mint must be cited in the
+  widened form — the file, the section mark, then P3.10 together with its full
+  title — never as a bare section label** — the same repair the decimal-substring
+  lesson prescribes.
+
+The decimal-substring trap is documented at
+`lessons/a-check-that-never-went-red-was-never-observed.md` and is why the numbers
+above were derived from a live-citation census, not from arithmetic: the label
+space is already broken past ten, and what holds it up is which labels happen to be
+cited (P1.7, P1.8, P1.12, P1.16 in bare form — none a substring of P1.24, P2.7 or
+P3.10). **The only mint this section makes is P1.24 for the grade model**, the one
+ownerless gate the sequence needs numbered now — S16 says in as many words that
+*the grade model needs its own step*, no step owns it, and it blocks two of three
+shop shapes from trading. Every other ownerless gate above is NAMED and its mint
+deferred to when it is scheduled, from this same free space and under this same
+discipline.
+
+---
+
 ## What the owner has settled
 
 Six decisions from a working session. They existed in no file. Recorded with their
@@ -913,7 +1088,7 @@ row count rises by two and not by three.
 | S13 | hosting is the owner's machine, plus a domain and a tunnel | **P1.2 — established by SUBJECT, because no step names the label.** `grep -niE 'tunnel\|domain\|hosting\|host\b'` → L675, P1.2's own *What it is*: a host, a name, TLS and a scheduler. S13 says at L349–L350 that P1.2's DONE WHEN is untouched by it. **RESIDUAL, and it is a word rather than a gap:** neither "tunnel" nor "domain" occurs anywhere inside P1.2, and that step's title and DONE WHEN are written against "this box" and "off-box" (L871, L921, L923) meaning the DEVELOPMENT box. Once production is the owner's own machine, "off-box" has two candidate referents and nothing in the step says which | — | — |
 | S14 | the device outbox becomes one mechanism carrying kinds | **P1.18.** `grep -nE '\bS14\b'` → L1706 and L1707 (P1.18 mints itself after it), L1754, and L1407 where it reverses P1.8b's cut | — | — |
 | S15 | photographs live beside the database, not in it | **NONE.** `grep -nE '\bS15\b'` → L396 and L408, both inside the decisions | **Goes with S12's step.** It is a storage answer for a capability that has no step, so it cannot be owned before that one exists | S12's step not existing — and *where beside physically is* is a property of the machine, so P1.2 |
-| S16 | the eight per-tenant values are stored by kind | **PARTIAL, and the partial is the finding.** `grep -nE '\bS16\b'` → L413 only. By subject, `grep -niE 'per-tenant\|default_grade\|settings'` → L1665, where P1.16 takes the shop-settings surface as scope — **and does it without naming S16 or S11, and while saying in the same sentence that no step is minted**, so the overlap is by subject and nothing binds the two. **One of the eight is already in the schema and arrived with no step at all** — the shop-wide default grade, at `9ad225e` | **EXTEND P1.16** for shop identity and the surface. **The GRADE MODEL needs its own step**: it replaces a CHECK with a per-tenant table, and `OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "A RAW COUNT INSIDE AN ACCEPTANCE CRITERION ROTS" measures five source sites writing A–D that it opens | For the grade model: nothing technical. For the surface: P1.13 on the desktop, or S10's rework on the phone |
+| S16 | the eight per-tenant values are stored by kind | **PARTIAL, and the partial is the finding.** `grep -nE '\bS16\b'` → L413 only. By subject, `grep -niE 'per-tenant\|default_grade\|settings'` → L1665, where P1.16 takes the shop-settings surface as scope — **and does it without naming S16 or S11, and while saying in the same sentence that no step is minted**, so the overlap is by subject and nothing binds the two. **One of the eight is already in the schema and arrived with no step at all** — the shop-wide default grade, at `9ad225e` | **EXTEND P1.16** for shop identity and the surface. **The GRADE MODEL needs its own step**: it replaces a CHECK with a per-tenant table, and `OPEN_ITEMS.md § Decisions open — the owner's, not the code's` "A RAW COUNT INSIDE AN ACCEPTANCE CRITERION ROTS" measures five source sites writing A–D that it opens. **MINTED 2026-08-29 (M6 c2): the grade-model step is now `ROADMAP.md § P1.24 — The per-tenant grade model`; S16 stays PARTIAL, its surface still extends P1.16.** | For the grade model: nothing technical. For the surface: P1.13 on the desktop, or S10's rework on the phone |
 | S17 | schema changes are pulled by the feature that needs them | **NONE, and it needs none.** `grep -nE '\bS17\b'` → L424 only; subject search `grep -niE 'pulled by the feature\|schema change'` finds no step naming it | structural — a policy about how schema work is SCHEDULED, not work | — |
 | S18 | the client learns the owner role in the same change | **NONE, and it cannot have one of its own.** `grep -nE '\bS18\b'` → L438 only. It is a CONSTRAINT on S9's step rather than a thing to build | **Rides S9's new step.** Scheduling it separately would be scheduling the defect it exists to prevent | whatever blocks S9 |
 | S19 | P2.4 and P2.5 stay open until a real shop trades | **P2.4 and P2.5.** `grep -nE '\bS19\b'` → L2837 (P2.4) and L2857 (P2.5). It is a decision NOT to schedule, and it is written at both steps as well as here | — | — |
@@ -6766,6 +6941,38 @@ unbuilt one from outside, and the proof that covers it can hide the gap: this
 one passed for months because it obtains other users' ids by logging in AS them,
 which is a route the product's actual user does not have. **When a step's DONE
 WHEN is met by a proof, ask what the proof had that the shop will not.**
+
+### P1.24 — The per-tenant grade model
+
+**What it is.** The grade model S16 says needs its own step: the per-tenant storage
+that replaces today's CHECK-constrained single letter, so a shop declares whether
+it grades at all, how many tiers it uses, and what each is called. **Minted
+2026-08-29 (M6 c2) by `ROADMAP.md § The completion sequence to handover`** as the
+one ownerless gate that sequence needed numbered — S16's audit cell records in as
+many words that the grade model needs its own step, no step owned it, and the block
+it lifts is measured: a shop that does not grade takes an office round trip on every
+walk-in, which is two of the three shop shapes. This entry names the step and its
+place; it designs no table.
+
+**Depends on:** nothing technical for the model itself — S16 settled the STORAGE
+shape (per-tenant columns by kind, no JSON bag) and the write path is pulled by the
+features that need it under S17: seller creation (P1.8) reads a tier, and the
+settings surface configures it (P1.16 and P1.23 on the two clients, per the D-C
+extension). It replaces the CHECK constraints migrations `0003` and `0010` add, so
+it is a migration against live constraints and belongs BEFORE a pilot writes rows it
+cannot repair afterwards (D10).
+
+**DONE WHEN** — SET = the tiers a test shop declares, SOURCE = the database after
+the run, and no tier count is written into the criterion: a shop configures a tier
+set that is not the default, a seller is created against one of its tiers, and a
+bill for that seller is priced from that tier — all three read back out of Postgres,
+not off a screen; AND a shop that declares it does not grade at all creates a seller
+and posts a walk-in bill with no office round trip, the shape the block above names.
+The tier NAMES and their number are the shop's, so the criterion counts nothing.
+
+**NOT PINNED TO A SHA:** this step is minted in the M6 c2 commit, so HEAD names the
+commit that does not build it; the date stands
+(`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT").
 
 ---
 
