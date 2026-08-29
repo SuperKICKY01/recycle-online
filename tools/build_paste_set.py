@@ -22,6 +22,24 @@ matters is the strongest case for a manifest, not a case for exclusion. The
 set is DECLARED below by the owner, not discovered by a glob: a glob silently
 adopts a new root .md nobody chose to paste, and silently drops a renamed one.
 
+POST-M2 SHAPE (re-derived 2026-08-28, after the M2 document compression). Two
+kinds of file that now exist are deliberately OUT, both by the same test above:
+a planner does not give WRONG ADVICE without them; it FETCHES them when a
+specific question needs one.
+  - EVIDENCE.md is the on-demand evidence layer behind CLAUDE.md's footgun,
+    workflow and convention RULES -- the dated incidents and measurement
+    provenance, not the rules. The rules travel in CLAUDE.md, which IS in the
+    set; a planner plans against the rule and reaches for the provenance only
+    when a rule's WHY is doubted, which a chat advisor does by asking for it.
+    Holding 22K it rarely opens repeats the all-lessons.md mistake below.
+  - The archive/ files (the M2 cold archives of PROJECT_STATUS, ROADMAP and
+    OPEN_ITEMS) are closed history moved out of the active documents. A planner
+    plans against the ACTIVE state -- the three active files are in the set and
+    each points at its archive for when history is needed.
+Both are listed in EXCLUDED so a pasted-set reader sees the boundary and its
+reason. SET_FILES itself is unchanged by M2: the ten declared files all still
+pass the wrong-advice test.
+
 EXIT CODES, matching server/scripts/build_all_lessons.py so that two doc tools
 in this repo cannot mean different things by the same number:
 
@@ -111,7 +129,7 @@ BOM = chr(0xFEFF)  # never write this as a literal: it is invisible in source
 
 SET_FILES: list[tuple[str, str, str]] = [
     ("PROJECT_STATUS.md", "PROJECT_STATUS.md",
-     "where the work has got to, and the dated observation behind every claim of it"),
+     "where the work has got to: the current phase, the standing state, and the dated observation behind every CURRENT claim (closed-phase history is archived)"),
     ("OPEN_ITEMS.md", "OPEN_ITEMS.md",
      "the queue: everything outstanding, one line each, unranked"),
     ("ROADMAP.md", "ROADMAP.md",
@@ -146,6 +164,19 @@ EXCLUDED: list[tuple[str, str]] = [
      "needs in order to know a lesson EXISTS and ask for it by name. It is "
      "also GENERATED (server/scripts/build_all_lessons.py), so a pasted copy "
      "would be a copy of a derived file -- two generations from the source."),
+    ("EVIDENCE.md",
+     "the on-demand evidence layer behind CLAUDE.md's footgun, workflow and "
+     "convention RULES -- the dated incidents and measurement provenance, not "
+     "the rules. The rules are in CLAUDE.md, which IS in the set; a planner "
+     "plans against the rule and reaches for EVIDENCE.md only when a rule's WHY "
+     "is in question, which a chat advisor does by ASKING for it. Holding 22K "
+     "of provenance the planner rarely opens is weight the reader does not use."),
+    ("archive/ (the M2 cold archives)",
+     "closed phases, resolved queue entries and met steps, moved out of "
+     "PROJECT_STATUS.md, OPEN_ITEMS.md and ROADMAP.md in the M2 compression. A "
+     "planner plans against the ACTIVE state -- those three active files ARE in "
+     "the set, and each points at its archive for when history is needed. The "
+     "archive is fetch-on-demand history, never a planning input."),
     ("SRS_MAP.md",
      "it self-declares as a measurement taken at commit ddf3c85 that nothing "
      "recomputes. Hashing it would prove the FILE unchanged while its contents "

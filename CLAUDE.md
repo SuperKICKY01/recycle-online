@@ -320,5 +320,6 @@ The disposition these files assume — not new rules, but the stance beneath the
 - Why a footgun/workflow/convention rule exists (incidents, measurements,
   refutation history) — `EVIDENCE.md`, sectioned by the rule it backs.
 - Mistakes already paid for — `lessons/README.md` (open a lesson when its line hits).
-- Architecture/invariants — `ARCHITECTURE.md`, `BRIEFING.md`; advisor — `ADVISOR.md`;
+- Architecture/invariants — `ARCHITECTURE.md`, `BRIEFING.md`; advisor —
+  `ADVISOR.md` (its chat-project system prompt: `ADVISOR_CHAT_INSTRUCTIONS.md`);
   red-team — `RED_TEAM.md`; spec — `docs/SRS.md` (via `SRS_MAP.md`).
