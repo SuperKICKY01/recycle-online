@@ -91,6 +91,13 @@ Not in the boot path. Open when the task reaches them:
   **Superseded 2026-08-18:** the advising role runs as a session inside this
   repository and reads the tree live rather than a paste set — the boundary it
   now runs under is `ADVISOR.md § 0. The boundary`, and it is not restated here.
+  **Superseded 2026-08-28:** the advising role has RETURNED to a Claude CHAT
+  project fed by the paste set — shape B in `ADVISOR.md § 0. The boundary`. It
+  reads only copies and verifies nothing itself, so the paste-set duty and the
+  staleness protocol are live again; the 2026-08-18 in-repo delivery stays as
+  the record. `ADVISOR.md` is still the one home for the role's rules, now with
+  the staleness protocol (§ 6), the unverified-marking rule (§ 7), and the brief
+  header's `REPORTS IN` field (§ 3).
 - **You, this session, write the production code**, run the proofs, and
   report what was observed.
 - **A red-team session** is a fourth role, run separately, and is never

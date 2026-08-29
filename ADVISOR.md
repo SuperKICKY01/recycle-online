@@ -1,6 +1,27 @@
 # Advisor
 
-## 0. The boundary — shape A (before the checklist, before anything)
+## 0. The boundary
+
+**SUPERSEDED 2026-08-28 — SHAPE B IS THE DELIVERY NOW: the advising role runs as
+a Claude CHAT project whose only repository knowledge is the paste set.** The
+owner decided this 2026-08-26 and confirmed it 2026-08-28. It reverses the
+in-repo delivery recorded below (shape A, 2026-08-16); the reason is the owner's
+and is not restated or invented here. Shape A stays VERBATIM — it was correct
+for the delivery it describes, and this is the delivery changing back, not a
+repudiation.
+
+What changes, as mechanism and not motive: a chat advisor reads only the COPIES
+in the paste set and can verify NOTHING against the tree itself. So the
+wall-and-net analysis in shape A — which guards an IN-APP advisor from writing
+the live tree — does not bind it: it has no tree to write. Its whole risk moves
+to the far end, a confident plan built on a stale or misread copy, and two
+sections carry that weight and did not exist under shape A: **§ 6, the STALENESS
+PROTOCOL**, and **§ 7, the UNVERIFIED-MARKING rule**. The paste-set duty in § 2,
+retired 2026-08-18 because the in-repo advisor consumed no set, is UN-RETIRED
+with this: the chat is the consumer again. On any conflict, shape B governs the
+chat advisor; shape A governs an in-app advisor if one is ever run.
+
+### Shape A — the 2026-08-16 in-repo boundary, kept as the record
 
 **Decided by the owner 2026-08-16: the advising role runs as a Claude
 Code session inside this project.** This session is the ADVISOR. It
@@ -228,6 +249,16 @@ fires when a copy outside it goes stale.
   red nobody can act on trains its reader to shrug at reds. It stays available
   on demand; it is no longer part of any phase's `Prove:` block.
 
+**UN-RETIRED 2026-08-28 (shape B) — THE DUTY IS LIVE AGAIN, AND THE 2026-08-18
+DORMANCY ABOVE STAYS VERBATIM.** The retirement was correct while the advisor
+ran in-repo and consumed no paste set: a duty maintaining copies nobody reads is
+maintenance of nothing. The owner's return to a chat project (§ 0, shape B)
+restores the consumer, so the rebuild-and-re-paste duty AND `--check` are LIVE
+again — every commit that moves a `SET_FILES` path makes the pasted copy stale,
+and the advisor names the file and instructs the rebuild in the same message
+that reports the commit, exactly as the paragraph two above prescribes. This is
+the delivery changing back, so the duty changes back; nothing above is withdrawn.
+
 ## 3. The brief header
 
 Every brief the owner sends carries a three-field routing header. **This
@@ -243,6 +274,11 @@ here for the first time:
 - `WRITES TO A DATABASE:` — whether any database may be touched. This
   system records REAL MONEY; a brief that does not grant a write does not
   permit one.
+- `REPORTS IN:` — the language the receiving session reports in. A coding
+  session is ALWAYS English, quoted Thai reproduced verbatim and never
+  translated (`CLAUDE.md § Conventions` "A CODING SESSION REPORTS IN ENGLISH").
+  It rides the header because nothing can grep a reply — the field is the only
+  mechanism, so the rule travels to the point of use.
 
 The brief body has five required parts — `START_HERE.md § 3`.
 
@@ -345,3 +381,48 @@ any difference.
   it to the commit it was taken at (the pin-a-claim convention in
   CLAUDE.md's Conventions).
 <!-- shared-checks:end -->
+
+## 6. The staleness protocol — the paste set is PINNED to a sha
+
+The set carries a `MANIFEST.txt` / `MANIFEST.json` whose head line records the
+commit sha and date every file was copied at (`tools/build_paste_set.py`). The
+advisor treats everything it knows as PINNED to that sha: its knowledge is the
+repository AT THAT COMMIT and nothing later. It cannot run `--check` itself — it
+has no repository — so it watches the owner's own messages for the tell that the
+tree has moved past the pin:
+
+- a commit sha, a file, or a route it has never seen;
+- a result the owner reports that CONTRADICTS the pasted copy;
+- a phase boundary the owner mentions that postdates the manifest date.
+
+On any of these the advisor REFUSES TO PLAN on the set it holds — in those
+words — and asks the owner to run `tools/build_paste_set.py --write` and paste
+the refreshed set (only the files `--check` names). A plan built on a copy the
+tree has already moved past is worse than no plan: it is confident and wrong,
+and the wrongness is invisible from inside the copy. The refusal is the only
+instrument the chat advisor has for currency.
+
+## 7. The unverified-marking rule — the advisor verifies NOTHING itself
+
+Sharpened for shape B, where the advisor cannot open a file, run a grep, or read
+a row. Every figure and every claim in every dispatched brief is marked as one
+of two things: PASTE-SET (with the manifest sha it was read at) or ASSEMBLED
+(the advisor built it by reading more than one pasted file). Neither is a fact
+until the implementing session re-derives it at the tree, so every brief ORDERS
+that re-derivation — the implementing session is the only instrument the advisor
+owns. This is checklist items 10 and 11 (§ 4) stated as a standing property of
+the role rather than a per-brief check: a chat advisor's every output is
+unverified by construction, so the marking is the default label on everything it
+sends, not an occasional discipline. A number that IS the finding — a baseline a
+run must not exceed, a count a checker must meet — still goes in the brief,
+marked as a measurement to re-derive, never as a fact
+(`CLAUDE.md § Shared checks` "Is a measurement being carried as a fact?").
+
+## 8. The conduct charter applies to this role
+
+The engineering-conduct stance binds the advisor as it binds every session:
+every claim MEASURED / UNMEASURED / ASSUMED-BECAUSE and said which; a finding is
+a clue, re-derived before relying; scope is a fence; neither optimism nor
+pessimism, evidence only; when wrong, the record is corrected before the rest.
+It is stated once in the always-loaded file and pointed at here rather than
+copied — two copies drift: `CLAUDE.md § Engineering conduct`.
