@@ -1337,6 +1337,13 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   `alembic_version` against the migration head and refuse with the restore command
   printed — the shape `prove_docno_clock.py` already uses for the LIVE database,
   pointed at a different fact.
+  **CLOSED IN M4 c3 — 2026-08-29 (unanchored; anchor next pass).** Both were
+  DROPPED. `recycle_users_scratch`(0007) and `recycle_clock_scratch`(0008) were
+  stale with nothing to refresh them; the fresh replacements they were superseded
+  by, `recycle_p18b_users` and `recycle_p18b_clock`, were themselves debris and
+  were dropped too. Each measured before the drop (zero connections, no database
+  comment, provenance re-read) and absence confirmed after — recorded in full in
+  the scratch-database retention entry below.
 
 ## Code debt found and left in place
 
@@ -1562,6 +1569,14 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   were never acted on; the process holding them left on its own. *Unblocks:*
   nothing, and the owner decision the entry asked for is now moot for THESE
   processes and unanswered for the next ones.
+  **RE-MEASURED IN M4 c3 — 2026-08-29: STILL ABSENT, and by more than an empty
+  port.** M4 c3 was briefed to kill the :8137 pair; there was nothing to kill.
+  Measured: no `:8137` socket in ANY state, and a POSITIVE enumeration of every
+  `python.exe` running uvicorn on this box returned exactly one — the legitimate
+  `:8000` dev pair (PID 8888 -> child 6744, both `-m uvicorn app.main:app --port
+  8000`, started 13:19:33 when this session restarted it for the boot check), which
+  is NOT a target. So the absence rests on a positive process census, not only on a
+  silent port, exactly as this entry's own caution demands. No kill was performed.
 
 - **`prove:forbidden` DEFAULTS TO THE PORT A DEVELOPMENT API LISTENS ON, AND THAT
   API IS BOUND TO THE LIVE DEV DATABASE. A SUITE RUN WITH NO EXPLICIT TARGET
@@ -3390,6 +3405,31 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   *Unblocks:* the owner deciding whether scratch databases are disposable
   and whether dumps get a retention window. Both become real questions at
   `R3`, when backups start running unattended and landing off-site.
+  **SCRATCH-DB DISPOSABILITY DECIDED FOR THESE 18 IN M4 c3 — 2026-08-29
+  (unanchored; anchor next pass); the dumps / backup-retention half is untouched
+  and stays for R3 / P3.8.** The owner decided (M4 c3) that CONFIRMED-DISPOSABLE
+  scratch databases may be dropped and UNCERTAIN ones kept. Re-derived against
+  `pg_database`: 20 non-template databases down to 9. Each drop was measured FIRST
+  — zero connections in `pg_stat_activity`, no database comment (only two of the
+  eighteen carry a DROP-WHEN comment, and both are KEPT), and its provenance quote
+  re-read at the artefact — then DROP ... WITH (FORCE) and absence confirmed in the
+  same pass. DROPPED (11): `recycle_clock_scratch`(0008) and
+  `recycle_users_scratch`(0007), stale and superseded (the entry "TWO SCRATCH
+  DATABASES ARE FOUR MIGRATIONS STALE"); the six `recycle_p18b_break/_clock/
+  _gbreak/_guards/_scratch/_users`(0012), the archived status record "THIS PHASE
+  LEFT SIX SCRATCH DATABASES" calling them deliberate mutation debris, "none of the
+  six a clean copy of anything"; `recycle_lock_scratch`(0007) and
+  `recycle_p18a_scratch`(0011), orphaned throwaways of closed phases;
+  `recycle_recon_scratch`(0012), the archived record "restored, mangled and
+  restored again". KEPT (7): `recycle_keyshape_scratch`(0009) and
+  `recycle_tw20260809_0009fixture`(0009), each carrying its DROP-WHEN in a database
+  comment whose condition (the backup/restore schema symmetry green) is NOT met;
+  `recycle_restore_scratch`(0012), which the datacl-grant item above needs as its
+  evidence; `recycle_recon_pre0005b`(0004), UNCERTAIN with no provenance in any
+  record; and the three LIVE per-run scratches `recycle_restore_source`,
+  `recycle_restore_target` and `recycle_guards_scratch`, recreated every run. The
+  closing read: 9 non-template databases remain — the 7 keeps, `recycle`(0012,
+  untouched) and `postgres`; none of the 11 present.
 - **A `reconcile.py` check that `created_by` is never NULL on an
   API-written bill — PROPOSED, not decided, and the cost is why.** After
   migration 0006 `POST /bills` cannot write a NULL (`create_bill` is

@@ -54,6 +54,7 @@ import asyncio
 import os
 import re
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
@@ -363,6 +364,10 @@ def restore_scratch(live_name: str, scratch: str) -> None:
         cwd=server_dir, capture_output=True, text=True, timeout=300)
     if cp.returncode != 0:
         raise RuntimeError(f"restore_db.py -> {scratch} failed: {cp.stderr.strip()[:600]}")
+    # The dump is consumed by the restore above; remove it so it does not
+    # accumulate per run (~325 KB each). A restore FAILURE raises before this
+    # line and leaves the dump for post-mortem -- only a success reaches here.
+    shutil.rmtree(out, ignore_errors=True)
 
 
 def main() -> int:  # noqa: PLR0912, PLR0915 - one linear script
@@ -1099,6 +1104,16 @@ def main() -> int:  # noqa: PLR0912, PLR0915 - one linear script
             except Exception as e:  # noqa: BLE001
                 check(False,
                       f"cleanup: could not remove the worktree {built_worktree}: {e}")
+        # On a clean run the two uvicorn logs are not needed for post-mortem, so a
+        # green re-run leaves no files behind; a FAILED run keeps them (that is what
+        # they are for). Checked last, after every restore above has run.
+        if not failures:
+            for lg in (new_log, old_log):
+                if lg is not None:
+                    try:
+                        os.unlink(lg.name)
+                    except OSError:
+                        pass
 
     banner("SUMMARY")
     if failures:
