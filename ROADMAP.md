@@ -222,6 +222,19 @@ from the desktop at the counter; prices can be edited from either. And when a bi
 has not synced the slip cannot be printed, and the system says so plainly rather
 than inventing a workaround the shop did not ask for.
 
+**EXTENDED 2026-08-28/29 — THE SHOP-SETTINGS SURFACE SHIPS ON BOTH MOBILE AND
+DESKTOP: the same support-both logic, applied to a surface S6 did not yet name.
+Recorded as an extension to S6 and minting no S-number, the way S1's desktop
+extension, S10's targeted exception and S12's third photograph do.** The owner's
+words are the record: "เราไม่อยู่ร้าน เราต้องพกคอมหรอไปแก้" — he is not always at
+the shop, and configuring it cannot demand that he carry the desktop to do it. So
+the surface each shop uses to configure itself is reachable from the phone at the
+weighbridge AND the desktop at the counter, exactly as a seller or a price already
+is under S6. **This closes the settings half of the homing question P1.23 item 4
+carries** — the settings surface is homed on mobile, not conditionally, and also
+ships on the desktop — and the audit below records the step split. This records
+only the owner's reason; the screens are drawn by their steps.
+
 **SEVEN MORE, FROM A SECOND WORKING SESSION — 2026-08-17.** The sentence at the
 head of this section is about the FIRST session and is left exactly as written.
 S7 SUPERSEDES S2; the other six are new and reopen nothing. As with S1-S6, each
@@ -732,6 +745,54 @@ NONE OF THEM CARRIED FROM A REPORT.**
   unanswered here.** The seller kind is not designed in this entry, and criteria
   written ahead of a design are something this project has already paid for.
 
+**THREE MORE, FROM A FIFTH WORKING SESSION — 2026-08-28/29. TWO MINT S-NUMBERS
+(S23, S24); THE THIRD EXTENDS S6 AND IS RECORDED AT S6 ABOVE.** The sentence at the
+head of this section is about the FIRST session and is left as written. None of the
+three supersedes an S-number; D-A supersedes a READING this file and
+`PROJECT_STATUS.md` both relied on — "mobile finished = business features done" —
+which was never an S-number, and that supersession is recorded in S23 itself.
+**The two labels were minted after re-deriving the range in this pass, with its
+control:** `grep -nE '^\*\*S[0-9]+ —' ROADMAP.md` returned **22** definition lines,
+S1 through S22 with no gap, and the repo-wide
+`grep -rnoE '\bS(2[3-9]|[3-9][0-9])\b' --include='*.md' .` printed **nothing and
+exited 1**, with the control
+`grep -rlE '\bS([1-9]|1[0-9]|2[0-2])\b' --include='*.md' .` listing **twenty-five
+files at exit 0** in the same pass — a negative from an instrument not shown to
+fire is not a measurement.
+
+**S23 — THE MOBILE PROGRAM'S COMPLETION BAR IS A COMMERCIAL-GRADE GENERAL APP, NOT
+A YARD TOOL THAT MERELY WORKS. Decided 2026-08-28.** The owner's framing is the
+record: "แอพที่ใช้ได้หมดอ่ะ แต่ไม่ใช่ฟรี" — an app where everything works, of the
+kind a shop pays for, not a free utility. **This SUPERSEDES every earlier reading
+of "mobile finished = business features done"**, a phrase this file and
+`PROJECT_STATUS.md` have both leant on. The bar is no longer "the purchase-bill
+flow is built" but "the app carries what a paid, general-purpose app is expected to
+carry". **It mints an S-number because it is a NEW scope commitment and not the
+reason for an existing one.** What "commercial-grade" covers in full is the owner's
+to set and can move; the specific surfaces it implies are NOT designed here — they
+become queue entries under their owning steps per S17, inventoried in this file's
+completion sequence. This records where the bar stands on 2026-08-28.
+
+**S24 — THE SHOP OWNER'S DASHBOARD IS THE SUPERSET, AND THE DAILY SCREEN BECOMES A
+VIEW INSIDE IT. Decided 2026-08-28.** The dashboard was settled on 2026-08-18 as
+living on MOBILE and was deliberately NOT given a row then — the audit below said
+so in as many words, "the dashboard is not a nineteenth decision and gets no row" —
+because its only open question at that time was the owner's: whether it was a NEW
+screen or an extension of the existing daily screen. **THIS DECISION ANSWERS THAT
+QUESTION, and that is what makes it substantive enough to mint the label the
+dashboard lacked.** The owner's words set the scope: "Dashboard คือจะมีทุกอย่างหมด
+มี Analyst มี filter มี chart มีไร สำหรับการบัญชี … แบบละเอียดยิบย้อย feature
+เยอะแยะเลย แต่จะไม่รกนะ" — the dashboard holds everything for the accounting: an
+analyst view, filters, charts, feature-dense but explicitly NOT cluttered. The
+existing `mobile/app/DailyScreen.tsx` (a `/reports/daily` view) is not a peer to it
+but a VIEW inside it. **Precedent: the 2026-08-18 dashboard reasoning was never an
+S-number, so this cannot record UNDER one; it is a genuinely new decision — the
+dashboard's scope — and mints S24, superseding the "gets no row" note in the audit
+below.** The bar — rich but never cluttered — is part of the record; the
+dashboard's SHAPE is not designed here and stays with the step that draws it. This
+homes the dashboard on mobile, closing the other half of the homing question P1.23
+item 4 carries.
+
 ---
 
 ## Every settled decision, and the step that owns it
@@ -813,6 +874,28 @@ sweeping the label, the same way the 2026-08-20 pair was.
   control.
 - ***twenty-one and twenty-one*** above → **twenty-two and twenty-two.**
 
+**EXTENDED AGAIN 2026-08-29 — THE RANGE IS NOW S1 TO S24, AND THE THREE CORRECTIONS
+DIRECTLY ABOVE ARE THEMSELVES SUPERSEDED RATHER THAN REWRITTEN.** They were correct
+over twenty-two rows and are left exactly as written. **The sentences this addition
+breaks contain NEITHER `S23`/`S24` NOR the word "decision"** — they read *S1 to
+S22*, *22 definition lines*, *twenty-two and twenty-two* — so a sweep for either new
+label runs clean over a section that already contradicts itself, which is now the
+FOURTH extension in a row for which that has been true. The corrections below were
+found by sweeping the count words case-insensitively and not by sweeping the
+labels, the same way the three pairs before them were. **Two labels land this time,
+not one:** S23 and S24 were minted in the same 2026-08-28/29 pass, and D-C of that
+session extended S6 without a row (recorded at S6, owned by P1.23 and P1.13), so the
+row count rises by two and not by three.
+
+- ***S1 to S22*** above → **S1 to S24**. Twenty-two were swept before 2026-08-29;
+  the two added on that date are swept here by the same method.
+- ***returns 22 definition lines, S1 through S22 with no gap*** above →
+  **re-derived 2026-08-29, the same command returns 24 definition lines, S1 through
+  S24 with no gap.** The repo-wide check that the range is closed at the top was
+  re-run in the same pass and is recorded at the S23/S24 mint in
+  `ROADMAP.md § What the owner has settled`, with its control.
+- ***twenty-two and twenty-two*** above → **twenty-four and twenty-four.**
+
 | # | the decision, in short | owned by — and the command that established it | if none: new step, or extend which | if new: what blocks it |
 |---|---|---|---|---|
 | S1 | scope is three deliverables, shipped as one handover | **DISTRIBUTED, and the no-SQL bar is P3.6.** `grep -nE '\bS1\b'` → L2991 inside P3.6. The three deliverables are stage 1's mobile steps, P1.13–P1.17, and P3.5 | — | — |
@@ -820,7 +903,7 @@ sweeping the label, the same way the 2026-08-20 pair was.
 | S3 | the slip prints from the desktop, after sync | **P1.13 and P1.17.** `grep -nE '\bS3\b'` → L1580 (P1.13), L1686 and L1689 (P1.17). *L1492 is a DIFFERENT S3* — a reconcile injection cell, not this decision | — | — |
 | S4 | the provider web shows status, licence, last bill — and no shop data | **P3.5.** `grep -nE '\bS4\b'` → L2972, the step's own *What it is* | — | — |
 | S5 | staff-owned phones, accounts per person | **P1.4, P1.5 and P3.7; the platform half at P1.11 through D9.** `grep -nE '\bS5\b'` → L864 (P1.4), L1009 (P1.5), L3022 (P3.7), L631 (D9) | — | — |
-| S6 | where a shop could work either way, support both | **P1.15, P1.17 and P2.6; P1.8 and P1.9 through D5.** `grep -nE '\bS6\b'` → L1606 and L1609 (P1.15), L1699 (P1.17), L2866 (P2.6), L587 (D5) | — | — |
+| S6 | where a shop could work either way, support both | **P1.15, P1.17 and P2.6; P1.8 and P1.9 through D5.** `grep -nE '\bS6\b'` → L1606 and L1609 (P1.15), L1699 (P1.17), L2866 (P2.6), L587 (D5). **EXTENDED 2026-08-29 (D-C):** the settings surface adds P1.23 (mobile) and P1.13 (desktop) as owners of the same support-both logic — recorded as an S6 extension in `ROADMAP.md § What the owner has settled`, minting no row of its own | — | — |
 | S7 | the pilot starts only after all three programs exist | **NONE, and it needs none — it is a CLOCK.** `grep -nE '\bS7\b'` → L2838 (P2.4) and L2859 (P2.5), where both cite it as the reason a step cannot start. Neither builds it, and nothing could. **But P2.1 — the step S7 actually moves — carries no S-number at all**, so the one step whose clock this decision reset does not say so | structural | — |
 | S8 | mobile, then desktop, then the provider web — sequentially | **NONE. One mention in the whole file, and it is the definition.** `grep -nE '\bS8\b'` → L232 only. Subject search `grep -niE 'sequential\|mobile, then desktop'` adds nothing inside a step | structural — the order it states is already carried by the steps' own *Depends on* chains (P1.12 before P1.13, P3.5 last). **But no step CITES it**, so an edit to a dependency chain has nothing comparing it to the decision | — |
 | S9 | three roles: owner, admin, staff; the owner account transfers | **NONE.** `grep -nE '\bS9\b'` → L245 (definition) and L446 (inside S18). Subject search `grep -niE 'owner role\|three roles\|deviceRole'` → L98, L262, L270, L438–L448, not one of them inside a step | **NEW STEP.** Not an extension of anything: it is a migration against `0001`'s two-value CHECK, a sweep of four spellings of the role pair, and the client change S18 binds into the same commit | **Nothing technical.** The licence half — who mints an owner — is P3.1 and P3.5, and S9 itself sends licence STATE to P3.1; the role model waits on none of that |
@@ -837,6 +920,8 @@ sweeping the label, the same way the 2026-08-20 pair was.
 | S20 | the desktop back office stays an Electron application | **P1.13, established by SUBJECT because no step names the label.** `grep -nE '\bS20\b' ROADMAP.md` → L495 and L502, both inside the decisions, which establishes nothing per the method above. `grep -niE 'electron' ROADMAP.md` → L1953 and L1963, the *What it is* and the DONE WHEN of P1.13, and the only two Electron hits inside any `### P…` section. The three desktop steps that hang off it — P1.14, P1.15, P1.17 — inherit it through their own *Depends on* chains and name no platform themselves | — | — |
 | S21 | there is no family-trial step; the pilot waits for all three deliverables | **NONE, and it needs none — it is a REFUSAL TO SCHEDULE, the shape S19 already has.** `grep -nE '\bS21\b' ROADMAP.md` → L495, L540, L551, every one inside the decisions. Subject search `grep -niE 'father\|family trial\|pilot at' ROADMAP.md` → L167 (S1), L225 (S7's own text), L540 and L549 (S21 itself): **not one hit falls inside a `### P…` section**. The step whose clock this protects is P2.1, and S7 already moved it | none needed | — |
 | S22 | what identifies a locally created seller across devices — a server-minted reservation, taken while online | **P1.8b, inside `### P1.8`, established by SUBJECT.** `grep -nE '\bS22\b' ROADMAP.md` → L602, L615, L617 (the decision itself) and L720–L735, L762, L791–L801 (this audit), none of which establishes anything per the method above; and **L2682, L2686 and L4169 inside `### P1.18`, where all three are that step saying it does NOT specify the kind** — the shape S7's row already records for P2.4 and P2.5, a step CITING a decision rather than building it. Subject search `grep -niE 'offline seller\|seller code' ROADMAP.md` → L411 (inside S14), L605 and L762 (the decision's own citation and this row — the instrument is inside its corpus and both are excluded by IDENTITY, not by content), **L1945, L1948 and L1985 inside `### P1.8`**, and L2349, L2494, L2531–2, L2673, L3331, L3492 inside `### P1.18`. **P1.8b BUILDS it and this decision WIDENS that step onto the server; P1.18 must CARRY it as a kind** | — | — |
+| S23 | mobile's completion bar is a commercial-grade general app | **NONE YET, and the completion sequence in this file assigns it.** `grep -nE '\bS23\b' ROADMAP.md` → the decision's own text and this row, neither establishing ownership per the method above; subject `grep -niE 'commercial-grade\|completion bar'` finds no `### P…` section building it. It is a BAR that widens mobile scope; its surfaces become queue entries under their owning steps per S17, inventoried in the completion sequence this file carries | **NEW ENTRIES under existing steps** — P1.23 for the phone surfaces, the desktop steps for their halves — pulled per S17, not a step of its own | S10's undefined rework for any new phone screen it implies |
+| S24 | the owner's dashboard is the superset; the daily screen is a view inside it | **P1.23, behind S10, established by SUBJECT.** `grep -nE '\bS24\b' ROADMAP.md` → the decision's own text and this row; subject `grep -niE 'dashboard'` → the dashboard sub-section in this audit and P1.23 item 4, which now homes it on mobile. `mobile/app/DailyScreen.tsx` exists and becomes a VIEW inside it; the server aggregation by `created_by` is buildable and pulled under S17. **This row SUPERSEDES the "gets no row" note below** | — | — |
 
 **THE TOTALS, so the shape is readable without counting rows.** Eight have a step
 — S1 in part, S3, S4, S5, S6, S13, S14, S19. Four need none: S2 is superseded, S7
@@ -880,6 +965,23 @@ TABLE, not arithmetic'd from the addition:**
   answers of 2026-08-18 and the two decisions of 2026-08-20 left it.
 - 10 + 5 + 7 = **22**, which equals the row count. That equality is the check, at
   this size as at the two before it.
+
+**SUPERSEDED AGAIN 2026-08-29 BY THE S23 AND S24 ROWS — the recount directly above
+was correct over twenty-two rows and is left exactly as written. RE-DERIVED FROM THE
+TABLE, not arithmetic'd from the additions:**
+
+- **ELEVEN have a step** — the ten above and **S24**, whose screen is P1.23 (behind
+  S10) and whose aggregation by `created_by` is pulled under S17. Homed-but-deferred
+  is still homed, so it sits in this group and the row says which.
+- **FIVE need none** — unchanged. Neither addition is structural.
+- **EIGHT are outstanding** — the seven above and **S23**, the commercial-grade
+  bar: its surfaces have no step yet, and the completion sequence this file carries
+  assigns them as queue entries under their owning steps per S17. **The load-bearing
+  gap is still S10**, which S23 leans on for every new phone screen it implies. D-C,
+  the S6 extension of the same session, added NO row — it is recorded at S6 and owned
+  by P1.23 and P1.13 — so it changes none of these three counts.
+- 11 + 5 + 8 = **24**, which equals the row count. That equality is the check, at
+  this size as at the three before it.
 
 **THE FOUR STRUCTURAL ONES ARE AN ANSWER, NOT A GAP, and the distinction matters
 because a sweep that reports nineteen holes teaches nothing.** S7 is a clock: it
@@ -947,6 +1049,16 @@ S10's undefined rework, beside the camera screen and every other new mobile
 screen. **So both answers make S10 the load-bearing gap rather than a tidy-up**,
 which is the one conclusion this table can carry on its own.
 
+**SUPERSEDED 2026-08-29 BY S24 — THE DASHBOARD NOW HAS A ROW.** The paragraph above
+was correct on 2026-08-18, when the dashboard's only open question was the owner's:
+a new screen, or an extension of the daily one. He took that call on 2026-08-28 —
+the dashboard is the SUPERSET and the daily screen a view inside it — and the answer
+is substantive enough to mint S24, recorded in
+`ROADMAP.md § What the owner has settled` and given its row in the table above.
+The dashboard still stands behind S10's rework and is homed on mobile at P1.23; that
+part has not changed. What changed is that it is a decision with a row now, not a
+THIRD unrowed thing behind S10.
+
 **THREE FINDINGS WERE HANDED TO THIS PHASE AND EACH WAS RE-DERIVED, NOT CARRIED.
 Two held. One did not, and its second half held perfectly, which is why it is
 worth the space.**
@@ -1002,6 +1114,13 @@ aggregates by `created_by`. What is missing is the aggregation, not the join.
 and therefore behind S10, or an extension of that one, is the owner's call and
 this phase does not take it.** It is recorded because the cost the owner accepted
 was stated in terms of new screens.
+
+**SUPERSEDED 2026-08-29 — THE OWNER TOOK THE CALL.** S24 settles it: the dashboard
+is the SUPERSET and `mobile/app/DailyScreen.tsx` becomes a VIEW inside it, not a
+peer — a new screen behind S10 that ABSORBS the existing one rather than an
+extension of it. The finding's second half — the read path is buildable today, with
+no screen and no rework — is untouched; what changes is only that the
+new-screen-versus-extension question is no longer open.
 
 **AND BUILDING IT EARLY REPRODUCES THE PATTERN `9ad225e` HAS JUST PRODUCED — a
 capability finished on the server that no human can reach.** That instance is
@@ -6553,9 +6672,13 @@ the owner's and can be raised or lowered; this records where it stands.**
 
 **Depends on:**
 - The internals each surface reads — the seller kind, the park and the reserve
-  level (all landed); the dashboard's aggregation by `created_by` (buildable,
-  not built) IF the owner homes the dashboard here; the phone's `/shop` settings
-  calls IF the owner homes the settings surface here.
+  level (all landed); the dashboard's aggregation by `created_by` (buildable, not
+  built) — the owner HOMED the dashboard here on 2026-08-28 (S24), the daily screen
+  becoming a view inside it; the phone's `/shop` settings calls — the owner HOMED
+  the settings surface on both mobile and desktop on 2026-08-28/29 (the S6
+  extension). **The two "IF" conditionals are settled;** both surfaces still read
+  internals that must exist first, which is why they stay in Depends-on and are not
+  yet done.
 - **The settle-to-refresh repair, settled at B1: resolve the id at send time** —
   the bill carries the local seller id and the sender swaps in the server id
   once it exists, so the picker may quote a seller mid-settle without a 422 ever
@@ -6587,8 +6710,12 @@ no count is written into the criterion:
 3. One consistency pass over the existing screen inventory to the bar: `TAP_MIN`
    honoured on every tappable control, one shared presentation layer replacing
    the per-file `StyleSheet` duplication, one vocabulary.
-4. If the owner homes them on mobile, the shop-owner dashboard and/or the phone
-   settings surface are drawn.
+4. The shop-owner dashboard and the phone settings surface are drawn — both homed
+   on mobile by the owner (2026-08-28/29): S24 homes the dashboard, absorbing the
+   existing daily screen as a view inside it, and the S6 extension homes the
+   settings surface, which also ships on the desktop. The "IF" is settled; these
+   are no longer conditional. Their SHAPE stays with this step; M6 recorded only
+   the homing, not the design.
 
 **WHAT THIS DOES NOT INCLUDE, said before it is built:** the camera screens
 (S12 — they draw once a binary-payload mechanism exists) and P1.21's
