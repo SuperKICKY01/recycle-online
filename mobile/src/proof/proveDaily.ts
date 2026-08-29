@@ -261,7 +261,12 @@ const DIAGNOSTIC_FRAGMENTS: readonly (readonly [string, string])[] = [
   ["a stringified null", "null"],
   ["a stringified undefined", "undefined"],
   ["a raw ISO date-time separator", "T00:00"],
-  ["a raw UTC marker", "Z "],
+  // "Z " (a raw UTC marker: the space after the Z). Built from codepoints,
+  // not a string literal an editor can silently rewrite -- byte 10412 of this
+  // file was once a NUL where this space belongs, which silently defeated the
+  // match (a check that never went red; see EVIDENCE.md and the ripgrep-NUL
+  // footgun in CLAUDE.md). Numeric construction keeps a NUL out.
+  ["a raw UTC marker", String.fromCharCode(0x5a, 0x20)],
   ["a raw offset", "+07:00"],
 ];
 

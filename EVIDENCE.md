@@ -237,6 +237,36 @@ excluded causes and the measured cost, moved here in the 2026-08-28 compaction.
   shell exported which locale, and why — stays at
   `OPEN_ITEMS.md § Documentation`.
 
+## ripgrep NUL-skip: the silent directory undercount
+
+Backs `CLAUDE.md § Machine footguns` "A NUL byte anywhere in a file makes ripgrep".
+
+`mobile/src/proof/proveDaily.ts` carried ONE NUL byte at offset 10412 — a corrupt
+leak needle, `"Z\0"` where `"Z "` (Z + space) belonged, fixed in M4 c1b. While the
+NUL was there, ripgrep classified the file as binary and skipped it in DIRECTORY-mode
+search, with no error and no mention of the file — so a sweep or count over that
+directory silently omitted it.
+
+Measured three ways in one pass, each with a control:
+- A directory `rg` for `process\.exitCode` across `mobile/src/proof/` listed 39
+  files; proveDaily.ts was absent although it holds the pattern. The truth was 40.
+- The M4 c1 sweep-comment search listed 22 files; proveDaily carried the identical
+  comment (confirmed by the Read tool) and was absent — the truth was 23.
+- POSITIVE CONTROL: `understatement_reason_th`, present on exactly one line of
+  proveDaily.ts (L209), returned 0 in DIRECTORY mode and 1 on the EXPLICIT PATH. A
+  content grep on the explicit path prints `binary file matches (found "\0" byte
+  around offset 10412)` — the tell that the file was SKIPPED, not that the pattern
+  was absent.
+
+The adversarial verify that caught the proveSignOut miss caught this too: a
+grep-based sweep verification is blind to a NUL-bearing file exactly where a count
+decides completeness. After c1b removed the NUL, the same directory
+`understatement_reason_th` search returns 1 — the file is visible again. But the
+GENERAL trap survives the fix: any file that later acquires a NUL vanishes from a
+directory grep the same silent way, so a decision-bearing count is cross-checked
+against an explicit file list or a NUL-tolerant reader, and every zero carries a
+positive control.
+
 ## Boot check: the incidents behind three observables
 
 Backs `CLAUDE.md § Boot check`. Three fragments, one per bullet — the two

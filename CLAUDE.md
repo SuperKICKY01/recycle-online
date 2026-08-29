@@ -161,6 +161,16 @@ on 2026-08-28 — nothing weakened, only relocated.
   Instead: never combine `-i` with `-F` in a shell `grep` here (use one, or `rg`),
   and give any zero a POSITIVE CONTROL in the same invocation, read first.
   → `EVIDENCE.md § grep -iF Aborted: the locale split and the false zeros`
+- **A NUL byte anywhere in a file makes ripgrep treat it as BINARY and SKIP it in a
+  DIRECTORY search — silently — so a sweep or count by directory-grep UNDERCOUNTS by
+  that whole file.** Measured on `proveDaily.ts` (one NUL at byte 10412, since fixed):
+  a directory `rg process\.exitCode` listed 39 files and omitted it, and the control
+  `understatement_reason_th` — present on one line — returned 0 in directory mode but
+  1 on the explicit path. Instead: give any decision-bearing grep a POSITIVE CONTROL,
+  and cross-check the count against an explicit file list or a NUL-tolerant reader
+  (`Select-String`, the Read tool); a content grep on the explicit path still prints
+  `binary file matches (found "\0" byte around offset N)`, which is the tell.
+  → `EVIDENCE.md § ripgrep NUL-skip: the silent directory undercount`
 
 ### Boot check — name the observable, don't assume the environment
 
