@@ -550,6 +550,19 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   guards themselves are proven. `b8b557f` landed them with the differential run
   green at the time; what is unavailable today is the cheap RE-run, not the
   original observation.
+  **CLOSED IN M4 c2b — 2026-08-29 (unanchored; anchor next pass).** It is a BARE
+  RE-RUN again: `uv run python scripts/prove_seller_code_guards.py` with no
+  arguments self-restores a scratch (`recycle_guards_scratch`, from a live dump —
+  live read-only) and self-builds a detached worktree at `b8b557f^` (the pinned
+  commit before the guards) in a temp path, fails LOUD if the path exists, and
+  removes the worktree in a `finally`. The `a-checker-must-not-share-the-code-it-checks`
+  argument this entry required BEFORE the change, now made and confirmed: the
+  worktree is pinned to a FIXED historical sha, never derived from the current
+  code, and the existing discriminator — the ADMITTED halves go red if `--old-tree`
+  is really the new code — catches a wrong tree; empirically the ADMITTED cells are
+  GREEN, so the built tree genuinely lacks the guard. Green TWICE bare (49 checks,
+  failures 0 both), `git worktree list` ONE entry before AND after both runs (no
+  leak); `--database`/`--old-tree` remain as optional overrides.
 
 - **TWO THINGS THE P1.8a DEVICE PASS DID NOT OBSERVE, 2026-08-17 — and both
   are about the SAME card, which is why they are one entry rather than two.**

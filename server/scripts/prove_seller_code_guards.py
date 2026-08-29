@@ -1,9 +1,12 @@
 """Prove the two guards on POST /sellers, and that a replay carrying the token
 is answered with the row the first attempt produced.
 
-    git worktree add <old> <the commit before the guards>
-    python scripts/prove_seller_code_guards.py --database recycle_p18b_guards \
-        --old-tree <old>
+    uv run python scripts/prove_seller_code_guards.py
+
+Bare re-run: with no arguments it restores its OWN scratch (recycle_guards_scratch,
+from a live dump -- live is only read) and builds its OWN detached worktree at the
+commit BEFORE the guards, removing the worktree afterward. Pass --database and/or
+--old-tree to override either half.
 
 EVERY GUARD IS MEASURED AS A PAIR, AND THE OLD HALF IS A REAL SERVER.
 A criterion that only showed the new behaviour would be a restatement of the new
@@ -95,6 +98,14 @@ OLD = ""   # base url of the server built from the worktree
 
 ASSIGNED_SHAPE = re.compile(r"^S(\d+)$")
 REFILL_PATH = "/seller-code-reservations"
+
+# The guards this proof pairs the OLD server against were added in b8b557f
+# (P1.8b server, commit 2). The old tree is that commit's PARENT -- the last one
+# still lacking the guard, so the ADMITTED halves reach the defect. Pinned to the
+# commit, not "N commits back", so it cannot drift as history grows.
+GUARDS_COMMIT = "b8b557f"
+# The scratch this proof restores for itself, overwritten each run (twice-bare).
+SCRATCH_DB = "recycle_guards_scratch"
 
 failures: list[str] = []
 
@@ -302,38 +313,111 @@ ID_NUMBER = f"1234567{RUN[:6]}"
 ADDRESS = f"99/1 moo 4 guard-probe {RUN}"
 
 
+def _repo_root() -> str:
+    return os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def build_old_worktree(ref: str) -> str:
+    """git worktree add a DETACHED checkout at `ref`, into a temp path that must
+    NOT already exist -- never the repo root, and never a silent reuse of a stale
+    path (which would run stale code). Returns the path; the caller removes it in
+    a finally."""
+    path = os.path.join(tempfile.gettempdir(), f"recycle-guards-oldtree-{RUN}")
+    if os.path.exists(path):
+        raise RuntimeError(
+            f"old-tree worktree path already exists, refusing to reuse: {path}")
+    cp = subprocess.run(
+        ["git", "-C", _repo_root(), "worktree", "add", "--detach", path, ref],
+        capture_output=True, text=True, timeout=120)
+    if cp.returncode != 0:
+        raise RuntimeError(f"git worktree add {ref} failed: {cp.stderr.strip()}")
+    return path
+
+
+def remove_old_worktree(path: str) -> None:
+    subprocess.run(
+        ["git", "-C", _repo_root(), "worktree", "remove", "--force", path],
+        capture_output=True, text=True, timeout=60)
+
+
+def restore_scratch(live_name: str, scratch: str) -> None:
+    """Dump the LIVE database (READ-ONLY) and restore it into `scratch`,
+    overwriting it -- the prove_backup_restore shape. Live is only read; every
+    write this proof makes lands in the scratch."""
+    server_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out = os.path.join(tempfile.gettempdir(), f"recycle-guards-dump-{RUN}")
+    label = f"guards-{RUN}"
+    cp = subprocess.run(
+        [sys.executable, os.path.join("scripts", "backup_db.py"),
+         "--db", live_name, "--out", out, "--label", label],
+        cwd=server_dir, capture_output=True, text=True, timeout=300)
+    if cp.returncode != 0:
+        raise RuntimeError(f"backup_db.py (live) failed: {cp.stderr.strip()[:600]}")
+    dumps = [d for d in os.listdir(out) if d.endswith(label)]
+    if len(dumps) != 1:
+        raise RuntimeError(f"expected one dump dir ending {label!r}, got {dumps}")
+    cp = subprocess.run(
+        [sys.executable, os.path.join("scripts", "restore_db.py"),
+         os.path.join(out, dumps[0]), "--into", scratch],
+        cwd=server_dir, capture_output=True, text=True, timeout=300)
+    if cp.returncode != 0:
+        raise RuntimeError(f"restore_db.py -> {scratch} failed: {cp.stderr.strip()[:600]}")
+
+
 def main() -> int:  # noqa: PLR0912, PLR0915 - one linear script
     ap = argparse.ArgumentParser(
         description="Prove the reserved-code guards on POST /sellers.")
-    ap.add_argument("--database", required=True,
-                    help="a SCRATCH database. This script creates sellers, mints "
-                         "reserved codes, and deliberately drives the OLD server "
-                         "into the defect. None of it can be undone.")
-    ap.add_argument("--old-tree", required=True,
-                    help="a git worktree at the commit BEFORE the guards. Its "
-                         "server/ is run as a second API against the same "
-                         "database, and it is what makes each guard a PAIR.")
+    ap.add_argument("--database", default=None,
+                    help="a SCRATCH database. Omit it and the script restores "
+                         f"{SCRATCH_DB!r} from a live dump itself (live read-only). "
+                         "This script creates sellers, mints reserved codes, and "
+                         "deliberately drives the OLD server into the defect -- none "
+                         "of which can be undone, so it never runs against live.")
+    ap.add_argument("--old-tree", default=None,
+                    help="a git worktree at the commit BEFORE the guards. Omit it "
+                         f"and the script builds one at {GUARDS_COMMIT}^ itself and "
+                         "removes it afterward. Its server/ is the second API, and "
+                         "it is what makes each guard a PAIR.")
     args = ap.parse_args()
 
     app_live = make_url(os.environ["APP_DATABASE_URL"])
     dir_live = make_url(os.environ["DIRECTORY_DATABASE_URL"])
     owner_live = make_url(os.environ["MIGRATION_DATABASE_URL"])
     live_name = app_live.database
-    if args.database == live_name:
+    # Validate any OVERRIDE up front, before provisioning, so a bad one never
+    # leaves a half-built worktree or a wasted restore behind.
+    if args.database is not None and args.database == live_name:
         print(f"REFUSED: --database {args.database!r} is the LIVE database from\n"
               "  APP_DATABASE_URL. This script writes sellers that cannot be\n"
               "  removed, burns reserved codes that are never reclaimed, and\n"
-              "  DELIBERATELY creates the invariant violation the new code\n"
-              "  exists to prevent. Restore a copy first:\n"
-              "    python scripts/backup_db.py\n"
-              "    python scripts/restore_db.py <dir> --into recycle_p18b_guards")
+              "  DELIBERATELY creates the invariant violation the new code exists\n"
+              f"  to prevent. Omit --database to restore a fresh {SCRATCH_DB!r} here.")
+        return 2
+    if args.old_tree is not None and not os.path.isdir(
+            os.path.join(args.old_tree, "server")):
+        print(f"REFUSED: {os.path.join(args.old_tree, 'server')} is not a directory."
+              " --old-tree must be a git worktree at the commit before the guards,"
+              " or omit it to have this script build one.")
         return 2
 
+    # ---- SELF-PROVISION what was not supplied (full self-containment) ----
+    # Live is only READ (dumped); every seller, reserved code and deliberate
+    # violation this proof writes lands in the scratch. The worktree is built
+    # LAST, so a scratch-restore failure leaves nothing to remove; whatever IS
+    # built is removed by the finally below.
+    built_worktree = None
+    if args.database is None:
+        print(f"  restoring a fresh scratch {SCRATCH_DB!r} from a live dump...")
+        restore_scratch(live_name, SCRATCH_DB)
+        args.database = SCRATCH_DB
+    if args.old_tree is None:
+        built_worktree = build_old_worktree(f"{GUARDS_COMMIT}^")
+        args.old_tree = built_worktree
+        print(f"  built old worktree at {GUARDS_COMMIT}^ (before the guards): "
+              f"{built_worktree}")
+
     old_server_dir = os.path.join(args.old_tree, "server")
-    if not os.path.isdir(old_server_dir):
-        print(f"REFUSED: {old_server_dir} is not a directory. --old-tree must be "
-              "a git worktree checked out at the commit before the guards.")
-        return 2
 
     global OWNER_DSN
     OWNER_DSN = owner_live.set(
@@ -362,19 +446,19 @@ def main() -> int:  # noqa: PLR0912, PLR0915 - one linear script
     print(f"  old tree HEAD    : {old_sha}")
     print(f"  assigner budget  : {_ASSIGN_ATTEMPTS} (read from app.master)")
 
-    banner("B0 - the binding sentinel, written BEFORE either server starts")
-    sentinel_code = f"ZZ-GUARD-{RUN}"
-    execute("INSERT INTO sellers (tenant_id, code, name, grade)"
-            " VALUES ($1, $2, $3, 'B')",
-            TENANT_A_ID, sentinel_code, f"guard sentinel {RUN}")
-    check(rows_with_code(sentinel_code) == 1,
-          f"B0: the sentinel {sentinel_code} exists in {args.database}; no other "
-          "database on this cluster can hold it")
-
     new_proc, new_log = None, None
     old_proc, old_log = None, None
     original_target: int | None = None
     try:
+        banner("B0 - the binding sentinel, written BEFORE either server starts")
+        sentinel_code = f"ZZ-GUARD-{RUN}"
+        execute("INSERT INTO sellers (tenant_id, code, name, grade)"
+                " VALUES ($1, $2, $3, 'B')",
+                TENANT_A_ID, sentinel_code, f"guard sentinel {RUN}")
+        check(rows_with_code(sentinel_code) == 1,
+              f"B0: the sentinel {sentinel_code} exists in {args.database}; no other "
+              "database on this cluster can hold it")
+
         server_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         global NEW, OLD
         new_proc, NEW, new_log = start_server(server_dir, env, "new")
@@ -1007,6 +1091,14 @@ def main() -> int:  # noqa: PLR0912, PLR0915 - one linear script
             stop(new_proc, new_log)
         if old_proc is not None:
             stop(old_proc, old_log)
+        # The worktree lifecycle: remove ONLY what this run built, in its own try
+        # so a failure here does not swallow the server stops above.
+        if built_worktree is not None:
+            try:
+                remove_old_worktree(built_worktree)
+            except Exception as e:  # noqa: BLE001
+                check(False,
+                      f"cleanup: could not remove the worktree {built_worktree}: {e}")
 
     banner("SUMMARY")
     if failures:
