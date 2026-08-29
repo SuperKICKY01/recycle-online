@@ -138,6 +138,41 @@ and these PROJECT_STATUS lines.
   pin-a-claim rule, and catching the brief's wrong destination premise is
   `CLAUDE.md § Workflow` "A REPORT IS A CLUE". Nothing new to relearn.
 
+**MAINTENANCE — M5: THE THREE UNTRACKED ROOT FILES, SETTLED. 2026-08-29.** The
+owner's decision on `ARGUS_MOBILE_READ.md`, `COMMIT_MSG.txt` and
+`UNCOMMITTED_DOCS.diff`, all untracked since 2026-08-10/17 and left alone by every
+brief since. **The two deletions are of UNTRACKED files, so they never enter the
+git diff — this record is their only trace, which is why it carries the
+measurement.**
+
+- **`COMMIT_MSG.txt` — DELETED, measured spent.** It was the drafted message for
+  the add-seller Modal fix, and that fix LANDED as commit `1204081` (2026-08-17,
+  16 files, +2602). `diff` of the file against `git show 1204081 -s --format=%B` is
+  a single trailing blank line (`199a200`) — otherwise byte-identical. Deleting it
+  lost nothing git does not already hold.
+- **`UNCOMMITTED_DOCS.diff` — DELETED, measured spent.** A 2026-08-10 diff across
+  six doc files (ARCHITECTURE, CLAUDE, OPEN_ITEMS, PROJECT_STATUS, ROADMAP,
+  lessons/README). `git apply --check` FAILS — the tree already holds every hunk;
+  confirmed by presence today of ARCHITECTURE's password-route appendix, CLAUDE's
+  pin-a-claim convention, and the "enumeration decays" / "holds nine skills" lines.
+  The M0–M4 reworks relocated some of it (e.g. into EVIDENCE.md), which is why the
+  diff no longer applies; the content is in.
+- **`ARGUS_MOBILE_READ.md` — MOVED to `research/`, NOT deleted.** A raw argus
+  code-read dump (2026-08-10) whose own first line disclaims being a repo document;
+  its size measurements are rotted and its Q1–Q6 readings are re-derivable from the
+  source they cite. It was MOVED rather than deleted because the sampling read
+  (head/middle/tail, not all 292 lines) could not GUARANTEE zero unique
+  observations, and an artifact outside the repo is one cleanup from gone — 35 KB
+  inside the tree is the cheap side of that bet. It joins the four research reports
+  already tracked under `research/`, with a one-line header marking it a moved,
+  rotted snapshot of the shas it names. My "research lives outside the repo" memory
+  was stale and is retired.
+
+No queue line closed — `OPEN_ITEMS.md` names none of the three. **IS A LESSON OWED?
+NO, by `CLAUDE.md § Workflow` "Two homes, one test"** — each disposition applied a
+recorded rule (spent work measured before deletion; a research artifact kept inside
+the tree rather than left to rot outside it), and nothing new was relearned.
+
 **P1.8b OFFLINE SELLER CREATION — THE CONTINUOUS RESERVE STRIP, THE LAST CODE
 PIECE (commit 2 of 2). DONE 2026-08-28.** This supersedes the commit-1 entry below
 as the current phase; that record stands. **NO SHA IS GIVEN**, deliberately — the
