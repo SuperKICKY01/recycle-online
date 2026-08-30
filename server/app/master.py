@@ -1728,8 +1728,18 @@ class ShopUpdate(BaseModel):
     default_grade: Grade | None = None
     address: ShopAddress | None = None
     phone: ShopPhone | None = None
+    # Whether STAFF may see money in the dashboard (P1.23 item 4, D1). Admin-only to
+    # set (this route is require_admin) and default false at the column (migration
+    # 0014). A boolean, and NOT in _SHOP_NULLABLE below: the column is NOT NULL, so
+    # an explicit null is a refusal (field_not_nullable), not a clear -- there is no
+    # "unset" state for a policy that is either on or off. Omitted leaves it
+    # untouched (model_dump(exclude_unset=True)); true/false writes it.
+    staff_money_visible: bool | None = None
 
 
+# staff_money_visible is deliberately ABSENT: it is NOT NULL (migration 0014), so it
+# cannot be cleared, only set true or false. Its omission here is what makes an
+# explicit null a 422 rather than a silent no-op (see _changes).
 _SHOP_NULLABLE = frozenset({"default_grade", "address", "phone"})
 
 
@@ -1739,7 +1749,10 @@ async def _read_shop(conn: Any) -> dict:
     # this row names a person -- it is the shop's own identity and its own choices.
     row = (
         await conn.execute(
-            text("SELECT id, name, default_grade, address, phone FROM tenants")
+            text(
+                "SELECT id, name, default_grade, address, phone, staff_money_visible"
+                " FROM tenants"
+            )
         )
     ).mappings().one()
     return {
@@ -1748,6 +1761,10 @@ async def _read_shop(conn: Any) -> dict:
         "default_grade": row["default_grade"],
         "address": row["address"],
         "phone": row["phone"],
+        # A boolean, NOT money and NOT a string: it is a policy flag the yard app
+        # reads to know whether to render money at all (P1.23 item 4, D1). Serialised
+        # as a JSON boolean, which is exactly what a flag is.
+        "staff_money_visible": row["staff_money_visible"],
     }
 
 

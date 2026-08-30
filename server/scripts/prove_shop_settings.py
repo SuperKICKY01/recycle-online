@@ -1,6 +1,12 @@
 """prove_shop_settings.py -- GET/PATCH /shop over real HTTP, with the two new
 fields (address, phone) added by migration 0013 and master.py's ShopUpdate.
 
+UPDATED 2026-08-31 (P1.23 item 4, unit 2): migration 0014 added a third field to
+this surface, tenants.staff_money_visible, so GET /shop now returns SIX keys and
+the identity gate + E1 exact-key set are widened to include it. Its BEHAVIOUR (the
+dashboard money gate) is proven in prove_reports_summary.py, not here; this file
+only keeps its exact-key assertion honest against the widened row.
+
 WHAT THIS TALKS TO, ESTABLISHED BEFORE ANY CELL. It starts its OWN uvicorn on a
 free port (never a fixed one -- lessons/a-proof-must-establish-what-it-is-talking-
 to.md: a hardcoded 8137 once met a stale server), watches the child rather than
@@ -143,11 +149,15 @@ def assert_serving_this_code() -> str:
         .get("ShopUpdate", {})
         .get("properties", {})
     )
-    missing = [k for k in ("address", "phone") if k not in props]
+    # staff_money_visible was added by migration 0014 (P1.23 item 4, unit 2): GET
+    # /shop now returns it and PATCH /shop accepts it, so the identity gate requires
+    # it too -- a server that does not declare it is the pre-0014 code and its E1
+    # exact-key assertion below would go red for the wrong reason.
+    missing = [k for k in ("address", "phone", "staff_money_visible") if k not in props]
     if missing:
         return (
             "ShopUpdate does not declare " + ", ".join(missing)
-            + " -- this server predates migration 0013"
+            + " -- this server predates migration 0013/0014"
         )
     return ""
 
@@ -231,7 +241,7 @@ async def main() -> int:
             check(False, f"E0: serving THIS code -- {wrong}")
             return 1
         check(True, "E0: /openapi.json declares GET+PATCH /shop and ShopUpdate "
-                    "carries address+phone")
+                    "carries address+phone+staff_money_visible")
 
         baseline = await read_shop()
         print(f"      baseline (from Postgres): address={baseline['address']!r} "
@@ -248,7 +258,8 @@ async def main() -> int:
             print(f"      E1 operands: status={r.status_code} keys={sorted(body)}")
             check(r.status_code == 200, f"E1: staff GET /shop -> 200 (got {r.status_code})")
             check(
-                set(body) == {"id", "name", "default_grade", "address", "phone"},
+                set(body) == {"id", "name", "default_grade", "address", "phone",
+                              "staff_money_visible"},
                 f"E1: body keys are exactly the shop's and none names a person "
                 f"(keys={sorted(body)})",
             )

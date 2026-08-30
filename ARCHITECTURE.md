@@ -208,7 +208,7 @@ here only because "exactly ten tables" is a claim the next session re-derives wi
 
 | table | what it is for | shape worth knowing |
 |---|---|---|
-| `tenants` | one row per shop; the unit a licence would attach to | `(id, name, created_at)` and nothing else — no address, no phone. **No endpoint reads it** <br>**Superseded 2026-08-30 (unanchored; anchor next pass):** re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone)` — `default_grade` (migration 0010), `seller_code_target_holding` (0012), `address`+`phone` (0013). It IS read and written: `GET /shop` returns it (staff-readable) and `PATCH /shop` writes `default_grade`/`address`/`phone` (admin-only), so "no endpoint reads it" went false at `9ad225e`. `name` stays immutable-by-decision (`9ad225e`). |
+| `tenants` | one row per shop; the unit a licence would attach to | `(id, name, created_at)` and nothing else — no address, no phone. **No endpoint reads it** <br>**Superseded 2026-08-30 (unanchored; anchor next pass):** re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone)` — `default_grade` (migration 0010), `seller_code_target_holding` (0012), `address`+`phone` (0013). It IS read and written: `GET /shop` returns it (staff-readable) and `PATCH /shop` writes `default_grade`/`address`/`phone` (admin-only), so "no endpoint reads it" went false at `9ad225e`. `name` stays immutable-by-decision (`9ad225e`). <br>**Superseded 2026-08-30 (P1.23 item 4 unit 2; unanchored; anchor next pass):** `staff_money_visible` (boolean NOT NULL DEFAULT false, migration 0014) is added — re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone, staff_money_visible)`, EIGHT columns. It is the per-shop switch the dashboard reads: `GET /shop` returns it (staff-readable), `PATCH /shop` writes it (admin-only), and `GET /reports/summary` refuses a staff caller its money unless it is on (D1). |
 | `users` | authentication, not an employee master | `tenant_id NOT NULL`; `role` CHECK 2 values; `token_version` (0005). No `is_active`, so a session can be revoked but an account cannot be locked |
 | `uoms` | units of measure (kg, crate, piece) | `(code, name)` + `is_active` |
 | `product_categories` | paper, steel, copper … | `(code, name)` + `is_active` |
@@ -320,6 +320,13 @@ server had it). That a handset's clock cannot be relied on is a measurement here
 rather than a precaution: about 3 s of real skew was observed on this project's
 own test handset, and a phone 14 hours fast was observed on another. **Every
 report aggregates on `server_received_at`.**
+
+**Confirmed 2026-08-30 (P1.23 item 4 unit 2):** the dashboard's period summary,
+`GET /reports/summary`, is inside that rule — it aggregates on `server_received_at`
+like `/reports/daily`, its date-range boundary and its `by=day` bucket both convert
+to shop time first (from `config.py`'s one offset, passed as a bind parameter so
+Postgres's IANA database is never a second authority), and it never touches
+`device_created_at` (`server/app/reports.py`).
 
 Rendering converts to **shop time** — a fixed UTC+7 offset — and derives the
 Buddhist-era year **after** that conversion. The other order is correct by luck for

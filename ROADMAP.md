@@ -343,6 +343,15 @@ set.** None mints a step of its own; each rides the step named:
 - **Pulled by P1.23 under S17, a widening not a step:** the dashboard's server
   reads — aggregation by `created_by` (buildable, not built) and reads across a
   period and by dimension, which today's single `/reports/daily` route does not do.
+  **BUILT 2026-08-30 (P1.23 item 4, unit 2) — the SERVER half is done.** `GET
+  /reports/summary` aggregates a period by {product, seller, user, day} × state
+  {live, void, all}, every money figure naming its price basis (`paid_total` =
+  unit_price, `list_total` = list_price, `list_minus_paid` their difference, not a
+  classification); the staff-money-visibility column it needed
+  (`tenants.staff_money_visible`, migration 0014) is pulled and its route gate built
+  (staff 403 off, own-rows-only on — the advisor's reading). `/reports/daily` and
+  `mobile/app/DailyScreen.tsx` are untouched; the phone's dashboard is unit 3. No
+  sha (uncommitted; anchor next pass). See `PROJECT_STATUS.md § Current phase`.
 - **No step owns it — the store-compliance surface (S23):** a privacy-policy link
   at a public URL, terms, and — if the rule binds — an account-deletion path. It is
   research only today; the build/identity half is P1.11 (no `eas.json`, no bundle
@@ -4632,7 +4641,7 @@ the owner's call.** Two clauses:
   request today: `tenants` still has no address and no phone, so there is nothing
   else to return.
 
-  **Superseded 2026-08-30 (unanchored; anchor next pass):** the server half of the
+  **Superseded 2026-08-30 (`49f9fd2`):** the server half of the
   shop-identity content — `address` and `phone` on `tenants` — landed in this
   commit (migration 0013; `GET /shop` returns them staff-readable, `PATCH /shop`
   writes them admin-only), so "`tenants` still has no address and no phone" above
@@ -6952,7 +6961,7 @@ the cause; calm offline states; one consistent vocabulary. NOT animation,
 branding, onboarding tours, or consumer-app polish. Order of work: recorded
 defects first, deferred drawings second, one consistency pass last. **The bar is
 the owner's and can be raised or lowered; this records where it stands.**
-**Superseded 2026-08-30 (unanchored; anchor next pass):** S23 (2026-08-28) RAISED
+**Superseded 2026-08-30 (`49f9fd2`):** S23 (2026-08-28) RAISED
 this bar — the mobile program's completion bar is now a COMMERCIAL-GRADE GENERAL
 APP, not a 5am yard tool alone (§ What the owner has settled). The B1 wording
 above is kept VERBATIM as the record of where the bar stood at B1.
@@ -6989,7 +6998,7 @@ no count is written into the criterion:
    fed from the unfiltered total while queue health uses the owner-filtered one
    (`archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md § The two on-screen unsent counts still disagree`) —
    reconciled to one number the operator can act on.
-   **DONE 2026-08-30 (recording an earlier fix; unanchored, anchor next pass):**
+   **DONE 2026-08-30 (recording an earlier fix; `49f9fd2`):**
    all three defects were fixed at `4dd00bb` (2026-08-27 — "fix(P1.23 c1): the save
    confirmation stops contradicting itself, the add-seller refusal names a role not
    a permission, and the already-fixed unsent counts close by supersession";
@@ -7032,6 +7041,17 @@ no count is written into the criterion:
    - **Account surface = profile + change-own-password**, no username self-edit.
      Theme is reserved for item 3 (a control-slot only). A store-compliance surface
      is NOT built now.
+   **BUILT 2026-08-30 (unit 2) — the dashboard's SERVER half.** `GET /reports/summary`
+   is built: a period aggregated by {product, seller, user, day} × state {live, void,
+   all}, every money figure NAMING its price basis (`paid_total` = unit_price = what
+   the shop paid; `list_total` = list_price; `list_minus_paid` = list_total - paid_total,
+   a difference not a classification — per correction (ii)); voids are a STATE crossing
+   every dimension (correction (i)); the cash close stays apart (correction (iii)). The
+   money-visibility toggle is pulled: `tenants.staff_money_visible` (migration 0014),
+   staff refused 403 while off, own-rows-only when on (the advisor's reading of "when
+   ON", the owner's to overrule). `mobile/app/DailyScreen.tsx` and `/reports/daily` are
+   untouched; the phone's dashboard is unit 3. No sha (uncommitted; anchor next pass).
+   See `PROJECT_STATUS.md § Current phase`.
 
 **WHAT THIS DOES NOT INCLUDE, said before it is built:** the camera screens
 (S12 — they draw once a binary-payload mechanism exists) and P1.21's

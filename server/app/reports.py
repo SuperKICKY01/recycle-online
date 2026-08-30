@@ -188,13 +188,13 @@ from __future__ import annotations
 
 import datetime as dt
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from .auth import Principal, require_admin
+from .auth import ADMIN_ROLE, Principal, forbidden, get_principal, require_admin
 from .bills import _be_year
 from .config import SHOP_TIMEZONE, SHOP_TIMEZONE_NAME
 from .db import tenant_connection
@@ -609,4 +609,374 @@ async def daily_report(
                 " them apart"
             ),
         },
+    }
+
+
+# ===========================================================================
+# The period summary — the shop-owner dashboard's server half (P1.23 item 4)
+#
+# GET /reports/summary?from_date&to_date&by&state
+#
+# Where GET /reports/daily answers ONE shop day, this answers a PERIOD broken
+# down by a DIMENSION. It is the aggregation the dashboard needs and the daily
+# route does not do (ROADMAP § The completion sequence, "Pulled by P1.23 under
+# S17, a widening not a step"). It adds no business rule: it totals rows that
+# already exist, the same way daily does, and every DECISION it makes is written
+# down because each is a place a plausible alternative returns a wrong number.
+#
+# WHAT IT IS AND IS NOT (the owner's decisions, ROADMAP § P1.23 item 4,
+# 2026-08-30 — not this file's to re-open):
+#
+#   * D1 — STAFF SEE NO MONEY BY DEFAULT. Money visibility is a per-shop,
+#     owner-controlled toggle (tenants.staff_money_visible, migration 0014) whose
+#     only initial state is OFF. A staff caller is refused 403 while it is OFF.
+#     When the owner turns it ON, a staff caller may read ONLY summaries of the
+#     bills THEY created (created_by = self), never a shop-wide figure — this is
+#     the ADVISOR'S READING of "when ON", pending the owner's word, and it is
+#     built to here. Admin sees any scope regardless of the toggle.
+#
+#   * D2 — VOIDS ARE A STATE, NOT A FOURTH AXIS. `state` in {live, void, all}
+#     crosses every dimension; a voided bill is not a dimension of its own. And
+#     EVERY MONEY FIGURE NAMES ITS PRICE BASIS: `paid_total` sums the stored
+#     `amount` (the unit_price basis — what the shop PAID); `list_total` sums
+#     `round(net_weight * list_price, 2)` (the list_price basis — a separately
+#     labelled comparison). `list_minus_paid = list_total - paid_total` is their
+#     ARITHMETIC DIFFERENCE and NOTHING MORE: it does NOT classify why the two
+#     differ. A negotiated load, a stale-cache mispricing and a deliberate
+#     override are byte-identical here — the server cannot tell them apart
+#     (lessons/cached-master-data-is-a-price-claim.md), so the field NAMES only the
+#     arithmetic it can establish, never a cause. The owner may READ this difference
+#     as the override signal (D2) — the reading is the reader's; this route never
+#     names or counts an "override". The cash close (P1.19) is elsewhere; nothing here
+#     counts a drawer.
+#
+# THE AGGREGATION GRAIN IS THE ITEM. Money and weight come from
+# purchase_bill_items (a bill's total_amount equals the sum of its items'
+# `amount`, so day/seller/user agree whether summed from bills or items, and
+# product can ONLY be summed from items). `bill_count = count(DISTINCT bill_id)`
+# within the group: for by=day/seller/user a bill belongs to exactly one group,
+# so the per-row counts partition the period's bills and sum to the total; for
+# by=product a bill touching two products is counted in BOTH product rows, so the
+# per-row counts sum to the total only when bills are single-product. The money
+# and weight totals equal the sum of the rows for EVERY dimension, because every
+# item belongs to exactly one product, one seller, one user and one day.
+#
+# THE WEIGHT IS net_weight — the one the stored `amount` was computed on
+# (bills._line_amount: round(net_weight * unit_price, 2), ROUND_HALF_UP). The
+# list-basis figure rounds the SAME way, per line, reusing bills' arithmetic:
+# `round(net_weight * list_price, 2)` in Postgres NUMERIC, which rounds ties away
+# from zero and so agrees with ROUND_HALF_UP on the non-negative values a CHECK
+# guarantees (the identical expression daily's off-list uses at :323).
+#
+# THE DAY BOUNDARY AND THE DAY BUCKET ARE SHOP TIME, ON server_received_at.
+# ARCHITECTURE §6: "Every report aggregates on server_received_at", converted to
+# shop time BEFORE the date is taken. The range [from_date, to_date] is turned
+# into two UTC instants by _day_window (the SAME function daily uses), so the
+# predicate is a plain range on the bare column — indexable, and it does not make
+# Postgres's IANA database a second timezone authority. by=day buckets each bill
+# with `(server_received_at AT TIME ZONE <shop offset>)::date`, the offset taken
+# from config.SHOP_TIMEZONE and from nowhere else, so a bill weighed 00:30 shop
+# time falls in the correct shop day rather than the previous UTC one. NEVER
+# device_created_at, never doc_no (lessons/doc-no-is-arrival-order-not-event-
+# time.md, render-in-shop-time-not-device-time.md).
+#
+# ONE REPEATABLE-READ SNAPSHOT. The rows, the totals and the visibility flag are
+# separate SELECTs the caller compares against each other, so they run in ONE
+# repeatable-read transaction; under READ COMMITTED a bill committing between the
+# rows query and the totals query would be in one and not the other, and the
+# totals would not equal the sum of the rows (lessons/a-report-is-many-reads-
+# that-must-agree.md). Read-only repeatable read cannot raise 40001.
+#
+# TENANT SCOPING IS RLS, exactly as in daily above and across this codebase: not
+# one hand-written `WHERE tenant_id` here. FORCE ROW LEVEL SECURITY plus the
+# composite FKs are the two independent mechanisms (ARCHITECTURE §8.1 rule 2,
+# §8.2); a forgotten predicate returns NOTHING under FORCE, never another shop's
+# rows (ARCHITECTURE §8.2:529-531). The only hand-written predicate here is the
+# staff `created_by = self` scope, which is the FEATURE (D1), not tenant
+# isolation.
+#
+# NO INDEX ADDED (this unit), same as daily. The by=day bucket wraps the column
+# in a function, so no index serves it; at one shop's volume it is a sequential
+# scan over a small table. A future-volume finding is recorded in OPEN_ITEMS.
+#
+# Money and weight are decimal STRINGS on the wire, produced by _money/_weight;
+# never a JSON number (ARCHITECTURE §5 — a JSON number is a double before any
+# client runs, and dailyView-shape readers treat it as a MISSING field).
+# ===========================================================================
+
+_WEIGHT_ZERO = Decimal("0.000")
+
+# The inclusive day-span ceiling. A year plus a day of slack; a request wider
+# than this is a mistake or an unbounded scan, refused with a named 422.
+_SUMMARY_MAX_SPAN_DAYS = 366
+
+# The shop's UTC offset in whole SECONDS, derived from the ONE server-side
+# timezone authority (config.SHOP_TIMEZONE) and nowhere else, bound as an integer.
+# The by=day bucket shifts by it without naming a second timezone:
+# `AT TIME ZONE make_interval(secs => 25200)` is pure offset arithmetic, not an
+# IANA lookup, so Postgres's own zone database is never a second authority beside
+# config.py. Bound as an int rather than an interval string because asyncpg
+# encodes an interval parameter from a timedelta, not from text. If SHOP_TIMEZONE
+# ever becomes per-tenant (config.py says it must move to real ZoneInfo then),
+# this derivation moves with it; today it is +07:00 for every shop.
+_SHOP_OFFSET_SECONDS = int(SHOP_TIMEZONE.utcoffset(None).total_seconds())
+
+# The by=day bucket: the bill's shop-local date. The offset is a bind parameter,
+# so config.SHOP_TIMEZONE stays the sole authority for what "+07" is.
+_DAY_BUCKET = (
+    "(b.server_received_at AT TIME ZONE make_interval(secs => :shop_offset_secs))::date"
+)
+
+
+def _weight(value: Any) -> str:
+    """A NUMERIC weight as an exact decimal STRING, always three places.
+
+    Decimal in, string out, no float anywhere — the weight sibling of _money.
+    net_weight is NUMERIC(14,3); three places is its declared scale.
+    """
+    return str(Decimal(value or 0).quantize(_WEIGHT_ZERO, rounding=ROUND_HALF_UP))
+
+
+# The four dimensions, enumerated in ONE place so a fifth cannot be added to the
+# query without being added here (lessons/a-quantified-sentence-names-no-member).
+# Every fragment below is a LITERAL from this module — never a caller string — so
+# it is composed into SQL the way master.py composes its dynamic SET: the caller
+# chooses only WHICH key of this dict via a validated Literal, never its value.
+#
+#   key   — the row's stable identity (product/user id, seller code, shop date)
+#   label — the human name beside it (product/seller name, username, the date);
+#           for by=user the key is user_id and the username merely rides beside
+#           it, because (tenant_id, user_id) is the only permanent name a person
+#           has and a username belongs on a screen (ARCHITECTURE §4 point 4).
+#   join  — a LEFT join for the label, with NO is_active predicate: a retired
+#           seller or product must still resolve on the day it traded, exactly as
+#           daily's lines join does (INNER would silently drop the row and leave
+#           the total disagreeing with its own breakdown).
+#   group / order — the GROUP BY and a deterministic ORDER BY on the key.
+_BY_DIMENSIONS: dict[str, dict[str, str]] = {
+    "product": {
+        "key": "i.product_id::text",
+        "label": "p.name",
+        "join": " LEFT JOIN products p ON p.id = i.product_id",
+        "group": "i.product_id, p.name",
+        "order": "i.product_id::text",
+    },
+    "seller": {
+        "key": "s.code",
+        "label": "s.name",
+        "join": " LEFT JOIN sellers s ON s.id = b.seller_id",
+        "group": "b.seller_id, s.code, s.name",
+        "order": "s.code",
+    },
+    "user": {
+        "key": "b.created_by::text",
+        "label": "u.username",
+        "join": " LEFT JOIN users u ON u.id = b.created_by",
+        "group": "b.created_by, u.username",
+        "order": "b.created_by::text",
+    },
+    "day": {
+        "key": f"to_char({_DAY_BUCKET}, 'YYYY-MM-DD')",
+        "label": f"to_char({_DAY_BUCKET}, 'YYYY-MM-DD')",
+        "join": "",
+        "group": _DAY_BUCKET,
+        "order": _DAY_BUCKET,
+    },
+}
+
+# Void as a STATE crossing every dimension (D2), never a fourth axis. A literal
+# fragment per state; `all` adds nothing.
+_STATE_PREDICATES: dict[str, str] = {
+    "live": " AND b.voided_at IS NULL",
+    "void": " AND b.voided_at IS NOT NULL",
+    "all": "",
+}
+
+# The four aggregates, shared by the grouped rows query and the ungrouped totals
+# query so the two cannot compute money two different ways. coalesce(...,0) so a
+# group or a period with no matching rows reads 0, not NULL.
+_SUMMARY_AGGREGATES = (
+    "count(DISTINCT i.bill_id)                            AS bill_count,"
+    " coalesce(sum(i.net_weight), 0)                      AS net_weight,"
+    " coalesce(sum(i.amount), 0)                          AS paid_total,"
+    " coalesce(sum(round(i.net_weight * i.list_price, 2)), 0) AS list_total"
+)
+
+
+def _summary_rows_sql(by: str, where: str) -> str:
+    """The grouped query for one dimension. `by` is a validated Literal key of
+    _BY_DIMENSIONS; `where` is composed from literal fragments in the handler."""
+    d = _BY_DIMENSIONS[by]
+    return (
+        f"SELECT {d['key']} AS key, {d['label']} AS label, {_SUMMARY_AGGREGATES}"
+        f"  FROM purchase_bills b"
+        f"  JOIN purchase_bill_items i ON i.bill_id = b.id"
+        f"{d['join']}"
+        f" WHERE {where}"
+        f" GROUP BY {d['group']}"
+        f" ORDER BY {d['order']}"
+    )
+
+
+def _summary_totals_sql(where: str) -> str:
+    """The ungrouped totals, computed INDEPENDENTLY of the rows so that the proof
+    can assert totals == sum(rows) rather than have it hold by construction."""
+    return (
+        f"SELECT {_SUMMARY_AGGREGATES}"
+        f"  FROM purchase_bills b"
+        f"  JOIN purchase_bill_items i ON i.bill_id = b.id"
+        f" WHERE {where}"
+    )
+
+
+def _summary_figures(r: Any) -> dict:
+    """The five money/weight/count figures, from a rows or totals mapping. Money
+    and weight as decimal STRINGS; list_minus_paid computed here from the two
+    already-2-place bases, so it is exact and never a float."""
+    paid = Decimal(r["paid_total"] or 0)
+    listed = Decimal(r["list_total"] or 0)
+    return {
+        "bill_count": int(r["bill_count"]),
+        "net_weight": _weight(r["net_weight"]),
+        # unit_price basis: what the shop PAID (the stored amount).
+        "paid_total": _money(paid),
+        # list_price basis: a separately-labelled comparison, NOT what was paid.
+        "list_total": _money(listed),
+        # list_total - paid_total. The arithmetic difference of the two bases and
+        # nothing more — the name states no cause (see the section note).
+        "list_minus_paid": _money(listed - paid),
+    }
+
+
+@router.get("/reports/summary")
+async def summary_report(
+    from_date: dt.date = Query(
+        ...,
+        description=(
+            "Shop-local calendar start date (YYYY-MM-DD, UTC+7), inclusive."
+            " Converted to a server_received_at instant with the same offset"
+            " /reports/daily uses."
+        ),
+    ),
+    to_date: dt.date = Query(
+        ...,
+        description=(
+            "Shop-local calendar end date (YYYY-MM-DD, UTC+7), inclusive. Must be"
+            " >= from_date, and the inclusive span must be <= 366 days."
+        ),
+    ),
+    by: Literal["product", "seller", "user", "day"] = Query(
+        ...,
+        description=(
+            "The breakdown dimension. product/user rows are keyed by id, seller"
+            " by code, day by shop-local date; each row carries the display name"
+            " beside its key."
+        ),
+    ),
+    state: Literal["live", "void", "all"] = Query(
+        "live",
+        description=(
+            "Void is a STATE, not a dimension: live = voided_at IS NULL, void ="
+            " voided_at IS NOT NULL, all = both. bill_count counts bills in that"
+            " state."
+        ),
+    ),
+    # get_principal, NOT require_admin: staff are admitted, then gated on the
+    # per-shop money-visibility toggle inside the handler (D1).
+    principal: Principal = Depends(get_principal),
+) -> dict:
+    """Aggregate purchase bills over a period, broken down by one dimension.
+
+    Returns `{from_date, to_date, by, state, rows, totals}`. Each row and totals
+    carry `key`, `label`, `bill_count`, `net_weight` (3dp string), `paid_total`
+    (what the shop PAID, unit_price basis, 2dp string), `list_total` (the
+    list_price comparison, 2dp string) and `list_minus_paid` = list_total -
+    paid_total (their arithmetic difference; the name states no cause). The owner
+    reads this difference as the override signal (D2) — the reading is the reader's.
+    totals carries the same fields with `key`/`label` null.
+
+    Admin sees any scope. A staff caller is refused 403 (`staff_money_hidden`)
+    while the shop's `staff_money_visible` is off; when the owner turns it on, a
+    staff caller sees ONLY their own bills (created_by = self), regardless of
+    `by`. Aggregates on `server_received_at` in shop time; voids are a `state`.
+    """
+    # ---- validate the range (lessons/edge-must-reject-what-the-column-rounds):
+    # a bad range is a terminal, field-named 422, never a 500 the client reads as
+    # `unavailable` and retries for ever. `by`/`state` outside their sets are
+    # refused by the Literal type as a 422 whose loc names the field.
+    if to_date < from_date:
+        raise _invalid(
+            "date_range_inverted",
+            "ช่วงวันที่ไม่ถูกต้อง วันสิ้นสุดต้องไม่มาก่อนวันเริ่มต้น",
+            field="to_date",
+            from_date=from_date.isoformat(),
+            to_date=to_date.isoformat(),
+        )
+    span_days = (to_date - from_date).days + 1
+    if span_days > _SUMMARY_MAX_SPAN_DAYS:
+        raise _invalid(
+            "date_range_too_wide",
+            f"ช่วงวันที่กว้างเกินไป สูงสุด {_SUMMARY_MAX_SPAN_DAYS} วัน",
+            field="to_date",
+            span_days=span_days,
+            max_span_days=_SUMMARY_MAX_SPAN_DAYS,
+        )
+
+    # from_date's shop-midnight start to the shop-midnight END of to_date, both as
+    # UTC instants — the SAME _day_window daily uses, so the two routes cannot
+    # disagree about where a day begins.
+    start, _ = _day_window(from_date)
+    _, end = _day_window(to_date)
+    params: dict[str, Any] = {
+        "start": start,
+        "end": end,
+        "shop_offset_secs": _SHOP_OFFSET_SECONDS,
+    }
+
+    where = "b.server_received_at >= :start AND b.server_received_at < :end"
+    where += _STATE_PREDICATES[state]
+
+    async with tenant_connection(
+        principal.tenant_id, isolation_level="REPEATABLE READ"
+    ) as conn:
+        # The per-shop switch, read INSIDE the snapshot. RLS scopes it to this
+        # shop's single row.
+        money_visible = (
+            await conn.execute(text("SELECT staff_money_visible FROM tenants"))
+        ).scalar_one()
+
+        if principal.role != ADMIN_ROLE:
+            if not money_visible:
+                # 403, pinned to detail.code, and it NAMES that the shop owner
+                # decides this — not 422 (the request is fine), not 424 (no master
+                # data is missing), not 5xx (retrying changes nothing). Only a
+                # human turning the toggle on clears it.
+                raise forbidden(
+                    "staff_money_hidden",
+                    "ยอดเงินถูกซ่อนไว้สำหรับพนักงาน การเปิดให้เห็นเป็นสิทธิ์ของเจ้าของร้าน",
+                    setting="staff_money_visible",
+                    decided_by="shop_owner",
+                )
+            # ON: FORCED to the caller's OWN bills, regardless of `by`. A staff
+            # caller never sees a shop-wide figure; by=user then returns exactly
+            # one row — themselves. This is the ONE hand-written predicate here,
+            # and it is the feature (D1), not tenant isolation (that is RLS).
+            where += " AND b.created_by = :self_user_id"
+            params["self_user_id"] = principal.user_id
+
+        rows = (
+            await conn.execute(text(_summary_rows_sql(by, where)), params)
+        ).mappings().all()
+        totals = (
+            await conn.execute(text(_summary_totals_sql(where)), params)
+        ).mappings().one()
+
+    return {
+        "from_date": from_date.isoformat(),
+        "to_date": to_date.isoformat(),
+        "by": by,
+        "state": state,
+        "rows": [{"key": r["key"], "label": r["label"], **_summary_figures(r)} for r in rows],
+        # key/label null: totals is the aggregate over every row, keyed by nothing.
+        "totals": {"key": None, "label": None, **_summary_figures(totals)},
     }

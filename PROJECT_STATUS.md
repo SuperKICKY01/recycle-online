@@ -51,7 +51,7 @@ for A3"), and renaming them would orphan the history. **No new A-number
 will be issued.** Forward work is numbered R1, R2 … in `ROADMAP.md`.
 A3 was never opened; the sign-out work it named is **R1**.
 
-**Superseded 2026-08-30 (unanchored; anchor next pass): this "Last updated"
+**Superseded 2026-08-30 (`49f9fd2`): this "Last updated"
 date PREDATES every entry beneath it — the maintenance blocks (M0–M6) and the
 P1.8b records below it, and § Current phase, are all newer. Read § Current phase
 for where the work stands; this header is kept only as the record of the R1/R2
@@ -75,8 +75,67 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.23 item 4, unit 2 — THE DASHBOARD'S SERVER HALF: the period-summary route
+and the staff-money-visibility setting. 2026-08-30.** No sha (uncommitted; anchor
+next pass). This supersedes the unit-1 records below as the current-phase pointer;
+they stand, anchored to `49f9fd2` (phase 1) and `e69d417` (phase 2).
+**BUILT and PROVEN over real HTTP.** Migration `0014_tenants_staff_money_visible.py`
+adds `tenants.staff_money_visible` (boolean NOT NULL DEFAULT false — OFF is the
+owner's only-safe initial state per D1, NOT a fallback default that could be a
+wrong number); applied to dev `recycle` (`alembic current` = 0014, re-read from
+`information_schema`: boolean, NOT NULL, default false). `server/app/master.py`
+widens `GET /shop` (staff-readable) and `PATCH /shop` (admin-only) to carry
+`staff_money_visible`; it is deliberately NOT in `_SHOP_NULLABLE`, so an explicit
+null is a 422 (the flag is either on or off). `server/app/reports.py` adds ONE
+route, `GET /reports/summary` — a period aggregated by {product, seller, user, day}
+× state {live, void, all}, RLS-scoped (no hand-written tenant predicate, the file's
+own pattern), ONE REPEATABLE READ snapshot, money and weight as decimal STRINGS.
+Every figure NAMES its price basis (D2): `paid_total` is the unit_price sum (what
+the shop PAID), `list_total` the list_price comparison, `list_minus_paid` =
+list_total - paid_total their difference and NOT a classification of why they
+differ. Staff see NO money unless the toggle is on (403 `staff_money_hidden`, which
+names the shop owner as the decider); when on, a staff caller is FORCED to their own
+bills (`created_by = self`), regardless of `by` — the ADVISOR'S READING of "when
+ON", built to here and reported as such, the owner's to overrule. `/reports/daily`
+and `mobile/app/DailyScreen.tsx` are untouched.
+**PROVEN:** `scripts/prove_reports_summary.py` exits 0 TWICE with no reseed — its
+own child uvicorn on a FREE port against a self-restored scratch database
+(`recycle_summary_scratch`, the dev DB only READ; the scratch-database pattern the
+brief preferred, per lessons/a-mutation-on-a-protected-write-path-needs-a-scratch-
+database.md), identity-gated on `/openapi.json`, TWO throwaway tenants provisioned
+fresh, ABSOLUTE hand-computed Decimal sums compared byte-for-byte, and it DELETES
+nothing. FOUR disproofs each reddened their named cell and reverted green: (a) drop
+the staff `created_by = self` forcing → the staff-own-rows cells; (b) there is no
+tenant predicate to drop, so isolation is proven held by FORCE RLS + SET LOCAL —
+pointing the route at `tenant_connection(None)` fails CLOSED; (c) `list_total` on
+`unit_price` → the `list_minus_paid` cells (diff → 0); (d) a UTC day bucket → the
+midnight-pair cell (23:30/00:30 collapse). `scripts/prove_shop_settings.py` widened
+(its E1 exact-key set and identity gate now include `staff_money_visible`) and green
+TWICE; `reconcile.py` on dev = exit 0, 0 violations (a column, not a relation, so
+`backup_db.py`'s manifest key space is unchanged).
+**NOT RE-RUN THIS PASS — a green not run today is not written as green.** The change
+is purely additive (a new NOT-NULL-with-default column and a new route; no existing
+column, route or constraint moved), and no other proof asserts the exact `tenants`
+column set, `/shop` key set, or reports-route set — only `count(*) FROM tenants`
+row-counts, which an added column cannot move — so none can break on it; each also
+carries setup that would write dev debris or need provisioning for zero expected
+signal. The proofs `rg -l "/shop|/reports|FROM tenants|purchase_bill" server/scripts`
+matched and this pass did NOT re-run, by setup: external-server (a live server on
+`:8099`, writing bills into dev) — `prove_daily_report`, `prove_revocation`,
+`prove_master_write`, `prove_master_data_gate`, `prove_seller_pricing`;
+scratch/backup (`--database` + a restored copy) — `prove_reconcile`,
+`prove_docno_clock`, `prove_backup_restore`, and `prove_year_gate` (external server
+AND scratch); scratch with its own uvicorn — `prove_seller_code_reservations`,
+`prove_shop_code`; scratch + a git worktree — `prove_seller_code_guards`; and the
+offline throwaway-tenant RLS proof — `prove_rls`.
+**NOT DONE / NOT OBSERVED:** the phone's dashboard (unit 3) is a SEPARATE step and
+NO screen was drawn this pass. The `by=day` query `EXPLAIN`s to a sequential scan
+over `purchase_bills` at fixture size — recorded in OPEN_ITEMS as a future-volume
+line (P2.4), not an index built here. No device pass; this unit draws nothing on a
+handset.
+
 **P1.23 item 4, unit 1 — PHASE 2 (MOBILE): the shop-settings screen and the
-account screen. 2026-08-30.** No sha (uncommitted at STOP 2; anchor next pass).
+account screen. 2026-08-30.** Committed at `e69d417` (anchored 2026-08-30 in the unit-2 pass).
 This supersedes the PHASE 1 record below as the current-phase pointer; that record
 stands and is anchored to `49f9fd2`.
 **BUILT HEADLESS and PROVEN; the on-device pass is UNOBSERVED (the owner's).** New
@@ -664,7 +723,7 @@ written. The P1.8b GATES record further down this file already states it correct
 restated an unverified report over a fact the tree AND this same file already
 carried — `CLAUDE.md § Workflow` "A REPORT IS A CLUE, NOT A SOURCE".
 
-**Superseded 2026-08-30 (unanchored; anchor next pass): "further down this file"
+**Superseded 2026-08-30 (`49f9fd2`): "further down this file"
 is now WRONG.** The P1.8b GATES record was moved to the cold archive at `f7ab2e0`
 (2026-08-28) and now lives in `archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md`;
 `rg -n GATES PROJECT_STATUS.md` returns only this c4 pointer, so the quoted handle

@@ -240,6 +240,17 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   identity) gained storage on 2026-08-30: `tenants.address` and `tenants.phone`
   landed at migration 0013, so of the nine the schema now holds TWO — item 1's
   `default_grade` and item 7's address/phone.
+  **PULLED 2026-08-30 (P1.23 item 4 unit 2): item 9 IS NOW BUILT.** The staff-money-
+  visibility toggle got its column — `tenants.staff_money_visible` (boolean NOT NULL
+  DEFAULT false, migration 0014), pulled by the DASHBOARD under S17 exactly as this
+  entry said it would be. Its tier is the precedent this section set: staff-readable
+  `GET /shop`, admin-only `PATCH /shop`. `GET /reports/summary` refuses a staff caller
+  its money while the toggle is OFF (403 `staff_money_hidden`), and when the owner
+  turns it ON, a staff caller reads ONLY their own bills (`created_by = self`) — the
+  ADVISOR'S READING of "when ON", built to and reported as such, the owner's to
+  overrule. The COUNT is untouched — nine is still nine, and this mints no tenth — but
+  of the nine the schema now holds THREE: item 1's `default_grade`, item 7's
+  address/phone, and item 9's `staff_money_visible`, superseding the "holds TWO" above.
 
 - **~~NO STAFF ACCOUNT EXISTS AND THERE IS NO WAY TO CREATE ONE — measured
   2026-08-10, not inferred.~~ — THE SECOND HALF IS CLOSED, THE FIRST STANDS.**
@@ -1379,6 +1390,18 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Code debt found and left in place
 
+- **`GET /reports/summary`'s `by=day` query SEQ-SCANS `purchase_bills` — found
+  2026-08-30 (P1.23 item 4 unit 2), NOT A DEFECT AT FIXTURE SIZE, RECORDED NOT
+  FIXED.** `EXPLAIN` over the fixture shows a `Seq Scan on purchase_bills` filtered on
+  `server_received_at` (and a seq scan on `purchase_bill_items`): there is no index on
+  `(tenant_id, server_received_at)` — migration 0001 gives `purchase_bills` only
+  `(tenant_id, id)` and `(tenant_id, doc_no)` — and the `by=day` bucket wraps the
+  column in a function, so no index could serve that GROUP BY in any case. Identical
+  to `/reports/daily`'s own "INDEX — NOT ADDED, ON PURPOSE" note in
+  `server/app/reports.py`: fine at one shop's volume, a future-volume line for P2.4.
+  See `ROADMAP.md § What the owner has settled` "S19 — P2.4 AND P2.5 STAY OPEN UNTIL A REAL SHOP TRADES".
+  The eventual fix is one migration adding `ix_bills_tenant_received
+  ON purchase_bills (tenant_id, server_received_at)`; this unit adds no index.
 - **`mobile/app.json`'s `apiBaseUrl` COMMENT NAMES A MOVED FILE — found 2026-08-29
   (M6 c3), FAILS SAFE, RECORDED NOT FIXED.** The comment at `mobile/app.json` line 31
   says the single reader is `device/src/config.ts`; that path does not exist.
@@ -1551,7 +1574,7 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   strip is under the host — without touching the notice, its wording, or any
   screen. Whoever does it should re-read the line number first; this entry's
   predecessor two entries up rotted every one of its own.
-  **CLOSED 2026-08-30 (unanchored; anchor next pass):** `mobile/src/master/sellerCreateNotice.ts`
+  **CLOSED 2026-08-30 (`49f9fd2`):** `mobile/src/master/sellerCreateNotice.ts`
   was DELETED at `94a0d47` (`git log --diff-filter=D` re-derived today; the commit's
   own subject names the act — "the online mint path and its two proofs are
   deleted"), so the stale comment no longer exists and the *Not done:* rewrite is
@@ -2825,7 +2848,7 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   The full re-derivation is at `archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md`
   "IS P1.8's DONE WHEN MET? RE-DERIVED HERE, AND THE STEP IS NOT CLOSED BY THIS PHASE".
   NOTHING IS AUTHORISED.
-  **CLOSED 2026-08-30 (unanchored; anchor next pass):** the DONE WHEN was minted
+  **CLOSED 2026-08-30 (`49f9fd2`):** the DONE WHEN was minted
   2026-08-27 (B1) —
   `ROADMAP.md § P1.8 — Seller creation from the phone` "P1.8b's DONE WHEN — MINTED 2026-08-27 (B1)"
   (`rg` for that exact string returns 1 hit) — so P1.8b now carries a criterion of
