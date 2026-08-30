@@ -32,8 +32,7 @@ import {
 import { searchSellers } from "../src/cart/sellers";
 import type { SellerMatch } from "../src/cart/sellers";
 import type { Seller } from "./api";
-
-const TAP_MIN = 56;
+import { useTheme, type ThemeTokens } from "./theme";
 
 /**
  * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
@@ -92,6 +91,9 @@ export function SellerPicker({
   onClose,
   onPick,
 }: Props) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
+
   const [query, setQuery] = useState("");
 
   const matches = useMemo(
@@ -136,7 +138,7 @@ export function SellerPicker({
           value={query}
           onChangeText={setQuery}
           placeholder="ค้นหา: ชื่อ / รหัส / ทะเบียนรถ"
-          placeholderTextColor="#94a3b8"
+          placeholderTextColor={t.color.placeholder}
           autoFocus
           autoCorrect={false}
           autoCapitalize="none"
@@ -224,61 +226,63 @@ export function SellerPicker({
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: "#f8fafc" },
-  head: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12,
-    backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0",
-  },
-  title: { fontSize: 20, fontWeight: "900", color: "#0f172a" },
-  headActions: { flexDirection: "row", alignItems: "center", gap: 8 },
-  // Teal, so it reads as the one thing on this screen that CREATES something,
-  // beside a neutral ปิด. Same 48pt floor as every other control here.
-  addBtn: {
-    minHeight: 48, paddingHorizontal: 14, borderRadius: 10,
-    backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center",
-  },
-  addText: { fontSize: 15, fontWeight: "800", color: "#fff" },
-  closeBtn: {
-    minHeight: 48, paddingHorizontal: 20, borderRadius: 10,
-    backgroundColor: "#e2e8f0", alignItems: "center", justifyContent: "center",
-  },
-  closeText: { fontSize: 16, fontWeight: "800", color: "#334155" },
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    fill: { flex: 1, backgroundColor: t.color.background },
+    head: {
+      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+      paddingHorizontal: t.space.x3, paddingTop: 56, paddingBottom: t.space.xl,
+      backgroundColor: t.color.surface, borderBottomWidth: 1, borderBottomColor: t.color.borderSoft,
+    },
+    title: { fontSize: t.type.title, fontWeight: "900", color: t.color.text },
+    headActions: { flexDirection: "row", alignItems: "center", gap: t.space.md },
+    // Teal, so it reads as the one thing on this screen that CREATES something,
+    // beside a neutral ปิด. Same TAP_MIN floor as every other control here.
+    addBtn: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.xxl, borderRadius: t.radius.lg,
+      backgroundColor: t.color.primary, alignItems: "center", justifyContent: "center",
+    },
+    addText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.onPrimary },
+    closeBtn: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
+      backgroundColor: t.color.borderSoft, alignItems: "center", justifyContent: "center",
+    },
+    closeText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
 
-  searchWrap: {
-    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, backgroundColor: "#fff",
-    borderBottomWidth: 1, borderBottomColor: "#e2e8f0",
-  },
-  search: {
-    borderWidth: 2, borderColor: "#0f766e", borderRadius: 12, paddingHorizontal: 14,
-    minHeight: TAP_MIN, fontSize: 20, fontWeight: "700", color: "#0f172a",
-    backgroundColor: "#fff",
-  },
-  searchHint: { fontSize: 12, color: "#64748b", marginTop: 6, fontWeight: "600" },
+    searchWrap: {
+      paddingHorizontal: t.space.x3, paddingTop: t.space.xl, paddingBottom: t.space.md, backgroundColor: t.color.surface,
+      borderBottomWidth: 1, borderBottomColor: t.color.borderSoft,
+    },
+    search: {
+      borderWidth: 2, borderColor: t.color.primary, borderRadius: t.radius.xl, paddingHorizontal: t.space.xxl,
+      minHeight: t.tapMin, fontSize: t.type.title, fontWeight: "700", color: t.color.text,
+      backgroundColor: t.color.surface,
+    },
+    searchHint: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.sm, fontWeight: "600" },
 
-  body: { padding: 16, paddingBottom: 48 },
-  empty: { textAlign: "center", color: "#64748b", marginTop: 40, fontSize: 15 },
+    body: { padding: t.space.x3, paddingBottom: t.space.x5 },
+    empty: { textAlign: "center", color: t.color.textSubtle, marginTop: 40, fontSize: t.type.bodyLg },
 
-  row: {
-    backgroundColor: "#fff", borderRadius: 12, padding: 12, marginBottom: 10,
-    borderWidth: 1, borderColor: "#e2e8f0", minHeight: TAP_MIN, justifyContent: "center",
-  },
-  rowCurrent: { borderColor: "#0f766e", borderWidth: 2, backgroundColor: "#f0fdfa" },
-  rowTop: { flexDirection: "row", alignItems: "center", gap: 10 },
-  name: { flex: 1, fontSize: 18, fontWeight: "800", color: "#0f172a" },
-  grade: {
-    fontSize: 12, fontWeight: "900", color: "#fff", backgroundColor: "#0f766e",
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, overflow: "hidden",
-  },
-  gradeNone: { backgroundColor: "#b91c1c" },
-  meta: { fontSize: 13, color: "#64748b", marginTop: 4 },
-  warn: { fontSize: 12, color: "#7f1d1d", backgroundColor: "#fee2e2", borderRadius: 8,
-    paddingHorizontal: 8, paddingVertical: 6, marginTop: 8, fontWeight: "700" },
-  current: { fontSize: 12, color: "#0f766e", fontWeight: "800", marginTop: 6 },
-  // Slate, not red: a local seller not yet on the server is a self-resolving
-  // state — it uploads when the device reaches the network — so it is
-  // informational and must not read as the grade warning above it does.
-  local: { fontSize: 12, color: "#334155", backgroundColor: "#e2e8f0", borderRadius: 8,
-    paddingHorizontal: 8, paddingVertical: 6, marginTop: 8, fontWeight: "700" },
-});
+    row: {
+      backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xl, marginBottom: t.space.lg,
+      borderWidth: 1, borderColor: t.color.borderSoft, minHeight: t.tapMin, justifyContent: "center",
+    },
+    rowCurrent: { borderColor: t.color.primary, borderWidth: 2, backgroundColor: t.color.tealBg },
+    rowTop: { flexDirection: "row", alignItems: "center", gap: t.space.lg },
+    name: { flex: 1, fontSize: t.type.subhead, fontWeight: "800", color: t.color.text },
+    grade: {
+      fontSize: t.type.body, fontWeight: "900", color: t.color.onPrimary, backgroundColor: t.color.primary,
+      paddingHorizontal: t.space.md, paddingVertical: t.space.xs, borderRadius: t.radius.sm, overflow: "hidden",
+    },
+    gradeNone: { backgroundColor: t.color.danger },
+    meta: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.xs },
+    warn: { fontSize: t.type.body, color: t.color.dangerFg, backgroundColor: t.color.dangerBg, borderRadius: t.radius.md,
+      paddingHorizontal: t.space.md, paddingVertical: t.space.sm, marginTop: t.space.md, fontWeight: "700" },
+    current: { fontSize: t.type.body, color: t.color.primary, fontWeight: "800", marginTop: t.space.sm },
+    // Slate, not red: a local seller not yet on the server is a self-resolving
+    // state — it uploads when the device reaches the network — so it is
+    // informational and must not read as the grade warning above it does.
+    local: { fontSize: t.type.body, color: t.color.neutralFg, backgroundColor: t.color.borderSoft, borderRadius: t.radius.md,
+      paddingHorizontal: t.space.md, paddingVertical: t.space.sm, marginTop: t.space.md, fontWeight: "700" },
+  });
+}

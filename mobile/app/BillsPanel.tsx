@@ -12,7 +12,7 @@
  * regression against the Phase 2c-4 numpad rule, which is about the numeric
  * entry path — a cancellation reason is prose and cannot come from a numpad.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -36,6 +36,7 @@ import type { AccountState, NoticeTone, SessionState } from "../src/sync/parkedR
 import type { LocalBill, SyncState } from "../src/sync/types";
 import { isVoided, isVoidRefused } from "../src/sync/types";
 import { shopDateTime } from "@recycle/shop-time";
+import { useTheme, type ThemeTokens } from "./theme";
 
 const STATE_TH: Record<SyncState, string> = {
   pending: "รอส่ง",
@@ -44,12 +45,14 @@ const STATE_TH: Record<SyncState, string> = {
   failed: "ผิดพลาด",
 };
 
-const STATE_COLOR: Record<SyncState, string> = {
-  pending: "#b45309",
-  syncing: "#1d4ed8",
-  synced: "#15803d",
-  failed: "#b91c1c",
-};
+function makeStateColor(t: ThemeTokens): Record<SyncState, string> {
+  return {
+    pending: t.color.warning,
+    syncing: t.color.infoStrong,
+    synced: t.color.success,
+    failed: t.color.danger,
+  };
+}
 
 /**
  * The notice box, one style per tone. A Record — NOT a ternary chain — so adding
@@ -57,27 +60,31 @@ const STATE_COLOR: Record<SyncState, string> = {
  * than an unstyled or invisible message. The old chain ended in `: null`, which
  * is precisely the shape that renders nothing for a state nobody thought about.
  */
-const TONE_BOX: Record<Exclude<NoticeTone, "none">, object> = {
-  // Amber "waiting" family: the bill is fine and nothing is owed at the yard.
-  waiting: { backgroundColor: "#f1f5f9" },
-  session: { backgroundColor: "#fef3c7" },
-  parked: { backgroundColor: "#fef3c7" },
-  // The two RED ones, and they are red for the same reason: a human must act and
-  // nothing resolves without one. They are separate tones rather than one,
-  // because they name different people — `error` sends the office a purchase the
-  // system never took, `forbidden` tells the shop owner a permission is wrong —
-  // and because a state with no tone of its own cannot be told apart anywhere.
-  forbidden: { backgroundColor: "#fee2e2" },
-  error: { backgroundColor: "#fee2e2" },
-};
+function makeToneBox(t: ThemeTokens): Record<Exclude<NoticeTone, "none">, object> {
+  return {
+    // Amber "waiting" family: the bill is fine and nothing is owed at the yard.
+    waiting: { backgroundColor: t.color.neutralBg },
+    session: { backgroundColor: t.color.warningBg },
+    parked: { backgroundColor: t.color.warningBg },
+    // The two RED ones, and they are red for the same reason: a human must act and
+    // nothing resolves without one. They are separate tones rather than one,
+    // because they name different people — `error` sends the office a purchase the
+    // system never took, `forbidden` tells the shop owner a permission is wrong —
+    // and because a state with no tone of its own cannot be told apart anywhere.
+    forbidden: { backgroundColor: t.color.dangerBg },
+    error: { backgroundColor: t.color.dangerBg },
+  };
+}
 
-const TONE_LEAD: Record<Exclude<NoticeTone, "none">, object> = {
-  waiting: { color: "#334155" },
-  session: { color: "#78350f" },
-  parked: { color: "#78350f" },
-  forbidden: { color: "#7f1d1d" },
-  error: { color: "#7f1d1d" },
-};
+function makeToneLead(t: ThemeTokens): Record<Exclude<NoticeTone, "none">, object> {
+  return {
+    waiting: { color: t.color.neutralFg },
+    session: { color: t.color.warningFg },
+    parked: { color: t.color.warningFg },
+    forbidden: { color: t.color.dangerFg },
+    error: { color: t.color.dangerFg },
+  };
+}
 
 /**
  * The badge colour per tone. A Record for the same reason as the two above: the
@@ -86,13 +93,15 @@ const TONE_LEAD: Record<Exclude<NoticeTone, "none">, object> = {
  * void does not, and an amber ไม่มีสิทธิ์ยกเลิกบิล beside a struck-through total
  * would read as one more thing quietly in hand.
  */
-const TONE_BADGE: Record<Exclude<NoticeTone, "none">, object> = {
-  waiting: { backgroundColor: "#b45309" },
-  session: { backgroundColor: "#b45309" },
-  parked: { backgroundColor: "#b45309" },
-  forbidden: { backgroundColor: "#b91c1c" },
-  error: { backgroundColor: "#b91c1c" },
-};
+function makeToneBadge(t: ThemeTokens): Record<Exclude<NoticeTone, "none">, object> {
+  return {
+    waiting: { backgroundColor: t.color.warning },
+    session: { backgroundColor: t.color.warning },
+    parked: { backgroundColor: t.color.warning },
+    forbidden: { backgroundColor: t.color.danger },
+    error: { backgroundColor: t.color.danger },
+  };
+}
 
 /**
  * The notice region for one bill.
@@ -118,10 +127,14 @@ function NoticeBox({
   tone: Exclude<NoticeTone, "none">;
   lines: string[];
 }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
+  const toneBox = makeToneBox(t);
+  const toneLead = makeToneLead(t);
   return (
-    <View style={[styles.noticeBox, TONE_BOX[tone]]}>
+    <View style={[styles.noticeBox, toneBox[tone]]}>
       {lines.map((line, i) => (
-        <Text key={i} style={[i === 0 ? styles.noticeLead : styles.noticeCalm, TONE_LEAD[tone]]}>
+        <Text key={i} style={[i === 0 ? styles.noticeLead : styles.noticeCalm, toneLead[tone]]}>
           {line}
         </Text>
       ))}
@@ -177,6 +190,8 @@ export function BillsPanel({
   onClose,
   onVoid,
 }: Props) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const [voidingId, setVoidingId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
 
@@ -195,6 +210,9 @@ export function BillsPanel({
     setVoidingId(null);
     setReason("");
   };
+
+  const toneBadge = makeToneBadge(t);
+  const stateColor = makeStateColor(t);
 
   return (
     <KeyboardAvoidingView
@@ -286,11 +304,11 @@ export function BillsPanel({
                     through to the plain state badge instead of rendering an
                     unstyled one.
                   */
-                  <Text style={[styles.badge, TONE_BADGE[notice.tone]]}>{notice.badge}</Text>
+                  <Text style={[styles.badge, toneBadge[notice.tone]]}>{notice.badge}</Text>
                 ) : voided ? (
                   <Text style={[styles.badge, styles.badgeVoid]}>ยกเลิกแล้ว</Text>
                 ) : (
-                  <Text style={[styles.badge, { backgroundColor: STATE_COLOR[b.sync_state] }]}>
+                  <Text style={[styles.badge, { backgroundColor: stateColor[b.sync_state] }]}>
                     {STATE_TH[b.sync_state]}
                   </Text>
                 )}
@@ -421,91 +439,93 @@ export function BillsPanel({
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: "#f8fafc" },
-  head: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12,
-    backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0",
-  },
-  title: { fontSize: 20, fontWeight: "900", color: "#0f172a" },
-  closeBtn: {
-    minHeight: 48, paddingHorizontal: 20, borderRadius: 10,
-    backgroundColor: "#e2e8f0", alignItems: "center", justifyContent: "center",
-  },
-  closeText: { fontSize: 16, fontWeight: "800", color: "#334155" },
-  body: { padding: 16, paddingBottom: 48 },
-  empty: { textAlign: "center", color: "#64748b", marginTop: 40, fontSize: 15 },
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    fill: { flex: 1, backgroundColor: t.color.background },
+    head: {
+      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+      paddingHorizontal: t.space.x3, paddingTop: 56, paddingBottom: t.space.xl,
+      backgroundColor: t.color.surface, borderBottomWidth: 1, borderBottomColor: t.color.borderSoft,
+    },
+    title: { fontSize: t.type.title, fontWeight: "900", color: t.color.text },
+    closeBtn: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
+      backgroundColor: t.color.borderSoft, alignItems: "center", justifyContent: "center",
+    },
+    closeText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
+    body: { padding: t.space.x3, paddingBottom: t.space.x5 },
+    empty: { textAlign: "center", color: t.color.textSubtle, marginTop: 40, fontSize: t.type.bodyLg },
 
-  card: {
-    backgroundColor: "#fff", borderRadius: 12, padding: 12, marginBottom: 12,
-    borderWidth: 1, borderColor: "#e2e8f0",
-  },
-  cardVoided: { backgroundColor: "#f8fafc", borderColor: "#cbd5e1" },
-  // Amber, matching รอส่ง and the offline strip — the "waiting" family, NOT the
-  // red "something is wrong" family that cardBlocker belongs to.
-  cardParked: { borderColor: "#b45309", backgroundColor: "#fffbeb" },
-  cardBlocker: { borderColor: "#b91c1c", borderWidth: 2, backgroundColor: "#fef2f2" },
-  blockerBanner: {
-    fontSize: 13, fontWeight: "800", color: "#7f1d1d", backgroundColor: "#fee2e2",
-    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 10,
-  },
-  cardTop: { flexDirection: "row", alignItems: "center", gap: 8 },
-  badge: {
-    color: "#fff", fontSize: 11, fontWeight: "800", paddingHorizontal: 8,
-    paddingVertical: 3, borderRadius: 6, overflow: "hidden",
-  },
-  badgeVoid: { backgroundColor: "#475569" },
-  badgeParked: { backgroundColor: "#b45309" },
-  doc: { flex: 1, fontSize: 15, fontWeight: "800", color: "#0f172a" },
-  total: { fontSize: 20, fontWeight: "900", color: "#0f766e" },
-  struck: { textDecorationLine: "line-through", color: "#94a3b8" },
-  meta: { fontSize: 12, color: "#64748b", marginTop: 6 },
-  // Informational blue, not amber: this is provenance, not a fault. The bill is
-  // valid and may well be priced correctly — what is being recorded is where the
-  // number came from, so an unexpected list_price on the server can be explained
-  // rather than guessed at.
-  pricedFrom: {
-    fontSize: 12, color: "#0c4a6e", backgroundColor: "#e0f2fe", borderRadius: 8,
-    paddingHorizontal: 8, paddingVertical: 6, marginTop: 8, fontWeight: "700",
-  },
+    card: {
+      backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xl, marginBottom: t.space.xl,
+      borderWidth: 1, borderColor: t.color.borderSoft,
+    },
+    cardVoided: { backgroundColor: t.color.background, borderColor: t.color.border },
+    // Amber, matching รอส่ง and the offline strip — the "waiting" family, NOT the
+    // red "something is wrong" family that cardBlocker belongs to.
+    cardParked: { borderColor: t.color.warning, backgroundColor: t.color.warningSoftBg },
+    cardBlocker: { borderColor: t.color.danger, borderWidth: 2, backgroundColor: t.color.dangerSoftBg },
+    blockerBanner: {
+      fontSize: t.type.body, fontWeight: "800", color: t.color.dangerFg, backgroundColor: t.color.dangerBg,
+      borderRadius: t.radius.md, paddingHorizontal: t.space.lg, paddingVertical: t.space.md, marginBottom: t.space.lg,
+    },
+    cardTop: { flexDirection: "row", alignItems: "center", gap: t.space.md },
+    badge: {
+      color: t.color.onPrimary, fontSize: t.type.body, fontWeight: "800", paddingHorizontal: t.space.md,
+      paddingVertical: t.space.xs, borderRadius: t.radius.sm, overflow: "hidden",
+    },
+    badgeVoid: { backgroundColor: t.color.textMuted },
+    badgeParked: { backgroundColor: t.color.warning },
+    doc: { flex: 1, fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.text },
+    total: { fontSize: t.type.title, fontWeight: "900", color: t.color.primary },
+    struck: { textDecorationLine: "line-through", color: t.color.placeholder },
+    meta: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.sm },
+    // Informational blue, not amber: this is provenance, not a fault. The bill is
+    // valid and may well be priced correctly — what is being recorded is where the
+    // number came from, so an unexpected list_price on the server can be explained
+    // rather than guessed at.
+    pricedFrom: {
+      fontSize: t.type.body, color: t.color.infoFg, backgroundColor: t.color.infoBg, borderRadius: t.radius.md,
+      paddingHorizontal: t.space.md, paddingVertical: t.space.sm, marginTop: t.space.md, fontWeight: "700",
+    },
 
-  voidBox: {
-    marginTop: 10, padding: 10, backgroundColor: "#f1f5f9", borderRadius: 8,
-  },
-  voidReason: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
-  voidState: { fontSize: 12, color: "#475569", marginTop: 4 },
+    voidBox: {
+      marginTop: t.space.lg, padding: t.space.lg, backgroundColor: t.color.surfaceAlt, borderRadius: t.radius.md,
+    },
+    voidReason: { fontSize: t.type.bodyLg, fontWeight: "700", color: t.color.text },
+    voidState: { fontSize: t.type.body, color: t.color.textMuted, marginTop: t.space.xs },
 
-  // ONE box for every notice tone; the colour comes from TONE_BOX/TONE_LEAD.
-  noticeBox: { marginTop: 10, padding: 10, borderRadius: 8 },
-  noticeLead: { fontSize: 14, fontWeight: "800" },
-  noticeCalm: { fontSize: 12, marginTop: 6, fontWeight: "600" },
+    // ONE box for every notice tone; the colour comes from TONE_BOX/TONE_LEAD.
+    noticeBox: { marginTop: t.space.lg, padding: t.space.lg, borderRadius: t.radius.md },
+    noticeLead: { fontSize: t.type.bodyLg, fontWeight: "800" },
+    noticeCalm: { fontSize: t.type.body, marginTop: t.space.sm, fontWeight: "600" },
 
-  // Quiet grey, deliberately unlike every failure style on this card: nothing has
-  // gone wrong, this account simply does not do this job.
-  roleNote: {
-    marginTop: 12, fontSize: 12, color: "#64748b", fontWeight: "700",
-    textAlign: "center",
-  },
-  voidBtn: {
-    marginTop: 12, minHeight: 48, borderRadius: 10, backgroundColor: "#fee2e2",
-    alignItems: "center", justifyContent: "center",
-  },
-  voidBtnText: { fontSize: 15, fontWeight: "800", color: "#b91c1c" },
+    // Quiet grey, deliberately unlike every failure style on this card: nothing has
+    // gone wrong, this account simply does not do this job.
+    roleNote: {
+      marginTop: t.space.xl, fontSize: t.type.body, color: t.color.textSubtle, fontWeight: "700",
+      textAlign: "center",
+    },
+    voidBtn: {
+      marginTop: t.space.xl, minHeight: t.tapMin, borderRadius: t.radius.lg, backgroundColor: t.color.dangerBg,
+      alignItems: "center", justifyContent: "center",
+    },
+    voidBtnText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.danger },
 
-  reasonBox: { marginTop: 12 },
-  reasonLabel: { fontSize: 13, fontWeight: "800", color: "#334155" },
-  reasonInput: {
-    borderWidth: 2, borderColor: "#b91c1c", borderRadius: 10, padding: 12,
-    fontSize: 17, backgroundColor: "#fff", marginTop: 6, minHeight: 72,
-    color: "#0f172a", textAlignVertical: "top",
-  },
-  reasonErr: { fontSize: 12, color: "#b91c1c", marginTop: 6, fontWeight: "700" },
-  reasonBtns: { flexDirection: "row", gap: 10, marginTop: 12 },
-  rBtn: { flex: 1, minHeight: 56, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  rCancel: { backgroundColor: "#e2e8f0" },
-  rCancelText: { fontSize: 15, fontWeight: "800", color: "#334155" },
-  rConfirm: { backgroundColor: "#b91c1c" },
-  rConfirmText: { fontSize: 15, fontWeight: "900", color: "#fff" },
-  dim: { opacity: 0.4 },
-});
+    reasonBox: { marginTop: t.space.xl },
+    reasonLabel: { fontSize: t.type.body, fontWeight: "800", color: t.color.neutralFg },
+    reasonInput: {
+      borderWidth: 2, borderColor: t.color.danger, borderRadius: t.radius.lg, padding: t.space.xl,
+      fontSize: t.type.subhead, backgroundColor: t.color.surface, marginTop: t.space.sm, minHeight: t.tapMin + t.space.x3,
+      color: t.color.text, textAlignVertical: "top",
+    },
+    reasonErr: { fontSize: t.type.body, color: t.color.danger, marginTop: t.space.sm, fontWeight: "700" },
+    reasonBtns: { flexDirection: "row", gap: t.space.lg, marginTop: t.space.xl },
+    rBtn: { flex: 1, minHeight: t.tapMin, borderRadius: t.radius.lg, alignItems: "center", justifyContent: "center" },
+    rCancel: { backgroundColor: t.color.borderSoft },
+    rCancelText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.neutralFg },
+    rConfirm: { backgroundColor: t.color.danger },
+    rConfirmText: { fontSize: t.type.bodyLg, fontWeight: "900", color: t.color.onPrimary },
+    dim: { opacity: 0.4 },
+  });
+}

@@ -17,9 +17,11 @@
  * unreachable by the headless proofs, so wording that lives here is wording no
  * assertion can ever go red on.
  */
+import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import type { MasterNotice, MasterTone } from "../src/master/freshness";
+import { useTheme, type ThemeTokens } from "./theme";
 
 interface Tone {
   bg: string;
@@ -30,20 +32,25 @@ interface Tone {
 /**
  * A Record and not a ternary chain, same as BillsPanel's TONE_BOX: adding a tone
  * in freshness.ts without deciding how it looks must be a compile error, not an
- * invisible message.
+ * invisible message. The colours are the theme's now (P1.23 item 3); the
+ * tone→colour decision stays here.
  */
-const TONES: Record<MasterTone, Tone> = {
-  // Cannot work at all: no master data on the device.
-  block: { bg: "#fee2e2", fg: "#7f1d1d", bar: "#b91c1c" },
-  // Working, but the app has withdrawn the price default.
-  warn: { bg: "#fef3c7", fg: "#78350f", bar: "#b45309" },
-  // Working normally, told how old the data is.
-  info: { bg: "#e0f2fe", fg: "#0c4a6e", bar: "#0369a1" },
-};
+function makeTones(t: ThemeTokens): Record<MasterTone, Tone> {
+  return {
+    // Cannot work at all: no master data on the device.
+    block: { bg: t.color.dangerBg, fg: t.color.dangerFg, bar: t.color.danger },
+    // Working, but the app has withdrawn the price default.
+    warn: { bg: t.color.warningBg, fg: t.color.warningFg, bar: t.color.warning },
+    // Working normally, told how old the data is.
+    info: { bg: t.color.infoBg, fg: t.color.infoFg, bar: t.color.info },
+  };
+}
 
 export function MasterDataStrip({ notice }: { notice: MasterNotice | null }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   if (notice === null) return null;
-  const tone = TONES[notice.tone];
+  const tone = makeTones(t)[notice.tone];
   return (
     <View style={[styles.strip, { backgroundColor: tone.bg, borderLeftColor: tone.bar }]}>
       <Text style={[styles.text, { color: tone.fg }]}>{notice.message}</Text>
@@ -51,14 +58,16 @@ export function MasterDataStrip({ notice }: { notice: MasterNotice | null }) {
   );
 }
 
-const styles = StyleSheet.create({
-  strip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderLeftWidth: 6,
-  },
-  // Not numberOfLines-clamped: this is the one message on the screen that must
-  // be readable in full, and a truncated price warning is a price warning that
-  // did not happen.
-  text: { fontSize: 13, fontWeight: "800" },
-});
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    strip: {
+      paddingHorizontal: t.space.xxl,
+      paddingVertical: t.space.md,
+      borderLeftWidth: 6,
+    },
+    // Not numberOfLines-clamped: this is the one message on the screen that must
+    // be readable in full, and a truncated price warning is a price warning that
+    // did not happen.
+    text: { fontSize: t.type.body, fontWeight: "800" },
+  });
+}

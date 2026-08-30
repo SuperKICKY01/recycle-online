@@ -13,7 +13,7 @@
  * sheet stack decides what is inside it; `npm run prove:sheets` reddens if a second
  * Modal appears in this directory.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -39,16 +39,24 @@ import type {
   ShopSettings,
   ShopSettingsScreen,
 } from "../src/settings/shopSettings";
+import { useTheme, useThemeControl, type ThemePref, type ThemeTokens } from "./theme";
 
-const TAP_MIN = 56;
+/** The three theme choices, in menu order. A device preference, not a shop setting. */
+const THEME_OPTIONS: readonly { pref: ThemePref; label: string }[] = [
+  { pref: "light", label: "สว่าง" },
+  { pref: "dark", label: "มืด" },
+  { pref: "system", label: "ตามระบบ" },
+];
 
-const TONE: Record<ShopMessageTone, { bg: string; fg: string; badge: string }> = {
-  forbidden: { bg: "#fee2e2", fg: "#7f1d1d", badge: "#b91c1c" },
-  session: { bg: "#fef3c7", fg: "#78350f", badge: "#b45309" },
-  offline: { bg: "#f1f5f9", fg: "#334155", badge: "#64748b" },
-  server: { bg: "#f1f5f9", fg: "#334155", badge: "#64748b" },
-  invalid: { bg: "#fef3c7", fg: "#78350f", badge: "#b45309" },
-};
+function makeTone(t: ThemeTokens): Record<ShopMessageTone, { bg: string; fg: string; badge: string }> {
+  return {
+    forbidden: { bg: t.color.dangerBg, fg: t.color.dangerFg, badge: t.color.danger },
+    session: { bg: t.color.warningBg, fg: t.color.warningFg, badge: t.color.warning },
+    offline: { bg: t.color.neutralBg, fg: t.color.neutralFg, badge: t.color.textSubtle },
+    server: { bg: t.color.neutralBg, fg: t.color.neutralFg, badge: t.color.textSubtle },
+    invalid: { bg: t.color.warningBg, fg: t.color.warningFg, badge: t.color.warning },
+  };
+}
 
 interface Props {
   /** null while a request is in flight, so a spinner is a state and not a guess. */
@@ -68,6 +76,8 @@ interface Props {
 }
 
 export function SettingsScreen({ screen, shop, saving, onClose, onRetry, onSignIn, onSave }: Props) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <View style={styles.fill}>
       <View style={styles.head}>
@@ -76,6 +86,8 @@ export function SettingsScreen({ screen, shop, saving, onClose, onRetry, onSignI
           <Text style={styles.closeText}>ปิด</Text>
         </Pressable>
       </View>
+
+      <ThemeControl />
 
       {screen === null ? (
         <View style={styles.center}>
@@ -102,7 +114,9 @@ function MessageBody({
   onRetry: () => void;
   onSignIn: () => void;
 }) {
-  const tone = TONE[screen.tone];
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
+  const tone = makeTone(t)[screen.tone];
   const handler =
     screen.action === null ? undefined : screen.action.kind === "sign_in" ? onSignIn : onRetry;
   return (
@@ -140,6 +154,8 @@ function FormBody({
   saving: boolean;
   onSave: (patch: ShopPatch) => void;
 }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   // THE EDIT BUFFER. Seeded from the form's values and re-seeded whenever they
   // change — after a save the form re-renders from the server's re-read row, and
   // the buffer must follow it, not the value that was typed.
@@ -296,78 +312,121 @@ function FormBody({
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: "#f8fafc" },
-  head: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12,
-    backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0",
-  },
-  title: { fontSize: 20, fontWeight: "900", color: "#0f172a" },
-  closeBtn: {
-    minHeight: 48, paddingHorizontal: 20, borderRadius: 10,
-    backgroundColor: "#e2e8f0", alignItems: "center", justifyContent: "center",
-  },
-  closeText: { fontSize: 16, fontWeight: "800", color: "#334155" },
-  body: { padding: 16, paddingBottom: 48 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  loading: { fontSize: 14, color: "#64748b", fontWeight: "700" },
+/* --------------------------------------------------------------- theme ---- */
 
-  card: {
-    backgroundColor: "#fff", borderRadius: 12, padding: 14, marginBottom: 12,
-    borderWidth: 1, borderColor: "#e2e8f0",
-  },
-  label: { fontSize: 13, fontWeight: "900", color: "#64748b" },
-  readValue: { fontSize: 17, fontWeight: "800", color: "#0f172a", marginTop: 6 },
-  note: { fontSize: 12, color: "#64748b", marginTop: 8, fontWeight: "600" },
-  empty: { fontSize: 13, color: "#94a3b8", marginTop: 8, fontWeight: "700", fontStyle: "italic" },
+/**
+ * The app-theme control. A DEVICE preference (light / dark / follow-system),
+ * stored on this device via the theme context, applied app-wide. Shown to every
+ * signed-in account — unlike the shop settings above, it is not role-gated and
+ * says so in the note, because it is not a shop setting at all.
+ */
+function ThemeControl() {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
+  const { pref, setPref } = useThemeControl();
+  return (
+    <View style={styles.themeCard}>
+      <Text style={styles.label}>ธีมของแอป</Text>
+      <View style={styles.chips}>
+        {THEME_OPTIONS.map((opt) => {
+          const on = opt.pref === pref;
+          return (
+            <Pressable
+              key={opt.pref}
+              style={[styles.chip, on && styles.chipOn]}
+              onPress={() => setPref(opt.pref)}
+            >
+              <Text style={[styles.chipText, on && styles.chipTextOn]}>{opt.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Text style={styles.note}>
+        การตั้งค่านี้อยู่บนเครื่องนี้เท่านั้น ไม่ใช่การตั้งค่าร้าน และใช้ได้ทุกบัญชี
+      </Text>
+    </View>
+  );
+}
 
-  input: {
-    minHeight: TAP_MIN, marginTop: 8, borderWidth: 1, borderColor: "#cbd5e1",
-    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 17,
-    fontWeight: "700", color: "#0f172a", backgroundColor: "#fff",
-  },
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    fill: { flex: 1, backgroundColor: t.color.background },
+    head: {
+      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+      paddingHorizontal: t.space.x3, paddingTop: 56, paddingBottom: t.space.xl,
+      backgroundColor: t.color.surface, borderBottomWidth: 1, borderBottomColor: t.color.borderSoft,
+    },
+    title: { fontSize: t.type.title, fontWeight: "900", color: t.color.text },
+    closeBtn: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
+      backgroundColor: t.color.borderSoft, alignItems: "center", justifyContent: "center",
+    },
+    closeText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
+    body: { padding: t.space.x3, paddingBottom: 48 },
+    center: { flex: 1, alignItems: "center", justifyContent: "center", gap: t.space.xl },
+    loading: { fontSize: t.type.bodyLg, color: t.color.textSubtle, fontWeight: "700" },
 
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
-  chip: {
-    minHeight: TAP_MIN, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1,
-    borderColor: "#cbd5e1", backgroundColor: "#fff", alignItems: "center", justifyContent: "center",
-  },
-  chipOn: { backgroundColor: "#0f766e", borderColor: "#0f766e" },
-  chipText: { fontSize: 15, fontWeight: "800", color: "#334155" },
-  chipTextOn: { color: "#fff" },
+    themeCard: {
+      backgroundColor: t.color.surface, marginHorizontal: t.space.x3, marginTop: t.space.x3,
+      borderRadius: t.radius.xl, padding: t.space.xxl, borderWidth: 1, borderColor: t.color.borderSoft,
+    },
 
-  saveBtn: {
-    minHeight: TAP_MIN, borderRadius: 12, backgroundColor: "#0f766e",
-    alignItems: "center", justifyContent: "center", marginTop: 6,
-  },
-  saveBusy: { opacity: 0.6 },
-  saveText: { color: "#fff", fontSize: 16, fontWeight: "900" },
-  readOnlyNote: { fontSize: 13, color: "#64748b", fontWeight: "700", marginTop: 6, textAlign: "center" },
+    card: {
+      backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xxl, marginBottom: t.space.xl,
+      borderWidth: 1, borderColor: t.color.borderSoft,
+    },
+    label: { fontSize: t.type.body, fontWeight: "900", color: t.color.textSubtle },
+    readValue: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.text, marginTop: t.space.sm },
+    note: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.md, fontWeight: "600" },
+    empty: { fontSize: t.type.body, color: t.color.placeholder, marginTop: t.space.md, fontWeight: "700", fontStyle: "italic" },
 
-  confirmCard: {
-    backgroundColor: "#fffbeb", borderRadius: 12, padding: 14, marginTop: 6,
-    borderWidth: 2, borderColor: "#b45309",
-  },
-  confirmText: { fontSize: 14, fontWeight: "800", color: "#78350f" },
-  confirmRow: { flexDirection: "row", gap: 10, marginTop: 12 },
-  confirmYes: { flex: 1, marginTop: 0 },
-  cancelBtn: {
-    minHeight: TAP_MIN, paddingHorizontal: 20, borderRadius: 12, backgroundColor: "#e2e8f0",
-    alignItems: "center", justifyContent: "center",
-  },
-  cancelText: { fontSize: 16, fontWeight: "800", color: "#334155" },
+    input: {
+      minHeight: t.tapMin, marginTop: t.space.md, borderWidth: 1, borderColor: t.color.border,
+      borderRadius: t.radius.lg, paddingHorizontal: t.space.xl, paddingVertical: t.space.lg, fontSize: t.type.subhead,
+      fontWeight: "700", color: t.color.text, backgroundColor: t.color.surface,
+    },
 
-  messageCard: { borderRadius: 14, padding: 16, marginTop: 24, alignItems: "flex-start" },
-  messageBadge: {
-    color: "#fff", fontSize: 12, fontWeight: "800", paddingHorizontal: 10,
-    paddingVertical: 4, borderRadius: 6, overflow: "hidden",
-  },
-  messageLead: { fontSize: 15, fontWeight: "800", marginTop: 12 },
-  messageCalm: { fontSize: 13, fontWeight: "600", marginTop: 8 },
-  messageBtn: {
-    marginTop: 16, minHeight: 48, paddingHorizontal: 20, borderRadius: 10,
-    backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center", alignSelf: "stretch",
-  },
-  messageBtnText: { color: "#fff", fontSize: 15, fontWeight: "800" },
-});
+    chips: { flexDirection: "row", flexWrap: "wrap", gap: t.space.md, marginTop: t.space.lg },
+    chip: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.x3, borderRadius: t.radius.lg, borderWidth: 1,
+      borderColor: t.color.border, backgroundColor: t.color.surface, alignItems: "center", justifyContent: "center",
+    },
+    chipOn: { backgroundColor: t.color.primary, borderColor: t.color.primary },
+    chipText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.neutralFg },
+    chipTextOn: { color: t.color.onPrimary },
+
+    saveBtn: {
+      minHeight: t.tapMin, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
+      alignItems: "center", justifyContent: "center", marginTop: t.space.sm,
+    },
+    saveBusy: { opacity: 0.6 },
+    saveText: { color: t.color.onPrimary, fontSize: t.type.subhead, fontWeight: "900" },
+    readOnlyNote: { fontSize: t.type.body, color: t.color.textSubtle, fontWeight: "700", marginTop: t.space.sm, textAlign: "center" },
+
+    confirmCard: {
+      backgroundColor: t.color.warningSoftBg, borderRadius: t.radius.xl, padding: t.space.xxl, marginTop: t.space.sm,
+      borderWidth: 2, borderColor: t.color.warning,
+    },
+    confirmText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.warningFg },
+    confirmRow: { flexDirection: "row", gap: t.space.lg, marginTop: t.space.xl },
+    confirmYes: { flex: 1, marginTop: 0 },
+    cancelBtn: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.xl, backgroundColor: t.color.borderSoft,
+      alignItems: "center", justifyContent: "center",
+    },
+    cancelText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
+
+    messageCard: { borderRadius: t.radius.pill, padding: t.space.x3, marginTop: 24, alignItems: "flex-start" },
+    messageBadge: {
+      color: t.color.onPrimary, fontSize: t.type.body, fontWeight: "800", paddingHorizontal: t.space.lg,
+      paddingVertical: t.space.xs, borderRadius: t.radius.sm, overflow: "hidden",
+    },
+    messageLead: { fontSize: t.type.bodyLg, fontWeight: "800", marginTop: t.space.xl },
+    messageCalm: { fontSize: t.type.body, fontWeight: "600", marginTop: t.space.md },
+    messageBtn: {
+      marginTop: t.space.x3, minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
+      backgroundColor: t.color.primary, alignItems: "center", justifyContent: "center", alignSelf: "stretch",
+    },
+    messageBtnText: { color: t.color.onPrimary, fontSize: t.type.bodyLg, fontWeight: "800" },
+  });
+}

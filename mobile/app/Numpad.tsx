@@ -15,11 +15,11 @@
  * Keys append to a STRING via cart/entry.applyKey. Nothing here parses to a JS
  * number (project hard rule 1).
  */
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { NumKey } from "../src/cart/entry";
-
-const KEY_H = 56;
+import { useTheme, type ThemeTokens } from "./theme";
 
 interface Props {
   /** Thai label of the field being edited, e.g. "น้ำหนักรวม". */
@@ -39,6 +39,8 @@ const ROWS: NumKey[][] = [
 ];
 
 export function Numpad({ fieldLabel, value, net, amount, onKey, onDone }: Props) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <View style={styles.panel}>
       {/* Readout: carried by the panel so it is never hidden behind it. */}
@@ -89,6 +91,8 @@ function Key({
   tone?: "digit" | "alt" | "warn" | "done";
   tall?: boolean;
 }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <Pressable
       style={({ pressed }) => [
@@ -114,34 +118,36 @@ function Key({
   );
 }
 
-const styles = StyleSheet.create({
-  panel: { backgroundColor: "#e2e8f0", borderTopWidth: 1, borderTopColor: "#cbd5e1" },
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    panel: { backgroundColor: t.color.borderSoft, borderTopWidth: 1, borderTopColor: t.color.border },
 
-  readout: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#0f172a",
-  },
-  readoutLeft: { flex: 1 },
-  readoutRight: { alignItems: "flex-end" },
-  fieldLabel: { color: "#94a3b8", fontSize: 12, fontWeight: "700" },
-  fieldValue: { color: "#fff", fontSize: 32, fontWeight: "900" },
-  readoutSmall: { color: "#94a3b8", fontSize: 12, fontWeight: "700" },
-  readoutAmount: { color: "#5eead4", fontSize: 26, fontWeight: "900" },
+    readout: {
+      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+      paddingHorizontal: t.space.x3, paddingVertical: t.space.lg, backgroundColor: t.color.text,
+    },
+    readoutLeft: { flex: 1 },
+    readoutRight: { alignItems: "flex-end" },
+    fieldLabel: { color: t.color.placeholder, fontSize: t.type.body, fontWeight: "700" },
+    fieldValue: { color: t.color.onPrimary, fontSize: t.type.display, fontWeight: "900" },
+    readoutSmall: { color: t.color.placeholder, fontSize: t.type.body, fontWeight: "700" },
+    readoutAmount: { color: t.color.tealSoft, fontSize: t.type.headline, fontWeight: "900" },
 
-  grid: { flexDirection: "row", padding: 6 },
-  digits: { flex: 3 },
-  side: { flex: 1 },
-  row: { flexDirection: "row" },
+    grid: { flexDirection: "row", padding: t.space.sm },
+    digits: { flex: 3 },
+    side: { flex: 1 },
+    row: { flexDirection: "row" },
 
-  key: {
-    flex: 1, height: KEY_H, margin: 4, borderRadius: 10, backgroundColor: "#fff",
-    alignItems: "center", justifyContent: "center",
-  },
-  keyTall: { height: KEY_H * 2 + 8 },
-  keyAlt: { backgroundColor: "#cbd5e1" },
-  keyWarn: { backgroundColor: "#b45309" },
-  keyDone: { backgroundColor: "#0f766e" },
-  keyPressed: { opacity: 0.6 },
-  keyText: { fontSize: 26, fontWeight: "800", color: "#0f172a" },
-  keyTextOnDark: { color: "#fff", fontSize: 20 },
-});
+    key: {
+      flex: 1, height: t.tapMin, margin: t.space.xs, borderRadius: t.radius.lg, backgroundColor: t.color.surface,
+      alignItems: "center", justifyContent: "center",
+    },
+    keyTall: { height: t.tapMin * 2 + 8 },
+    keyAlt: { backgroundColor: t.color.border },
+    keyWarn: { backgroundColor: t.color.warning },
+    keyDone: { backgroundColor: t.color.primary },
+    keyPressed: { opacity: 0.6 },
+    keyText: { fontSize: t.type.headline, fontWeight: "800", color: t.color.text },
+    keyTextOnDark: { color: t.color.onPrimary, fontSize: t.type.title },
+  });
+}

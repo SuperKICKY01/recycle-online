@@ -14,7 +14,7 @@
  * screen shows the "changed — sign in again" notice with the sign-in exit, and the
  * queued work is named as kept. It does NOT go through the sign-out gate.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { checkPasswordForm } from "../src/settings/account";
@@ -24,8 +24,7 @@ import type {
   PasswordChangeOutcome,
   PasswordForm,
 } from "../src/settings/account";
-
-const TAP_MIN = 56;
+import { useTheme, type ThemeTokens } from "./theme";
 
 interface Props {
   /** null while /whoami is in flight. */
@@ -41,6 +40,8 @@ interface Props {
 }
 
 export function AccountScreen({ profile, outcome, busy, onClose, onSignIn, onSubmit }: Props) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [repeat, setRepeat] = useState("");
@@ -148,6 +149,8 @@ export function AccountScreen({ profile, outcome, busy, onClose, onSignIn, onSub
 }
 
 function Row({ label, value }: { label: string; value: string }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -165,6 +168,8 @@ function Field({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -181,67 +186,69 @@ function Field({
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: "#f8fafc" },
-  head: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12,
-    backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0",
-  },
-  title: { fontSize: 20, fontWeight: "900", color: "#0f172a" },
-  closeBtn: {
-    minHeight: 48, paddingHorizontal: 20, borderRadius: 10,
-    backgroundColor: "#e2e8f0", alignItems: "center", justifyContent: "center",
-  },
-  closeText: { fontSize: 16, fontWeight: "800", color: "#334155" },
-  body: { padding: 16, paddingBottom: 48 },
-  center: { alignItems: "center", justifyContent: "center", gap: 12, paddingVertical: 40 },
-  loading: { fontSize: 14, color: "#64748b", fontWeight: "700" },
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    fill: { flex: 1, backgroundColor: t.color.background },
+    head: {
+      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+      paddingHorizontal: t.space.x3, paddingTop: 56, paddingBottom: t.space.xl,
+      backgroundColor: t.color.surface, borderBottomWidth: 1, borderBottomColor: t.color.borderSoft,
+    },
+    title: { fontSize: t.type.title, fontWeight: "900", color: t.color.text },
+    closeBtn: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
+      backgroundColor: t.color.borderSoft, alignItems: "center", justifyContent: "center",
+    },
+    closeText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
+    body: { padding: t.space.x3, paddingBottom: t.space.x5 },
+    center: { alignItems: "center", justifyContent: "center", gap: t.space.xl, paddingVertical: t.space.x5 },
+    loading: { fontSize: t.type.bodyLg, color: t.color.textSubtle, fontWeight: "700" },
 
-  card: {
-    backgroundColor: "#fff", borderRadius: 12, padding: 14, marginBottom: 12,
-    borderWidth: 1, borderColor: "#e2e8f0",
-  },
-  cardHeading: { fontSize: 16, fontWeight: "900", color: "#0f172a", marginBottom: 8 },
-  row: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    paddingVertical: 8, borderTopWidth: 1, borderTopColor: "#f1f5f9",
-  },
-  rowLabel: { fontSize: 13, fontWeight: "800", color: "#64748b" },
-  rowValue: { fontSize: 16, fontWeight: "800", color: "#0f172a", flexShrink: 1, textAlign: "right" },
-  note: { fontSize: 12, color: "#64748b", marginTop: 10, fontWeight: "600" },
-  error: {
-    fontSize: 13, fontWeight: "800", color: "#7f1d1d", backgroundColor: "#fee2e2",
-    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 10,
-  },
+    card: {
+      backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xxl, marginBottom: t.space.xl,
+      borderWidth: 1, borderColor: t.color.borderSoft,
+    },
+    cardHeading: { fontSize: t.type.subhead, fontWeight: "900", color: t.color.text, marginBottom: t.space.md },
+    row: {
+      flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+      paddingVertical: t.space.md, borderTopWidth: 1, borderTopColor: t.color.divider,
+    },
+    rowLabel: { fontSize: t.type.body, fontWeight: "800", color: t.color.textSubtle },
+    rowValue: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.text, flexShrink: 1, textAlign: "right" },
+    note: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.lg, fontWeight: "600" },
+    error: {
+      fontSize: t.type.body, fontWeight: "800", color: t.color.dangerFg, backgroundColor: t.color.dangerBg,
+      borderRadius: t.radius.md, paddingHorizontal: t.space.lg, paddingVertical: t.space.md, marginBottom: t.space.lg,
+    },
 
-  field: { marginTop: 12 },
-  label: { fontSize: 13, fontWeight: "900", color: "#64748b" },
-  input: {
-    minHeight: TAP_MIN, marginTop: 6, borderWidth: 1, borderColor: "#cbd5e1",
-    borderRadius: 10, paddingHorizontal: 12, fontSize: 17, fontWeight: "700",
-    color: "#0f172a", backgroundColor: "#fff",
-  },
-  saveBtn: {
-    minHeight: TAP_MIN, borderRadius: 12, backgroundColor: "#0f766e",
-    alignItems: "center", justifyContent: "center", marginTop: 16,
-  },
-  saveBusy: { opacity: 0.6 },
-  saveText: { color: "#fff", fontSize: 16, fontWeight: "900" },
+    field: { marginTop: t.space.xl },
+    label: { fontSize: t.type.body, fontWeight: "900", color: t.color.textSubtle },
+    input: {
+      minHeight: t.tapMin, marginTop: t.space.sm, borderWidth: 1, borderColor: t.color.border,
+      borderRadius: t.radius.lg, paddingHorizontal: t.space.xl, fontSize: t.type.subhead, fontWeight: "700",
+      color: t.color.text, backgroundColor: t.color.surface,
+    },
+    saveBtn: {
+      minHeight: t.tapMin, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
+      alignItems: "center", justifyContent: "center", marginTop: t.space.x3,
+    },
+    saveBusy: { opacity: 0.6 },
+    saveText: { color: t.color.onPrimary, fontSize: t.type.subhead, fontWeight: "900" },
 
-  noticeCard: {
-    backgroundColor: "#ecfeff", borderRadius: 14, padding: 16, marginBottom: 12,
-    borderWidth: 1, borderColor: "#67e8f9",
-  },
-  noticeBadge: {
-    alignSelf: "flex-start", color: "#fff", backgroundColor: "#0891b2", fontSize: 12,
-    fontWeight: "800", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, overflow: "hidden",
-  },
-  noticeLead: { fontSize: 15, fontWeight: "800", color: "#0e7490", marginTop: 12 },
-  noticeCalm: { fontSize: 13, fontWeight: "600", color: "#0e7490", marginTop: 8 },
-  messageBtn: {
-    marginTop: 16, minHeight: 48, paddingHorizontal: 20, borderRadius: 10,
-    backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center", alignSelf: "stretch",
-  },
-  messageBtnText: { color: "#fff", fontSize: 15, fontWeight: "800" },
-});
+    noticeCard: {
+      backgroundColor: t.color.cyanBg, borderRadius: t.radius.pill, padding: t.space.x3, marginBottom: t.space.xl,
+      borderWidth: 1, borderColor: t.color.cyanBorder,
+    },
+    noticeBadge: {
+      alignSelf: "flex-start", color: t.color.onPrimary, backgroundColor: t.color.cyan, fontSize: t.type.body,
+      fontWeight: "800", paddingHorizontal: t.space.lg, paddingVertical: t.space.xs, borderRadius: t.radius.sm, overflow: "hidden",
+    },
+    noticeLead: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.cyanFg, marginTop: t.space.xl },
+    noticeCalm: { fontSize: t.type.body, fontWeight: "600", color: t.color.cyanFg, marginTop: t.space.md },
+    messageBtn: {
+      marginTop: t.space.x3, minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
+      backgroundColor: t.color.primary, alignItems: "center", justifyContent: "center", alignSelf: "stretch",
+    },
+    messageBtnText: { color: t.color.onPrimary, fontSize: t.type.bodyLg, fontWeight: "800" },
+  });
+}

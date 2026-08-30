@@ -1884,6 +1884,19 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   changing tap targets is a behaviour change. *Unblocks:* a decision
   that the standard is real — then one shared constant and a sweep of
   every literal, not just the two below 56.
+  **CLOSED 2026-08-30 (P1.23 item 3 phase A): the standard is real and the sweep is
+  done.** `TAP_MIN = 56` is now ONE exported constant with its recorded reason (the
+  owner's B1 wet-hand-target bar) in `mobile/src/ui/theme.ts`, read app-wide through
+  `useTheme().tapMin`. The re-derived truth at phase start was WIDER than this entry:
+  `const TAP_MIN = 56` was duplicated in SIX files (AccountScreen, AddSellerSheet,
+  CartScreen, DashboardScreen, SellerPicker, SettingsScreen) plus `const KEY_H = 56`
+  in Numpad, and raw sub-56 floors sat in 18 `minHeight` sites (36 ×2, 44 ×3, 48 ×13) —
+  the "two screens" above had rotted as units 1 and 3 added their own copies. All are
+  gone: a new text scanner (`mobile/src/ui/tapAudit.ts`) reads every `app/*.tsx` and
+  `App.tsx` and `mobile/src/proof/proveTapAudit.ts` asserts ZERO raw `minHeight`/`minWidth`
+  and ZERO local tap constant, with a planted-`minHeight:44` positive control and a
+  `--break=inject` disproof; it is green. The scanner reads TEXT not layout — a
+  flex-sized control's rendered height is the owner's handset pass, stated in its docstring.
 - **`JUST_FETCHED_WINDOW_MS` serves two unrelated meanings.** It is a
   BANNER threshold ("was master data fetched recently enough that no
   staleness notice is needed") and is ALSO passed as the tolerance on
@@ -1896,8 +1909,8 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   that deliberately changed no values. *Unblocks:* giving the
   clock-sanity call site its own constant. The call site already says
   so; the comment is the guard until then.
-- **Nine tuned constants have no recorded reason** — the sync tick, the
-  UI refresh tick, the transport timeout, the undo window, `TAP_MIN`,
+- **Eight tuned constants have no recorded reason** — the sync tick, the
+  UI refresh tick, the transport timeout, the undo window,
   the bill-list page size, both backoff knobs, and the JWT lifetime.
   None is wrong; all are **unaccountable**, which means none can be
   safely changed. Two other decisions rest on the JWT lifetime alone.
@@ -1906,6 +1919,14 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   hazard. The trial ledger in `PROJECT_STATUS.md` exists to stop it
   compounding: any change to one of these values is a TRIAL and gets a
   row.
+  **AMENDED 2026-08-30 (P1.23 item 3 phase A): NINE → EIGHT, `TAP_MIN` removed from
+  the set.** It now has its recorded reason (the owner's B1 wet-hand-target bar) in
+  `mobile/src/ui/theme.ts`, so it is no longer unaccountable. The same count is
+  quantified in two other files and both were changed in this pass: `ROADMAP.md`'s
+  "nine unaccountable tuned constants" and `PROJECT_STATUS.md`'s trial ledger, whose
+  "Nine values were chosen" list and its own `TAP_MIN` row both drop it (the
+  a-quantified-sentence-names-no-member sweep — the count lives in three phrasings
+  across three files).
 - **`ck_users_token_version` is deliberately NOT in `reconcile.py`'s
   `REQUIRED_CONSTRAINTS`.** Migration 0005 adds the constraint, and S5
   exists precisely to catch a guarantee silently dropped — so on the face

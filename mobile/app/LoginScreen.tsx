@@ -22,8 +22,10 @@
  * should be added until that refusal exists — see SqliteShopStore, which has no
  * clear() for the same reason.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+
+import { useTheme, type ThemeTokens } from "./theme";
 
 interface Props {
   /** Null until this device has been set up. Decides which state is drawn. */
@@ -40,6 +42,8 @@ interface Props {
 }
 
 export function LoginScreen({ shopTenantId, busy, notice, onSetup, onSignIn }: Props) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const [code, setCode] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -137,27 +141,29 @@ export function LoginScreen({ shopTenantId, busy, notice, onSetup, onSignIn }: P
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: { paddingHorizontal: 20, paddingTop: 24, gap: 6 },
-  title: { fontSize: 22, fontWeight: "800", color: "#0f172a", marginBottom: 8 },
-  hint: { fontSize: 14, color: "#475569", marginBottom: 10, lineHeight: 20 },
-  label: { fontSize: 13, fontWeight: "700", color: "#475569", marginTop: 8 },
-  input: {
-    borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10,
-    paddingHorizontal: 14, minHeight: 52, fontSize: 18, backgroundColor: "#fff",
-    color: "#0f172a",
-  },
-  // Wide tracking and a monospace-ish feel: the code is read off paper and
-  // typed once, and character-by-character comparison is the whole task.
-  code: { letterSpacing: 4, fontSize: 22, fontWeight: "700" },
-  btn: {
-    marginTop: 18, minHeight: 60, borderRadius: 12, backgroundColor: "#0f766e",
-    alignItems: "center", justifyContent: "center",
-  },
-  btnText: { color: "#fff", fontWeight: "800", fontSize: 18 },
-  dim: { opacity: 0.4 },
-  notice: {
-    marginTop: 16, fontSize: 14, fontWeight: "700", color: "#7f1d1d",
-    backgroundColor: "#fee2e2", borderRadius: 8, padding: 12, lineHeight: 20,
-  },
-});
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    wrap: { paddingHorizontal: t.space.x4, paddingTop: t.space.x5, gap: t.space.sm },
+    title: { fontSize: t.type.titleLg, fontWeight: "800", color: t.color.text, marginBottom: t.space.md },
+    hint: { fontSize: t.type.bodyLg, color: t.color.textMuted, marginBottom: t.space.lg, lineHeight: 20 },
+    label: { fontSize: t.type.body, fontWeight: "700", color: t.color.textMuted, marginTop: t.space.md },
+    input: {
+      borderWidth: 1, borderColor: t.color.border, borderRadius: t.radius.lg,
+      paddingHorizontal: t.space.xxl, minHeight: t.tapMin, fontSize: t.type.subhead, backgroundColor: t.color.surface,
+      color: t.color.text,
+    },
+    // Wide tracking and a monospace-ish feel: the code is read off paper and
+    // typed once, and character-by-character comparison is the whole task.
+    code: { letterSpacing: 4, fontSize: t.type.titleLg, fontWeight: "700" },
+    btn: {
+      marginTop: 18, minHeight: t.tapMin + t.space.xs, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
+      alignItems: "center", justifyContent: "center",
+    },
+    btnText: { color: t.color.onPrimary, fontWeight: "800", fontSize: t.type.subhead },
+    dim: { opacity: 0.4 },
+    notice: {
+      marginTop: t.space.x3, fontSize: t.type.bodyLg, fontWeight: "700", color: t.color.dangerFg,
+      backgroundColor: t.color.dangerBg, borderRadius: t.radius.md, padding: t.space.xl, lineHeight: 20,
+    },
+  });
+}

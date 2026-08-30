@@ -17,6 +17,7 @@
  * NO MODAL ELEMENT here — the app has exactly one (app/SheetHost), and
  * `npm run prove:sheets` scans this directory and goes red if a second appears.
  */
+import { useMemo } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -35,17 +36,18 @@ import type {
 import type { SummaryReport, SummaryTone } from "../src/dashboard/summaryView";
 import type { DailyScreen as DailyScreenModel } from "../src/reports/dailyView";
 import { BillList } from "./BillList";
+import { useTheme, type ThemeTokens } from "./theme";
 
-const TAP_MIN = 56;
-
-const TONE: Record<SummaryTone, { bg: string; fg: string; badge: string }> = {
-  // Nothing is broken in any of these; only one is even about a fault.
-  forbidden: { bg: "#fee2e2", fg: "#7f1d1d", badge: "#b91c1c" },
-  session: { bg: "#fef3c7", fg: "#78350f", badge: "#b45309" },
-  offline: { bg: "#f1f5f9", fg: "#334155", badge: "#64748b" },
-  server: { bg: "#f1f5f9", fg: "#334155", badge: "#64748b" },
-  invalid: { bg: "#fef3c7", fg: "#78350f", badge: "#b45309" },
-};
+function makeTone(t: ThemeTokens): Record<SummaryTone, { bg: string; fg: string; badge: string }> {
+  return {
+    // Nothing is broken in any of these; only one is even about a fault.
+    forbidden: { bg: t.color.dangerBg, fg: t.color.dangerFg, badge: t.color.danger },
+    session: { bg: t.color.warningBg, fg: t.color.warningFg, badge: t.color.warning },
+    offline: { bg: t.color.neutralBg, fg: t.color.neutralFg, badge: t.color.textSubtle },
+    server: { bg: t.color.neutralBg, fg: t.color.neutralFg, badge: t.color.textSubtle },
+    invalid: { bg: t.color.warningBg, fg: t.color.warningFg, badge: t.color.warning },
+  };
+}
 
 export interface DashboardCustom {
   from: string;
@@ -72,6 +74,8 @@ interface Props {
 }
 
 export function DashboardScreen(props: Props) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const { model } = props;
   return (
     <View style={styles.fill}>
@@ -113,7 +117,9 @@ function MessageBody({
   onRetry: () => void;
   onSignIn: () => void;
 }) {
-  const tone = TONE[screen.tone];
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
+  const tone = makeTone(t)[screen.tone];
   const handler =
     screen.action === null
       ? undefined
@@ -152,6 +158,8 @@ function Chip({
   selected: boolean;
   onPress: () => void;
 }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <Pressable style={[styles.chip, selected && styles.chipOn]} onPress={onPress}>
       <Text style={[styles.chipText, selected && styles.chipTextOn]}>{label}</Text>
@@ -161,6 +169,8 @@ function Chip({
 }
 
 function FigureRow({ label, value, unit, big }: { label: string; value: string; unit: string; big?: boolean }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <View style={styles.figureRow}>
       <Text style={styles.figureLabel}>{label}</Text>
@@ -175,6 +185,8 @@ function FigureRow({ label, value, unit, big }: { label: string; value: string; 
 }
 
 function Bars({ report }: { report: SummaryReport }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   if (report.emptyLine !== null) {
     return <Text style={styles.empty}>{report.emptyLine}</Text>;
   }
@@ -204,6 +216,8 @@ function Bars({ report }: { report: SummaryReport }) {
 }
 
 function DashboardBody(props: Props & { model: DashboardReport }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const { model, custom, daily } = props;
   const report = model.report;
   const customSelected = model.presetChips.some((c) => c.preset === "custom" && c.selected);
@@ -232,7 +246,7 @@ function DashboardBody(props: Props & { model: DashboardReport }) {
               value={custom.from}
               onChangeText={props.onCustomFrom}
               placeholder="เริ่ม (ปปปป-ดด-วว)"
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={t.color.placeholder}
               autoCapitalize="none"
               autoCorrect={false}
             />
@@ -242,7 +256,7 @@ function DashboardBody(props: Props & { model: DashboardReport }) {
               value={custom.to}
               onChangeText={props.onCustomTo}
               placeholder="สิ้นสุด (ปปปป-ดด-วว)"
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={t.color.placeholder}
               autoCapitalize="none"
               autoCorrect={false}
             />
@@ -310,108 +324,110 @@ function DashboardBody(props: Props & { model: DashboardReport }) {
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: "#f8fafc" },
-  head: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12,
-    backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0",
-  },
-  title: { fontSize: 20, fontWeight: "900", color: "#0f172a" },
-  closeBtn: {
-    minHeight: 48, paddingHorizontal: 20, borderRadius: 10,
-    backgroundColor: "#e2e8f0", alignItems: "center", justifyContent: "center",
-  },
-  closeText: { fontSize: 16, fontWeight: "800", color: "#334155" },
-  body: { padding: 16, paddingBottom: 48 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  loading: { fontSize: 14, color: "#64748b", fontWeight: "700" },
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    fill: { flex: 1, backgroundColor: t.color.background },
+    head: {
+      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+      paddingHorizontal: t.space.x3, paddingTop: 56, paddingBottom: t.space.xl,
+      backgroundColor: t.color.surface, borderBottomWidth: 1, borderBottomColor: t.color.borderSoft,
+    },
+    title: { fontSize: t.type.title, fontWeight: "900", color: t.color.text },
+    closeBtn: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
+      backgroundColor: t.color.borderSoft, alignItems: "center", justifyContent: "center",
+    },
+    closeText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
+    body: { padding: t.space.x3, paddingBottom: t.space.x5 },
+    center: { flex: 1, alignItems: "center", justifyContent: "center", gap: t.space.xl },
+    loading: { fontSize: t.type.bodyLg, color: t.color.textSubtle, fontWeight: "700" },
 
-  sectionLabel: { fontSize: 13, fontWeight: "800", color: "#64748b", marginTop: 6, marginBottom: 6 },
+    sectionLabel: { fontSize: t.type.body, fontWeight: "800", color: t.color.textSubtle, marginTop: t.space.sm, marginBottom: t.space.sm },
 
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 6 },
-  chip: {
-    minHeight: TAP_MIN, paddingHorizontal: 14, borderRadius: 12, justifyContent: "center",
-    backgroundColor: "#e2e8f0",
-  },
-  chipOn: { backgroundColor: "#0f766e" },
-  chipText: { fontSize: 14, fontWeight: "800", color: "#334155" },
-  chipTextOn: { color: "#fff" },
-  chipNote: { fontSize: 10, fontWeight: "700", color: "#64748b" },
+    chipRow: { flexDirection: "row", flexWrap: "wrap", gap: t.space.md, marginBottom: t.space.sm },
+    chip: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.xxl, borderRadius: t.radius.xl, justifyContent: "center",
+      backgroundColor: t.color.borderSoft,
+    },
+    chipOn: { backgroundColor: t.color.primary },
+    chipText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.neutralFg },
+    chipTextOn: { color: t.color.onPrimary },
+    chipNote: { fontSize: t.type.body, fontWeight: "700", color: t.color.textSubtle },
 
-  customCard: {
-    backgroundColor: "#fff", borderRadius: 12, padding: 12, marginBottom: 8,
-    borderWidth: 1, borderColor: "#e2e8f0",
-  },
-  customFields: { flexDirection: "row", alignItems: "center", gap: 8 },
-  customInput: {
-    flex: 1, minHeight: TAP_MIN, borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10,
-    paddingHorizontal: 12, fontSize: 15, fontWeight: "700", color: "#0f172a",
-  },
-  customDash: { fontSize: 13, fontWeight: "800", color: "#64748b" },
-  customApply: {
-    minHeight: TAP_MIN, marginTop: 10, borderRadius: 12, backgroundColor: "#0f766e",
-    alignItems: "center", justifyContent: "center",
-  },
-  customApplyText: { color: "#fff", fontSize: 15, fontWeight: "800" },
-  customError: {
-    fontSize: 13, fontWeight: "800", color: "#7f1d1d", backgroundColor: "#fee2e2",
-    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginTop: 10,
-  },
+    customCard: {
+      backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xl, marginBottom: t.space.md,
+      borderWidth: 1, borderColor: t.color.borderSoft,
+    },
+    customFields: { flexDirection: "row", alignItems: "center", gap: t.space.md },
+    customInput: {
+      flex: 1, minHeight: t.tapMin, borderWidth: 1, borderColor: t.color.border, borderRadius: t.radius.lg,
+      paddingHorizontal: t.space.xl, fontSize: t.type.bodyLg, fontWeight: "700", color: t.color.text,
+    },
+    customDash: { fontSize: t.type.body, fontWeight: "800", color: t.color.textSubtle },
+    customApply: {
+      minHeight: t.tapMin, marginTop: t.space.lg, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
+      alignItems: "center", justifyContent: "center",
+    },
+    customApplyText: { color: t.color.onPrimary, fontSize: t.type.bodyLg, fontWeight: "800" },
+    customError: {
+      fontSize: t.type.body, fontWeight: "800", color: t.color.dangerFg, backgroundColor: t.color.dangerBg,
+      borderRadius: t.radius.md, paddingHorizontal: t.space.lg, paddingVertical: t.space.md, marginTop: t.space.lg,
+    },
 
-  totalsCard: {
-    backgroundColor: "#fff", borderRadius: 14, padding: 16, marginTop: 8, marginBottom: 12,
-    borderWidth: 1, borderColor: "#e2e8f0",
-  },
-  figureRow: {
-    flexDirection: "row", alignItems: "baseline", justifyContent: "space-between",
-    paddingVertical: 4, borderTopWidth: 1, borderTopColor: "#f1f5f9",
-  },
-  figureLabel: { fontSize: 14, fontWeight: "800", color: "#64748b", flexShrink: 0 },
-  figureValueWrap: { flexDirection: "row", alignItems: "baseline", gap: 6, flexShrink: 1, marginLeft: 12 },
-  figureValue: { fontSize: 18, fontWeight: "900", color: "#0f172a" },
-  figureValueBig: { fontSize: 28, color: "#0f766e" },
-  figureUnit: { fontSize: 13, fontWeight: "800", color: "#94a3b8" },
-  explain: { fontSize: 12, color: "#64748b", marginTop: 8, fontWeight: "600" },
-  unsent: {
-    fontSize: 13, fontWeight: "800", color: "#0c4a6e", backgroundColor: "#e0f2fe",
-    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginTop: 12,
-  },
+    totalsCard: {
+      backgroundColor: t.color.surface, borderRadius: t.radius.pill, padding: t.space.x3, marginTop: t.space.md, marginBottom: t.space.xl,
+      borderWidth: 1, borderColor: t.color.borderSoft,
+    },
+    figureRow: {
+      flexDirection: "row", alignItems: "baseline", justifyContent: "space-between",
+      paddingVertical: t.space.xs, borderTopWidth: 1, borderTopColor: t.color.divider,
+    },
+    figureLabel: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.textSubtle, flexShrink: 0 },
+    figureValueWrap: { flexDirection: "row", alignItems: "baseline", gap: t.space.sm, flexShrink: 1, marginLeft: t.space.xl },
+    figureValue: { fontSize: t.type.subhead, fontWeight: "900", color: t.color.text },
+    figureValueBig: { fontSize: t.type.headline, color: t.color.primary },
+    figureUnit: { fontSize: t.type.body, fontWeight: "800", color: t.color.placeholder },
+    explain: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.md, fontWeight: "600" },
+    unsent: {
+      fontSize: t.type.body, fontWeight: "800", color: t.color.infoFg, backgroundColor: t.color.infoBg,
+      borderRadius: t.radius.md, paddingHorizontal: t.space.lg, paddingVertical: t.space.md, marginTop: t.space.xl,
+    },
 
-  card: {
-    backgroundColor: "#fff", borderRadius: 12, padding: 12, marginBottom: 12,
-    borderWidth: 1, borderColor: "#e2e8f0",
-  },
-  cardHeading: { fontSize: 15, fontWeight: "900", color: "#0f172a" },
-  empty: { fontSize: 13, color: "#475569", marginTop: 8, fontWeight: "700" },
+    card: {
+      backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xl, marginBottom: t.space.xl,
+      borderWidth: 1, borderColor: t.color.borderSoft,
+    },
+    cardHeading: { fontSize: t.type.bodyLg, fontWeight: "900", color: t.color.text },
+    empty: { fontSize: t.type.body, color: t.color.textMuted, marginTop: t.space.md, fontWeight: "700" },
 
-  barRow: { paddingVertical: 8, borderTopWidth: 1, borderTopColor: "#f1f5f9" },
-  barHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
-  barLabel: { flex: 1, fontSize: 14, fontWeight: "800", color: "#0f172a", marginRight: 8 },
-  barLabelOthers: { color: "#64748b", fontStyle: "italic" },
-  barValue: { fontSize: 15, fontWeight: "900", color: "#0f766e" },
-  barTrack: {
-    flexDirection: "row", height: 10, backgroundColor: "#e2e8f0", borderRadius: 5,
-    overflow: "hidden", marginTop: 6,
-  },
-  barFill: { backgroundColor: "#0f766e" },
-  barFillOthers: { backgroundColor: "#94a3b8" },
-  barSub: { fontSize: 11, fontWeight: "700", color: "#94a3b8", marginTop: 4 },
+    barRow: { paddingVertical: t.space.md, borderTopWidth: 1, borderTopColor: t.color.divider },
+    barHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
+    barLabel: { flex: 1, fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.text, marginRight: t.space.md },
+    barLabelOthers: { color: t.color.textSubtle, fontStyle: "italic" },
+    barValue: { fontSize: t.type.bodyLg, fontWeight: "900", color: t.color.primary },
+    barTrack: {
+      flexDirection: "row", height: 10, backgroundColor: t.color.borderSoft, borderRadius: 5,
+      overflow: "hidden", marginTop: t.space.sm,
+    },
+    barFill: { backgroundColor: t.color.primary },
+    barFillOthers: { backgroundColor: t.color.placeholder },
+    barSub: { fontSize: t.type.body, fontWeight: "700", color: t.color.placeholder, marginTop: t.space.xs },
 
-  billSpinner: { marginVertical: 16 },
+    billSpinner: { marginVertical: t.space.x3 },
 
-  /* --- the non-report screens --- */
-  messageCard: { borderRadius: 14, padding: 16, marginTop: 24, alignItems: "flex-start" },
-  messageBadge: {
-    color: "#fff", fontSize: 12, fontWeight: "800", paddingHorizontal: 10,
-    paddingVertical: 4, borderRadius: 6, overflow: "hidden",
-  },
-  messageLead: { fontSize: 15, fontWeight: "800", marginTop: 12 },
-  messageCalm: { fontSize: 13, fontWeight: "600", marginTop: 8 },
-  messageBtn: {
-    marginTop: 16, minHeight: 48, paddingHorizontal: 20, borderRadius: 10,
-    backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center",
-    alignSelf: "stretch",
-  },
-  messageBtnText: { color: "#fff", fontSize: 15, fontWeight: "800" },
-});
+    /* --- the non-report screens --- */
+    messageCard: { borderRadius: t.radius.pill, padding: t.space.x3, marginTop: 24, alignItems: "flex-start" },
+    messageBadge: {
+      color: t.color.onPrimary, fontSize: t.type.body, fontWeight: "800", paddingHorizontal: t.space.lg,
+      paddingVertical: t.space.xs, borderRadius: t.radius.sm, overflow: "hidden",
+    },
+    messageLead: { fontSize: t.type.bodyLg, fontWeight: "800", marginTop: t.space.xl },
+    messageCalm: { fontSize: t.type.body, fontWeight: "600", marginTop: t.space.md },
+    messageBtn: {
+      marginTop: t.space.x3, minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
+      backgroundColor: t.color.primary, alignItems: "center", justifyContent: "center",
+      alignSelf: "stretch",
+    },
+    messageBtnText: { color: t.color.onPrimary, fontSize: t.type.bodyLg, fontWeight: "800" },
+  });
+}

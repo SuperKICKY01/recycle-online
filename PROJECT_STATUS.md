@@ -75,11 +75,92 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.23 item 3 — PHASE A: THE SHARED PRESENTATION LAYER, THE THEME, THE TAP SWEEP.
+2026-08-30.** No sha yet (this record is written before the commit; anchor next pass).
+This is the current-phase pointer; the unit-3 record below stands, anchored to `6f90971`.
+**BUILT and PROVEN headless; the on-device pass is UNOBSERVED (the owner's, and it is
+LARGER this pass — a whole theme).** New pure module `mobile/src/ui/theme.ts`: the token
+set for BOTH themes — colours (text, mutedText, textSubtle, placeholder, background,
+surface, border, primary, danger/warning/success and the notice-tint families the
+screens' tone maps resolve to, plus an overlay and a status-bar style), an 8-step type
+scale (`body 13 · bodyLg 15 · subhead 17 · title 20 · titleLg 24 · headline 28 · display
+32 · hero 44`, `body` the named floor), a spacing scale, radii, and ONE `TAP_MIN = 56`
+carrying its recorded reason (the owner's B1 wet-hand-target bar) — and
+`resolveTheme(pref, systemScheme)`. `mobile/src/ui/tapAudit.ts` is a pure text scanner
+for tap-floor literals. `mobile/app/theme.tsx` is the React-Native glue
+(`ThemeProvider`/`useTheme`/`useThemeControl`) reading the OS scheme (`useColorScheme`)
+and the device-stored preference (one SecureStore key `recycle.pref.theme` ∈
+{light,dark,system}, default follow-system, never the server — no new dependency, no
+migration). All 18 screen `StyleSheet`s (`App.tsx` + 17 under `app/`) were swept onto the
+tokens via a `makeStyles(t)` factory read through `useMemo`; the ~10 per-screen
+tone→colour `Record` maps became `makeTones(t)` factories that keep each tone→family
+mapping and read the colours from the theme; the six duplicated `const TAP_MIN` and
+Numpad's `const KEY_H` are deleted. The settings screen gains the theme control (three
+chips, device-stored, applied through the context, shown to staff and admin with a note
+that it is NOT a shop setting). Two MEASURED legibility fixes rode the sweep: the
+placeholder grey (`#94a3b8`, 2.6:1 on white) darkened to `#64748b` (4.76:1), and the
+account notice badge (`#0891b2`, white at 3.68:1) darkened to `#0e7490` (5.36:1). The
+type scale raised 33 sub-floor labels (10/11/12px) to the 13px body floor and normalised
+103 of 211 font sizes to a rung (by value: 12→body ×27, 14→bodyLg ×24, 16→subhead ×20,
+18→subhead ×11, 22→titleLg ×8, 26→headline ×4, 30→display ×2, 34→display ×1, 10/11→body
+×6; the full per-site list rode this phase's artefacts); ZERO text sits below the 13px
+floor. `app.json`'s `userInterfaceStyle` moved `light` → `automatic`.
+**PROVEN (headless, every command bare, exit read in the same invocation):**
+`prove:theme` (39 cells) exits 0 TWICE, printing every (text,bg) contrast ratio per
+theme; THREE disproofs each redden EXACTLY their named cell (`--break=contrast` the
+danger-tint pair, `--break=tapmin` the TAP_MIN cell, `--break=floor` the body-floor cell)
+and an unknown break exits 2 with no banner. `prove:tapaudit` exits 0 TWICE — ZERO raw
+`minHeight`/`minWidth` and ZERO local tap constant over all 20 screen files — with a
+corpus-read control, two planted-literal positive controls, and a `--break=inject`
+disproof (exit 1). Both typechecks green before and after. Every OTHER headless mobile
+proof green TWICE with counts UNMOVED (proveSync 247, proveOutbox 77, proveSellerKind 69,
+proveSellerStore 56, provePickerSeller 15, proveReserveNotice 20, proveLocalSellerCreate
+27, proveSignOut 151, proveNotice 81, proveSettings 26, proveAccount 24, proveDashboard
+49, proveDaily 104, proveSheets 11 stacks, plus ~25 more); the three live-server auth
+proofs (proveForbidden, proveLogin, proveLoginScreen) were NOT run (no server) and exit 1
+only for `fetch failed`. Scoping (P-A6): `git diff` over
+`src/master|settings|dashboard|reports|sync|local|session|cart|money|time|adapters|device`
+is EMPTY — the change touched only `app/`, `App.tsx`, `app.json`, `package.json`, and the
+two new files under `src/ui`/`src/proof`. The inventory re-run finds ZERO raw hex, ZERO
+rgba and ZERO raw `fontSize` literal in `app/`.
+**NOT OBSERVED — the handset pass, now the ONE consolidated pass owed for units 1, 3 and
+this phase.** No device pass this session; dark rendering and follow-system are
+device-visible and no headless proof can see them. On a handset (`npx expo start -c` + a
+full reload FIRST — `CLAUDE.md § Boot check` "WHICH BUNDLE"), the owner reads:
+- THIS PHASE (theme + sweep): every screen the sweep touched renders correctly in BOTH
+  light and dark; the theme control on ตั้งค่าร้าน switches light / dark / follow-system
+  and the choice SURVIVES a cold start; a phone whose OS is set to dark opens the app dark
+  with NO choice made (follow-system + `app.json` automatic); a wet finger lands inside
+  every control the sweep touched (all now ≥ `TAP_MIN`); and the smallest body text (13px)
+  is legible held at arm's length in sun.
+- UNIT 3 (dashboard, still unobserved): the `api.ts`→`summaryView` seam renders SERVER
+  data at all; an ADMIN opens ยอดวันนี้ → the dashboard on today with totals, dimension
+  bars, the per-bill list and the ค้างส่งจากเครื่องนี้ line while a bill is queued (the
+  total above NOT moving); เดือนนี้ shows aggregates only; a STAFF session with the toggle
+  off has NO ยอดวันนี้ entry; the owner turns the toggle on in ตั้งค่าร้าน and the staff
+  session then opens ยอดของฉัน with their OWN totals and the one sentence that the per-bill
+  list is not available for a staff account.
+- UNIT 1 (settings/account, still unobserved): a STAFF session opens ตั้งค่าร้าน and sees
+  the values with NO save control; an ADMIN edits address/phone and the default grade (a
+  grade change asks a confirmation) and saves; บัญชีของฉัน shows the profile, and a password
+  change with a pending bill queued produces the "changed — sign in again, work kept" sheet
+  and lands on the login screen.
+All UNOBSERVED.
+**IS A LESSON OWED? NO.** The brief flagged the text-scanner-as-proof shape as "a new
+instrument here"; re-derived against the tree, it is NOT new — `proveSheets.ts` already
+reads `app/` source off disk and scans it with the same controls (a corpus-read control, a
+known-present positive control), and `proveTapAudit.ts` was built by copying that pattern.
+The discipline a text scan needs (a positive control, so "found nothing" is not "read
+nothing") is already carried by `lessons/a-check-that-never-went-red-was-never-observed.md`.
+One doc-hygiene item was found and fixed in-pass (a `SellerPicker` comment still said
+"48pt floor" after the sweep raised it to `TAP_MIN`); a stale comment is not a bug class, so
+it is a fix, not a lesson (`CLAUDE.md § Workflow` "Only for what would cause a real bug").
+
 **P1.23 item 4, unit 3 — THE DASHBOARD ON THE PHONE: one screen, period × dimension
 over `GET /reports/summary`, the day's bill list absorbed as the today view,
-role/toggle-gated. 2026-08-31.** No sha (uncommitted; anchor next pass). This
-supersedes the unit-2 record below as the current-phase pointer; it stands, anchored
-to `46a18b4`.
+role/toggle-gated. 2026-08-31.** Committed at `6f90971` (anchored 2026-08-30 in the
+P1.23 item-3 phase-A pass). This WAS the current-phase pointer until item 3 phase A
+above; the unit-2 record below stands, anchored to `46a18b4`.
 **BUILT HEADLESS and PROVEN; the on-device pass is UNOBSERVED (the owner's).** New
 pure-TS builders under `mobile/src/dashboard/` — `period.ts` (presets today/week/
 month/custom → two shop-local wire dates from the ONE offset constant
@@ -1423,7 +1504,7 @@ however carefully done.
 |---|---|---|---|---|
 | `FORM_DEBOUNCE_MS` | **400 ms** | `App.tsx:109` | **unrecorded for the 400 itself.** The comment — "form keystrokes are written through on this delay; lines are written at once" — records the SPLIT (form debounced, lines immediate), which is the safety-relevant half: a money line is never left un-persisted waiting on a timer | 1 |
 | `UNDO_MS` | **8 s** | `CartScreen.tsx:71` | **unrecorded — chosen without a written reason.** Reconstructible only that it bounds an undo of a deleted cart line, i.e. it is recoverable-by-retyping and not money already committed | 1 |
-| `TAP_MIN` | **56** | `CartScreen.tsx:70` **and** `SellerPicker.tsx:37` | **unrecorded — chosen without a written reason.** What IS recorded is the RULE it serves (`CartScreen.tsx:6`, "every tappable thing is at least TAP_MIN tall"). Facts about the number, not reasons for it: 56 exceeds both platform minimums (iOS 44 pt, Android 48 dp). **Two findings beyond the value** — it is DUPLICATED in two files, free to drift; and the rest of the UI does not use it at all, with raw `minHeight` literals of 48 (×6), 44 (×4), 60 (×3), 36 (×2) and 72 — so **the stated standard is honoured in two screens and undercut in others** | 1 |
+| `TAP_MIN` | **56** | `CartScreen.tsx:70` **and** `SellerPicker.tsx:37` | **unrecorded — chosen without a written reason.** What IS recorded is the RULE it serves (`CartScreen.tsx:6`, "every tappable thing is at least TAP_MIN tall"). Facts about the number, not reasons for it: 56 exceeds both platform minimums (iOS 44 pt, Android 48 dp). **Two findings beyond the value** — it is DUPLICATED in two files, free to drift; and the rest of the UI does not use it at all, with raw `minHeight` literals of 48 (×6), 44 (×4), 60 (×3), 36 (×2) and 72 — so **the stated standard is honoured in two screens and undercut in others**. **SUPERSEDED 2026-08-30 (P1.23 item 3): the reason is now RECORDED — the owner's B1 wet-hand-target bar — in ONE exported `TAP_MIN` in `mobile/src/ui/theme.ts`, read app-wide; both findings CLOSED (the duplication had spread to SIX files plus Numpad's `KEY_H`, all deleted; every screen now takes the floor from the theme, proven by `proveTapAudit`). `TAP_MIN` leaves the unaccountable set below; value unchanged, so no new trial. | 1 |
 
 ### Server
 
@@ -1471,11 +1552,12 @@ these means the thing it is derived FROM changed; they are not knobs.
 
 ### The unrecorded values, and what could and could not be reconstructed
 
-Nine values were chosen with **no written reason**, in the code or in their
+Eight values were chosen with **no written reason**, in the code or in their
 introducing commit: the sync tick (4 s), the UI refresh tick (400 ms),
-`HttpTransport.timeoutMs` (20 s), `UNDO_MS` (8 s), `TAP_MIN` (56),
+`HttpTransport.timeoutMs` (20 s), `UNDO_MS` (8 s),
 `GET /bills` limit (50/200), both `backoff` knobs at their call site, and
-`JWT_TTL_SECONDS`.
+`JWT_TTL_SECONDS`. (**NINE → EIGHT 2026-08-30, P1.23 item 3: `TAP_MIN` (56) left
+this set — its reason is now recorded in `mobile/src/ui/theme.ts`.**)
 
 **Where the reasoning is genuinely unknown, the row says "unrecorded — chosen
 without a written reason" and stops there.** Nothing has been back-filled with a
@@ -1503,6 +1585,10 @@ future re-tune dangerous:
   (60 000 / 400). The comment reasons from the value; it does not justify it.
 - **`TAP_MIN` (56) is a stated standard honoured in two screens and undercut
   elsewhere** — raw `minHeight` literals of 36 and 44 exist, both below it.
+  **SUPERSEDED 2026-08-30 (P1.23 item 3): no longer true and no longer in this set.
+  `TAP_MIN` gained its recorded reason and one home in `mobile/src/ui/theme.ts`, and
+  the sweep raised every sub-56 floor; the sentence stands only as the record of what
+  was true before.**
 
 None of these values is wrong. All of them are **unaccountable**, which is a
 different problem: an unaccountable value cannot be defended, cannot be safely

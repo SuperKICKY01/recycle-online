@@ -45,6 +45,8 @@ import type { ReactNode } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
+import { ThemeProvider, useTheme, type ThemeTokens } from "./app/theme";
+
 import { HttpTransport } from "./src/adapters/httpTransport";
 import { HttpSellerTransport } from "./src/adapters/httpSellerTransport";
 import { SqliteDraftStore } from "./src/adapters/sqlite/SqliteDraftStore";
@@ -196,12 +198,14 @@ const STATE_TH: Record<SyncState, string> = {
   failed: "ผิดพลาด",
 };
 
-const STATE_COLOR: Record<SyncState, string> = {
-  pending: "#b45309",
-  syncing: "#1d4ed8",
-  synced: "#15803d",
-  failed: "#b91c1c",
-};
+function makeStateColor(t: ThemeTokens): Record<SyncState, string> {
+  return {
+    pending: t.color.warning,
+    syncing: t.color.infoStrong,
+    synced: t.color.success,
+    failed: t.color.danger,
+  };
+}
 
 /** Form keystrokes are written through on this delay; lines are written at once. */
 const FORM_DEBOUNCE_MS = 400;
@@ -222,6 +226,17 @@ const nowMinuteIso = (): string =>
   new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString();
 
 export default function App() {
+  return (
+    <ThemeProvider>
+      <AppInner />
+    </ThemeProvider>
+  );
+}
+
+function AppInner() {
+  const theme = useTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+  const stateColor = useMemo(() => makeStateColor(theme), [theme]);
   const [status, setStatus] = useState("กำลังเปิดฐานข้อมูล…");
   const [ready, setReady] = useState(false);
   const [token, setToken] = useState<string | null>(null);
@@ -2762,7 +2777,7 @@ export default function App() {
         insets.
       */}
       <SafeAreaView style={styles.screen} edges={["top", "bottom"]}>
-        <StatusBar style="dark" />
+        <StatusBar style={theme.statusBar} />
         <View style={styles.header}>
           <View style={styles.headerRow}>
             <Text style={styles.h1}>รับซื้อของเก่า</Text>
@@ -2955,7 +2970,7 @@ export default function App() {
             {latest !== null ? (
               <>
                 <Text
-                  style={[styles.latestBadge, { backgroundColor: STATE_COLOR[latest.sync_state] }]}
+                  style={[styles.latestBadge, { backgroundColor: stateColor[latest.sync_state] }]}
                 >
                   {STATE_TH[latest.sync_state]}
                 </Text>
@@ -3079,55 +3094,57 @@ function describe(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#f8fafc" },
-  center: { flex: 1, justifyContent: "center", paddingHorizontal: 24 },
-  spinner: { marginTop: 40 },
-  header: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 6 },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  h1: { fontSize: 20, fontWeight: "900", color: "#0f172a" },
-  status: { fontSize: 10, color: "#94a3b8" },
-  // A quiet teal chip, not a primary action: the yard's job is weighing, and this
-  // is the owner's screen sitting where they can reach it without hunting.
-  dailyBtn: {
-    minHeight: 36, paddingHorizontal: 12, borderRadius: 8, justifyContent: "center",
-    backgroundColor: "#ccfbf1",
-  },
-  dailyBtnText: { fontSize: 13, fontWeight: "800", color: "#0f766e" },
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: t.color.background },
+    center: { flex: 1, justifyContent: "center", paddingHorizontal: 24 },
+    spinner: { marginTop: 40 },
+    header: { paddingHorizontal: t.space.x3, paddingTop: t.space.sm, paddingBottom: t.space.sm },
+    headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    h1: { fontSize: t.type.title, fontWeight: "900", color: t.color.text },
+    status: { fontSize: t.type.body, color: t.color.placeholder },
+    // A quiet teal chip, not a primary action: the yard's job is weighing, and this
+    // is the owner's screen sitting where they can reach it without hunting.
+    dailyBtn: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.xl, borderRadius: t.radius.md, justifyContent: "center",
+      backgroundColor: t.color.tealFaint,
+    },
+    dailyBtnText: { fontSize: t.type.body, fontWeight: "800", color: t.color.primary },
 
-  latest: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    paddingHorizontal: 16, paddingVertical: 6, backgroundColor: "#fff",
-    borderBottomWidth: 1, borderBottomColor: "#e2e8f0",
-  },
-  latestBadge: {
-    color: "#fff", fontSize: 10, fontWeight: "800", paddingHorizontal: 6,
-    paddingVertical: 2, borderRadius: 5, overflow: "hidden",
-  },
-  latestDoc: { flex: 1, fontSize: 13, fontWeight: "800", color: "#0f172a" },
-  latestTotal: { fontSize: 13, color: "#475569", fontWeight: "700" },
-  latestOpen: { fontSize: 13, color: "#0f766e", fontWeight: "800" },
+    latest: {
+      flexDirection: "row", alignItems: "center", gap: t.space.md,
+      paddingHorizontal: t.space.x3, paddingVertical: t.space.sm, backgroundColor: t.color.surface,
+      borderBottomWidth: 1, borderBottomColor: t.color.borderSoft,
+    },
+    latestBadge: {
+      color: t.color.onPrimary, fontSize: t.type.body, fontWeight: "800", paddingHorizontal: t.space.sm,
+      paddingVertical: 2, borderRadius: 5, overflow: "hidden",
+    },
+    latestDoc: { flex: 1, fontSize: t.type.body, fontWeight: "800", color: t.color.text },
+    latestTotal: { fontSize: t.type.body, color: t.color.textMuted, fontWeight: "700" },
+    latestOpen: { fontSize: t.type.body, color: t.color.primary, fontWeight: "800" },
 
-  loginBtn: {
-    minHeight: 60, borderRadius: 12, backgroundColor: "#0f766e",
-    alignItems: "center", justifyContent: "center",
-  },
-  loginText: { color: "#fff", fontWeight: "800", fontSize: 18 },
-  startHint: {
-    fontSize: 15, color: "#64748b", textAlign: "center", marginBottom: 14,
-    fontWeight: "600",
-  },
-  /*
-   * Amber, and NOT the red `block` tone the master strip uses. Nothing is
-   * broken and nothing is stopped — a bill can be started normally — so this
-   * must not read as a refusal. It is information about work being held.
-   * Not numberOfLines-clamped: a truncated "it has not been deleted" is the
-   * half of the sentence that matters going missing.
-   */
-  withheldDraft: {
-    fontSize: 13, color: "#78350f", backgroundColor: "#fef3c7",
-    textAlign: "center", fontWeight: "700", marginBottom: 14,
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8,
-  },
-  dim: { opacity: 0.4 },
-});
+    loginBtn: {
+      minHeight: t.tapMin, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
+      alignItems: "center", justifyContent: "center",
+    },
+    loginText: { color: t.color.onPrimary, fontWeight: "800", fontSize: t.type.subhead },
+    startHint: {
+      fontSize: t.type.bodyLg, color: t.color.textSubtle, textAlign: "center", marginBottom: t.space.xxl,
+      fontWeight: "600",
+    },
+    /*
+     * Amber, and NOT the red `block` tone the master strip uses. Nothing is
+     * broken and nothing is stopped — a bill can be started normally — so this
+     * must not read as a refusal. It is information about work being held.
+     * Not numberOfLines-clamped: a truncated "it has not been deleted" is the
+     * half of the sentence that matters going missing.
+     */
+    withheldDraft: {
+      fontSize: t.type.body, color: t.color.warningFg, backgroundColor: t.color.warningBg,
+      textAlign: "center", fontWeight: "700", marginBottom: t.space.xxl,
+      paddingHorizontal: t.space.xl, paddingVertical: t.space.md, borderRadius: t.radius.md,
+    },
+    dim: { opacity: 0.4 },
+  });
+}

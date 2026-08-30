@@ -16,11 +16,15 @@
  * NO MODAL ELEMENT here (as everywhere but SheetHost) — `npm run prove:sheets`
  * scans this directory and goes red if a second Modal appears.
  */
+import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import type { BillsSection } from "../src/reports/dailyView";
+import { useTheme, type ThemeTokens } from "./theme";
 
 export function BillList({ section }: { section: BillsSection }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <View style={styles.card}>
       <Text style={styles.cardHeading}>{section.heading}</Text>
@@ -46,22 +50,24 @@ export function BillList({ section }: { section: BillsSection }) {
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: "#fff", borderRadius: 12, padding: 12, marginBottom: 12,
-    borderWidth: 1, borderColor: "#e2e8f0",
-  },
-  cardHeading: { fontSize: 15, fontWeight: "900", color: "#0f172a" },
-  empty: { fontSize: 13, color: "#475569", marginTop: 8, fontWeight: "700" },
-  note: { fontSize: 12, color: "#78350f", marginTop: 8, fontWeight: "700" },
-  billRow: {
-    flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8,
-    borderTopWidth: 1, borderTopColor: "#f1f5f9",
-  },
-  billTime: { fontSize: 12, fontWeight: "800", color: "#94a3b8", width: 42 },
-  billMid: { flex: 1 },
-  billDoc: { fontSize: 14, fontWeight: "800", color: "#0f172a" },
-  billSeller: { fontSize: 12, color: "#64748b", fontWeight: "600" },
-  billOff: { fontSize: 11, color: "#b45309", fontWeight: "800", marginTop: 2 },
-  billAmount: { fontSize: 16, fontWeight: "900", color: "#0f766e" },
-});
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    card: {
+      backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xl, marginBottom: t.space.xl,
+      borderWidth: 1, borderColor: t.color.borderSoft,
+    },
+    cardHeading: { fontSize: t.type.bodyLg, fontWeight: "900", color: t.color.text },
+    empty: { fontSize: t.type.body, color: t.color.textMuted, marginTop: t.space.md, fontWeight: "700" },
+    note: { fontSize: t.type.body, color: t.color.warningFg, marginTop: t.space.md, fontWeight: "700" },
+    billRow: {
+      flexDirection: "row", alignItems: "center", gap: t.space.lg, paddingVertical: t.space.md,
+      borderTopWidth: 1, borderTopColor: t.color.divider,
+    },
+    billTime: { fontSize: t.type.body, fontWeight: "800", color: t.color.placeholder, width: 42 },
+    billMid: { flex: 1 },
+    billDoc: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.text },
+    billSeller: { fontSize: t.type.body, color: t.color.textSubtle, fontWeight: "600" },
+    billOff: { fontSize: t.type.body, color: t.color.warning, fontWeight: "800", marginTop: 2 },
+    billAmount: { fontSize: t.type.subhead, fontWeight: "900", color: t.color.primary },
+  });
+}

@@ -12,11 +12,13 @@
  * confirming a sentence rather than checking a figure — and the figure is the
  * entire point of asking.
  */
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { pricingProvenanceLine } from "../src/master/freshness";
 import type { PricingProvenance } from "../src/master/freshness";
 import { saveConfirmNotice } from "../src/master/saveConfirmNotice";
+import { useTheme, type ThemeTokens } from "./theme";
 
 /**
  * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
@@ -55,6 +57,8 @@ export function ConfirmSaveDialog({
   onCancel,
   onConfirm,
 }: Props) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const pricedLine = pricedFrom === null ? null : pricingProvenanceLine(pricedFrom);
   /*
    * WHAT THIS BILL'S FATE IS, in words, decided by the ONE fact that decides it.
@@ -124,39 +128,41 @@ export function ConfirmSaveDialog({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1, backgroundColor: "rgba(15,23,42,0.6)",
-    justifyContent: "center", padding: 20,
-  },
-  card: { backgroundColor: "#fff", borderRadius: 16, padding: 20 },
-  title: { fontSize: 20, fontWeight: "900", color: "#0f172a", marginBottom: 12 },
-  figures: { borderTopWidth: 1, borderTopColor: "#e2e8f0", paddingTop: 12 },
-  label: { fontSize: 13, fontWeight: "700", color: "#64748b", marginTop: 10 },
-  lines: { fontSize: 34, fontWeight: "900", color: "#0f172a" },
-  total: { fontSize: 44, fontWeight: "900", color: "#0f766e" },
-  seller: { fontSize: 22, fontWeight: "800", color: "#0f172a" },
-  grade: { fontSize: 15, fontWeight: "800", color: "#0f766e", marginTop: 2 },
-  gradeNone: { fontSize: 15, fontWeight: "900", color: "#b91c1c", marginTop: 2 },
-  vehicle: { fontSize: 22, fontWeight: "800", color: "#0f172a" },
-  vehicleNone: { fontSize: 18, fontWeight: "700", color: "#94a3b8" },
-  park: {
-    fontSize: 13, color: "#7f1d1d", backgroundColor: "#fee2e2", padding: 10,
-    borderRadius: 8, marginTop: 16, fontWeight: "700",
-  },
-  warn: {
-    fontSize: 13, color: "#78350f", backgroundColor: "#fef3c7", padding: 10,
-    borderRadius: 8, marginTop: 16, fontWeight: "600",
-  },
-  priced: {
-    fontSize: 13, color: "#0c4a6e", backgroundColor: "#e0f2fe", padding: 10,
-    borderRadius: 8, marginTop: 16, fontWeight: "700",
-  },
-  buttons: { flexDirection: "row", gap: 12, marginTop: 18 },
-  btn: { flex: 1, minHeight: 60, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  cancel: { backgroundColor: "#e2e8f0" },
-  cancelText: { fontSize: 17, fontWeight: "800", color: "#334155" },
-  confirm: { backgroundColor: "#0f766e" },
-  confirmText: { fontSize: 17, fontWeight: "900", color: "#fff" },
-  dim: { opacity: 0.4 },
-});
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    backdrop: {
+      flex: 1, backgroundColor: t.color.overlay,
+      justifyContent: "center", padding: t.space.x4,
+    },
+    card: { backgroundColor: t.color.surface, borderRadius: 16, padding: t.space.x4 },
+    title: { fontSize: t.type.title, fontWeight: "900", color: t.color.text, marginBottom: t.space.xl },
+    figures: { borderTopWidth: 1, borderTopColor: t.color.borderSoft, paddingTop: t.space.xl },
+    label: { fontSize: t.type.body, fontWeight: "700", color: t.color.textSubtle, marginTop: t.space.lg },
+    lines: { fontSize: t.type.display, fontWeight: "900", color: t.color.text },
+    total: { fontSize: t.type.hero, fontWeight: "900", color: t.color.primary },
+    seller: { fontSize: t.type.titleLg, fontWeight: "800", color: t.color.text },
+    grade: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.primary, marginTop: 2 },
+    gradeNone: { fontSize: t.type.bodyLg, fontWeight: "900", color: t.color.danger, marginTop: 2 },
+    vehicle: { fontSize: t.type.titleLg, fontWeight: "800", color: t.color.text },
+    vehicleNone: { fontSize: t.type.subhead, fontWeight: "700", color: t.color.placeholder },
+    park: {
+      fontSize: t.type.body, color: t.color.dangerFg, backgroundColor: t.color.dangerBg, padding: t.space.lg,
+      borderRadius: t.radius.md, marginTop: t.space.x3, fontWeight: "700",
+    },
+    warn: {
+      fontSize: t.type.body, color: t.color.warningFg, backgroundColor: t.color.warningBg, padding: t.space.lg,
+      borderRadius: t.radius.md, marginTop: t.space.x3, fontWeight: "600",
+    },
+    priced: {
+      fontSize: t.type.body, color: t.color.infoFg, backgroundColor: t.color.infoBg, padding: t.space.lg,
+      borderRadius: t.radius.md, marginTop: t.space.x3, fontWeight: "700",
+    },
+    buttons: { flexDirection: "row", gap: t.space.xl, marginTop: 18 },
+    btn: { flex: 1, minHeight: t.tapMin + t.space.xs, borderRadius: t.radius.xl, alignItems: "center", justifyContent: "center" },
+    cancel: { backgroundColor: t.color.borderSoft },
+    cancelText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
+    confirm: { backgroundColor: t.color.primary },
+    confirmText: { fontSize: t.type.subhead, fontWeight: "900", color: t.color.onPrimary },
+    dim: { opacity: 0.4 },
+  });
+}

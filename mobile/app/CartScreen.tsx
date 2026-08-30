@@ -66,8 +66,8 @@ import type { Product, Seller } from "./api";
 import { messageFor } from "./messages";
 import type { LineErrorCode } from "./messages";
 import { Numpad } from "./Numpad";
+import { useTheme, type ThemeTokens } from "./theme";
 
-const TAP_MIN = 56;
 const UNDO_MS = 8000;
 
 /** The three numeric fields. Only two of them appear in LockableField. */
@@ -131,6 +131,8 @@ export function CartScreen({
   onVehicleBlur,
   onSubmit,
 }: Props) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const [undo, setUndo] = useState<DraftLine | null>(null);
@@ -375,7 +377,7 @@ export function CartScreen({
             onBlur={onVehicleBlur}
             onEndEditing={onVehicleBlur}
             placeholder="เช่น 70-1234 หรือ 1กก 5678"
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={t.color.placeholder}
             autoCorrect={false}
             autoCapitalize="characters"
             maxLength={20}
@@ -612,6 +614,8 @@ function NumericField({
   onPress: () => void;
   disabled: boolean;
 }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <View style={styles.fieldBlock}>
       <View style={styles.fieldHead}>
@@ -653,140 +657,142 @@ function NumericField({
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1 },
-  scrollBody: { padding: 16, paddingBottom: 24 },
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    fill: { flex: 1 },
+    scrollBody: { padding: t.space.x3, paddingBottom: t.space.x4 },
 
-  section: { fontSize: 17, fontWeight: "800", color: "#0f172a", marginTop: 8 },
-  label: { fontSize: 13, fontWeight: "700", color: "#475569" },
-  row: { flexDirection: "row", gap: 12 },
-  readRow: { flexDirection: "row", gap: 12, marginTop: 14 },
-  col: { flex: 1 },
-  grow: { flex: 1 },
+    section: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.text, marginTop: t.space.md },
+    label: { fontSize: t.type.body, fontWeight: "700", color: t.color.textMuted },
+    row: { flexDirection: "row", gap: t.space.xl },
+    readRow: { flexDirection: "row", gap: t.space.xl, marginTop: t.space.xxl },
+    col: { flex: 1 },
+    grow: { flex: 1 },
 
-  sellerBox: {
-    backgroundColor: "#fff", borderRadius: 12, padding: 12, borderWidth: 2,
-    borderColor: "#0f766e", minHeight: TAP_MIN, justifyContent: "center",
-  },
-  sellerBoxBad: { borderColor: "#b91c1c", backgroundColor: "#fef2f2" },
-  sellerTop: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-  },
-  sellerName: { fontSize: 20, fontWeight: "900", color: "#0f172a", marginTop: 2 },
-  sellerMeta: { fontSize: 13, color: "#64748b", marginTop: 2, fontWeight: "600" },
-  noGrade: { color: "#b91c1c", fontWeight: "800" },
-  sellerWarn: {
-    fontSize: 12, color: "#7f1d1d", backgroundColor: "#fee2e2", borderRadius: 8,
-    paddingHorizontal: 8, paddingVertical: 6, marginTop: 8, fontWeight: "700",
-  },
-  changeBtn: { fontSize: 15, fontWeight: "900", color: "#0f766e" },
+    sellerBox: {
+      backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xl, borderWidth: 2,
+      borderColor: t.color.primary, minHeight: t.tapMin, justifyContent: "center",
+    },
+    sellerBoxBad: { borderColor: t.color.danger, backgroundColor: t.color.dangerSoftBg },
+    sellerTop: {
+      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    },
+    sellerName: { fontSize: t.type.title, fontWeight: "900", color: t.color.text, marginTop: 2 },
+    sellerMeta: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: 2, fontWeight: "600" },
+    noGrade: { color: t.color.danger, fontWeight: "800" },
+    sellerWarn: {
+      fontSize: t.type.body, color: t.color.dangerFg, backgroundColor: t.color.dangerBg, borderRadius: t.radius.md,
+      paddingHorizontal: t.space.md, paddingVertical: t.space.sm, marginTop: t.space.md, fontWeight: "700",
+    },
+    changeBtn: { fontSize: t.type.bodyLg, fontWeight: "900", color: t.color.primary },
 
-  vehicleInput: {
-    borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, paddingHorizontal: 14,
-    minHeight: TAP_MIN, fontSize: 22, fontWeight: "800", color: "#0f172a",
-    backgroundColor: "#fff", marginTop: 6,
-  },
+    vehicleInput: {
+      borderWidth: 1, borderColor: t.color.border, borderRadius: t.radius.lg, paddingHorizontal: t.space.xxl,
+      minHeight: t.tapMin, fontSize: t.type.titleLg, fontWeight: "800", color: t.color.text,
+      backgroundColor: t.color.surface, marginTop: t.space.sm,
+    },
 
-  product: {
-    borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, padding: 12,
-    marginTop: 8, backgroundColor: "#fff", minHeight: TAP_MIN, justifyContent: "center",
-  },
-  productActive: { backgroundColor: "#0f766e", borderColor: "#0f766e" },
-  productName: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
-  productMeta: { fontSize: 13, color: "#64748b", marginTop: 2 },
-  onDark: { color: "#fff" },
+    product: {
+      borderWidth: 1, borderColor: t.color.border, borderRadius: t.radius.lg, padding: t.space.xl,
+      marginTop: t.space.md, backgroundColor: t.color.surface, minHeight: t.tapMin, justifyContent: "center",
+    },
+    productActive: { backgroundColor: t.color.primary, borderColor: t.color.primary },
+    productName: { fontSize: t.type.subhead, fontWeight: "700", color: t.color.text },
+    productMeta: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: 2 },
+    onDark: { color: t.color.onPrimary },
 
-  fieldBlock: { marginTop: 14 },
-  fieldHead: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    marginBottom: 6,
-  },
-  fieldBox: {
-    borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 10, paddingHorizontal: 14,
-    minHeight: TAP_MIN, backgroundColor: "#fff", justifyContent: "center",
-  },
-  fieldBoxActive: { borderColor: "#0f172a", borderWidth: 3 },
-  // Locked: background AND border both change, so it reads at a glance in
-  // daylight rather than depending on a small icon.
-  fieldBoxLocked: { backgroundColor: "#fef3c7", borderColor: "#b45309", borderWidth: 3 },
-  fieldValue: { fontSize: 26, fontWeight: "800", color: "#0f172a" },
-  fieldPlaceholder: { color: "#94a3b8", fontSize: 18, fontWeight: "600" },
+    fieldBlock: { marginTop: t.space.xxl },
+    fieldHead: {
+      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+      marginBottom: t.space.sm,
+    },
+    fieldBox: {
+      borderWidth: 1, borderColor: t.color.border, borderRadius: t.radius.lg, paddingHorizontal: t.space.xxl,
+      minHeight: t.tapMin, backgroundColor: t.color.surface, justifyContent: "center",
+    },
+    fieldBoxActive: { borderColor: t.color.text, borderWidth: 3 },
+    // Locked: background AND border both change, so it reads at a glance in
+    // daylight rather than depending on a small icon.
+    fieldBoxLocked: { backgroundColor: t.color.warningBg, borderColor: t.color.warning, borderWidth: 3 },
+    fieldValue: { fontSize: t.type.headline, fontWeight: "800", color: t.color.text },
+    fieldPlaceholder: { color: t.color.placeholder, fontSize: t.type.subhead, fontWeight: "600" },
 
-  lockBtn: {
-    minHeight: 44, paddingHorizontal: 16, borderRadius: 10, backgroundColor: "#e2e8f0",
-    alignItems: "center", justifyContent: "center",
-  },
-  lockBtnOn: { backgroundColor: "#b45309" },
-  lockBtnText: { fontSize: 14, fontWeight: "800", color: "#334155" },
-  lockBtnTextOn: { color: "#fff" },
-  lockHint: { fontSize: 12, color: "#78350f", marginTop: 6, fontWeight: "600" },
+    lockBtn: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.x3, borderRadius: t.radius.lg, backgroundColor: t.color.borderSoft,
+      alignItems: "center", justifyContent: "center",
+    },
+    lockBtnOn: { backgroundColor: t.color.warning },
+    lockBtnText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.neutralFg },
+    lockBtnTextOn: { color: t.color.onPrimary },
+    lockHint: { fontSize: t.type.body, color: t.color.warningFg, marginTop: t.space.sm, fontWeight: "600" },
 
-  computed: { fontSize: 26, fontWeight: "800", color: "#0f172a", marginTop: 4 },
-  lineAmount: { fontSize: 30, fontWeight: "900", color: "#0f766e", marginTop: 4 },
+    computed: { fontSize: t.type.headline, fontWeight: "800", color: t.color.text, marginTop: t.space.xs },
+    lineAmount: { fontSize: t.type.display, fontWeight: "900", color: t.color.primary, marginTop: t.space.xs },
 
-  err: { color: "#b91c1c", fontSize: 13, marginTop: 6, fontWeight: "600" },
-  note: { color: "#b45309", fontSize: 13, marginTop: 6, fontWeight: "600" },
-  empty: { color: "#64748b", fontSize: 15, marginTop: 20, textAlign: "center" },
+    err: { color: t.color.danger, fontSize: t.type.body, marginTop: t.space.sm, fontWeight: "600" },
+    note: { color: t.color.warning, fontSize: t.type.body, marginTop: t.space.sm, fontWeight: "600" },
+    empty: { color: t.color.textSubtle, fontSize: t.type.bodyLg, marginTop: t.space.x4, textAlign: "center" },
 
-  addBtn: {
-    marginTop: 18, minHeight: TAP_MIN, borderRadius: 12, backgroundColor: "#0f766e",
-    alignItems: "center", justifyContent: "center",
-  },
-  addText: { color: "#fff", fontWeight: "800", fontSize: 18 },
-  cancelBtn: {
-    marginTop: 18, minHeight: TAP_MIN, borderRadius: 12, paddingHorizontal: 20,
-    backgroundColor: "#e2e8f0", alignItems: "center", justifyContent: "center",
-  },
-  cancelText: { color: "#334155", fontWeight: "700", fontSize: 16 },
-  dim: { opacity: 0.4 },
+    addBtn: {
+      marginTop: 18, minHeight: t.tapMin, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
+      alignItems: "center", justifyContent: "center",
+    },
+    addText: { color: t.color.onPrimary, fontWeight: "800", fontSize: t.type.subhead },
+    cancelBtn: {
+      marginTop: 18, minHeight: t.tapMin, borderRadius: t.radius.xl, paddingHorizontal: t.space.x4,
+      backgroundColor: t.color.borderSoft, alignItems: "center", justifyContent: "center",
+    },
+    cancelText: { color: t.color.neutralFg, fontWeight: "700", fontSize: t.type.subhead },
+    dim: { opacity: 0.4 },
 
-  linesHead: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    marginTop: 28,
-  },
-  clearBtn: { minHeight: 44, paddingHorizontal: 12, justifyContent: "center" },
-  clearText: { color: "#b91c1c", fontWeight: "700", fontSize: 14 },
+    linesHead: {
+      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+      marginTop: t.space.x5,
+    },
+    clearBtn: { minHeight: t.tapMin, paddingHorizontal: t.space.xl, justifyContent: "center" },
+    clearText: { color: t.color.danger, fontWeight: "700", fontSize: t.type.bodyLg },
 
-  line: {
-    backgroundColor: "#fff", borderRadius: 12, padding: 12, marginTop: 10,
-    borderWidth: 1, borderColor: "#e2e8f0",
-  },
-  lineEditing: { borderColor: "#0f766e", borderWidth: 2 },
-  lineTop: { flexDirection: "row", alignItems: "center" },
-  lineNo: {
-    width: 28, height: 28, borderRadius: 14, backgroundColor: "#0f172a", color: "#fff",
-    textAlign: "center", lineHeight: 28, fontWeight: "800", fontSize: 14, overflow: "hidden",
-  },
-  lineName: { flex: 1, marginLeft: 10, fontSize: 17, fontWeight: "700", color: "#0f172a" },
-  lineAmt: { fontSize: 22, fontWeight: "900", color: "#0f766e" },
-  lineMeta: { fontSize: 13, color: "#64748b", marginTop: 6 },
-  lineBtns: { flexDirection: "row", gap: 10, marginTop: 10 },
-  lineBtn: {
-    flex: 1, minHeight: 48, borderRadius: 10, backgroundColor: "#f1f5f9",
-    alignItems: "center", justifyContent: "center",
-  },
-  lineBtnText: { fontWeight: "700", color: "#334155", fontSize: 15 },
-  lineBtnDanger: { backgroundColor: "#fee2e2" },
-  lineBtnDangerText: { color: "#b91c1c" },
+    line: {
+      backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xl, marginTop: t.space.lg,
+      borderWidth: 1, borderColor: t.color.borderSoft,
+    },
+    lineEditing: { borderColor: t.color.primary, borderWidth: 2 },
+    lineTop: { flexDirection: "row", alignItems: "center" },
+    lineNo: {
+      width: 28, height: 28, borderRadius: 14, backgroundColor: t.color.text, color: t.color.onPrimary,
+      textAlign: "center", lineHeight: 28, fontWeight: "800", fontSize: t.type.bodyLg, overflow: "hidden",
+    },
+    lineName: { flex: 1, marginLeft: t.space.lg, fontSize: t.type.subhead, fontWeight: "700", color: t.color.text },
+    lineAmt: { fontSize: t.type.titleLg, fontWeight: "900", color: t.color.primary },
+    lineMeta: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.sm },
+    lineBtns: { flexDirection: "row", gap: t.space.lg, marginTop: t.space.lg },
+    lineBtn: {
+      flex: 1, minHeight: t.tapMin, borderRadius: t.radius.lg, backgroundColor: t.color.surfaceAlt,
+      alignItems: "center", justifyContent: "center",
+    },
+    lineBtnText: { fontWeight: "700", color: t.color.neutralFg, fontSize: t.type.bodyLg },
+    lineBtnDanger: { backgroundColor: t.color.dangerBg },
+    lineBtnDangerText: { color: t.color.danger },
 
-  undoBar: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    backgroundColor: "#0f172a", paddingHorizontal: 16, paddingVertical: 10,
-  },
-  undoText: { color: "#e2e8f0", flex: 1, fontSize: 14 },
-  undoBtn: { minHeight: 44, paddingHorizontal: 16, justifyContent: "center" },
-  undoBtnText: { color: "#5eead4", fontWeight: "800", fontSize: 16 },
+    undoBar: {
+      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+      backgroundColor: t.color.text, paddingHorizontal: t.space.x3, paddingVertical: t.space.lg,
+    },
+    undoText: { color: t.color.borderSoft, flex: 1, fontSize: t.type.bodyLg },
+    undoBtn: { minHeight: t.tapMin, paddingHorizontal: t.space.x3, justifyContent: "center" },
+    undoBtnText: { color: t.color.tealSoft, fontWeight: "800", fontSize: t.type.subhead },
 
-  totalBar: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#fff",
-    borderTopWidth: 1, borderTopColor: "#e2e8f0",
-  },
-  totalLabel: { fontSize: 13, color: "#64748b", fontWeight: "700" },
-  totalValue: { fontSize: 30, fontWeight: "900", color: "#0f172a" },
-  saveBtn: {
-    minHeight: TAP_MIN, paddingHorizontal: 28, borderRadius: 12,
-    backgroundColor: "#0f766e", alignItems: "center", justifyContent: "center",
-  },
-  saveText: { color: "#fff", fontWeight: "900", fontSize: 18 },
-});
+    totalBar: {
+      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+      paddingHorizontal: t.space.x3, paddingVertical: t.space.lg, backgroundColor: t.color.surface,
+      borderTopWidth: 1, borderTopColor: t.color.borderSoft,
+    },
+    totalLabel: { fontSize: t.type.body, color: t.color.textSubtle, fontWeight: "700" },
+    totalValue: { fontSize: t.type.display, fontWeight: "900", color: t.color.text },
+    saveBtn: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.x5, borderRadius: t.radius.xl,
+      backgroundColor: t.color.primary, alignItems: "center", justifyContent: "center",
+    },
+    saveText: { color: t.color.onPrimary, fontWeight: "900", fontSize: t.type.subhead },
+  });
+}

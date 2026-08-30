@@ -52,7 +52,9 @@
     "prove:prices": "npm run build && node dist/proof/provePrices.js",
     "prove:settings": "npm run build && node dist/proof/proveSettings.js",
     "prove:account": "npm run build && node dist/proof/proveAccount.js",
-    "prove:dashboard": "npm run build && node dist/proof/proveDashboard.js"
+    "prove:dashboard": "npm run build && node dist/proof/proveDashboard.js",
+    "prove:theme": "npm run build && node dist/proof/proveTheme.js",
+    "prove:tapaudit": "npm run build && node dist/proof/proveTapAudit.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

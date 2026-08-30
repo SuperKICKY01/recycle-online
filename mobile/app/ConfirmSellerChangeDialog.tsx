@@ -15,10 +15,12 @@
  * lines already entered. It never says "prices will update"; it says what does
  * and does not move.
  */
+import { useMemo } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { SellerChangeImpact } from "../src/cart/cart";
 import type { Seller } from "./api";
+import { useTheme, type ThemeTokens } from "./theme";
 
 /**
  * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
@@ -44,6 +46,8 @@ export function ConfirmSellerChangeDialog({
   onCancel,
   onConfirm,
 }: Props) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <View style={styles.backdrop}>
       <View style={styles.card}>
@@ -121,34 +125,36 @@ export function ConfirmSellerChangeDialog({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1, backgroundColor: "rgba(15,23,42,0.6)", justifyContent: "center", padding: 20,
-  },
-  card: { backgroundColor: "#fff", borderRadius: 16, padding: 20, maxHeight: "88%" },
-  title: { fontSize: 20, fontWeight: "900", color: "#0f172a", marginBottom: 12 },
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    backdrop: {
+      flex: 1, backgroundColor: t.color.overlay, justifyContent: "center", padding: t.space.x4,
+    },
+    card: { backgroundColor: t.color.surface, borderRadius: 16, padding: t.space.x4, maxHeight: "88%" },
+    title: { fontSize: t.type.title, fontWeight: "900", color: t.color.text, marginBottom: t.space.xl },
 
-  fromTo: { borderTopWidth: 1, borderTopColor: "#e2e8f0", paddingTop: 12 },
-  label: { fontSize: 12, fontWeight: "700", color: "#64748b", marginTop: 8 },
-  who: { fontSize: 18, fontWeight: "800", color: "#64748b" },
-  whoNew: { fontSize: 22, fontWeight: "900", color: "#0f172a" },
+    fromTo: { borderTopWidth: 1, borderTopColor: t.color.borderSoft, paddingTop: t.space.xl },
+    label: { fontSize: t.type.body, fontWeight: "700", color: t.color.textSubtle, marginTop: t.space.md },
+    who: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.textSubtle },
+    whoNew: { fontSize: t.type.titleLg, fontWeight: "900", color: t.color.text },
 
-  scroll: { marginTop: 12 },
-  headline: { fontSize: 14, fontWeight: "900", color: "#0f172a", marginTop: 14 },
-  keep: {
-    fontSize: 14, fontWeight: "800", color: "#065f46", backgroundColor: "#d1fae5",
-    borderRadius: 8, padding: 10, marginTop: 8,
-  },
-  note: { fontSize: 13, color: "#334155", marginTop: 8, fontWeight: "600" },
-  warnLine: {
-    fontSize: 13, color: "#78350f", backgroundColor: "#fef3c7", borderRadius: 8,
-    padding: 10, marginTop: 8, fontWeight: "700",
-  },
+    scroll: { marginTop: t.space.xl },
+    headline: { fontSize: t.type.bodyLg, fontWeight: "900", color: t.color.text, marginTop: t.space.xxl },
+    keep: {
+      fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.successAltFg, backgroundColor: t.color.greenSoft,
+      borderRadius: t.radius.md, padding: t.space.lg, marginTop: t.space.md,
+    },
+    note: { fontSize: t.type.body, color: t.color.neutralFg, marginTop: t.space.md, fontWeight: "600" },
+    warnLine: {
+      fontSize: t.type.body, color: t.color.warningFg, backgroundColor: t.color.warningBg, borderRadius: t.radius.md,
+      padding: t.space.lg, marginTop: t.space.md, fontWeight: "700",
+    },
 
-  buttons: { flexDirection: "row", gap: 12, marginTop: 18 },
-  btn: { flex: 1, minHeight: 60, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  cancel: { backgroundColor: "#e2e8f0" },
-  cancelText: { fontSize: 17, fontWeight: "800", color: "#334155" },
-  confirm: { backgroundColor: "#b45309" },
-  confirmText: { fontSize: 17, fontWeight: "900", color: "#fff" },
-});
+    buttons: { flexDirection: "row", gap: t.space.xl, marginTop: 18 },
+    btn: { flex: 1, minHeight: t.tapMin + t.space.xs, borderRadius: t.radius.xl, alignItems: "center", justifyContent: "center" },
+    cancel: { backgroundColor: t.color.borderSoft },
+    cancelText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
+    confirm: { backgroundColor: t.color.warning },
+    confirmText: { fontSize: t.type.subhead, fontWeight: "900", color: t.color.onPrimary },
+  });
+}

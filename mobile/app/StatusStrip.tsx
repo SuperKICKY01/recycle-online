@@ -19,11 +19,13 @@
  * "พร้อมใช้งาน" (ready) rather than claiming a connection it has not tested.
  * Adding a reachability probe would be a new feature and is out of scope here.
  */
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { statusNotice } from "../src/sync/statusNotice";
 import type { StatusInput, StatusTone } from "../src/sync/statusNotice";
 import { shopTime } from "@recycle/shop-time";
+import { useTheme, type ThemeTokens } from "./theme";
 
 export interface StatusStripProps extends StatusInput {
   lastSyncedAt: string | null;
@@ -49,18 +51,22 @@ interface Tone {
   dot: string;
 }
 
-const TONES: Record<StatusTone, Tone> = {
-  bad: { bg: "#fee2e2", fg: "#7f1d1d", dot: "#b91c1c" },
-  warn: { bg: "#fef3c7", fg: "#78350f", dot: "#b45309" },
-  busy: { bg: "#dbeafe", fg: "#1e3a8a", dot: "#1d4ed8" },
-  good: { bg: "#dcfce7", fg: "#14532d", dot: "#15803d" },
-  idle: { bg: "#f1f5f9", fg: "#334155", dot: "#64748b" },
-};
+function makeTones(t: ThemeTokens): Record<StatusTone, Tone> {
+  return {
+    bad: { bg: t.color.dangerBg, fg: t.color.dangerFg, dot: t.color.danger },
+    warn: { bg: t.color.warningBg, fg: t.color.warningFg, dot: t.color.warning },
+    busy: { bg: t.color.busyBg, fg: t.color.busyFg, dot: t.color.infoStrong },
+    good: { bg: t.color.successBg, fg: t.color.successFg, dot: t.color.success },
+    idle: { bg: t.color.neutralBg, fg: t.color.neutralFg, dot: t.color.textSubtle },
+  };
+}
 
 export function StatusStrip(props: StatusStripProps) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const { lastSyncedAt, onRetryMasterData, onSignIn, ...input } = props;
   const notice = statusNotice(input);
-  const tone = TONES[notice.tone];
+  const tone = makeTones(t)[notice.tone];
   // The action's KIND picks the handler. The view never chooses a label — that
   // arrives with the kind, so "ส่งอีกครั้ง" cannot end up wired to the sign-in.
   const onPress = notice.action?.kind === "sign_in" ? onSignIn : onRetryMasterData;
@@ -95,17 +101,20 @@ export function StatusStrip(props: StatusStripProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  strip: {
-    flexDirection: "row", alignItems: "center", paddingHorizontal: 14,
-    paddingVertical: 8, gap: 8,
-  },
-  dot: { width: 12, height: 12, borderRadius: 6 },
-  text: { flex: 1, fontSize: 13, fontWeight: "800" },
-  time: { fontSize: 12, fontWeight: "700", opacity: 0.85 },
-  action: {
-    minHeight: 36, paddingHorizontal: 12, justifyContent: "center",
-    borderRadius: 8, backgroundColor: "#0f766e",
-  },
-  actionText: { color: "#fff", fontSize: 13, fontWeight: "800" },
-});
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    strip: {
+      flexDirection: "row", alignItems: "center", paddingHorizontal: t.space.xxl,
+      paddingVertical: t.space.md, gap: t.space.md,
+    },
+    // A 12px decorative dot; its radius is half its size, so both stay literal.
+    dot: { width: 12, height: 12, borderRadius: 6 },
+    text: { flex: 1, fontSize: t.type.body, fontWeight: "800" },
+    time: { fontSize: t.type.body, fontWeight: "700", opacity: 0.85 },
+    action: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.xl, justifyContent: "center",
+      borderRadius: t.radius.md, backgroundColor: t.color.primary,
+    },
+    actionText: { color: t.color.onPrimary, fontSize: t.type.body, fontWeight: "800" },
+  });
+}

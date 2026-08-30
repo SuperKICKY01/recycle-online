@@ -38,7 +38,7 @@
  * be re-pricing at the weighbridge (ROADMAP D1). Both absences are enforced by
  * there being no field rather than by anyone remembering.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -55,8 +55,7 @@ import { localSellerCreateNotice } from "../src/master/localSellerCreateNotice";
 import type { LocalCreateButton, LocalCreateTone } from "../src/master/localSellerCreateNotice";
 import { BLANK_SELLER_FORM, localSellerDraftFrom, sellerFormReady } from "../src/master/sellerForm";
 import type { SellerFormFields } from "../src/master/sellerForm";
-
-const TAP_MIN = 56;
+import { useTheme, type ThemeTokens } from "./theme";
 
 /**
  * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
@@ -83,14 +82,19 @@ interface Props {
   onClose: () => void;
 }
 
-const TONES: Record<LocalCreateTone, { bg: string; fg: string; border: string }> = {
-  created: { bg: "#dcfce7", fg: "#14532d", border: "#15803d" },
-  // Red, and not the support alarm: nothing is broken. The device has no code to
-  // spend, and the only fixes are elsewhere — connect, or add at the counter.
-  blocked: { bg: "#fee2e2", fg: "#7f1d1d", border: "#b91c1c" },
-};
+function makeTones(t: ThemeTokens): Record<LocalCreateTone, { bg: string; fg: string; border: string }> {
+  return {
+    created: { bg: t.color.successBg, fg: t.color.successFg, border: t.color.success },
+    // Red, and not the support alarm: nothing is broken. The device has no code to
+    // spend, and the only fixes are elsewhere — connect, or add at the counter.
+    blocked: { bg: t.color.dangerBg, fg: t.color.dangerFg, border: t.color.danger },
+  };
+}
 
 export function AddSellerSheet({ create, held, onPick, onClose }: Props) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
+  const TONES = makeTones(t);
   const [form, setForm] = useState<SellerFormFields>(BLANK_SELLER_FORM);
   const [result, setResult] = useState<CreateLocalSellerResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -242,46 +246,48 @@ export function AddSellerSheet({ create, held, onPick, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: "#f8fafc" },
-  head: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12,
-    backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0",
-  },
-  title: { fontSize: 20, fontWeight: "900", color: "#0f172a" },
-  closeBtn: {
-    minHeight: 48, paddingHorizontal: 20, borderRadius: 10,
-    backgroundColor: "#e2e8f0", alignItems: "center", justifyContent: "center",
-  },
-  closeText: { fontSize: 16, fontWeight: "800", color: "#334155" },
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    fill: { flex: 1, backgroundColor: t.color.background },
+    head: {
+      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+      paddingHorizontal: t.space.x3, paddingTop: 56, paddingBottom: t.space.xl,
+      backgroundColor: t.color.surface, borderBottomWidth: 1, borderBottomColor: t.color.borderSoft,
+    },
+    title: { fontSize: t.type.title, fontWeight: "900", color: t.color.text },
+    closeBtn: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
+      backgroundColor: t.color.borderSoft, alignItems: "center", justifyContent: "center",
+    },
+    closeText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
 
-  body: { padding: 16, paddingBottom: 64 },
+    body: { padding: t.space.x3, paddingBottom: 64 },
 
-  notice: { borderRadius: 12, borderWidth: 2, padding: 12, marginBottom: 16 },
-  noticeHead: { fontSize: 17, fontWeight: "900", marginBottom: 6 },
-  noticeLine: { fontSize: 14, fontWeight: "700", marginTop: 4, lineHeight: 21 },
-  noticeBtn: {
-    minHeight: 48, borderRadius: 10, marginTop: 12,
-    alignItems: "center", justifyContent: "center", paddingHorizontal: 16,
-  },
-  noticeBtnText: { color: "#fff", fontSize: 15, fontWeight: "800" },
+    notice: { borderRadius: t.radius.xl, borderWidth: 2, padding: t.space.xl, marginBottom: t.space.x3 },
+    noticeHead: { fontSize: t.type.subhead, fontWeight: "900", marginBottom: t.space.sm },
+    noticeLine: { fontSize: t.type.bodyLg, fontWeight: "700", marginTop: t.space.xs, lineHeight: 21 },
+    noticeBtn: {
+      minHeight: t.tapMin, borderRadius: t.radius.lg, marginTop: t.space.xl,
+      alignItems: "center", justifyContent: "center", paddingHorizontal: t.space.x3,
+    },
+    noticeBtnText: { color: t.color.onPrimary, fontSize: t.type.bodyLg, fontWeight: "800" },
 
-  field: { marginBottom: 14 },
-  label: { fontSize: 14, fontWeight: "800", color: "#0f172a", marginBottom: 4 },
-  hint: { fontSize: 12, color: "#64748b", fontWeight: "600", marginBottom: 4 },
-  input: {
-    borderWidth: 2, borderColor: "#cbd5e1", borderRadius: 10, paddingHorizontal: 12,
-    minHeight: TAP_MIN, fontSize: 17, fontWeight: "700", color: "#0f172a",
-    backgroundColor: "#fff",
-  },
-  inputTall: { minHeight: 88, textAlignVertical: "top", paddingTop: 10 },
+    field: { marginBottom: t.space.xxl },
+    label: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.text, marginBottom: t.space.xs },
+    hint: { fontSize: t.type.body, color: t.color.textSubtle, fontWeight: "600", marginBottom: t.space.xs },
+    input: {
+      borderWidth: 2, borderColor: t.color.border, borderRadius: t.radius.lg, paddingHorizontal: t.space.xl,
+      minHeight: t.tapMin, fontSize: t.type.subhead, fontWeight: "700", color: t.color.text,
+      backgroundColor: t.color.surface,
+    },
+    inputTall: { minHeight: t.tapMin + t.space.x5, textAlignVertical: "top", paddingTop: t.space.lg },
 
-  save: {
-    minHeight: 60, borderRadius: 12, backgroundColor: "#0f766e",
-    alignItems: "center", justifyContent: "center", marginTop: 8,
-  },
-  saveOff: { opacity: 0.4 },
-  saveText: { color: "#fff", fontWeight: "800", fontSize: 18 },
-  gate: { fontSize: 13, color: "#64748b", fontWeight: "700", textAlign: "center", marginTop: 10 },
-});
+    save: {
+      minHeight: t.tapMin + t.space.xs, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
+      alignItems: "center", justifyContent: "center", marginTop: t.space.md,
+    },
+    saveOff: { opacity: 0.4 },
+    saveText: { color: t.color.onPrimary, fontWeight: "800", fontSize: t.type.subhead },
+    gate: { fontSize: t.type.body, color: t.color.textSubtle, fontWeight: "700", textAlign: "center", marginTop: t.space.lg },
+  });
+}

@@ -7041,6 +7041,24 @@ no count is written into the criterion:
 3. One consistency pass over the existing screen inventory to the bar: `TAP_MIN`
    honoured on every tappable control, one shared presentation layer replacing
    the per-file `StyleSheet` duplication, one vocabulary.
+   **PHASE A DONE 2026-08-30 (P1.23 item 3): the presentation layer, the theme and
+   the tap sweep are built and proven.** `mobile/src/ui/theme.ts` is the pure token
+   set — colours per theme with WCAG ≥4.5 contrast proven from the hex by
+   `prove:theme`, an 8-step type scale with a 13px body floor, spacing, radius, and ONE
+   `TAP_MIN = 56` carrying its recorded reason (the owner's B1 wet-hand-target bar).
+   `app/theme.tsx` is the React-Native glue (`ThemeProvider`/`useTheme`) reading the OS
+   scheme and a device-stored preference. All 18 screen `StyleSheet`s were swept onto the
+   tokens (zero colour/size/tap literal survives; `prove:tapaudit` scans every screen file
+   and is green; both typechecks green; every headless proof green twice with counts
+   unmoved; the change touched only `app/` and the two new `src/ui`/`src/proof` files). A
+   user-selectable theme ships with it — light / dark / follow-system, default
+   follow-system, stored on the DEVICE (SecureStore) and never the server — with its
+   control on the settings screen, shown to every account because it is not a shop
+   setting. `app.json`'s `userInterfaceStyle` moved `light` → `automatic` so
+   follow-system follows the OS; that and dark rendering are device-visible and
+   headless-unprovable, owed to the owner's handset pass. THE THIRD CLAUSE — one
+   vocabulary — is Phase B and is NOT yet done. The current-phase record in
+   `PROJECT_STATUS.md` carries the details and the consolidated handset list.
 4. The shop-owner dashboard and the phone settings surface are drawn — both homed
    on mobile by the owner (2026-08-28/29): S24 homes the dashboard, absorbing the
    existing daily screen as a view inside it, and the S6 extension homes the
@@ -7487,10 +7505,12 @@ path; all are on a clock.
   `ARCHITECTURE.md § 6. Time` "The structural fact".
   *Wakes at:* a tenant in a zone that observes daylight saving. Schema change plus a
   device verification, not a config edit.
-- **The nine unaccountable tuned constants** — none is wrong, none can be safely
+- **The eight unaccountable tuned constants** — none is wrong, none can be safely
   changed. *Wakes when:* one of them needs to move. The trial ledger in
   `PROJECT_STATUS.md § Tuned constants — trial ledger` is what stops that becoming a
-  fitting exercise.
+  fitting exercise. **NINE → EIGHT 2026-08-30 (P1.23 item 3): `TAP_MIN` gained its
+  recorded reason in `mobile/src/ui/theme.ts` and left the set; the OPEN_ITEMS
+  "Eight tuned constants" entry and the PROJECT_STATUS trial ledger changed with it.**
 - **Everything on the out-of-MVP list** — `PROJECT_STATUS.md § What is NOT built`
   "do not build, do not scaffold". *Wakes when:* a shop that is using the product
   asks for one of them, which is the only evidence that has ever been worth having.

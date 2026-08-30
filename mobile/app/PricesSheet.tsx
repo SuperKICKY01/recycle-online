@@ -32,7 +32,7 @@
  * describes, and `npm run prove:sheets` goes red the moment one appears in this
  * directory.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -58,26 +58,29 @@ import type {
   TierPrice,
 } from "../src/master/priceEdit";
 import type { FieldError } from "../src/money/money";
+import { useTheme, type ThemeTokens } from "./theme";
 
-const TONE: Record<PriceTone, { bg: string; fg: string; badge: string }> = {
-  // Only two of these are about a fault, and neither is coloured like an alarm.
-  ready: { bg: "#eff6ff", fg: "#1e3a5f", badge: "#1d4ed8" },
-  readonly: { bg: "#f1f5f9", fg: "#334155", badge: "#64748b" },
-  empty: { bg: "#f1f5f9", fg: "#334155", badge: "#64748b" },
-  session: { bg: "#fef3c7", fg: "#78350f", badge: "#b45309" },
-  forbidden: { bg: "#f1f5f9", fg: "#334155", badge: "#64748b" },
-  offline: { bg: "#f1f5f9", fg: "#334155", badge: "#64748b" },
-  server: { bg: "#f1f5f9", fg: "#334155", badge: "#64748b" },
-  saved: { bg: "#ecfdf5", fg: "#065f46", badge: "#047857" },
-  /*
-   * AMBER, AND NOT GREEN. `stale` is "saved on the server, old on this phone",
-   * which is the one outcome on this screen that can still cost money — the
-   * next bill written here would be priced from the old number and stamped with
-   * the new one. Colouring it like `saved` is exactly the collapse
-   * lessons/correct-classification-can-still-render-as-an-error.md is about.
-   */
-  stale: { bg: "#fef3c7", fg: "#78350f", badge: "#b45309" },
-};
+function makeTone(t: ThemeTokens): Record<PriceTone, { bg: string; fg: string; badge: string }> {
+  return {
+    // Only two of these are about a fault, and neither is coloured like an alarm.
+    ready: { bg: t.color.infoAltBg, fg: t.color.infoAltFg, badge: t.color.infoStrong },
+    readonly: { bg: t.color.neutralBg, fg: t.color.neutralFg, badge: t.color.textSubtle },
+    empty: { bg: t.color.neutralBg, fg: t.color.neutralFg, badge: t.color.textSubtle },
+    session: { bg: t.color.warningBg, fg: t.color.warningFg, badge: t.color.warning },
+    forbidden: { bg: t.color.neutralBg, fg: t.color.neutralFg, badge: t.color.textSubtle },
+    offline: { bg: t.color.neutralBg, fg: t.color.neutralFg, badge: t.color.textSubtle },
+    server: { bg: t.color.neutralBg, fg: t.color.neutralFg, badge: t.color.textSubtle },
+    saved: { bg: t.color.successAltBg, fg: t.color.successAltFg, badge: t.color.successStrong },
+    /*
+     * AMBER, AND NOT GREEN. `stale` is "saved on the server, old on this phone",
+     * which is the one outcome on this screen that can still cost money — the
+     * next bill written here would be priced from the old number and stamped with
+     * the new one. Colouring it like `saved` is exactly the collapse
+     * lessons/correct-classification-can-still-render-as-an-error.md is about.
+     */
+    stale: { bg: t.color.warningBg, fg: t.color.warningFg, badge: t.color.warning },
+  };
+}
 
 /** Which tier is open in the editor. Null means the list is on screen. */
 interface Editing {
@@ -109,9 +112,11 @@ export function PricesSheet({
   onBack,
   onSave,
 }: Props) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const [editing, setEditing] = useState<Editing | null>(null);
 
-  const tone = TONE[screen.tone];
+  const tone = makeTone(t)[screen.tone];
 
   return (
     <View style={styles.fill}>
@@ -204,6 +209,8 @@ function ProductRows({
   editable: boolean;
   onEdit: (tier: TierPrice) => void;
 }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <View style={styles.product}>
       <Text style={styles.code}>{product.code}</Text>
@@ -262,6 +269,8 @@ function TierEditor({
   onCancel: () => void;
   onSave: (price: string) => void;
 }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   const parsed = parseTierPrice(editing.value);
   /*
    * `empty` is not shown as an error. An empty box is where the operator STARTS
@@ -313,6 +322,8 @@ function TierEditor({
  * StatusStrip's, so "ลองอีกครั้ง" cannot end up wired to the sign-in.
  */
 function ActionButton({ action, onPress }: { action: PriceAction; onPress: () => void }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <Pressable style={styles.actionBtn} onPress={onPress}>
       <Text style={styles.actionText}>{action.label}</Text>
@@ -320,69 +331,71 @@ function ActionButton({ action, onPress }: { action: PriceAction; onPress: () =>
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: "#fff" },
-  head: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
-  },
-  title: { fontSize: 20, fontWeight: "700", color: "#0f172a" },
-  closeBtn: { paddingHorizontal: 12, paddingVertical: 6 },
-  closeText: { fontSize: 16, color: "#1d4ed8" },
-  notice: { paddingHorizontal: 16, paddingVertical: 12, gap: 4 },
-  badge: { fontSize: 15, fontWeight: "700" },
-  noticeLine: { fontSize: 14, lineHeight: 20 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  loading: { fontSize: 15, color: "#334155" },
-  list: { padding: 16, gap: 16 },
-  product: { gap: 4, borderBottomWidth: 1, borderBottomColor: "#f1f5f9", paddingBottom: 12 },
-  code: { fontSize: 13, color: "#64748b" },
-  name: { fontSize: 17, fontWeight: "600", color: "#0f172a" },
-  tier: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 4 },
-  grade: { fontSize: 15, fontWeight: "700", color: "#334155", width: 24 },
-  price: { fontSize: 17, color: "#0f172a", flex: 1 },
-  unpriced: { fontSize: 14, color: "#b45309", flex: 1 },
-  editBtn: { paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#eff6ff", borderRadius: 6 },
-  editText: { fontSize: 14, color: "#1d4ed8" },
-  editor: { flex: 1, padding: 16, gap: 12 },
-  editorGrade: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
-  input: {
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 22,
-  },
-  error: { fontSize: 14, color: "#b91c1c" },
-  editorActions: { flexDirection: "row", gap: 12 },
-  cancelBtn: { paddingHorizontal: 16, paddingVertical: 12 },
-  cancelText: { fontSize: 16, color: "#334155" },
-  saveBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#1d4ed8",
-    borderRadius: 8,
-  },
-  saveBtnOff: { backgroundColor: "#94a3b8" },
-  saveText: { fontSize: 16, color: "#fff", fontWeight: "700" },
-  actions: {
-    flexDirection: "row",
-    gap: 12,
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#e2e8f0",
-  },
-  actionBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#e2e8f0",
-    borderRadius: 8,
-  },
-  actionText: { fontSize: 16, color: "#0f172a" },
-});
+function makeStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    fill: { flex: 1, backgroundColor: t.color.surface },
+    head: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: t.space.x3,
+      paddingVertical: t.space.xl,
+      borderBottomWidth: 1,
+      borderBottomColor: t.color.borderSoft,
+    },
+    title: { fontSize: t.type.title, fontWeight: "700", color: t.color.text },
+    closeBtn: { paddingHorizontal: t.space.xl, paddingVertical: t.space.sm },
+    closeText: { fontSize: t.type.subhead, color: t.color.infoStrong },
+    notice: { paddingHorizontal: t.space.x3, paddingVertical: t.space.xl, gap: t.space.xs },
+    badge: { fontSize: t.type.bodyLg, fontWeight: "700" },
+    noticeLine: { fontSize: t.type.bodyLg, lineHeight: 20 },
+    center: { flex: 1, alignItems: "center", justifyContent: "center", gap: t.space.xl },
+    loading: { fontSize: t.type.bodyLg, color: t.color.neutralFg },
+    list: { padding: t.space.x3, gap: t.space.x3 },
+    product: { gap: t.space.xs, borderBottomWidth: 1, borderBottomColor: t.color.divider, paddingBottom: t.space.xl },
+    code: { fontSize: t.type.body, color: t.color.textSubtle },
+    name: { fontSize: t.type.subhead, fontWeight: "600", color: t.color.text },
+    tier: { flexDirection: "row", alignItems: "center", gap: t.space.xl, paddingVertical: t.space.xs },
+    grade: { fontSize: t.type.bodyLg, fontWeight: "700", color: t.color.neutralFg, width: 24 },
+    price: { fontSize: t.type.subhead, color: t.color.text, flex: 1 },
+    unpriced: { fontSize: t.type.bodyLg, color: t.color.warning, flex: 1 },
+    editBtn: { paddingHorizontal: t.space.lg, paddingVertical: t.space.sm, backgroundColor: t.color.infoAltBg, borderRadius: t.radius.sm },
+    editText: { fontSize: t.type.bodyLg, color: t.color.infoStrong },
+    editor: { flex: 1, padding: t.space.x3, gap: t.space.xl },
+    editorGrade: { fontSize: t.type.subhead, fontWeight: "700", color: t.color.text },
+    input: {
+      borderWidth: 1,
+      borderColor: t.color.border,
+      borderRadius: t.radius.md,
+      paddingHorizontal: t.space.xl,
+      paddingVertical: t.space.lg,
+      fontSize: t.type.titleLg,
+    },
+    error: { fontSize: t.type.bodyLg, color: t.color.danger },
+    editorActions: { flexDirection: "row", gap: t.space.xl },
+    cancelBtn: { paddingHorizontal: t.space.x3, paddingVertical: t.space.xl },
+    cancelText: { fontSize: t.type.subhead, color: t.color.neutralFg },
+    saveBtn: {
+      paddingHorizontal: t.space.x3,
+      paddingVertical: t.space.xl,
+      backgroundColor: t.color.infoStrong,
+      borderRadius: t.radius.md,
+    },
+    saveBtnOff: { backgroundColor: t.color.placeholder },
+    saveText: { fontSize: t.type.subhead, color: t.color.onPrimary, fontWeight: "700" },
+    actions: {
+      flexDirection: "row",
+      gap: t.space.xl,
+      padding: t.space.x3,
+      borderTopWidth: 1,
+      borderTopColor: t.color.borderSoft,
+    },
+    actionBtn: {
+      paddingHorizontal: t.space.x3,
+      paddingVertical: t.space.xl,
+      backgroundColor: t.color.borderSoft,
+      borderRadius: t.radius.md,
+    },
+    actionText: { fontSize: t.type.subhead, color: t.color.text },
+  });
+}
