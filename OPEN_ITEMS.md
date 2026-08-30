@@ -220,6 +220,26 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   The block itself is not cleared — the measurement, the three shop shapes, and
   what did and did not move are in the entry directly above this one,
   cross-referenced and deliberately not restated.
+  **AMENDED 2026-08-30 — A NINTH THING, and the count this entry exists for moves
+  again.** The owner added a per-shop STAFF MONEY-VISIBILITY toggle: whether staff
+  see ANY money figure at all — the shop's takings and their own — is a per-shop
+  setting the owner turns on. Its ONLY initial state is OFF; it has NO column
+  today; and it is pulled by the DASHBOARD when that is built, not by this unit
+  (schema is pulled by the feature that needs it — the owner's standing rule).
+  RECORDED, NOT BUILT. So the set is NINE, its ninth member
+  (9) **whether staff see a money figure**.
+  The COUNT is superseded to NINE by this amendment: "EIGHT THINGS" in the heading
+  and "eight per-tenant values" above are the designated count sites it moves.
+  Left VERBATIM and deliberately: the enumeration (1)–(8), and the quoted heading
+  `ROADMAP.md § What the owner has settled` "S16 — THE EIGHT PER-TENANT VALUES ARE STORED BY KIND"
+  — S16's ROADMAP heading is NOT renamed, because a renumber orphans every citation
+  that resolves on it (the section-name-collision hazard `lessons/README.md`
+  records) and it is a settled decision this unit may not touch. The discrepancy —
+  this entry now says NINE while S16's heading still says EIGHT — is recorded on
+  purpose for whoever mints the per-tenant settings model. Separately, item 7 (shop
+  identity) gained storage on 2026-08-30: `tenants.address` and `tenants.phone`
+  landed at migration 0013, so of the nine the schema now holds TWO — item 1's
+  `default_grade` and item 7's address/phone.
 
 - **~~NO STAFF ACCOUNT EXISTS AND THERE IS NO WAY TO CREATE ONE — measured
   2026-08-10, not inferred.~~ — THE SECOND HALF IS CLOSED, THE FIRST STANDS.**
@@ -550,7 +570,7 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   guards themselves are proven. `b8b557f` landed them with the differential run
   green at the time; what is unavailable today is the cheap RE-run, not the
   original observation.
-  **CLOSED IN M4 c2b — 2026-08-29 (unanchored; anchor next pass).** It is a BARE
+  **CLOSED IN M4 c2b — 2026-08-29 (`083d777`).** It is a BARE
   RE-RUN again: `uv run python scripts/prove_seller_code_guards.py` with no
   arguments self-restores a scratch (`recycle_guards_scratch`, from a live dump —
   live read-only) and self-builds a detached worktree at `b8b557f^` (the pinned
@@ -1274,7 +1294,7 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   its 403. **Not this phase's to fix**, and deliberately not swept into it: the
   phase that broke it is closed, and a proof edited inside an unrelated commit is
   a proof nobody reviewed.
-  **REPAIRED IN M4 c2 — 2026-08-29 (unanchored; anchor next pass).** The four
+  **REPAIRED IN M4 c2 — 2026-08-29 (`320d8ee`).** The four
   assertions now describe the D1 gate: R1 drops `POST /sellers` and asserts staff
   CAN create a seller (201), C1 sources its 403 from `POST /uoms` (which keeps
   `require_admin`), and the docstring and cleanup follow. Re-derived at the
@@ -1337,7 +1357,7 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   `alembic_version` against the migration head and refuse with the restore command
   printed — the shape `prove_docno_clock.py` already uses for the LIVE database,
   pointed at a different fact.
-  **CLOSED IN M4 c3 — 2026-08-29 (unanchored; anchor next pass).** Both were
+  **CLOSED IN M4 c3 — 2026-08-29 (`b808fc2`).** Both were
   DROPPED. `recycle_users_scratch`(0007) and `recycle_clock_scratch`(0008) were
   stale with nothing to refresh them; the fresh replacements they were superseded
   by, `recycle_p18b_users` and `recycle_p18b_clock`, were themselves debris and
@@ -1411,7 +1431,7 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   **NOT CLOSED BY P-SHEETFIRSTPRESS, deliberately.** That phase touched three of
   these files for a different defect and left the preset alone in all three; it
   is still owed everywhere except `proveOutbox.ts`.
-  **SWEPT IN M4 c1 — 2026-08-29 (unanchored; anchor next pass).** The preset is
+  **SWEPT IN M4 c1 — 2026-08-29 (`8dffa93`).** The preset is
   now on 24 entrypoints; `proveTime` carries a documented exclusion at its site
   (its `process.exit(code)` overrides `process.exitCode`, so a preset there is
   inert). Per the owner's decision the LATENT files were guarded proactively
@@ -1519,6 +1539,13 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   strip is under the host — without touching the notice, its wording, or any
   screen. Whoever does it should re-read the line number first; this entry's
   predecessor two entries up rotted every one of its own.
+  **CLOSED 2026-08-30 (unanchored; anchor next pass):** `mobile/src/master/sellerCreateNotice.ts`
+  was DELETED at `94a0d47` (`git log --diff-filter=D` re-derived today; the commit's
+  own subject names the act — "the online mint path and its two proofs are
+  deleted"), so the stale comment no longer exists and the *Not done:* rewrite is
+  moot. Its successor `mobile/src/master/localSellerCreateNotice.ts` is a
+  notice-DATA module carrying NO Modal reference (`git grep -n Modal` → no match,
+  positive control confirmed the file was read), so there is nothing to re-home.
 
 - **A UVICORN PAIR HAS BEEN SERVING THIS REPOSITORY'S OWN API ON 127.0.0.1:8137
   SINCE 2026-08-07, RUNNING CODE THAT PREDATES SEVERAL COMMITS — and two of the
@@ -2303,7 +2330,7 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   already had to decline it. *Not done:* it takes no `--database`. *Unblocks:*
   either a flag, or an explicit standing statement that this proof is only ever
   run against live and with the owner's knowledge that it spends a doc_no.
-  **CLOSED IN M4 c2 — 2026-08-29 (unanchored; anchor next pass).** It takes a
+  **CLOSED IN M4 c2 — 2026-08-29 (`320d8ee`).** It takes a
   scratch source now: live is DUMPED read-only, restored into scratch-SOURCE, and
   the marker plus counter bump land there — live is never written. The end cell
   proves live `purchase_bills` and the `doc_no` counter are identical before and
@@ -2786,6 +2813,13 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   The full re-derivation is at `archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md`
   "IS P1.8's DONE WHEN MET? RE-DERIVED HERE, AND THE STEP IS NOT CLOSED BY THIS PHASE".
   NOTHING IS AUTHORISED.
+  **CLOSED 2026-08-30 (unanchored; anchor next pass):** the DONE WHEN was minted
+  2026-08-27 (B1) —
+  `ROADMAP.md § P1.8 — Seller creation from the phone` "P1.8b's DONE WHEN — MINTED 2026-08-27 (B1)"
+  (`rg` for that exact string returns 1 hit) — so P1.8b now carries a criterion of
+  its own and this decision is discharged. The "NOTHING IS AUTHORISED" above was
+  the correct stance for the phase that RAISED it; a later phase (B1), not a
+  building phase that would then be measured by it, did the minting.
 - **WHO MAY WEIGH A WALK-IN CREATED BY ANOTHER OPERATOR ON THE SAME DEVICE,
   BEFORE IT SYNCS — an OPEN product question, recorded 2026-08-27 (P1.23 c3) with
   a SAFE default already in place.** The picker's `listForPicker` is
@@ -3419,7 +3453,7 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   and whether dumps get a retention window. Both become real questions at
   `R3`, when backups start running unattended and landing off-site.
   **SCRATCH-DB DISPOSABILITY DECIDED FOR THESE 18 IN M4 c3 — 2026-08-29
-  (unanchored; anchor next pass); the dumps / backup-retention half is untouched
+  (`b808fc2`); the dumps / backup-retention half is untouched
   and stays for R3 / P3.8.** The owner decided (M4 c3) that CONFIRMED-DISPOSABLE
   scratch databases may be dropped and UNCERTAIN ones kept. Re-derived against
   `pg_database`: 20 non-template databases down to 9. Each drop was measured FIRST
@@ -3541,6 +3575,24 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   `ROADMAP.md § P1.16` needs before it draws the shop-settings surface it took as
   scope on 2026-08-18 — a setting the yard can read is a different screen from
   one it cannot.
+  **CLOSED 2026-08-30 by the owner:** the tier STANDS — `GET /shop` staff-readable,
+  `PATCH /shop` admin-only — as the precedent the next route over `tenants`
+  inherits. NON-CONFLICT WITH D1 (staff see no money figure): a grade is a PRICING
+  INPUT, not a money figure, so a staff `GET /shop` returning `default_grade`,
+  `address` and `phone` reveals no takings, and D1 does not revoke this tier. The
+  2026-08-30 unit widened both routes with `address` and `phone` under the same
+  tier, unchanged.
+- **Whether the shop NAME should become editable via `PATCH /shop` — the owner's,
+  and NOTHING IS AUTHORISED.** Raised 2026-08-30 while building the settings
+  surface (P1.23 item 4, unit 1), where a phase brief contradicted itself on it
+  and the owner settled READ-ONLY. `9ad225e` records the standing decision that
+  `name` is not editable: *"a shop's name is on printed slips and its code is
+  immutable by decision, so changing either is a provisioning act rather than a
+  setting"* (commit body). The 2026-08-30 unit honours it — `ShopUpdate` accepts
+  `default_grade`, `address`, `phone` and refuses a `name` key (422
+  `extra_forbidden`), and the settings screen shows `name` read-only. Whether the
+  owner now wants `name` editable (a rebrand, a typo fix) is his to settle; until
+  then the immutability stands. *Unblocks:* nothing built waits on it.
 - **Thousands separators in money** — deliberately absent; `128400.00`
   is genuinely harder to read than `128,400.00`. *Not done:* it is the
   owner's call, and grouping is one edit from splitting a money string
@@ -4107,6 +4159,16 @@ with no feature of its own.
 
 ## Documentation
 
+- **`lessons/proof-must-run-twice.md`'s FIFTH amendment says `prove_reconcile.py`
+  "has been red ever since" the 2026-08-03 rebuild — that claim is now STALE.
+  Found 2026-08-30, NOT REPAIRED.** Re-measured this pass, twice with no reseed:
+  `python scripts/prove_reconcile.py --from <fresh 0013 backup> --database recycle_recon_scratch`
+  exits 0 both times (failures: 0, skipped: 1 — the normalise claim, correctly
+  skipped over a clean backup). The tenant-count expectations the amendment names
+  as hardcoded (46, `T0`=91) are DERIVED AT RUNTIME now — the run prints "tenants
+  in copy: 4 ... derived from this number, at runtime". Not repaired here:
+  correcting a lesson's amendment is not a lesson this phase owed; recorded so a
+  reader trusting "red ever since" is not misled.
 - **`CLAUDE.md § Machine footguns` SAYS `lessons/README.md` IS THE ONE FILE IN
   `lessons/` WHOSE WORKING-TREE COPY CARRIES CRLF. THAT CLAUSE IS NOW FALSE.
   Measured 2026-08-25 at the P1.8b MOBILE boundary. `CLAUDE.md` and `EVIDENCE.md`

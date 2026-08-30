@@ -1702,27 +1702,52 @@ async def top_up_seller_code_reservations(
 # rather than a setting; this route exposes only what a shop is meant to decide
 # for itself day to day.
 # ---------------------------------------------------------------------------
+# The shop's own address and phone, edited through PATCH /shop. The same KIND of
+# hand-typed field as a seller's, so the same bounds -- 500 and 32 -- which
+# migration 0013 mirrors as ck_tenants_address_len / ck_tenants_phone_len so the
+# column refuses exactly what this refuses
+# (lessons/edge-must-reject-what-the-column-rounds.md). NO strip_whitespace and NO
+# min_length, unlike the seller `Address` and `Phone`: a settings field is cleared
+# by sending null (below), so "" is not overloaded to mean "clear", and nothing
+# typed here is silently altered.
+ShopAddress = Annotated[str, StringConstraints(max_length=500)]
+ShopPhone = Annotated[str, StringConstraints(max_length=32)]
+
+
 class ShopUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    # Explicit null CLEARS it, which must be possible: a shop that starts
-    # grading its sellers takes the default away, and its bills go back to the
-    # resolvable 424 rather than being priced off a stale shop-wide tier.
+    # PARTIAL. An omitted field is left untouched (_changes uses
+    # model_dump(exclude_unset=True)); an explicit null CLEARS the field, which
+    # must be possible for each: a shop that starts grading its sellers takes the
+    # default away (its bills go back to the resolvable 424 rather than a stale
+    # shop-wide tier), and a shop may erase an address or phone it no longer wants
+    # printed. `name` and `code` are NOT here: a shop's name is on printed slips
+    # and its code is immutable by decision (9ad225e), so changing either is a
+    # provisioning act, not a setting -- a `name` key is therefore a 422 under
+    # extra="forbid".
     default_grade: Grade | None = None
+    address: ShopAddress | None = None
+    phone: ShopPhone | None = None
 
 
-_SHOP_NULLABLE = frozenset({"default_grade"})
+_SHOP_NULLABLE = frozenset({"default_grade", "address", "phone"})
 
 
 async def _read_shop(conn: Any) -> dict:
     # No WHERE and no tenant_id: the tenants policy is FORCED and this connection
-    # carries SET LOCAL app.tenant_id, so exactly one row is visible.
+    # carries SET LOCAL app.tenant_id, so exactly one row is visible. Nothing in
+    # this row names a person -- it is the shop's own identity and its own choices.
     row = (
-        await conn.execute(text("SELECT id, name, default_grade FROM tenants"))
+        await conn.execute(
+            text("SELECT id, name, default_grade, address, phone FROM tenants")
+        )
     ).mappings().one()
     return {
         "id": str(row["id"]),
         "name": row["name"],
         "default_grade": row["default_grade"],
+        "address": row["address"],
+        "phone": row["phone"],
     }
 
 
@@ -1732,8 +1757,8 @@ async def get_shop(principal: Principal = Depends(get_principal)) -> dict:
 
     Readable by STAFF as well as admin, deliberately: the yard app needs to know
     whether a default grade exists to explain a 424 it might otherwise present
-    as the seller's fault. Nothing here is sensitive -- it is the shop's own
-    name and its own choice.
+    as the seller's fault. Nothing here is sensitive and nothing names a person
+    -- it is the shop's own name, address, phone and grade choice.
     """
     async with tenant_connection(principal.tenant_id) as conn:
         return await _read_shop(conn)
@@ -1743,21 +1768,28 @@ async def get_shop(principal: Principal = Depends(get_principal)) -> dict:
 async def update_shop(
     body: ShopUpdate, principal: Principal = Depends(require_admin)
 ) -> dict:
-    """Set the shop's default grade, or clear it.
+    """Set the shop's default grade, address or phone -- or clear any of them.
 
-    ADMIN ONLY, where GET is not: this decides how every ungraded seller's bill
-    is priced, for the whole shop, and it is exactly the kind of standing choice
-    the yard must not be able to make while a load is on the scale.
+    ADMIN ONLY, where GET is not: the default grade decides how every ungraded
+    seller's bill is priced, for the whole shop, and address and phone are the
+    shop's printed identity -- exactly the standing choices the yard must not be
+    able to make while a load is on the scale. PARTIAL: only the fields sent are
+    changed (see ShopUpdate).
     """
     changes = _changes(body, nullable=_SHOP_NULLABLE)
+    # Only the fields the caller sent, as a dynamic SET -- the same shape
+    # _update_row builds, and the keys are literals from ShopUpdate (extra="forbid"
+    # so model_dump cannot produce a key outside {default_grade, address, phone}),
+    # never caller strings.
+    assignments = ", ".join(f"{col} = :{col}" for col in changes)
     async with tenant_connection(principal.tenant_id) as conn:
         # UPDATE with no WHERE, for the same reason _read_shop has none: RLS
         # scopes it to the caller's single row. Asserting the rowcount is what
         # turns "the policy is doing its job" from an assumption into a check --
         # 0 would mean no tenant context and 2 would mean the policy is gone.
         result = await conn.execute(
-            text("UPDATE tenants SET default_grade = :g"),
-            {"g": changes["default_grade"]},
+            text(f"UPDATE tenants SET {assignments}"),
+            changes,
         )
         if result.rowcount != 1:
             raise _invalid(

@@ -208,7 +208,7 @@ here only because "exactly ten tables" is a claim the next session re-derives wi
 
 | table | what it is for | shape worth knowing |
 |---|---|---|
-| `tenants` | one row per shop; the unit a licence would attach to | `(id, name, created_at)` and nothing else — no address, no phone. **No endpoint reads it** |
+| `tenants` | one row per shop; the unit a licence would attach to | `(id, name, created_at)` and nothing else — no address, no phone. **No endpoint reads it** <br>**Superseded 2026-08-30 (unanchored; anchor next pass):** re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone)` — `default_grade` (migration 0010), `seller_code_target_holding` (0012), `address`+`phone` (0013). It IS read and written: `GET /shop` returns it (staff-readable) and `PATCH /shop` writes `default_grade`/`address`/`phone` (admin-only), so "no endpoint reads it" went false at `9ad225e`. `name` stays immutable-by-decision (`9ad225e`). |
 | `users` | authentication, not an employee master | `tenant_id NOT NULL`; `role` CHECK 2 values; `token_version` (0005). No `is_active`, so a session can be revoked but an account cannot be locked |
 | `uoms` | units of measure (kg, crate, piece) | `(code, name)` + `is_active` |
 | `product_categories` | paper, steel, copper … | `(code, name)` + `is_active` |

@@ -2479,8 +2479,8 @@ the outstanding work is partitioned by what each piece waits on:
   GATES, the server criteria proven on a scratch database at P1.8b SERVER.
 
 When all of these are green at their stated cost, P1.8b is DONE. **NOT PINNED TO
-A SHA:** this block ships in the B1 commit, so HEAD names the commit that does
-not contain it; the date stands, anchor it in a later pass
+A SHA:** this block ships in the B1 commit (`c4fb442`), so HEAD names the commit
+that does not contain it; the date stands, anchor it in a later pass
 (`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT").
 
 **P1.8b — OFFLINE SELLER CREATION, AND IT IS A SUBSYSTEM RATHER THAN A
@@ -4619,6 +4619,16 @@ the owner's call.** Two clauses:
   transcript. And "whatever else the slip carries" cannot be satisfied by any
   request today: `tenants` still has no address and no phone, so there is nothing
   else to return.
+
+  **Superseded 2026-08-30 (unanchored; anchor next pass):** the server half of the
+  shop-identity content — `address` and `phone` on `tenants` — landed in this
+  commit (migration 0013; `GET /shop` returns them staff-readable, `PATCH /shop`
+  writes them admin-only), so "`tenants` still has no address and no phone" above
+  is now FALSE. Tax id and licence number are explicitly NOT pulled — they belong
+  to P1.1 (unscheduled) — because inventing a column no surface writes is the
+  schema drift `lessons/schema-audit.md` refuses. The phone (mobile) settings
+  SCREEN that edits these is this brief's Phase 2: headless-proven, with the
+  on-device pass owed (the owner's).
 
 **SCOPE, WIDENED 2026-08-18: THIS STEP OWNS THE SHOP-SETTINGS SURFACE. Nothing is
 scheduled here and no step is minted.** `tenants` now carries a value a shop is
@@ -6930,6 +6940,10 @@ the cause; calm offline states; one consistent vocabulary. NOT animation,
 branding, onboarding tours, or consumer-app polish. Order of work: recorded
 defects first, deferred drawings second, one consistency pass last. **The bar is
 the owner's and can be raised or lowered; this records where it stands.**
+**Superseded 2026-08-30 (unanchored; anchor next pass):** S23 (2026-08-28) RAISED
+this bar — the mobile program's completion bar is now a COMMERCIAL-GRADE GENERAL
+APP, not a 5am yard tool alone (§ What the owner has settled). The B1 wording
+above is kept VERBATIM as the record of where the bar stood at B1.
 
 **Depends on:**
 - The internals each surface reads — the seller kind, the park and the reserve
@@ -6963,6 +6977,13 @@ no count is written into the criterion:
    fed from the unfiltered total while queue health uses the owner-filtered one
    (`archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md § The two on-screen unsent counts still disagree`) —
    reconciled to one number the operator can act on.
+   **DONE 2026-08-30 (recording an earlier fix; unanchored, anchor next pass):**
+   all three defects were fixed at `4dd00bb` (2026-08-27 — "fix(P1.23 c1): the save
+   confirmation stops contradicting itself, the add-seller refusal names a role not
+   a permission, and the already-fixed unsent counts close by supersession";
+   ancestor of HEAD, re-derived). The `mobile/src/master/sellerCreateNotice.ts`
+   named above was DELETED at `94a0d47`, so its `forbidden`-sentence rewrite is in
+   the file's successor, not there.
 2. The P1.8b seller surfaces are drawn and their criteria close: the picker
    union of the cache and the unsettled local rows, the four reserve-level
    sentences with their tone mapping and the compile cell on a call site that
@@ -6977,14 +6998,36 @@ no count is written into the criterion:
    settings surface, which also ships on the desktop. The "IF" is settled; these
    are no longer conditional. Their SHAPE stays with this step; M6 recorded only
    the homing, not the design.
+   **DECIDED 2026-08-30 (records the owner's decisions; designs nothing, fixes no
+   menu position):**
+   - **Staff see NO money figure** — not the shop's, not their own. Money
+     visibility is a per-shop owner-controlled toggle whose only initial state is
+     OFF, has no column today, is pulled by the DASHBOARD under S17, and is NOT
+     built by this unit; recorded at
+     `OPEN_ITEMS.md § Blocking one real paying shop`.
+   - **Dashboard v1 shape accepted, with three corrections:** (i) VOIDS are a
+     STATE / filter crossing every dimension, not a fourth axis; (ii) every money
+     figure NAMES its price basis — a `unit_price` sum is what the shop PAID, a
+     `list_price` comparison is a separately-labelled figure, and their difference
+     is the override signal; (iii) the cash close is P1.19 and stays APART. Daily
+     figures open the dashboard PRE-FILTERED to today, ONE screen; its menu
+     POSITION is this rework's to decide and is deliberately not fixed here.
+   - **Settings v1 = shop name + `default_grade`** (both storing today), with
+     `address` and `phone` pulled from P1.16 and landed here (migration 0013). The
+     grade control offers `default_grade` ONLY, its values from ONE module (never
+     hardcoded in a view). `name` stays read-only — immutable by decision
+     (`9ad225e`).
+   - **Account surface = profile + change-own-password**, no username self-edit.
+     Theme is reserved for item 3 (a control-slot only). A store-compliance surface
+     is NOT built now.
 
 **WHAT THIS DOES NOT INCLUDE, said before it is built:** the camera screens
 (S12 — they draw once a binary-payload mechanism exists) and P1.21's
 seller-history drawing (it needs its reading endpoint, which does not exist).
 Both are new screens S10 hands this rework's successor, not this phase.
 
-**NOT PINNED TO A SHA:** this step ships in the B1 commit, so HEAD names the
-commit that does not contain it; the date stands
+**NOT PINNED TO A SHA:** this step ships in the B1 commit (`c4fb442`), so HEAD
+names the commit that does not contain it; the date stands
 (`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT").
 
 ### `GET /users` — landed 2026-08-07, and it is NOT a step in this file

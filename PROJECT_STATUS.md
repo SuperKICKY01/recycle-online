@@ -51,6 +51,11 @@ for A3"), and renaming them would orphan the history. **No new A-number
 will be issued.** Forward work is numbered R1, R2 … in `ROADMAP.md`.
 A3 was never opened; the sign-out work it named is **R1**.
 
+**Superseded 2026-08-30 (unanchored; anchor next pass): this "Last updated"
+date PREDATES every entry beneath it — the maintenance blocks (M0–M6) and the
+P1.8b records below it, and § Current phase, are all newer. Read § Current phase
+for where the work stands; this header is kept only as the record of the R1/R2
+closure it announces.**
 **Last updated: 2026-08-06 — R1 AND R2 BOTH CLOSED. A phone can end its session
 deliberately, and the server can refuse a token it already issued
 (`users.token_version`, migration 0005) — both halves observed on a real
@@ -69,6 +74,35 @@ refreshed by this work — a reader seeing three commits after the last green mu
 not read the green as re-run.**
 
 ## Current phase
+
+**P1.23 item 4, unit 1 — PHASE 1 (SERVER): the shop-settings server half.
+2026-08-30.** No sha (uncommitted at STOP 1; anchor next pass). This is the
+current phase; the maintenance pointer below (M0) is superseded by it as the
+current-phase pointer only — that record stands.
+**BUILT and PROVEN over real HTTP.** Migration `0013_tenants_address_phone.py`
+adds `tenants.address` and `tenants.phone` — `text`, NULLABLE, no default, each
+with a named `char_length` CHECK (500 / 32) matching the API `max_length`
+exactly; applied to dev `recycle` (`alembic current` = 0013, re-read from
+`information_schema`). `server/app/master.py` widens `GET /shop` (staff-readable)
+and `PATCH /shop` (admin-only, PARTIAL — an absent field is untouched, an explicit
+null clears) to carry `address` and `phone`; `name` stays NOT accepted (a `name`
+key is a 422, immutable-by-decision per `9ad225e` — the owner settled READ-ONLY
+where a phase brief had contradicted itself). `default_grade` handling,
+`provision_shop.py`, `bills.py`, RLS and roles are untouched.
+**PROVEN:** `scripts/prove_shop_settings.py` exits 0 TWICE with no reseed (its own
+child uvicorn on a free port, identity-gated on `/openapi.json`; the Thai address
+stored byte-for-byte, hex read from Postgres; the 422 does NOT echo `input` — the
+API-wide validation-error handler redacts it, which CORRECTS the brief that
+expected the echo); one disproof (drop `require_admin` on the PATCH) reddened
+EXACTLY the staff-403 cell and reverted green. `reconcile.py` on live = exit 0 (no
+new relation, so the backup manifest key space is unchanged). Every other proof
+touching `/shop` or `tenants` — `prove_seller_code_guards`, `prove_shop_code`,
+`prove_seller_code_reservations`, `prove_reconcile` — exits 0 TWICE.
+`verify_shared_checks`, `build_all_lessons --check`, and the 14-source citation
+checker (BROKEN held at the floor of 6, CITATIONS +3) are all green.
+**NOT DONE / NOT OBSERVED:** Phase 2 (mobile) — the shop-settings screen and the
+account screen — is a SEPARATE commit and is NOT built here. Its on-device pass is
+the owner's and is UNOBSERVED.
 
 **MAINTENANCE — M0: THE REPOSITORY NOW HAS OFF-MACHINE COPIES. 2026-08-28.**
 Infrastructure maintenance, not a product P-number; it supersedes the P1.8b
@@ -582,6 +616,12 @@ written. The P1.8b GATES record further down this file already states it correct
 ("`refillOnce` has a call site at the end of every pass"); the c4 sentence
 restated an unverified report over a fact the tree AND this same file already
 carried — `CLAUDE.md § Workflow` "A REPORT IS A CLUE, NOT A SOURCE".
+
+**Superseded 2026-08-30 (unanchored; anchor next pass): "further down this file"
+is now WRONG.** The P1.8b GATES record was moved to the cold archive at `f7ab2e0`
+(2026-08-28) and now lives in `archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md`;
+`rg -n GATES PROJECT_STATUS.md` returns only this c4 pointer, so the quoted handle
+resolves in the archive, not here.
 
 **WHAT IS ACTUALLY TRUE.** `refillOnce` is LIVE and is KEPT — it is the
 prerequisite this phase spends, minting the reserved codes an offline create
