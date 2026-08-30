@@ -63,7 +63,13 @@ export const SHEET_KINDS = [
   "add_seller",
   "confirm_seller_change",
   "confirm_save",
-  "daily",
+  /**
+   * P1.23 item 4 unit 3. The owner's dashboard — a period × dimension summary whose
+   * TODAY view holds the day's per-bill list. It ABSORBED the standalone daily
+   * screen (ROADMAP § What the owner has settled, S24), which is why there is no
+   * `daily` kind any more: the ยอดวันนี้ entry opens this.
+   */
+  "dashboard",
   "bills",
   /** P1.9. The shop's own price list, and the one screen that MOVES it. */
   "prices",
@@ -189,11 +195,17 @@ export const SHEET_TRANSITIONS = {
     from: [null],
     site: "App.tsx CartScreen onSubmit",
   },
-  /** Header ยอดวันนี้. */
-  open_daily: {
-    action: { kind: "open", sheet: "daily" },
+  /**
+   * Header ยอดวันนี้ (P1.23 item 4 unit 3). The SAME entry, label and position as
+   * before; it now opens the DASHBOARD, whose today view carries the day's totals,
+   * the dimension bars and the per-bill list the standalone daily screen used to
+   * show (S24 — absorbed). In the body's header, so a sheet covers it and it is
+   * reachable only from the app's own screen.
+   */
+  open_dashboard: {
+    action: { kind: "open", sheet: "dashboard" },
     from: [null],
-    site: "App.tsx openDaily, from the ยอดวันนี้ Pressable",
+    site: "App.tsx openDashboard, from the ยอดวันนี้ Pressable",
   },
   /** The บิลล่าสุด strip. */
   open_bills: {

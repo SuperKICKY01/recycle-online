@@ -101,6 +101,17 @@ import {
 import type { CacheRefresh, PriceProduct, PriceScreen, PriceWrite } from "./src/master/priceEdit";
 import { dailyScreen } from "./src/reports/dailyView";
 import type { DailyScreen as DailyScreenModel } from "./src/reports/dailyView";
+import {
+  dashboardScreen,
+  mayShowDashboardEntry,
+  readMoneyVisible,
+} from "./src/dashboard/dashboardView";
+import { selectCustom, selectPreset } from "./src/dashboard/period";
+import type { PeriodSelection, PresetKind } from "./src/dashboard/period";
+import { STAFF_MONEY_HIDDEN, summaryScreen } from "./src/dashboard/summaryView";
+import type { SummaryScreen } from "./src/dashboard/summaryView";
+import { unsentLine } from "./src/dashboard/unsentLine";
+import type { UnsentLine } from "./src/dashboard/unsentLine";
 import { mayEditPrices, readTokenRole } from "./src/session/deviceRole";
 import type { DeviceRole } from "./src/session/deviceRole";
 import {
@@ -141,6 +152,7 @@ import {
   fetchProducts,
   fetchSellers,
   fetchShop,
+  fetchSummary,
   fetchWhoAmI,
   isUnauthorized,
   login,
@@ -151,7 +163,8 @@ import {
 import { AddSellerSheet } from "./app/AddSellerSheet";
 import { BillsPanel } from "./app/BillsPanel";
 import { CartScreen } from "./app/CartScreen";
-import { DailyScreen } from "./app/DailyScreen";
+import { DashboardScreen } from "./app/DashboardScreen";
+import type { DashboardCustom } from "./app/DashboardScreen";
 import { SettingsScreen } from "./app/SettingsScreen";
 import { AccountScreen } from "./app/AccountScreen";
 import { ConfirmSaveDialog } from "./app/ConfirmSaveDialog";
@@ -308,26 +321,34 @@ export default function App() {
   const [signInNoticeText, setSignInNotice] = useState<string | null>(null);
 
   /*
-   * THE DAY'S MONEY. Three pieces of state and no more.
+   * THE OWNER'S DASHBOARD (P1.23 item 4 unit 3). It absorbed the standalone daily
+   * screen (S24): the ยอดวันนี้ entry opens THIS, and the day's per-bill list is now
+   * the today view's list rather than a screen of its own.
    *
-   * `dailyDate` is the WIRE date being asked for, and null means "whatever the
-   * server calls today" — the normal case, and the one where the client never
-   * computes a date at all. That is deliberate: the server decides the day from
-   * `now()` inside the request transaction, the same clock that stamps
-   * server_received_at, so omitting the parameter is the only way to ask that
-   * cannot be wrong. Stepping to another day sets it from a value the SERVER
-   * sent, never from this handset's clock.
+   * `dashModel` is the rendered model, or null while a request is in flight so a
+   * spinner is a state and not a guess. It is NOT cached across openings: a stale
+   * total on a money screen is the same class of mistake as a stale price.
    *
-   * `daily` is the rendered screen, or null while a request is in flight — so a
-   * spinner is a state rather than the absence of one. It is NOT cached across
-   * openings: a stale total on a money screen is the same class of mistake as a
-   * stale price, and this one has no marker to show its age.
+   * `dashSelection`/`dashBy`/`dashState` are the current period × dimension × state.
+   * The period is computed on the CLIENT from the handset clock (period.ts) —
+   * unlike the daily route, the summary route takes an explicit range, so a preset
+   * like "this month" is a range the client must name.
+   *
+   * `dashDaily` is the /reports/daily result the today view renders as its per-bill
+   * list (admin only); null when not the today view or while loading. `moneyVisible`
+   * is the shop's `staff_money_visible`, read once via GET /shop and updated by the
+   * summary's own answer, used to gate the header entry for staff (E2).
    */
-  // `dailyOpen` is gone: whether the report is on screen is `topSheet(sheets) ===
-  // "daily"`, one value with the other six sheets, for the reason the stack's own
-  // comment gives.
-  const [dailyDate, setDailyDate] = useState<string | null>(null);
-  const [daily, setDaily] = useState<DailyScreenModel | null>(null);
+  const [dashSummary, setDashSummary] = useState<SummaryScreen | null>(null);
+  const [dashUnsent, setDashUnsent] = useState<UnsentLine | null>(null);
+  const [dashSelection, setDashSelection] = useState<PeriodSelection>(() =>
+    selectPreset("today", new Date()),
+  );
+  const [dashBy, setDashBy] = useState<string>("product");
+  const [dashState, setDashState] = useState<string>("live");
+  const [dashDaily, setDashDaily] = useState<DailyScreenModel | null>(null);
+  const [dashCustom, setDashCustom] = useState<DashboardCustom>({ from: "", to: "", error: null });
+  const [moneyVisible, setMoneyVisible] = useState<boolean | null>(null);
   /*
    * THE SHOP SETTINGS SCREEN (P1.23). `settingsScreen` is the rendered model, or
    * null while a request is in flight so a spinner is a state and not a guess.
@@ -985,6 +1006,9 @@ export default function App() {
         // Only NOW does the network get involved, and nothing above depends on
         // it. A failure here leaves the cache exactly as it was and says so.
         if (token !== null) void refreshMaster(token);
+        // Seed the money-visibility toggle for the header entry gate (E2). Offline
+        // it stays null, which hides the dashboard entry for a staff session.
+        if (token !== null) void refreshMoneyVisible();
       } catch (err) {
         setStatus(`เปิดฐานข้อมูลไม่สำเร็จ: ${describe(err)}`);
       }
@@ -1201,38 +1225,92 @@ export default function App() {
     return () => clearInterval(t);
   }, [ready, syncOnce]);
 
-  /* ------------------------------------------------------- daily money -- */
+  /* ------------------------------------------------------- the dashboard -- */
+
+  /*
+   * THE DASHBOARD MODEL IS DERIVED, never stored. It is the pure builder's answer
+   * over (role, the selected period, the summary the server returned, the unsent
+   * line) — so tapping the custom chip re-frames the screen with no fetch, and a
+   * refresh of any input fixes the whole screen at once. Null while the summary is
+   * in flight (dashSummary null) so a spinner is a state, not a guess.
+   */
+  const dashModel = useMemo(
+    () =>
+      dashSummary === null
+        ? null
+        : dashboardScreen({
+            role,
+            selection: dashSelection,
+            summary: dashSummary,
+            unsent: dashUnsent,
+          }),
+    [role, dashSelection, dashSummary, dashUnsent],
+  );
 
   /**
-   * Read the day's money from the server and render it.
-   *
-   * NO TOKEN IS A CASE, NOT A GUARD. A signed-out device gets the screen that
-   * says so and carries a sign-in button, rather than a spinner that never ends
-   * or a silently empty modal — the classification lives in dailyView, so this
-   * function only has to hand it the right outcome.
-   *
-   * A 401 here ALSO ends the device session, exactly like a 401 on a send or on a
-   * master-data refresh: it is one fact about the caller, and three screens
-   * telling three different stories about it is what the 401 lesson is for.
-   * `online` is set true on any answer at all — the server replied, so calling it
-   * an outage was never anything but wrong.
-   *
-   * WHAT IT DELIBERATELY DOES NOT DO is touch `submitRefused`. A 403 here says
-   * this account may not READ the day's money; it says nothing about whether it
-   * may submit bills, and staff submitting bills is the normal arrangement. The
-   * two are different permissions and conflating them would gate the yard's whole
-   * send loop on the owner opening a report.
+   * The `total_amount` of every unsent bill on THIS device (`sync_state` pending or
+   * syncing) — the SAME predicate `unsentBreakdown` partitions, not a new count. The
+   * unsent line (E4) counts and Decimal-sums these; both come from one list so they
+   * reconcile. No store change: `listByState` already exists and refresh() uses it.
    */
-  const loadDaily = useCallback(
-    async (date: string | null): Promise<void> => {
+  const readUnsentAmounts = useCallback(async (): Promise<(string | null)[]> => {
+    const store = billStoreRef.current;
+    if (!store) return [];
+    const [pending, syncing] = await Promise.all([
+      store.listByState("pending"),
+      store.listByState("syncing"),
+    ]);
+    return [...pending, ...syncing].map((b) => b.payload.total_amount);
+  }, []);
+
+  /**
+   * Read the shop's `staff_money_visible` once, for the header entry gate (E2). A
+   * failed or absent read leaves it as it was — offline it stays null, which HIDES
+   * the entry for staff (treated as OFF). Nothing is authorised on it: the route
+   * re-checks the toggle on every request; this only decides whether to draw a
+   * control a staff session would otherwise be refused.
+   */
+  const refreshMoneyVisible = useCallback(async (): Promise<void> => {
+    const t = tokenRef.current;
+    if (t === null) {
+      setMoneyVisible(null);
+      return;
+    }
+    const r = await fetchShop(t);
+    if (r.kind === "ok") setMoneyVisible(readMoneyVisible(r.body));
+  }, []);
+
+  /**
+   * READ THE PERIOD SUMMARY AND, ON THE TODAY VIEW, THE DAY'S BILL LIST.
+   *
+   * The unsent line is LOCAL and available offline; the summary and the bill list
+   * are the server's. A 401 ends the session and offline sets `online` false, as the
+   * daily read did. `submitRefused` is NOT touched: reading a summary is not
+   * submitting a bill (the 403 lesson). The toggle is learned from the summary's own
+   * answer — a `staff_money_hidden` 403 means OFF (so the entry drops next menu
+   * draw), a successful STAFF summary means the owner turned it ON.
+   */
+  const loadDashboard = useCallback(
+    async (selection: PeriodSelection, by: string, state: string): Promise<void> => {
       const t = tokenRef.current;
+      const unsent = unsentLine(await readUnsentAmounts());
+      setDashUnsent(unsent);
       if (t === null) {
-        setDaily(dailyScreen({ kind: "no_token" }));
+        setDashDaily(null);
+        setDashSummary(summaryScreen({ kind: "no_token" }));
         return;
       }
-      setDaily(null);
-      const result = await fetchDailyReport(t, date);
-      setDaily(dailyScreen(result));
+      setDashSummary(null); // spinner while the summary is in flight
+      setDashDaily(null);
+      const result = await fetchSummary(t, {
+        from_date: selection.from_date,
+        to_date: selection.to_date,
+        by,
+        state,
+      });
+      const summary = summaryScreen(result);
+      setDashSummary(summary);
+
       if (result.kind === "unreachable") {
         setOnline(false);
         return;
@@ -1240,25 +1318,77 @@ export default function App() {
       setOnline(true);
       if (result.kind === "http" && result.status === 401) setSessionEnded(true);
       else if (result.kind === "ok") setSessionEnded(false);
+      if (result.kind === "http" && result.status === 403 && result.code === STAFF_MONEY_HIDDEN) {
+        setMoneyVisible(false);
+      } else if (result.kind === "ok" && role === "staff") {
+        setMoneyVisible(true);
+      }
+
+      // The today view (admin/unknown) also shows the day's per-bill list, from the
+      // daily route — which has no own-bills variant, so staff never reach here
+      // (dashboardView.billListSlot returns staff_unavailable for them).
+      if (summary.kind === "summary" && selection.isToday && role !== "staff") {
+        const dailyResult = await fetchDailyReport(t, null);
+        setDashDaily(dailyScreen(dailyResult));
+      }
     },
-    [],
+    [role, readUnsentAmounts],
   );
 
-  const openDaily = useCallback(() => {
-    sheet("open_daily");
-    // Always the server's own today when the screen is opened. A day the owner
-    // stepped to twenty minutes ago is not what they mean by "open the takings".
-    setDailyDate(null);
-    void loadDaily(null);
-  }, [loadDaily, sheet]);
+  const openDashboard = useCallback(() => {
+    // Always today × product × live when opened. A period the owner switched to
+    // earlier is not what they mean by "open the takings".
+    const selection = selectPreset("today", new Date());
+    setDashSelection(selection);
+    setDashBy("product");
+    setDashState("live");
+    setDashCustom({ from: "", to: "", error: null });
+    sheet("open_dashboard");
+    void loadDashboard(selection, "product", "live");
+  }, [loadDashboard, sheet]);
 
-  const pickDay = useCallback(
-    (wireDate: string | null) => {
-      setDailyDate(wireDate);
-      void loadDaily(wireDate);
+  const pickPreset = useCallback(
+    (preset: PresetKind) => {
+      if (preset === "custom") {
+        // Show the date inputs and wait for ดูช่วงนี้; do not fetch until a valid
+        // range is entered. The derived model reflects the custom chip at once.
+        setDashSelection((s) => ({ ...s, preset: "custom" }));
+        return;
+      }
+      const selection = selectPreset(preset, new Date());
+      setDashSelection(selection);
+      setDashCustom({ from: "", to: "", error: null });
+      void loadDashboard(selection, dashBy, dashState);
     },
-    [loadDaily],
+    [loadDashboard, dashBy, dashState],
   );
+
+  const pickBy = useCallback(
+    (by: string) => {
+      setDashBy(by);
+      void loadDashboard(dashSelection, by, dashState);
+    },
+    [loadDashboard, dashSelection, dashState],
+  );
+
+  const pickState = useCallback(
+    (state: string) => {
+      setDashState(state);
+      void loadDashboard(dashSelection, dashBy, state);
+    },
+    [loadDashboard, dashSelection, dashBy],
+  );
+
+  const applyCustom = useCallback(() => {
+    const selection = selectCustom(dashCustom.from.trim(), dashCustom.to.trim(), new Date());
+    if ("kind" in selection) {
+      setDashCustom((c) => ({ ...c, error: selection.reason }));
+      return;
+    }
+    setDashCustom((c) => ({ ...c, error: null }));
+    setDashSelection(selection);
+    void loadDashboard(selection, dashBy, dashState);
+  }, [loadDashboard, dashCustom.from, dashCustom.to, dashBy, dashState]);
 
   /* ------------------------------------------------------------ prices -- */
 
@@ -1708,6 +1838,8 @@ export default function App() {
       // The SAME path the boot and the picker use. Duplicating the fetch here
       // is how the cache write would come to be missing from one of the three.
       await refreshMaster(t);
+      // Seed the money-visibility toggle for the new session's header entry gate (E2).
+      void refreshMoneyVisible();
       // Every backoff on the queue was computed while there was no usable
       // session, which says nothing about the network. Without this the yard
       // signs in, the sign-in succeeds, and then nothing visibly happens for up
@@ -1850,8 +1982,17 @@ export default function App() {
         online: setOnline,
         lastSyncedAt: setLastSyncedAt,
         health: setHealth,
-        daily: setDaily,
-        dailyDate: setDailyDate,
+        // The two legacy report slots now clear the DASHBOARD's rendered state
+        // (P1.23 item 4 unit 3 absorbed the daily screen — S24). Their names stay
+        // because renaming reaches `ClearedSession` and proveSignOut's EXPECTED map,
+        // which is out of this phase; `applyClearedSession` still calls each exactly
+        // once. `daily`'s setter clears the today bill list; `dailyDate` clears the
+        // summary and the unsent line together — every dashboard render value gone.
+        daily: setDashDaily,
+        dailyDate: () => {
+          setDashSummary(null);
+          setDashUnsent(null);
+        },
         /*
          * THE APP NO LONGER HOLDS A `dailyOpen` BOOLEAN, so this field's setter is
          * the stack's. It closes EVERY sheet and not only the report, which is
@@ -2477,26 +2618,31 @@ export default function App() {
               ),
             };
 
-      case "daily":
+      case "dashboard":
         return {
           animation: "slide",
           back: closeTopSheet,
           content: (
-            <DailyScreen
-              screen={daily}
+            <DashboardScreen
+              model={dashModel}
+              daily={dashDaily}
+              custom={dashCustom}
               onClose={closeTopSheet}
-              /* Retry means the SAME day again — not "go back to today", which would
-                 quietly change which number the owner is looking at. */
-              onRetry={() => void loadDaily(dailyDate)}
+              /* Retry re-reads the SAME period; nothing here writes, so nothing replays. */
+              onRetry={() => void loadDashboard(dashSelection, dashBy, dashState)}
               /*
-               * Closes the report to reveal the login screen. It cannot sign in
-               * itself any more, and it deliberately does NOT re-request the day
-               * afterwards: the operator may sign in as somebody else, and a report
-               * that reloaded on its own would put one person's takings on screen
-               * because a different person had just opened the app.
+               * Closes to reveal the login screen. It cannot sign in itself, and it
+               * deliberately does NOT reload afterwards: the operator may sign in as
+               * somebody else, and a dashboard that reloaded on its own would put one
+               * person's takings on screen because another had just opened the app.
                */
               onSignIn={closeTopSheet}
-              onPickDay={pickDay}
+              onPickPreset={pickPreset}
+              onPickBy={pickBy}
+              onPickState={pickState}
+              onCustomFrom={(v) => setDashCustom((c) => ({ ...c, from: v }))}
+              onCustomTo={(v) => setDashCustom((c) => ({ ...c, to: v }))}
+              onApplyCustom={applyCustom}
             />
           ),
         };
@@ -2621,24 +2767,29 @@ export default function App() {
           <View style={styles.headerRow}>
             <Text style={styles.h1}>รับซื้อของเก่า</Text>
             {/*
-              OFFERED TO EVERY ACCOUNT, unlike ยกเลิกบิลนี้ — and the difference
-              is worth stating because the two look like the same decision.
+              THE DASHBOARD ENTRY (P1.23 item 4 unit 3). Same label and position as
+              the old ยอดวันนี้ button; it now opens the dashboard (S24 absorbed the
+              daily screen). GATED, and the gate is E2, not the old "offered to
+              everyone": a staff session sees the entry ONLY when the shop's
+              `staff_money_visible` is on. A control a session would only be refused
+              is never drawn (P1.9's rule) — and unlike the void button's advisory
+              role-staleness, the money toggle is a per-shop setting the server
+              enforces DETERMINISTICALLY, so a staff+off session WOULD be refused
+              (403 staff_money_hidden), definitely, every time.
 
-              The void button is hidden from a staff token because pressing it
-              performs an ACTION that will be refused, leaving a bill claiming a
-              cancellation that never happened. Opening a read-only report costs
-              one refused GET and produces one plain sentence.
-
-              And the token's role is ADVISORY and up to an hour stale, while the
-              server re-reads it from the users row on every request — so a staff
-              user promoted this morning is admin to the server and still `staff`
-              in their token. Gating this on the claim would lock the owner out of
-              their own takings until the token expired. The server is the
-              authority; the 403 path is proven; the button stays.
+              It still FAILS OPEN on an unknown role: admin and an unparseable token
+              both get the entry (mayShowDashboardEntry), because the server re-reads
+              the role every request and a wrongly-offered entry lands on a calm 403,
+              while failing closed would hide an owner's own takings over a token this
+              build merely failed to parse. `moneyVisible` is seeded once from GET
+              /shop and corrected by the summary's own answer; offline it is null,
+              which hides the entry for staff (treated as OFF).
             */}
-            <Pressable style={styles.dailyBtn} onPress={openDaily}>
-              <Text style={styles.dailyBtnText}>ยอดวันนี้ ›</Text>
-            </Pressable>
+            {mayShowDashboardEntry(role, moneyVisible) ? (
+              <Pressable style={styles.dailyBtn} onPress={openDashboard}>
+                <Text style={styles.dailyBtnText}>ยอดวันนี้ ›</Text>
+              </Pressable>
+            ) : null}
             {/*
               PRICES (P1.9). NOT OFFERED TO EVERY ACCOUNT, and it is the ยกเลิกบิลนี้
               rule rather than the ยอดวันนี้ rule above — the paragraph beside that

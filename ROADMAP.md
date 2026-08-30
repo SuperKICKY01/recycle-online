@@ -350,8 +350,26 @@ set.** None mints a step of its own; each rides the step named:
   classification); the staff-money-visibility column it needed
   (`tenants.staff_money_visible`, migration 0014) is pulled and its route gate built
   (staff 403 off, own-rows-only on — the advisor's reading). `/reports/daily` and
-  `mobile/app/DailyScreen.tsx` are untouched; the phone's dashboard is unit 3. No
-  sha (uncommitted; anchor next pass). See `PROJECT_STATUS.md § Current phase`.
+  `mobile/app/DailyScreen.tsx` are untouched; the phone's dashboard is unit 3.
+  **SUPERSEDED 2026-08-31 (unit 3): `mobile/app/DailyScreen.tsx` was DELETED — its
+  per-bill list is now `mobile/app/BillList.tsx`, its live sibling, inside the
+  dashboard's today view; `/reports/daily` and `dailyView.ts` remain.**
+  Committed at `46a18b4` (anchored 2026-08-31 in the unit-3 pass).
+  See `PROJECT_STATUS.md § Current phase`.
+  **DECIDED 2026-08-31 (the owner adopted the advisor's recommendations):** E1–E5 are
+  now the OWNER's decisions, not the advisor's reading. E1 — toggle ON, a staff
+  principal sees ONLY their own figures (`created_by = self`); shop-wide figures are
+  admin-only regardless of the toggle; "D-adv" is SUPERSEDED — no longer "the advisor's
+  reading". E2 — toggle OFF, the dashboard entry is NOT drawn for staff (P1.9's rule: a
+  control the session would be refused is never drawn). E3 — the today view keeps the
+  per-bill list beside the totals; other periods show aggregates only. E4 — bills unsent
+  from THIS device appear as ONE separately labelled line and are never added into any
+  total. E5 — no drill-down in v1 (grouping + period only); a single-key filter is a
+  later line of item 4 and needs a route parameter that does not exist — DEFERRED. E6
+  is the advisor's IMPLEMENTATION choice (no chart library and no native module; bars
+  from plain Views). **BUILT 2026-08-31 (P1.23 item 4, unit 3) — the phone's dashboard,
+  headless-proven; the handset pass is the owner's.**
+  See `PROJECT_STATUS.md § Current phase`.
 - **No step owns it — the store-compliance surface (S23):** a privacy-policy link
   at a public URL, terms, and — if the rule binds — an account-deletion path. It is
   research only today; the build/identity half is P1.11 (no `eas.json`, no bundle
@@ -1052,6 +1070,12 @@ below.** The bar — rich but never cluttered — is part of the record; the
 dashboard's SHAPE is not designed here and stays with the step that draws it. This
 homes the dashboard on mobile, closing the other half of the homing question P1.23
 item 4 carries.
+**ABSORBED 2026-08-31 (P1.23 item 4, unit 3):** the standalone `mobile/app/DailyScreen.tsx`
+is gone — its per-bill list became `mobile/app/BillList.tsx`, rendered inside the
+dashboard's TODAY view, and the ยอดวันนี้ entry now opens the dashboard. `DailyScreen`
+is now the today view's bill list, exactly as this decision set out. `dailyView.ts`
+(the `/reports/daily` view-model) and its proof are untouched; only the standalone
+screen was retired.
 
 ---
 
@@ -1181,7 +1205,7 @@ row count rises by two and not by three.
 | S21 | there is no family-trial step; the pilot waits for all three deliverables | **NONE, and it needs none — it is a REFUSAL TO SCHEDULE, the shape S19 already has.** `grep -nE '\bS21\b' ROADMAP.md` → L495, L540, L551, every one inside the decisions. Subject search `grep -niE 'father\|family trial\|pilot at' ROADMAP.md` → L167 (S1), L225 (S7's own text), L540 and L549 (S21 itself): **not one hit falls inside a `### P…` section**. The step whose clock this protects is P2.1, and S7 already moved it | none needed | — |
 | S22 | what identifies a locally created seller across devices — a server-minted reservation, taken while online | **P1.8b, inside `### P1.8`, established by SUBJECT.** `grep -nE '\bS22\b' ROADMAP.md` → L602, L615, L617 (the decision itself) and L720–L735, L762, L791–L801 (this audit), none of which establishes anything per the method above; and **L2682, L2686 and L4169 inside `### P1.18`, where all three are that step saying it does NOT specify the kind** — the shape S7's row already records for P2.4 and P2.5, a step CITING a decision rather than building it. Subject search `grep -niE 'offline seller\|seller code' ROADMAP.md` → L411 (inside S14), L605 and L762 (the decision's own citation and this row — the instrument is inside its corpus and both are excluded by IDENTITY, not by content), **L1945, L1948 and L1985 inside `### P1.8`**, and L2349, L2494, L2531–2, L2673, L3331, L3492 inside `### P1.18`. **P1.8b BUILDS it and this decision WIDENS that step onto the server; P1.18 must CARRY it as a kind** | — | — |
 | S23 | mobile's completion bar is a commercial-grade general app | **NONE YET, and the completion sequence in this file assigns it.** `grep -nE '\bS23\b' ROADMAP.md` → the decision's own text and this row, neither establishing ownership per the method above; subject `grep -niE 'commercial-grade\|completion bar'` finds no `### P…` section building it. It is a BAR that widens mobile scope; its surfaces become queue entries under their owning steps per S17, inventoried in the completion sequence this file carries | **NEW ENTRIES under existing steps** — P1.23 for the phone surfaces, the desktop steps for their halves — pulled per S17, not a step of its own | S10's undefined rework for any new phone screen it implies |
-| S24 | the owner's dashboard is the superset; the daily screen is a view inside it | **P1.23, behind S10, established by SUBJECT.** `grep -nE '\bS24\b' ROADMAP.md` → the decision's own text and this row; subject `grep -niE 'dashboard'` → the dashboard sub-section in this audit and P1.23 item 4, which now homes it on mobile. `mobile/app/DailyScreen.tsx` exists and becomes a VIEW inside it; the server aggregation by `created_by` is buildable and pulled under S17. **This row SUPERSEDES the "gets no row" note below** | — | — |
+| S24 | the owner's dashboard is the superset; the daily screen is a view inside it | **P1.23, behind S10, established by SUBJECT.** `grep -nE '\bS24\b' ROADMAP.md` → the decision's own text and this row; subject `grep -niE 'dashboard'` → the dashboard sub-section in this audit and P1.23 item 4, which now homes it on mobile. `mobile/app/DailyScreen.tsx` exists and becomes a VIEW inside it (**SUPERSEDED 2026-08-31, unit 3: `DailyScreen.tsx` was DELETED and absorbed — its per-bill list is now `mobile/app/BillList.tsx`, its live sibling, inside the dashboard's today view**); the server aggregation by `created_by` is buildable and pulled under S17. **This row SUPERSEDES the "gets no row" note below** | — | — |
 
 **THE TOTALS, so the shape is readable without counting rows.** Eight have a step
 — S1 in part, S3, S4, S5, S6, S13, S14, S19. Four need none: S2 is superseded, S7
@@ -1381,6 +1405,10 @@ peer — a new screen behind S10 that ABSORBS the existing one rather than an
 extension of it. The finding's second half — the read path is buildable today, with
 no screen and no rework — is untouched; what changes is only that the
 new-screen-versus-extension question is no longer open.
+**DONE 2026-08-31 (P1.23 item 4, unit 3):** the absorption is built. `DailyScreen.tsx`
+was deleted, its per-bill list extracted to `mobile/app/BillList.tsx` and rendered
+inside the dashboard's today view; the ยอดวันนี้ entry opens the dashboard. See
+`PROJECT_STATUS.md § Current phase`.
 
 **AND BUILDING IT EARLY REPRODUCES THE PATTERN `9ad225e` HAS JUST PRODUCED — a
 capability finished on the server that no human can reach.** That instance is
@@ -7051,6 +7079,10 @@ no count is written into the criterion:
    staff refused 403 while off, own-rows-only when on (the advisor's reading of "when
    ON", the owner's to overrule). `mobile/app/DailyScreen.tsx` and `/reports/daily` are
    untouched; the phone's dashboard is unit 3. No sha (uncommitted; anchor next pass).
+   **SUPERSEDED 2026-08-31 (unit 3): unit 2 committed at `46a18b4`; and
+   `mobile/app/DailyScreen.tsx` was DELETED — its per-bill list is now
+   `mobile/app/BillList.tsx`, its live sibling, inside the dashboard's today view,
+   while `/reports/daily` and `dailyView.ts` remain.**
    See `PROJECT_STATUS.md § Current phase`.
 
 **WHAT THIS DOES NOT INCLUDE, said before it is built:** the camera screens

@@ -205,7 +205,8 @@ function walk(): { readonly stacks: readonly SheetStack[]; readonly keys: readon
  *   confirm_seller_change      a different seller for a cart with lines. ALONE,
  *                              because it REPLACES: cancelling returns to the
  *                              cart, not to the picker
- *   daily                      the ยอดวันนี้ button, in the header
+ *   dashboard                  the ยอดวันนี้ button, in the header (opens the dashboard;
+ *                              the standalone daily screen was absorbed — S24)
  *   seller_picker              the start-bill button, or CartScreen's change-seller
  *   seller_picker>add_seller   `+ เพิ่มผู้ขาย`, INSIDE the picker. The one two-deep
  *                              stack in the app, and the pair observed broken
@@ -215,14 +216,14 @@ function walk(): { readonly stacks: readonly SheetStack[]; readonly keys: readon
  *   sign_out                   the ออกจากระบบ button, in the header
  *
  * NOT REACHABLE, and each absence is a claim: no stack holds two dialogs, none
- * is three deep, and nothing sits over `confirm_save`, `daily`, `bills`,
+ * is three deep, and nothing sits over `confirm_save`, `dashboard`, `bills`,
  * `prices`, `settings`, `account`, `sign_out` or `confirm_seller_change` — every
  * control that opens a sheet is either in the body, which a sheet covers, or in
  * the picker.
  *
  * ---------------------------------------------------------------------------
- * THIS LIST MOVED EIGHT -> NINE (P1.9) -> ELEVEN (P1.23), AND THE MOVE IS THE
- * ASSERTION
+ * THIS LIST MOVED EIGHT -> NINE (P1.9) -> ELEVEN (P1.23); P1.23 item 4 unit 3
+ * SWAPPED `daily` FOR `dashboard` AT ELEVEN, AND THE MOVE IS THE ASSERTION
  * ---------------------------------------------------------------------------
  * `prices` (P1.9), then `settings` and `account` (P1.23), were each added
  * deliberately, by hand, after reading App.tsx's header — which is what this
@@ -230,6 +231,12 @@ function walk(): { readonly stacks: readonly SheetStack[]; readonly keys: readon
  * reddens S1 until a person has decided the new stack really is reachable and
  * really does close where they say. That red is the feature: the count moving on
  * its own would mean a screen appeared that nobody wrote down.
+ *
+ * P1.23 item 4 unit 3 did not ADD a stack: it SWAPPED one. The ยอดวันนี้ entry now
+ * opens the `dashboard`, which absorbed the standalone `daily` screen (S24), so
+ * `daily` lost its only opener and was removed rather than left an S0 orphan. The
+ * count stays ELEVEN; the SET changed by exactly {−daily, +dashboard}. Editing this
+ * list by hand — not the count — is what keeps that swap a deliberate decision.
  *
  * `prices` IS DRAWN ONLY FOR SOME SESSIONS — the header control is hidden from
  * a definite `staff` role — and that does NOT belong in this table. These are
@@ -244,7 +251,7 @@ const EXPECTED_REACHABLE: readonly string[] = [
   "bills",
   "confirm_save",
   "confirm_seller_change",
-  "daily",
+  "dashboard", // the ยอดวันนี้ button opens the dashboard (P1.23 item 4 unit 3; it absorbed the daily screen)
   "prices",
   "seller_picker",
   "seller_picker>add_seller",
@@ -262,7 +269,7 @@ const EXPECTED_CLOSE: readonly (readonly [string, string, string])[] = [
     "-",
     "BACK TO THE CART, not the picker: the operator already picked somebody, and ยกเลิก means keep the seller the bill had",
   ],
-  ["daily", "-", "back to the cart"],
+  ["dashboard", "-", "back to the cart. The dashboard stands on its own — an owner who has finished reading the takings is finished, and there is nothing underneath it to return to (P1.23 item 4 unit 3)"],
   [
     "prices",
     "-",

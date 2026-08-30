@@ -13,6 +13,7 @@ import { attemptLogin, isUnauthorizedStatus } from "../src/session/signInIdentit
 import type { SignInResult } from "../src/session/signInIdentity";
 import type { ShopFetch, ShopPatch } from "../src/settings/shopSettings";
 import type { PasswordChangeRequest, PasswordFetch } from "../src/settings/account";
+import type { SummaryFetch } from "../src/dashboard/summaryView";
 import { API_BASE_URL } from "./config";
 
 export interface Product {
@@ -476,6 +477,36 @@ export function patchShop(token: string, patch: ShopPatch): Promise<ShopFetch> {
       method: "PATCH",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify(patch),
+      signal,
+    }),
+  );
+}
+
+/**
+ * GET /reports/summary — the dashboard's period aggregation. TRANSPORT ONLY; the
+ * classification lives in src/dashboard/summaryView.ts, where a headless proof can
+ * enumerate it. Returns a value, never throws. `no_token` is the caller's case (App
+ * checks the token first, as it does for the daily report), so this returns only
+ * ok/http/unreachable — a strict subset of SummaryFetch.
+ *
+ * The query is built by hand with encodeURIComponent rather than URLSearchParams:
+ * that global is unverified under Hermes here, in the same family as atob and
+ * crypto.randomUUID (deviceRole.ts, shopTime.ts). `by`/`state` are validated device
+ * strings and the device also bounds the date span (period.ts), so the route's 422s
+ * are never provoked by an ordinary user.
+ */
+export function fetchSummary(
+  token: string,
+  params: { from_date: string; to_date: string; by: string; state: string },
+): Promise<SummaryFetch> {
+  const query =
+    `?from_date=${encodeURIComponent(params.from_date)}` +
+    `&to_date=${encodeURIComponent(params.to_date)}` +
+    `&by=${encodeURIComponent(params.by)}` +
+    `&state=${encodeURIComponent(params.state)}`;
+  return transportJson((signal) =>
+    fetch(`${API_BASE_URL}/reports/summary${query}`, {
+      headers: { authorization: `Bearer ${token}` },
       signal,
     }),
   );

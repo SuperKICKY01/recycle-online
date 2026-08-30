@@ -248,7 +248,12 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   its money while the toggle is OFF (403 `staff_money_hidden`), and when the owner
   turns it ON, a staff caller reads ONLY their own bills (`created_by = self`) — the
   ADVISOR'S READING of "when ON", built to and reported as such, the owner's to
-  overrule. The COUNT is untouched — nine is still nine, and this mints no tenth — but
+  overrule.
+  **DECIDED 2026-08-31 (P1.23 item 4 unit 3): "when ON" is NOW THE OWNER'S DECISION
+  (E1), no longer the advisor's reading** — a staff principal sees ONLY their own
+  figures (`created_by = self`) and shop-wide figures stay admin-only regardless of the
+  toggle; the phone's dashboard is built to it.
+  The COUNT is untouched — nine is still nine, and this mints no tenth — but
   of the nine the schema now holds THREE: item 1's `default_grade`, item 7's
   address/phone, and item 9's `staff_money_visible`, superseding the "holds TWO" above.
 
@@ -556,6 +561,15 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Verification gaps — built, not proven
 
+- **THE PHONE'S DASHBOARD (P1.23 item 4 unit 3) IS HEADLESS-PROVEN, THE HANDSET HALF
+  IS UNOBSERVED.** `prove:dashboard` (49 cells) and the real-HTTP client run against a
+  fresh uvicorn cover the builders and the request/parse path, but NO screen was drawn
+  on a device this session. The owner's device pass — the admin dashboard on today with
+  bars, the per-bill list and the ค้างส่งจากเครื่องนี้ line; เดือนนี้ as aggregates only;
+  a staff session with the toggle off having no entry, then `ยอดของฉัน` once the owner
+  turns it on — is spelled out verbatim in `PROJECT_STATUS.md § Current phase`, the
+  unit-3 record's device-pass paragraph. Unit 1's settings/account device pass is ALSO
+  still UNOBSERVED (same section). *Not done:* a device pass; owed to the owner.
 - **`proveSignOut`'s store-backed S3 can TRANSIENTLY fire its hard-stop under heavy
   contention — observed ONCE, 2026-08-30, and NOT a regression.** S3 exercises a
   FAILING keystore through an async fake over a SQLite temp DB. Run in isolation it
@@ -1402,6 +1416,22 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   See `ROADMAP.md § What the owner has settled` "S19 — P2.4 AND P2.5 STAY OPEN UNTIL A REAL SHOP TRADES".
   The eventual fix is one migration adding `ix_bills_tenant_received
   ON purchase_bills (tenant_id, server_received_at)`; this unit adds no index.
+- **THE STAFF DASHBOARD HAS NO PER-BILL LIST — `/reports/daily` HAS NO OWN-BILLS
+  VARIANT, found 2026-08-31 (P1.23 item 4 unit 3), OWNER'S CALL, NOTHING AUTHORISED.**
+  The today view shows the per-bill list from `GET /reports/daily`, which returns the
+  whole shop's day with no `created_by = self` mode. A staff caller (who under E1 sees
+  ONLY their own figures) therefore cannot be shown it without leaking other people's
+  bills, so `dashboardView` replaces it with one sentence ("รายการบิลรายใบยังไม่รองรับ
+  สำหรับบัญชีพนักงานในเวอร์ชันนี้"). *Not done:* nothing is built. Whether staff should
+  get an own-bills daily list is the owner's decision; the eventual shape is either an
+  own-filtered `/reports/daily` variant or a per-bill mode on `/reports/summary`.
+- **DRILL-DOWN / SINGLE-KEY FILTER ON THE DASHBOARD IS DEFERRED — E5, 2026-08-31
+  (P1.23 item 4 unit 3).** v1 is grouping + period only; tapping a bar to filter the
+  summary to one product/seller/user/day is a later line of item 4 and needs a route
+  parameter (`GET /reports/summary` takes no `key`/`filter` today). *Not done:*
+  nothing built; a settled deferral (E5), recorded so the gap is not read as an
+  oversight. See `ROADMAP.md § The completion sequence to handover`, the P1.23 item 4
+  "DECIDED 2026-08-31" note.
 - **`mobile/app.json`'s `apiBaseUrl` COMMENT NAMES A MOVED FILE — found 2026-08-29
   (M6 c3), FAILS SAFE, RECORDED NOT FIXED.** The comment at `mobile/app.json` line 31
   says the single reader is `device/src/config.ts`; that path does not exist.
@@ -1846,6 +1876,10 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   drift), while the rest of the UI uses raw `minHeight` literals —
   including **36** (`App.tsx`, `StatusStrip.tsx`) and **44**
   (`CartScreen.tsx` ×3, `DailyScreen.tsx`), both BELOW the standard.
+  **AMENDED 2026-08-31 (P1.23 item 4 unit 3): `DailyScreen.tsx` was DELETED, so its
+  `44` example no longer applies; its replacement `app/DashboardScreen.tsx` uses
+  `TAP_MIN` on its controls and its sibling `app/BillList.tsx` has no tappable control.
+  The finding otherwise stands.**
   *Not done:* found during a constants sweep, which was bookkeeping;
   changing tap targets is a behaviour change. *Unblocks:* a decision
   that the standard is real — then one shared constant and a sweep of

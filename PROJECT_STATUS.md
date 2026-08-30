@@ -75,10 +75,97 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.23 item 4, unit 3 — THE DASHBOARD ON THE PHONE: one screen, period × dimension
+over `GET /reports/summary`, the day's bill list absorbed as the today view,
+role/toggle-gated. 2026-08-31.** No sha (uncommitted; anchor next pass). This
+supersedes the unit-2 record below as the current-phase pointer; it stands, anchored
+to `46a18b4`.
+**BUILT HEADLESS and PROVEN; the on-device pass is UNOBSERVED (the owner's).** New
+pure-TS builders under `mobile/src/dashboard/` — `period.ts` (presets today/week/
+month/custom → two shop-local wire dates from the ONE offset constant
+`@recycle/shop-time` `SHOP_UTC_OFFSET_MINUTES`, `dailyView`'s; a too-long custom range
+refused on the device with a sentence naming the route's 366-day bound, so the route's
+422 is never provoked; BE labels derived AFTER the conversion), `summaryView.ts`
+(parses `/reports/summary`, money BYTE-FOR-BYTE, refuses a JSON-number money field
+whole — the identical `readMoney` rule as `dailyView.ts:197`, re-stated because that
+copy is module-private and its file is out of bounds; rows sorted by `paid_total` desc
+with `Decimal.comparedTo` never `Number`; top 10 + one `อื่นๆ` whose fields are the
+Decimal sums of the rest and reconcile to the server totals string-for-string; bar
+width a LAYOUT fraction — the only `number`, never rendered as text), `unsentLine.ts`
+(E4: this device's own `pending`/`syncing` bills' `total_amount` Decimal-summed, one
+line under the totals, NEVER added into any total; a null amount counted but named),
+`dashboardView.ts` (the gate + shell: E1 title `ยอดร้าน`/`ยอดของฉัน` naming whose
+money it is, E2 entry gate hiding the header entry from a definite `staff` while the
+shop's `staff_money_visible` is off — failing OPEN on an unknown role like the other
+gates, the today-view bill-list slot admin-only). Thin `app/DashboardScreen.tsx`
+renders only what the builders return (bars from plain Views — E6, no chart library,
+no native module, NO new dependency in `package.json`). `app/DailyScreen.tsx` DELETED,
+its per-bill list extracted to `app/BillList.tsx` (S24 — the daily screen absorbed as
+the today view; `dailyView.ts` and its proof UNTOUCHED). `app/api.ts` gains
+transport-only `fetchSummary`. The sheet stack SWAPPED `daily` for `dashboard` (the
+ยอดวันนี้ entry now opens the dashboard); the reachable set stays 11, changed by
+exactly {−daily, +dashboard}. `staff_money_visible` is read once via the existing
+`fetchShop` with a dashboard-owned one-field reader (`readMoneyVisible`), so
+`shopSettings.ts` and `prove:settings` are untouched; offline it is null, which hides
+the staff entry (treated as OFF), and the summary's own `staff_money_hidden` 403
+corrects it so the entry drops next menu draw.
+**PROVEN:** `npm run prove:dashboard` (49 cells) exits 0 TWICE with no reseed (pure,
+constructed inputs, preset red); FIVE disproofs each redden EXACTLY their named cell
+and revert — `staff_entry_off`→the E2 staff-off entry cell, `add_unsent`→the
+E4 total-unchanged cell, `number_sort`→the Decimal-sort cell (a 1e17 pair a double
+cannot tell apart), `utc_today`→the midnight-straddle cell, `accept_number`→the
+refuse-whole-response cell; an unknown `--break` exits 2. `prove:sheets` moved 11→11
+(daily removed, dashboard added) and stays green. `prove:daily` UNMOVED (104 cells;
+`dailyView.ts`/`proveDaily.ts` untouched). Every other headless mobile proof green
+TWICE with counts UNMOVED from the unit-1 baseline (proveSync 247, proveOutbox 77,
+proveSellerKind 69, proveSellerStore 56, provePickerSeller 15, proveReserveNotice 20,
+proveLocalSellerCreate 27, proveSignOut 151, proveNotice 81, proveSettings 26,
+proveAccount 24). The three live-server auth proofs (proveForbidden, proveLogin,
+proveLoginScreen) exit 1 ONLY for want of a live server. Both typechecks green before
+and after. Real HTTP on a fresh uvicorn on a free port (identity-gated on
+`/openapi.json`; start after the edit) against dev Shop A: admin `fetchSummary`
+today/by=product/live → 200 and the REAL compiled `summaryView` ACCEPTS it; staff →
+403 `staff_money_hidden` rendered as a calm forbidden message; admin
+`patchShop {staff_money_visible:true}` → 200 → staff `fetchSummary by=user` → EXACTLY
+one row keyed by their `user_id` (label `staff`); the toggle reverted to false in
+`finally` and RE-READ false, restoring Shop A. Not a device pass. `app/api.ts` cannot
+load under node (it imports `expo-constants` through `./config` and is never emitted
+to `dist`), so the node runner MIRRORS api.ts's exact request shapes and parses with
+the real compiled `dist/dashboard/summaryView.js` — the request construction and the
+response parsing exercised against the real server. **So `app/api.ts`'s own
+`fetchSummary`/`patchShop` were NOT exercised by P4, and the `api.ts`→`summaryView`
+seam — whether the app's transport actually hands the real response to the parser —
+is proven ONLY on the handset.**
+**NOT OBSERVED — the handset half, for BOTH units.** No device pass this session. On a
+handset (`npx expo start -c` + a full reload FIRST — `CLAUDE.md § Boot check` "WHICH
+BUNDLE"), the owner must read, for UNIT 3: FIRST, that the dashboard renders SERVER
+DATA AT ALL — the `api.ts`→`summaryView` seam the headless runs could not exercise
+(the P4 note above); then an ADMIN opens ยอดวันนี้ → the dashboard on
+today with the totals, the dimension bars, the per-bill list, and the ค้างส่งจากเครื่องนี้
+line while a bill is queued (and the total above NOT moving); switching to เดือนนี้
+shows aggregates only, no bill list; a STAFF session with the toggle off has NO
+ยอดวันนี้ entry at all; the owner turns the toggle on in ตั้งค่าร้าน, and the staff
+session then sees the entry, opens it to `ยอดของฉัน` with their OWN totals and one
+sentence that the per-bill list is not available for a staff account in this version.
+And for UNIT 1 (still UNOBSERVED, copied from its phase-2 record): a STAFF session opens
+ตั้งค่าร้าน and sees the values with NO save control; an ADMIN edits address/phone and
+the default grade (a grade change asks a confirmation) and saves; บัญชีของฉัน shows the
+profile, and a password change with a pending bill queued produces the "changed — sign
+in again, work kept" sheet and lands on the login screen. All UNOBSERVED.
+**IS A LESSON OWED? NO.** Weighed both candidates the brief named. The bar width is a
+LAYOUT number derived from a money string — but that is an APPLICATION of the existing
+money discipline (money VALUES stay strings; a fraction is geometry, not money), stated
+in `summaryView.ts` and asserted by `prove:dashboard` (every displayed money string is
+the server string; the fraction is separate), not a new bug-class to relearn. The staff
+bill-list gap (`/reports/daily` has no own-bills variant) is a DISCOVERY, recorded in
+`OPEN_ITEMS.md` for the owner, not a lesson. Nothing new was relearned
+(`CLAUDE.md § Workflow` "Two homes, one test").
+
 **P1.23 item 4, unit 2 — THE DASHBOARD'S SERVER HALF: the period-summary route
-and the staff-money-visibility setting. 2026-08-30.** No sha (uncommitted; anchor
-next pass). This supersedes the unit-1 records below as the current-phase pointer;
-they stand, anchored to `49f9fd2` (phase 1) and `e69d417` (phase 2).
+and the staff-money-visibility setting. 2026-08-30.** Committed at `46a18b4`
+(anchored 2026-08-31 in the unit-3 pass). This was the current-phase pointer until
+unit 3 above; the unit-1 records below stand, anchored to `49f9fd2` (phase 1) and
+`e69d417` (phase 2).
 **BUILT and PROVEN over real HTTP.** Migration `0014_tenants_staff_money_visible.py`
 adds `tenants.staff_money_visible` (boolean NOT NULL DEFAULT false — OFF is the
 owner's only-safe initial state per D1, NOT a fallback default that could be a
@@ -907,6 +994,11 @@ programs — see the boot check in CLAUDE.md.
   the day's total, the permanent understatement caveat, voided bills, voids
   applied today against older bills, off-list payments, and the bill list. Read
   only; needs the server; renders calmly when it cannot have one.
+  **SUPERSEDED 2026-08-31 (P1.23 item 4 unit 3): `app/DailyScreen.tsx` was DELETED.**
+  The owner's screen is now the DASHBOARD (`app/DashboardScreen.tsx`); the per-bill
+  list is `app/BillList.tsx`, its live sibling, rendered inside the dashboard's today
+  view, and `src/reports/dailyView.ts` (the `/reports/daily` view-model) is unchanged
+  and still drives that list. See § Current phase.
 - **Proofs**: FOURTEEN headless `npm run prove:*` scripts —
   `sync`, `sqlite`, `money`, `cart`, `entry`, `seller`, `notice`,
   `void`, `time`, `cold`, `clock`, `daily`, `forbidden`, `signout`.
@@ -1049,7 +1141,12 @@ not a new feature:
   products, prices or sellers without someone running requests by hand.
 - **A daily money view — the server half AND a mobile screen now exist**
   (`GET /reports/daily`; `app/DailyScreen.tsx`). An owner can open it on a
-  phone. **No longer device-unverified: R2 closed it on 2026-08-06**, admin
+  phone. **SUPERSEDED 2026-08-31 (P1.23 item 4 unit 3): the standalone
+  `app/DailyScreen.tsx` was DELETED — its per-bill list is now `app/BillList.tsx`,
+  rendered inside the DASHBOARD's today view, which the owner reaches by opening the
+  dashboard; `GET /reports/daily` and `dailyView.ts` are unchanged. The R2 device
+  observation below stands as a historical record of the screen as it then was.**
+  **No longer device-unverified: R2 closed it on 2026-08-06**, admin
   rendering having been observed on 2026-08-02 and the two remaining paths —
   the 403 refusal and a hung socket — on 2026-08-06. The two are not equally
   strong evidence and Known device gaps says which is which. What remains is
