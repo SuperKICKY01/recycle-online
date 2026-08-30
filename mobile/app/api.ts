@@ -11,6 +11,8 @@ import { exchangeShopCode } from "../src/session/shopCode";
 import type { ShopCodeResult } from "../src/session/shopCode";
 import { attemptLogin, isUnauthorizedStatus } from "../src/session/signInIdentity";
 import type { SignInResult } from "../src/session/signInIdentity";
+import type { ShopFetch, ShopPatch } from "../src/settings/shopSettings";
+import type { PasswordChangeRequest, PasswordFetch } from "../src/settings/account";
 import { API_BASE_URL } from "./config";
 
 export interface Product {
@@ -387,3 +389,114 @@ export async function fetchDailyReport(
  * before finding out. gradePrice returns null instead and the picker says which
  * sellers are in that state.
  */
+
+/* ------------------------------------------------- the shop's own settings ---- */
+
+/**
+ * The `detail.code` a FastAPI HTTPException nests, for the UI's WORDING only —
+ * the class is decided on the STATUS, which survives a body that fails to parse.
+ * Same rule setProductPrice and fetchDailyReport follow inline; shared here for the
+ * settings/account transports below.
+ */
+function codeFrom(body: unknown): string | null {
+  if (typeof body === "object" && body !== null && "detail" in body) {
+    const detail = (body as { detail: unknown }).detail;
+    if (typeof detail === "object" && detail !== null && "code" in detail) {
+      const raw = (detail as { code: unknown }).code;
+      if (typeof raw === "string") return raw;
+    }
+  }
+  return null;
+}
+
+/**
+ * TRANSPORT ONLY. Every outcome is a VALUE and nothing is thrown — the same shape
+ * setProductPrice and fetchDailyReport use, and for the same reason: a thrown
+ * error would be classified by `instanceof` at a screen, and the classification
+ * belongs in src/ where a headless proof can enumerate it, not in this file (it
+ * reaches expo-constants through ./config and cannot be loaded by the proofs). A
+ * 20 s timeout, because these are screens someone is standing in front of; an
+ * abort lands in `unreachable`, which never queues because settings has no outbox.
+ */
+async function transportJson(
+  makeRequest: (signal: AbortSignal) => Promise<Response>,
+): Promise<
+  | { kind: "ok"; body: unknown }
+  | { kind: "http"; status: number; code: string | null }
+  | { kind: "unreachable" }
+> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  let res: Response;
+  try {
+    res = await makeRequest(controller.signal);
+  } catch {
+    return { kind: "unreachable" };
+  } finally {
+    clearTimeout(timer);
+  }
+  let body: unknown = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+  if (res.ok) return { kind: "ok", body };
+  return { kind: "http", status: res.status, code: codeFrom(body) };
+}
+
+/** GET /whoami — the caller's own identity, server-resolved (username + the role
+ *  the server read from the row this request, not the token's stale claim).
+ *  Transport only; the account screen parses it (src/settings/account.readWhoAmI). */
+export function fetchWhoAmI(token: string): Promise<PasswordFetch> {
+  return transportJson((signal) =>
+    fetch(`${API_BASE_URL}/whoami`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/** GET /shop — the shop's own settings. Staff-readable; the classification is in
+ *  src/settings/shopSettings.ts. Returns a value, never throws. */
+export function fetchShop(token: string): Promise<ShopFetch> {
+  return transportJson((signal) =>
+    fetch(`${API_BASE_URL}/shop`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/** PATCH /shop — admin-only on the server. `patch` carries ONLY the changed
+ *  fields; an empty patch is never sent (shopPatchBody/patchIsEmpty decide that). */
+export function patchShop(token: string, patch: ShopPatch): Promise<ShopFetch> {
+  return transportJson((signal) =>
+    fetch(`${API_BASE_URL}/shop`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(patch),
+      signal,
+    }),
+  );
+}
+
+/**
+ * POST /users/me/password — change THIS account's own password. On success the
+ * server bumps token_version and this token dies; the caller (src/settings/
+ * account.ts) treats that as a session end. The body is validated on the device
+ * first (checkPasswordForm), so an ordinary user never provokes the route's 422.
+ */
+export function changeOwnPassword(
+  token: string,
+  request: PasswordChangeRequest,
+): Promise<PasswordFetch> {
+  return transportJson((signal) =>
+    fetch(`${API_BASE_URL}/users/me/password`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(request),
+      signal,
+    }),
+  );
+}

@@ -103,6 +103,19 @@ import { dailyScreen } from "./src/reports/dailyView";
 import type { DailyScreen as DailyScreenModel } from "./src/reports/dailyView";
 import { mayEditPrices, readTokenRole } from "./src/session/deviceRole";
 import type { DeviceRole } from "./src/session/deviceRole";
+import {
+  formScreen,
+  readShopSettings,
+  shopSaveResult,
+  shopSettingsScreen,
+} from "./src/settings/shopSettings";
+import type { ShopPatch, ShopSettings, ShopSettingsScreen } from "./src/settings/shopSettings";
+import { accountProfile, passwordChangeResult, readWhoAmI } from "./src/settings/account";
+import type {
+  AccountProfile,
+  PasswordChangeOutcome,
+  PasswordChangeRequest,
+} from "./src/settings/account";
 import { shopCodeNotice } from "./src/session/shopCode";
 import { signInAndRecord, signInNotice } from "./src/session/signInIdentity";
 import { buildLocalBill } from "./src/sync/createBill";
@@ -113,7 +126,7 @@ import type {
   LocalSellerDraft,
 } from "./src/sync/localSeller";
 import { SyncEngine } from "./src/sync/engine";
-import { NOTHING_OWED } from "./src/sync/outbox";
+import { NOTHING_OWED, totalOwed } from "./src/sync/outbox";
 import type { OwedByKind } from "./src/sync/outbox";
 import type { AccountState, SessionState } from "./src/sync/parkedReason";
 import { assessQueue } from "./src/sync/queueHealth";
@@ -123,11 +136,15 @@ import type { LocalBill, SyncState } from "./src/sync/types";
 import { isMasterDataBlocked, isVoided, isVoidRefused } from "./src/sync/types";
 import type { Product, Seller } from "./app/api";
 import {
+  changeOwnPassword,
   fetchDailyReport,
   fetchProducts,
   fetchSellers,
+  fetchShop,
+  fetchWhoAmI,
   isUnauthorized,
   login,
+  patchShop,
   resolveShopCode,
   setProductPrice,
 } from "./app/api";
@@ -135,6 +152,8 @@ import { AddSellerSheet } from "./app/AddSellerSheet";
 import { BillsPanel } from "./app/BillsPanel";
 import { CartScreen } from "./app/CartScreen";
 import { DailyScreen } from "./app/DailyScreen";
+import { SettingsScreen } from "./app/SettingsScreen";
+import { AccountScreen } from "./app/AccountScreen";
 import { ConfirmSaveDialog } from "./app/ConfirmSaveDialog";
 import { ConfirmSellerChangeDialog } from "./app/ConfirmSellerChangeDialog";
 import { API_BASE_URL } from "./app/config";
@@ -309,6 +328,26 @@ export default function App() {
   // comment gives.
   const [dailyDate, setDailyDate] = useState<string | null>(null);
   const [daily, setDaily] = useState<DailyScreenModel | null>(null);
+  /*
+   * THE SHOP SETTINGS SCREEN (P1.23). `settingsScreen` is the rendered model, or
+   * null while a request is in flight so a spinner is a state and not a guess.
+   * `settingsShop` is the row a save DIFFS against — after a save it is the
+   * server's re-read (the witnessed state), never what was sent. Neither is cached
+   * across openings: a stale setting read as current is the same class of mistake
+   * as a stale price, and settings has no offline write to cache for.
+   */
+  const [settingsScreen, setSettingsScreen] = useState<ShopSettingsScreen | null>(null);
+  const [settingsShop, setSettingsShop] = useState<ShopSettings | null>(null);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  /*
+   * THE ACCOUNT SCREEN (P1.23). `accountProfileState` is the profile (username +
+   * role from /whoami, shop name from GET /shop), null while loading.
+   * `passwordOutcome` is the result of the last password change, or null before
+   * one — a successful one ends the session (see changePassword).
+   */
+  const [accountProfileState, setAccountProfile] = useState<AccountProfile | null>(null);
+  const [passwordOutcome, setPasswordOutcome] = useState<PasswordChangeOutcome | null>(null);
+  const [passwordBusy, setPasswordBusy] = useState(false);
   /**
    * THE OUTCOME OF THE LAST PRICE SAVE, or null while the LIST is what the
    * prices sheet shows (P1.9).
@@ -1265,6 +1304,147 @@ export default function App() {
     setPriceOutcome(null);
     sheet("open_prices");
   }, [sheet]);
+
+  /* ---------------------------------------------------- shop settings (P1.23) -- */
+
+  /**
+   * READ THE SHOP'S SETTINGS. Online only — settings is not an outbox kind and has
+   * no cache of its own, so with no network the screen says so and draws no field
+   * (shopSettingsScreen's unreachable branch). A 401 ends the session, exactly as
+   * the daily read does.
+   */
+  const loadSettings = useCallback(async (): Promise<void> => {
+    const t = tokenRef.current;
+    if (t === null) {
+      setSettingsShop(null);
+      setSettingsScreen(shopSettingsScreen({ kind: "no_token" }, role));
+      return;
+    }
+    setSettingsScreen(null);
+    setSettingsShop(null);
+    const result = await fetchShop(t);
+    setSettingsShop(result.kind === "ok" ? readShopSettings(result.body) : null);
+    setSettingsScreen(shopSettingsScreen(result, role));
+    if (result.kind === "unreachable") {
+      setOnline(false);
+      return;
+    }
+    setOnline(true);
+    if (result.kind === "http" && result.status === 401) setSessionEnded(true);
+    else if (result.kind === "ok") setSessionEnded(false);
+  }, [role]);
+
+  const openSettings = useCallback(() => {
+    setSettingsSaving(false);
+    sheet("open_settings");
+    void loadSettings();
+  }, [loadSettings, sheet]);
+
+  /**
+   * SAVE, THEN RENDER WHAT CAME BACK. PATCH /shop returns the re-read row, so a
+   * success re-renders the form from the RESPONSE — the witnessed state, never the
+   * request (shopSaveResult). A refusal or outage shows its message; a 401 ends the
+   * session. NOTHING queues: a settings write is not offline work.
+   */
+  const saveSettings = useCallback(
+    async (patch: ShopPatch): Promise<void> => {
+      const t = tokenRef.current;
+      if (t === null) {
+        setSettingsScreen(shopSettingsScreen({ kind: "no_token" }, role));
+        setSessionEnded(true);
+        return;
+      }
+      setSettingsSaving(true);
+      const result = await patchShop(t, patch);
+      setSettingsSaving(false);
+      const saved = shopSaveResult(result);
+      if (saved.kind === "saved") {
+        setSettingsShop(saved.shop);
+        setSettingsScreen(formScreen(saved.shop, role));
+        setOnline(true);
+        setSessionEnded(false);
+        return;
+      }
+      setSettingsScreen(saved.screen);
+      if (result.kind === "unreachable") setOnline(false);
+      else {
+        setOnline(true);
+        if (result.kind === "http" && result.status === 401) setSessionEnded(true);
+      }
+    },
+    [role],
+  );
+
+  /* ---------------------------------------------------------- account (P1.23) -- */
+
+  /**
+   * READ THE PROFILE — /whoami for username and the server-resolved role, GET /shop
+   * for the name. A 401 on either ends the session. If /whoami cannot be read this
+   * launch the screen still opens (the password change does not depend on it),
+   * showing the token's role and a placeholder name.
+   */
+  const loadAccount = useCallback(async (): Promise<void> => {
+    const t = tokenRef.current;
+    setAccountProfile(null);
+    setPasswordOutcome(null);
+    if (t === null) return;
+    const [whoResult, shopResult] = await Promise.all([fetchWhoAmI(t), fetchShop(t)]);
+    const who = whoResult.kind === "ok" ? readWhoAmI(whoResult.body) : null;
+    const shopRow = shopResult.kind === "ok" ? readShopSettings(shopResult.body) : null;
+    setAccountProfile(
+      accountProfile(who ?? { username: "ยังอ่านชื่อผู้ใช้ไม่ได้", role }, shopRow?.name ?? null),
+    );
+    if (whoResult.kind === "unreachable" || shopResult.kind === "unreachable") setOnline(false);
+    else {
+      setOnline(true);
+      const unauth =
+        (whoResult.kind === "http" && whoResult.status === 401) ||
+        (shopResult.kind === "http" && shopResult.status === 401);
+      if (unauth) setSessionEnded(true);
+    }
+  }, [role]);
+
+  const openAccount = useCallback(() => {
+    setPasswordBusy(false);
+    sheet("open_account");
+    void loadAccount();
+  }, [loadAccount, sheet]);
+
+  /**
+   * CHANGE THIS ACCOUNT'S OWN PASSWORD. On success the server has already ended the
+   * session (it bumped token_version and returned no new token), so this REUSES the
+   * expired path: it sets `sessionEnded` — the login screen becomes the body — and
+   * KEEPS the token and the queue. The sign-out gate is NOT involved and the outbox
+   * is NOT drained (hard rule 8): owed work sends under whoever signs in next. The
+   * account sheet shows the "changed — sign in" notice, naming the kept work.
+   */
+  const changePassword = useCallback(
+    async (request: PasswordChangeRequest): Promise<void> => {
+      const t = tokenRef.current;
+      const owedCount = totalOwed(owed);
+      if (t === null) {
+        setPasswordOutcome(passwordChangeResult({ kind: "no_token" }, owedCount));
+        setSessionEnded(true);
+        return;
+      }
+      setPasswordBusy(true);
+      const result = await changeOwnPassword(t, request);
+      setPasswordBusy(false);
+      const outcome = passwordChangeResult(result, owedCount);
+      setPasswordOutcome(outcome);
+      if (outcome.kind === "changed") {
+        setOnline(true);
+        // Reuse the expired path. Token and queue KEPT; login takes over.
+        setSessionEnded(true);
+      } else if (result.kind === "unreachable") {
+        setOnline(false);
+      } else {
+        setOnline(true);
+        if (outcome.kind === "session") setSessionEnded(true);
+      }
+    },
+    [owed],
+  );
 
   /**
    * ONE TIER, WRITTEN, AND THEN THIS DEVICE'S OWN LIST RE-READ.
@@ -2358,6 +2538,46 @@ export default function App() {
           ),
         };
 
+      case "settings":
+        return {
+          animation: "slide",
+          back: closeTopSheet,
+          content: (
+            <SettingsScreen
+              screen={settingsScreen}
+              shop={settingsShop}
+              saving={settingsSaving}
+              onClose={closeTopSheet}
+              /* Retry re-READS the shop; a settings write never replays on its own. */
+              onRetry={() => void loadSettings()}
+              /* Closes the sheet to reveal the login screen; it cannot sign in
+                 itself, and must not re-read afterwards (a different person may sign
+                 in). Same rule as the daily and prices screens. */
+              onSignIn={closeTopSheet}
+              onSave={(patch) => void saveSettings(patch)}
+            />
+          ),
+        };
+
+      case "account":
+        return {
+          animation: "slide",
+          back: closeTopSheet,
+          content: (
+            <AccountScreen
+              profile={accountProfileState}
+              outcome={passwordOutcome}
+              busy={passwordBusy}
+              onClose={closeTopSheet}
+              /* The sign-in exit after a password change. sessionEnded is already
+                 set, so closing this sheet reveals the login screen the body has
+                 become. */
+              onSignIn={closeTopSheet}
+              onSubmit={(request) => void changePassword(request)}
+            />
+          ),
+        };
+
       case "bills":
         return {
           animation: "slide",
@@ -2444,6 +2664,25 @@ export default function App() {
             {token !== null && mayEditPrices(role) ? (
               <Pressable style={styles.dailyBtn} onPress={openPrices}>
                 <Text style={styles.dailyBtnText}>ราคารับซื้อ ›</Text>
+              </Pressable>
+            ) : null}
+            {/*
+              SETTINGS and ACCOUNT (P1.23). OFFERED TO EVERY SIGNED-IN ACCOUNT, the
+              ยอดวันนี้ rule rather than the ราคารับซื้อ one: GET /shop and /whoami are
+              READS a staff session may make, and the settings screen renders
+              READ-ONLY for staff (the WRITE is admin-only and is refused with a
+              plain 403 the screen words, never a save that fails after the fact).
+              The account screen is every user's own — a staff phone may change its
+              own password. With no token the login screen is already the whole body.
+            */}
+            {token !== null ? (
+              <Pressable style={styles.dailyBtn} onPress={openSettings}>
+                <Text style={styles.dailyBtnText}>ตั้งค่าร้าน ›</Text>
+              </Pressable>
+            ) : null}
+            {token !== null ? (
+              <Pressable style={styles.dailyBtn} onPress={openAccount}>
+                <Text style={styles.dailyBtnText}>บัญชีของฉัน ›</Text>
               </Pressable>
             ) : null}
             {/*

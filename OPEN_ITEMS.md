@@ -545,6 +545,18 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Verification gaps — built, not proven
 
+- **`proveSignOut`'s store-backed S3 can TRANSIENTLY fire its hard-stop under heavy
+  contention — observed ONCE, 2026-08-30, and NOT a regression.** S3 exercises a
+  FAILING keystore through an async fake over a SQLite temp DB. Run in isolation it
+  is green (measured 3/3) and it is green TWICE in the full-suite sweep; but a
+  single run issued IMMEDIATELY after the whole suite showed its guard
+  "S3 CANNOT CONTINUE: signOut() did not report a failure" fire (exit 1). No module
+  `proveSignOut` depends on was touched by P1.23 item 4, so this is a pre-existing
+  timing sensitivity, not a change. The existing footgun — "re-run once before
+  believing any failure" — is exactly what distinguishes this from a real red, and
+  is what was done (three isolated re-runs, all green). Recorded so a future sweep
+  does not misread the transient as a regression. *Not done:* the async fixture's
+  behaviour under load is not hardened; a discovery, not a fix owed by this phase.
 - **`prove_seller_code_guards.py` IS NO LONGER A BARE RE-RUN, AND A PROOF THAT
   CANNOT RUN BARE IS A PROOF THAT GETS SKIPPED. Measured 2026-08-25 at the P1.8b
   MOBILE boundary; a MEASUREMENT and not a fix.** The script requires a git
@@ -3593,6 +3605,16 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   `extra_forbidden`), and the settings screen shows `name` read-only. Whether the
   owner now wants `name` editable (a rebrand, a typo fix) is his to settle; until
   then the immutability stands. *Unblocks:* nothing built waits on it.
+- **The shop-settings screen is ONLINE-ONLY — a CHOICE made this pass, not an open
+  decision, and a cached read-only view MAY come later.** Made 2026-08-30 (P1.23
+  item 4, unit 1, phase 2). Settings is not an outbox kind (a kind is the whole
+  registry — P1.18), so there is no offline write; and offline the screen draws NO
+  field and says one calm sentence that a connection is needed, because a value
+  shown without a fetch is a claim about a cache this screen does not own
+  (`src/settings/shopSettings.ts`). The advisor settled it this way; a later shop's
+  need to READ its own address offline is then met as a DECISION — a cached
+  read-only view stamped like the master cache — and not discovered as a defect.
+  *Unblocks:* nothing built waits on it.
 - **Thousands separators in money** — deliberately absent; `128400.00`
   is genuinely harder to read than `128,400.00`. *Not done:* it is the
   owner's call, and grouping is one edit from splitting a money string

@@ -324,6 +324,18 @@ set.** None mints a step of its own; each rides the step named:
   to move). The dashboard screen (S24) and its absorption of `DailyScreen` as a
   view inside it. The phone settings screen (D-C) and its `GET /shop` / `PATCH
   /shop` client calls.
+  **BUILT 2026-08-30 (P1.23 item 4, unit 1) — the SETTINGS SURFACE (D-C) AND THE
+  ACCOUNT SURFACE ARE BUILT; the device pass is OWED.** The server half —
+  `tenants.address`/`phone` and the widened `GET`/`PATCH /shop` — landed at
+  `49f9fd2`; the mobile half — the settings screen (`GET`/`PATCH /shop` client
+  calls, role-gated) and the account screen (profile + own-password change) — is
+  built headless this pass and proven by `prove:settings`/`prove:account`, with the
+  on-device pass UNOBSERVED (the owner's). The self-service change-own-password
+  surface named above NOW HAS A CLIENT CALLER (the account screen calls
+  `POST /users/me/password`), correcting "no client calls it" one bullet down. The
+  theme control (item 3) is deliberately OMITTED, not drawn disabled — a disabled
+  control would be a control item 3's tap-target sweep must then count. See
+  `PROJECT_STATUS.md § Current phase`.
 - **Under P1.16 (the shop-identity content):** the address and phone the settings
   surface edits, which `tenants` does not yet carry; and the still-open owner
   decision on whether `GET /shop` stays staff-readable while `PATCH /shop` stays

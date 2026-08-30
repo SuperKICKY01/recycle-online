@@ -75,10 +75,57 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.23 item 4, unit 1 — PHASE 2 (MOBILE): the shop-settings screen and the
+account screen. 2026-08-30.** No sha (uncommitted at STOP 2; anchor next pass).
+This supersedes the PHASE 1 record below as the current-phase pointer; that record
+stands and is anchored to `49f9fd2`.
+**BUILT HEADLESS and PROVEN; the on-device pass is UNOBSERVED (the owner's).** New
+pure-TS builders under `mobile/src/settings/` — `shopSettings.ts` (the GET/PATCH
+`/shop` view-model, role-gated: staff READ-ONLY with no edit control drawn, admin
+editable; refusals worded from the cause — the 403 names the shop owner and the
+admin role, never a sign-in), `account.ts` (profile + own-password change, the
+length bound and the mismatch checked on the device so the route's 422 is never
+provoked, and the refusal body never rendered), and `roleLabel.ts` (the role's Thai
+label, one place). Thin `app/SettingsScreen.tsx` / `app/AccountScreen.tsx` render
+only what the builders return. The grade set is REUSED from `GRADES`
+(`src/master/priceEdit.ts`) — NO sixth A-D copy was minted (0010 named five); the
+view imports it, so S16/P1.24 edits one line. Settings is ONLINE-ONLY (not an
+outbox kind): offline it draws no field and says a connection is needed. A save
+re-renders from the PATCH RESPONSE (the witnessed state), never the request. A
+password change REUSES the expired-session path (sets `sessionEnded`, keeps the
+token and the queue — hard rule 8; the sign-out gate is not involved) and names the
+kept work. Navigation: `settings`/`account` added to the sheet stack (still one
+Modal host, no `visible=`); `app/api.ts` gains transport-only `fetchShop` /
+`patchShop` / `changeOwnPassword` / `fetchWhoAmI`; `deviceRole.ts` gains
+`mayEditShopSettings`.
+**PROVEN:** `npm run prove:settings` (26 cells) and `npm run prove:account` (24
+cells) exit 0 TWICE with no reseed (pure, constructed inputs); FOUR disproofs each
+redden EXACTLY their named cell and revert — `staff_save`→the staff-negative cell,
+`hardcode_grades`→options-equal-GRADES, `echo_request`→witnessed-state,
+`echo422`→the no-echo cell. `prove:sheets` moved 9→11 reachable stacks (settings,
+account) and stays green; every other headless mobile proof is green TWICE with
+counts UNMOVED from the P1.8b baseline (proveSync 247, proveOutbox 77, proveSellerKind
+69, proveSellerStore 56, provePickerSeller 15, proveReserveNotice 20,
+proveLocalSellerCreate 27, proveSignOut 151, proveNotice 81). The three live-server
+auth proofs (proveForbidden, proveLogin, proveLoginScreen) exit 1 ONLY for want of a
+live server. Both typechecks green before and after. Real HTTP, one request each on
+a fresh uvicorn (identity-gated on `/openapi.json`): `GET /shop` 200 (four fields),
+admin `PATCH /shop` 200, and `POST /users/me/password` 200 on a THROWAWAY staff user
+the runner creates and never on the owner's account — its old token then 401s,
+confirming the session-end path against the real server; dev Shop A restored,
+throwaway deactivated.
+**NOT OBSERVED — the handset half.** No device pass was run this session. On a
+handset (`npx expo start -c` + a full reload FIRST — the `CLAUDE.md § Boot check`
+bundle rule), the owner must read: a STAFF session opens ตั้งค่าร้าน and sees the values
+with NO save control; an ADMIN edits address/phone and the default grade (a grade
+change asks a confirmation) and saves; บัญชีของฉัน shows the profile, and a password
+change with a pending bill queued produces the "changed — sign in again, work kept"
+sheet and lands on the login screen. All UNOBSERVED.
+
 **P1.23 item 4, unit 1 — PHASE 1 (SERVER): the shop-settings server half.
-2026-08-30.** No sha (uncommitted at STOP 1; anchor next pass). This is the
-current phase; the maintenance pointer below (M0) is superseded by it as the
-current-phase pointer only — that record stands.
+2026-08-30.** Committed at `49f9fd2` (anchored 2026-08-30 in the phase-2 pass).
+This was the current phase until PHASE 2 above; the maintenance pointer below (M0)
+is superseded as the current-phase pointer only — that record stands.
 **BUILT and PROVEN over real HTTP.** Migration `0013_tenants_address_phone.py`
 adds `tenants.address` and `tenants.phone` — `text`, NULLABLE, no default, each
 with a named `char_length` CHECK (500 / 32) matching the API `max_length`

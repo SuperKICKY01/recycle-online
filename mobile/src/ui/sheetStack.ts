@@ -67,6 +67,9 @@ export const SHEET_KINDS = [
   "bills",
   /** P1.9. The shop's own price list, and the one screen that MOVES it. */
   "prices",
+  /** P1.23. The shop's own settings, and the account this device is signed in as. */
+  "settings",
+  "account",
 ] as const;
 
 export type SheetKind = (typeof SHEET_KINDS)[number];
@@ -214,6 +217,25 @@ export const SHEET_TRANSITIONS = {
     action: { kind: "open", sheet: "prices" },
     from: [null],
     site: "App.tsx header, the ราคารับซื้อ Pressable",
+  },
+  /**
+   * Header ตั้งค่าร้าน (P1.23). In the BODY's header like ยอดวันนี้ and
+   * ราคารับซื้อ, so a sheet covers it and it is reachable only from the app's own
+   * screen. Drawn for every signed-in session; the WRITE is admin-only and the
+   * screen renders read-only for staff (src/settings/shopSettings.ts), which is
+   * about who may edit, not which sheet is on screen — so `from` is `[null]`.
+   */
+  open_settings: {
+    action: { kind: "open", sheet: "settings" },
+    from: [null],
+    site: "App.tsx header, the ตั้งค่าร้าน Pressable",
+  },
+  /** Header บัญชีของฉัน (P1.23). The account this device holds — profile and the
+   *  one password it may change. In the header, so reachable from the app only. */
+  open_account: {
+    action: { kind: "open", sheet: "account" },
+    from: [null],
+    site: "App.tsx header, the บัญชีของฉัน Pressable",
   },
   /**
    * A DIFFERENT SELLER WAS PICKED FOR A CART THAT ALREADY HAS LINES.

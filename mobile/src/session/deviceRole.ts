@@ -206,3 +206,31 @@ export function mayVoid(role: DeviceRole): boolean {
 export function mayEditPrices(role: DeviceRole): boolean {
   return role !== "staff";
 }
+
+/**
+ * May this device OFFER to edit the shop's settings?
+ *
+ * P1.23. A SEPARATE function from `mayEditPrices` and `mayVoid`, deliberately, and
+ * for the reason `mayEditPrices` already gives: these are distinct product
+ * decisions that happen to agree today. The server gates PATCH /shop on
+ * `require_admin` and GET /shop on nothing — the same asymmetry the price routes
+ * have — but they are two different endpoints and could diverge without anyone
+ * editing this file, so collapsing them into one `isNotStaff` would move one the
+ * day the other moved.
+ *
+ * IT FAILS OPEN, exactly as the two above and for the same reason (see this
+ * file's header): only a DEFINITE "staff" hides the edit controls. An unparseable
+ * token, an absent claim, or a role this build does not recognise all read as
+ * unknown, and unknown OFFERS the controls. The claim is up to an hour stale
+ * while the server re-reads the role every request, so an owner promoted this
+ * morning is admin to the server and still `staff` in their token; failing closed
+ * would lock a real owner out of their own shop settings until the token expired.
+ * The cost the other way is one refused PATCH and one plain sentence, which the
+ * settings screen's 403 branch draws (src/settings/shopSettings.ts).
+ *
+ * NOTHING IS AUTHORISED ON THIS VALUE. `require_admin` is, on every PATCH /shop,
+ * against the database row. Staff read the screen; only admin may write it.
+ */
+export function mayEditShopSettings(role: DeviceRole): boolean {
+  return role !== "staff";
+}

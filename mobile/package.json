@@ -49,7 +49,9 @@
     "prove:pickerseller": "npm run build && node dist/proof/provePickerSeller.js",
     "prove:reservenotice": "npm run build && node dist/proof/proveReserveNotice.js",
     "prove:reservestrip": "npm run build && node dist/proof/proveReserveStrip.js",
-    "prove:prices": "npm run build && node dist/proof/provePrices.js"
+    "prove:prices": "npm run build && node dist/proof/provePrices.js",
+    "prove:settings": "npm run build && node dist/proof/proveSettings.js",
+    "prove:account": "npm run build && node dist/proof/proveAccount.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

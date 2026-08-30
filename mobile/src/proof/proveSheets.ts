@@ -210,22 +210,26 @@ function walk(): { readonly stacks: readonly SheetStack[]; readonly keys: readon
  *   seller_picker>add_seller   `+ เพิ่มผู้ขาย`, INSIDE the picker. The one two-deep
  *                              stack in the app, and the pair observed broken
  *   prices                     the ราคารับซื้อ button, in the header (P1.9)
+ *   settings                   the ตั้งค่าร้าน button, in the header (P1.23)
+ *   account                    the บัญชีของฉัน button, in the header (P1.23)
  *   sign_out                   the ออกจากระบบ button, in the header
  *
  * NOT REACHABLE, and each absence is a claim: no stack holds two dialogs, none
  * is three deep, and nothing sits over `confirm_save`, `daily`, `bills`,
- * `prices`, `sign_out` or `confirm_seller_change` — every control that opens a
- * sheet is either in the body, which a sheet covers, or in the picker.
+ * `prices`, `settings`, `account`, `sign_out` or `confirm_seller_change` — every
+ * control that opens a sheet is either in the body, which a sheet covers, or in
+ * the picker.
  *
  * ---------------------------------------------------------------------------
- * THIS LIST MOVED FROM EIGHT TO NINE AT P1.9, AND THE MOVE IS THE ASSERTION
+ * THIS LIST MOVED EIGHT -> NINE (P1.9) -> ELEVEN (P1.23), AND THE MOVE IS THE
+ * ASSERTION
  * ---------------------------------------------------------------------------
- * `prices` was added deliberately, by hand, after reading App.tsx's header —
- * which is what this constant is for. It is NOT computed from `SHEET_KINDS`,
- * so adding a kind reddens S1 until a person has decided the new stack really
- * is reachable and really does close where they say. That red is the feature:
- * the count moving on its own would mean a screen appeared that nobody wrote
- * down.
+ * `prices` (P1.9), then `settings` and `account` (P1.23), were each added
+ * deliberately, by hand, after reading App.tsx's header — which is what this
+ * constant is for. It is NOT computed from `SHEET_KINDS`, so adding a kind
+ * reddens S1 until a person has decided the new stack really is reachable and
+ * really does close where they say. That red is the feature: the count moving on
+ * its own would mean a screen appeared that nobody wrote down.
  *
  * `prices` IS DRAWN ONLY FOR SOME SESSIONS — the header control is hidden from
  * a definite `staff` role — and that does NOT belong in this table. These are
@@ -236,6 +240,7 @@ function walk(): { readonly stacks: readonly SheetStack[]; readonly keys: readon
  */
 const EXPECTED_REACHABLE: readonly string[] = [
   "-",
+  "account", // the บัญชีของฉัน button, in the header (P1.23)
   "bills",
   "confirm_save",
   "confirm_seller_change",
@@ -243,6 +248,7 @@ const EXPECTED_REACHABLE: readonly string[] = [
   "prices",
   "seller_picker",
   "seller_picker>add_seller",
+  "settings", // the ตั้งค่าร้าน button, in the header (P1.23)
   "sign_out",
 ];
 
@@ -267,6 +273,16 @@ const EXPECTED_CLOSE: readonly (readonly [string, string, string])[] = [
     "seller_picker>add_seller",
     "seller_picker",
     "BACK TO THE PICKER, where the search box is, so the operator can LOOK before adding again",
+  ],
+  [
+    "settings",
+    "-",
+    "back to the cart. The settings screen is not a step in anything — an owner who has finished with it is finished, and there is nothing underneath it to return to (P1.23)",
+  ],
+  [
+    "account",
+    "-",
+    "back to the cart. The account screen stands on its own; closing it returns to the app, not into a flow (P1.23)",
   ],
   ["sign_out", "-", "back to the cart, still signed in"],
 ];
