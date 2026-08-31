@@ -32,6 +32,7 @@
 import {
   GRADE_CODE_MAX_LENGTH,
   GRADE_NAME_MAX_LENGTH,
+  moveActiveTier,
   readGradeTiers,
   tierActionOutcome,
   tierAdminScreen,
@@ -221,6 +222,18 @@ function g5TheOutcome(): void {
   );
   // CONTROL: a DIFFERENT 409 (a duplicate) is refused too but is NOT the count path.
   check("G5: CONTROL — a duplicate 409 refuses without claiming a count", dup.kind === "http" && actionOutcome(dup).kind === "refused");
+  // F1 (commit 3): the last-active 409 is its OWN readable refusal, not the duplicate one.
+  const lastActive: GradeTierFetch = {
+    kind: "http",
+    status: 409,
+    body: { detail: { code: "grade_tier_last_active", active_tiers: "1" } },
+  };
+  const laOut = actionOutcome(lastActive);
+  check(
+    "G5: F1 — the last-active 409 is its own readable refusal (commit 3)",
+    laOut.kind === "refused" && laOut.message.includes("อย่างน้อยหนึ่งเกรด"),
+    laOut.kind === "refused" ? laOut.message : laOut.kind,
+  );
   check("G5: a 401 ends the session (not a plain refusal)", actionOutcome(unauthorized).kind === "session");
   check("G5: an outage refuses without ending the session", actionOutcome(offline).kind === "refused");
   check("G5: a 2xx is 'ok' (the caller re-reads the list)", actionOutcome(ok).kind === "ok");
@@ -256,6 +269,45 @@ function g6OfflineOneTier(): void {
   check("G6: PRESENCE — the seated grade shows as its NAME, not its code", tierName(tiers, "A") === "เกรดเดียว", tierName(tiers, "A"));
 }
 
+/* -------------------------------------------------------------------- G7 -- */
+
+function g7Reorder(): void {
+  header("G7 — reorder (commit 3): the full order, the edges, and the move flags");
+  const rows = tierAdminScreen(TIERS_MANY, "admin").rows;
+  const byCode = (c: string): (typeof rows)[number] => {
+    const r = rows.find((x) => x.code === c);
+    if (r === undefined) throw new Error(`the fixture has no tier ${c}`);
+    return r;
+  };
+  const a = byCode("A"); // first active
+  const b = byCode("B"); // last active
+  const x = byCode("X"); // inactive
+
+  // The flags the view disables its buttons on.
+  check("G7: the FIRST active tier cannot move up (but can move down)", a.canMoveUp === false && a.canMoveDown === true, `up=${String(a.canMoveUp)} down=${String(a.canMoveDown)}`);
+  check("G7: the LAST active tier cannot move down (but can move up)", b.canMoveDown === false && b.canMoveUp === true, `up=${String(b.canMoveUp)} down=${String(b.canMoveDown)}`);
+  check("G7: an INACTIVE tier can move NEITHER way", x.canMoveUp === false && x.canMoveDown === false);
+
+  // moveActiveTier emits the FULL order (active reordered, inactive after) -- the
+  // PUT /grade-tiers/order body, which must cover every tier exactly once.
+  const up = moveActiveTier(rows, b.id, "up");
+  check(
+    "G7: moving the second active tier UP yields [B, A, X] — active reordered, inactive last",
+    up !== null && up.length === 3 && up[0] === b.id && up[1] === a.id && up[2] === x.id,
+    up === null ? "null" : up.join(","),
+  );
+  check(
+    "G7: CONTROL — the emitted order covers every tier id EXACTLY once (the PUT's contract)",
+    up !== null && new Set(up).size === rows.length && rows.every((r) => up.includes(r.id)),
+    up === null ? "null" : `${String(new Set(up).size)}/${String(rows.length)}`,
+  );
+  // The edges and the inactive tier are no-ops (null) -- the provable other half of
+  // the canMove flags, which the view itself (in app/) cannot be proved to honour.
+  check("G7: moving the FIRST active tier up is a no-op (null)", moveActiveTier(rows, a.id, "up") === null);
+  check("G7: moving the LAST active tier down is a no-op (null)", moveActiveTier(rows, b.id, "down") === null);
+  check("G7: moving an INACTIVE tier is a no-op (null)", moveActiveTier(rows, x.id, "up") === null);
+}
+
 /* ------------------------------------------------------------------ main -- */
 
 function main(): number {
@@ -274,6 +326,7 @@ function main(): number {
   g4Validation();
   g5TheOutcome();
   g6OfflineOneTier();
+  g7Reorder();
 
   console.log("");
   console.log(failures === 0 ? "ALL GRADE-TIER CASES PASSED" : `FAILED — ${String(failures)} check(s)`);

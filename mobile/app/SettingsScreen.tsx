@@ -39,7 +39,7 @@ import type {
   ShopSettings,
   ShopSettingsScreen,
 } from "../src/settings/shopSettings";
-import { validateNewTier, validateRename } from "../src/settings/gradeTierAdmin";
+import { moveActiveTier, validateNewTier, validateRename } from "../src/settings/gradeTierAdmin";
 import type {
   GradeTierCreateBody,
   TierAdminRow,
@@ -93,6 +93,8 @@ interface Props {
   onRenameTier: (id: string, name: string) => void;
   onDeactivateTier: (id: string) => void;
   onReactivateTier: (id: string) => void;
+  /** The app PUTs the whole new order and re-reads; this passes the full tier-id order. */
+  onReorderTiers: (order: readonly string[]) => void;
 }
 
 export function SettingsScreen({
@@ -110,6 +112,7 @@ export function SettingsScreen({
   onRenameTier,
   onDeactivateTier,
   onReactivateTier,
+  onReorderTiers,
 }: Props) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
@@ -144,6 +147,7 @@ export function SettingsScreen({
           onRenameTier={onRenameTier}
           onDeactivateTier={onDeactivateTier}
           onReactivateTier={onReactivateTier}
+          onReorderTiers={onReorderTiers}
         />
       )}
     </View>
@@ -202,6 +206,7 @@ function FormBody({
   onRenameTier,
   onDeactivateTier,
   onReactivateTier,
+  onReorderTiers,
 }: {
   form: ShopFormScreen;
   shop: ShopSettings | null;
@@ -214,6 +219,7 @@ function FormBody({
   onRenameTier: (id: string, name: string) => void;
   onDeactivateTier: (id: string) => void;
   onReactivateTier: (id: string) => void;
+  onReorderTiers: (order: readonly string[]) => void;
 }) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
@@ -392,6 +398,7 @@ function FormBody({
           onRename={onRenameTier}
           onDeactivate={onDeactivateTier}
           onReactivate={onReactivateTier}
+          onReorder={onReorderTiers}
         />
       ) : null}
     </ScrollView>
@@ -414,6 +421,7 @@ function TierAdminBody({
   onRename,
   onDeactivate,
   onReactivate,
+  onReorder,
 }: {
   tierScreen: TierAdminScreen;
   refusal: string | null;
@@ -422,6 +430,7 @@ function TierAdminBody({
   onRename: (id: string, name: string) => void;
   onDeactivate: (id: string) => void;
   onReactivate: (id: string) => void;
+  onReorder: (order: readonly string[]) => void;
 }) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
@@ -466,6 +475,14 @@ function TierAdminBody({
     onRename(id, v.name);
   };
 
+  // One move = one PUT of the WHOLE new order. moveActiveTier returns the full id
+  // list (active reordered, inactive after) or null at the edge, which the button
+  // is already disabled for; the null check is the belt to that suspenders.
+  const move = (row: TierAdminRow, direction: "up" | "down"): void => {
+    const order = moveActiveTier(tierScreen.rows, row.id, direction);
+    if (order !== null) onReorder(order);
+  };
+
   return (
     <View style={styles.tierCard}>
       <Text style={styles.tierTitle}>{tierScreen.title}</Text>
@@ -508,6 +525,18 @@ function TierAdminBody({
               </View>
             ) : (
               <View style={styles.tierActions}>
+                {/* Move up / down over the ACTIVE list — one PUT of the whole order
+                    per move. Disabled at the edges (canMoveUp / canMoveDown). */}
+                {row.canMoveUp ? (
+                  <Pressable style={styles.tierBtn} disabled={busy} onPress={() => move(row, "up")}>
+                    <Text style={styles.tierBtnText}>↑</Text>
+                  </Pressable>
+                ) : null}
+                {row.canMoveDown ? (
+                  <Pressable style={styles.tierBtn} disabled={busy} onPress={() => move(row, "down")}>
+                    <Text style={styles.tierBtnText}>↓</Text>
+                  </Pressable>
+                ) : null}
                 <Pressable style={styles.tierBtn} disabled={busy} onPress={() => startRename(row)}>
                   <Text style={styles.tierBtnText}>แก้ชื่อ</Text>
                 </Pressable>

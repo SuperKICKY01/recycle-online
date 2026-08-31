@@ -173,6 +173,7 @@ import {
   fetchShop,
   fetchSummary,
   patchGradeTier,
+  reorderGradeTiers,
   fetchWhoAmI,
   isUnauthorized,
   login,
@@ -1697,6 +1698,10 @@ function AppInner() {
     (id: string) => void runTierAction((t) => patchGradeTier(t, id, { is_active: true })),
     [runTierAction],
   );
+  const reorderTiers = useCallback(
+    (order: readonly string[]) => void runTierAction((t) => reorderGradeTiers(t, order)),
+    [runTierAction],
+  );
 
   /* ---------------------------------------------------------- account (P1.23) -- */
 
@@ -2937,6 +2942,7 @@ function AppInner() {
               onRenameTier={renameTier}
               onDeactivateTier={deactivateTier}
               onReactivateTier={reactivateTier}
+              onReorderTiers={reorderTiers}
             />
           ),
         };

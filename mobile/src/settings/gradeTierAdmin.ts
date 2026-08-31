@@ -127,11 +127,17 @@ export interface TierAdminRow {
   is_active: boolean;
   /**
    * F1 client guard: false when deactivating this tier would leave the shop with
-   * NO active tier (it is the last active one). The server does not yet refuse
-   * that (OPEN_ITEMS), so the phone does not offer it. Always false for an already
-   * inactive row — it is not deactivatable, it is reactivatable.
+   * NO active tier (it is the last active one). The SERVER also refuses this (409
+   * grade_tier_last_active, commit 3); two layers is correct, the server being the
+   * authority. Always false for an already inactive row — it is not deactivatable,
+   * it is reactivatable.
    */
   mayDeactivate: boolean;
+  /** Move UP in the shop's order — false for the first active tier and every
+   *  inactive one. Reorder is over the ACTIVE list only (F3). */
+  canMoveUp: boolean;
+  /** Move DOWN — false for the last active tier and every inactive one. */
+  canMoveDown: boolean;
 }
 
 export interface TierAdminScreen {
@@ -164,17 +170,31 @@ export function tierAdminScreen(
   role: DeviceRole,
 ): TierAdminScreen {
   const editable = mayEditShopSettings(role);
-  const activeCount = tiers.filter((t) => t.is_active).length;
   const active = tiers.filter((t) => t.is_active);
   const inactive = tiers.filter((t) => !t.is_active);
-  const rows: TierAdminRow[] = [...active, ...inactive].map((t) => ({
+  const activeCount = active.length;
+  // Active first, in the shop's order; move up/down is over this group only. An
+  // active tier can move up unless it is first, down unless it is last.
+  const activeRows: TierAdminRow[] = active.map((t, k) => ({
     id: t.id,
     code: t.code,
     name: t.name,
-    is_active: t.is_active,
-    // Deactivatable only if active AND not the last active tier (F1 guard).
-    mayDeactivate: t.is_active && activeCount > 1,
+    is_active: true,
+    // Deactivatable only if not the last active tier (F1 guard; the server agrees).
+    mayDeactivate: activeCount > 1,
+    canMoveUp: k > 0,
+    canMoveDown: k < activeCount - 1,
   }));
+  const inactiveRows: TierAdminRow[] = inactive.map((t) => ({
+    id: t.id,
+    code: t.code,
+    name: t.name,
+    is_active: false,
+    mayDeactivate: false,
+    canMoveUp: false,
+    canMoveDown: false,
+  }));
+  const rows: TierAdminRow[] = [...activeRows, ...inactiveRows];
   return {
     title: "เกรดรับซื้อของร้าน",
     editable,
@@ -185,6 +205,35 @@ export function tierAdminScreen(
     addHint: ADD_HINT,
     readOnlyNote: READ_ONLY_NOTE,
   };
+}
+
+/**
+ * THE SHOP'S NEW TIER ORDER after moving ONE active tier up or down (S16 / P1.24,
+ * commit 3). Reorder is over the ACTIVE list only (F3); inactive tiers keep their
+ * order after the active ones. Returns the FULL list of tier ids in the new order —
+ * the whole set, because PUT /grade-tiers/order rewrites the ordering as ONE fact
+ * and refuses a partial list. Returns null when the move is a no-op: the tier is not
+ * active, or it is already at the edge of the active group (the view disables the
+ * control there via canMoveUp / canMoveDown; this is the provable other half).
+ */
+export function moveActiveTier(
+  rows: readonly { id: string; is_active: boolean }[],
+  tierId: string,
+  direction: "up" | "down",
+): readonly string[] | null {
+  const active = rows.filter((r) => r.is_active);
+  const inactive = rows.filter((r) => !r.is_active);
+  const i = active.findIndex((r) => r.id === tierId);
+  if (i === -1) return null; // not an active tier
+  const j = direction === "up" ? i - 1 : i + 1;
+  if (j < 0 || j >= active.length) return null; // already at the edge
+  const reordered = active.slice();
+  const a = reordered[i];
+  const b = reordered[j];
+  if (a === undefined || b === undefined) return null;
+  reordered[i] = b;
+  reordered[j] = a;
+  return [...reordered, ...inactive].map((r) => r.id);
 }
 
 /* ==========================================================================
@@ -256,6 +305,11 @@ const REFUSED_OFFLINE = "ยังติดต่อระบบไม่ได�
 const REFUSED_SERVER = "ระบบยังตอบเรื่องเกรดไม่ได้ในตอนนี้ — ลองอีกครั้ง";
 const REFUSED_DUPLICATE = "มีเกรดรหัสนี้อยู่แล้ว ใช้รหัสอื่น";
 const REFUSED_INVALID = "ระบบไม่รับค่าที่ส่งไป — ตรวจสอบรหัสและชื่อเกรดแล้วลองอีกครั้ง";
+/** F1 (commit 3): the server refuses deactivating the shop's LAST active tier. The
+ *  phone's canMove/mayDeactivate guards should keep an ordinary user from provoking
+ *  it, so this is the belt-and-braces sentence for a stale-state race. */
+const REFUSED_LAST_ACTIVE =
+  "ร้านต้องมีเกรดที่เปิดใช้งานอย่างน้อยหนึ่งเกรด จึงปิดเกรดสุดท้ายไม่ได้ — เพิ่มเกรดใหม่ก่อน";
 
 /**
  * The `detail.code` a FastAPI HTTPException nests, for CLASSIFICATION — never the
@@ -305,9 +359,14 @@ export function tierActionOutcome(fetch: GradeTierFetch): TierActionOutcome {
   // http
   if (fetch.status === 401) return { kind: "session" };
   if (fetch.status === 409) {
-    return codeOf(fetch.body) === "grade_tier_in_use"
-      ? { kind: "refused", message: tierInUseMessage(sellersInTier(fetch.body)) }
-      : { kind: "refused", message: REFUSED_DUPLICATE };
+    const code = codeOf(fetch.body);
+    if (code === "grade_tier_in_use") {
+      return { kind: "refused", message: tierInUseMessage(sellersInTier(fetch.body)) };
+    }
+    if (code === "grade_tier_last_active") {
+      return { kind: "refused", message: REFUSED_LAST_ACTIVE };
+    }
+    return { kind: "refused", message: REFUSED_DUPLICATE };
   }
   if (fetch.status === 422) return { kind: "refused", message: REFUSED_INVALID };
   return { kind: "refused", message: REFUSED_SERVER };

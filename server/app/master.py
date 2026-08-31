@@ -1853,6 +1853,17 @@ class GradeTierUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class GradeTierOrder(BaseModel):
+    """The shop's whole tier ORDER, as ONE value. `order` lists EVERY tier the shop
+    holds (active and inactive) exactly once; sort_order is rewritten from each id's
+    position. An ordering is a single fact about the SET, so it is a PUT (a
+    replacement of the ordering) applied in one transaction, not a sequence of
+    per-tier PATCHes that could half-apply."""
+
+    model_config = ConfigDict(extra="forbid")
+    order: list[uuid.UUID]
+
+
 @router.get("/grade-tiers")
 async def list_grade_tiers(
     include_inactive: IncludeInactive = False,
@@ -1924,6 +1935,32 @@ async def update_grade_tier(
         if tier is None:
             raise _not_found("grade_tier")
         if changes.get("is_active") is False and tier["is_active"]:
+            # F1: a shop must keep at least ONE active tier. Deactivating the last
+            # one leaves zero, where _seat_seller_grade seats nothing and every
+            # walk-in's bill parks. Refused BEFORE the in-use check, because it is
+            # the more fundamental invariant -- it holds whether or not sellers sit
+            # in the tier, and the remedy (add a tier) comes first either way. The
+            # phone guards it too (gradeTierAdmin.mayDeactivate), but the phone is a
+            # courtesy and this is the authority: curl reaches this route directly.
+            active_count = (
+                await conn.execute(
+                    text("SELECT count(*) FROM grade_tiers WHERE is_active")
+                )
+            ).scalar_one()
+            if active_count <= 1:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    detail={
+                        "kind": "conflict",
+                        "code": "grade_tier_last_active",
+                        "message": (
+                            "ร้านต้องมีเกรดที่เปิดใช้งานอย่างน้อยหนึ่งเกรด "
+                            "จึงปิดเกรดสุดท้ายไม่ได้ — เพิ่มเกรดใหม่ก่อน"
+                        ),
+                        "entity": "grade_tier",
+                        "active_tiers": str(active_count),
+                    },
+                )
             in_use = (
                 await conn.execute(
                     text("SELECT count(*) FROM sellers WHERE grade = :c AND is_active"),
@@ -1946,6 +1983,55 @@ async def update_grade_tier(
                 )
         await _update_row(conn, "grade_tiers", tier_id, changes)
         return await _read_grade_tier(conn, tier_id)
+
+
+@router.put("/grade-tiers/order")
+async def reorder_grade_tiers(
+    body: GradeTierOrder, principal: Principal = Depends(require_admin)
+) -> dict:
+    """Rewrite the shop's tier ORDER in ONE transaction. ADMIN ONLY. `order` must
+    list every tier the shop holds EXACTLY ONCE; `sort_order` becomes each id's
+    position. A duplicate, a missing tier, or a foreign id is a 422 naming `order`
+    -- an ordering that does not cover the set exactly is not an ordering.
+
+    This lives on `/grade-tiers/order` (PUT) so it never collides with the
+    single-tier `PATCH /grade-tiers/{tier_id}`: distinct method, and 'order' is a
+    literal segment, not a `{tier_id}`.
+
+    CONCURRENCY, stated: this assumes ONE admin reorders at a time (a shop has one
+    back office). Two racing PUTs are last-write-wins over the WHOLE ordering, never
+    a half-applied one -- RLS scopes each to its shop and `tenant_connection` runs
+    the reads and every UPDATE in a single transaction, so the ordering moves as one
+    write or not at all."""
+    async with tenant_connection(principal.tenant_id) as conn:
+        # RLS-scoped: only this shop's tiers. The ordering must cover them exactly.
+        existing = set(
+            (await conn.execute(text("SELECT id FROM grade_tiers"))).scalars().all()
+        )
+        given = body.order
+        if len(set(given)) != len(given):
+            raise _invalid(
+                "grade_tier_order_invalid",
+                "ลำดับเกรดมีรหัสซ้ำ",
+                order=[str(i) for i in given],
+            )
+        if set(given) != existing:
+            raise _invalid(
+                "grade_tier_order_invalid",
+                "ลำดับต้องระบุทุกเกรดของร้านให้ครบถ้วนพอดี ไม่ขาดและไม่มีเกรดแปลกปลอม",
+                order=[str(i) for i in given],
+            )
+        for position, tier_id in enumerate(given):
+            await conn.execute(
+                text("UPDATE grade_tiers SET sort_order = :so WHERE id = :id"),
+                {"so": position, "id": tier_id},
+            )
+        rows = (
+            await conn.execute(
+                text(f"{_GRADE_TIER_SELECT} ORDER BY sort_order, code")
+            )
+        ).mappings().all()
+    return {"grade_tiers": [_grade_tier_payload(r) for r in rows]}
 
 
 # ---------------------------------------------------------------------------

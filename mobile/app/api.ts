@@ -603,7 +603,8 @@ export function createGradeTier(
 
 /** PATCH /grade-tiers/{id} — rename or (de)activate a tier. Admin-only. `code` is
  *  never sent (immutable). Deactivation is refused with a 409 whose body carries the
- *  `sellers_in_tier` count (F4). */
+ *  `sellers_in_tier` count (F4), or `grade_tier_last_active` when it is the shop's
+ *  last active tier (F1). */
 export function patchGradeTier(
   token: string,
   tierId: string,
@@ -614,6 +615,25 @@ export function patchGradeTier(
       method: "PATCH",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify(patch),
+      signal,
+    }),
+  );
+}
+
+/** PUT /grade-tiers/order — rewrite the shop's WHOLE tier order in ONE write.
+ *  Admin-only. `order` lists every tier id in the intended order; the server rewrites
+ *  sort_order from position in one transaction. A partial or foreign list is a 422
+ *  (grade_tier_order_invalid). An ordering is a single fact about the set, so it
+ *  moves as one PUT, never a sequence of per-tier writes that could half-apply. */
+export function reorderGradeTiers(
+  token: string,
+  order: readonly string[],
+): Promise<GradeTierFetch> {
+  return transportJsonKeepingBody((signal) =>
+    fetch(`${API_BASE_URL}/grade-tiers/order`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ order }),
       signal,
     }),
   );

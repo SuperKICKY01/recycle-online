@@ -34,8 +34,8 @@ created against one of its tiers, and a bill is priced from that tier -- all rea
 back from the database; AND a shop that does not grade (ONE tier) creates a seller
 and posts a walk-in bill with NO office round trip (F2).
 
-THE FOUR DISPROOFS (performed by the operator on server/app/master.py, recorded in
-the phase report). Each names its cell FIRST, reddens EXACTLY it, and reverts:
+THE DISPROOFS (performed by the operator on server/app/master.py, recorded in the
+phase report). Each names its cell FIRST, reddens EXACTLY it, and reverts:
   (a) drop the deactivation in_use check -> cell E: a tier with sellers deactivates
       with no 409.
   (b) drop the composite FK's tenant leg on sellers.grade -> cell H stays GREEN,
@@ -51,6 +51,12 @@ the phase report). Each names its cell FIRST, reddens EXACTLY it, and reverts:
       goes through the backfill. Proven in 1a by the migration read-back; the
       backfill's UNION over product_prices+sellers+default_grade is what a
       sellers-only grade needs, and dev holds no such grade so it is vacuous there.
+  (e) drop the last-active guard in update_grade_tier (commit 3) -> cell L: the
+      shop's LAST active tier deactivates (409 -> 200), leaving ZERO active tiers,
+      which is the F1 break the guard exists to refuse.
+  (f) drop the set-equality check in reorder_grade_tiers (commit 3) -> cell M: a
+      PARTIAL order is accepted (422 -> 200) and half-rewrites sort_order, which is
+      the "an ordering that does not cover the set is not an ordering" refusal.
 
 RUNS TWICE (lessons/proof-must-run-twice.md): each run re-restores its scratch and
 provisions fresh tenants. EXIT is red unless the full success path is reached; an
@@ -203,6 +209,8 @@ def assert_serving_this_code() -> str:
         return "the server does not declare GET+POST /grade-tiers -- predates P1.24 1b"
     if "patch" not in paths.get("/grade-tiers/{tier_id}", {}):
         return "the server does not declare PATCH /grade-tiers/{tier_id}"
+    if "put" not in paths.get("/grade-tiers/order", {}):
+        return "the server does not declare PUT /grade-tiers/order -- predates P1.24 commit 3"
     return ""
 
 
@@ -470,6 +478,73 @@ async def run(ctx: Ctx, client, admin, staff, one_admin, other_admin) -> None:
     rk2 = await client.patch("/shop", headers=auth(admin), json={"default_grade": MOVE_TIER})
     check(rk2.status_code == 200 and rk2.json().get("default_grade") == MOVE_TIER,
           f"K (control): a real tier {MOVE_TIER} IS accepted as the default -> 200")
+
+    # =====================================================================
+    header("L -- F1 (commit 3): a shop cannot deactivate its LAST active tier (disproof e)")
+    # OTHER has no tiers; give it two, NO sellers, a clean F1 test the in-use check
+    # never touches. The guard is the server's -- the phone's mayDeactivate is a
+    # courtesy, and this is the route curl reaches directly.
+    await client.post("/grade-tiers", headers=auth(other_admin), json={"code": "F1A", "name": "เกรดหนึ่ง"})
+    await client.post("/grade-tiers", headers=auth(other_admin), json={"code": "F1B", "name": "เกรดสอง"})
+    ol = {t["code"]: t["id"] for t in await client_tiers(client, other_admin, include_inactive=True)}
+    # with TWO active, deactivating one succeeds (the guard passes, in_use passes).
+    rl1 = await client.patch(f"/grade-tiers/{ol['F1B']}", headers=auth(other_admin), json={"is_active": False})
+    check(rl1.status_code == 200, f"L: with two active tiers, deactivating one -> 200 (got {rl1.status_code})")
+    # now F1A is the LAST active -- deactivating it is refused with its own code, and
+    # the refusal NAMES the operand (active_tiers=1).
+    rl2 = await client.patch(f"/grade-tiers/{ol['F1A']}", headers=auth(other_admin), json={"is_active": False})
+    dl = rl2.json().get("detail", {})
+    codel = dl.get("code") if isinstance(dl, dict) else None
+    activel = dl.get("active_tiers") if isinstance(dl, dict) else None
+    print(f"      deactivate-the-last: status={rl2.status_code} code={codel!r} active_tiers={activel!r}")
+    check(rl2.status_code == 409, f"L: deactivating the LAST active tier -> 409 (got {rl2.status_code})")
+    check(codel == "grade_tier_last_active", f"L: refusal pinned to grade_tier_last_active (got {codel!r})")
+    check(activel == "1", f"L: the refusal NAMES the operand (active_tiers=1) (got {activel!r})")
+    # reactivating the second restores the ability: two active again, F1A deactivates.
+    rl3 = await client.patch(f"/grade-tiers/{ol['F1B']}", headers=auth(other_admin), json={"is_active": True})
+    check(rl3.status_code == 200, f"L: reactivate the second tier -> 200 (got {rl3.status_code})")
+    rl4 = await client.patch(f"/grade-tiers/{ol['F1A']}", headers=auth(other_admin), json={"is_active": False})
+    check(rl4.status_code == 200, f"L: with the ability restored, the not-last tier deactivates -> 200 (got {rl4.status_code})")
+
+    # =====================================================================
+    header("M -- PUT /grade-tiers/order rewrites the whole ordering in ONE write (commit 3, disproof f)")
+    # OTHER now holds F1A (inactive) and F1B (active). The order covers EVERY tier.
+    oa = {t["code"]: t["id"] for t in await client_tiers(client, other_admin, include_inactive=True)}
+    rm = await client.put("/grade-tiers/order", headers=auth(other_admin),
+                          json={"order": [oa["F1A"], oa["F1B"]]})
+    check(rm.status_code == 200, f"M: PUT /grade-tiers/order -> 200 (got {rm.status_code})")
+    pg = await pg_tiers(ctx.other)
+    print(f"      order read back from Postgres: {[t['code'] for t in pg]}")
+    check([t["code"] for t in pg] == ["F1A", "F1B"],
+          "M: the shop's order is read back from Postgres in the PUT's order")
+    # reverse it -- the other direction, so the cell is not vacuous.
+    rm2 = await client.put("/grade-tiers/order", headers=auth(other_admin),
+                           json={"order": [oa["F1B"], oa["F1A"]]})
+    check(rm2.status_code == 200, f"M: reorder the other way -> 200 (got {rm2.status_code})")
+    pg2 = await pg_tiers(ctx.other)
+    print(f"      reversed read back: {[t['code'] for t in pg2]}")
+    check([t["code"] for t in pg2] == ["F1B", "F1A"],
+          "M (control): reversing the order reverses the read-back -- not vacuous")
+    # a PARTIAL order (a tier missing) is refused: an ordering must cover the set.
+    rp1 = await client.put("/grade-tiers/order", headers=auth(other_admin),
+                           json={"order": [oa["F1A"]]})
+    dp1 = rp1.json().get("detail", {})
+    codep1 = dp1.get("code") if isinstance(dp1, dict) else None
+    print(f"      partial order: status={rp1.status_code} code={codep1!r}")
+    check(rp1.status_code == 422 and codep1 == "grade_tier_order_invalid",
+          "M: a PARTIAL order (a tier missing) is a 422 grade_tier_order_invalid")
+    # a FOREIGN id in the order is refused.
+    rp2 = await client.put("/grade-tiers/order", headers=auth(other_admin),
+                           json={"order": [oa["F1A"], oa["F1B"], str(uuid.uuid4())]})
+    dp2 = rp2.json().get("detail", {})
+    codep2 = dp2.get("code") if isinstance(dp2, dict) else None
+    print(f"      foreign id: status={rp2.status_code} code={codep2!r}")
+    check(rp2.status_code == 422 and codep2 == "grade_tier_order_invalid",
+          "M: a FOREIGN tier id in the order is a 422 grade_tier_order_invalid")
+    # the refused writes did not half-apply: the order is still the last GOOD one.
+    pg3 = await pg_tiers(ctx.other)
+    check([t["code"] for t in pg3] == ["F1B", "F1A"],
+          "M: after two refusals the order is UNCHANGED -- a rejected ordering wrote nothing")
 
 
 async def client_tiers(client, token, include_inactive=False):

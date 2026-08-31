@@ -7351,6 +7351,29 @@ without a device.**
   is a device pass). The fetch→parse seam is covered by the server proof plus the phone's parser
   proof; a green not run is not written as green.
 
+**2026-08-31 — P1.24 commit 3: the server F1 guard, the reorder route, and the phone's reorder
+control. BUILT and proven (server over real HTTP, phone headless).** The two follow-ups the owner
+ordered before P1.24 is called done. (1) The SERVER now refuses deactivating a shop's LAST active
+tier (409 `grade_tier_last_active`) — the F1 gap the Phase-2 finding raised, closed at the
+AUTHORITY; the phone's client guard is kept as a second layer. (2) TIER REORDER is BUILT, not
+deferred — `PUT /grade-tiers/order` rewrites the whole ordering in ONE transaction (a partial or
+foreign list is a 422), and the phone's settings gains ↑ / ↓ move controls (one PUT of the whole
+order per move). `prove_grade_tiers.py` gains cells L (the guard) and M (the reorder), green twice,
+each with a disproof reddening exactly it; `prove:gradeTiers` gains G5's last-active refusal and G7
+(reorder), green twice; both typechecks green. Full evidence in `PROJECT_STATUS.md § Current phase`.
+- **DONE WHEN, read LITERALLY: NOW HELD IN FULL — but PROVEN, not OBSERVED, and here is exactly what
+  that excludes so a later reader does not take it as "observed".** A shop declares, names, orders and
+  retires its tiers with every invariant enforced SERVER-SIDE (F1..F4, over real HTTP) and the phone
+  carrying all of it (F0, headless). What is NOT done: (a) the ON-DEVICE pass — no handset has rendered
+  any of it; its readings are on the consolidated handset list, which every mobile phase of this stage
+  shares; (b) the FIVE external-server grade proofs (`prove_master_write`, `prove_master_data_gate`,
+  `prove_seller_pricing`, `prove_master`, `prove_daily_report`) still have NOT been run against the
+  tier model — their `OPEN_ITEMS.md` line from commit 1b STAYS OPEN, and `prove_grade_tiers.py`'s
+  coverage does not close it. "Held read literally" is a statement about the ROUTES and the PURE
+  modules, not about a device or those five proofs.
+- The `OPEN_ITEMS.md` F1-gap line and the reorder-deferred line are both CLOSED (dated, naming this
+  commit). The 1b external-server-proofs line is NOT closed.
+
 ---
 
 # STAGE 2 — what the pilot teaches, and what gets fixed because of it

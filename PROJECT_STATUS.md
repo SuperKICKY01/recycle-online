@@ -75,9 +75,57 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.24 — COMMIT 3: THE SERVER F1 GUARD, THE REORDER ROUTE, AND THE PHONE'S REORDER CONTROL.
+2026-08-31.** No sha yet (this record precedes the commit; anchor next pass). The current-phase
+pointer, superseding the Phase 2 pointer below. Two follow-ups the owner ordered before P1.24 is
+called done.
+**SERVER (server/app/master.py), NO migration (sort_order is 0015's column; both are handler
+logic).** (1) THE F1 LAST-ACTIVE GUARD, owed not queued: `PATCH /grade-tiers/{id}` `is_active=false`
+now refuses deactivating the shop's LAST active tier with its own 409 `grade_tier_last_active`
+(detail carries `active_tiers`), checked BEFORE the in-use check — zero active tiers breaks F2
+seating, and curl reaches the route directly, so the phone's `mayDeactivate` is a courtesy and this
+is the authority (two layers, correct). (2) THE REORDER ROUTE, one write not two PATCHes: `PUT
+/grade-tiers/order` takes the shop's WHOLE ordering (every tier id EXACTLY once) and rewrites
+`sort_order` from position in ONE transaction (`tenant_connection`'s `conn.begin`); a duplicate,
+missing or foreign id is a 422 `grade_tier_order_invalid` naming `order`. An ordering is one fact
+about the set, so it moves as one write and cannot half-apply. Concurrency, stated: one admin
+assumed (a shop has one back office); racing PUTs are last-write-wins over the whole ordering,
+never a partial one.
+**PHONE (mobile/).** `api.ts` `reorderGradeTiers`; `gradeTierAdmin.moveActiveTier` (the full new
+order after a move up/down over the active list, inactive tiers after) + `canMoveUp`/`canMoveDown`
+row flags + `tierActionOutcome` now words `grade_tier_last_active`; `SettingsScreen` gains ↑/↓
+controls on each active tier (one PUT of the whole order per move, `TAP_MIN`, admin-only). The
+client `mayDeactivate` guard STAYS.
+**PROVEN (each command BARE, exit read in the same invocation; cp874 box, `PYTHONIOENCODING=utf-8`).**
+SERVER: `prove_grade_tiers.py` (scratch + own uvicorn, self-restored from dev; live dev READ only)
+EXIT=0 TWICE with NEW cells L (the last-active guard: deactivate down to one → 409
+`grade_tier_last_active` `active_tiers=1`, operand printed; with two active, deactivating one → 200;
+reactivating restores the ability) and M (reorder: read back OUT OF POSTGRES, reversed as the
+control, a partial list → 422, a foreign id → 422, UNCHANGED after the refusals — a rejected
+ordering wrote nothing). Two DISPROOFS each reddened EXACTLY their cell and reverted: (e) drop the
+last-active guard → cell L (409→200, zero active left); (f) drop the reorder set-equality check →
+cell M's validation cluster (422→200, half-rewrite). No DISPROOF remnant in `master.py` (grep
+clean). PHONE: both typechecks EXIT=0 (node + app, before AND after). `prove:gradeTiers` EXIT=0
+TWICE, now 43 cells (was 34 in Phase 2; +9 = G5's last-active refusal ×1 and G7 reorder ×8); its
+three disproofs still redden EXACTLY one cell each (`deactivate_last`→G2, `hide_last_tier`→G3,
+`drop_count`→G5's count — the new last-active check has no digit, so `drop_count` leaves it green).
+`prove:tapaudit`, `prove:sheets` EXIT=0 (the ↑/↓ controls are themed, no raw min-size, no new Modal).
+**THE OPEN_ITEMS F1 LINE IS CLOSED (dated, naming this commit); the reorder-deferred line is CLOSED
+(reorder is BUILT, not deferred).**
+**DONE WHEN, READ LITERALLY: NOW HELD IN FULL.** With the guard and the reorder route, a shop
+declares, names, orders, and retires its tiers with every invariant enforced server-side (F1..F4)
+and the phone carries all of it (F0). The only unobserved piece is the device pass (the consolidated
+handset list). The Phase-2 "22 cells" undercount is corrected in that record below.
+**IS A LESSON OWED? NO.** The two disproofs are the same reddens-exactly-one-cell discipline already
+carried by `a-check-that-never-went-red-was-never-observed`; the last-active guard and the
+one-transaction reorder are the F1/atomicity requirements the brief named, built to them, not
+lessons relearned. The "22 cells" miscount is a measurement carried unmeasured — already the
+`CLAUDE.md § Shared checks` "a measurement being carried as a fact" rule; the fix is the recount and
+the record, not a new lesson.
+
 **P1.24 — THE PER-TENANT GRADE MODEL, PHASE 2: THE PHONE. 2026-08-31.** No sha yet (this
-record precedes the commit; anchor next pass). This is the current-phase pointer, superseding
-the commit-1b pointer below.
+record precedes the commit; anchor next pass). This WAS the current-phase pointer until the
+commit-3 record above.
 **BUILT and PROVEN HEADLESS; NO device pass claimed** (CLAUDE.md § Boot check "WHICH BUNDLE THE
 HANDSET IS RUNNING"). The handset replaces the hardcoded grade set with the shop's own fetched tiers.
 **M1 — FETCH + CACHE.** `GET /grade-tiers` (active only) is fetched in `refreshMaster` beside
@@ -101,7 +149,9 @@ the consolidated handset list.
 unconditionally NULL (seated server-side on sync), no queued bill carries a grade (grade left bill
 items in 0003), and `cached_grade_tiers` is additive.
 **PROVEN (each command BARE, exit read in the same invocation; cp874 box).** Both typechecks EXIT=0
-(`typecheck` node + `typecheck:app`). `prove:gradeTiers` (NEW, 22 cells) EXIT=0 TWICE; its three
+(`typecheck` node + `typecheck:app`). `prove:gradeTiers` (NEW, 34 cells — the commit body 66f2e20
+says "22 cells", an UNCOUNTED estimate; recounted 34, definition: `check()` output lines) EXIT=0
+TWICE; its three
 disproofs each reddened EXACTLY one cell and reverted (`deactivate_last`→G2; `hide_last_tier`→G3;
 `drop_count`→G5). `prove:prices` and `prove:settings` rewritten off `GRADES`, EXIT=0 TWICE each; the
 `prove:settings --break=hardcode_grades` disproof reddens S2 (options track the shop's tiers by
@@ -506,8 +556,8 @@ is EMPTY — the change touched only `app/`, `App.tsx`, `app.json`, `package.jso
 two new files under `src/ui`/`src/proof`. The inventory re-run finds ZERO raw hex, ZERO
 rgba and ZERO raw `fontSize` literal in `app/`.
 **NOT OBSERVED — the handset pass, now the ONE consolidated pass owed for units 1, 3,
-this phase, AND P1.21's drawing half (this session — added as the last bullet, not a second
-list).** No device pass this session; dark rendering and follow-system are
+this phase, P1.21's drawing half, AND the P1.24 grade model (each session added as the last
+bullet, not a second list).** No device pass this session; dark rendering and follow-system are
 device-visible and no headless proof can see them. On a handset (`npx expo start -c` + a
 full reload FIRST — `CLAUDE.md § Boot check` "WHICH BUNDLE"), the owner reads:
 - THIS PHASE (theme + sweep): every screen the sweep touched renders correctly in BOTH
@@ -534,6 +584,14 @@ full reload FIRST — `CLAUDE.md § Boot check` "WHICH BUNDLE"), the owner reads
   เจ้าของร้าน; an ADMIN sees the prices; a seller with NO history reads calmly (its own sentence,
   not an error tone); a local/unsynced seller reads the "not on the system yet" message; and
   offline shows one calm sentence with no rows.
+- P1.24 (the per-tenant grade model — Phase 2 AND commit 3, this session): on ตั้งค่าร้าน the
+  owner sees the shop's tiers, ADDS one, RENAMES one, DEACTIVATES one (the refusal names the
+  seller count when sellers sit in it, and refuses the LAST active tier), REACTIVATES it, and
+  MOVES a tier UP / DOWN (↑ / ↓) with the new order surviving a reopen (commit 3); the
+  default-grade control shows the shop's tier NAMES and is HIDDEN when the shop has one active
+  tier (F2); a long Thai tier name shows in FULL on the price screen (the fixed grade column, not
+  the old one-glyph width); and the seller picker / cart / confirm surfaces show a seller's grade
+  by its NAME. A wet finger lands inside the ↑ / ↓ / แก้ชื่อ / ปิดใช้งาน controls (all ≥ `TAP_MIN`).
 All UNOBSERVED.
 **IS A LESSON OWED? NO.** The brief flagged the text-scanner-as-proof shape as "a new
 instrument here"; re-derived against the tree, it is NOT new — `proveSheets.ts` already

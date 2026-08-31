@@ -298,6 +298,12 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   swap with partial-failure semantics, DEFERRED to the desktop's fuller master-data admin
   rather than owned by the yard phone (F0 "ship every function" is met for declare/rename/
   retire/set-default; reorder is the one deferred, and the owner should ratify or override).
+  **SUPERSEDED 2026-08-31 (P1.24 commit 3): the owner OVERRODE the deferral and reorder is BUILT —
+  but NOT as a two-PATCH swap.** `PUT /grade-tiers/order` rewrites the shop's whole ordering in ONE
+  transaction (a partial or foreign list is a 422 `grade_tier_order_invalid`); the phone's settings
+  gains ↑ / ↓ move controls (one PUT of the whole order per move). `prove_grade_tiers.py` cell M and
+  `prove:gradeTiers` G7 prove it (green twice), with disproof (f) reddening exactly M's validation.
+  F0 is now met in FULL — every function ships and the shop adjusts it.
   The phone's REAL-HTTP round is UNRUN for the same reason the five external-server proofs
   are: `app/api.ts` reaches expo-constants through `./config` and cannot be imported by a
   node proof, and an end-to-end phone→server round is a DEVICE PASS, outside this phase's
@@ -333,6 +339,11 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   last active tier, a 409 in the shape of the in-use one. *Unblocks it:* one count in
   `update_grade_tier`, taken in the first phase that opens the server for another reason
   (P1.24 Phase 2 was the phone, so a server change was out of its bounds).
+  **CLOSED 2026-08-31 (P1.24 commit 3): the server guard is BUILT.** `PATCH /grade-tiers/{id}`
+  `is_active=false` now refuses the shop's LAST active tier with a 409 `grade_tier_last_active`
+  (detail carries `active_tiers`), checked BEFORE the in-use check; `prove_grade_tiers.py` cell L
+  proves it (green twice), and disproof (e) — drop the guard — reddens EXACTLY that cell. The phone's
+  client `mayDeactivate` stays as the second layer, the server being the authority.
 
 - **~~NO STAFF ACCOUNT EXISTS AND THERE IS NO WAY TO CREATE ONE — measured
   2026-08-10, not inferred.~~ — THE SECOND HALF IS CLOSED, THE FIRST STANDS.**
