@@ -75,9 +75,56 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.24 — THE PER-TENANT GRADE MODEL, PHASE 2: THE PHONE. 2026-08-31.** No sha yet (this
+record precedes the commit; anchor next pass). This is the current-phase pointer, superseding
+the commit-1b pointer below.
+**BUILT and PROVEN HEADLESS; NO device pass claimed** (CLAUDE.md § Boot check "WHICH BUNDLE THE
+HANDSET IS RUNNING"). The handset replaces the hardcoded grade set with the shop's own fetched tiers.
+**M1 — FETCH + CACHE.** `GET /grade-tiers` (active only) is fetched in `refreshMaster` beside
+products and sellers and cached in a NEW `cached_grade_tiers` table (`code, name, sort_order,
+owner_tenant_id`) — a third master list with its own `master_cache` stamp, tenant-scoped and
+delete-all-insert-all like the other two (`MasterGradeTier` / `saveGradeTiers` added). The hardcoded
+`GRADES = ["A","B","C","D"]` is DELETED; the price screen enumerates the fetched tiers, gated on a
+new `haveGradeTiers` (the upgraded-handset "tiers not downloaded" empty state).
+**M2 — SETTINGS TIER MANAGEMENT.** New pure module `gradeTierAdmin.ts` (`readGradeTiers`,
+`tierAdminScreen`, `validateNewTier`/`validateRename`, `tierActionOutcome`) + settings UI: declare /
+rename / deactivate / reactivate, admin-only (staff read-only), the F4 deactivation refusal showing
+the count. Default-grade options are the shop's ACTIVE tiers by NAME; F2 hides the whole
+default-grade control at exactly one active tier (`showGrade`), and the tier LIST is never hidden.
+**M3 — SURFACES READ NAMES (F3).** `tierName(tiers, code)` (`cart/sellers.ts`) resolves a seller's
+grade code to the shop's NAME across picker / cart / confirm-save / confirm-change / price screen,
+falling back to the code. `PricesSheet`'s `width:24` one-glyph grade column FIXED (a Thai name
+overflowed it) — content-sized `flexShrink`, no raw min-size (`prove:tapaudit` compliant); add it to
+the consolidated handset list.
+**LOCAL STORE — no migration, no queued bill at risk** (reported BEFORE editing, grounded in
+`schema.ts`): the grade columns are already unconstrained TEXT, the offline seller's grade is
+unconditionally NULL (seated server-side on sync), no queued bill carries a grade (grade left bill
+items in 0003), and `cached_grade_tiers` is additive.
+**PROVEN (each command BARE, exit read in the same invocation; cp874 box).** Both typechecks EXIT=0
+(`typecheck` node + `typecheck:app`). `prove:gradeTiers` (NEW, 22 cells) EXIT=0 TWICE; its three
+disproofs each reddened EXACTLY one cell and reverted (`deactivate_last`→G2; `hide_last_tier`→G3;
+`drop_count`→G5). `prove:prices` and `prove:settings` rewritten off `GRADES`, EXIT=0 TWICE each; the
+`prove:settings --break=hardcode_grades` disproof reddens S2 (options track the shop's tiers by
+value AND name). `prove:migration` EXIT=0 (now tracks `cached_grade_tiers` in `readShape`, its four
+columns; the M2 SIGKILL rollbacks still clean; no cell count moved). `prove:sheets`, `prove:tapaudit`,
+`prove:cold`, `prove:cachetenant`, `prove:seller`, `prove:cart` EXIT=0 (no regression).
+**NOT RUN, NAMED: the phone's REAL-HTTP round** — `app/api.ts` reaches expo-constants and cannot be
+proof-imported, and an end-to-end phone→server round is a DEVICE PASS (outside this phase's
+no-device-pass scope). The fetch→parse seam is covered by `prove_grade_tiers.py` (server, real HTTP,
+the payload shape) + `proveGradeTiers` G0 (the phone's `readGradeTiers` over that exact shape). A
+green not run today is not written as green.
+**TWO FINDINGS, recorded in `OPEN_ITEMS.md`:** (1) the SERVER does not refuse deactivating the LAST
+active tier — 0 active tiers breaks F2 seating; the phone guards it client-side (`mayDeactivate`),
+the server guard is OWED. (2) TIER REORDER is deferred — a two-PATCH `sort_order` swap, better on the
+desktop's fuller admin; the shop orders by add-sequence, and the owner should ratify or override.
+**IS A LESSON OWED? NO.** The `prove:tapaudit` raw-min-size catch is already enforced by that check;
+the disproof-reddens-two-cells nit was caught by RUNNING every disproof (existing discipline) and
+fixed (read the F1 guard as a SET so it is vacuous, not red, on the hidden-list break); the F1 server
+gap is a FINDING about existing server code, recorded as owed work, not a mistake this phase made.
+
 **P1.24 — THE PER-TENANT GRADE MODEL, COMMIT 1b: the routes (S6 split, second commit).
-2026-08-31.** No sha yet (this record precedes the commit; anchor next pass). This is the
-current-phase pointer.
+2026-08-31.** No sha yet (this record precedes the commit; anchor next pass). This WAS the
+current-phase pointer until the Phase 2 record above.
 **BUILT and PROVEN over real HTTP; NO device work — that is Phase 2.** `server/app/master.py`
 gains the grade-tier routes and turns the removed `Grade = Literal["A","B","C","D"]` into
 run-time validation against the shop's OWN tiers.

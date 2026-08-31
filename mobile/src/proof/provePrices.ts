@@ -58,7 +58,6 @@
 import {
   EDIT_TIER_LABEL,
   editableValue,
-  GRADES,
   isPriced,
   parseTierPrice,
   priceListScreen,
@@ -102,10 +101,10 @@ function fixture(): readonly PriceProduct[] {
       code: "AL-01",
       name: "อะลูมิเนียมหนา",
       tiers: [
-        { grade: "A", price: "62.50" },
-        { grade: "B", price: "60.00" },
-        { grade: "C", price: "57.25" },
-        { grade: "D", price: "55.00" },
+        { grade: "A", name: "A", price: "62.50" },
+        { grade: "B", name: "B", price: "60.00" },
+        { grade: "C", name: "C", price: "57.25" },
+        { grade: "D", name: "D", price: "55.00" },
       ],
     },
     {
@@ -113,17 +112,25 @@ function fixture(): readonly PriceProduct[] {
       code: "FE-01",
       name: "เหล็กรวม",
       tiers: [
-        { grade: "A", price: "9.10" },
-        { grade: "B", price: null },
-        { grade: "C", price: "0.00" },
-        { grade: "D", price: null },
+        { grade: "A", name: "A", price: "9.10" },
+        { grade: "B", name: "B", price: null },
+        { grade: "C", name: "C", price: "0.00" },
+        { grade: "D", name: "D", price: null },
       ],
     },
   ];
 }
 
+/*
+ * name == code IN THIS FIXTURE ON PURPOSE (S16 / P1.24). The tier NAME is now a
+ * per-tenant value the screen shows in place of the code; a backfilled shop has
+ * name == code, so the price-rendering cells below read exactly as they did before
+ * the tiers went per-tenant, and the needle "C 0.00" still means what it meant. The
+ * F3 case where name != code — the shop's own Thai name is shown, never the code —
+ * is proved on its own fixture in `pNameIsShown` so nothing here has to move.
+ */
 const listFor = (role: DeviceRole): PriceScreen =>
-  priceListScreen({ role, products: fixture(), haveProducts: true });
+  priceListScreen({ role, products: fixture(), haveProducts: true, haveGradeTiers: true });
 
 /* -------------------------------------------------------------- P0 bound -- */
 
@@ -579,12 +586,23 @@ function p4EveryOutcomeHasAScreen(): void {
   );
   check("a 500 says the outcome is unknown", fivexx.includes("ไม่แน่ใจ"), "");
 
-  /* the LIST screens, over the two absences that are not the same absence */
+  /* the LIST screens, over the THREE absences that are not the same absence */
 
-  const never = priceListScreen({ role: "admin", products: [], haveProducts: false });
-  const empty = priceListScreen({ role: "admin", products: [], haveProducts: true });
+  const never = priceListScreen({ role: "admin", products: [], haveProducts: false, haveGradeTiers: true });
+  const empty = priceListScreen({ role: "admin", products: [], haveProducts: true, haveGradeTiers: true });
+  // A THIRD absence (S16 / P1.24): products cached but the tier set never fetched —
+  // an upgraded handset before its first refresh. Distinct from the two above, and
+  // it says so about the TIERS, not the products; the screen cannot list a tier it
+  // has not downloaded, so it draws no rows rather than every product with none.
+  const noTiers = priceListScreen({
+    role: "admin",
+    products: fixture(),
+    haveProducts: true,
+    haveGradeTiers: false,
+  });
   console.log(`\n  never fetched:\n    ${priceScreenText(never)}`);
   console.log(`  shop has none:\n    ${priceScreenText(empty)}`);
+  console.log(`  tiers not fetched:\n    ${priceScreenText(noTiers)}`);
   check(
     "never-fetched and shop-has-no-products are DIFFERENT screens",
     priceScreenText(never) !== priceScreenText(empty),
@@ -595,7 +613,19 @@ function p4EveryOutcomeHasAScreen(): void {
     priceScreenText(never).includes("เครื่องนี้ยังไม่เคยดาวน์โหลด"),
     "",
   );
-  check("neither offers an edit control", !never.editable && !empty.editable, "");
+  check(
+    "products-but-no-tiers is its OWN empty screen, blaming the missing tier list",
+    priceScreenText(noTiers).includes("ยังไม่เคยดาวน์โหลดรายการเกรด") &&
+      priceScreenText(noTiers) !== priceScreenText(never) &&
+      priceScreenText(noTiers) !== priceScreenText(empty),
+    "tiers absent, products present",
+  );
+  check(
+    "the no-tiers screen draws no product rows and no edit control",
+    noTiers.products.length === 0 && !noTiers.editable,
+    `${String(noTiers.products.length)} rows`,
+  );
+  check("no fetched-state screen offers an edit control", !never.editable && !empty.editable && !noTiers.editable, "");
 }
 
 /* ------------------------------------------- P5 no action that cannot help -- */
@@ -758,23 +788,34 @@ function p5NoActionThatCannotHelp(): void {
   check("no action anywhere carries a blank label", blank.length === 0, `${String(blank.length)} blank`);
 
   /*
-   * THE FIXTURE'S GRADES ARE THE MODULE'S GRADES. If they ever disagree, every
-   * cell above is asserting over a tier set the app does not draw.
+   * F3 — THE SHOP'S NAME IS SHOWN, NEVER THE CODE (S16 / P1.24). The tier set used
+   * to be the module's `GRADES`, and the old cell here asserted the fixture equalled
+   * it. The set is per-tenant now, so there is nothing to equal; what matters
+   * instead is that the screen lists a tier by its display NAME — the code is only
+   * the price-map key. A fixture where name != code (a backfilled shop has them
+   * equal) proves the rendered text carries the name, not the code.
    */
+  const named = priceScreenText(
+    priceListScreen({
+      role: "admin",
+      products: [
+        { id: "n-1", code: "CU-01", name: "ทองแดง", tiers: [{ grade: "G1", name: "เกรดหนึ่ง", price: "120.00" }] },
+      ],
+      haveProducts: true,
+      haveGradeTiers: true,
+    }),
+  );
   check(
-    "the fixture's tier set equals GRADES",
-    fixture().every(
-      (p) => p.tiers.length === GRADES.length && p.tiers.every((t, i) => t.grade === GRADES[i]),
-    ),
-    GRADES.join(","),
+    "the rendered price screen shows the tier NAME, not its code",
+    named.includes("เกรดหนึ่ง 120.00") && !named.includes("G1 120.00"),
+    named.includes("เกรดหนึ่ง 120.00") ? "name shown" : "name NOT shown",
   );
 }
 
 /* ------------------------------------------------------------------ main -- */
 
 function main(): number {
-  console.log("PRICE EDITING (P1.9) — the pure module, driven for real\n");
-  console.log(`  grades: ${GRADES.join(", ")}`);
+  console.log("PRICE EDITING (P1.9 / P1.24) — the pure module, driven for real\n");
 
   p0TheBoundIsTheColumn();
   p1NothingIsDefaulted();

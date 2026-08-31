@@ -19,14 +19,21 @@
  * has been removed must stop being pickable, and a bill already filed to them is
  * a separate problem the server answers (422) rather than one the cache hides.
  */
-import type { MasterProduct, MasterSeller, MasterSnapshot, MasterStore } from "../../master/types.js";
+import type {
+  MasterGradeTier,
+  MasterProduct,
+  MasterSeller,
+  MasterSnapshot,
+  MasterStore,
+} from "../../master/types.js";
 import type { SqlDriver, SqlTx } from "./driver.js";
 import { initConnection } from "./schema.js";
 import { SqliteIdentityStore } from "./SqliteIdentityStore.js";
 
-/** The two keys in master_cache. Not a free string at the call sites. */
+/** The three keys in master_cache. Not a free string at the call sites. */
 const PRODUCTS = "products";
 const SELLERS = "sellers";
+const GRADE_TIERS = "grade_tiers";
 
 /**
  * The row-selection clause every cache READ carries. Tenant only — prices belong
@@ -64,6 +71,12 @@ interface SellerRow {
   name: string;
   phone: string | null;
   grade: string | null;
+}
+
+interface GradeTierRow {
+  code: string;
+  name: string;
+  sort_order: number;
 }
 
 /**
@@ -217,6 +230,7 @@ export class SqliteMasterStore implements MasterStore {
     );
     const productStamp = readStamp(stamps, PRODUCTS, tenant);
     const sellerStamp = readStamp(stamps, SELLERS, tenant);
+    const gradeTierStamp = readStamp(stamps, GRADE_TIERS, tenant);
 
     // FILTERED IN SQL, which is a SECOND mechanism and not a redundant one: it
     // means another shop's rows cannot reach the screen even if the stamp were
@@ -231,6 +245,14 @@ export class SqliteMasterStore implements MasterStore {
     const sellers = await this.db.all<SellerRow>(
       "SELECT id, code, name, phone, grade FROM cached_sellers" +
         ` WHERE ${CACHE_TENANT_MATCHES} ORDER BY code, id`,
+      [tenant],
+    );
+    // The shop's order, exactly as the server returned it (ORDER BY sort_order,
+    // code — matching GET /grade-tiers). `code` breaks a sort_order tie the same
+    // way the server does, so the two orderings cannot drift.
+    const gradeTiers = await this.db.all<GradeTierRow>(
+      "SELECT code, name, sort_order FROM cached_grade_tiers" +
+        ` WHERE ${CACHE_TENANT_MATCHES} ORDER BY sort_order, code`,
       [tenant],
     );
 
@@ -254,10 +276,19 @@ export class SqliteMasterStore implements MasterStore {
           grade: r.grade,
         }),
       ),
+      gradeTiers: gradeTiers.map(
+        (r): MasterGradeTier => ({
+          code: r.code,
+          name: r.name,
+          sort_order: r.sort_order,
+        }),
+      ),
       productsFetchedAt: productStamp.fetchedAt,
       sellersFetchedAt: sellerStamp.fetchedAt,
+      gradeTiersFetchedAt: gradeTierStamp.fetchedAt,
       productsNotThisShop: productStamp.notThisShop,
       sellersNotThisShop: sellerStamp.notThisShop,
+      gradeTiersNotThisShop: gradeTierStamp.notThisShop,
     };
   }
 
@@ -302,6 +333,31 @@ export class SqliteMasterStore implements MasterStore {
         );
       }
       await stamp(tx, SELLERS, fetchedAt, tenant);
+    });
+  }
+
+  /**
+   * The shop's grade tiers, REPLACED whole in one transaction — same shape and
+   * same reasons as saveProducts/saveSellers: a deactivated tier the server no
+   * longer returns must disappear, so it is delete-all-then-insert-all, and the
+   * stamp is written inside the SAME transaction so the age never describes a
+   * partial list. The DELETE stays unconditional (another shop's tiers must not
+   * linger for a widened predicate to find). `owner_tenant_id` is stamped from
+   * the identity or NULL — a NULL reads as a mismatch and the cache reads ABSENT,
+   * the fail-closed direction, exactly as for the two lists above.
+   */
+  async saveGradeTiers(tiers: readonly MasterGradeTier[], fetchedAt: string): Promise<void> {
+    const tenant = await this.currentTenant();
+    await this.db.transaction(async (tx) => {
+      await tx.run("DELETE FROM cached_grade_tiers");
+      for (const t of tiers) {
+        await tx.run(
+          "INSERT INTO cached_grade_tiers (code, name, sort_order, owner_tenant_id)" +
+            " VALUES (?, ?, ?, ?)",
+          [t.code, t.name, t.sort_order, tenant],
+        );
+      }
+      await stamp(tx, GRADE_TIERS, fetchedAt, tenant);
     });
   }
 }

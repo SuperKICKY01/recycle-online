@@ -32,6 +32,35 @@ export interface MasterSeller {
 }
 
 /**
+ * ONE OF THE SHOP'S OWN GRADE TIERS, as the device caches it (S16 / P1.24).
+ *
+ * The set that USED to be the hardcoded `GRADES` A-D. It is per-tenant now, so it
+ * arrives from `GET /grade-tiers` and is cached beside products and sellers — the
+ * price screen must be able to list EVERY tier (including one nobody has priced)
+ * to set a price for it, and `GET /products` only carries tiers that already have
+ * a row. See src/master/priceEdit.ts, which recorded this as the fifth copy of a
+ * closed set that S16 opens.
+ *
+ * ONLY THE THREE FIELDS THE YARD NEEDS, a deliberate narrowing like `Seller`
+ * above: `id` (the settings screen keys its PATCH on it) and `is_active` (the
+ * cache holds ACTIVE tiers only) are left off the cached shape on purpose.
+ *
+ * NOT `GradeTiers`. src/cart/cart.ts already owns a type by that name — a pair of
+ * price-resolver functions, an unrelated thing. Two similar names in one program
+ * with no checker between them is exactly what rots
+ * (lessons/a-label-is-a-reference-with-no-checker.md); this is the singular, and
+ * it is a cached row, not a resolver.
+ */
+export interface MasterGradeTier {
+  /** The stable FK handle sellers and product_prices reference. Immutable (F3). */
+  code: string;
+  /** The shop's own display text, free to change (F3). Thai is expected. */
+  name: string;
+  /** The shop's ordering key; the list is drawn in this order. */
+  sort_order: number;
+}
+
+/**
  * What the device knows right now, and WHEN it learned it.
  *
  * The two timestamps are separate and that is the point. A refresh can succeed
@@ -48,8 +77,18 @@ export interface MasterSeller {
 export interface MasterSnapshot {
   products: MasterProduct[];
   sellers: MasterSeller[];
+  /**
+   * THE SHOP'S ACTIVE TIERS, in the shop's order, or empty when never fetched.
+   * A THIRD master list, fetched and cached exactly as the two above and for the
+   * same reasons. It carries no MONEY, so it does NOT gate the price default (see
+   * freshness.ts) — a missing name degrades a label to the raw code, it never
+   * stops a bill. What it does gate is the price SCREEN, which cannot list a tier
+   * it has not fetched.
+   */
+  gradeTiers: MasterGradeTier[];
   productsFetchedAt: string | null;
   sellersFetchedAt: string | null;
+  gradeTiersFetchedAt: string | null;
   /**
    * THE LIST IS ABSENT *BECAUSE IT IS NOT THIS SHOP'S* — not because it was
    * never fetched. Both are absences and both stop a bill; they are separated
@@ -69,6 +108,8 @@ export interface MasterSnapshot {
    */
   productsNotThisShop: boolean;
   sellersNotThisShop: boolean;
+  /** Same absence rule as the two above (see the stamp reader in the store). */
+  gradeTiersNotThisShop: boolean;
 }
 
 /**
@@ -83,4 +124,5 @@ export interface MasterStore {
   load(): Promise<MasterSnapshot>;
   saveProducts(products: readonly MasterProduct[], fetchedAt: string): Promise<void>;
   saveSellers(sellers: readonly MasterSeller[], fetchedAt: string): Promise<void>;
+  saveGradeTiers(tiers: readonly MasterGradeTier[], fetchedAt: string): Promise<void>;
 }

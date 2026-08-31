@@ -95,7 +95,6 @@ import {
 } from "./src/master/freshness";
 import { reserveStripNotice } from "./src/master/reserveStrip";
 import {
-  GRADES,
   priceListScreen,
   priceRefreshScreen,
   priceSaveScreen,
@@ -123,8 +122,20 @@ import {
   readShopSettings,
   shopSaveResult,
   shopSettingsScreen,
+  unreadableSettingsScreen,
 } from "./src/settings/shopSettings";
-import type { ShopPatch, ShopSettings, ShopSettingsScreen } from "./src/settings/shopSettings";
+import type { ShopFetch, ShopPatch, ShopSettings, ShopSettingsScreen } from "./src/settings/shopSettings";
+import {
+  readGradeTiers,
+  tierActionOutcome,
+  tierAdminScreen,
+} from "./src/settings/gradeTierAdmin";
+import type {
+  AdminGradeTier,
+  GradeTierCreateBody,
+  GradeTierFetch,
+  TierAdminScreen,
+} from "./src/settings/gradeTierAdmin";
 import { accountProfile, passwordChangeResult, readWhoAmI } from "./src/settings/account";
 import type {
   AccountProfile,
@@ -149,15 +160,19 @@ import type { QueueHealth } from "./src/sync/queueHealth";
 import { systemClock } from "./src/sync/systemClock";
 import type { LocalBill, SyncState } from "./src/sync/types";
 import { isMasterDataBlocked, isVoided, isVoidRefused } from "./src/sync/types";
-import type { Product, Seller } from "./app/api";
+import type { GradeTier, Product, Seller } from "./app/api";
 import {
   changeOwnPassword,
+  createGradeTier,
   fetchDailyReport,
+  fetchGradeTiers,
+  fetchGradeTiersAdmin,
   fetchProducts,
   fetchSellerHistory,
   fetchSellers,
   fetchShop,
   fetchSummary,
+  patchGradeTier,
   fetchWhoAmI,
   isUnauthorized,
   login,
@@ -248,6 +263,15 @@ function AppInner() {
   const [products, setProducts] = useState<Product[]>([]);
   const [sellers, setSellers] = useState<Seller[]>([]);
   /**
+   * THE SHOP'S ACTIVE GRADE TIERS (S16 / P1.24), a third cached master list. The
+   * set that used to be the hardcoded `GRADES` A-D; per-tenant now, so it is
+   * fetched and cached beside products and sellers. The price screen lists these
+   * to set a price for each; the picker and cart read a tier's NAME from them.
+   * Empty until the first fetch — a missing name degrades to the raw code, it
+   * never stops a bill (the price default lives on products, not here).
+   */
+  const [gradeTiers, setGradeTiers] = useState<GradeTier[]>([]);
+  /**
    * The local sellers this device created that the server has not sent back yet.
    * Read from `listForPicker`, refreshed whenever the cache does (the effect
    * below). The add-seller sheet writes these (P1.8b); the picker's union offers
@@ -282,6 +306,13 @@ function AppInner() {
    */
   const [productsFetchedAt, setProductsFetchedAt] = useState<string | null>(null);
   const [sellersFetchedAt, setSellersFetchedAt] = useState<string | null>(null);
+  /**
+   * WHEN the grade tiers were last fetched, or null for NEVER. The price screen's
+   * gate: it cannot list a tier set it has not downloaded. Deliberately NOT fed
+   * into freshness.ts's price-default gate — tiers carry no money, so their age
+   * does not decide whether a bill may start.
+   */
+  const [gradeTiersFetchedAt, setGradeTiersFetchedAt] = useState<string | null>(null);
   /*
    * THE LIST ON DISK BELONGS TO ANOTHER SHOP. Separate from the two stamps above
    * because it answers a different question: those say WHEN, this says WHOSE, and
@@ -379,6 +410,19 @@ function AppInner() {
   const [settingsScreen, setSettingsScreen] = useState<ShopSettingsScreen | null>(null);
   const [settingsShop, setSettingsShop] = useState<ShopSettings | null>(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  /*
+   * THE GRADE-TIER ADMIN (S16 / P1.24), part of the settings sheet. `settingsTiers`
+   * is the parsed list a create validates a duplicate against and the form derives
+   * its active tiers from; `settingsTierScreen` is the rendered list; `tierRefusal`
+   * is the last write's readable refusal (the deactivation count, a duplicate),
+   * cleared on the next load; `tierBusy` disables the controls during a write. Not
+   * cached: the tiers are read live with the shop, for the reason settings is not an
+   * outbox kind.
+   */
+  const [settingsTiers, setSettingsTiers] = useState<AdminGradeTier[] | null>(null);
+  const [settingsTierScreen, setSettingsTierScreen] = useState<TierAdminScreen | null>(null);
+  const [settingsTierRefusal, setSettingsTierRefusal] = useState<string | null>(null);
+  const [settingsTierBusy, setSettingsTierBusy] = useState(false);
   /*
    * THE ACCOUNT SCREEN (P1.23). `accountProfileState` is the profile (username +
    * role from /whoami, shop name from GET /shop), null while loading.
@@ -869,6 +913,26 @@ function AppInner() {
         if (isUnauthorized(err)) expired = true;
         else failed = true;
       }
+      /*
+       * THE THIRD LIST (S16 / P1.24). Fetched and saved on its own, like the two
+       * above and for the same reason: an independent request that can fail
+       * alone. It does NOT touch `productsRefreshed` — that signal is about the
+       * price MAP being current after a save, which lives on products; the tier
+       * SET is a different thing and a stale one degrades a label, not a price.
+       * A success still counts as `answered` (the server replied), and a 401 is
+       * still the session ending.
+       */
+      try {
+        const gt = await fetchGradeTiers(token);
+        const at = nowIso();
+        await store.saveGradeTiers(gt, at);
+        setGradeTiers(gt);
+        setGradeTiersFetchedAt(at);
+        answered = true;
+      } catch (err) {
+        if (isUnauthorized(err)) expired = true;
+        else failed = true;
+      }
     } finally {
       refreshingRef.current = false;
     }
@@ -996,8 +1060,10 @@ function AppInner() {
         if (cancelled) return;
         setProducts(cache.products);
         setSellers(cache.sellers);
+        setGradeTiers(cache.gradeTiers);
         setProductsFetchedAt(cache.productsFetchedAt);
         setSellersFetchedAt(cache.sellersFetchedAt);
+        setGradeTiersFetchedAt(cache.gradeTiersFetchedAt);
         setProductsFromOtherShop(cache.productsNotThisShop);
         setSellersFromOtherShop(cache.sellersNotThisShop);
         // Which shop this device is. Read before the token, because with no
@@ -1427,25 +1493,36 @@ function AppInner() {
    * `neverFetched` draws, and for the same reason: they are the same empty
    * screen with opposite fixes.
    *
-   * THE FOUR TIERS COME FROM `GRADES` and not from the keys of `prices`, which
-   * is what makes an UNPRICED tier visible at all. Iterating the map would
-   * simply omit a grade nobody has priced, and the screen would then be silent
-   * about the one state that stops a bill (424 product_price_unset).
+   * THE TIERS COME FROM the shop's fetched grade tiers (S16 / P1.24) and not from
+   * the keys of `prices`, which is what makes an UNPRICED tier visible at all.
+   * Iterating the map would omit a tier nobody has priced, and the screen would
+   * then be silent about the one state that stops a bill (424 product_price_unset).
+   * The set is per-tenant now — it used to be the hardcoded `GRADES` — so
+   * `haveGradeTiers` gates the screen the way `haveProducts` does: a tier set this
+   * device has not fetched cannot be listed. `grade` on the row is the tier CODE,
+   * which is the price-map key; the shop's display NAME is applied by the surfaces
+   * that read a seated seller, not here.
    */
   const priceList = useMemo<PriceScreen>(() => {
     const rows: PriceProduct[] = products.map((p) => ({
       id: p.id,
       code: p.code,
       name: p.name,
-      tiers: GRADES.map((g) => ({
-        grade: g,
+      tiers: gradeTiers.map((t) => ({
+        grade: t.code,
+        name: t.name,
         // ?? null, never ?? "0.00" and never another tier: an absent row is an
         // absent price. lessons/fallback-default-is-a-wrong-number.md.
-        price: p.prices[g] ?? null,
+        price: p.prices[t.code] ?? null,
       })),
     }));
-    return priceListScreen({ role, products: rows, haveProducts: freshness.haveProducts });
-  }, [products, role, freshness.haveProducts]);
+    return priceListScreen({
+      role,
+      products: rows,
+      haveProducts: freshness.haveProducts,
+      haveGradeTiers: gradeTiersFetchedAt !== null,
+    });
+  }, [products, gradeTiers, gradeTiersFetchedAt, role, freshness.haveProducts]);
 
   const openPrices = useCallback(() => {
     // Cleared BEFORE the transition, so the list is what the sheet mounts on
@@ -1466,21 +1543,59 @@ function AppInner() {
     const t = tokenRef.current;
     if (t === null) {
       setSettingsShop(null);
-      setSettingsScreen(shopSettingsScreen({ kind: "no_token" }, role));
+      setSettingsTiers(null);
+      setSettingsTierScreen(null);
+      setSettingsScreen(shopSettingsScreen({ kind: "no_token" }, role, []));
       return;
     }
     setSettingsScreen(null);
     setSettingsShop(null);
-    const result = await fetchShop(t);
-    setSettingsShop(result.kind === "ok" ? readShopSettings(result.body) : null);
-    setSettingsScreen(shopSettingsScreen(result, role));
-    if (result.kind === "unreachable") {
+    setSettingsTierScreen(null);
+    setSettingsTierRefusal(null);
+    /*
+     * TWO READS OVER ONE SESSION (S16 / P1.24). The /shop form needs the shop's
+     * ACTIVE tiers — its default-grade options and the F2 one-tier decision — and
+     * the tier list needs ALL of them, so the settings screen is a MESSAGE unless
+     * BOTH reads land and both parse. A partial settings screen is a claim the data
+     * cannot back, exactly what this surface refuses offline.
+     */
+    const [shopResult, tierResult] = await Promise.all([fetchShop(t), fetchGradeTiersAdmin(t)]);
+    const tiers = tierResult.kind === "ok" ? readGradeTiers(tierResult.body) : null;
+
+    if (shopResult.kind === "ok" && tiers !== null) {
+      const active = tiers.filter((x) => x.is_active).map((x) => ({ code: x.code, name: x.name }));
+      setSettingsShop(readShopSettings(shopResult.body));
+      setSettingsTiers(tiers);
+      setSettingsScreen(shopSettingsScreen(shopResult, role, active));
+      setSettingsTierScreen(tierAdminScreen(tiers, role));
+      setOnline(true);
+      setSessionEnded(false);
+      return;
+    }
+
+    // A failure, worded from whichever read failed. The shop read ranks first; a
+    // tier read that answered 200 with an unreadable body is the "cannot read"
+    // server screen (there is no transport failure to word).
+    setSettingsTiers(null);
+    if (shopResult.kind === "ok" && tierResult.kind === "ok") {
+      setSettingsScreen(unreadableSettingsScreen());
+      setOnline(true);
+      setSessionEnded(false);
+      return;
+    }
+    const governing: ShopFetch =
+      shopResult.kind !== "ok"
+        ? shopResult
+        : tierResult.kind === "http"
+          ? { kind: "http", status: tierResult.status, code: null }
+          : tierResult; // unreachable | no_token (no_token unreachable here — token checked)
+    setSettingsScreen(shopSettingsScreen(governing, role, []));
+    if (governing.kind === "unreachable") {
       setOnline(false);
       return;
     }
     setOnline(true);
-    if (result.kind === "http" && result.status === 401) setSessionEnded(true);
-    else if (result.kind === "ok") setSessionEnded(false);
+    if (governing.kind === "http" && governing.status === 401) setSessionEnded(true);
   }, [role]);
 
   const openSettings = useCallback(() => {
@@ -1499,7 +1614,7 @@ function AppInner() {
     async (patch: ShopPatch): Promise<void> => {
       const t = tokenRef.current;
       if (t === null) {
-        setSettingsScreen(shopSettingsScreen({ kind: "no_token" }, role));
+        setSettingsScreen(shopSettingsScreen({ kind: "no_token" }, role, []));
         setSessionEnded(true);
         return;
       }
@@ -1508,8 +1623,13 @@ function AppInner() {
       setSettingsSaving(false);
       const saved = shopSaveResult(result);
       if (saved.kind === "saved") {
+        // A /shop save does not change the tier SET, so the form re-reads from the
+        // tiers already held — no second round trip for a list that did not move.
+        const active = (settingsTiers ?? [])
+          .filter((x) => x.is_active)
+          .map((x) => ({ code: x.code, name: x.name }));
         setSettingsShop(saved.shop);
-        setSettingsScreen(formScreen(saved.shop, role));
+        setSettingsScreen(formScreen(saved.shop, role, active));
         setOnline(true);
         setSessionEnded(false);
         return;
@@ -1521,7 +1641,61 @@ function AppInner() {
         if (result.kind === "http" && result.status === 401) setSessionEnded(true);
       }
     },
-    [role],
+    [role, settingsTiers],
+  );
+
+  /**
+   * ONE TIER WRITE — declare, rename, or (de)activate. The server is authoritative,
+   * so on success the WHOLE list is re-read (loadSettings) rather than patched in
+   * place: a create shifts sort order, and a deactivate changes which tier may be
+   * deactivated next. A refusal (the F4 count, a duplicate, an outage) shows as a
+   * readable sentence in the tier section; a 401 ends the session. NOTHING queues —
+   * tier admin is not offline work, the same as the /shop save.
+   */
+  const runTierAction = useCallback(
+    async (action: (token: string) => Promise<GradeTierFetch>): Promise<void> => {
+      const t = tokenRef.current;
+      if (t === null) {
+        setSessionEnded(true);
+        return;
+      }
+      setSettingsTierBusy(true);
+      setSettingsTierRefusal(null);
+      const result = await action(t);
+      const outcome = tierActionOutcome(result);
+      setSettingsTierBusy(false);
+      if (outcome.kind === "ok") {
+        setOnline(true);
+        setSessionEnded(false);
+        await loadSettings();
+        return;
+      }
+      if (outcome.kind === "session") {
+        setSessionEnded(true);
+        return;
+      }
+      if (result.kind === "unreachable") setOnline(false);
+      else setOnline(true);
+      setSettingsTierRefusal(outcome.message);
+    },
+    [loadSettings],
+  );
+
+  const addTier = useCallback(
+    (body: GradeTierCreateBody) => void runTierAction((t) => createGradeTier(t, body)),
+    [runTierAction],
+  );
+  const renameTier = useCallback(
+    (id: string, name: string) => void runTierAction((t) => patchGradeTier(t, id, { name })),
+    [runTierAction],
+  );
+  const deactivateTier = useCallback(
+    (id: string) => void runTierAction((t) => patchGradeTier(t, id, { is_active: false })),
+    [runTierAction],
+  );
+  const reactivateTier = useCallback(
+    (id: string) => void runTierAction((t) => patchGradeTier(t, id, { is_active: true })),
+    [runTierAction],
   );
 
   /* ---------------------------------------------------------- account (P1.23) -- */
@@ -2562,6 +2736,7 @@ function AppInner() {
           content: (
             <SellerPicker
               sellers={pickerSellers.options}
+              tiers={gradeTiers}
               localIds={pickerSellers.localIds}
               platesBySeller={platesBySeller}
               currentSellerId={draft?.seller_id ?? null}
@@ -2612,6 +2787,7 @@ function AppInner() {
                 <ConfirmSellerChangeDialog
                   from={seller}
                   to={pendingChange.to}
+                  tiers={gradeTiers}
                   impact={pendingChange.impact}
                   onCancel={dropSellerChange}
                   onConfirm={() => {
@@ -2640,6 +2816,7 @@ function AppInner() {
                   total={cartTotal(draft)}
                   sellerName={seller.name}
                   sellerGrade={seller.grade}
+                  tiers={gradeTiers}
                   vehicleNo={cleanVehicleNo(draft.vehicle_no)}
                   busy={busy}
                   /*
@@ -2745,6 +2922,9 @@ function AppInner() {
               screen={settingsScreen}
               shop={settingsShop}
               saving={settingsSaving}
+              tierScreen={settingsTierScreen}
+              tierRefusal={settingsTierRefusal}
+              tierBusy={settingsTierBusy}
               onClose={closeTopSheet}
               /* Retry re-READS the shop; a settings write never replays on its own. */
               onRetry={() => void loadSettings()}
@@ -2753,6 +2933,10 @@ function AppInner() {
                  in). Same rule as the daily and prices screens. */
               onSignIn={closeTopSheet}
               onSave={(patch) => void saveSettings(patch)}
+              onAddTier={addTier}
+              onRenameTier={renameTier}
+              onDeactivateTier={deactivateTier}
+              onReactivateTier={reactivateTier}
             />
           ),
         };
@@ -3115,6 +3299,7 @@ function AppInner() {
         ) : (
           <CartScreen
             products={products}
+            tiers={gradeTiers}
             seller={seller}
             draft={draft}
             locks={locks}

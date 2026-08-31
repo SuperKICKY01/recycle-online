@@ -142,7 +142,11 @@ async function readShape(file: string): Promise<Shape> {
   };
   const tables = objs.filter((o) => o.type === "table").map((o) => o.name);
   const cacheColumns: Record<string, string[]> = {};
-  for (const t of ["master_cache", "cached_products", "cached_sellers"]) {
+  // cached_grade_tiers joins the tracked cache tables (S16 / P1.24). It is a NEW
+  // table born with all its columns (owner_tenant_id included), so it takes no
+  // column migration — but tracking its columns here means the fresh-vs-upgraded
+  // shape comparison covers it, not just its presence in `tables`.
+  for (const t of ["master_cache", "cached_products", "cached_sellers", "cached_grade_tiers"]) {
     cacheColumns[t] = tables.includes(t) ? await cols(t) : [];
   }
   const integrityRow = await d.all<{ integrity_check: string }>("PRAGMA integrity_check");

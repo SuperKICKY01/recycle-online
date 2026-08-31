@@ -85,7 +85,10 @@ function makeTone(t: ThemeTokens): Record<PriceTone, { bg: string; fg: string; b
 /** Which tier is open in the editor. Null means the list is on screen. */
 interface Editing {
   readonly productId: string;
+  /** The tier CODE — the write's path parameter (PUT /products/{id}/prices/{grade}). */
   readonly grade: string;
+  /** The tier NAME — display only (F3). What the operator reads in the editor. */
+  readonly name: string;
   readonly value: string;
 }
 
@@ -162,6 +165,7 @@ export function PricesSheet({
                 setEditing({
                   productId: p.id,
                   grade: tier.grade,
+                  name: tier.name,
                   // NEVER a default: the current value, or empty. See editableValue.
                   value: editableValue(tier),
                 })
@@ -217,7 +221,8 @@ function ProductRows({
       <Text style={styles.name}>{product.name}</Text>
       {product.tiers.map((t) => (
         <View key={t.grade} style={styles.tier}>
-          <Text style={styles.grade}>{t.grade}</Text>
+          {/* The tier NAME (F3), not its code — the shop reads its own names. */}
+          <Text style={styles.grade}>{t.name}</Text>
           {/*
             THE PRICE, OR THE ABSENCE OF ONE — as a sentence, never as a dash and
             never as a zero. `t.price` is rendered in a Text node with no
@@ -283,7 +288,7 @@ function TierEditor({
 
   return (
     <View style={styles.editor}>
-      <Text style={styles.editorGrade}>เกรด {editing.grade}</Text>
+      <Text style={styles.editorGrade}>เกรด {editing.name}</Text>
       <TextInput
         style={styles.input}
         value={editing.value}
@@ -356,7 +361,12 @@ function makeStyles(t: ThemeTokens) {
     code: { fontSize: t.type.body, color: t.color.textSubtle },
     name: { fontSize: t.type.subhead, fontWeight: "600", color: t.color.text },
     tier: { flexDirection: "row", alignItems: "center", gap: t.space.xl, paddingVertical: t.space.xs },
-    grade: { fontSize: t.type.bodyLg, fontWeight: "700", color: t.color.neutralFg, width: 24 },
+    // A tier NAME is the shop's own text (F3), up to 100 chars of Thai — NOT the
+    // one glyph the fixed `width: 24` assumed (that truncated the moment a shop used
+    // a real name). It sizes to its content and is allowed to shrink and wrap
+    // (flexShrink, which RN defaults to 0) so the price beside it is never pushed
+    // off-screen — no raw min-size, which prove:tapaudit forbids in the screens. P1.24.
+    grade: { fontSize: t.type.bodyLg, fontWeight: "700", color: t.color.neutralFg, flexShrink: 1 },
     price: { fontSize: t.type.subhead, color: t.color.text, flex: 1 },
     unpriced: { fontSize: t.type.bodyLg, color: t.color.warning, flex: 1 },
     editBtn: { paddingHorizontal: t.space.lg, paddingVertical: t.space.sm, backgroundColor: t.color.infoAltBg, borderRadius: t.radius.sm },

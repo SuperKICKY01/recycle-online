@@ -44,37 +44,18 @@ import type { Parsed } from "../money/money.js";
 import { mayEditPrices } from "../session/deviceRole.js";
 import type { DeviceRole } from "../session/deviceRole.js";
 
-/* ----------------------------------------------------------- the grades -- */
+/* ------------------------------------------------------------ the tiers -- */
 
-/**
- * THE TIER SET THIS SCREEN LISTS — AND IT IS A FIFTH COPY OF A CLOSED SET, SAID
- * OUT LOUD BECAUSE THE OTHER FOUR ARE COUNTED SOMEWHERE.
- *
- * `OPEN_ITEMS.md § Decisions open` records the grade set as closed in FOUR
- * places, all server-side: the `product_prices.grade` and
- * `purchase_bill_items.grade` CHECKs in `0001_initial_schema.py`,
- * `ck_sellers_grade` in `0003_move_grade_to_sellers.py`, and
- * `Grade = Literal["A","B","C","D"]` in `server/app/master.py`. S16 — the
- * per-tenant grade model — opens all four. This is the FIFTH, it is the first
- * one on a client, and S16 opens it too.
- *
- * WHY IT CANNOT BE AVOIDED TODAY, which is the part that makes it a finding and
- * not a shortcut. `GET /products` returns `prices` as a map of the tiers that
- * HAVE ROWS, so an unpriced tier is not on the wire at all. Deriving the list
- * from those keys would mean a grade the shop has never priced could never be
- * SEEN and therefore never be SET — the screen would be unable to fix the one
- * state it exists to fix, and `424 product_price_unset` would be unreachable
- * from the phone for ever. Nothing else in the API enumerates the tier space:
- * `GET /sellers` carries the grades sellers happen to have, and `GET /shop`
- * carries one default. **The API does not expose the grade set, so a price
- * editor has to carry one.**
- *
- * WHAT S16 MUST DO WITH THIS, so a later reader does not merely delete it: the
- * set becomes a per-tenant value, which means it arrives from the server, which
- * means this constant is replaced by a field on the cached shop row — not
- * widened, and not made longer.
+/*
+ * THE HARDCODED `GRADES` A-D IS GONE (S16 / P1.24). It was the fifth and last copy
+ * of a closed grade set — the screen carried one because no endpoint exposed the
+ * tier space (GET /products returns only PRICED tiers, so an unpriced tier could
+ * never be seen or set). GET /grade-tiers now exposes it, so the set is fetched and
+ * cached like products and sellers (src/master/types.ts MasterGradeTier), and the
+ * price screen builds its `tiers` from that fetched list — see App.tsx priceList,
+ * which reads a tier's CODE (the price-map key) and NAME (F3, shown). `TierPrice`
+ * below carries both.
  */
-export const GRADES: readonly string[] = ["A", "B", "C", "D"];
 
 /* ------------------------------------------------------------ the input -- */
 
@@ -134,7 +115,14 @@ export type CacheRefresh = "refreshed" | "failed" | "skipped";
 
 /** One tier as the cache holds it. `price` is null when there is NO row. */
 export interface TierPrice {
+  /**
+   * The tier CODE — the price-map key and the FK handle the write uses (S16). It
+   * is not what the operator reads; `name` is. For a backfilled shop the two are
+   * equal, so nothing visibly changes there.
+   */
   readonly grade: string;
+  /** The tier's display NAME (F3) — the shop's own text, what the screen shows. */
+  readonly name: string;
   /**
    * The cached price string, byte for byte, or null for a tier the shop has
    * never priced. NEVER 0, never another tier's value, never "-".
@@ -263,6 +251,16 @@ export interface PriceListInput {
   readonly products: readonly PriceProduct[];
   /** False when this device has never successfully downloaded a product list. */
   readonly haveProducts: boolean;
+  /**
+   * False when this device has never downloaded the shop's grade tiers (S16 /
+   * P1.24). The tier set used to be the hardcoded GRADES and could never be
+   * absent; now it is fetched, so a device can hold products and NOT yet hold the
+   * tiers to price them against — an upgraded handset before its first refresh.
+   * That is a distinct empty state from "no products", and it fails the same way:
+   * the screen cannot list a tier it has not fetched, so it says so rather than
+   * drawing every product with no rows to edit.
+   */
+  readonly haveGradeTiers: boolean;
 }
 
 /**
@@ -316,6 +314,27 @@ export function priceListScreen(input: PriceListInput): PriceScreen {
       tone: "empty",
       badge: "ร้านนี้ยังไม่มีสินค้า",
       lines: ["ยังไม่มีสินค้าในระบบของร้านนี้ จึงยังไม่มีราคาให้ตั้ง"],
+      products: [],
+      editable: false,
+      actions: [CLOSE],
+    };
+  }
+
+  if (!input.haveGradeTiers) {
+    /*
+     * PRODUCTS BUT NO TIERS — the upgraded-handset case (S16 / P1.24). The tier
+     * set is fetched now, and this device has products cached from before it ever
+     * fetched one. Listing products with no tier rows would be a screen that
+     * silently cannot do the one thing it is for; a refresh is the fix, the same
+     * as the never-fetched-products state above.
+     */
+    return {
+      tone: "empty",
+      badge: "ยังไม่มีรายการเกรดในเครื่องนี้",
+      lines: [
+        "เครื่องนี้ยังไม่เคยดาวน์โหลดรายการเกรดของร้าน จึงยังไม่มีเกรดให้ตั้งราคา",
+        "ต่อเน็ตแล้วเปิดหน้านี้อีกครั้ง",
+      ],
       products: [],
       editable: false,
       actions: [CLOSE],
@@ -549,7 +568,8 @@ export function priceScreenText(screen: PriceScreen): string {
   const rows = screen.products.flatMap((p) => [
     p.code,
     p.name,
-    ...p.tiers.map((t) => `${t.grade} ${t.price ?? NO_PRICE}`),
+    // The NAME, not the code (F3) — the shop reads its own tier names here.
+    ...p.tiers.map((t) => `${t.name} ${t.price ?? NO_PRICE}`),
   ]);
   return [screen.badge, ...screen.lines, ...rows, ...screen.actions.map((a) => a.label)].join(" ");
 }

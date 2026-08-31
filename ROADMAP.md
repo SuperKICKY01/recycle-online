@@ -7331,6 +7331,26 @@ The `Grade = Literal["A","B","C","D"]` in master.py is gone.
   fallback-vs-per-seller question is not reopened; 1b adds the per-seller SEATING for a
   one-tier shop and leaves the fallback for a multi-tier shop's ungraded sellers).
 
+**2026-08-31 — P1.24 Phase 2: the PHONE. BUILT and proven HEADLESS (no device pass).** The
+handset drops the hardcoded `GRADES` A-D and reads the shop's own tiers: `GET /grade-tiers` is
+fetched and cached beside products/sellers (`cached_grade_tiers`, a third master list); the price
+screen and the picker / cart / confirm surfaces show tier NAMES (F3); and the settings screen
+manages tiers — declare / rename / deactivate / reactivate — with F2 hiding the default-grade
+control at exactly one active tier (the tier LIST never hidden). Proven: `prove:gradeTiers` (new,
+three disproofs each reddening exactly its cell), `prove:prices` / `prove:settings` rewritten off
+`GRADES`, `prove:migration` tracks the new cache table, both typechecks green — full evidence in
+`PROJECT_STATUS.md § Current phase`. **This closes P1.24 to the extent the phone can be proven
+without a device.**
+- **NOT built, deferred: TIER REORDER** — a two-PATCH `sort_order` swap with partial-failure
+  semantics, left to the desktop's fuller master-data admin; the shop orders by the sequence it
+  adds tiers (the server appends). The owner may ratify or override.
+- **FINDING (recorded in `OPEN_ITEMS.md`): the SERVER does not refuse deactivating the LAST active
+  tier** — 0 active tiers breaks F2 seating, so F1 is a runtime invariant the deactivation path
+  does not hold. The phone guards it client-side; the SERVER guard is owed, out of Phase-2 bounds.
+- **The phone's REAL-HTTP round is UNRUN** (api.ts is unimportable by a proof; a phone→server round
+  is a device pass). The fetch→parse seam is covered by the server proof plus the phone's parser
+  proof; a green not run is not written as green.
+
 ---
 
 # STAGE 2 — what the pilot teaches, and what gets fixed because of it

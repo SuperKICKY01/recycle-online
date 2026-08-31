@@ -17,7 +17,7 @@
  *   --break=staff_save      draws the save control for a staff (read-only) render.
  *                           S1's negative — "no save control for staff" — goes red.
  *   --break=hardcode_grades replaces the grade options with a WRONG hardcoded list.
- *                           S2's "options equal GRADES" goes red.
+ *                           S2's "options equal the shop's active tiers" goes red.
  *   --break=echo_request    renders the value that was SENT instead of the server's
  *                           re-read. S4's witnessed-state cell goes red.
  *
@@ -29,7 +29,6 @@
  * returns. That line is ABSENT if the script dies before the summary, and THE
  * ABSENCE IS THE SIGNAL.
  */
-import { GRADES } from "../master/priceEdit.js";
 import {
   defaultGradeChangeConfirmation,
   patchChangesGrade,
@@ -40,6 +39,7 @@ import {
   shopSettingsScreen,
 } from "../settings/shopSettings.js";
 import type {
+  ActiveTier,
   ShopFetch,
   ShopFormScreen,
   ShopGradeOption,
@@ -73,9 +73,14 @@ if (BREAK !== "" && !BREAK_MODES.includes(BREAK)) {
 
 /* ------------------------------------------------------------ the wrappers -- */
 
-/** The screen, or the OLD design's answer under a break. */
-function renderSettings(fetch: ShopFetch, role: DeviceRole): ShopSettingsScreen {
-  const screen = shopSettingsScreen(fetch, role);
+/** The screen, or the OLD design's answer under a break. The active tiers default
+ *  to the three-tier fixture; the F2 case passes ONE_TIER explicitly. */
+function renderSettings(
+  fetch: ShopFetch,
+  role: DeviceRole,
+  tiers: readonly ActiveTier[] = TIERS,
+): ShopSettingsScreen {
+  const screen = shopSettingsScreen(fetch, role, tiers);
   if (BREAK === "staff_save" && screen.kind === "form" && screen.readOnly) {
     // The defect: draw the save control (and mark editable) for a session that is
     // meant to be read-only. A staff phone would then be offered a write the
@@ -88,9 +93,10 @@ function renderSettings(fetch: ShopFetch, role: DeviceRole): ShopSettingsScreen 
 /** The grade options, or a wrong hardcoded list under a break. */
 function optionsOf(form: ShopFormScreen): readonly ShopGradeOption[] {
   if (BREAK === "hardcode_grades") {
-    // The defect: a grade list hardcoded in the view instead of imported from
-    // GRADES — here a WRONG one, so the options stop tracking the constant and a
-    // future S16 change would leave this screen behind.
+    // The defect: a grade list hardcoded in the view instead of built from the
+    // shop's tiers — here a WRONG one (fewer, and labelled by code not name), so
+    // the options stop tracking the shop's grade set and a shop that renamed or
+    // re-tiered would be shown a stale list.
     return [
       { value: null, label: "ไม่กำหนด" },
       { value: "A", label: "A" },
@@ -123,6 +129,18 @@ const SHOP: ShopSettings = {
   address: "123 ถนนทดสอบ ตำบลทดสอบ",
   phone: "0812345678",
 };
+/**
+ * THE SHOP'S ACTIVE TIERS (S16 / P1.24). Names differ from codes ON PURPOSE, so
+ * the options prove they carry the NAME (F3) and not the code. SHOP.default_grade
+ * ("B") is one of these codes.
+ */
+const TIERS: readonly ActiveTier[] = [
+  { code: "A", name: "เกรดเอ" },
+  { code: "B", name: "เกรดบี" },
+  { code: "C", name: "เกรดซี" },
+];
+/** F2: a shop that does not grade — exactly one active tier. */
+const ONE_TIER: readonly ActiveTier[] = [{ code: "A", name: "เกรดเดียว" }];
 const ok = (body: unknown): ShopFetch => ({ kind: "ok", body });
 const THAI = /[฀-๿]/;
 
@@ -163,7 +181,7 @@ function s1RoleGate(): void {
 /* -------------------------------------------------------------------- S2 -- */
 
 function s2GradeOptions(): void {
-  header("S2 — the grade options ARE GRADES, plus an explicit 'no default'");
+  header("S2 — the grade options ARE the shop's active tiers (by name), plus 'no default'");
   const form = renderSettings(ok(SHOP), "admin");
   if (form.kind !== "form") {
     check("S2: STAGING — admin gets a form", false, form.kind);
@@ -171,17 +189,24 @@ function s2GradeOptions(): void {
   }
   const options = optionsOf(form);
   const values = options.map((o) => o.value);
-  const letters = values.filter((v): v is string => v !== null);
+  const codes = values.filter((v): v is string => v !== null);
   console.log(`  options: ${options.map((o) => `${String(o.value)}=${o.label}`).join(", ")}`);
-  console.log(`  GRADES : ${GRADES.join(", ")}`);
+  console.log(`  tiers  : ${TIERS.map((t) => `${t.code}=${t.name}`).join(", ")}`);
 
-  // Positive control: GRADES is non-empty, so the equality below is not vacuous.
-  check("S2: CONTROL — GRADES is non-empty", GRADES.length > 0, `${String(GRADES.length)} grades`);
+  // Positive control: the shop has active tiers, so the equality below is not vacuous.
+  check("S2: CONTROL — the shop has active tiers", TIERS.length > 0, `${String(TIERS.length)} tiers`);
   // THE CELL — the disproof --break=hardcode_grades reddens exactly this.
   check(
-    "S2: the letter options equal GRADES, in order (so P1.24 edits one line)",
-    letters.length === GRADES.length && letters.every((g, i) => g === GRADES[i]),
-    `${letters.join(",")} vs ${GRADES.join(",")}`,
+    "S2: the option VALUES equal the active tier CODES, in order",
+    codes.length === TIERS.length && codes.every((c, i) => c === TIERS[i]?.code),
+    `${codes.join(",")} vs ${TIERS.map((t) => t.code).join(",")}`,
+  );
+  // F3 — the LABEL is the shop's own NAME, not the code. --break=hardcode_grades
+  // (labels are codes) reddens this too, which is the point.
+  check(
+    "S2: each option LABEL is the tier's NAME (F3), not its code",
+    TIERS.every((t) => options.some((o) => o.value === t.code && o.label === t.name)),
+    options.map((o) => o.label).join(","),
   );
   check(
     "S2: there is exactly one explicit 'no default' (null) option, drawn first",
@@ -192,6 +217,39 @@ function s2GradeOptions(): void {
     "S2: the 'no default' note explains what null means (the office grades the seller)",
     form.gradeNoneNote.includes("เกรด") && THAI.test(form.gradeNoneNote),
     form.gradeNoneNote,
+  );
+}
+
+/* -------------------------------------------------------------------- S6 -- */
+
+function s6F2SingleTier(): void {
+  header("S6 — F2: one active tier HIDES the default-grade control; two or more SHOW it");
+  const many = renderSettings(ok(SHOP), "admin", TIERS);
+  // A one-tier shop has no default to hold, so the fixture clears it too.
+  const one = renderSettings(ok({ ...SHOP, default_grade: null }), "admin", ONE_TIER);
+  check("S6: STAGING — both are forms", many.kind === "form" && one.kind === "form", `${many.kind}/${one.kind}`);
+  if (many.kind !== "form" || one.kind !== "form") return;
+
+  console.log(`  showGrade with ${String(TIERS.length)} active tiers: ${String(many.showGrade)}`);
+  console.log(`  showGrade with 1 active tier: ${String(one.showGrade)}`);
+
+  // THE TRANSITION the brief asks for: a shop that deactivates its way down to one
+  // active tier crosses from SHOW to HIDE. The two renders are the two sides of it.
+  check(
+    "S6: two or more active tiers SHOW the control (showGrade true)",
+    many.showGrade === true,
+    `showGrade=${String(many.showGrade)}`,
+  );
+  check(
+    "S6: exactly one active tier HIDES the control (F2, showGrade false)",
+    one.showGrade === false,
+    `showGrade=${String(one.showGrade)}`,
+  );
+  // The hidden case still explains itself — a note takes the control's place.
+  check(
+    "S6: the one-tier form carries the note that replaces the hidden control",
+    one.gradeSingleTierNote.length > 0 && THAI.test(one.gradeSingleTierNote),
+    one.gradeSingleTierNote,
   );
 }
 
@@ -348,6 +406,7 @@ function main(): number {
   s3Refusals();
   s4WitnessedState();
   s5PatchAndConfirm();
+  s6F2SingleTier();
 
   console.log("");
   console.log(failures === 0 ? "ALL CELLS PASSED" : `FAILED — ${String(failures)} check(s)`);

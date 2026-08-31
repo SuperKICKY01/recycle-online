@@ -51,6 +51,7 @@
     "prove:reservestrip": "npm run build && node dist/proof/proveReserveStrip.js",
     "prove:prices": "npm run build && node dist/proof/provePrices.js",
     "prove:settings": "npm run build && node dist/proof/proveSettings.js",
+    "prove:gradeTiers": "npm run build && node dist/proof/proveGradeTiers.js",
     "prove:account": "npm run build && node dist/proof/proveAccount.js",
     "prove:dashboard": "npm run build && node dist/proof/proveDashboard.js",
     "prove:theme": "npm run build && node dist/proof/proveTheme.js",

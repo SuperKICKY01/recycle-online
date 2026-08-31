@@ -52,7 +52,8 @@ import {
   toggleLock,
 } from "../src/cart/entry";
 import type { LockableField, Locks, NumKey } from "../src/cart/entry";
-import { gradePrice } from "../src/cart/sellers";
+import { gradePrice, tierName } from "../src/cart/sellers";
+import type { NamedTier } from "../src/cart/sellers";
 import type { Draft, DraftLine } from "../src/cart/types";
 import { defaultUnitPrice, stalePriceHint } from "../src/master/freshness";
 import type { Freshness } from "../src/master/freshness";
@@ -87,6 +88,8 @@ const FIELD_SCALE: Record<NumField, { dp: number; maxInt: number }> = {
 
 interface Props {
   products: Product[];
+  /** The shop's cached grade tiers, to show the seller's grade by its NAME (S16, F3). */
+  tiers: readonly NamedTier[];
   /**
    * The bill's seller, resolved from draft.seller_id against the fetched list.
    *
@@ -118,6 +121,7 @@ interface Props {
 
 export function CartScreen({
   products,
+  tiers,
   seller,
   draft,
   locks,
@@ -148,6 +152,16 @@ export function CartScreen({
   const product = products.find((p) => p.id === form.product_id) ?? null;
   // No seller, or a seller with no grade, means NO default price — the field
   // stays blank and the operator types what was agreed. See src/cart/sellers.ts.
+  //
+  // F2 AND WHY A ONE-TIER SHOP IS NOT PRICED HERE OFFLINE (S16 / P1.24). A seller
+  // created offline in a one-tier shop carries a NULL grade until it syncs; the
+  // SERVER seats it in the sole active tier (master._seat_seller_grade) — that
+  // seating is the server's, not this device's. Pricing this seller from the one
+  // cached tier would be the phone DECIDING a tier the seating has not yet made,
+  // and a price invented from a seating that has not happened is a claim about
+  // master data this device does not own (lessons/cached-master-data-is-a-price-
+  // claim.md). So it stays blank offline, exactly as any ungraded seller, and the
+  // one-tier default arrives with the seated grade on the next refresh.
   const grade = seller?.grade ?? null;
 
   /*
@@ -343,7 +357,7 @@ export function CartScreen({
                 {seller.grade === null ? (
                   <Text style={styles.noGrade}>ยังไม่ได้จัดเกรด</Text>
                 ) : (
-                  `เกรด ${seller.grade}`
+                  `เกรด ${tierName(tiers, seller.grade)}`
                 )}
               </Text>
               {seller.grade === null ? (

@@ -26,17 +26,22 @@
  * this screen words (never a sign-in, never support).
  *
  * ---------------------------------------------------------------------------
- * THE GRADE SET COMES FROM ONE PLACE, AND IT IS NOT A NEW COPY
+ * THE GRADE SET IS THE SHOP'S OWN, AND IT ARRIVES FROM THE SERVER (S16 / P1.24)
  * ---------------------------------------------------------------------------
- * `default_grade` is one of A-D or none. The letters come from `GRADES`
- * (src/master/priceEdit.ts) — the phone's single hardcoded copy of the closed
- * set, whose own comment names it the fifth site and binds it to the server's
- * `Grade = Literal["A","B","C","D"]`, of which `tenants.default_grade`'s
- * `ck_tenants_default_grade` (migration 0010) is the instance this screen writes.
- * Minting a sixth copy here is exactly the mistake 0010's docstring warns against,
- * so this screen IMPORTS `GRADES`. When S16 / P1.24 makes the set per-tenant, that
- * one constant is replaced by a field on the cached shop row and this screen
- * follows with no edit here (priceEdit.ts says the same of itself).
+ * `default_grade` is one of the shop's ACTIVE tier codes, or none. The set used
+ * to be the hardcoded `GRADES` A-D; it is per-tenant now, so the options are built
+ * from the tiers the caller passes in (fetched from GET /grade-tiers), not from a
+ * constant here. The server's `_validate_grade(must_be_active=True)` is the
+ * authority on PATCH /shop default_grade — a code the shop has not declared, or a
+ * deactivated one, is a readable 422; this module offers only active tiers, so an
+ * ordinary user never provokes it. The tier CRUD itself lives in
+ * `gradeTierAdmin.ts`, a separate module with its own proof.
+ *
+ * F2 — A ONE-TIER SHOP HIDES THE CONTROL. A shop with exactly one active tier does
+ * not grade: every seller sits in that tier (the server seats them on sync), so
+ * there is no default to choose and the control is not drawn (`showGrade` false).
+ * The tier LIST is a different surface and is never hidden — a one-tier shop must
+ * be able to add its second tier.
  *
  * ---------------------------------------------------------------------------
  * ONLINE ONLY, AND NO INVENTED VALUE
@@ -56,9 +61,19 @@
  * screen reports a state the server witnessed). `shopSaveResult` parses the
  * RESPONSE and hands the form that; the request is never rendered.
  */
-import { GRADES } from "../master/priceEdit.js";
 import { mayEditShopSettings } from "../session/deviceRole.js";
 import type { DeviceRole } from "../session/deviceRole.js";
+
+/**
+ * The two fields of an active tier this screen needs to build the default-grade
+ * options — a structural narrowing so this module takes no dependency on
+ * gradeTierAdmin's fuller `AdminGradeTier`. The caller passes the ACTIVE tiers,
+ * already filtered, in the shop's order.
+ */
+export interface ActiveTier {
+  code: string;
+  name: string;
+}
 
 /* ==========================================================================
  * 1. THE WIRE — what GET/PATCH /shop send, and what we refuse to read
@@ -68,7 +83,7 @@ import type { DeviceRole } from "../session/deviceRole.js";
 export interface ShopSettings {
   id: string;
   name: string;
-  /** One of GRADES, or null when the shop has set no default. */
+  /** One of the shop's active tier codes, or null when the shop has set no default. */
   default_grade: string | null;
   address: string | null;
   phone: string | null;
@@ -158,13 +173,21 @@ export interface ShopFormScreen {
   /** The shop name, read-only for BOTH roles — it is on printed slips (D4). */
   name: string;
   nameNote: string;
+  /**
+   * F2: FALSE when the shop has exactly one active tier — the whole default-grade
+   * control (label, chips/value, notes) is not drawn, because a one-tier shop does
+   * not grade and has no default to choose. The tier list below is unaffected.
+   */
+  showGrade: boolean;
   gradeLabel: string;
   /** Current default grade, or null for "no default". */
   grade: string | null;
-  /** [ the null "no default" option, then one per GRADES letter ]. */
+  /** [ the null "no default" option, then one per ACTIVE tier, by name ]. */
   gradeOptions: readonly ShopGradeOption[];
   /** What choosing "no default" (null) means for the yard. */
   gradeNoneNote: string;
+  /** Shown in place of the control when `showGrade` is false (the F2 one-tier shop). */
+  gradeSingleTierNote: string;
   addressLabel: string;
   address: string | null;
   /** Shown when address is null — an empty field with a sentence, not a fake value. */
@@ -195,6 +218,13 @@ export const PHONE_MAX_LENGTH = 32;
 const NAME_NOTE = "ชื่อร้านแก้ไขที่นี่ไม่ได้ — เป็นชื่อที่พิมพ์บนบิล";
 const GRADE_NONE_NOTE =
   "ถ้าไม่กำหนดเกรดเริ่มต้น ผู้ขายที่ยังไม่ได้จัดเกรดจะยังซื้อขายไม่ได้จนกว่าสำนักงานจะกำหนดเกรดให้";
+/**
+ * F2: SHOWN INSTEAD OF THE CONTROL when the shop has one active tier. A shop that
+ * does not grade needs no default — every seller sits in its single tier. To grade
+ * by tier, the shop adds a second tier in the list below.
+ */
+const GRADE_SINGLE_TIER_NOTE =
+  "ร้านนี้มีเกรดเดียว ผู้ขายทุกรายจึงอยู่ในเกรดนั้นโดยอัตโนมัติ ไม่ต้องกำหนดเกรดเริ่มต้น — ถ้าต้องการแยกเกรด ให้เพิ่มเกรดในรายการด้านล่าง";
 const ADDRESS_EMPTY_NOTE = "ยังไม่ได้กรอกที่อยู่";
 const PHONE_EMPTY_NOTE = "ยังไม่ได้กรอกเบอร์โทร";
 
@@ -213,11 +243,16 @@ const OFFLINE_LINE =
  */
 const FORBIDDEN_LINE = `บัญชีนี้ไม่มีสิทธิ์แก้ไขการตั้งค่าร้าน — ${ASK_THE_OWNER}ให้ตั้งบัญชีนี้เป็น${ADMIN_ROLE_TH}`;
 
-/** The grade options, in draw order: "no default" first, then the closed set. */
-export function gradeOptions(): readonly ShopGradeOption[] {
+/**
+ * The default-grade options, in draw order: "no default" first, then one per
+ * ACTIVE tier in the shop's order, labelled by the tier's NAME (F3). The value is
+ * the tier CODE (what PATCH /shop default_grade validates and stores); the label
+ * is the name the shop reads.
+ */
+export function gradeOptions(activeTiers: readonly ActiveTier[]): readonly ShopGradeOption[] {
   return [
     { value: null, label: "ไม่กำหนดเกรดเริ่มต้น" },
-    ...GRADES.map((g) => ({ value: g, label: `เกรด ${g}` })),
+    ...activeTiers.map((t) => ({ value: t.code, label: t.name })),
   ];
 }
 
@@ -297,29 +332,51 @@ function shopMessage(fetch: Exclude<ShopFetch, { kind: "ok" }>): ShopMessageScre
 }
 
 /**
- * THE SETTINGS SCREEN, from one GET /shop result and the device's role. The only
- * entry point the view uses for the READ.
+ * THE SETTINGS SCREEN, from one GET /shop result, the shop's ACTIVE tiers, and the
+ * device's role. The only entry point the view uses for the READ. The active tiers
+ * come from the same fetch that feeds the tier-admin section (GET /grade-tiers),
+ * already filtered and ordered by the caller — the form needs them for the
+ * default-grade options and for the F2 one-tier decision.
  */
-export function shopSettingsScreen(fetch: ShopFetch, role: DeviceRole): ShopSettingsScreen {
+export function shopSettingsScreen(
+  fetch: ShopFetch,
+  role: DeviceRole,
+  activeTiers: readonly ActiveTier[],
+): ShopSettingsScreen {
   if (fetch.kind !== "ok") return shopMessage(fetch);
 
   const shop = readShopSettings(fetch.body);
   if (shop === null) {
     // 200 with a body this build cannot read — an older or newer API.
-    return {
-      kind: "message",
-      tone: "server",
-      badge: "อ่านข้อมูลจากระบบไม่ได้",
-      lines: [`ระบบตอบกลับมาในรูปแบบที่แอปรุ่นนี้อ่านไม่ได้ จึงยังแสดงการตั้งค่าไม่ได้ — ${ASK_THE_OWNER}`],
-      action: { kind: "retry", label: "ลองอีกครั้ง" },
-    };
+    return unreadableSettingsScreen();
   }
 
-  return formScreen(shop, role);
+  return formScreen(shop, role, activeTiers);
 }
 
-/** The form itself, from a read shop row. Shared by the read and by a save's re-read. */
-export function formScreen(shop: ShopSettings, role: DeviceRole): ShopFormScreen {
+/**
+ * A 200 whose body this build cannot read — an older or newer API. Exported so the
+ * settings flow can show it for an unreadable GRADE-TIER body too: either read being
+ * unreadable means the settings screen cannot be drawn honestly, and one wording
+ * covers both.
+ */
+export function unreadableSettingsScreen(): ShopMessageScreen {
+  return {
+    kind: "message",
+    tone: "server",
+    badge: "อ่านข้อมูลจากระบบไม่ได้",
+    lines: [`ระบบตอบกลับมาในรูปแบบที่แอปรุ่นนี้อ่านไม่ได้ จึงยังแสดงการตั้งค่าไม่ได้ — ${ASK_THE_OWNER}`],
+    action: { kind: "retry", label: "ลองอีกครั้ง" },
+  };
+}
+
+/** The form itself, from a read shop row and the shop's active tiers. Shared by the
+ *  read and by a save's re-read. */
+export function formScreen(
+  shop: ShopSettings,
+  role: DeviceRole,
+  activeTiers: readonly ActiveTier[],
+): ShopFormScreen {
   const readOnly = !mayEditShopSettings(role);
   return {
     kind: "form",
@@ -328,10 +385,14 @@ export function formScreen(shop: ShopSettings, role: DeviceRole): ShopFormScreen
     nameLabel: "ชื่อร้าน",
     name: shop.name,
     nameNote: NAME_NOTE,
+    // F2: exactly one active tier means the shop does not grade — hide the control.
+    // 0 or 2+ show it (0 is the deactivated-to-nothing state the tier list flags).
+    showGrade: activeTiers.length !== 1,
     gradeLabel: "เกรดเริ่มต้นของร้าน",
     grade: shop.default_grade,
-    gradeOptions: gradeOptions(),
+    gradeOptions: gradeOptions(activeTiers),
     gradeNoneNote: GRADE_NONE_NOTE,
+    gradeSingleTierNote: GRADE_SINGLE_TIER_NOTE,
     addressLabel: "ที่อยู่ร้าน",
     address: shop.address,
     addressEmptyNote: ADDRESS_EMPTY_NOTE,

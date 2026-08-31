@@ -19,6 +19,8 @@ import { useMemo } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { SellerChangeImpact } from "../src/cart/cart";
+import { tierName } from "../src/cart/sellers";
+import type { NamedTier } from "../src/cart/sellers";
 import type { Seller } from "./api";
 import { useTheme, type ThemeTokens } from "./theme";
 
@@ -31,17 +33,20 @@ import { useTheme, type ThemeTokens } from "./theme";
 interface Props {
   from: Seller | null;
   to: Seller | null;
+  /** The shop's cached grade tiers, to show a grade by its NAME (S16, F3). */
+  tiers: readonly NamedTier[];
   impact: SellerChangeImpact | null;
   onCancel: () => void;
   onConfirm: () => void;
 }
 
-const gradeText = (s: Seller | null): string =>
-  s === null ? "-" : s.grade === null ? "ไม่มีเกรด" : `เกรด ${s.grade}`;
+const gradeText = (s: Seller | null, tiers: readonly NamedTier[]): string =>
+  s === null ? "-" : s.grade === null ? "ไม่มีเกรด" : `เกรด ${tierName(tiers, s.grade)}`;
 
 export function ConfirmSellerChangeDialog({
   from,
   to,
+  tiers,
   impact,
   onCancel,
   onConfirm,
@@ -56,11 +61,11 @@ export function ConfirmSellerChangeDialog({
         <View style={styles.fromTo}>
           <Text style={styles.label}>จาก</Text>
           <Text style={styles.who}>
-            {from?.name ?? "-"} ({gradeText(from)})
+            {from?.name ?? "-"} ({gradeText(from, tiers)})
           </Text>
           <Text style={styles.label}>เป็น</Text>
           <Text style={styles.whoNew}>
-            {to?.name ?? "-"} ({gradeText(to)})
+            {to?.name ?? "-"} ({gradeText(to, tiers)})
           </Text>
         </View>
 
@@ -83,7 +88,7 @@ export function ConfirmSellerChangeDialog({
 
           {impact !== null && impact.withoutTier > 0 ? (
             <Text style={styles.warnLine}>
-              • {impact.withoutTier} รายการ ยังไม่มีราคาสำหรับ{gradeText(to)} — บิลจะค้างรอ
+              • {impact.withoutTier} รายการ ยังไม่มีราคาสำหรับ{gradeText(to, tiers)} — บิลจะค้างรอ
               สำนักงานตั้งราคาก่อนจึงจะส่งได้
             </Text>
           ) : null}

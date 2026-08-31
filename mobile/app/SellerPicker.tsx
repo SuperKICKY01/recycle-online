@@ -29,8 +29,8 @@ import {
   View,
 } from "react-native";
 
-import { searchSellers } from "../src/cart/sellers";
-import type { SellerMatch } from "../src/cart/sellers";
+import { searchSellers, tierName } from "../src/cart/sellers";
+import type { NamedTier, SellerMatch } from "../src/cart/sellers";
 import type { Seller } from "./api";
 import { useTheme, type ThemeTokens } from "./theme";
 
@@ -42,6 +42,8 @@ import { useTheme, type ThemeTokens } from "./theme";
  */
 interface Props {
   sellers: Seller[];
+  /** The shop's cached grade tiers, to show a seller's grade by its NAME (S16, F3). */
+  tiers: readonly NamedTier[];
   /**
    * Which of `sellers` are local rows this device created that the server has
    * not sent back yet — the union's origin marker (`src/cart/pickerSellers.ts`).
@@ -82,6 +84,7 @@ interface Props {
 
 export function SellerPicker({
   sellers,
+  tiers,
   localIds,
   platesBySeller,
   currentSellerId,
@@ -189,7 +192,7 @@ export function SellerPicker({
                   {s.name}
                 </Text>
                 <Text style={[styles.grade, noGrade && styles.gradeNone]}>
-                  {noGrade ? "ไม่มีเกรด" : `เกรด ${s.grade}`}
+                  {s.grade === null ? "ไม่มีเกรด" : `เกรด ${tierName(tiers, s.grade)}`}
                 </Text>
               </View>
               <Text style={styles.meta} numberOfLines={1}>

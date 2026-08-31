@@ -47,6 +47,31 @@ export function gradePrice(
   return prices[grade] ?? null;
 }
 
+/**
+ * A tier as a NAME lookup needs it — structurally satisfied by MasterGradeTier
+ * (src/master/types.ts), imported by neither for the reason SellerOption gives.
+ */
+export interface NamedTier {
+  code: string;
+  name: string;
+}
+
+/**
+ * THE SHOP'S OWN NAME FOR A SELLER'S GRADE (S16 / P1.24, F3). Given the shop's
+ * cached tiers and a grade CODE, returns the tier's display NAME — the text the
+ * shop set. Falls back to the CODE when no tier matches: a seller in a tier since
+ * deactivated (not in the active cache), or a cache not yet fetched. The code is an
+ * honest last resort — it is what the seller actually carries — and this never
+ * invents a name.
+ *
+ * A NULL grade is the caller's case, not this one: a seller with no grade is shown
+ * "ไม่มีเกรด" by the surface, a different sentence from a named tier, so this takes
+ * a non-null code only.
+ */
+export function tierName(tiers: readonly NamedTier[], code: string): string {
+  return tiers.find((t) => t.code === code)?.name ?? code;
+}
+
 /* ------------------------------------------------------------- searching -- */
 
 /**

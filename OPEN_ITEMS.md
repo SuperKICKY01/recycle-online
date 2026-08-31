@@ -283,6 +283,27 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   PHONE (Phase 2); `bills.py`'s shop-wide `default_grade` fallback is untouched (that flagged
   fallback-vs-per-seller question is not reopened — 1b adds the per-seller SEATING for a
   one-tier shop and leaves the fallback for a multi-tier shop's ungraded sellers).
+  **Superseded 2026-08-31 (P1.24 Phase 2, the phone): the PHONE remainder is now BUILT.**
+  The grade set is fetched (`GET /grade-tiers`) and cached beside products and sellers
+  (`cached_grade_tiers`, a third master list); the price screen enumerates the shop's tiers
+  and the picker / cart / confirm-save / confirm-change surfaces read the tier NAME (F3), not
+  the code; the hardcoded `GRADES` A-D constant is DELETED; and the settings screen manages
+  tiers — declare / rename / deactivate / reactivate — with F2 hiding the default-grade
+  control at exactly one active tier, while the tier LIST is never hidden. Proven headless:
+  `prove:gradeTiers` (new, three disproofs each reddening exactly its cell), `prove:prices`
+  and `prove:settings` rewritten off `GRADES`, `prove:migration` now tracks the new cache
+  table, `prove:tapaudit` / `prove:sheets` green, both typechecks green. *Not done on the
+  phone: TIER REORDER* — a shop orders its tiers by the sequence it adds them (the server
+  appends, `sort_order = max + 1`); reordering an existing tier is a two-PATCH `sort_order`
+  swap with partial-failure semantics, DEFERRED to the desktop's fuller master-data admin
+  rather than owned by the yard phone (F0 "ship every function" is met for declare/rename/
+  retire/set-default; reorder is the one deferred, and the owner should ratify or override).
+  The phone's REAL-HTTP round is UNRUN for the same reason the five external-server proofs
+  are: `app/api.ts` reaches expo-constants through `./config` and cannot be imported by a
+  node proof, and an end-to-end phone→server round is a DEVICE PASS, outside this phase's
+  no-device-pass scope. The fetch→parse seam is covered instead by `prove_grade_tiers.py`
+  (server, real HTTP, the payload shape) plus `proveGradeTiers` G0 (the phone's `readGradeTiers`
+  over that exact shape); a device pass is a later line.
   **2026-08-31 (P1.21 phase 1) — WHAT ENABLING THE TOGGLE EXPOSES, and E1 does not make
   it obvious.** With `staff_money_visible` on, `GET /sellers/{seller_id}/history` returns
   the bill total and each line's `unit_price` for a staff caller on ALL of a seller's
@@ -296,6 +317,22 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   to CHANGE it; `src/settings/shopSettings.ts` PATCHes only name / grade / address / phone.
   So the toggle is `PATCH /shop`-only today — an admin sets it server-side, and no phone UI
   does; a mobile control is a later line if the owner wants one on the phone.
+
+- **THE SERVER DOES NOT REFUSE DEACTIVATING THE LAST ACTIVE GRADE TIER — found 2026-08-31
+  during P1.24 Phase 2, verified against `server/app/master.py` `update_grade_tier` (the
+  deactivation branch counts `sellers WHERE grade = :c AND is_active`, and nothing else).**
+  `PATCH /grade-tiers/{id}` `is_active=false` refuses only while ACTIVE SELLERS sit in the
+  tier (409 `grade_tier_in_use`, F4); it does NOT count the shop's remaining ACTIVE TIERS. So
+  a shop can deactivate its way to ZERO active tiers — a state where `_seat_seller_grade`
+  seats nothing (it seats only when there is EXACTLY one active tier), every new walk-in is
+  ungraded, and every bill parks. F1 ("at least one tier") is a runtime invariant the
+  deactivation path does not hold. The PHONE guards it client-side (`gradeTierAdmin`'s
+  `mayDeactivate` is false for the last active tier, proved in `prove:gradeTiers` G2), but the
+  phone is not the authority — a rooted device or the future desktop admin could still send
+  the PATCH. *Not done:* the SERVER guard — refuse `is_active=false` when it is the shop's
+  last active tier, a 409 in the shape of the in-use one. *Unblocks it:* one count in
+  `update_grade_tier`, taken in the first phase that opens the server for another reason
+  (P1.24 Phase 2 was the phone, so a server change was out of its bounds).
 
 - **~~NO STAFF ACCOUNT EXISTS AND THERE IS NO WAY TO CREATE ONE — measured
   2026-08-10, not inferred.~~ — THE SECOND HALF IS CLOSED, THE FIRST STANDS.**

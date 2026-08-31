@@ -12,6 +12,11 @@ import type { ShopCodeResult } from "../src/session/shopCode";
 import { attemptLogin, isUnauthorizedStatus } from "../src/session/signInIdentity";
 import type { SignInResult } from "../src/session/signInIdentity";
 import type { ShopFetch, ShopPatch } from "../src/settings/shopSettings";
+import type {
+  GradeTierCreateBody,
+  GradeTierFetch,
+  GradeTierPatchBody,
+} from "../src/settings/gradeTierAdmin";
 import type { PasswordChangeRequest, PasswordFetch } from "../src/settings/account";
 import type { SummaryFetch } from "../src/dashboard/summaryView";
 import type { SellerHistoryFetch } from "../src/sellerHistory/sellerHistoryView";
@@ -305,6 +310,38 @@ export async function setProductPrice(
 export const fetchSellers = (token: string): Promise<Seller[]> =>
   getJson<{ sellers: Seller[] }>("/sellers", token).then((b) => b.sellers);
 
+/**
+ * ONE OF THE SHOP'S GRADE TIERS ON THE WIRE (S16 / P1.24).
+ *
+ * THREE FIELDS, AND THE WIRE CARRIES FIVE — a deliberate narrowing like `Seller`
+ * above. `GET /grade-tiers` also returns `id` and `is_active`; the yard cache
+ * needs neither (`id` is the settings PATCH's key, and the default fetch is
+ * active-only), so they are left off the type. `code` is the FK handle and the
+ * price-map key; `name` is the shop's display text; `sort_order` is its order.
+ *
+ * NOT `GradeTiers`: src/cart/cart.ts owns THAT name for an unrelated price
+ * resolver, and leaving it alone was decided rather than overlooked. This is the
+ * singular, wire-shaped row — a different thing with a one-letter-apart name, the
+ * exact shape lessons/a-label-is-a-reference-with-no-checker.md is about. It
+ * satisfies `MasterGradeTier` (src/master/types.ts) structurally, as `Seller`
+ * does `MasterSeller`.
+ */
+export interface GradeTier {
+  code: string;
+  name: string;
+  sort_order: number;
+}
+
+/**
+ * GET /grade-tiers — the shop's ACTIVE tiers, in the shop's order. A master-data
+ * read, so it uses `getJson` and THROWS on a non-2xx exactly as fetchProducts and
+ * fetchSellers do; refreshMaster catches it per-list. The default (active only) is
+ * what the yard prices and draws with — the settings screen asks for the inactive
+ * ones separately, and never through the cache.
+ */
+export const fetchGradeTiers = (token: string): Promise<GradeTier[]> =>
+  getJson<{ grade_tiers: GradeTier[] }>("/grade-tiers", token).then((b) => b.grade_tiers);
+
 /* ------------------------------------------------- the daily money view ---- */
 
 /**
@@ -494,6 +531,86 @@ export function fetchSellerHistory(token: string, sellerId: string): Promise<Sel
 export function patchShop(token: string, patch: ShopPatch): Promise<ShopFetch> {
   return transportJson((signal) =>
     fetch(`${API_BASE_URL}/shop`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(patch),
+      signal,
+    }),
+  );
+}
+
+/* ---------------------------------------------- the shop's grade tiers (S16) ---- */
+
+/**
+ * TRANSPORT ONLY, BUT KEEPING THE BODY ON A REFUSAL. The grade-tier admin needs the
+ * body an http error carries — the deactivation refusal's `sellers_in_tier` count
+ * (F4) — so this differs from `transportJson` in exactly that: it returns the body
+ * on `http` instead of pre-reading a `code`. Everything else is the same: every
+ * outcome is a VALUE, nothing is thrown, and a 20 s timeout lands in `unreachable`,
+ * which never queues (tier admin is not offline work). The classification still
+ * lives in src/settings/gradeTierAdmin.ts, where a headless proof can reach it.
+ */
+async function transportJsonKeepingBody(
+  makeRequest: (signal: AbortSignal) => Promise<Response>,
+): Promise<Exclude<GradeTierFetch, { kind: "no_token" }>> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  let res: Response;
+  try {
+    res = await makeRequest(controller.signal);
+  } catch {
+    return { kind: "unreachable" };
+  } finally {
+    clearTimeout(timer);
+  }
+  let body: unknown = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+  if (res.ok) return { kind: "ok", body };
+  return { kind: "http", status: res.status, body };
+}
+
+/** GET /grade-tiers?include_inactive — the shop's tiers for the settings admin
+ *  (active AND inactive; the yard cache holds only the active ones). Staff-readable;
+ *  the CRUD below is admin-only on the server. Returns a value, never throws. */
+export function fetchGradeTiersAdmin(token: string): Promise<GradeTierFetch> {
+  return transportJsonKeepingBody((signal) =>
+    fetch(`${API_BASE_URL}/grade-tiers?include_inactive=true`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/** POST /grade-tiers — declare a tier. Admin-only on the server; a duplicate code
+ *  is a 409 the caller words. The server appends it (sort_order = max + 1). */
+export function createGradeTier(
+  token: string,
+  body: GradeTierCreateBody,
+): Promise<GradeTierFetch> {
+  return transportJsonKeepingBody((signal) =>
+    fetch(`${API_BASE_URL}/grade-tiers`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      signal,
+    }),
+  );
+}
+
+/** PATCH /grade-tiers/{id} — rename or (de)activate a tier. Admin-only. `code` is
+ *  never sent (immutable). Deactivation is refused with a 409 whose body carries the
+ *  `sellers_in_tier` count (F4). */
+export function patchGradeTier(
+  token: string,
+  tierId: string,
+  patch: GradeTierPatchBody,
+): Promise<GradeTierFetch> {
+  return transportJsonKeepingBody((signal) =>
+    fetch(`${API_BASE_URL}/grade-tiers/${encodeURIComponent(tierId)}`, {
       method: "PATCH",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify(patch),

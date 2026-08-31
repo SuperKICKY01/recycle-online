@@ -236,6 +236,32 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
    ) STRICT`,
 
   /*
+   * THE SHOP'S GRADE TIERS (S16 / P1.24), a THIRD master list beside products and
+   * sellers. The set that used to be the hardcoded GRADES A-D; per-tenant now, so
+   * it is fetched (GET /grade-tiers, active only) and cached here — the price
+   * screen must be able to list a tier nobody has priced yet, which GET /products
+   * cannot show. `code` is the price-map key and the FK handle; `name` is the
+   * shop's display text; `sort_order` is the shop's draw order.
+   *
+   * NEEDS NO MIGRATION LIST ENTRY, and NOT in CACHE_TABLES: a table that never
+   * existed is created by this statement on an upgraded device exactly as on a
+   * fresh one, and it is BORN with owner_tenant_id in its CREATE — so there is no
+   * pre-existing shape for ADDED_CACHE_TENANT_COLUMN to retrofit. Same reasoning
+   * the three "needs no migration list entry" notes elsewhere in this file give.
+   *
+   * NO CHECK ON `code` OR `name`, and no length here: the value is the server's,
+   * validated against grade_tiers at the source (F3 makes the set the shop's), and
+   * a client CHECK could only be a fifth copy of a bound this table does not own.
+   */
+  `CREATE TABLE IF NOT EXISTS cached_grade_tiers (
+     code       TEXT    NOT NULL,
+     name       TEXT    NOT NULL,
+     sort_order INTEGER NOT NULL,
+     /* Tenant only. See the note above master_cache. */
+     owner_tenant_id TEXT
+   ) STRICT`,
+
+  /*
    * WHO THIS DEVICE IS SIGNED IN AS — one row, and deliberately NOT the OS
    * keystore.
    *

@@ -39,6 +39,12 @@ import type {
   ShopSettings,
   ShopSettingsScreen,
 } from "../src/settings/shopSettings";
+import { validateNewTier, validateRename } from "../src/settings/gradeTierAdmin";
+import type {
+  GradeTierCreateBody,
+  TierAdminRow,
+  TierAdminScreen,
+} from "../src/settings/gradeTierAdmin";
 import { useTheme, useThemeControl, type ThemePref, type ThemeTokens } from "./theme";
 
 /** The three theme choices, in menu order. A device preference, not a shop setting. */
@@ -68,14 +74,43 @@ interface Props {
    */
   shop: ShopSettings | null;
   saving: boolean;
+  /**
+   * THE GRADE-TIER ADMIN (S16 / P1.24). null while loading or on a message screen;
+   * a value only when both /shop and /grade-tiers landed. Drawn below the form.
+   */
+  tierScreen: TierAdminScreen | null;
+  /** The last tier write's refusal (the F4 count, a duplicate, an outage), or null. */
+  tierRefusal: string | null;
+  /** A tier write is in flight — the controls are disabled. */
+  tierBusy: boolean;
   onClose: () => void;
   onRetry: () => void;
   onSignIn: () => void;
   /** The app performs the network PATCH and the re-read; this passes the diff. */
   onSave: (patch: ShopPatch) => void;
+  /** The app performs the network POST and re-reads the list; this passes a valid body. */
+  onAddTier: (body: GradeTierCreateBody) => void;
+  onRenameTier: (id: string, name: string) => void;
+  onDeactivateTier: (id: string) => void;
+  onReactivateTier: (id: string) => void;
 }
 
-export function SettingsScreen({ screen, shop, saving, onClose, onRetry, onSignIn, onSave }: Props) {
+export function SettingsScreen({
+  screen,
+  shop,
+  saving,
+  tierScreen,
+  tierRefusal,
+  tierBusy,
+  onClose,
+  onRetry,
+  onSignIn,
+  onSave,
+  onAddTier,
+  onRenameTier,
+  onDeactivateTier,
+  onReactivateTier,
+}: Props) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
   return (
@@ -97,7 +132,19 @@ export function SettingsScreen({ screen, shop, saving, onClose, onRetry, onSignI
       ) : screen.kind === "message" ? (
         <MessageBody screen={screen} onRetry={onRetry} onSignIn={onSignIn} />
       ) : (
-        <FormBody form={screen} shop={shop} saving={saving} onSave={onSave} />
+        <FormBody
+          form={screen}
+          shop={shop}
+          saving={saving}
+          onSave={onSave}
+          tierScreen={tierScreen}
+          tierRefusal={tierRefusal}
+          tierBusy={tierBusy}
+          onAddTier={onAddTier}
+          onRenameTier={onRenameTier}
+          onDeactivateTier={onDeactivateTier}
+          onReactivateTier={onReactivateTier}
+        />
       )}
     </View>
   );
@@ -148,11 +195,25 @@ function FormBody({
   shop,
   saving,
   onSave,
+  tierScreen,
+  tierRefusal,
+  tierBusy,
+  onAddTier,
+  onRenameTier,
+  onDeactivateTier,
+  onReactivateTier,
 }: {
   form: ShopFormScreen;
   shop: ShopSettings | null;
   saving: boolean;
   onSave: (patch: ShopPatch) => void;
+  tierScreen: TierAdminScreen | null;
+  tierRefusal: string | null;
+  tierBusy: boolean;
+  onAddTier: (body: GradeTierCreateBody) => void;
+  onRenameTier: (id: string, name: string) => void;
+  onDeactivateTier: (id: string) => void;
+  onReactivateTier: (id: string) => void;
 }) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
@@ -197,31 +258,40 @@ function FormBody({
         <Text style={styles.note}>{form.nameNote}</Text>
       </View>
 
-      {/* DEFAULT GRADE — chips from GRADES plus the explicit "no default". */}
-      <View style={styles.card}>
-        <Text style={styles.label}>{form.gradeLabel}</Text>
-        {readOnly ? (
-          <Text style={styles.readValue}>
-            {form.gradeOptions.find((o) => o.value === form.grade)?.label ?? form.grade}
-          </Text>
-        ) : (
-          <View style={styles.chips}>
-            {form.gradeOptions.map((opt) => {
-              const on = opt.value === grade;
-              return (
-                <Pressable
-                  key={opt.value ?? "__none__"}
-                  style={[styles.chip, on && styles.chipOn]}
-                  onPress={() => setGrade(opt.value)}
-                >
-                  <Text style={[styles.chipText, on && styles.chipTextOn]}>{opt.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
-        {grade === null ? <Text style={styles.note}>{form.gradeNoneNote}</Text> : null}
-      </View>
+      {/* DEFAULT GRADE — options are the shop's ACTIVE tiers, by name (S16). F2: the
+          whole control is not drawn when the shop has one active tier — a note takes
+          its place, because a one-tier shop does not choose a default. */}
+      {form.showGrade ? (
+        <View style={styles.card}>
+          <Text style={styles.label}>{form.gradeLabel}</Text>
+          {readOnly ? (
+            <Text style={styles.readValue}>
+              {form.gradeOptions.find((o) => o.value === form.grade)?.label ?? form.grade}
+            </Text>
+          ) : (
+            <View style={styles.chips}>
+              {form.gradeOptions.map((opt) => {
+                const on = opt.value === grade;
+                return (
+                  <Pressable
+                    key={opt.value ?? "__none__"}
+                    style={[styles.chip, on && styles.chipOn]}
+                    onPress={() => setGrade(opt.value)}
+                  >
+                    <Text style={[styles.chipText, on && styles.chipTextOn]}>{opt.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+          {grade === null ? <Text style={styles.note}>{form.gradeNoneNote}</Text> : null}
+        </View>
+      ) : (
+        <View style={styles.card}>
+          <Text style={styles.label}>{form.gradeLabel}</Text>
+          <Text style={styles.note}>{form.gradeSingleTierNote}</Text>
+        </View>
+      )}
 
       {/* ADDRESS */}
       <View style={styles.card}>
@@ -308,7 +378,204 @@ function FormBody({
           ดูได้อย่างเดียว — การแก้ไขการตั้งค่าร้านทำได้เฉพาะบัญชีเจ้าของร้าน
         </Text>
       )}
+
+      {/* THE GRADE-TIER ADMIN (S16 / P1.24). Below the /shop fields, in the same
+          scroll. Present whenever both reads landed; a staff session sees it
+          read-only. The LIST is never hidden — a one-tier shop must add its second
+          tier here even though its default-grade control (above) is hidden by F2. */}
+      {tierScreen !== null ? (
+        <TierAdminBody
+          tierScreen={tierScreen}
+          refusal={tierRefusal}
+          busy={tierBusy}
+          onAdd={onAddTier}
+          onRename={onRenameTier}
+          onDeactivate={onDeactivateTier}
+          onReactivate={onReactivateTier}
+        />
+      ) : null}
     </ScrollView>
+  );
+}
+
+/* ----------------------------------------------------------- tier admin ---- */
+
+/**
+ * THE SHOP'S GRADE TIERS — declare, rename, retire (S16 / P1.24). Presentation
+ * only: every bound, refusal, and gate comes from src/settings/gradeTierAdmin.ts,
+ * which a headless proof reaches. This owns the edit BUFFERS (the add form and the
+ * one in-progress rename) exactly as FormBody owns its shop-field buffer.
+ */
+function TierAdminBody({
+  tierScreen,
+  refusal,
+  busy,
+  onAdd,
+  onRename,
+  onDeactivate,
+  onReactivate,
+}: {
+  tierScreen: TierAdminScreen;
+  refusal: string | null;
+  busy: boolean;
+  onAdd: (body: GradeTierCreateBody) => void;
+  onRename: (id: string, name: string) => void;
+  onDeactivate: (id: string) => void;
+  onReactivate: (id: string) => void;
+}) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
+  const editable = tierScreen.editable;
+
+  // The add-form buffer, and the one row being renamed (id + its name buffer). A
+  // local validation message is separate from `refusal` (the last NETWORK refusal):
+  // one is caught at the keypad, the other came back from the server.
+  const [addCode, setAddCode] = useState("");
+  const [addName, setAddName] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const submitAdd = (): void => {
+    const v = validateNewTier(addCode, addName, tierScreen.rows);
+    if (!v.ok) {
+      setAddError(v.message);
+      return;
+    }
+    setAddError(null);
+    setAddCode("");
+    setAddName("");
+    onAdd(v.body);
+  };
+
+  const startRename = (row: TierAdminRow): void => {
+    setEditId(row.id);
+    setEditName(row.name);
+    setEditError(null);
+  };
+
+  const submitRename = (id: string): void => {
+    const v = validateRename(editName);
+    if (!v.ok) {
+      setEditError(v.message);
+      return;
+    }
+    setEditError(null);
+    setEditId(null);
+    onRename(id, v.name);
+  };
+
+  return (
+    <View style={styles.tierCard}>
+      <Text style={styles.tierTitle}>{tierScreen.title}</Text>
+
+      {tierScreen.rows.map((row) => (
+        <View key={row.id} style={styles.tierRow}>
+          <View style={styles.tierRowMain}>
+            {editId === row.id ? (
+              <TextInput
+                style={styles.input}
+                value={editName}
+                onChangeText={setEditName}
+                maxLength={tierScreen.nameMaxLength}
+                autoFocus
+              />
+            ) : (
+              <>
+                <Text style={[styles.tierName, !row.is_active && styles.tierNameOff]}>
+                  {row.name}
+                </Text>
+                <Text style={styles.tierCode}>{row.code}</Text>
+              </>
+            )}
+          </View>
+          {!row.is_active ? <Text style={styles.tierOffBadge}>ปิดใช้งาน</Text> : null}
+
+          {editable ? (
+            editId === row.id ? (
+              <View style={styles.tierActions}>
+                <Pressable
+                  style={[styles.tierBtn, styles.tierBtnPrimary]}
+                  disabled={busy}
+                  onPress={() => submitRename(row.id)}
+                >
+                  <Text style={styles.tierBtnPrimaryText}>บันทึกชื่อ</Text>
+                </Pressable>
+                <Pressable style={styles.tierBtn} disabled={busy} onPress={() => setEditId(null)}>
+                  <Text style={styles.tierBtnText}>ยกเลิก</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.tierActions}>
+                <Pressable style={styles.tierBtn} disabled={busy} onPress={() => startRename(row)}>
+                  <Text style={styles.tierBtnText}>แก้ชื่อ</Text>
+                </Pressable>
+                {row.is_active ? (
+                  row.mayDeactivate ? (
+                    <Pressable
+                      style={styles.tierBtn}
+                      disabled={busy}
+                      onPress={() => onDeactivate(row.id)}
+                    >
+                      <Text style={styles.tierBtnDanger}>ปิดใช้งาน</Text>
+                    </Pressable>
+                  ) : null
+                ) : (
+                  <Pressable
+                    style={styles.tierBtn}
+                    disabled={busy}
+                    onPress={() => onReactivate(row.id)}
+                  >
+                    <Text style={styles.tierBtnText}>เปิดใช้งานอีกครั้ง</Text>
+                  </Pressable>
+                )}
+              </View>
+            )
+          ) : null}
+        </View>
+      ))}
+
+      {editId !== null && editError !== null ? (
+        <Text style={styles.tierError}>{editError}</Text>
+      ) : null}
+
+      {/* The LAST NETWORK refusal — the F4 deactivation count, a duplicate, an outage. */}
+      {refusal !== null ? <Text style={styles.tierRefusal}>{refusal}</Text> : null}
+
+      {editable ? (
+        <View style={styles.tierAddBox}>
+          <Text style={styles.label}>เพิ่มเกรดใหม่</Text>
+          <TextInput
+            style={styles.input}
+            value={addCode}
+            onChangeText={setAddCode}
+            maxLength={tierScreen.codeMaxLength}
+            placeholder="รหัสเกรด"
+            placeholderTextColor={t.color.placeholder}
+          />
+          <TextInput
+            style={styles.input}
+            value={addName}
+            onChangeText={setAddName}
+            maxLength={tierScreen.nameMaxLength}
+            placeholder="ชื่อเกรด"
+            placeholderTextColor={t.color.placeholder}
+          />
+          {addError !== null ? <Text style={styles.tierError}>{addError}</Text> : null}
+          <Text style={styles.note}>{tierScreen.addHint}</Text>
+          <Pressable
+            style={[styles.saveBtn, busy && styles.saveBusy]}
+            disabled={busy}
+            onPress={submitAdd}
+          >
+            <Text style={styles.saveText}>{busy ? "กำลังบันทึก…" : "เพิ่มเกรด"}</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <Text style={styles.readOnlyNote}>{tierScreen.readOnlyNote}</Text>
+      )}
+    </View>
   );
 }
 
@@ -428,5 +695,39 @@ function makeStyles(t: ThemeTokens) {
       backgroundColor: t.color.primary, alignItems: "center", justifyContent: "center", alignSelf: "stretch",
     },
     messageBtnText: { color: t.color.onPrimary, fontSize: t.type.bodyLg, fontWeight: "800" },
+
+    tierCard: {
+      backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xxl,
+      marginBottom: t.space.xl, borderWidth: 1, borderColor: t.color.borderSoft,
+    },
+    tierTitle: { fontSize: t.type.subhead, fontWeight: "900", color: t.color.text, marginBottom: t.space.md },
+    tierRow: {
+      flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: t.space.md,
+      paddingVertical: t.space.lg, borderTopWidth: 1, borderTopColor: t.color.borderSoft,
+    },
+    tierRowMain: { flex: 1, flexBasis: "60%", flexDirection: "row", alignItems: "center", gap: t.space.md, flexWrap: "wrap" },
+    tierName: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.text },
+    tierNameOff: { color: t.color.textSubtle, textDecorationLine: "line-through" },
+    tierCode: { fontSize: t.type.body, fontWeight: "700", color: t.color.textSubtle },
+    tierOffBadge: {
+      fontSize: t.type.body, fontWeight: "800", color: t.color.textSubtle,
+      backgroundColor: t.color.neutralBg, paddingHorizontal: t.space.md, paddingVertical: t.space.xs,
+      borderRadius: t.radius.sm, overflow: "hidden",
+    },
+    tierActions: { flexDirection: "row", gap: t.space.md, flexWrap: "wrap" },
+    tierBtn: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.xl, borderRadius: t.radius.lg, borderWidth: 1,
+      borderColor: t.color.border, backgroundColor: t.color.surface, alignItems: "center", justifyContent: "center",
+    },
+    tierBtnPrimary: { backgroundColor: t.color.primary, borderColor: t.color.primary },
+    tierBtnText: { fontSize: t.type.body, fontWeight: "800", color: t.color.neutralFg },
+    tierBtnPrimaryText: { fontSize: t.type.body, fontWeight: "800", color: t.color.onPrimary },
+    tierBtnDanger: { fontSize: t.type.body, fontWeight: "800", color: t.color.danger },
+    tierError: { fontSize: t.type.body, color: t.color.danger, fontWeight: "800", marginTop: t.space.md },
+    tierRefusal: {
+      fontSize: t.type.body, color: t.color.warningFg, fontWeight: "800", marginTop: t.space.lg,
+      backgroundColor: t.color.warningSoftBg, borderRadius: t.radius.lg, padding: t.space.lg,
+    },
+    tierAddBox: { marginTop: t.space.xl, borderTopWidth: 1, borderTopColor: t.color.borderSoft, paddingTop: t.space.xl, gap: t.space.md },
   });
 }

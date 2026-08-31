@@ -18,6 +18,8 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { pricingProvenanceLine } from "../src/master/freshness";
 import type { PricingProvenance } from "../src/master/freshness";
 import { saveConfirmNotice } from "../src/master/saveConfirmNotice";
+import { tierName } from "../src/cart/sellers";
+import type { NamedTier } from "../src/cart/sellers";
 import { useTheme, type ThemeTokens } from "./theme";
 
 /**
@@ -32,6 +34,8 @@ interface Props {
   sellerName: string;
   /** Null means the seller has no grade — the bill will park. Say so here. */
   sellerGrade: string | null;
+  /** The shop's cached grade tiers, to show the grade by its NAME (S16, F3). */
+  tiers: readonly NamedTier[];
   /** The plate, already trimmed. Null when none was entered. */
   vehicleNo: string | null;
   busy: boolean;
@@ -51,6 +55,7 @@ export function ConfirmSaveDialog({
   total,
   sellerName,
   sellerGrade,
+  tiers,
   vehicleNo,
   busy,
   pricedFrom,
@@ -90,7 +95,7 @@ export function ConfirmSaveDialog({
           <Text style={styles.label}>ผู้ขาย</Text>
           <Text style={styles.seller}>{sellerName}</Text>
           <Text style={sellerGrade === null ? styles.gradeNone : styles.grade}>
-            {sellerGrade === null ? "ยังไม่ได้จัดเกรด" : `เกรด ${sellerGrade}`}
+            {sellerGrade === null ? "ยังไม่ได้จัดเกรด" : `เกรด ${tierName(tiers, sellerGrade)}`}
           </Text>
 
           <Text style={styles.label}>ทะเบียนรถ</Text>
