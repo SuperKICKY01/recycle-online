@@ -14,6 +14,7 @@ import type { SignInResult } from "../src/session/signInIdentity";
 import type { ShopFetch, ShopPatch } from "../src/settings/shopSettings";
 import type { PasswordChangeRequest, PasswordFetch } from "../src/settings/account";
 import type { SummaryFetch } from "../src/dashboard/summaryView";
+import type { SellerHistoryFetch } from "../src/sellerHistory/sellerHistoryView";
 import { API_BASE_URL } from "./config";
 
 export interface Product {
@@ -463,6 +464,25 @@ export function fetchWhoAmI(token: string): Promise<PasswordFetch> {
 export function fetchShop(token: string): Promise<ShopFetch> {
   return transportJson((signal) =>
     fetch(`${API_BASE_URL}/shop`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/**
+ * GET /sellers/{seller_id}/history — a seller's recent bills at the weighbridge
+ * (P1.21). TRANSPORT ONLY; the classification (money gate, shop-date, empty and
+ * failure branches) lives in src/sellerHistory/sellerHistoryView.ts, where a
+ * headless proof can enumerate it. Returns a value, never throws. `no_token` is
+ * the caller's case (App checks the token first, as the summary and daily reads
+ * do), so this returns ok/http/unreachable — a strict subset of
+ * SellerHistoryFetch. The limit is the server's default (the picker wants the
+ * last few loads); seller_id is a path parameter, encoded like setProductPrice's.
+ */
+export function fetchSellerHistory(token: string, sellerId: string): Promise<SellerHistoryFetch> {
+  return transportJson((signal) =>
+    fetch(`${API_BASE_URL}/sellers/${encodeURIComponent(sellerId)}/history`, {
       headers: { authorization: `Bearer ${token}` },
       signal,
     }),

@@ -76,6 +76,9 @@ export const SHEET_KINDS = [
   /** P1.23. The shop's own settings, and the account this device is signed in as. */
   "settings",
   "account",
+  /** P1.21. A seller's recent bills, opened from the cart's seller header — what
+   *  this seller last sold (when, what, how much). A read-only panel over the app. */
+  "seller_history",
 ] as const;
 
 export type SheetKind = (typeof SHEET_KINDS)[number];
@@ -248,6 +251,18 @@ export const SHEET_TRANSITIONS = {
     action: { kind: "open", sheet: "account" },
     from: [null],
     site: "App.tsx header, the บัญชีของฉัน Pressable",
+  },
+  /**
+   * P1.21. The seller-history panel, opened from the cart's SELLER HEADER (in the
+   * body), so a sheet covers it and it is reachable only from the app's own screen.
+   * The header holds the chosen seller for the draft's life; the picker was NOT
+   * chosen for it — a single-tap-commit search list over many sellers. A leaf:
+   * nothing opens over it, so it adds exactly one reachable stack.
+   */
+  open_seller_history: {
+    action: { kind: "open", sheet: "seller_history" },
+    from: [null],
+    site: "App.tsx openSellerHistory, from CartScreen's seller header ดูประวัติ control",
   },
   /**
    * A DIFFERENT SELLER WAS PICKED FOR A CART THAT ALREADY HAS LINES.

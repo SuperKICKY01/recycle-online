@@ -114,6 +114,8 @@ import { STAFF_MONEY_HIDDEN, summaryScreen } from "./src/dashboard/summaryView";
 import type { SummaryScreen } from "./src/dashboard/summaryView";
 import { unsentLine } from "./src/dashboard/unsentLine";
 import type { UnsentLine } from "./src/dashboard/unsentLine";
+import { sellerHistoryScreen } from "./src/sellerHistory/sellerHistoryView";
+import type { SellerHistoryScreen } from "./src/sellerHistory/sellerHistoryView";
 import { mayEditPrices, readTokenRole } from "./src/session/deviceRole";
 import type { DeviceRole } from "./src/session/deviceRole";
 import {
@@ -152,6 +154,7 @@ import {
   changeOwnPassword,
   fetchDailyReport,
   fetchProducts,
+  fetchSellerHistory,
   fetchSellers,
   fetchShop,
   fetchSummary,
@@ -169,6 +172,7 @@ import { DashboardScreen } from "./app/DashboardScreen";
 import type { DashboardCustom } from "./app/DashboardScreen";
 import { SettingsScreen } from "./app/SettingsScreen";
 import { AccountScreen } from "./app/AccountScreen";
+import { SellerHistorySheet } from "./app/SellerHistorySheet";
 import { ConfirmSaveDialog } from "./app/ConfirmSaveDialog";
 import { ConfirmSellerChangeDialog } from "./app/ConfirmSellerChangeDialog";
 import { API_BASE_URL } from "./app/config";
@@ -2075,6 +2079,39 @@ function AppInner() {
    * operator and a customer standing at the scale, and would fail hardest
    * offline — which is the case this phase exists for.
    */
+  // ── P1.21: seller history at the weighbridge ───────────────────────────────
+  // Opened from the cart's seller header (a body control), for the chosen seller.
+  // The response's own `money_included` is the authority for whether prices show —
+  // the app never infers it (moneyVisible is unreliable here). ONLINE ONLY: there
+  // is no local history store, so this simply reads the server each time.
+  const [historySeller, setHistorySeller] = useState<Seller | null>(null);
+  const [historyScreen, setHistoryScreen] = useState<SellerHistoryScreen | null>(null);
+
+  const loadSellerHistory = useCallback(async (s: Seller): Promise<void> => {
+    const t = tokenRef.current;
+    if (t === null) {
+      setHistoryScreen(sellerHistoryScreen({ kind: "no_token" }));
+      return;
+    }
+    setHistoryScreen(null); // spinner while the read is in flight
+    const result = await fetchSellerHistory(t, s.id);
+    setHistoryScreen(sellerHistoryScreen(result));
+    // Keep the app's online/session state consistent, exactly as the dashboard
+    // read does; a history read is a read, so submitRefused is NOT touched.
+    if (result.kind === "unreachable") setOnline(false);
+    else setOnline(true);
+    if (result.kind === "http" && result.status === 401) setSessionEnded(true);
+    else if (result.kind === "ok") setSessionEnded(false);
+  }, []);
+
+  const openSellerHistory = useCallback(() => {
+    if (seller === null) return; // the control is only drawn when a seller is chosen
+    setHistorySeller(seller);
+    setHistoryScreen(null);
+    sheet("open_seller_history");
+    void loadSellerHistory(seller);
+  }, [seller, loadSellerHistory, sheet]);
+
   const openPicker = useCallback(() => {
     sheet("open_seller_picker");
     const t = tokenRef.current;
@@ -2759,6 +2796,26 @@ function AppInner() {
           ),
         };
 
+      case "seller_history":
+        return {
+          animation: "slide",
+          back: closeTopSheet,
+          content: (
+            <SellerHistorySheet
+              sellerName={historySeller?.name ?? ""}
+              screen={historyScreen}
+              onClose={closeTopSheet}
+              /* Retry re-reads the SAME seller; nothing here writes, so nothing replays. */
+              onRetry={() => {
+                if (historySeller !== null) void loadSellerHistory(historySeller);
+              }}
+              /* Closes to reveal the login screen; it cannot sign in itself and does
+                 not reload afterwards (the next person to sign in may be someone else). */
+              onSignIn={closeTopSheet}
+            />
+          ),
+        };
+
       default: {
         const never: never = onScreen;
         throw new Error(`unrendered sheet: ${JSON.stringify(never)}`);
@@ -3068,6 +3125,7 @@ function AppInner() {
             onDraftChange={onDraftChange}
             onLocksChange={setLocks}
             onPickSeller={openPicker}
+            onViewHistory={openSellerHistory}
             onVehicleChange={onVehicleChange}
             onVehicleBlur={onVehicleBlur}
             onSubmit={() => sheet("open_confirm_save")}

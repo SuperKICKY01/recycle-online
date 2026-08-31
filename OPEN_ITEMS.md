@@ -1446,6 +1446,13 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   no cursor (`before`/`after`) and no `from_date`/`to_date`. Paging further back, or
   by date, is a later line if a shop asks for it; recorded so the absence is not read
   as an oversight.
+- **`mobile/src/sellerHistory/` IS ONLINE-ONLY — 2026-08-31 (P1.21 phase 2), A CHOICE,
+  NOT A GAP.** There is no local per-seller history store; the panel reads
+  `GET /sellers/{seller_id}/history` each time it opens, and offline it draws one calm
+  sentence and no rows. Building a local history store is a sync-engine change (a new
+  store plus a refresh path) and was out of this phase's bounds; recorded so the
+  online-only behaviour is not read as an oversight. If a shop ever needs history
+  offline, that is a later step.
 - **THE STAFF DASHBOARD HAS NO PER-BILL LIST — `/reports/daily` HAS NO OWN-BILLS
   VARIANT, found 2026-08-31 (P1.23 item 4 unit 3), OWNER'S CALL, NOTHING AUTHORISED.**
   The today view shows the per-bill list from `GET /reports/daily`, which returns the

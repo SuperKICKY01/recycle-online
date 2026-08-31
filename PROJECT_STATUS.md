@@ -75,9 +75,67 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.21 — SELLER HISTORY AT THE WEIGHBRIDGE, PHASE 2: the drawing on the phone. 2026-08-31.**
+No sha yet (this record precedes the commit; anchor next pass). This is the current-phase pointer.
+**BUILT HEADLESS and PROVEN; the on-device pass is UNOBSERVED (the owner's).** New pure builder
+`mobile/src/sellerHistory/sellerHistoryView.ts` (behind `prove:sellerhistory`): the view model from
+a `GET /sellers/{seller_id}/history` response — money rendered ONLY when the response's own
+`money_included` is true (the phone NEVER infers it; `moneyVisible` is unreliable at the picker),
+byte-for-byte, with summaryView's whole-response-refuse rule RE-STATED (a JSON number — a weight
+always, a price/total when money is included — refuses the whole response with one calm sentence);
+when money is hidden, ONE sentence naming เจ้าของร้าน as the decider (never `ขอสิทธิ์`, per B1); the
+empty case its own calm sentence (`ยังไม่มีบิลก่อนหน้าของผู้ขายรายนี้ในระบบ`), never an error tone; a
+voided bill marked `บิลที่ถูกยกเลิก`; a null `doc_no` shown as `ยังไม่มีเลขที่บิล`; dates in shop time
+from the ONE offset (`@recycle/shop-time` `shopDate`) with the BE year AFTER conversion; ONLINE ONLY
+(no local history store — a sync-engine change, out of bounds — so offline draws one calm sentence
+and no rows); transport/timeout → unavailable + `ลองอีกครั้ง`, no red; a local/unsynced seller (404
+`seller_not_found`) reads a calm "not on the system yet" message, distinct from a bare 404 (older
+server). Thin `mobile/app/SellerHistorySheet.tsx` renders only what the builder returns (theme
+tokens, `TAP_MIN` controls, no `<Modal>`, a `makeTone` factory). `app/api.ts` gains transport-only
+`fetchSellerHistory` (the `fetchSummary` shape; no limit param → the server default 5).
+**THE HOME IS THE CART'S SELLER HEADER, not the picker (M2).** The picker is a single-tap-commit
+search list over many sellers, so a per-seller history there would fight the pick gesture or bloat
+the 5am fast-pick screen; the header holds the ONE chosen seller for the draft's life with its id in
+hand, and "what did this person sell before" is the natural follow-up to the pick — which is what
+P1.21 asks for. A new sheet kind `seller_history` + one transition `open_seller_history` (`from:
+[null]`, dispatched from a new `ดูประวัติ` control on the header); `EXPECTED_REACHABLE` 11→12, the
+SET changed by exactly `{+seller_history}`.
+**PROVEN (every command bare, exit read in the same invocation):** both typechecks green. The
+"before" was NOT re-run and did not need to be — a state-mutating `git stash` to establish a PAST
+fact is the wrong instrument: `git diff --stat 6117b67 HEAD -- mobile/ packages/` is EMPTY (exit 0),
+so the committed mobile+packages tree is byte-identical to `6117b67`, where the item-3 records pin
+both typechecks green, and that identical tree IS the pre-edit state my edits started from; the
+"after" run here exits 0 for both `typecheck` and `typecheck:app`.
+`prove:sellerhistory` (25 cells) exits 0 TWICE; FOUR disproofs each redden EXACTLY one cell and
+revert — `money_when_hidden`→the money-absent cell, `empty_error`→the empty-sentence cell,
+`date_utc`→the shop-date cell, `accept_number`→the refuse-whole-response cell; an unknown break exits
+2. `prove:sheets` moved 11→12 (reachable set `{+seller_history}`; S9 scans 21 app files and finds one
+`<Modal>`, S10 confirms `open_seller_history` is dispatched) and green TWICE. `prove:tapaudit` ZERO
+findings over 21 files, green TWICE. Every OTHER headless mobile proof green TWICE with cell counts
+UNMOVED from the item-3 baseline (proveSync 247, proveSignOut 151, proveNotice 81, proveDaily 104,
+proveDashboard 49, proveOutbox 77, proveSellerKind 69, proveSellerStore 56, provePickerSeller 15,
+proveReserveNotice 20, proveSettings 26, proveAccount 24, proveLocalSellerCreate 27, plus the rest);
+the three live-server auth proofs (proveForbidden, proveLogin, proveLoginScreen) exit 1 ONLY for
+`fetch failed` (no server). THE `api.ts`→BUILDER SEAM, over real HTTP on a fresh uvicorn on a free
+port against a self-restored scratch (the app tree does not load under node, so the request shape
+`api.ts` sends was MIRRORED and the response parsed by the REAL compiled
+`dist/sellerHistory/sellerHistoryView.js`, the unit-3 precedent): admin → 200 `money_included:true`,
+the builder renders 5 bills WITH prices and a shop-BE date (`13/03/2569`); staff with the toggle off
+→ 200 `money_included:false`, the body carries NEITHER `total_amount` NOR `unit_price` and the
+builder renders 5 bills with NO price and the calm note. Not a device pass.
+**NOT OBSERVED — the handset half.** No device pass this session; its readings are ADDED to the ONE
+consolidated handset list in the P1.23 item-3 phase-A record below (not a second list).
+**IS A LESSON OWED? NO.** The disciplines are already recorded and were re-derived at the artefact:
+money shown only on the response's own `money_included`, never inferred, is the
+`cached-master-data-is-a-price-claim` / `a-value-comparison-cannot-prove-a-path` shape (trust the
+authority, not a local guess); the JSON-number whole-response refuse is the money/decimal rule
+re-stated (summaryView's own precedent); shop-date-before-BE is render-in-shop-time /
+be-year-after-timezone; each disproof reddening exactly one cell through a wrapper (never a hook in
+the module under test) is `a-check-that-never-went-red-was-never-observed`. No new class, no box trap.
+
 **P1.21 — SELLER HISTORY AT THE WEIGHBRIDGE, PHASE 1: the reading endpoint. 2026-08-31.**
-No sha yet (this record precedes the commit; anchor next pass). This is the current-phase
-pointer; the P1.23 records below stand, the Phase-B one anchored to `6117b67`.
+Committed at `c4e8b27` (anchored 2026-08-31 in the phase-2 pass above). This WAS the current-phase
+pointer until the phase-2 record above; the P1.23 records below stand, the Phase-B one anchored to `6117b67`.
 **BUILT (server, reading half) and PROVEN over real HTTP; no device work in this phase.**
 New route `GET /sellers/{seller_id}/history` in `server/app/master.py` (where every `/sellers`
 route lives): a seller's prior bills newest-first by `server_received_at`, LIMIT `limit`
@@ -256,8 +314,9 @@ only for `fetch failed`. Scoping (P-A6): `git diff` over
 is EMPTY — the change touched only `app/`, `App.tsx`, `app.json`, `package.json`, and the
 two new files under `src/ui`/`src/proof`. The inventory re-run finds ZERO raw hex, ZERO
 rgba and ZERO raw `fontSize` literal in `app/`.
-**NOT OBSERVED — the handset pass, now the ONE consolidated pass owed for units 1, 3 and
-this phase.** No device pass this session; dark rendering and follow-system are
+**NOT OBSERVED — the handset pass, now the ONE consolidated pass owed for units 1, 3,
+this phase, AND P1.21's drawing half (this session — added as the last bullet, not a second
+list).** No device pass this session; dark rendering and follow-system are
 device-visible and no headless proof can see them. On a handset (`npx expo start -c` + a
 full reload FIRST — `CLAUDE.md § Boot check` "WHICH BUNDLE"), the owner reads:
 - THIS PHASE (theme + sweep): every screen the sweep touched renders correctly in BOTH
@@ -278,6 +337,12 @@ full reload FIRST — `CLAUDE.md § Boot check` "WHICH BUNDLE"), the owner reads
   grade change asks a confirmation) and saves; บัญชีของฉัน shows the profile, and a password
   change with a pending bill queued produces the "changed — sign in again, work kept" sheet
   and lands on the login screen.
+- P1.21 (seller history, the DRAWING HALF — this session): the ดูประวัติ control on the cart's
+  seller header opens the history panel for the chosen seller, and it shows the seller's last
+  loads; a STAFF session with `staff_money_visible` off sees NO price and one calm sentence naming
+  เจ้าของร้าน; an ADMIN sees the prices; a seller with NO history reads calmly (its own sentence,
+  not an error tone); a local/unsynced seller reads the "not on the system yet" message; and
+  offline shows one calm sentence with no rows.
 All UNOBSERVED.
 **IS A LESSON OWED? NO.** The brief flagged the text-scanner-as-proof shape as "a new
 instrument here"; re-derived against the tree, it is NOT new — `proveSheets.ts` already

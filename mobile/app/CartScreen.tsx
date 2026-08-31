@@ -110,6 +110,7 @@ interface Props {
   onDraftChange: (next: Draft, immediate: boolean) => void;
   onLocksChange: (next: Locks) => void;
   onPickSeller: () => void;
+  onViewHistory: () => void;
   onVehicleChange: (raw: string) => void;
   onVehicleBlur: () => void;
   onSubmit: () => void;
@@ -127,6 +128,7 @@ export function CartScreen({
   onDraftChange,
   onLocksChange,
   onPickSeller,
+  onViewHistory,
   onVehicleChange,
   onVehicleBlur,
   onSubmit,
@@ -357,6 +359,14 @@ export function CartScreen({
             </Text>
           )}
         </Pressable>
+
+        {/* P1.21: what this seller last sold. A SEPARATE control (not nested in the
+            seller box's own Pressable), drawn only once a seller is chosen. */}
+        {seller !== null ? (
+          <Pressable style={styles.historyBtn} onPress={onViewHistory} disabled={busy}>
+            <Text style={styles.historyBtnText}>ดูประวัติการซื้อขายของผู้ขายรายนี้ ›</Text>
+          </Pressable>
+        ) : null}
 
         {/*
           vehicle_no. FREE TEXT, so the OS keyboard is correct here — the same
@@ -685,6 +695,12 @@ function makeStyles(t: ThemeTokens) {
       paddingHorizontal: t.space.md, paddingVertical: t.space.sm, marginTop: t.space.md, fontWeight: "700",
     },
     changeBtn: { fontSize: t.type.bodyLg, fontWeight: "900", color: t.color.primary },
+    historyBtn: {
+      minHeight: t.tapMin, marginTop: t.space.md, borderRadius: t.radius.lg, borderWidth: 1,
+      borderColor: t.color.border, backgroundColor: t.color.surface,
+      alignItems: "center", justifyContent: "center", paddingHorizontal: t.space.x3,
+    },
+    historyBtnText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.primary },
 
     vehicleInput: {
       borderWidth: 1, borderColor: t.color.border, borderRadius: t.radius.lg, paddingHorizontal: t.space.xxl,

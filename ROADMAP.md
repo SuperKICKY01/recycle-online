@@ -6966,6 +6966,16 @@ yet (this note precedes the commit; anchor next pass).**
   seller by seller, even though the aggregate period summary still restricts a
   staff caller to their OWN bills (recorded in OPEN_ITEMS beside the toggle).
 
+**DRAWING HALF BUILT — 2026-08-31 (phase 2). No sha yet; anchor next pass.** The phone
+surface is drawn: a seller-history PANEL opened from the cart's SELLER HEADER (not the
+picker — a single-tap-commit search list over many sellers), rendering the pure builder
+`mobile/src/sellerHistory/`, headless-proven (`prove:sellerhistory`, four disproofs; the
+`api.ts`→builder seam exercised over real HTTP against a scratch). Money follows the
+response's own `money_included` (G2), never inferred; the empty case, a voided bill, a
+local/unsynced seller and offline each read calmly; dates in shop time, BE after conversion.
+So BOTH halves of P1.21's DONE WHEN are met headless; the handset reading is owed and is
+added to the consolidated device-pass list in the PROJECT_STATUS current phase.
+
 ### P1.22 — Anomaly signals: three named ones
 
 **What it is.** Three signals, named by the owner and not widened here:

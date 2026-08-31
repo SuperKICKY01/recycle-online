@@ -253,6 +253,7 @@ const EXPECTED_REACHABLE: readonly string[] = [
   "confirm_seller_change",
   "dashboard", // the ยอดวันนี้ button opens the dashboard (P1.23 item 4 unit 3; it absorbed the daily screen)
   "prices",
+  "seller_history", // the ดูประวัติ control on the cart's seller header opens it (P1.21)
   "seller_picker",
   "seller_picker>add_seller",
   "settings", // the ตั้งค่าร้าน button, in the header (P1.23)
@@ -280,6 +281,11 @@ const EXPECTED_CLOSE: readonly (readonly [string, string, string])[] = [
     "seller_picker>add_seller",
     "seller_picker",
     "BACK TO THE PICKER, where the search box is, so the operator can LOOK before adding again",
+  ],
+  [
+    "seller_history",
+    "-",
+    "back to the cart. The history panel stands on its own — a staff member who has finished reading the seller's recent loads is finished, and there is nothing underneath it to return to (P1.21)",
   ],
   [
     "settings",
