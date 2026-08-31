@@ -42,7 +42,7 @@
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemeProvider, useTheme, type ThemeTokens } from "./app/theme";
@@ -94,6 +94,11 @@ import {
   mayStartBill,
 } from "./src/master/freshness";
 import { reserveStripNotice } from "./src/master/reserveStrip";
+import { statusNotice } from "./src/sync/statusNotice";
+import type { StatusInput } from "./src/sync/statusNotice";
+import { arrangeNotices, masterEntry, reserveEntry, statusEntry, type NoticeId } from "./src/ui/noticeStack";
+import { NAV_ITEMS, type NavDest, type NavGate } from "./src/ui/navRow";
+import { NoticeSheet } from "./app/NoticeSheet";
 import {
   priceListScreen,
   priceRefreshScreen,
@@ -1082,11 +1087,12 @@ function AppInner() {
         setDraft(restored);
         setDraftsWithheld(loaded.withheld);
         setReady(true);
+        // The API base URL is DIAGNOSTIC, not operator information (P1.23 item 3 phase C);
+        // it moved to the settings screen's diagnostics. What is left is operator-facing.
         setStatus(
-          API_BASE_URL +
+          `ในเครื่อง: สินค้า ${String(cache.products.length)} · ผู้ขาย ${String(cache.sellers.length)} ราย` +
             (recoveredCount > 0 ? ` · กู้คืน ${String(recoveredCount)} บิลที่ค้าง` : "") +
-            (restored ? ` · พบบิลค้างไว้ ${String(restored.lines.length)} รายการ` : "") +
-            ` · ในเครื่อง: สินค้า ${String(cache.products.length)} · ผู้ขาย ${String(cache.sellers.length)} ราย`,
+            (restored ? ` · พบบิลค้างไว้ ${String(restored.lines.length)} รายการ` : ""),
         );
 
         // Only NOW does the network get involved, and nothing above depends on
@@ -2047,7 +2053,7 @@ function AppInner() {
       // NO draft is created here any more. A bill starts when a seller is
       // picked, so signing in never silently opens one for whoever happened to
       // come back first from /sellers.
-      setStatus(`${API_BASE_URL} · เข้าสู่ระบบแล้ว`);
+      setStatus("เข้าสู่ระบบแล้ว");
     } catch (err) {
       /*
        * STILL HERE, AND IT NO LONGER CARRIES THE REFUSALS. `login()` returns
@@ -2209,7 +2215,7 @@ function AppInner() {
       setSignOutFailure(null);
       // No separate close for the sign-out sheet: the setter above emptied the
       // whole stack, and this sheet was in it.
-      setStatus(`${API_BASE_URL} · ออกจากระบบแล้ว`);
+      setStatus("ออกจากระบบแล้ว");
     } finally {
       setBusy(false);
     }
@@ -2711,6 +2717,118 @@ function AppInner() {
   // Read ONCE into a const: the `never` arm below narrows a variable, and a second
   // call to topSheet() in that position narrows nothing — the exhaustiveness check
   // would compile while proving nothing.
+  // ── P1.23 item 3 phase C: the notice arrangement, and the header nav mapping ──
+  // The three alert notices (session/sync, stale prices, seller-code reserve) are
+  // ranked by src/ui/noticeStack.ts: the one blocking notice stays inline, the rest
+  // collapse behind a count that opens the notices sheet. The last-bill strip is a
+  // navigation card, not one of these. statusNotice is computed here for its tone;
+  // StatusStrip re-derives it from the same input, which is pure and cheap.
+  const statusInput: StatusInput = {
+    session,
+    account,
+    voidsRefused: voidsRefusedCount,
+    online,
+    pending: pendingCount,
+    parkedForAnother,
+    parkedUnknownOwner,
+    failed: failedCount,
+    blocked: health?.alarm
+      ? { behind: health.behind, forMs: health.poisonedForMs, attempts: health.serverErrorAttempts }
+      : null,
+    waitingOnMasterData: health?.masterDataBlocked ?? 0,
+    masterDataCodes,
+    owed,
+  };
+  const statusValue = statusNotice(statusInput);
+  const reserveValue = reserveStripNotice({ ...reserve, now: nowIso() });
+  const noticeArrangement = arrangeNotices([
+    statusEntry(statusValue.tone, mustShowSignIn({ token, sessionEnded })),
+    masterEntry(masterMessage),
+    reserveEntry(reserveValue),
+  ]);
+  // The count control's dot takes the highest collapsed severity's colour, so the
+  // chip itself says whether what is hidden is urgent (collapsed is sorted, top first).
+  const noticeCountColor =
+    noticeArrangement.collapsed[0]?.severity === "blocking"
+      ? theme.color.danger
+      : noticeArrangement.collapsed[0]?.severity === "attention"
+        ? theme.color.warning
+        : theme.color.info;
+  const noticeStripFor = (id: NoticeId): ReactNode => {
+    switch (id) {
+      case "session":
+        return (
+          <StatusStrip
+            {...statusInput}
+            lastSyncedAt={lastSyncedAt}
+            onSignIn={() => sheet("close_every_sheet")}
+            onRetryMasterData={retryMasterData}
+          />
+        );
+      case "prices":
+        return <MasterDataStrip notice={masterMessage} />;
+      case "reserve":
+        return <ReserveStrip notice={reserveValue} />;
+      default: {
+        const never: never = id;
+        throw new Error(`unrendered notice: ${JSON.stringify(never)}`);
+      }
+    }
+  };
+  const navGateOpen = (gate: NavGate): boolean => {
+    switch (gate) {
+      /*
+        DASHBOARD (P1.23 item 4 unit 3). A staff session sees ยอดวันนี้ only when the
+        shop's `staff_money_visible` is on — the money toggle is a per-shop setting the
+        server enforces DETERMINISTICALLY, so a staff+off session WOULD be refused (403
+        staff_money_hidden). It FAILS OPEN on an unknown role (admin and an unparseable
+        token both get it): the server re-reads the role every request and a
+        wrongly-offered READ lands on a calm 403, while failing closed would hide an
+        owner's own takings over a token this build merely failed to parse. Offline
+        `moneyVisible` is null, which hides the entry for staff (treated as OFF).
+      */
+      case "dashboard_entry":
+        return mayShowDashboardEntry(role, moneyVisible);
+      /*
+        PRICES (P1.9). The ยกเลิกบิลนี้ rule, not the ยอดวันนี้ one: this opens a screen
+        whose purpose is a WRITE `require_admin` refuses, and a staff session must not
+        learn its account cannot price by watching a save fail. `mayEditPrices` is the
+        SAME predicate the sheet's own render uses, so the button and the screen cannot
+        disagree; it fails OPEN on an unknown role onto priceSaveScreen's calm 403 branch.
+      */
+      case "edit_prices":
+        return token !== null && mayEditPrices(role);
+      /*
+        SETTINGS and ACCOUNT (P1.23). Offered to every signed-in account: GET /shop and
+        /whoami are READS a staff session may make, the settings screen renders read-only
+        for staff (the write is admin-only, refused with a plain 403 it words), and the
+        account is every user's own. With no token the login screen is already the body.
+      */
+      case "signed_in":
+        return token !== null;
+      default: {
+        const never: never = gate;
+        throw new Error(`unhandled nav gate: ${JSON.stringify(never)}`);
+      }
+    }
+  };
+  const navHandler = (dest: NavDest): (() => void) => {
+    switch (dest) {
+      case "dashboard":
+        return openDashboard;
+      case "prices":
+        return openPrices;
+      case "settings":
+        return openSettings;
+      case "account":
+        return openAccount;
+      default: {
+        const never: never = dest;
+        throw new Error(`unhandled nav dest: ${JSON.stringify(never)}`);
+      }
+    }
+  };
+
   const onScreen = topSheet(sheets);
   const sheetSlot: { content: ReactNode; animation: SheetAnimation; back: () => void } = ((): {
     content: ReactNode;
@@ -3006,6 +3124,21 @@ function AppInner() {
           ),
         };
 
+      /* P1.23 item 3 phase C. The collapsed notices, in full — the reference's
+         "notices behind a count". App.tsx builds each notice's own strip element;
+         this only lays them out over a dimmed backdrop with a grab handle. */
+      case "notices":
+        return {
+          animation: "fade",
+          back: closeTopSheet,
+          content: (
+            <NoticeSheet
+              notices={noticeArrangement.collapsed.map((e) => noticeStripFor(e.id))}
+              onClose={closeTopSheet}
+            />
+          ),
+        };
+
       default: {
         const never: never = onScreen;
         throw new Error(`unrendered sheet: ${JSON.stringify(never)}`);
@@ -3026,213 +3159,113 @@ function AppInner() {
       <SafeAreaView style={styles.screen} edges={["top", "bottom"]}>
         <StatusBar style={theme.statusBar} />
         <View style={styles.header}>
-          <View style={styles.headerRow}>
-            <Text style={styles.h1}>รับซื้อของเก่า</Text>
+          {/*
+            THE FIXED TOP BAR (P1.23 item 3 phase C). Wordmark leading; ออกจากระบบ
+            trailing and spatially separated, because it is destructive. The navigation
+            destinations moved OUT of this row — they overlapped the title and clipped
+            the last chip at the frame — into the horizontal scroll row below.
+          */}
+          <View style={styles.topBar}>
+            <Text style={styles.wordmark} numberOfLines={1}>
+              รับซื้อของเก่า
+            </Text>
             {/*
-              THE DASHBOARD ENTRY (P1.23 item 4 unit 3). Same label and position as
-              the old ยอดวันนี้ button; it now opens the dashboard (S24 absorbed the
-              daily screen). GATED, and the gate is E2, not the old "offered to
-              everyone": a staff session sees the entry ONLY when the shop's
-              `staff_money_visible` is on. A control a session would only be refused
-              is never drawn (P1.9's rule) — and unlike the void button's advisory
-              role-staleness, the money toggle is a per-shop setting the server
-              enforces DETERMINISTICALLY, so a staff+off session WOULD be refused
-              (403 staff_money_hidden), definitely, every time.
-
-              It still FAILS OPEN on an unknown role: admin and an unparseable token
-              both get the entry (mayShowDashboardEntry), because the server re-reads
-              the role every request and a wrongly-offered entry lands on a calm 403,
-              while failing closed would hide an owner's own takings over a token this
-              build merely failed to parse. `moneyVisible` is seeded once from GET
-              /shop and corrected by the summary's own answer; offline it is null,
-              which hides the entry for staff (treated as OFF).
-            */}
-            {mayShowDashboardEntry(role, moneyVisible) ? (
-              <Pressable style={styles.dailyBtn} onPress={openDashboard}>
-                <Text style={styles.dailyBtnText}>ยอดวันนี้ ›</Text>
-              </Pressable>
-            ) : null}
-            {/*
-              PRICES (P1.9). NOT OFFERED TO EVERY ACCOUNT, and it is the ยกเลิกบิลนี้
-              rule rather than the ยอดวันนี้ rule above — the paragraph beside that
-              button is the argument for the opposite case, so the two are worth
-              reading together.
-
-              ยอดวันนี้ opens a READ. It costs one refused GET and one plain sentence,
-              so gating it on a claim that is up to an hour stale would lock the owner
-              out of their own takings for no gain. This button opens a screen whose
-              purpose is a WRITE that `require_admin` refuses, and a staff session
-              pressing save would learn its account cannot do this by watching a save
-              fail — which is precisely how they must not find out.
-
-              So `mayEditPrices` decides, and it is the SAME predicate the sheet's own
-              render uses (priceListScreen takes `role`), which is what stops the
-              button and the screen behind it from disagreeing. It fails OPEN on an
-              unknown role, and the 403 branch of priceSaveScreen is where that lands
-              — a plain sentence, no red, no sign-in button.
-
-              With no token there is no role and no shop to price, and the login
-              screen is already the whole body of the app.
-            */}
-            {token !== null && mayEditPrices(role) ? (
-              <Pressable style={styles.dailyBtn} onPress={openPrices}>
-                <Text style={styles.dailyBtnText}>ราคารับซื้อ ›</Text>
-              </Pressable>
-            ) : null}
-            {/*
-              SETTINGS and ACCOUNT (P1.23). OFFERED TO EVERY SIGNED-IN ACCOUNT, the
-              ยอดวันนี้ rule rather than the ราคารับซื้อ one: GET /shop and /whoami are
-              READS a staff session may make, and the settings screen renders
-              READ-ONLY for staff (the WRITE is admin-only and is refused with a
-              plain 403 the screen words, never a save that fails after the fact).
-              The account screen is every user's own — a staff phone may change its
-              own password. With no token the login screen is already the whole body.
-            */}
-            {token !== null ? (
-              <Pressable style={styles.dailyBtn} onPress={openSettings}>
-                <Text style={styles.dailyBtnText}>ตั้งค่าร้าน ›</Text>
-              </Pressable>
-            ) : null}
-            {token !== null ? (
-              <Pressable style={styles.dailyBtn} onPress={openAccount}>
-                <Text style={styles.dailyBtnText}>บัญชีของฉัน ›</Text>
-              </Pressable>
-            ) : null}
-            {/*
-              SIGN OUT (R1b). Offered only while there IS a session — with no
-              token the login button is already the whole screen, and a sign-out
-              button beside it would be an action with nothing to act on.
-
-              It opens a sheet rather than signing out on the tap. The sheet is
-              where the queue gate is explained and where the operator is told,
-              BEFORE committing, that signing back in needs a connection —
-              which is the one consequence they cannot discover by trying, since
-              discovering it means already being signed out.
+              SIGN OUT (R1b). Offered only while there IS a session — with no token the
+              login button is already the whole screen. It opens a sheet rather than
+              signing out on the tap: the sheet explains the queue gate and warns, before
+              committing, that signing back in needs a connection — the one consequence
+              the operator cannot discover by trying.
             */}
             {token !== null ? (
               <Pressable
-                style={styles.dailyBtn}
+                style={styles.signOut}
                 onPress={() => {
                   setSignOutFailure(null);
                   sheet("open_sign_out");
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="ออกจากระบบ"
               >
-                <Text style={styles.dailyBtnText}>ออกจากระบบ</Text>
+                <Text style={styles.signOutText}>ออกจากระบบ</Text>
               </Pressable>
             ) : null}
           </View>
-          <Text style={styles.status} numberOfLines={1}>
-            {status}
-          </Text>
+          {/*
+            THE NAVIGATION, a horizontal scroll row built from NAV_ITEMS by .map
+            (src/ui/navRow.ts) — so a destination cannot be silently dropped by the
+            layout. Each chip's gate is navGateOpen above, where the per-destination
+            rationale lives. An overflowing next chip peeks as its own rounded card (the
+            affordance; never a chip sliced flat), the leading item ยอดวันนี้ is the
+            most-used and shows at rest, and a horizontal scroll never captures a
+            vertical drag. Every chip clears TAP_MIN.
+          */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.navRow}
+          >
+            {NAV_ITEMS.map((item) =>
+              navGateOpen(item.gate) ? (
+                <Pressable key={item.dest} style={styles.navChip} onPress={navHandler(item.dest)}>
+                  <Text style={styles.navChipText}>{item.label}</Text>
+                </Pressable>
+              ) : null,
+            )}
+          </ScrollView>
+          {status !== "" ? (
+            <Text style={styles.status} numberOfLines={1}>
+              {status}
+            </Text>
+          ) : null}
         </View>
 
-        <StatusStrip
-          /*
-            Three states, one derived value: no token at all (never signed in on
-            this launch), a token the server has stopped accepting, or a working
-            session. Derived rather than stored, so signing in fixes every screen
-            at once and nothing can be left saying "sign in" after they have.
-          */
-          session={session}
-          /*
-            What the server has refused this ACCOUNT, and how many voids it
-            refused. Two separate inputs because they are two different facts:
-            one is about what this phone may do from now on, the other is a fixed
-            set of purchases already in disagreement with the server.
-          */
-          account={account}
-          voidsRefused={voidsRefusedCount}
-          online={online}
-          pending={pendingCount}
-          failed={failedCount}
-          lastSyncedAt={lastSyncedAt}
-          /*
-           * THE TWO NUMBERS THAT ARE NOT `pending`, and they are separate props
-           * rather than one total for the reason ROADMAP.md section P1.7 gives:
-           * "One waits for a connection and the other waits for a person. A
-           * combined total makes the operator wait for the wrong thing."
-           * The third wait — for the OFFICE — already had its own line and its
-           * own retry button, and arrives as waitingOnMasterData below.
-           */
-          parkedForAnother={parkedForAnother}
-          parkedUnknownOwner={parkedUnknownOwner}
-          /*
-           * THE WHOLE DEBT, so the strip stops claiming the work is sent while
-           * a kind it has no line for is still owed. The same value the gate and
-           * the sheet read. It does NOT replace `pending` above: that one is
-           * this person's bills waiting on a CONNECTION, which is a narrower and
-           * more useful fact, and statusNotice reads this map only for the kinds
-           * no line above has spoken for.
-           */
-          owed={owed}
-          /*
-           * THE STRIP CAN NO LONGER SIGN ANYBODY IN, and that is the honest
-           * change rather than a loss. Signing in now needs a username and a
-           * password from a person; a button that called signIn() with nothing
-           * would either fail or, worse, invite a caller to pass a constant.
-           * What it does instead is SURFACE the screen that can: with no usable
-           * session the login screen is already the body of the app, so the
-           * only thing standing between the operator and it is whatever sheet
-           * is open on top. lessons/401-is-about-the-caller-not-the-bill.md
-           * requires the sign-in route to be reachable from here; it still is,
-           * it is simply one tap of dismissal rather than a silent login.
-           */
-          onSignIn={() => sheet("close_every_sheet")}
-          blocked={
-            health?.alarm
-              ? {
-                  behind: health.behind,
-                  forMs: health.poisonedForMs,
-                  attempts: health.serverErrorAttempts,
-                }
-              : null
-          }
-          waitingOnMasterData={health?.masterDataBlocked ?? 0}
-          masterDataCodes={masterDataCodes}
-          onRetryMasterData={retryMasterData}
-        />
-
         {/*
-          A SECOND strip, below the first and never merged into it. StatusStrip
-          answers "are my bills getting out"; this answers "is what I am pricing
-          against still true". They fail independently — a yard can be online
-          with an empty queue and still be looking at a price list from before a
-          change — so one line would mean one of the two facts being silently
-          outranked. Renders nothing when the data was just refreshed.
+          THE NOTICE ZONE (P1.23 item 3 phase C). The three alert notices — session/sync,
+          stale prices, seller-code reserve — are ranked by src/ui/noticeStack.ts: the one
+          that BLOCKS work stays inline as a card; the rest collapse behind a count that
+          opens the notices sheet, each keeping its own tone and text, unchanged (the three
+          strips still DECIDE their own wording — this only arranges the built elements).
+          The last-bill strip is a navigation CARD here, not one of the ranked notices.
+          When nothing blocks and nothing else is active, this whole zone is empty — the
+          clean screen the reference reads as current, not a stack of four equal bars.
         */}
-        <MasterDataStrip notice={masterMessage} />
-
-        {/*
-          A THIRD strip, below the other two. StatusStrip answers "are my bills
-          getting out"; MasterDataStrip "is what I am pricing against still true";
-          this "can I still add a walk-in offline". Renders nothing when the
-          reserve is ample. `now` is read at render so the target ages even while
-          the holding itself does not change — the strip decides for itself whether
-          a target is now too old to present as fresh (src/master/reserveStrip.ts).
-        */}
-        <ReserveStrip notice={reserveStripNotice({ ...reserve, now: nowIso() })} />
-
-        {bills.length > 0 ? (
-          <Pressable style={styles.latest} onPress={() => sheet("open_bills")}>
-            {latest !== null ? (
-              <>
-                <Text
-                  style={[styles.latestBadge, { backgroundColor: stateColor[latest.sync_state] }]}
-                >
-                  {STATE_TH[latest.sync_state]}
-                </Text>
-                <Text style={styles.latestDoc}>
-                  บิลล่าสุด {latest.doc_no ?? "ยังไม่มีเลขที่บิล"}
-                </Text>
-                <Text style={styles.latestTotal}>
-                  {latest.payload.total_amount ?? "-"} ({latest.payload.items.length})
-                </Text>
-              </>
-            ) : (
-              <Text style={styles.latestDoc}>ไม่มีบิลที่ยังไม่ถูกยกเลิก</Text>
-            )}
-            <Text style={styles.latestOpen}>ดู/ยกเลิก ›</Text>
-          </Pressable>
+        {noticeArrangement.inline !== null || noticeArrangement.count > 0 || bills.length > 0 ? (
+          <View style={styles.noticeZone}>
+            {noticeArrangement.inline !== null ? noticeStripFor(noticeArrangement.inline.id) : null}
+            {noticeArrangement.count > 0 ? (
+              <Pressable
+                style={styles.noticeCount}
+                onPress={() => sheet("open_notices")}
+                accessibilityRole="button"
+              >
+                <View style={[styles.noticeDot, { backgroundColor: noticeCountColor }]} />
+                <Text style={styles.noticeCountNum}>{String(noticeArrangement.count)}</Text>
+                <Text style={styles.noticeCountChevron}>›</Text>
+              </Pressable>
+            ) : null}
+            {bills.length > 0 ? (
+              <Pressable style={styles.latest} onPress={() => sheet("open_bills")}>
+                {latest !== null ? (
+                  <>
+                    <Text
+                      style={[styles.latestBadge, { backgroundColor: stateColor[latest.sync_state] }]}
+                    >
+                      {STATE_TH[latest.sync_state]}
+                    </Text>
+                    <Text style={styles.latestDoc}>
+                      บิลล่าสุด {latest.doc_no ?? "ยังไม่มีเลขที่บิล"}
+                    </Text>
+                    <Text style={styles.latestTotal}>
+                      {latest.payload.total_amount ?? "-"} ({latest.payload.items.length})
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={styles.latestDoc}>ไม่มีบิลที่ยังไม่ถูกยกเลิก</Text>
+                )}
+                <Text style={styles.latestOpen}>ดู/ยกเลิก ›</Text>
+              </Pressable>
+            ) : null}
+          </View>
         ) : null}
 
         {!ready ? (
@@ -3346,28 +3379,62 @@ function describe(err: unknown): string {
 function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: t.color.background },
-    center: { flex: 1, justifyContent: "center", paddingHorizontal: 24 },
-    spinner: { marginTop: 40 },
-    header: { paddingHorizontal: t.space.x3, paddingTop: t.space.sm, paddingBottom: t.space.sm },
-    headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-    h1: { fontSize: t.type.title, fontWeight: "900", color: t.color.text },
-    status: { fontSize: t.type.body, color: t.color.placeholder },
-    // A quiet teal chip, not a primary action: the yard's job is weighing, and this
-    // is the owner's screen sitting where they can reach it without hunting.
-    dailyBtn: {
-      minHeight: t.tapMin, paddingHorizontal: t.space.xl, borderRadius: t.radius.md, justifyContent: "center",
-      backgroundColor: t.color.tealFaint,
+    center: { flex: 1, justifyContent: "center", paddingHorizontal: t.space.x4 },
+    spinner: { marginTop: t.space.x5 },
+    // THE FIXED TOP BAR — surface chrome, distinct from the page below it.
+    header: {
+      backgroundColor: t.color.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: t.color.borderSoft,
+      paddingTop: t.space.sm,
+      paddingBottom: t.space.sm,
     },
-    dailyBtnText: { fontSize: t.type.body, fontWeight: "800", color: t.color.primary },
+    topBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      minHeight: t.tapMin,
+      paddingHorizontal: t.layout.screenPad,
+    },
+    wordmark: { flex: 1, fontSize: t.type.titleLg, fontWeight: "900", color: t.color.text },
+    // Sign out — subdued and separated; it is destructive, so it is NOT an accent and
+    // sits alone in the trailing zone. The confirm sheet, not this control, carries danger.
+    signOut: { minHeight: t.tapMin, paddingHorizontal: t.space.md, justifyContent: "center", alignItems: "center" },
+    signOutText: { fontSize: t.type.body, fontWeight: "700", color: t.color.textMuted },
+    // The horizontal navigation scroll row.
+    navRow: { flexDirection: "row", gap: t.space.md, paddingHorizontal: t.layout.screenPad, paddingBottom: t.space.sm },
+    // Neutral pill chips — navigation, NOT the one accent. Every one clears TAP_MIN.
+    navChip: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.xl, borderRadius: t.radius.pill,
+      justifyContent: "center", backgroundColor: t.color.surfaceAlt,
+    },
+    navChipText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.text },
+    status: {
+      fontSize: t.type.body, color: t.color.textSubtle,
+      paddingHorizontal: t.layout.screenPad, paddingBottom: t.space.sm,
+    },
 
+    // THE NOTICE ZONE — an inset card page: one outer margin, one gap between cards.
+    noticeZone: { paddingHorizontal: t.layout.screenPad, paddingTop: t.layout.cardGap, gap: t.layout.cardGap },
+    // The count control: a neutral card whose dot carries the highest hidden severity.
+    noticeCount: {
+      flexDirection: "row", alignItems: "center", gap: t.space.md, minHeight: t.tapMin,
+      paddingHorizontal: t.layout.cardPad, borderRadius: t.radius.card,
+      backgroundColor: t.color.surface, borderWidth: 1, borderColor: t.color.borderSoft,
+    },
+    noticeDot: { width: 12, height: 12, borderRadius: t.radius.sm },
+    noticeCountNum: { flex: 1, fontSize: t.type.subhead, fontWeight: "900", color: t.color.text },
+    noticeCountChevron: { fontSize: t.type.title, fontWeight: "800", color: t.color.textSubtle },
+
+    // THE LATEST BILL — a navigation card (it was a full-bleed strip).
     latest: {
-      flexDirection: "row", alignItems: "center", gap: t.space.md,
-      paddingHorizontal: t.space.x3, paddingVertical: t.space.sm, backgroundColor: t.color.surface,
-      borderBottomWidth: 1, borderBottomColor: t.color.borderSoft,
+      flexDirection: "row", alignItems: "center", gap: t.space.md, minHeight: t.tapMin,
+      paddingHorizontal: t.layout.cardPad, paddingVertical: t.space.md, borderRadius: t.radius.card,
+      backgroundColor: t.color.surface, borderWidth: 1, borderColor: t.color.borderSoft,
     },
     latestBadge: {
       color: t.color.onPrimary, fontSize: t.type.body, fontWeight: "800", paddingHorizontal: t.space.sm,
-      paddingVertical: 2, borderRadius: 5, overflow: "hidden",
+      paddingVertical: t.space.xs, borderRadius: t.radius.sm, overflow: "hidden",
     },
     latestDoc: { flex: 1, fontSize: t.type.body, fontWeight: "800", color: t.color.text },
     latestTotal: { fontSize: t.type.body, color: t.color.textMuted, fontWeight: "700" },

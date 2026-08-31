@@ -125,14 +125,80 @@ export const SPACE = {
   x5: 28,
 } as const;
 
-/** Corner radii. */
+/** Corner radii. `card` (16) is P1.23 item 3 phase C — the reference's inset-card
+ *  corner; the pre-C dialogs that hard-coded `borderRadius: 16` name this rung now.
+ *  RADIUS is not the 8-step type scale (only that step count is fixed), so a rung is
+ *  free to be added; `proveTheme` asserts TYPE, TAP_MIN and the palette, never RADIUS. */
 export const RADIUS = {
   sm: 6,
   md: 8,
   lg: 10,
   xl: 12,
   pill: 14,
+  card: 16,
 } as const;
+
+/**
+ * STRUCTURAL LAYOUT CONSTANTS — the page's rhythm in ONE place (P1.23 item 3 phase C).
+ *
+ * Before phase C the main screen was full-bleed: every element a box abutting the next,
+ * no outer margin, no gap. The reference the owner set reads as current because content
+ * lives on INSET CARDS with a consistent outer margin and a consistent gap. Those two
+ * decisions are `screenPad` and `cardGap`, drawn from `SPACE` so a card page reads a
+ * NAME, not a literal repeated per screen — which is what the phase-C tap-audit's
+ * layout-literal scan asserts for the page model.
+ *
+ * `sheetTopInset` is the status-bar clearance a sheet needs: sheets render inside the
+ * single `<Modal>` host (`SheetHost`), which is OUTSIDE `App.tsx`'s `SafeAreaView`, so a
+ * sheet header cannot inherit the inset and names this constant instead. It replaces the
+ * seven hand-rolled `paddingTop: 56` copies the sheet `head` blocks each carried.
+ */
+export const LAYOUT = {
+  /** Outer margin from the screen edge to a card. */
+  screenPad: SPACE.x3, // 16
+  /** Gap between stacked cards on a page. */
+  cardGap: SPACE.xl, // 12
+  /** Padding inside a card. */
+  cardPad: SPACE.x3, // 16
+  /** Vertical rhythm between sections inside a card. */
+  sectionGap: SPACE.x4, // 20
+  /** Bottom clearance under a scroll body so the last row clears the frame. */
+  scrollGutter: 48,
+  /** Status-bar clearance for a sheet header rendered inside the Modal host. */
+  sheetTopInset: 56,
+} as const;
+
+/**
+ * ONE ELEVATION STEP for a card, per scheme.
+ *
+ * Separation on this app comes FIRST from the surface/background colour difference (both
+ * proven ≥4.5:1 for their text) and a hairline border; the shadow is a subtle
+ * reinforcement, kept low on purpose — a 5am sunlit yard flattens shadow to nothing (the
+ * B1 bar) and Android over-renders a heavy one. Dark leans on the border, not the shadow.
+ * Adapted (not copied) from ui-ux-pro-max's dimensional-layering level-1 elevation.
+ */
+export interface Elevation {
+  readonly shadowColor: string;
+  readonly shadowOpacity: number;
+  readonly shadowRadius: number;
+  readonly shadowOffset: { readonly width: number; readonly height: number };
+  /** Android's own elevation channel — RN does not derive it from the iOS shadow. */
+  readonly elevation: number;
+}
+const LIGHT_CARD_ELEVATION: Elevation = {
+  shadowColor: "#0f172a",
+  shadowOpacity: 0.06,
+  shadowRadius: 3,
+  shadowOffset: { width: 0, height: 1 },
+  elevation: 1,
+};
+const DARK_CARD_ELEVATION: Elevation = {
+  shadowColor: "#000000",
+  shadowOpacity: 0.35,
+  shadowRadius: 3,
+  shadowOffset: { width: 0, height: 1 },
+  elevation: 1,
+};
 
 /** One colour role, resolved to a hex (or rgba) string for the active scheme. */
 export interface Palette {
@@ -326,6 +392,10 @@ export interface ThemeTokens {
   readonly type: typeof TYPE;
   readonly space: typeof SPACE;
   readonly radius: typeof RADIUS;
+  /** Structural layout constants (scheme-independent). */
+  readonly layout: typeof LAYOUT;
+  /** The one card elevation step for THIS scheme. */
+  readonly elevation: Elevation;
   readonly tapMin: number;
   /** For `<StatusBar style=…>` — dark glyphs on the light theme, light on dark. */
   readonly statusBar: "dark" | "light";
@@ -337,6 +407,8 @@ const LIGHT_TOKENS: ThemeTokens = {
   type: TYPE,
   space: SPACE,
   radius: RADIUS,
+  layout: LAYOUT,
+  elevation: LIGHT_CARD_ELEVATION,
   tapMin: TAP_MIN,
   statusBar: "dark",
 };
@@ -347,6 +419,8 @@ const DARK_TOKENS: ThemeTokens = {
   type: TYPE,
   space: SPACE,
   radius: RADIUS,
+  layout: LAYOUT,
+  elevation: DARK_CARD_ELEVATION,
   tapMin: TAP_MIN,
   statusBar: "light",
 };

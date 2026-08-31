@@ -1504,6 +1504,19 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Code debt found and left in place
 
+- **THE VISUAL PASS (P1.23 item 3 phase C) COVERED THE MAIN SCREEN AND THE SHEET HEADERS; THE
+  OTHER SCREEN BODIES ARE NOT YET CARD-IFIED — recorded 2026-08-31.** Phase C built the visual
+  SYSTEM (tokens, the ranked notice stack, the notice sheet, the shared `SheetHeader`, the segmented
+  theme control) and applied the card-page / one-accent / typography-rank treatment to the MAIN
+  screen and the eight sheet headers. The amendment's P4 (Settings, the tier list and Account become
+  icon·label·chevron list rows) and the full card-ification of the remaining screen BODIES were
+  DEFERRED under W5 (restructuring beyond composition and spacing is a separate unit). Concretely
+  owed: `prove:tapaudit` Cs2 reports 23 raw geometry literals across 12 files (`CartScreen` 6,
+  `ConfirmSaveDialog` 4, `DashboardScreen` 2, `SettingsScreen` 2, `ConfirmSellerChangeDialog` 2, and
+  one each in `AddSellerSheet`, `BillList`, `BillsPanel`, `LoginScreen`, `SellerPicker`,
+  `SignOutSheet`, `StatusStrip`), plus the list-row conversion of the three named screen bodies. None
+  is a bug — the screens work and are proven — it is the reference bar not yet reached on those bodies.
+
 - **AN UNTRACKED `0015_tenant_grade_tiers.py` PRE-EXISTED THE P1.24 COMMIT-1a SESSION
   AND WAS OVERWRITTEN UNREAD — recorded 2026-08-31, NOT RECOVERABLE.** The session-start
   `git status --porcelain` (in the phase-brief handoff) held exactly ONE entry:

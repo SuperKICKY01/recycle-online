@@ -105,7 +105,7 @@ function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     strip: {
       flexDirection: "row", alignItems: "center", paddingHorizontal: t.space.xxl,
-      paddingVertical: t.space.md, gap: t.space.md,
+      paddingVertical: t.space.md, gap: t.space.md, borderRadius: t.radius.card,
     },
     // A 12px decorative dot; its radius is half its size, so both stay literal.
     dot: { width: 12, height: 12, borderRadius: 6 },

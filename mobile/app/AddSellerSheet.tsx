@@ -56,6 +56,7 @@ import type { LocalCreateButton, LocalCreateTone } from "../src/master/localSell
 import { BLANK_SELLER_FORM, localSellerDraftFrom, sellerFormReady } from "../src/master/sellerForm";
 import type { SellerFormFields } from "../src/master/sellerForm";
 import { useTheme, type ThemeTokens } from "./theme";
+import { SheetHeader } from "./SheetHeader";
 
 /**
  * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
@@ -181,12 +182,7 @@ export function AddSellerSheet({ create, held, onPick, onClose }: Props) {
       style={styles.fill}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.head}>
-        <Text style={styles.title}>เพิ่มผู้ขายใหม่</Text>
-        <Pressable style={styles.closeBtn} onPress={close}>
-          <Text style={styles.closeText}>ปิด</Text>
-        </Pressable>
-      </View>
+      <SheetHeader title="เพิ่มผู้ขายใหม่" onClose={close} />
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {/*
@@ -249,17 +245,6 @@ export function AddSellerSheet({ create, held, onPick, onClose }: Props) {
 function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     fill: { flex: 1, backgroundColor: t.color.background },
-    head: {
-      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-      paddingHorizontal: t.space.x3, paddingTop: 56, paddingBottom: t.space.xl,
-      backgroundColor: t.color.surface, borderBottomWidth: 1, borderBottomColor: t.color.borderSoft,
-    },
-    title: { fontSize: t.type.title, fontWeight: "900", color: t.color.text },
-    closeBtn: {
-      minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
-      backgroundColor: t.color.borderSoft, alignItems: "center", justifyContent: "center",
-    },
-    closeText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
 
     body: { padding: t.space.x3, paddingBottom: 64 },
 

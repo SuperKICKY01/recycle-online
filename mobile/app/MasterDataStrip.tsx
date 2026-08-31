@@ -64,6 +64,7 @@ function makeStyles(t: ThemeTokens) {
       paddingHorizontal: t.space.xxl,
       paddingVertical: t.space.md,
       borderLeftWidth: 6,
+      borderRadius: t.radius.card,
     },
     // Not numberOfLines-clamped: this is the one message on the screen that must
     // be readable in full, and a truncated price warning is a price warning that

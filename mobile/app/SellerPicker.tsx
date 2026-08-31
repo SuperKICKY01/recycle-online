@@ -33,6 +33,7 @@ import { searchSellers, tierName } from "../src/cart/sellers";
 import type { NamedTier, SellerMatch } from "../src/cart/sellers";
 import type { Seller } from "./api";
 import { useTheme, type ThemeTokens } from "./theme";
+import { SheetHeader } from "./SheetHeader";
 
 /**
  * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
@@ -123,17 +124,15 @@ export function SellerPicker({
       style={styles.fill}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.head}>
-        <Text style={styles.title}>{changing ? "เปลี่ยนผู้ขาย" : "เลือกผู้ขาย"}</Text>
-        <View style={styles.headActions}>
+      <SheetHeader
+        title={changing ? "เปลี่ยนผู้ขาย" : "เลือกผู้ขาย"}
+        onClose={close}
+        actions={
           <Pressable style={styles.addBtn} onPress={onAddSeller}>
             <Text style={styles.addText}>+ เพิ่มผู้ขาย</Text>
           </Pressable>
-          <Pressable style={styles.closeBtn} onPress={close}>
-            <Text style={styles.closeText}>ปิด</Text>
-          </Pressable>
-        </View>
-      </View>
+        }
+      />
 
       <View style={styles.searchWrap}>
         <TextInput
@@ -232,13 +231,6 @@ export function SellerPicker({
 function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     fill: { flex: 1, backgroundColor: t.color.background },
-    head: {
-      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-      paddingHorizontal: t.space.x3, paddingTop: 56, paddingBottom: t.space.xl,
-      backgroundColor: t.color.surface, borderBottomWidth: 1, borderBottomColor: t.color.borderSoft,
-    },
-    title: { fontSize: t.type.title, fontWeight: "900", color: t.color.text },
-    headActions: { flexDirection: "row", alignItems: "center", gap: t.space.md },
     // Teal, so it reads as the one thing on this screen that CREATES something,
     // beside a neutral ปิด. Same TAP_MIN floor as every other control here.
     addBtn: {
@@ -246,11 +238,6 @@ function makeStyles(t: ThemeTokens) {
       backgroundColor: t.color.primary, alignItems: "center", justifyContent: "center",
     },
     addText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.onPrimary },
-    closeBtn: {
-      minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
-      backgroundColor: t.color.borderSoft, alignItems: "center", justifyContent: "center",
-    },
-    closeText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
 
     searchWrap: {
       paddingHorizontal: t.space.x3, paddingTop: t.space.xl, paddingBottom: t.space.md, backgroundColor: t.color.surface,

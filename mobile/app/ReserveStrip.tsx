@@ -67,6 +67,7 @@ function makeStyles(t: ThemeTokens) {
       paddingHorizontal: t.space.xxl,
       paddingVertical: t.space.md,
       borderLeftWidth: 6,
+      borderRadius: t.radius.card,
     },
     // Not numberOfLines-clamped: a truncated "you cannot add a seller offline"
     // warning is a warning that did not happen. Each of reserveNotice's lines is

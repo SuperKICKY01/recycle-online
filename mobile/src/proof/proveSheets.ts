@@ -222,21 +222,25 @@ function walk(): { readonly stacks: readonly SheetStack[]; readonly keys: readon
  * the picker.
  *
  * ---------------------------------------------------------------------------
- * THIS LIST MOVED EIGHT -> NINE (P1.9) -> ELEVEN (P1.23); P1.23 item 4 unit 3
- * SWAPPED `daily` FOR `dashboard` AT ELEVEN, AND THE MOVE IS THE ASSERTION
+ * THIS LIST MOVED EIGHT -> NINE (P1.9) -> ELEVEN (P1.23) -> TWELVE (P1.21,
+ * `seller_history`) -> THIRTEEN (P1.23 item 3 phase C, `notices`); P1.23 item 4
+ * unit 3 SWAPPED `daily` FOR `dashboard` WITHOUT MOVING THE COUNT, AND THE SET IS
+ * THE ASSERTION
  * ---------------------------------------------------------------------------
- * `prices` (P1.9), then `settings` and `account` (P1.23), were each added
- * deliberately, by hand, after reading App.tsx's header — which is what this
- * constant is for. It is NOT computed from `SHEET_KINDS`, so adding a kind
- * reddens S1 until a person has decided the new stack really is reachable and
- * really does close where they say. That red is the feature: the count moving on
- * its own would mean a screen appeared that nobody wrote down.
+ * `prices` (P1.9), `settings` and `account` (P1.23), `seller_history` (P1.21), then
+ * `notices` (P1.23 item 3 phase C), were each added deliberately, by hand, after
+ * reading App.tsx — which is what this constant is for. It is NOT computed from
+ * `SHEET_KINDS`, so adding a kind reddens S1 until a person has decided the new
+ * stack really is reachable and really does close where they say. That red is the
+ * feature: the count moving on its own would mean a screen appeared that nobody
+ * wrote down.
  *
  * P1.23 item 4 unit 3 did not ADD a stack: it SWAPPED one. The ยอดวันนี้ entry now
  * opens the `dashboard`, which absorbed the standalone `daily` screen (S24), so
- * `daily` lost its only opener and was removed rather than left an S0 orphan. The
- * count stays ELEVEN; the SET changed by exactly {−daily, +dashboard}. Editing this
- * list by hand — not the count — is what keeps that swap a deliberate decision.
+ * `daily` lost its only opener and was removed rather than left an S0 orphan. That
+ * swap changed the SET by exactly {−daily, +dashboard} and left the count where it
+ * was; the two ADDITIONS since (`seller_history`, `notices`) each raised it by one.
+ * Editing this list by hand — not a count — is what keeps every such move deliberate.
  *
  * `prices` IS DRAWN ONLY FOR SOME SESSIONS — the header control is hidden from
  * a definite `staff` role — and that does NOT belong in this table. These are
@@ -252,6 +256,7 @@ const EXPECTED_REACHABLE: readonly string[] = [
   "confirm_save",
   "confirm_seller_change",
   "dashboard", // the ยอดวันนี้ button opens the dashboard (P1.23 item 4 unit 3; it absorbed the daily screen)
+  "notices", // the notice-count control on the main screen opens the collapsed notices (P1.23 item 3 phase C)
   "prices",
   "seller_history", // the ดูประวัติ control on the cart's seller header opens it (P1.21)
   "seller_picker",
@@ -271,6 +276,7 @@ const EXPECTED_CLOSE: readonly (readonly [string, string, string])[] = [
     "BACK TO THE CART, not the picker: the operator already picked somebody, and ยกเลิก means keep the seller the bill had",
   ],
   ["dashboard", "-", "back to the cart. The dashboard stands on its own — an owner who has finished reading the takings is finished, and there is nothing underneath it to return to (P1.23 item 4 unit 3)"],
+  ["notices", "-", "back to the main screen. The notice sheet stands on its own; closing it returns to the app, not into a flow (P1.23 item 3 phase C)"],
   [
     "prices",
     "-",

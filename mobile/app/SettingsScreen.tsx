@@ -46,12 +46,19 @@ import type {
   TierAdminScreen,
 } from "../src/settings/gradeTierAdmin";
 import { useTheme, useThemeControl, type ThemePref, type ThemeTokens } from "./theme";
+import { SheetHeader } from "./SheetHeader";
+import { API_BASE_URL } from "./config";
 
-/** The three theme choices, in menu order. A device preference, not a shop setting. */
+/**
+ * The three theme choices. A device preference, not a shop setting. Order is
+ * light / system / dark (P1.23 item 3 phase C) so the segmented control reads as the
+ * reference's own shape, auto in the middle. Labels unchanged; the canonical set order
+ * is `THEME_PREFS` in theme.ts, which this display order does not have to match.
+ */
 const THEME_OPTIONS: readonly { pref: ThemePref; label: string }[] = [
   { pref: "light", label: "สว่าง" },
-  { pref: "dark", label: "มืด" },
   { pref: "system", label: "ตามระบบ" },
+  { pref: "dark", label: "มืด" },
 ];
 
 function makeTone(t: ThemeTokens): Record<ShopMessageTone, { bg: string; fg: string; badge: string }> {
@@ -118,14 +125,10 @@ export function SettingsScreen({
   const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <View style={styles.fill}>
-      <View style={styles.head}>
-        <Text style={styles.title}>ตั้งค่าร้าน</Text>
-        <Pressable style={styles.closeBtn} onPress={onClose}>
-          <Text style={styles.closeText}>ปิด</Text>
-        </Pressable>
-      </View>
+      <SheetHeader title="ตั้งค่าร้าน" onClose={onClose} />
 
       <ThemeControl />
+      <ServerDiagnostics />
 
       {screen === null ? (
         <View style={styles.center}>
@@ -623,16 +626,18 @@ function ThemeControl() {
   return (
     <View style={styles.themeCard}>
       <Text style={styles.label}>ธีมของแอป</Text>
-      <View style={styles.chips}>
+      <View style={styles.segmented}>
         {THEME_OPTIONS.map((opt) => {
           const on = opt.pref === pref;
           return (
             <Pressable
               key={opt.pref}
-              style={[styles.chip, on && styles.chipOn]}
+              style={[styles.segment, on && styles.segmentOn]}
               onPress={() => setPref(opt.pref)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: on }}
             >
-              <Text style={[styles.chipText, on && styles.chipTextOn]}>{opt.label}</Text>
+              <Text style={[styles.segmentText, on && styles.segmentTextOn]}>{opt.label}</Text>
             </Pressable>
           );
         })}
@@ -644,21 +649,28 @@ function ThemeControl() {
   );
 }
 
+/**
+ * THE SERVER ADDRESS — diagnostic, not operator information (P1.23 item 3 phase C). It
+ * moved off the main screen's status line to here: a shop that cannot reach the server
+ * needs someone to read this address, but the operator weighing a load does not. Bare
+ * URL, no label — it is self-evident to whoever sets up the network; selectable to copy.
+ */
+function ServerDiagnostics() {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
+  return (
+    <View style={styles.diagCard}>
+      <Text style={styles.diagText} numberOfLines={1} selectable>
+        {API_BASE_URL}
+      </Text>
+    </View>
+  );
+}
+
 function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     fill: { flex: 1, backgroundColor: t.color.background },
-    head: {
-      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-      paddingHorizontal: t.space.x3, paddingTop: 56, paddingBottom: t.space.xl,
-      backgroundColor: t.color.surface, borderBottomWidth: 1, borderBottomColor: t.color.borderSoft,
-    },
-    title: { fontSize: t.type.title, fontWeight: "900", color: t.color.text },
-    closeBtn: {
-      minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
-      backgroundColor: t.color.borderSoft, alignItems: "center", justifyContent: "center",
-    },
-    closeText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
-    body: { padding: t.space.x3, paddingBottom: 48 },
+    body: { padding: t.space.x3, paddingBottom: t.layout.scrollGutter },
     center: { flex: 1, alignItems: "center", justifyContent: "center", gap: t.space.xl },
     loading: { fontSize: t.type.bodyLg, color: t.color.textSubtle, fontWeight: "700" },
 
@@ -690,6 +702,19 @@ function makeStyles(t: ThemeTokens) {
     chipOn: { backgroundColor: t.color.primary, borderColor: t.color.primary },
     chipText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.neutralFg },
     chipTextOn: { color: t.color.onPrimary },
+    // The theme control is a SEGMENTED control (P1.23 item 3 phase C), not chips: one
+    // connected track, the selected segment filled. The grade selector above stays chips.
+    segmented: {
+      flexDirection: "row", marginTop: t.space.md, borderRadius: t.radius.lg,
+      borderWidth: 1, borderColor: t.color.border, backgroundColor: t.color.surfaceAlt, overflow: "hidden",
+    },
+    segment: { flex: 1, minHeight: t.tapMin, alignItems: "center", justifyContent: "center", paddingHorizontal: t.space.md },
+    segmentOn: { backgroundColor: t.color.primary },
+    segmentText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.text },
+    segmentTextOn: { color: t.color.onPrimary },
+    // The server-address diagnostic, moved off the operator's main screen.
+    diagCard: { marginHorizontal: t.space.x3, marginTop: t.space.md, paddingHorizontal: t.space.xxl, paddingVertical: t.space.md },
+    diagText: { fontSize: t.type.body, color: t.color.textSubtle, fontWeight: "600" },
 
     saveBtn: {
       minHeight: t.tapMin, borderRadius: t.radius.xl, backgroundColor: t.color.primary,

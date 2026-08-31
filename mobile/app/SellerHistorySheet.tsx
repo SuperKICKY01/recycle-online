@@ -19,6 +19,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 
 import type { HistoryTone, SellerHistoryScreen } from "../src/sellerHistory/sellerHistoryView";
 import { useTheme, type ThemeTokens } from "./theme";
+import { SheetHeader } from "./SheetHeader";
 
 function makeTone(t: ThemeTokens): Record<HistoryTone, { bg: string; fg: string; badge: string }> {
   return {
@@ -43,14 +44,10 @@ export function SellerHistorySheet({ sellerName, screen, onClose, onRetry, onSig
   const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <View style={styles.fill}>
-      <View style={styles.head}>
-        <Text style={styles.title} numberOfLines={1}>
-          {sellerName === "" ? "ประวัติผู้ขาย" : `ประวัติ ${sellerName}`}
-        </Text>
-        <Pressable style={styles.closeBtn} onPress={onClose}>
-          <Text style={styles.closeText}>ปิด</Text>
-        </Pressable>
-      </View>
+      <SheetHeader
+        title={sellerName === "" ? "ประวัติผู้ขาย" : `ประวัติ ${sellerName}`}
+        onClose={onClose}
+      />
       {screen === null ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" />
@@ -147,28 +144,6 @@ function ReportBody({ report }: { report: Extract<SellerHistoryScreen, { kind: "
 function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     fill: { flex: 1, backgroundColor: t.color.background },
-    head: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: t.space.x3,
-      paddingTop: 56,
-      paddingBottom: t.space.xl,
-      backgroundColor: t.color.surface,
-      borderBottomWidth: 1,
-      borderBottomColor: t.color.borderSoft,
-    },
-    title: { flex: 1, fontSize: t.type.title, fontWeight: "900", color: t.color.text },
-    closeBtn: {
-      minHeight: t.tapMin,
-      paddingHorizontal: t.space.x4,
-      marginLeft: t.space.md,
-      borderRadius: t.radius.lg,
-      backgroundColor: t.color.borderSoft,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    closeText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
     center: { flex: 1, alignItems: "center", justifyContent: "center", gap: t.space.x3 },
     loading: { fontSize: t.type.bodyLg, color: t.color.textMuted },
     body: { padding: t.space.x3, gap: t.space.x3 },

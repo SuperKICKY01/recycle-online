@@ -7153,6 +7153,33 @@ no count is written into the criterion:
    S23's bar (a commercial-grade general app — store compliance, a release build, hosting) is
    wider than P1.23's four items, and those live in their own ROADMAP entries. The step ships
    in this Phase-B commit; the date stands, anchor next pass.
+   **PHASE C 2026-08-31 (P1.23 item 3): THE VISUAL PASS — presentation and hierarchy only.
+   The owner read the app on a handset and judged it below the S23 bar; recorded as HIS
+   standard (Thai verbatim, never translated).** (V0) "UI โครต baby broomer อ่ะ ไม่ตาม trend
+   2026 เลย ควรใช้ ux/ui promax นะ skills อ่ะ มันมีอยุ่ผมลงไว้แล้ว"; and, supplying a REFERENCE
+   application (ten screenshots of a Thai consumer app) as the standard, (V0') "เนี่ย Ux/ui
+   แบบนี้สวย เว้ย มันดูไม่กาก ของผมโครตกากเลย ประยุกต์ใช้สะ". FIRST DEVICE EVIDENCE (V1): dark
+   rendering works on the handset (OBSERVED 2026-08-31 by the owner; light, follow-system and
+   cold-start persistence stay unobserved). FOUR DEFECTS (V2), each re-derived at the tree and
+   CONFIRMED: (a) four equal-weight full-bleed notice bars stacked, so which matters cannot be
+   read; (b) the header nav chips overlapped the title รับซื้อของเก่า and the last was clipped at
+   the frame; (c) the raw API address on the operator's main screen; (d) no spacing rhythm.
+   WHAT CHANGED (no wording, no logic, no route/store/sync): `theme.ts` gained an elevation step,
+   a `LAYOUT` group and a card radius rung, the 34 contrast-covered colours untouched so every
+   `prove:theme` cell holds. The notice stack became a pure ranked builder (`src/ui/noticeStack.ts`,
+   `prove:noticeStack`) — the blocking notice inline, or (with no blocker) a lone non-blocking one, the
+   rest behind a count opening a bottom sheet (`app/NoticeSheet.tsx`, a new `notices` kind;
+   `prove:sheets` 12→13). The header became a
+   fixed top bar (wordmark + separated ออกจากระบบ) over a horizontal scroll nav row from a checked
+   model (`src/ui/navRow.ts`, completeness cell N5). The API address moved to a settings diagnostic
+   (W3). Eight sheet heads unified onto one `SheetHeader`; the theme control became a segmented
+   control; the three strips and the last-bill became cards; the main screen is an inset card page.
+   A layout-literal scanner asserts the page-model scaffold draws geometry from tokens and reports
+   the app-wide count (34→23; the residual is a follow-up unit). WHAT DID NOT: no Thai string (the
+   filtered diff shows only moves), no money/weight formatting, `TAP_MIN` 56, the 13px floor, the
+   8-step count. Proven headless (both typechecks; 42 proofs green twice; the seven new disproofs
+   each redden exactly their cell). THE VISUAL RESULT IS A HANDSET OBSERVATION, OWED — in the
+   PROJECT_STATUS consolidated device pass. Design skill used: `ui-ux-pro-max`.
 4. The shop-owner dashboard and the phone settings surface are drawn — both homed
    on mobile by the owner (2026-08-28/29): S24 homes the dashboard, absorbing the
    existing daily screen as a view inside it, and the S6 extension homes the

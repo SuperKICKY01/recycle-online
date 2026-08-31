@@ -79,6 +79,9 @@ export const SHEET_KINDS = [
   /** P1.21. A seller's recent bills, opened from the cart's seller header — what
    *  this seller last sold (when, what, how much). A read-only panel over the app. */
   "seller_history",
+  /** P1.23 item 3 phase C. The collapsed notices, in full — opened from the main
+   *  screen's notice count (the reference's "notices behind a count"). A leaf. */
+  "notices",
 ] as const;
 
 export type SheetKind = (typeof SHEET_KINDS)[number];
@@ -263,6 +266,15 @@ export const SHEET_TRANSITIONS = {
     action: { kind: "open", sheet: "seller_history" },
     from: [null],
     site: "App.tsx openSellerHistory, from CartScreen's seller header ดูประวัติ control",
+  },
+  /**
+   * P1.23 item 3 phase C. The notice-count control on the main screen. A leaf opened
+   * from the app's own screen, listing the collapsed notices in full.
+   */
+  open_notices: {
+    action: { kind: "open", sheet: "notices" },
+    from: [null],
+    site: "App.tsx the notice-count control, from the arranged notice stack",
   },
   /**
    * A DIFFERENT SELLER WAS PICKED FOR A CART THAT ALREADY HAS LINES.

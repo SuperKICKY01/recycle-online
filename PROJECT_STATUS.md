@@ -75,6 +75,60 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.23 ITEM 3 — PHASE C: THE VISUAL PASS. 2026-08-31.** No sha yet (this record precedes the
+commit; anchor next pass). The current-phase pointer, superseding the P1.24 commit-3 pointer below;
+P1.24's work stands — this is the newer session in time, an earlier step number.
+**THE OWNER'S JUDGEMENT IS THE PHASE'S AUTHORITY, recorded as his (Thai verbatim, never
+translated):** he read the app on a handset and judged it below the S23 bar — (V0) "UI โครต baby
+broomer อ่ะ ไม่ตาม trend 2026 เลย ควรใช้ ux/ui promax นะ skills อ่ะ มันมีอยุ่ผมลงไว้แล้ว" — and
+supplied a REFERENCE application (ten screenshots of a Thai consumer app) as the standard: (V0')
+"เนี่ย Ux/ui แบบนี้สวย เว้ย มันดูไม่กาก ของผมโครตกากเลย ประยุกต์ใช้สะ". FIRST DEVICE EVIDENCE (V1):
+dark rendering works on the handset (OBSERVED). FOUR DEFECTS (V2), each re-derived at the tree and
+CONFIRMED: (a) four equal-weight full-bleed notice bars; (b) the header chips overlapped the title
+and the last was clipped; (c) the raw API address on the operator's main screen; (d) no spacing
+rhythm.
+**DESIGN SKILL:** `ui-ux-pro-max` — its react-native stack, the `web`/app-interface rules
+(SafeAreaView, 8dp touch spacing, `accessibilityLabel`/selected-state), the dimensional-layering
+elevation scale, and the Quick-Reference hierarchy / one-accent / token-driven rules. Its
+`--design-system` style pick (a sci-fi HUD) was off-target and DISCARDED per the skill's own
+verify contract; `ui-styling` was inapplicable (shadcn/Tailwind, not React Native).
+**BUILT (presentation and hierarchy only; no wording, no logic, no route/store/sync change).**
+`src/ui/theme.ts` gains an elevation step, a `LAYOUT` group (outer margin, card gap, card padding,
+scroll gutter, sheet inset) and a card radius rung — the 34 contrast-covered colours UNTOUCHED, so
+every `prove:theme` cell holds. `src/ui/noticeStack.ts` is a pure ranked builder over the three
+alert notices (session/sync, stale prices, reserve): the blocking notice inline, OR — with no blocker
+— a LONE non-blocking notice (owner-refined 2026-09-01: one line is no stack, not worth a tap behind
+a count), the rest behind a count that appears only when a blocker leaves others or two-plus
+non-blocking notices remain. `app/NoticeSheet.tsx` is the count's bottom sheet (grab handle) — a new `notices` sheet
+kind, so `prove:sheets` moved 12→13 reachable (stated; the stale ELEVEN docblock corrected). The
+header is a fixed top bar (wordmark + separated ออกจากระบบ) over a horizontal scroll nav row built
+from `src/ui/navRow.ts` (a checked model). The API address moved off the operator status to a
+settings diagnostics card (W3). Eight sheet heads unified onto one `app/SheetHeader.tsx`; the theme
+control became a SEGMENTED control; the three strips and the last-bill became cards; the main screen
+is an inset card page. `src/ui/tapAudit.ts` gains `scanLayoutLiterals`, which asserts the page-model
+scaffold (App.tsx + SheetHeader) draws its geometry from tokens and REPORTS the app-wide raw-geometry
+count (34→23; the residual is a follow-up unit).
+**PROVEN (headless, every command bare, exit read in the same invocation):** both typechecks green
+before and after; `prove:theme` (every contrast ratio printed for the UNCHANGED palette),
+`prove:noticeStack` (18 cells, up from 15; N0–N5, SIX disproofs each reddening EXACTLY its cell —
+drop/inline/force_count/order/map/nav — an unknown break exits with no banner; the phase-C lone-inline
+rule is its own cell, with the blocker-plus-one boundary and the two-notice sibling pinned against the
+real function), `prove:sheets` (13 reachable, one Modal, all
+transitions dispatched), and `prove:tapaudit` (zero tap findings AND the scaffold clean; the W3 URL
+cell; two disproofs) all green TWICE. Every OTHER headless mobile proof green TWICE with counts
+UNMOVED — 42 proofs swept; the three live-server auth proofs (proveForbidden/proveLogin/
+proveLoginScreen) NOT run (no server). NO THAI STRING CHANGED: the `git diff` filtered to Thai-range
+lines shows only MOVES — every removed UI string reappears; the cross-file moves are the eight sheet
+titles + `ปิด` → `app/SheetHeader.tsx`, and the four nav labels `App.tsx` → `src/ui/navRow.ts`.
+**DEFERRED (W5), recorded in `OPEN_ITEMS.md`:** the remaining screen BODIES' card-ification and
+list-rows (amendment P4), and the residual 23 raw geometry literals across 12 files.
+**IS A LESSON OWED? NO.** Two text-scan trip-ups this pass — a docstring writing `<Modal` reddened
+`prove:sheets` S9, and a docstring writing a raw `paddingTop` value reddened the new scaffold cell —
+were SELF-CATCHING (the proof went red, the comment was de-literalised) and each scanner's docstring
+already says it reads TEXT and so matches a literal in a comment. No silent bug class was found. The
+rule for whoever extends those scanners next (they will hit it in the same minute): a source-text
+scanner reads its own prose, so a scanner's documentation must not contain the literals it hunts.
+
 **P1.24 — COMMIT 3: THE SERVER F1 GUARD, THE REORDER ROUTE, AND THE PHONE'S REORDER CONTROL.
 2026-08-31.** No sha yet (this record precedes the commit; anchor next pass). The current-phase
 pointer, superseding the Phase 2 pointer below. Two follow-ups the owner ordered before P1.24 is
@@ -556,9 +610,10 @@ is EMPTY — the change touched only `app/`, `App.tsx`, `app.json`, `package.jso
 two new files under `src/ui`/`src/proof`. The inventory re-run finds ZERO raw hex, ZERO
 rgba and ZERO raw `fontSize` literal in `app/`.
 **NOT OBSERVED — the handset pass, now the ONE consolidated pass owed for units 1, 3,
-this phase, P1.21's drawing half, AND the P1.24 grade model (each session added as the last
-bullet, not a second list).** No device pass this session; dark rendering and follow-system are
-device-visible and no headless proof can see them. On a handset (`npx expo start -c` + a
+this phase, P1.21's drawing half, the P1.24 grade model, AND the P1.23 item 3 phase-C visual pass
+(each session added as the last bullet, not a second list).** No device pass this session;
+follow-system, light rendering and cold-start persistence are device-visible and no headless proof
+can see them — dark rendering alone is now OBSERVED (V1, 2026-08-31, in phase C's bullet below). On a handset (`npx expo start -c` + a
 full reload FIRST — `CLAUDE.md § Boot check` "WHICH BUNDLE"), the owner reads:
 - THIS PHASE (theme + sweep): every screen the sweep touched renders correctly in BOTH
   light and dark; the theme control on ตั้งค่าร้าน switches light / dark / follow-system
@@ -592,7 +647,17 @@ full reload FIRST — `CLAUDE.md § Boot check` "WHICH BUNDLE"), the owner reads
   tier (F2); a long Thai tier name shows in FULL on the price screen (the fixed grade column, not
   the old one-glyph width); and the seller picker / cart / confirm surfaces show a seller's grade
   by its NAME. A wet finger lands inside the ↑ / ↓ / แก้ชื่อ / ปิดใช้งาน controls (all ≥ `TAP_MIN`).
-All UNOBSERVED.
+- P1.23 ITEM 3 PHASE C (the visual pass — this session): the owner re-reads the MAIN screen against
+  his reference application and judges it — the notices no longer stack as four equal bars (the one
+  notice that blocks work stays inline, the rest sit behind a count that opens a bottom sheet), the
+  header does not collide (a fixed top bar with the wordmark and a separated ออกจากระบบ over a
+  horizontal scroll nav row, the last chip no longer clipped at the frame), the accent appears RARELY
+  (neutral nav chips, a subdued sign-out, teal only on the primary action and the selected theme
+  segment), content sits on inset cards with one outer margin and one gap, the theme control is a
+  segmented control, and the API address is GONE from the main screen (moved to the settings
+  diagnostics). DARK rendering is OBSERVED (V1, 2026-08-31, the owner); light, follow-system and
+  cold-start persistence remain UNOBSERVED.
+All UNOBSERVED except dark rendering (V1, OBSERVED 2026-08-31 by the owner).
 **IS A LESSON OWED? NO.** The brief flagged the text-scanner-as-proof shape as "a new
 instrument here"; re-derived against the tree, it is NOT new — `proveSheets.ts` already
 reads `app/` source off disk and scans it with the same controls (a corpus-read control, a

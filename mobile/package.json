@@ -56,7 +56,8 @@
     "prove:dashboard": "npm run build && node dist/proof/proveDashboard.js",
     "prove:theme": "npm run build && node dist/proof/proveTheme.js",
     "prove:tapaudit": "npm run build && node dist/proof/proveTapAudit.js",
-    "prove:sellerhistory": "npm run build && node dist/proof/proveSellerHistory.js"
+    "prove:sellerhistory": "npm run build && node dist/proof/proveSellerHistory.js",
+    "prove:noticeStack": "npm run build && node dist/proof/proveNoticeStack.js"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",

@@ -2,7 +2,7 @@
  * NO TAP-FLOOR LITERAL SURVIVED THE THEME — proven over the real screen files.
  *
  *   npm run prove:tapaudit
- *   npm run prove:tapaudit -- --break=inject
+ *   npm run prove:tapaudit -- --break=<inject|inject_layout>
  *
  * Reads the TEXT of `app/*.tsx` and `App.tsx` off disk and runs the pure
  * `scanTapLiterals` (src/ui/tapAudit.ts) over it. After the P1.23 item-3 sweep
@@ -21,9 +21,18 @@
  *   - the scanner DOES fire on a planted raw `minHeight: 44` and on a planted
  *     `const TAP_MIN`, so the instrument is known to catch what it is looking for.
  *
- * THE DISPROOF, applied here by a wrapper, never by editing a real file:
- *   inject  adds one synthetic file carrying `minHeight: 36` to the scanned set.
- *           Reddens the "zero findings over the real files" cell only.
+ * THE DISPROOFS, applied here by a wrapper, never by editing a real file:
+ *   inject         adds a synthetic file carrying `minHeight: 36` to the tap scan.
+ *                  Reddens the "zero tap literals over the real files" cell only.
+ *   inject_layout  adds a synthetic file carrying `padding: 20` to the scaffold's
+ *                  LAYOUT scan (P1.23 item 3 phase C). Reddens the "scaffold draws
+ *                  geometry from tokens" cell only.
+ *
+ * P1.23 item 3 phase C also added a LAYOUT scan (scanLayoutLiterals): the page-model
+ * scaffold — App.tsx and the shared SheetHeader — must draw its margin/gap/radius from
+ * tokens, the app-wide raw-geometry count is REPORTED (the rest is a follow-up unit), and
+ * the API base URL is asserted to have left the operator's main screen for the settings
+ * diagnostics (W3).
  *
  * main() prints `PROVE_TAPAUDIT_EXIT=<n>`; its ABSENCE is the signal
  * (lessons/a-default-exit-code-is-a-default-verdict.md).
@@ -31,7 +40,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { scanTapLiterals, type ScannedFile } from "../ui/tapAudit.js";
+import { scanLayoutLiterals, scanTapLiterals, type ScannedFile } from "../ui/tapAudit.js";
 
 let failures = 0;
 
@@ -44,7 +53,7 @@ function header(title: string): void {
 }
 
 const BREAK = (process.argv.find((a) => a.startsWith("--break=")) ?? "").split("=")[1] ?? "";
-const BREAK_MODES: readonly string[] = ["inject"];
+const BREAK_MODES: readonly string[] = ["inject", "inject_layout"];
 if (BREAK !== "" && !BREAK_MODES.includes(BREAK)) {
   console.log(`  [FAIL] unknown --break=${BREAK} — nothing was damaged and nothing was measured`);
   console.log(`         known breaks: ${BREAK_MODES.join(", ")}`);
@@ -127,6 +136,66 @@ function main(): number {
     findings.length === 0
       ? `${String(files.length)} files clean`
       : `${String(findings.length)} findings`,
+  );
+
+  // ── the LAYOUT scan (P1.23 item 3 phase C) ──────────────────────────────────
+  header("Cs0 the layout scanner catches what it hunts");
+  check(
+    "control: scanLayoutLiterals FINDS a planted padding:16",
+    scanLayoutLiterals([{ path: "(fixture)", text: "  card: { padding: 16 }," }]).length === 1,
+    "one raw-layout finding on the planted line",
+  );
+  check(
+    "control: it does NOT fire on tokenised margin/padding/radius/gap",
+    scanLayoutLiterals([
+      {
+        path: "(fixture)",
+        text: "  card: { padding: t.space.x3, marginTop: t.layout.cardGap, borderRadius: t.radius.card, gap: t.space.md },",
+      },
+    ]).length === 0,
+    "token-drawn geometry is clean",
+  );
+
+  header("Cs1 the page-model scaffold draws its geometry from tokens");
+  // The scaffold is the main screen (App.tsx) and the shared sheet header — the two files
+  // that define the page's outer margin, inter-card gap and card radius. They carry NO raw
+  // geometry literal. The rest of app/ is REPORTED below, not yet asserted to zero (the
+  // remaining screen bodies are a named follow-up unit).
+  const scaffoldPaths = new Set(["App.tsx", "app/SheetHeader.tsx"]);
+  const scaffold = files.filter((f) => scaffoldPaths.has(f.path));
+  check("the scaffold is the two files it should be", scaffold.length === 2, scaffold.map((f) => f.path).join(", "));
+  const scaffoldScan: ScannedFile[] =
+    BREAK === "inject_layout"
+      ? [...scaffold, { path: "(injected)", text: "  card: { padding: 20 }," }]
+      : scaffold;
+  const scaffoldFindings = scanLayoutLiterals(scaffoldScan);
+  for (const f of scaffoldFindings) console.log(`    ${f.path}:${String(f.line)} ${f.text}`);
+  check(
+    "no raw margin/padding/gap/borderRadius in the page-model scaffold",
+    scaffoldFindings.length === 0,
+    scaffoldFindings.length === 0 ? "App.tsx + SheetHeader clean" : `${String(scaffoldFindings.length)} findings`,
+  );
+
+  header("Cs2 the app-wide layout-literal count (reported, the follow-up unit)");
+  const appWide = scanLayoutLiterals(files);
+  const byFile = new Map<string, number>();
+  for (const f of appWide) byFile.set(f.path, (byFile.get(f.path) ?? 0) + 1);
+  console.log(`  ${String(appWide.length)} raw layout literals across ${String(byFile.size)} files:`);
+  for (const [p, n] of [...byFile.entries()].sort()) console.log(`    ${p}: ${String(n)}`);
+
+  header("Cs3 the API base URL is diagnostic, not on the operator's main screen (W3)");
+  const appText = files.find((f) => f.path === "App.tsx")?.text ?? "";
+  const settingsText = files.find((f) => f.path === "app/SettingsScreen.tsx")?.text ?? "";
+  check("control: App.tsx still references API_BASE_URL (the transports use it)", appText.includes("API_BASE_URL"));
+  check(
+    "App.tsx does NOT concatenate API_BASE_URL into the status line",
+    !appText.includes("API_BASE_URL +") && !appText.includes("${API_BASE_URL}"),
+    "no URL in the operator status",
+  );
+  check(
+    "the diagnostic surface (SettingsScreen) DOES render API_BASE_URL",
+    settingsText.includes("API_BASE_URL"),
+    "the server address moved to settings",
   );
 
   console.log("");

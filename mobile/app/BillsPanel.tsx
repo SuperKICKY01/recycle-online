@@ -37,6 +37,7 @@ import type { LocalBill, SyncState } from "../src/sync/types";
 import { isVoided, isVoidRefused } from "../src/sync/types";
 import { shopDateTime } from "@recycle/shop-time";
 import { useTheme, type ThemeTokens } from "./theme";
+import { SheetHeader } from "./SheetHeader";
 
 const STATE_TH: Record<SyncState, string> = {
   pending: "รอส่ง",
@@ -219,12 +220,7 @@ export function BillsPanel({
       style={styles.fill}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.head}>
-        <Text style={styles.title}>บิลในเครื่อง ({bills.length})</Text>
-        <Pressable style={styles.closeBtn} onPress={onClose}>
-          <Text style={styles.closeText}>ปิด</Text>
-        </Pressable>
-      </View>
+      <SheetHeader title={`บิลในเครื่อง (${String(bills.length)})`} onClose={onClose} />
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {bills.length === 0 ? (
@@ -442,17 +438,6 @@ export function BillsPanel({
 function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     fill: { flex: 1, backgroundColor: t.color.background },
-    head: {
-      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-      paddingHorizontal: t.space.x3, paddingTop: 56, paddingBottom: t.space.xl,
-      backgroundColor: t.color.surface, borderBottomWidth: 1, borderBottomColor: t.color.borderSoft,
-    },
-    title: { fontSize: t.type.title, fontWeight: "900", color: t.color.text },
-    closeBtn: {
-      minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
-      backgroundColor: t.color.borderSoft, alignItems: "center", justifyContent: "center",
-    },
-    closeText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
     body: { padding: t.space.x3, paddingBottom: t.space.x5 },
     empty: { textAlign: "center", color: t.color.textSubtle, marginTop: 40, fontSize: t.type.bodyLg },
 

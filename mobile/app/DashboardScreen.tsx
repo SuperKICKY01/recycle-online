@@ -37,6 +37,7 @@ import type { SummaryReport, SummaryTone } from "../src/dashboard/summaryView";
 import type { DailyScreen as DailyScreenModel } from "../src/reports/dailyView";
 import { BillList } from "./BillList";
 import { useTheme, type ThemeTokens } from "./theme";
+import { SheetHeader } from "./SheetHeader";
 
 function makeTone(t: ThemeTokens): Record<SummaryTone, { bg: string; fg: string; badge: string }> {
   return {
@@ -79,14 +80,10 @@ export function DashboardScreen(props: Props) {
   const { model } = props;
   return (
     <View style={styles.fill}>
-      <View style={styles.head}>
-        <Text style={styles.title}>
-          {model !== null && model.kind === "dashboard" ? model.title : "ยอด"}
-        </Text>
-        <Pressable style={styles.closeBtn} onPress={props.onClose}>
-          <Text style={styles.closeText}>ปิด</Text>
-        </Pressable>
-      </View>
+      <SheetHeader
+        title={model !== null && model.kind === "dashboard" ? model.title : "ยอด"}
+        onClose={props.onClose}
+      />
 
       {model === null ? (
         <View style={styles.center}>
@@ -327,17 +324,6 @@ function DashboardBody(props: Props & { model: DashboardReport }) {
 function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     fill: { flex: 1, backgroundColor: t.color.background },
-    head: {
-      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-      paddingHorizontal: t.space.x3, paddingTop: 56, paddingBottom: t.space.xl,
-      backgroundColor: t.color.surface, borderBottomWidth: 1, borderBottomColor: t.color.borderSoft,
-    },
-    title: { fontSize: t.type.title, fontWeight: "900", color: t.color.text },
-    closeBtn: {
-      minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
-      backgroundColor: t.color.borderSoft, alignItems: "center", justifyContent: "center",
-    },
-    closeText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
     body: { padding: t.space.x3, paddingBottom: t.space.x5 },
     center: { flex: 1, alignItems: "center", justifyContent: "center", gap: t.space.xl },
     loading: { fontSize: t.type.bodyLg, color: t.color.textSubtle, fontWeight: "700" },

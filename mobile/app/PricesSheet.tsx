@@ -59,6 +59,7 @@ import type {
 } from "../src/master/priceEdit";
 import type { FieldError } from "../src/money/money";
 import { useTheme, type ThemeTokens } from "./theme";
+import { SheetHeader } from "./SheetHeader";
 
 function makeTone(t: ThemeTokens): Record<PriceTone, { bg: string; fg: string; badge: string }> {
   return {
@@ -123,12 +124,7 @@ export function PricesSheet({
 
   return (
     <View style={styles.fill}>
-      <View style={styles.head}>
-        <Text style={styles.title}>ราคารับซื้อ</Text>
-        <Pressable style={styles.closeBtn} onPress={onClose}>
-          <Text style={styles.closeText}>ปิด</Text>
-        </Pressable>
-      </View>
+      <SheetHeader title="ราคารับซื้อ" onClose={onClose} />
 
       <View style={[styles.notice, { backgroundColor: tone.bg }]}>
         <Text style={[styles.badge, { color: tone.badge }]}>{screen.badge}</Text>
@@ -339,18 +335,6 @@ function ActionButton({ action, onPress }: { action: PriceAction; onPress: () =>
 function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     fill: { flex: 1, backgroundColor: t.color.surface },
-    head: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: t.space.x3,
-      paddingVertical: t.space.xl,
-      borderBottomWidth: 1,
-      borderBottomColor: t.color.borderSoft,
-    },
-    title: { fontSize: t.type.title, fontWeight: "700", color: t.color.text },
-    closeBtn: { paddingHorizontal: t.space.xl, paddingVertical: t.space.sm },
-    closeText: { fontSize: t.type.subhead, color: t.color.infoStrong },
     notice: { paddingHorizontal: t.space.x3, paddingVertical: t.space.xl, gap: t.space.xs },
     badge: { fontSize: t.type.bodyLg, fontWeight: "700" },
     noticeLine: { fontSize: t.type.bodyLg, lineHeight: 20 },

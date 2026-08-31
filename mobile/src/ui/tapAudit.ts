@@ -91,3 +91,49 @@ export function scanTapLiterals(files: readonly ScannedFile[]): TapFinding[] {
   }
   return findings;
 }
+
+/**
+ * A SCAN FOR RAW SPACING/RADIUS GEOMETRY THAT ESCAPED THE TOKENS (P1.23 item 3 phase C).
+ *
+ * The phase-C reference reads as current because content lives on inset cards with a
+ * consistent outer margin, a consistent gap, and one corner radius — a PAGE MODEL, not a
+ * literal repeated per screen. This flags a raw geometry number (`padding: 16`,
+ * `marginTop: 18`, `borderRadius: 16`, `gap: 8`) where a token (`t.layout.*`, `t.space.*`,
+ * `t.radius.*`) should stand. It is DELIBERATELY SEPARATE from `scanTapLiterals`: the tap
+ * proof asserts zero tap-floor literals over the whole app, and folding a spacing rule
+ * into it would redden that unrelated cell over every screen not yet tokenised.
+ *
+ * A NUMBER immediately after the colon is a raw literal; `padding: t.layout.cardPad` has a
+ * letter and is not matched. Same honest boundary as the tap scan: it reads TEXT, so a
+ * literal inside a comment matches too, and a value merged in at a call site is invisible.
+ */
+export type LayoutFindingKind = "raw-layout";
+
+export interface LayoutFinding {
+  readonly path: string;
+  readonly line: number; // 1-based
+  readonly kind: LayoutFindingKind;
+  readonly text: string; // the trimmed offending line
+}
+
+// `padding: 16` / `marginTop:18` / `gap: 8` / `borderRadius: 5` — a spacing, margin,
+// gap or corner-radius key with a digit immediately after the colon. A token
+// (`t.space.md`, `t.layout.cardGap`, `t.radius.card`) has a letter and is not matched.
+const RAW_LAYOUT =
+  /\b(?:(?:margin|padding)(?:Top|Bottom|Left|Right|Horizontal|Vertical|Start|End)?|gap|rowGap|columnGap|border(?:Top|Bottom)?(?:Left|Right)?Radius)\s*:\s*-?\d/;
+
+/**
+ * Scan for raw layout geometry. One finding per offending LINE, in file then line
+ * order. Handed file contents, not paths — pure, like `scanTapLiterals`.
+ */
+export function scanLayoutLiterals(files: readonly ScannedFile[]): LayoutFinding[] {
+  const findings: LayoutFinding[] = [];
+  for (const { path, text } of files) {
+    text.split("\n").forEach((raw, i) => {
+      if (RAW_LAYOUT.test(raw)) {
+        findings.push({ path, line: i + 1, kind: "raw-layout", text: raw.trim() });
+      }
+    });
+  }
+  return findings;
+}

@@ -25,6 +25,7 @@ import type {
   PasswordForm,
 } from "../src/settings/account";
 import { useTheme, type ThemeTokens } from "./theme";
+import { SheetHeader } from "./SheetHeader";
 
 interface Props {
   /** null while /whoami is in flight. */
@@ -65,12 +66,7 @@ export function AccountScreen({ profile, outcome, busy, onClose, onSignIn, onSub
 
   return (
     <View style={styles.fill}>
-      <View style={styles.head}>
-        <Text style={styles.title}>บัญชีของฉัน</Text>
-        <Pressable style={styles.closeBtn} onPress={onClose}>
-          <Text style={styles.closeText}>ปิด</Text>
-        </Pressable>
-      </View>
+      <SheetHeader title="บัญชีของฉัน" onClose={onClose} />
 
       <ScrollView contentContainerStyle={styles.body}>
         {/* PROFILE — read-only. No username edit control exists (D7). */}
@@ -189,17 +185,6 @@ function Field({
 function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     fill: { flex: 1, backgroundColor: t.color.background },
-    head: {
-      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-      paddingHorizontal: t.space.x3, paddingTop: 56, paddingBottom: t.space.xl,
-      backgroundColor: t.color.surface, borderBottomWidth: 1, borderBottomColor: t.color.borderSoft,
-    },
-    title: { fontSize: t.type.title, fontWeight: "900", color: t.color.text },
-    closeBtn: {
-      minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
-      backgroundColor: t.color.borderSoft, alignItems: "center", justifyContent: "center",
-    },
-    closeText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
     body: { padding: t.space.x3, paddingBottom: t.space.x5 },
     center: { alignItems: "center", justifyContent: "center", gap: t.space.xl, paddingVertical: t.space.x5 },
     loading: { fontSize: t.type.bodyLg, color: t.color.textSubtle, fontWeight: "700" },
