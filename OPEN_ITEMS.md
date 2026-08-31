@@ -274,6 +274,15 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   DECLARE its tiers, and the seller/price validation against a shop's OWN set — until
   1b lands, a grade a shop has not declared is refused by the FK, not by a message a
   person can read.
+  **Superseded 2026-08-31 (commit 1b): those ROUTES are now BUILT.** `GET/POST/PATCH
+  /grade-tiers` (staff read; admin write; no DELETE), the deactivation refusal naming its
+  count (409 `grade_tier_in_use`), and grade validation against the shop's OWN tiers on the
+  price / seller / default-grade routes — a code the shop has not declared is now a readable
+  422 (`grade_not_a_tier`), not the FK's IntegrityError. F2 is built at seller-create: a
+  one-tier shop's ungraded seller is SEATED in the sole tier. The ONLY P1.24 remainder is the
+  PHONE (Phase 2); `bills.py`'s shop-wide `default_grade` fallback is untouched (that flagged
+  fallback-vs-per-seller question is not reopened — 1b adds the per-seller SEATING for a
+  one-tier shop and leaves the fallback for a multi-tier shop's ungraded sellers).
   **2026-08-31 (P1.21 phase 1) — WHAT ENABLING THE TOGGLE EXPOSES, and E1 does not make
   it obvious.** With `staff_money_visible` on, `GET /sellers/{seller_id}/history` returns
   the bill total and each line's `unit_price` for a staff caller on ALL of a seller's
@@ -592,6 +601,18 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Verification gaps — built, not proven
 
+- **THE GRADE ROUTES' EXTERNAL-SERVER PROOFS HAVE NOT BEEN RUN AGAINST THE TIER MODEL
+  — recorded 2026-08-31 (P1.24 commit 1b).** `prove_master_write`,
+  `prove_master_data_gate`, `prove_seller_pricing`, `prove_master` and
+  `prove_daily_report` exercise the grade routes (`PUT /products/{id}/prices/{grade}`,
+  `POST /sellers` grade) against dev through a live API on `:8099`/`:8000`, and NONE was
+  run this phase — each writes bills/master into dev (debris), and their grade coverage
+  is duplicated by the four route proofs that WERE run green twice (`prove_grade_tiers`,
+  `prove_seller_create`, `prove_seller_code_guards`, `prove_shop_settings`): valid A-D
+  grades pass on Shop A's active tiers, and `PUT prices/Z → 422 grade_not_a_tier` is the
+  same refusal those cover. A green not run today is not written as green. THE FIRST
+  PHASE THAT STANDS UP A LIVE API FOR ANOTHER REASON SHOULD RUN THEM against the tier
+  model.
 - **THE PHONE'S DASHBOARD (P1.23 item 4 unit 3) IS HEADLESS-PROVEN, THE HANDSET HALF
   IS UNOBSERVED.** `prove:dashboard` (49 cells) and the real-HTTP client run against a
   fresh uvicorn cover the builders and the request/parse path, but NO screen was drawn
@@ -1440,8 +1461,9 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   `git status --porcelain` (in the phase-brief handoff) held exactly ONE entry:
   `?? server/migrations/versions/0015_tenant_grade_tiers.py`. The commit-1a session
   `Write` to that path replaced it without reporting an overwrite-conflict and without
-  reading the prior content first — a `CLAUDE.md § Engineering conduct` "look before
-  overwriting" miss. The committed `0015` is the version proven on dev (up / backfill /
+  reading the prior content first — a look-before-overwriting miss (the host's standing
+  "before deleting or overwriting, look at the target" guidance, not a CLAUDE.md rule).
+  The committed `0015` is the version proven on dev (up / backfill /
   down / guard). The prior file was UNTRACKED, so git never held it and its content is
   gone; measured this pass, nothing else from that earlier attempt survives: `git stash
   list` is empty, `git log --oneline -3` shows no P1.24 commit (HEAD `0b2aee4`), and the
@@ -4325,6 +4347,20 @@ with no feature of its own.
 
 ## Documentation
 
+- **THE CITATION CHECK MUST BE THE LAST COMMAND BEFORE THE COMMIT MESSAGE, AFTER
+  EVERY DOC EDIT — recorded 2026-08-31, and it rode a defect into `ad2806e`.** The
+  P1.24 commit-1a citation check read `BROKEN=6` (the floor), then a LATER doc edit
+  — the untracked-`0015` Code-debt line, added in the pre-commit tasks — introduced a
+  seventh broken citation, and 1a was committed WITHOUT a re-check. So `ad2806e`
+  carries `BROKEN=7`, undetected until commit 1b re-ran the checker. A SEQUENCE
+  defect, not a typo: a citation check is a measurement that ROTS the moment a later
+  edit lands (`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT"), so run it AFTER
+  every doc edit, as the LAST command before the commit message is written, and QUOTE
+  its `BROKEN` reading in the commit body. Commit 1b returns the named 14-file list to
+  the floor (`BROKEN=6`, the broken handle removed). Recorded HERE, not in `CLAUDE.md`'s
+  machine-footgun home: this is a workflow / measurement-staleness discipline, not a
+  trap specific to this box (Two homes, one test), and `CLAUDE.md` is out of bounds this
+  phase — so the operator running the checker meets the rule where the queue lives.
 - **`ARCHITECTURE.md`'s TABLE-AND-RLS COUNTS OUTSIDE § 4 ARE STALE — found
   2026-08-31 (P1.24, migration 0015), NOT REPAIRED.** P1.24's brief scoped the
   ARCHITECTURE edit to § 4 (superseded in place: the count, the two grade CHECK

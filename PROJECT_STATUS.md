@@ -75,9 +75,67 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.24 — THE PER-TENANT GRADE MODEL, COMMIT 1b: the routes (S6 split, second commit).
+2026-08-31.** No sha yet (this record precedes the commit; anchor next pass). This is the
+current-phase pointer.
+**BUILT and PROVEN over real HTTP; NO device work — that is Phase 2.** `server/app/master.py`
+gains the grade-tier routes and turns the removed `Grade = Literal["A","B","C","D"]` into
+run-time validation against the shop's OWN tiers.
+**ROUTES.** `GET /grade-tiers` (staff-readable — the phone prices with them; active by
+default, `?include_inactive` for the back office), `POST /grade-tiers` (admin; a duplicate
+code is a 409; NO product ceiling, F1), `PATCH /grade-tiers/{id}` (admin; name / sort_order /
+is_active; `code` IMMUTABLE — the FK target, F4's rename answer). NO DELETE route (F4).
+**DEACTIVATION REFUSAL (F4).** `PATCH /grade-tiers/{id}` is_active=false refuses while ACTIVE
+sellers sit in the tier — 409 `grade_tier_in_use`, detail carries `sellers_in_tier`. 409 not
+403: it is the tier's STATE that conflicts, not the caller's role. Move the sellers (`PATCH
+/sellers` grade), then deactivate → 200.
+**GRADE VALIDATION (S16).** `_validate_grade(conn, grade, must_be_active)` — 422
+`grade_not_a_tier` if the code is not a tier in this shop (RLS-scoped, so another shop's code
+is simply not found → the READABLE 422 replacing the composite FK's IntegrityError 500), and
+422 `grade_inactive` where an active tier is required. Applied to `PUT /products/{id}/prices/
+{grade}` (existence only — a shop may price any tier it holds), `POST/PATCH /sellers` grade
+(active), `PATCH /shop` default_grade (active). Re-derived every grade-accepting route (`rg
+grade server/app/`): those four changed; `bills.py` accepts NO grade from the client (it READS
+seller.grade, now always a valid tier code or NULL) and is UNCHANGED — its default_grade
+fallback and the 424 stand, the flagged fallback-vs-per-seller question NOT reopened.
+**F2 SEATING.** `create_seller` resolves the grade ONCE after the code lock, before all three
+create paths (token / code-supplied / mint): a supplied grade is validated (active tier); an
+ABSENT grade SEATS the seller in the shop's sole active tier when there is exactly one (F2 — no
+office round trip, and not a guess: it is the only grade the shop has); it stays NULL among
+several tiers or none.
+**PROVEN (every command bare, exit in the same invocation; PYTHONIOENCODING=utf-8 on this cp874
+box).** `import app.main` clean; `/openapi.json` declares GET+POST `/grade-tiers`, PATCH
+`/grade-tiers/{tier_id}`, PUT prices, /sellers, /shop (37 paths). `prove_grade_tiers.py` (NEW —
+scratch + own uvicorn, identity-gated) EXIT=0 TWICE, 30 cells: the DONE WHEN out of Postgres (12
+Thai-named tiers in the shop's own order — F1, no ceiling; a seller in a tier; a bill priced
+'44.00' byte-for-byte; the one-tier F2 walk-in SEATED in 'มาตรฐาน' with no round trip), the
+deactivation refusal naming the count, move-then-deactivate, F4 history intact + include_inactive
+resolving the retired tier, a foreign code 422, RLS-scoped GET (each shop sees only its own),
+staff GET 200 / staff POST 403 `admin_required`, PATCH /shop default_grade validated. Two route
+DISPROOFS each reddened EXACTLY their cell and reverted: (a) drop the deactivation in_use check →
+cell E (409→200, no count); (c) drop `_validate_grade` in update_shop → cell K (readable 422 → the
+FK's 500). Disproof (b) is SAID not staged (RLS + `_validate_grade`, not the FK, holds the
+route-level cross-tenant refusal — the unit-2 precedent); disproof (d) is a 1a-migration concern
+(backfill), vacuous here (this proof builds tiers through the route). The route-grade proofs re-run
+GREEN TWICE against the changed routes: prove_seller_create (POST /sellers grade + PUT prices + the
+reservation/mint paths), prove_seller_code_guards (offline grade), prove_shop_settings (/shop). Thai
+tier names compared as PYTHON STRINGS read out of Postgres (byte-for-byte, no console).
+**NOT RUN, NAMED (external-server grade proofs writing into dev).** prove_master_write,
+prove_master_data_gate, prove_seller_pricing, prove_master, prove_daily_report test the grade routes
+against dev Shop A (tiers A-D present): their valid-grade paths (A/B/C) pass because those are active
+tiers, and their foreign-grade refusal (PUT prices/Z → 422) is the SAME `grade_not_a_tier` 422 that
+prove_grade_tiers cells H/K and prove_seller_create now exercise on the changed routes; each needs a
+:8099 API writing dev debris. Covered by the four route proofs green twice, so named.
+**NOT OBSERVED / NOT BUILT: the PHONE (Phase 2)** — the tier set on the handset, settings
+tier-management, F2 hiding the grade control. No device work in 1b.
+**IS A LESSON OWED? NO.** The Grade-Literal → run-time validation was foretold by priceEdit.ts's own
+S16 note; the disproof cell that crashed on a non-JSON 500 body under disproof (c) was made defensive
+(a clean RED, not a crash), and crash-as-failure is already `a-check-that-never-went-red` /
+`a-default-exit-code-is-a-default-verdict`. No new class.
+
 **P1.24 — THE PER-TENANT GRADE MODEL, COMMIT 1a: the schema, the backfill, the
-operational surfaces (S6 split). 2026-08-31.** No sha yet (this record precedes the
-commit; anchor next pass). This is the current-phase pointer.
+operational surfaces (S6 split). 2026-08-31.** Committed at `ad2806e`. This WAS the
+current-phase pointer until the 1b record above.
 **BUILT and PROVEN on dev; NO device work and NO new routes in this commit — those are 1b.**
 Migration `0015_tenant_grade_tiers.py` creates the per-tenant `grade_tiers` table (S16's
 TABLE replacing a CHECK), applied to dev `recycle` (`alembic current` = 0015). Columns

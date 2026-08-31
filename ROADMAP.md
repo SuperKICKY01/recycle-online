@@ -7308,6 +7308,29 @@ deleted, and deactivation is refused while sellers sit in it, naming the count.
   one tier — 1b, per F2's "a nullable grade is NOT the answer". 1a builds the storage
   both rest on.
 
+**2026-08-31 — P1.24 commit 1b: the routes, and the DONE WHEN now MET.** `GET/POST/PATCH
+/grade-tiers` (staff-readable list; admin writes; NO DELETE route), the deactivation
+refusal carrying its count (409 `grade_tier_in_use`, F4), and grade validation against
+the shop's OWN tiers on `PUT /products/{id}/prices/{grade}`, `POST/PATCH /sellers` and
+`PATCH /shop` `default_grade` — a code the shop has not declared is a READABLE 422
+(`grade_not_a_tier`), not the composite FK's IntegrityError 500. F2 is built at
+seller-create: a seller with no grade in a ONE-tier shop is SEATED in the sole tier (per
+F2's "a nullable grade is NOT the answer"), so a walk-in trades with no office round
+trip; a multi-tier shop's ungraded seller stays NULL and parks on the resolvable 424.
+The `Grade = Literal["A","B","C","D"]` in master.py is gone.
+- **DONE WHEN read literally: MET.** `prove_grade_tiers.py` reads it out of Postgres — a
+  shop configures a NON-DEFAULT twelve-tier set (Thai names, its own order; F1, no
+  ceiling), a seller against one of its tiers, a bill priced from it byte-for-byte; and a
+  one-tier shop posts a walk-in with no round trip (F2). Two route disproofs each redden
+  EXACTLY their cell (deactivation without the in_use check; a foreign default_grade
+  becoming the FK 500), a third is SAID (RLS, not the FK, holds the route-level
+  cross-tenant refusal), the fourth is a 1a-migration concern. Green twice.
+- **What is STILL not built (recorded, not this step):** the PHONE (Phase 2) — the tier
+  set on the handset, the settings tier-management, F2 hiding the grade control. And the
+  `default_grade` shop-wide fallback in `bills.py` is UNCHANGED (the flagged
+  fallback-vs-per-seller question is not reopened; 1b adds the per-seller SEATING for a
+  one-tier shop and leaves the fallback for a multi-tier shop's ungraded sellers).
+
 ---
 
 # STAGE 2 — what the pilot teaches, and what gets fixed because of it

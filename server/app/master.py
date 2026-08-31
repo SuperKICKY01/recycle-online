@@ -72,7 +72,7 @@ from __future__ import annotations
 import secrets
 import uuid
 from decimal import Decimal
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
@@ -110,15 +110,21 @@ Code = Annotated[
 ]
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 Phone = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
-# Mirrors ck_sellers_grade, product_prices' CHECK, and ck_tenants_default_grade.
-# A bad grade is a 422 from pydantic, never a CheckViolation 500 from Postgres.
-#
-# FIVE SITES NOW ENCODE THIS SET, and S16 opens all of them: the two CHECKs in
-# 0001, ck_sellers_grade in 0003, ck_tenants_default_grade in 0010, and this
-# line. A Literal is a COMPILE-TIME type, so a set a shop chooses at run time
-# cannot be one at all -- S16 does not merely invalidate a count here, it
-# removes the form this constraint is written in.
-Grade = Literal["A", "B", "C", "D"]
+# A GRADE IS NOW A PER-TENANT TIER CODE, not a fixed letter (S16 / P1.24, migration
+# 0015). The old `Grade = Literal["A","B","C","D"]` was a COMPILE-TIME set, and a
+# set a shop chooses at run time cannot be one -- so it is gone, and with it the
+# three A-D CHECKs it mirrored (0015 replaced them with composite FKs into
+# grade_tiers). The edge now bounds only the SHAPE (a non-empty code within the
+# column's length); the HANDLER validates the VALUE against this shop's grade_tiers
+# (an active tier for a seller or a default; an existing tier for a price), which
+# turns a foreign code into a READABLE 422 rather than the FK's IntegrityError 500.
+# Bounds match the grade_tiers column CHECKs: code 1..32, name 1..100.
+GradeCode = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)
+]
+GradeName = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+]
 # Mirrors product_prices.price: NUMERIC(14,2), CHECK (price >= 0).
 Price = Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=2)]
 
@@ -216,6 +222,7 @@ _DUPLICATE_CODE_CONSTRAINTS = {
     "uq_pcat_tenant_code": "product_category",
     "uq_products_tenant_code": "product",
     "uq_sellers_tenant_code": "seller",
+    "uq_grade_tiers_tenant_code": "grade_tier",
 }
 
 
@@ -313,6 +320,57 @@ async def _update_row(
         {**changes, "__row_id": row_id},
     )
     return result.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Grade validation against the shop's own tiers (S16 / P1.24). A grade is a tier
+# CODE now, not a fixed letter; these are the readable 422s that stand in front
+# of the composite FK's IntegrityError 500 for a code this shop has not declared.
+# ---------------------------------------------------------------------------
+async def _validate_grade(
+    conn: AsyncConnection, grade: str, *, must_be_active: bool
+) -> None:
+    """422 unless `grade` is one of THIS shop's tiers. `must_be_active` also
+    refuses a deactivated tier: a price may be set against any existing tier, but
+    a seller cannot be seated in, nor a shop defaulted to, a retired one. No
+    tenant predicate -- RLS scopes grade_tiers to the caller's shop, so a tier
+    from another shop is simply not found here.
+    """
+    row = (
+        await conn.execute(
+            text("SELECT is_active FROM grade_tiers WHERE code = :c"), {"c": grade}
+        )
+    ).mappings().first()
+    if row is None:
+        raise _invalid(
+            "grade_not_a_tier",
+            f"เกรด {grade} ไม่ใช่เกรดของร้านนี้",
+            grade=grade,
+        )
+    if must_be_active and not row["is_active"]:
+        raise _invalid(
+            "grade_inactive",
+            f"เกรด {grade} ถูกปิดใช้งานแล้ว",
+            grade=grade,
+        )
+
+
+async def _seat_seller_grade(conn: AsyncConnection, grade: str | None) -> str | None:
+    """The effective grade for a seller being created (F2).
+
+    A supplied grade must be an ACTIVE tier of this shop, else a readable 422. An
+    ABSENT grade SEATS the seller in the shop's one tier when it has exactly one
+    active tier -- a shop that does not grade is a ONE-TIER shop and its sellers
+    need no office round trip. With several active tiers, or none, it stays NULL:
+    the office grades the seller later, or the bill parks on the resolvable 424.
+    """
+    if grade is not None:
+        await _validate_grade(conn, grade, must_be_active=True)
+        return grade
+    actives = (
+        await conn.execute(text("SELECT code FROM grade_tiers WHERE is_active"))
+    ).scalars().all()
+    return actives[0] if len(actives) == 1 else None
 
 
 # ---------------------------------------------------------------------------
@@ -765,7 +823,7 @@ async def activate_product(
 @router.put("/products/{product_id}/prices/{grade}")
 async def set_product_price(
     product_id: uuid.UUID,
-    grade: Grade,
+    grade: str,
     body: PriceSet,
     principal: Principal = Depends(require_admin),
 ) -> dict:
@@ -777,9 +835,15 @@ async def set_product_price(
     is frozen from then on. The yard's cached copy of this list is a separate
     concern with its own staleness rule
     (lessons/cached-master-data-is-a-price-claim.md).
+
+    `grade` is now a per-tenant tier CODE (S16 / P1.24), validated against this
+    shop's grade_tiers below -- must_be_active=False, because a shop may price any
+    tier it holds, active or not. A foreign code is a readable 422, not the
+    composite FK's IntegrityError 500.
     """
     async with tenant_connection(principal.tenant_id) as conn:
         await _require_product(conn, product_id)
+        await _validate_grade(conn, grade, must_be_active=False)
         await conn.execute(
             text(
                 f"INSERT INTO product_prices (tenant_id, product_id, grade, price)"
@@ -838,11 +902,14 @@ class SellerCreate(BaseModel):
     reservation_token: ReservationToken | None = None
     name: Name
     phone: Phone | None = None
-    # Optional at create, and NOT defaulted. A seller with no grade is refused at
-    # bill time with a named, resolvable 424 (seller_grade_unset); guessing a
-    # grade here would instead quote a real price the yard pays cash against
+    # Optional at create. A supplied grade must be one of the shop's ACTIVE tiers
+    # (validated in create_seller); absent SEATS the seller in the shop's one tier
+    # when it has exactly one (F2 -- a one-tier shop needs no office round trip),
+    # and otherwise stays NULL, refused at bill time with the resolvable 424
+    # (seller_grade_unset). Seating in the SOLE tier is not a guess -- it is the
+    # only grade the shop has; inventing one among several would be
     # (lessons/fallback-default-is-a-wrong-number.md).
-    grade: Grade | None = None
+    grade: GradeCode | None = None
     # SRS 1.6. All optional: a yard weighs a walk-in's scrap and pays cash long
     # before it has their address, and refusing the seller row would refuse the
     # purchase. NOTE this vehicle_no is the one the seller USUALLY arrives in —
@@ -859,7 +926,7 @@ class SellerUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Name | None = None
     phone: Phone | None = None
-    grade: Grade | None = None
+    grade: GradeCode | None = None
     id_number: IdNumber | None = None
     address: Address | None = None
     vehicle_no: VehicleNo | None = None
@@ -1497,6 +1564,13 @@ async def create_seller(
         # this route's, and is deliberately unused here.
         await _lock_shop_for_code_assignment(conn)
 
+        # GRADE (S16 / P1.24): validate a supplied one against the shop's active
+        # tiers, or SEAT a one-tier shop's seller in its sole tier (F2). Resolved
+        # ONCE here, before any of the three write paths below, so each inserts
+        # the same effective grade. On the replay path its result is unused (the
+        # existing seller is returned), which is harmless.
+        body.grade = await _seat_seller_grade(conn, body.grade)
+
         if body.reservation_token is not None:
             if body.code is None:
                 # A token names exactly one code. A request carrying the secret
@@ -1693,6 +1767,11 @@ async def update_seller(
     # refused with a resolvable 424 rather than mispriced.
     changes = _changes(body, nullable=_SELLER_NULLABLE)
     async with tenant_connection(principal.tenant_id) as conn:
+        # A grade being SET (not cleared) must be one of the shop's active tiers
+        # (S16 / P1.24). An explicit null clears it -- the resulting bills park on
+        # the resolvable 424 -- and needs no tier.
+        if changes.get("grade") is not None:
+            await _validate_grade(conn, changes["grade"], must_be_active=True)
         if not await _update_row(conn, "sellers", seller_id, changes):
             raise _not_found("seller")
         return await _read_seller(conn, seller_id)
@@ -1715,6 +1794,158 @@ async def activate_seller(
     async with tenant_connection(principal.tenant_id) as conn:
         await _set_active(conn, "sellers", "seller", seller_id, True)
         return await _read_seller(conn, seller_id)
+
+
+# ---------------------------------------------------------------------------
+# grade tiers (S16 / P1.24) — the per-tenant price tiers a shop declares
+#
+# A shop declares its own tiers: at least ONE, with no product-imposed maximum
+# (F1). A shop that does not grade is a shop with a SINGLE tier every seller sits
+# in (F2), not a nullable grade. `code` is the stable handle every graded row
+# references by composite FK; `name` is the shop's own display text and is free
+# to change (F3). A tier is DEACTIVATED, never deleted — there is no DELETE route,
+# the same retirement shape as the master-data tables — and deactivation is
+# REFUSED while active sellers sit in the tier (F4).
+# ---------------------------------------------------------------------------
+_GRADE_TIER_SELECT = "SELECT id, code, name, sort_order, is_active FROM grade_tiers"
+
+
+def _grade_tier_payload(r: Any) -> dict:
+    return {
+        "id": str(r["id"]),
+        "code": r["code"],
+        "name": r["name"],
+        "sort_order": r["sort_order"],
+        "is_active": r["is_active"],
+    }
+
+
+async def _read_grade_tier(conn: AsyncConnection, tier_id: uuid.UUID) -> dict | None:
+    row = (
+        await conn.execute(text(f"{_GRADE_TIER_SELECT} WHERE id = :id"), {"id": tier_id})
+    ).mappings().first()
+    return _grade_tier_payload(row) if row else None
+
+
+# The shop's ordering key, bounded to int4 at the edge ONLY so an over-range value
+# is a 422 rather than the column's own overflow 500 (edge-must-reject); the
+# ordering itself is the shop's and carries no meaning the code assigns (F3).
+SortOrder = Annotated[int, Field(ge=0, le=2147483647)]
+
+
+class GradeTierCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    code: GradeCode
+    name: GradeName
+    # OPTIONAL: absent APPENDS the tier (max sort_order + 1). The ordering is the
+    # shop's (F3); this default only spares it computing one for the common "add a
+    # tier" case. There is NO maximum on how many tiers a shop declares (F1).
+    sort_order: SortOrder | None = None
+
+
+class GradeTierUpdate(BaseModel):
+    """`code` is absent on purpose: it is the FK target every graded row points
+    at, so it is IMMUTABLE — the shop renames the `name`, never the code (F4)."""
+
+    model_config = ConfigDict(extra="forbid")
+    name: GradeName | None = None
+    sort_order: SortOrder | None = None
+    is_active: bool | None = None
+
+
+@router.get("/grade-tiers")
+async def list_grade_tiers(
+    include_inactive: IncludeInactive = False,
+    principal: Principal = Depends(get_principal),
+) -> dict:
+    """The shop's grade tiers, ordered. STAFF-READABLE: the yard app prices with
+    them and must draw the picker offline. Deactivated tiers are excluded by
+    default (not offered for new work); include_inactive=true finds one again — a
+    row it cannot list is a row it cannot reactivate."""
+    async with tenant_connection(principal.tenant_id) as conn:
+        rows = (
+            await conn.execute(
+                text(f"{_GRADE_TIER_SELECT}{_active_filter(include_inactive)}"
+                     " ORDER BY sort_order, code")
+            )
+        ).mappings().all()
+    return {"grade_tiers": [_grade_tier_payload(r) for r in rows]}
+
+
+@router.post("/grade-tiers", status_code=status.HTTP_201_CREATED)
+async def create_grade_tier(
+    body: GradeTierCreate, principal: Principal = Depends(require_admin)
+) -> dict:
+    """Declare a tier. ADMIN ONLY (the gate every standing choice takes). A
+    duplicate code is a 409 — the shop already holds that tier. NO product-imposed
+    limit on how many (F1)."""
+    async with tenant_connection(principal.tenant_id) as conn:
+        sort_order = body.sort_order
+        if sort_order is None:
+            # Append. coalesce(max, -1) + 1 gives 0 for the shop's first tier.
+            sort_order = (
+                await conn.execute(
+                    text("SELECT coalesce(max(sort_order), -1) + 1 FROM grade_tiers")
+                )
+            ).scalar_one()
+        try:
+            row = (
+                await conn.execute(
+                    text(
+                        f"INSERT INTO grade_tiers (tenant_id, code, name, sort_order)"
+                        f" VALUES ({_TENANT}, :code, :name, :so)"
+                        f" RETURNING id, code, name, sort_order, is_active"
+                    ),
+                    {"code": body.code, "name": body.name, "so": sort_order},
+                )
+            ).mappings().one()
+        except IntegrityError as e:
+            _raise_for_integrity(e, body.code)
+            raise
+        return _grade_tier_payload(row)
+
+
+@router.patch("/grade-tiers/{tier_id}")
+async def update_grade_tier(
+    tier_id: uuid.UUID,
+    body: GradeTierUpdate,
+    principal: Principal = Depends(require_admin),
+) -> dict:
+    """Rename, re-order, or (de)activate a tier. ADMIN ONLY. `code` is immutable
+    (the FK target). DEACTIVATION IS REFUSED while active sellers still sit in the
+    tier (F4): they must be moved to another grade first, and the refusal SAYS HOW
+    MANY. 409, not 403 — it is the tier's STATE that conflicts with retirement, not
+    the caller's role."""
+    # None of the three is nullable (all NOT NULL columns), so an explicit null is
+    # a 422 (field_not_nullable), never a clear.
+    changes = _changes(body, nullable=frozenset())
+    async with tenant_connection(principal.tenant_id) as conn:
+        tier = await _read_grade_tier(conn, tier_id)
+        if tier is None:
+            raise _not_found("grade_tier")
+        if changes.get("is_active") is False and tier["is_active"]:
+            in_use = (
+                await conn.execute(
+                    text("SELECT count(*) FROM sellers WHERE grade = :c AND is_active"),
+                    {"c": tier["code"]},
+                )
+            ).scalar_one()
+            if in_use:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    detail={
+                        "kind": "conflict",
+                        "code": "grade_tier_in_use",
+                        "message": (
+                            f"ยังมีผู้ขาย {in_use} รายอยู่ในเกรดนี้ "
+                            "ต้องย้ายผู้ขายไปเกรดอื่นก่อนจึงจะปิดเกรดนี้ได้"
+                        ),
+                        "entity": "grade_tier",
+                        "sellers_in_tier": str(in_use),
+                    },
+                )
+        await _update_row(conn, "grade_tiers", tier_id, changes)
+        return await _read_grade_tier(conn, tier_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1917,7 +2148,7 @@ class ShopUpdate(BaseModel):
     # and its code is immutable by decision (9ad225e), so changing either is a
     # provisioning act, not a setting -- a `name` key is therefore a 422 under
     # extra="forbid".
-    default_grade: Grade | None = None
+    default_grade: GradeCode | None = None
     address: ShopAddress | None = None
     phone: ShopPhone | None = None
     # Whether STAFF may see money in the dashboard (P1.23 item 4, D1). Admin-only to
@@ -1992,6 +2223,11 @@ async def update_shop(
     # never caller strings.
     assignments = ", ".join(f"{col} = :{col}" for col in changes)
     async with tenant_connection(principal.tenant_id) as conn:
+        # A default_grade being SET (not cleared) must be one of the shop's active
+        # tiers (S16 / P1.24). Cleared (explicit null) takes the default away and
+        # needs no tier. A foreign code is a readable 422, not the FK's 500.
+        if changes.get("default_grade") is not None:
+            await _validate_grade(conn, changes["default_grade"], must_be_active=True)
         # UPDATE with no WHERE, for the same reason _read_shop has none: RLS
         # scopes it to the caller's single row. Asserting the rowcount is what
         # turns "the policy is doing its job" from an assumption into a check --
