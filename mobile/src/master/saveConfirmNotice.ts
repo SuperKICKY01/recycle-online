@@ -96,7 +96,7 @@ const IRREVERSIBLE = "แก้ไขไม่ได้ — หากผิด�
 export function saveConfirmNotice(sellerGrade: string | null): SaveConfirmNotice {
   if (sellerGrade === null) {
     return {
-      park: "ผู้ขายรายนี้ยังไม่มีเกรด — บันทึกได้ แต่บิลจะยังไม่ส่งเข้าระบบ ต้องรอสำนักงานกำหนดเกรดก่อน",
+      park: "ผู้ขายรายนี้ยังไม่ได้จัดเกรด — บันทึกได้ แต่บิลจะยังไม่ส่งเข้าระบบ ต้องรอสำนักงานกำหนดเกรดก่อน",
       warn: IRREVERSIBLE,
     };
   }

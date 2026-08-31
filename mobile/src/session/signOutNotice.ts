@@ -99,7 +99,7 @@ const THE_OWNER = "เจ้าของร้าน";
 /**
  * ONE SENTENCE PER KIND OF OWED WORK, AND THE TABLE IS TOTAL OVER `OutboxKind`.
  *
- * WHY A TABLE RATHER THAN A COUNT. `มีบิลรอส่งขึ้นระบบ N ใบ` was the only
+ * WHY A TABLE RATHER THAN A COUNT. `มีบิลรอส่ง N ใบ` was the only
  * sentence this sheet had, because for as long as the gate counted bills the
  * only thing it could be refusing over was a bill. It is now refusing over a
  * SELLER as well, and `ใบ` is the classifier for a document — a seller is a
@@ -125,14 +125,14 @@ const OWED_LINE: { readonly [K in OutboxKind]: (n: number) => string } = {
   // Unchanged, word for word, including the classifier — this is the sentence
   // the sheet has carried since R1b and the one a proof already asserts the
   // count inside.
-  bill_send: (n) => `มีบิลรอส่งขึ้นระบบ ${String(n)} ใบ`,
+  bill_send: (n) => `มีบิลรอส่ง ${String(n)} ใบ`,
   // A cancellation the yard has ordered and the server has not been told about.
   // It says แจ้ง (tell) rather than ส่ง (send) because the bill itself may
   // already be on the server — what is owed is the reversal, not the document.
   bill_void: (n) => `มีบิลรอแจ้งยกเลิก ${String(n)} ใบ`,
   // ราย, not ใบ: a seller is a person. And "เพิ่มใหม่ในเครื่อง" says where it
   // was created, because that is the whole reason the server has not got it.
-  seller_create: (n) => `มีผู้ขายที่เพิ่มใหม่ในเครื่องรอส่งขึ้นระบบ ${String(n)} ราย`,
+  seller_create: (n) => `มีผู้ขายที่เพิ่มใหม่ในเครื่องรอส่ง ${String(n)} ราย`,
 };
 
 /**
@@ -288,7 +288,7 @@ export function signOutCard(input: SignOutCardInput): SignOutCard {
     tone: "ask",
     title: "ออกจากระบบ?",
     lines: [
-      "บิลทั้งหมดส่งขึ้นระบบครบแล้ว",
+      "บิลทั้งหมดส่งครบแล้ว",
       NEEDS_NETWORK,
       "ข้อมูลสินค้าและผู้ขายจะยังอยู่ในเครื่อง",
       ...failedLine(input.failed),

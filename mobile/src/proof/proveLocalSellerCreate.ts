@@ -148,7 +148,7 @@ function c1Created(): void {
   check("C1: the seller's name is shown", text.includes("ผู้ขายพิสูจน์"));
   check(
     "C1: it PROMISES the seller will be sent — the queue makes that true",
-    text.includes("จะส่งขึ้นระบบให้อัตโนมัติ"),
+    text.includes("จะส่งเข้าระบบให้อัตโนมัติ"),
   );
   check(
     "C1: it warns the seller has no grade so its bill will wait for the office",

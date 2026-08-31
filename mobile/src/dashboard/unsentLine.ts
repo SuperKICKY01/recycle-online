@@ -52,7 +52,7 @@ export interface UnsentLine {
   amount: string;
   /** True when at least one unsent bill had a null amount — the sum is then a floor. */
   someUnknown: boolean;
-  /** The rendered line. "ค้างส่งจากเครื่องนี้ N ใบ · ยอด X บาท". */
+  /** The rendered line. "รอส่งจากเครื่องนี้ N ใบ · ยอด X บาท". */
   text: string;
 }
 
@@ -71,7 +71,7 @@ export function unsentLine(amounts: readonly (string | null)[]): UnsentLine | nu
     .toFixed(MONEY_DP);
   const someUnknown = known.length !== amounts.length;
   const count = amounts.length;
-  const base = `ค้างส่งจากเครื่องนี้ ${String(count)} ใบ · ยอด ${amount} บาท`;
+  const base = `รอส่งจากเครื่องนี้ ${String(count)} ใบ · ยอด ${amount} บาท`;
   const text = someUnknown
     ? `${base} (บางใบยังไม่มียอด ยอดจริงอาจมากกว่านี้)`
     : base;

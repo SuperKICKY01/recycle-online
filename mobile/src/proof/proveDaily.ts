@@ -874,7 +874,7 @@ function d6OfflineVsZero(): void {
   );
   check(
     "...and states positively that no bill has ARRIVED yet — not that none exists",
-    zero.headline.countLine.includes("ส่งถึงระบบ"),
+    zero.headline.countLine.includes("ส่งเข้าระบบ"),
     zero.headline.countLine,
   );
   check(
@@ -1215,7 +1215,7 @@ function d9OffList(): void {
   );
   check(
     "a day with no off-list bills says that positively",
-    asReport(dailyScreen(ok())).offList.emptyLine === "ทุกบิลวันนี้จ่ายตรงราคาตามรายการ",
+    asReport(dailyScreen(ok())).offList.emptyLine === "ทุกบิลวันนี้จ่ายตรงราคาประกาศ",
   );
 }
 

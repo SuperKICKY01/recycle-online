@@ -282,7 +282,7 @@ export function statusNotice(s: StatusInput): StatusNotice {
     if (s.account === "submit_refused") {
       const held =
         s.pending > 0
-          ? ` บิล ${String(s.pending)} ใบอยู่ในเครื่อง ยังไม่ได้ส่ง`
+          ? ` บิล ${String(s.pending)} ใบอยู่ในเครื่อง รอส่ง`
           : "";
       return {
         tone: "bad",
@@ -340,7 +340,7 @@ export function statusNotice(s: StatusInput): StatusNotice {
       tone: "warn",
       message:
         s.pending > 0
-          ? `ออฟไลน์ — เก็บไว้ในเครื่อง ${String(s.pending)} ใบ จะส่งให้เองเมื่อเน็ตกลับมา`
+          ? `ออฟไลน์ — รอส่ง ${String(s.pending)} ใบ จะส่งให้เองเมื่อเน็ตกลับมา`
           : "ออฟไลน์ — บันทึกได้ตามปกติ",
       action: null,
     };

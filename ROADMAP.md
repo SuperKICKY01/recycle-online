@@ -7059,6 +7059,38 @@ no count is written into the criterion:
    headless-unprovable, owed to the owner's handset pass. THE THIRD CLAUSE — one
    vocabulary — is Phase B and is NOT yet done. The current-phase record in
    `PROJECT_STATUS.md` carries the details and the consolidated handset list.
+   **PHASE B DONE 2026-08-31 (P1.23 item 3): one vocabulary — the owner settled the
+   table (his decisions, recorded as such).** The disputed concepts and their rulings:
+   the expired session unifies to `หมดเวลาเข้าใช้งาน` (the lone loanword `เซสชันหมดอายุ`
+   dropped); the ungraded-seller state to `ยังไม่ได้จัดเกรด` (the compact `ไม่มีเกรด` kept
+   beside `เกรด A`); the grade-setting action to `กำหนดเกรด`; "reached the server" to
+   `ส่งเข้าระบบ`; the unsent state to `รอส่ง`; "all sent" to `ส่งครบแล้ว` (`ส่งแล้ว` stays
+   the single-bill state); the voided-bill set to `บิลที่ถูกยกเลิก`; "no doc_no yet" to
+   `ยังไม่มีเลขที่บิล`; retry to `ลองอีกครั้ง`, retype to `ลองพิมพ์อีกครั้ง`. The owner
+   OVERRODE the advisor on the list price: `ราคาประกาศ`, not `ราคาตามรายการ`, as the
+   accountancy-precise term (the price the shop POSTS) — the daily view's five sites and
+   its one proof moved onto it. Three rulings: a permission sentence names who-to-ask as
+   `เจ้าของร้าน`, `ผู้ดูแลระบบ` only where the ROLE is named (audit — every refusal already
+   conformed except the settings readonly note, changed); the reserve notice's lone
+   `เคาน์เตอร์` → `สำนักงาน`; the shop-name note's `ใบเสร็จ` → `บิล`. KEPT SEPARATE as
+   deliberate distinctions: the weigher/staff role vs the by-user dimension vs the void
+   actor; the per-bill grade price; the action-specific dismiss/confirm/save labels; the
+   money words. Server-owned Thai (the 424 bodies, `consequence_th`) and the
+   negative-control literals (`proveSaveConfirm`, `proveSeller`) were untouched. Proven:
+   both typechecks; every headless proof green twice with counts UNMOVED; the harvest
+   re-run shows one term per concept; the negatives still redden under their breaks.
+   **P1.23's DONE WHEN is MET HEADLESS at this commit (items 1–4):** the three recorded
+   defects are fixed (item 1), the P1.8b seller surfaces are drawn (item 2), the
+   consistency pass is complete — `TAP_MIN` honoured, one presentation layer, one
+   vocabulary (item 3, closed) — and the dashboard and settings surfaces are drawn (item 4).
+   **OBSERVED ON A HANDSET: owed.** The consolidated device pass in the PROJECT_STATUS
+   current-phase record covers units 1, 3, Phase A (both themes, follow-system, `TAP_MIN` on
+   every control, the 13px floor at arm's length in sun) and this phase. The bar's OWN words
+   — legible in sun, wet-hand targets — are HANDSET observations; a phase whose every screen
+   has been seen only by a proof is met on paper. **P1.23 closing does NOT close Band 1:**
+   S23's bar (a commercial-grade general app — store compliance, a release build, hosting) is
+   wider than P1.23's four items, and those live in their own ROADMAP entries. The step ships
+   in this Phase-B commit; the date stands, anchor next pass.
 4. The shop-owner dashboard and the phone settings surface are drawn — both homed
    on mobile by the owner (2026-08-28/29): S24 homes the dashboard, absorbing the
    existing daily screen as a view inside it, and the S6 extension homes the

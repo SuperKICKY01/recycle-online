@@ -65,7 +65,7 @@ export const BY_LABELS: Record<string, string> = {
 };
 export const STATE_LABELS: Record<string, string> = {
   live: "บิลที่ใช้ได้",
-  void: "บิลที่ยกเลิก",
+  void: "บิลที่ถูกยกเลิก",
   all: "ทั้งหมด",
 };
 

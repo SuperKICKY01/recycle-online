@@ -398,7 +398,7 @@ async function c3HalfRefresh(): Promise<void> {
   );
   check(
     "the message says it can be RETRIED",
-    msg.includes("ลองใหม่"),
+    msg.includes("ลองอีกครั้ง"),
     msg,
   );
   check(
@@ -520,7 +520,7 @@ async function c5MessagesAreDistinct(): Promise<void> {
   );
   check(
     "the NOT-THIS-SHOP message offers a retry",
-    notThisShop?.message.includes("ลองใหม่") === true,
+    notThisShop?.message.includes("ลองอีกครั้ง") === true,
     String(notThisShop?.message),
   );
   check(
@@ -535,7 +535,7 @@ async function c5MessagesAreDistinct(): Promise<void> {
   check(
     "neither block message mentions a retry AND a sign-in together, which would fuse the two remedies",
     !(
-      (neverFetched?.message.includes("ลองใหม่") ?? false) &&
+      (neverFetched?.message.includes("ลองอีกครั้ง") ?? false) &&
       (neverFetched?.message.includes("เข้าสู่ระบบ") ?? false)
     ),
     String(neverFetched?.message),

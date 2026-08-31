@@ -2975,7 +2975,7 @@ function AppInner() {
                   {STATE_TH[latest.sync_state]}
                 </Text>
                 <Text style={styles.latestDoc}>
-                  บิลล่าสุด {latest.doc_no ?? "ยังไม่มีเลขที่"}
+                  บิลล่าสุด {latest.doc_no ?? "ยังไม่มีเลขที่บิล"}
                 </Text>
                 <Text style={styles.latestTotal}>
                   {latest.payload.total_amount ?? "-"} ({latest.payload.items.length})

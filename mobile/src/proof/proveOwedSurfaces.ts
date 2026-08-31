@@ -118,10 +118,10 @@ function header(title: string): void {
  * empty render is satisfied by silence
  * (`lessons/README.md § Lessons` "a-check-that-never-went-red-was-never-observed.md — applies to every assertion").
  */
-const ALL_SENT_SHEET = "บิลทั้งหมดส่งขึ้นระบบครบแล้ว";
+const ALL_SENT_SHEET = "บิลทั้งหมดส่งครบแล้ว";
 const ALL_SENT_STRIP = "ส่งครบแล้ว";
 const OWED_SELLER = "ผู้ขายที่เพิ่มใหม่";
-const OWED_BILL = "มีบิลรอส่งขึ้นระบบ";
+const OWED_BILL = "มีบิลรอส่ง";
 /**
  * `รอแจ้งยกเลิก` and not `ยกเลิกบิล`: the sheet reads `มีบิลรอแจ้งยกเลิก N ใบ`
  * and the strip `รอแจ้งยกเลิก บิล N ใบ`-shaped, so the two words are in the

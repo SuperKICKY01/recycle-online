@@ -435,7 +435,7 @@ export function masterNotice(f: Freshness): MasterNotice | null {
      * confusable: one waits for a CONNECTION and the other waits for a PERSON,
      * and an operator sent to find the wrong one waits for something that is
      * never going to arrive. Whoever adds that block: keep it off this sentence,
-     * and keep "ต่อเน็ต"/"ลองใหม่" off theirs.
+     * and keep "ต่อเน็ต"/"ลองอีกครั้ง" off theirs.
      *
      * If ANY missing list is not this shop's, this wording wins even when the
      * other list was merely never fetched — its remedy (connect, fetch this
@@ -448,7 +448,7 @@ export function masterNotice(f: Freshness): MasterNotice | null {
         message:
           `${what}ที่เก็บไว้ในเครื่องนี้ไม่ใช่ของร้านนี้ จึงใช้ไม่ได้` +
           ` — ต้องต่อเน็ตเพื่อดึง${what}ของร้านนี้มาก่อน จึงจะเริ่มบันทึกบิลได้` +
-          ` ลองใหม่ได้เมื่อเน็ตกลับมา`,
+          ` ลองอีกครั้งได้เมื่อเน็ตกลับมา`,
       };
     }
     return { tone: "block", message: `ยังไม่มี${what}ในเครื่องนี้ — ${CONNECT_ONCE}` };

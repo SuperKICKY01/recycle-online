@@ -88,7 +88,7 @@ function reserveLines(level: ReserveLevel, remaining: number): readonly string[]
       // cash purchase.
       return [
         "โควตารหัสผู้ขายในเครื่องหมด — เพิ่มผู้ขายใหม่จากหน้าลานไม่ได้จนกว่าจะต่อเน็ต",
-        "ยังบันทึกบิลกับผู้ขายที่มีอยู่ได้ และเพิ่มผู้ขายใหม่ได้ที่เคาน์เตอร์เมื่อต่อเน็ต",
+        "ยังบันทึกบิลกับผู้ขายที่มีอยู่ได้ และเพิ่มผู้ขายใหม่ได้ที่สำนักงานเมื่อต่อเน็ต",
       ];
     case "never_provisioned":
       // Distinct from exhausted: the device has spent nothing, it has never been

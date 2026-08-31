@@ -190,7 +190,7 @@ async function s1RefusedWhilePending(): Promise<void> {
   console.log(`  sheet: ${text}`);
   check(
     "the rendered sheet names the COUNT, inside the sentence that carries it",
-    text.includes("มีบิลรอส่งขึ้นระบบ 3 ใบ"),
+    text.includes("มีบิลรอส่ง 3 ใบ"),
     text.slice(0, 60),
   );
   // The count must come FROM the input. `includes("3")` passed on any sentence
@@ -201,7 +201,7 @@ async function s1RefusedWhilePending(): Promise<void> {
     signOutCardText(
       signOutCard({ owed: owedWith({ bill_send: 7 }), failed: 0, failure: null, session: "active" }),
     ).includes(
-      "มีบิลรอส่งขึ้นระบบ 7 ใบ",
+      "มีบิลรอส่ง 7 ใบ",
     ),
   );
   check(
@@ -1405,7 +1405,7 @@ async function s9SessionDrivesTheSheet(): Promise<void> {
     );
     check(
       "...and the count it prints is the one the STORE reported, not a literal",
-      deadText.includes(`มีบิลรอส่งขึ้นระบบ ${String(pending)} ใบ`),
+      deadText.includes(`มีบิลรอส่ง ${String(pending)} ใบ`),
       deadText,
     );
 

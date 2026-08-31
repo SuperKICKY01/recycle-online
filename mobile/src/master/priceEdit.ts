@@ -481,7 +481,7 @@ function message(
  */
 function httpMessage(status: number, code: string | null): PriceScreen {
   if (status === 401) {
-    return message("session", "เซสชันหมดอายุ", [
+    return message("session", "หมดเวลาเข้าใช้งาน", [
       "ต้องเข้าสู่ระบบใหม่จึงจะแก้ไขราคาได้",
       "ราคายังไม่ถูกเปลี่ยน",
     ], [{ kind: "sign_in", label: "เข้าสู่ระบบ" }, CLOSE]);

@@ -75,9 +75,70 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.23 item 3 — PHASE B: ONE VOCABULARY. 2026-08-31.** No sha yet (this record is written
+before the commit; anchor next pass). This is the current-phase pointer; the Phase-A record
+below is anchored to `8c2116d`.
+**SETTLED and SWEPT; proven headless.** The owner settled the disputed-terms table (STOP B-1,
+2026-08-31; recorded as HIS decisions). One term per concept now, across the `src/` wording
+modules, the `app/` screens and the proof expectations — presentation strings only, no logic
+(the Phase-B carve-out in OUT OF BOUNDS). The changes, old → new:
+- `เซสชันหมดอายุ` → `หมดเวลาเข้าใช้งาน` (priceEdit)
+- `ยังไม่มีเกรด` / `ยังไม่ได้กำหนดเกรด` → `ยังไม่ได้จัดเกรด` (shopSettings ×3, saveConfirmNotice,
+  parkedReason); the compact `ไม่มีเกรด` beside `เกรด A` KEPT (SellerPicker, ConfirmSellerChange)
+- `ตั้งเกรด` → `กำหนดเกรด` (shopSettings)
+- `ส่งขึ้นระบบ` / `ส่งถึงระบบ` → `ส่งเข้าระบบ` (dailyView ×4, localSellerCreateNotice)
+- `ค้างส่ง` / `ยังไม่ได้ส่ง` / `รอส่งขึ้นระบบ` / the unsent `เก็บไว้ในเครื่อง` → `รอส่ง` (unsentLine,
+  statusNotice ×2, signOutNotice ×2); the cached-data and draft-saved `เก็บไว้ในเครื่อง`
+  (freshness, parkedReason) are DIFFERENT concepts, KEPT
+- `ส่งขึ้นระบบครบแล้ว` → `ส่งครบแล้ว` (signOutNotice); `ส่งแล้ว` the single-bill state KEPT
+- `บิลที่ยกเลิก` → `บิลที่ถูกยกเลิก` (summaryView)
+- `ยังไม่มีเลขที่` → `ยังไม่มีเลขที่บิล` (App.tsx)
+- `ลองใหม่` → `ลองอีกครั้ง` (shopCode ×2, signInIdentity, freshness, parkedReason);
+  `ลองพิมพ์ใหม่อีกครั้ง` → `ลองพิมพ์อีกครั้ง` (signInIdentity)
+- `ราคาตามรายการ` → `ราคาประกาศ` (dailyView ×5) — the owner's OVERRIDE: the posted price is the
+  accountancy-precise term
+- B1 permission audit: the settings readonly note's `ผู้ดูแลระบบ` → `เจ้าของร้าน` (who-to-ask);
+  every other refusal already conformed (FORBIDDEN_LINE, parkedReason, statusNotice, summaryView;
+  roleLabel's role label untouched)
+- `เคาน์เตอร์` → `สำนักงาน` (reserveNotice); `ใบเสร็จ` → `บิล` (shopSettings)
+Proof expectations moved with each: proveDaily, proveSignOut, proveOwedSurfaces, proveDashboard,
+proveNotice, proveLocalSellerCreate, proveCacheTenant. Server-owned Thai (the 424 message bodies in
+proveSeller, `consequence_th` in proveDaily) and the negative-control literals (proveSaveConfirm's
+`OLD_PARK` at :106, proveSeller's `SHIPPED_BEFORE` at :709) were UNTOUCHED.
+**PROVEN:** both typechecks green before/after; every headless mobile proof green TWICE with cell
+counts UNMOVED (proveSync 247, proveSignOut 151, proveNotice 81, proveDaily 104, proveDashboard 49,
+proveLocalSellerCreate 27, proveSheets 11 stacks, plus the rest — wording moves expectations, not
+counts); the harvest re-run (rg over every old term) shows ONE term per concept, only the 5 deliberate
+keeps remaining; the negative cells still redden under their breaks (proveDashboard `add_unsent`,
+proveLocalSellerCreate `leak`, proveSettings `echo_request`, proveAccount `echo422` each exit 1; the
+proveSaveConfirm/proveSeller controls fire green).
+**KEPT SEPARATE (the owner's rulings, not drift):** the weigher/staff role (`พนักงาน`) vs the by-user
+dimension (`ตามผู้บันทึก`) vs the void actor (`ผู้ทำรายการ`); the per-bill grade price (`ราคาตามเกรด`,
+`ราคาตั้งต้น`); the action-specific dismiss/confirm/save labels; the money words. Nothing was
+deferred, so no OPEN_ITEMS line is owed.
+**HANDSET PASS unchanged:** the consolidated list in the Phase-A record below stands as the ONE owed
+device pass; the vocabulary is headless-provable, and the only device-visible residue is that the new
+words render (part of that same both-themes / every-screen pass).
+**P1.23's DONE WHEN — MET HEADLESS at this commit (items 1–4); OBSERVED ON A HANDSET: owed.** The
+three defects are fixed (1), the P1.8b seller surfaces drawn (2), the consistency pass complete —
+`TAP_MIN`, one presentation layer, one vocabulary (3, closed) — the dashboard and settings drawn (4).
+But the bar's OWN words — legible in sun, wet-hand targets — are HANDSET observations, and every
+screen here has been seen only by a proof, so the step is met ON PAPER; the consolidated device pass
+above (units 1, 3, Phase A and this phase: both themes, follow-system, `TAP_MIN` on every control, the
+13px floor at arm's length in sun) is the owed observation. **P1.23 closing does NOT close Band 1:**
+S23's bar — a commercial-grade general app: store compliance, a release build, hosting — is wider than
+P1.23's four items, which live in their own ROADMAP entries.
+**IS A LESSON OWED? NO.** The sweep is the a-quantified-sentence-names-no-member discipline applied
+deliberately (sweep by the term, keep the deliberate distinctions, keep the negative-control literals)
+— already recorded. The hazard it re-touched — a proof cell can be a server-body fixture or a negative
+control rather than an expectation — is already in
+`lessons/a-check-that-never-went-red-was-never-observed.md` and
+`lessons/a-proof-fixture-must-be-a-row-the-product-could-produce.md`; re-derived at each proof site,
+not a new class.
+
 **P1.23 item 3 — PHASE A: THE SHARED PRESENTATION LAYER, THE THEME, THE TAP SWEEP.
-2026-08-30.** No sha yet (this record is written before the commit; anchor next pass).
-This is the current-phase pointer; the unit-3 record below stands, anchored to `6f90971`.
+2026-08-30.** Committed at `8c2116d` (anchored 2026-08-31 in the Phase-B pass). This WAS the
+current-phase pointer until Phase B above; the unit-3 record below stands, anchored to `6f90971`.
 **BUILT and PROVEN headless; the on-device pass is UNOBSERVED (the owner's, and it is
 LARGER this pass — a whole theme).** New pure module `mobile/src/ui/theme.ts`: the token
 set for BOTH themes — colours (text, mutedText, textSubtle, placeholder, background,

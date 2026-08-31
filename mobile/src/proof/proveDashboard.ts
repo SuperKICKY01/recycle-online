@@ -395,7 +395,7 @@ function pTopAndTotals(): void {
   const withChips = summaryScreen({ kind: "ok", body: summaryBodyOf(many, "seller", "void") });
   if (withChips.kind === "summary") {
     check("the selected by-chip is 'seller' and says ตามผู้ขาย", withChips.byChips.find((c) => c.value === "seller")?.selected === true && withChips.byChips.find((c) => c.value === "seller")?.label === "ตามผู้ขาย");
-    check("the selected state-chip is 'void' and says บิลที่ยกเลิก", withChips.stateChips.find((c) => c.value === "void")?.selected === true && withChips.stateChips.find((c) => c.value === "void")?.label === "บิลที่ยกเลิก");
+    check("the selected state-chip is 'void' and says บิลที่ถูกยกเลิก", withChips.stateChips.find((c) => c.value === "void")?.selected === true && withChips.stateChips.find((c) => c.value === "void")?.label === "บิลที่ถูกยกเลิก");
   } else check("chips body renders a summary", false);
 }
 
@@ -412,7 +412,7 @@ function pUnsent(): void {
     line?.amount === "2000000000000.04",
     line?.amount ?? "(null)",
   );
-  check("the line names this device and the amount", (line?.text ?? "").startsWith("ค้างส่งจากเครื่องนี้ 3 ใบ · ยอด 2000000000000.04"));
+  check("the line names this device and the amount", (line?.text ?? "").startsWith("รอส่งจากเครื่องนี้ 3 ใบ · ยอด 2000000000000.04"));
 
   // A null amount is counted but named, never dropped (money-safety: no silent understatement).
   const withNull = unsentLine(["100.00", null]);

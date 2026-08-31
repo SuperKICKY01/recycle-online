@@ -1226,7 +1226,7 @@ function preFixStrip(c: StripCell): string {
   if (c.failed > 0) return "ส่งไม่สำเร็จ 1 ใบ — ต้องแก้ไข";
   if (c.online === false) {
     return c.pending > 0
-      ? `ออฟไลน์ — เก็บไว้ในเครื่อง ${String(c.pending)} ใบ จะส่งให้เองเมื่อเน็ตกลับมา`
+      ? `ออฟไลน์ — รอส่ง ${String(c.pending)} ใบ จะส่งให้เองเมื่อเน็ตกลับมา`
       : "ออฟไลน์ — บันทึกได้ตามปกติ";
   }
   if (c.pending > 0) return `กำลังส่ง ${String(c.pending)} ใบ`;

@@ -491,7 +491,7 @@ const ASK_THE_OWNER = "ต้องแจ้งเจ้าของร้าน
  * in sooner.
  */
 const UNDERSTATEMENT: readonly string[] = [
-  "ยอดนี้นับเฉพาะบิลที่ส่งถึงระบบแล้ว — บิลที่ยังค้างอยู่ในเครื่องที่หน้าลานยังไม่ถูกนับ ยอดจริงจึงอาจมากกว่าที่เห็น",
+  "ยอดนี้นับเฉพาะบิลที่ส่งเข้าระบบแล้ว — บิลที่ยังค้างอยู่ในเครื่องที่หน้าลานยังไม่ถูกนับ ยอดจริงจึงอาจมากกว่าที่เห็น",
   "เป็นเรื่องปกติ เครื่องหน้าลานบันทึกบิลลงเครื่องก่อนแล้วจึงส่งเข้าระบบเมื่อเชื่อมต่อได้ ระบบจึงไม่มีทางรู้ว่าตอนนี้มีบิลค้างอยู่ในเครื่องกี่ใบ",
 ];
 
@@ -507,7 +507,7 @@ const UNDERSTATEMENT: readonly string[] = [
  * missing at 00:10 needs to recognise the case, and 23:50 / 00:05 is the case.
  */
 const DAY_BOUNDARY =
-  "บิลนับตามเวลาที่ส่งถึงระบบ ไม่ใช่เวลาที่ชั่ง — บิลที่ชั่งเวลา 23:50 แต่ส่งถึงระบบเวลา 00:05 จะไปอยู่ในยอดของวันถัดไป";
+  "บิลนับตามเวลาที่ส่งเข้าระบบ ไม่ใช่เวลาที่ชั่ง — บิลที่ชั่งเวลา 23:50 แต่ส่งเข้าระบบเวลา 00:05 จะไปอยู่ในยอดของวันถัดไป";
 
 /**
  * Off-list is INFORMATION, not an allegation. Paying off the price list is
@@ -518,7 +518,7 @@ const DAY_BOUNDARY =
  * person's decisions. It says what happened and nothing about why.
  */
 const OFF_LIST_EXPLAIN =
-  "จ่ายไม่ตรงราคาตามรายการเป็นเรื่องที่เกิดได้ตามปกติ เช่น ตกลงราคากันหน้าลาน หรือราคาเพิ่งเปลี่ยน — ตรงนี้เป็นเพียงรายการให้เห็น ไม่ได้แปลว่ามีอะไรผิด";
+  "จ่ายไม่ตรงราคาประกาศเป็นเรื่องที่เกิดได้ตามปกติ เช่น ตกลงราคากันหน้าลาน หรือราคาเพิ่งเปลี่ยน — ตรงนี้เป็นเพียงรายการให้เห็น ไม่ได้แปลว่ามีอะไรผิด";
 
 const NO_MONEY_SHOWN =
   "ยังไม่ได้ตัวเลขจากระบบ จึงยังไม่แสดงยอด — ไม่ได้แปลว่าวันนี้ไม่มีการซื้อขาย บิลที่บันทึกไว้ยังอยู่ครบทุกใบ";
@@ -635,7 +635,7 @@ function billRow(l: DailyBillLine): BillRow {
     amount: money(l.total_amount),
     time: l.received_at === null ? "—" : shopTime(l.received_at),
     offList: l.off_list,
-    offListNote: l.off_list ? "จ่ายไม่ตรงราคาตามรายการ" : null,
+    offListNote: l.off_list ? "จ่ายไม่ตรงราคาประกาศ" : null,
   };
 }
 
@@ -818,7 +818,7 @@ function reportScreen(b: DailyReportBody): DailyReportScreen {
     unit: "บาท",
     countLine:
       activeCount === 0
-        ? "ยังไม่มีบิลที่ส่งถึงระบบในวันนี้"
+        ? "ยังไม่มีบิลที่ส่งเข้าระบบในวันนี้"
         : `จากบิล ${String(activeCount)} ใบ`,
   };
 
@@ -897,7 +897,7 @@ function reportScreen(b: DailyReportBody): DailyReportScreen {
    */
   const namedShort = offCount > offListDocNos.length;
   const offList: OffListSection = {
-    heading: "บิลที่จ่ายไม่ตรงราคาตามรายการ",
+    heading: "บิลที่จ่ายไม่ตรงราคาประกาศ",
     summary:
       offCount === 0
         ? ""
@@ -905,13 +905,13 @@ function reportScreen(b: DailyReportBody): DailyReportScreen {
     varianceLine:
       offCount === 0
         ? null
-        : `ต่างจากราคาตามรายการ ${money(b.totals.off_list_variance)} บาท (บวกคือจ่ายสูงกว่าราคาตามรายการ)`,
+        : `ต่างจากราคาประกาศ ${money(b.totals.off_list_variance)} บาท (บวกคือจ่ายสูงกว่าราคาประกาศ)`,
     explain: OFF_LIST_EXPLAIN,
     docNos: offListDocNos,
     incompleteNote: namedShort
       ? `แสดงเลขที่บิลได้ ${String(offListDocNos.length)} ใบจาก ${String(offCount)} ใบ เพราะรายการบิลด้านล่างยังไม่ครบทั้งวัน`
       : null,
-    emptyLine: offCount === 0 ? "ทุกบิลวันนี้จ่ายตรงราคาตามรายการ" : null,
+    emptyLine: offCount === 0 ? "ทุกบิลวันนี้จ่ายตรงราคาประกาศ" : null,
   };
 
   /* ---- the bill list: enough to find a bill, not the whole detail ---- */
@@ -919,7 +919,7 @@ function reportScreen(b: DailyReportBody): DailyReportScreen {
   const bills: BillsSection = {
     heading: "บิลของวันนี้",
     rows: b.lines.map(billRow),
-    emptyLine: b.lines.length === 0 ? "ยังไม่มีบิลที่ส่งถึงระบบในวันนี้" : null,
+    emptyLine: b.lines.length === 0 ? "ยังไม่มีบิลที่ส่งเข้าระบบในวันนี้" : null,
     /*
      * The list is paged and the totals above are not. Saying so is what keeps the
      * two reconcilable: an owner adding up the rows and getting less than the
