@@ -256,6 +256,19 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   The COUNT is untouched — nine is still nine, and this mints no tenth — but
   of the nine the schema now holds THREE: item 1's `default_grade`, item 7's
   address/phone, and item 9's `staff_money_visible`, superseding the "holds TWO" above.
+  **2026-08-31 (P1.21 phase 1) — WHAT ENABLING THE TOGGLE EXPOSES, and E1 does not make
+  it obvious.** With `staff_money_visible` on, `GET /sellers/{seller_id}/history` returns
+  the bill total and each line's `unit_price` for a staff caller on ALL of a seller's
+  bills, not just their own — so a staff account can learn prices across the shop seller
+  by seller, even though `GET /reports/summary` still restricts a staff caller to their
+  OWN bills (E1). This is G2, the advisor's reading pending the owner's word (the reasoning
+  is at ROADMAP § P1.21's dated note); the owner must weigh it BEFORE turning the toggle on.
+  **THE TOGGLE HAS NO MOBILE CONTROL — re-derived 2026-08-31, `rg -n staff_money_visible
+  mobile/`.** The phone READS the flag (`App.tsx` / `src/dashboard/dashboardView.ts`
+  `readMoneyVisible`, off `GET /shop`, to gate the dashboard entry E2) but draws NO control
+  to CHANGE it; `src/settings/shopSettings.ts` PATCHes only name / grade / address / phone.
+  So the toggle is `PATCH /shop`-only today — an admin sets it server-side, and no phone UI
+  does; a mobile control is a later line if the owner wants one on the phone.
 
 - **~~NO STAFF ACCOUNT EXISTS AND THERE IS NO WAY TO CREATE ONE — measured
   2026-08-10, not inferred.~~ — THE SECOND HALF IS CLOSED, THE FIRST STANDS.**
@@ -1416,6 +1429,23 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   See `ROADMAP.md § What the owner has settled` "S19 — P2.4 AND P2.5 STAY OPEN UNTIL A REAL SHOP TRADES".
   The eventual fix is one migration adding `ix_bills_tenant_received
   ON purchase_bills (tenant_id, server_received_at)`; this unit adds no index.
+- **`GET /sellers/{seller_id}/history`'s query SEQ-SCANS `purchase_bills` — found
+  2026-08-31 (P1.21 phase 1), NOT A DEFECT AT FIXTURE SIZE, RECORDED NOT FIXED.**
+  `EXPLAIN` under a real tenant context shows a `Seq Scan on purchase_bills` filtered
+  on `seller_id` and the RLS `tenant_id` predicate (and a `Seq Scan on
+  purchase_bill_items`): migration 0001 gives `purchase_bills` only `(tenant_id, id)`
+  and `(tenant_id, doc_no)`, so no index serves `WHERE seller_id = ?`. The SAME
+  future-volume shape as the `/reports/daily` and `/reports/summary` siblings above;
+  fine at one shop's volume, a P2.4 line (S19 keeps P2.4 open until a real shop
+  trades). The eventual fix is one migration adding an index on
+  `(tenant_id, seller_id, server_received_at)` (which also serves the newest-first
+  ORDER BY and LIMIT); this phase adds no index.
+- **`GET /sellers/{seller_id}/history` TAKES NO CURSOR AND NO DATE RANGE IN v1 —
+  2026-08-31 (P1.21 phase 1), A CHOICE, NOT AN OMISSION.** The weighbridge picker
+  wants the last few loads and `limit` (default 5, max 20) bounds them, so v1 takes
+  no cursor (`before`/`after`) and no `from_date`/`to_date`. Paging further back, or
+  by date, is a later line if a shop asks for it; recorded so the absence is not read
+  as an oversight.
 - **THE STAFF DASHBOARD HAS NO PER-BILL LIST — `/reports/daily` HAS NO OWN-BILLS
   VARIANT, found 2026-08-31 (P1.23 item 4 unit 3), OWNER'S CALL, NOTHING AUTHORISED.**
   The today view shows the per-bill list from `GET /reports/daily`, which returns the

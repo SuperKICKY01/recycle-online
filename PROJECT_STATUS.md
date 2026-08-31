@@ -75,9 +75,81 @@ not read the green as re-run.**
 
 ## Current phase
 
-**P1.23 item 3 — PHASE B: ONE VOCABULARY. 2026-08-31.** No sha yet (this record is written
-before the commit; anchor next pass). This is the current-phase pointer; the Phase-A record
-below is anchored to `8c2116d`.
+**P1.21 — SELLER HISTORY AT THE WEIGHBRIDGE, PHASE 1: the reading endpoint. 2026-08-31.**
+No sha yet (this record precedes the commit; anchor next pass). This is the current-phase
+pointer; the P1.23 records below stand, the Phase-B one anchored to `6117b67`.
+**BUILT (server, reading half) and PROVEN over real HTTP; no device work in this phase.**
+New route `GET /sellers/{seller_id}/history` in `server/app/master.py` (where every `/sellers`
+route lives): a seller's prior bills newest-first by `server_received_at`, LIMIT `limit`
+(default 5, max 20 — a violation is a 422 on the `limit` field), each bill carrying `bill_id`,
+`doc_no` (nullable), `server_received_at` and the shop-local `received_date` (ONE conversion
+from `config.SHOP_TIMEZONE`, the BE year the phone's to derive AFTER it), `is_void` (derived
+from `voided_at`; there is no `is_void` column), and a compact product list per bill —
+`product_id`, `product_name` (LEFT JOIN `products`, no `is_active` predicate so a retired
+product still resolves), `net_weight` (the weight `bills._line_amount` computed `amount` on).
+MONEY per G2: `total_amount` (per bill) and `unit_price` (per line) are present ONLY for an
+admin, or a staff caller when `tenants.staff_money_visible` is on; otherwise the KEYS ARE
+ABSENT and `money_included` is false. `get_principal` (staff READ history — it is the
+weighbridge's purpose; money is gated by absent keys, never a route refusal). Tenant isolation
+is RLS (no hand-written `WHERE tenant_id`); an unknown or cross-tenant seller is 404
+`seller_not_found` (RLS makes it invisible → `_read_seller` sees zero rows → `_not_found`), a
+seller with no bills is 200 with `bills: []` and `seller_id` echoed — the two distinguished by
+the existence check. One REPEATABLE READ snapshot; money and weight are decimal STRINGS
+straight from the NUMERIC columns (the `bills._read_bill` serialisation). No migration, no new
+column, no change to any existing route or constraint.
+**PROVEN (every command bare, exit read in the same invocation):**
+`scripts/prove_seller_history.py` exits 0 TWICE (each run re-restores its own scratch
+`recycle_seller_history_scratch` from a live dump — dev read-only — provisions two fresh
+throwaway tenants, and DELETES nothing; identity-gated on `/openapi.json` before any cell). Its
+child uvicorn is spawned per run on a FREE port, started AFTER the edits, so it imports the
+current code. Cells, operands printed: newest-first ordering; `limit` respected and its bound
+refused (0/21/100 → 422 on `limit`); the voided bill present and marked; weights and (admin)
+money byte-for-byte as strings; the midnight-straddle bill takes its SHOP day (2026-03-13), not
+its UTC day (2026-03-12); the zero-bill seller → 200 empty with `seller_id` echoed and
+`money_included` consistent; the unknown seller → 404 `seller_not_found`; another tenant's
+seller → 404 (RLS layer), with the OTHER admin seeing it as the positive control; staff with
+the toggle OFF → 200 (NOT 403) and the serialised body carries NEITHER `total_amount` NOR
+`unit_price`, with the admin body as the presence-control sibling; admin PATCH the toggle on →
+the staff body EQUALS the admin body byte-for-byte (money on ALL of the seller's bills, no
+`created_by = self` scope); the toggle reverted to false in-run and RE-READ false. FOUR
+disproofs on the route source, each named before it ran, each reddening ONLY its cell(s) and
+reverted: (a) drop the money gate → the S-OFF absent-keys cell; (b) drop the void flag → the
+void-marked cells (C, D-h3); (c) order oldest-first → the ordering cells (A, B-newest); (d)
+drop the existence check → the unknown/cross-tenant 404 cells (G, H) while the zero-bill cell
+(F) stayed GREEN, so the check is exactly what distinguishes 404 from 200-empty. `reconcile.py`
+on dev = exit 0, 0 violations, 13 tables (no schema change). The 15 sibling proofs matching
+`rg -l "sellers|/reports|FROM purchase_bills" server/scripts/` were NOT re-run: the change is
+purely additive, the two `/openapi.json` identity gates among them assert path MEMBERSHIP not
+an exact count (read at their `len(paths)` sites), and the full app imports cleanly (this
+phase's own child uvicorn served every router), so none can break on it; each also carries
+setup that would write dev debris or need infrastructure for zero expected signal — the
+unit-2 precedent, "a green not run today is not written as green". NAMED, grouped by that
+setup: EXTERNAL-SERVER (a live server writing bills or master data into dev) — `prove_daily_report`,
+`prove_revocation`, `prove_master_write`, `prove_master_data_gate`, `prove_seller_pricing`,
+`prove_master`; SCRATCH + its own server process — `prove_reports_summary`, `prove_seller_create`,
+`prove_seller_code_reservations`, `prove_year_gate`; SCRATCH + a git worktree —
+`prove_seller_code_guards`; SCRATCH/BACKUP, offline — `prove_reconcile`, `prove_docno_clock`,
+`prove_backup_restore`; and the offline throwaway-tenant RLS proof — `prove_rls`. Fifteen in all.
+**NOT OBSERVED — the drawing half (Phase 2 of this session) and any device work.** Phase 1 is
+server-only and draws nothing on a handset. G2 is the ADVISOR'S READING (money for admin OR any
+staff with the toggle on, across ALL the seller's bills), reported for the owner to overrule;
+it is BROADER than E1's own-bills scoping on the aggregate summary route (a per-seller listing
+is not a shop-wide aggregate) — flagged for the owner, built to as the brief directs.
+**FUTURE VOLUME (recorded, not fixed):** the history query `EXPLAIN`s to a `Seq Scan on
+purchase_bills` filtered on `seller_id`/`tenant_id` (and a seq scan on `purchase_bill_items`) —
+no index serves `seller_id`; fine at one shop's volume, a P2.4 sibling of the daily/summary
+notes, in OPEN_ITEMS. No cursor and no date range in v1 — a choice, also in OPEN_ITEMS.
+**IS A LESSON OWED? NO.** The disciplines this phase leaned on are already recorded and were
+re-derived at the artefact: the money keys ABSENT rather than zero is
+`fallback-default-is-a-wrong-number`; the 404-not-403 for a cross-tenant id is
+`403-is-about-what-the-caller-may-do` with the RLS-invisibility layer; the shop-day-from-one-
+offset is the render-in-shop-time / be-year-after-timezone pair; the negative money cell with a
+presence sibling is `a-check-that-never-went-red-was-never-observed`. No new class, no
+box-specific trap.
+
+**P1.23 item 3 — PHASE B: ONE VOCABULARY. 2026-08-31.** Committed at `6117b67` (anchored
+2026-08-31 in this P1.21 pass). This WAS the current-phase pointer until the P1.21 record
+above; the Phase-A record below is anchored to `8c2116d`.
 **SETTLED and SWEPT; proven headless.** The owner settled the disputed-terms table (STOP B-1,
 2026-08-31; recorded as HIS decisions). One term per concept now, across the `src/` wording
 modules, the `app/` screens and the proof expectations — presentation strings only, no logic

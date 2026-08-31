@@ -80,7 +80,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from .auth import Principal, get_principal, require_admin
+from .auth import ADMIN_ROLE, Principal, get_principal, require_admin
+from .config import SHOP_TIMEZONE
 from .db import constraint_name_of, tenant_connection
 
 router = APIRouter()
@@ -909,6 +910,197 @@ async def list_sellers(
             )
         ).mappings().all()
     return {"sellers": [_seller_payload(r) for r in rows]}
+
+
+# ---------------------------------------------------------------------------
+# Seller history at the weighbridge (P1.21) — the reading half.
+#
+#   GET /sellers/{seller_id}/history?limit=5
+#
+# When staff pick a seller on the phone, they see what that seller last sold:
+# when, what, how much (P1.21). Nothing new is stored — this lists rows that
+# already exist. Every DECISION below is written down because each is a place a
+# plausible alternative would return a wrong answer.
+#
+# WHO MAY READ IT, AND WHAT OF IT — get_principal, then money is gated in-handler.
+# Recognising a returning seller is the feature's whole purpose, so the NON-money
+# facts (the date, the products, the weights) go to any signed-in user; a
+# cross-tenant read is impossible, and that is RLS (below), not a role check.
+# MONEY is different. Per D1 (ROADMAP § P1.23 item 4, 2026-08-30) staff see no
+# money unless the shop owner turns tenants.staff_money_visible on. So
+# total_amount (per bill) and unit_price (per line) are present ONLY for an admin,
+# or a staff caller when staff_money_visible is true; otherwise THE KEYS ARE
+# ABSENT — not null, not zero, because an absent key cannot be rendered as a
+# number by mistake (lessons/fallback-default-is-a-wrong-number.md) — and every
+# response carries money_included so the phone can say WHY prices are hidden
+# rather than guess.
+#
+#   THE ADVISOR'S READING, built to here and reported as such for the owner to
+#   overrule (this file does not settle it): the money gate is admin OR
+#   staff_money_visible, with NO created_by = self restriction. That is BROADER
+#   than E1 (OPEN_ITEMS, 2026-08-31), which scopes a staff caller on the AGGREGATE
+#   /reports/summary to their OWN bills — the difference is deliberate. Seller
+#   history is a per-seller listing whose purpose is recognising the seller across
+#   every visit, not a shop-wide aggregate; a staff caller with the toggle on
+#   therefore sees the money on ALL of this seller's recent bills, including loads
+#   weighed by other staff. The owner reconciles the two if he wants seller-history
+#   money own-weighed only.
+#
+# VOIDED BILLS ARE INCLUDED AND MARKED (is_void true). A seller's history that
+# silently dropped voided loads would misstate what happened at the yard. There is
+# no is_void column — void is derived from voided_at IS NOT NULL, the same
+# derivation bills._read_bill uses for its status field.
+#
+# THE EMPTY CASE IS A REQUIREMENT, not a courtesy (P1.21 DONE WHEN). A seller with
+# no prior bills returns 200 with bills: [] and seller_id echoed, distinguishable
+# from a failure AND from an unknown seller. An unknown seller, or one in another
+# tenant, is 404 (_not_found("seller"), code seller_not_found): RLS makes a
+# cross-tenant row INVISIBLE, so _read_seller sees zero rows and raises — never a
+# 403, never an empty list, so the API cannot be used to probe which ids exist in
+# a shop you do not belong to (the _not_found docstring's own guarantee).
+#
+# ONE SNAPSHOT. The existence check, the money-visibility read and the read that
+# builds the answer run in ONE repeatable-read transaction, so the answer is one
+# instant. A read-only repeatable read cannot raise 40001.
+#
+# TENANT SCOPING IS RLS — not one hand-written WHERE tenant_id (this file's own
+# rule above; ARCHITECTURE §8.1 rule 2, §8.2). The only predicate is seller_id,
+# which is the subject, not tenant isolation. WEIGHT is net_weight — the one the
+# stored amount was computed on (bills._line_amount: round(net_weight *
+# unit_price, 2), ROUND_HALF_UP). Money and weight are decimal STRINGS straight
+# from the NUMERIC columns (bills._read_bill's serialisation), never a JSON number
+# (ARCHITECTURE §5). server_received_at converts to shop time from
+# config.SHOP_TIMEZONE and from nowhere else (ARCHITECTURE §6, ONE conversion);
+# the BE year is the phone's to derive, AFTER that conversion.
+#
+# NO cursor and NO date range in v1, a deliberate choice (the picker wants the
+# last few loads and limit bounds them), recorded in OPEN_ITEMS — not an omission.
+# ---------------------------------------------------------------------------
+_HISTORY_DEFAULT_LIMIT = 5
+_HISTORY_MAX_LIMIT = 20
+
+# The seller's bills, newest first, each bill's lines joined to the product name.
+# LEFT JOIN products with NO is_active predicate — a retired product must still
+# resolve on the day it traded, exactly as bills._read_bill (INNER would silently
+# drop a line and misstate the load). The LIMIT sits INSIDE the CTE so it bounds
+# BILLS, not rows. Ordered server_received_at DESC, then id DESC (a deterministic
+# tiebreak when two loads share the same instant), then line_no within a bill.
+# NEVER device_created_at and NEVER doc_no as the sort key
+# (lessons/doc-no-is-arrival-order-not-event-time.md): arrival order is what a
+# report keys on, and doc_no is text so its order is not even numeric.
+_SELLER_HISTORY_SQL = """
+WITH b AS (
+    SELECT id, doc_no, total_amount, server_received_at, voided_at
+      FROM purchase_bills
+     WHERE seller_id = :seller_id
+     ORDER BY server_received_at DESC, id DESC
+     LIMIT :limit
+)
+SELECT b.id AS bill_id, b.doc_no, b.total_amount, b.server_received_at,
+       b.voided_at, i.line_no, i.product_id, i.net_weight, i.unit_price,
+       p.name AS product_name
+  FROM b
+  LEFT JOIN purchase_bill_items i ON i.bill_id = b.id
+  LEFT JOIN products p ON p.id = i.product_id
+ ORDER BY b.server_received_at DESC, b.id DESC, i.line_no
+"""
+
+
+@router.get("/sellers/{seller_id}/history")
+async def seller_history(
+    seller_id: uuid.UUID,
+    limit: int = Query(_HISTORY_DEFAULT_LIMIT, ge=1, le=_HISTORY_MAX_LIMIT),
+    # get_principal, NOT require_admin: staff READ history (it is the weighbridge's
+    # purpose); money is gated inside the handler, never by a route refusal.
+    principal: Principal = Depends(get_principal),
+) -> dict:
+    """A seller's recent bills at the weighbridge — when, what, how much (P1.21).
+
+    Returns ``{seller_id, money_included, limit, bills}``, newest first by
+    server_received_at. Each bill carries ``bill_id``, ``doc_no`` (null until it
+    syncs), ``server_received_at`` and the shop-local ``received_date``,
+    ``is_void``, and ``products`` — one entry per bill line with ``product_id``,
+    ``product_name`` (null if the product was retired) and ``net_weight`` (the
+    weight the stored amount was computed on). ``total_amount`` (per bill) and
+    ``unit_price`` (per line) are present ONLY when ``money_included`` — admin, or
+    staff with the shop's staff_money_visible on; otherwise the KEYS ARE ABSENT
+    and money_included is false, so the phone says why rather than render a guess.
+
+    Voided bills are INCLUDED and marked ``is_void``. A seller with no prior bills
+    is 200 with ``bills: []`` (distinguishable from a failure); an unknown seller,
+    or one in another tenant, is 404 (``seller_not_found``) — RLS makes a
+    cross-tenant row invisible, so it is never a 403 and never an empty list.
+    """
+    async with tenant_connection(
+        principal.tenant_id, isolation_level="REPEATABLE READ"
+    ) as conn:
+        # Existence FIRST, so an unknown or cross-tenant seller is a 404 the caller
+        # can tell apart from a seller who simply has no bills yet. RLS makes
+        # another tenant's seller INVISIBLE -> _read_seller returns None -> 404.
+        if await _read_seller(conn, seller_id) is None:
+            raise _not_found("seller")
+
+        # The per-shop money switch, read inside the snapshot. RLS scopes it to
+        # this shop's single row. Admin always sees money; a staff caller only when
+        # the owner has turned it on (D1). This is the WHOLE money gate here (G2 /
+        # the advisor's reading) — there is no created_by = self scope.
+        money_visible = (
+            await conn.execute(text("SELECT staff_money_visible FROM tenants"))
+        ).scalar_one()
+        money_included = principal.role == ADMIN_ROLE or bool(money_visible)
+
+        rows = (
+            await conn.execute(
+                text(_SELLER_HISTORY_SQL),
+                {"seller_id": seller_id, "limit": limit},
+            )
+        ).mappings().all()
+
+    # Group the flat rows into bills, preserving the query's newest-first order.
+    bills: list[dict] = []
+    by_id: dict[str, dict] = {}
+    for r in rows:
+        bill_id = str(r["bill_id"])
+        bill = by_id.get(bill_id)
+        if bill is None:
+            # ONE conversion, from the ONE server-side offset (config.SHOP_TIMEZONE).
+            # received_date is the shop day; the phone derives the BE year AFTER
+            # this conversion (ARCHITECTURE §6), never before.
+            local = r["server_received_at"].astimezone(SHOP_TIMEZONE)
+            bill = {
+                "bill_id": bill_id,
+                "doc_no": r["doc_no"],
+                "server_received_at": local.isoformat(),
+                "received_date": local.date().isoformat(),
+                "is_void": r["voided_at"] is not None,
+                "products": [],
+            }
+            if money_included:
+                # The bill's stored total, straight from NUMERIC(14,2) as a string
+                # (bills._read_bill), never recomputed from today's prices.
+                bill["total_amount"] = str(r["total_amount"])
+            by_id[bill_id] = bill
+            bills.append(bill)
+        # A line-less bill cannot occur (POST /bills requires items), but the LEFT
+        # JOIN would yield a null line for one if it ever did — skip it rather than
+        # invent an empty product row.
+        if r["line_no"] is None:
+            continue
+        line = {
+            "product_id": str(r["product_id"]),
+            "product_name": r["product_name"],
+            "net_weight": str(r["net_weight"]),
+        }
+        if money_included:
+            line["unit_price"] = str(r["unit_price"])
+        bill["products"].append(line)
+
+    return {
+        "seller_id": str(seller_id),
+        "money_included": money_included,
+        "limit": limit,
+        "bills": bills,
+    }
 
 
 # ---------------------------------------------------------------------------

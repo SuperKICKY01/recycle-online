@@ -6920,6 +6920,52 @@ at the moment of the run, so no number is written here. AND a seller with NO
 prior bills returns an empty answer that the caller can tell apart from a
 failure — the case a query written along its happy path does not distinguish.
 
+**BUILT — the reading half, and the drawing half's GATE LIFTED. 2026-08-31. No sha
+yet (this note precedes the commit; anchor next pass).**
+
+- **The reading half is built and proven.** `GET /sellers/{seller_id}/history`
+  now lives in `server/app/master.py` (which owns every `/sellers` route): a
+  seller's prior bills newest-first by `server_received_at`, each carrying
+  `doc_no` (nullable), `server_received_at` and the shop-local `received_date`,
+  `is_void`, and the lines' products (`product_id`, `product_name`, `net_weight`).
+  Voided bills are INCLUDED and marked. A seller with no bills is 200 with an
+  empty list; an unknown or cross-tenant seller is 404 (`seller_not_found` — RLS
+  makes it invisible), so the empty case is distinguishable from a failure AND
+  from an unknown seller — the DONE WHEN above, met over real HTTP by
+  `server/scripts/prove_seller_history.py` (green twice; four disproofs each
+  reddening only its named cell). `get_principal`, RLS isolation, decimal-string
+  money, one repeatable-read snapshot.
+- **G1 — THE DRAWING HALF IS NO LONGER GATED, and this is a document claim going
+  false as the work it named landed, not a new decision.** The paragraphs above
+  say the drawing half waits on S10's undefined rework. That rework is P1.23, and
+  P1.23's DONE WHEN is met headless at `6117b67` (its item 1–4 record in this
+  file). The gate therefore no longer stands: the drawing half is unblocked, and
+  it is the SECOND phase of this same P1.21 session — the phone surface where a
+  seller is picked. The two "S10 gates the drawing half" sentences above are
+  superseded by this dated note.
+- **G2 — THE MONEY QUESTION, recorded as THE ADVISOR'S READING pending the
+  owner's word.** P1.21 names "how much, and at what price" among what staff see;
+  D1 (2026-08-30) says staff see no money unless the owner turns
+  `staff_money_visible` on. The reading built here, reported for the owner to
+  overrule: history ALWAYS shows date, product and weight (what recognises a
+  seller — the feature's purpose); the bill total and each line's `unit_price` are
+  returned ONLY for an admin, or a staff caller when `staff_money_visible` is on,
+  gated SERVER-SIDE (the keys are ABSENT, and `money_included` is false so the
+  phone can say why). This is BROADER than E1 (2026-08-31, recorded in OPEN_ITEMS),
+  which scopes a staff caller on the AGGREGATE period summary to their OWN bills:
+  seller history is a per-seller listing, not a shop-wide aggregate, so a staff
+  caller with the toggle on sees the money on ALL of that seller's recent bills,
+  including loads other staff weighed. The owner reconciles the two if he wants
+  seller-history money own-weighed only. THE REASONING (the advisor's, pending the
+  owner's word): seller history is the price the shop paid the person standing at
+  the weighbridge — a fact that person already knows — whereas E1 protects the
+  shop's AGGREGATE takings; restricting history to own-weighed bills would make the
+  surface useless the moment a colleague weighed the last load. THE CONSEQUENCE THE
+  OWNER MUST SEE BEFORE ENABLING THE TOGGLE, because E1 does not make it obvious:
+  with `staff_money_visible` on, a staff account can learn prices across the shop
+  seller by seller, even though the aggregate period summary still restricts a
+  staff caller to their OWN bills (recorded in OPEN_ITEMS beside the toggle).
+
 ### P1.22 — Anomaly signals: three named ones
 
 **What it is.** Three signals, named by the owner and not widened here:
