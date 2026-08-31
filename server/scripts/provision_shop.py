@@ -301,8 +301,27 @@ async def run(args: argparse.Namespace) -> int:
                      "fn": args.admin_full_name or args.admin_username,
                      "ph": pw_hash},
                 )
+                # A NEW SHOP IS A ONE-TIER SHOP (F2, P1.24). grade_tiers backs
+                # every grade since migration 0015, so a shop needs at least one
+                # tier before it can price anything; a shop that does not grade is
+                # a single tier, not a nullable grade. 'A' is the programme's
+                # neutral placeholder, not a Thai business word
+                # (lessons/fallback-default-is-a-wrong-number.md); the shop renames
+                # it or adds tiers when it configures grading. default_grade is
+                # left NULL on purpose: F2 seats sellers IN the tier (a
+                # seller-create concern, the routes' half), rather than leaning on
+                # the shop-wide fallback F2 calls "not the answer".
+                await conn.execute(
+                    text(
+                        "INSERT INTO grade_tiers"
+                        " (tenant_id, code, name, sort_order, is_active)"
+                        " VALUES (:t, 'A', 'A', 0, true)"
+                    ),
+                    {"t": tenant_id},
+                )
             print(f"  tenant         : {tenant_id} (created, {args.name!r})")
             print(f"  admin user     : {args.admin_username} (created)")
+            print("  grade tier     : A (starter; a one-tier shop until configured)")
 
         # ------------------------------------------------------- the shop code
         # ONE CODE PER SHOP IS THE DATABASE'S RULE, not this script's:

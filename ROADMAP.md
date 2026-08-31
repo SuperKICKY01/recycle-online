@@ -813,6 +813,12 @@ CHECK constraints; the grade model is a per-tenant TABLE replacing a CHECK
 constraint; lump-sum is a change to the bill LINE; shop identity is master data
 on `tenants`.
 
+**BUILT 2026-08-31 (P1.24, migration 0015):** the grade-model clause of this — "the
+grade model is a per-tenant TABLE replacing a CHECK constraint" — is now done.
+`grade_tiers` is that table, and the three A–D CHECKs are replaced by composite FKs.
+The schema is commit 1a; the routes a shop uses to declare its tiers are commit 1b
+(S6 split, `ROADMAP.md § P1.24`). Recorded as done, no re-litigation.
+
 **NO JSON BAG.** It would be the first value in this schema with no constraint on
 it, in a system whose whole discipline is that a wrong value must be
 unrepresentable. The four named CHECK constraints finding (c) cites are the
@@ -7272,6 +7278,35 @@ The tier NAMES and their number are the shop's, so the criterion counts nothing.
 **NOT PINNED TO A SHA:** this step is minted in the M6 c2 commit, so HEAD names the
 commit that does not build it; the date stands
 (`CLAUDE.md § Conventions` "PIN A CLAIM TO A COMMIT").
+
+**2026-08-31 — P1.24 STARTED, and it SPLIT (S6). The owner's decisions F0–F4,
+recorded as HIS.** F0: a good trade application ships every function and lets the
+shop adjust all of it (S11 at the grade model); where a bound is not technically
+required, there is none. F1: at least ONE tier, no product-imposed maximum. F2: a
+shop that does not grade is a shop with ONE tier — not a nullable grade — no office
+round trip, no grade control shown. F3: tier NAMES are the shop's own text, unique
+within a shop, the shop's own ordering. F4: changing the tier set never rewrites
+history (a bill carries its own prices, hard rule 6); a tier is DEACTIVATED, never
+deleted, and deactivation is refused while sellers sit in it, naming the count.
+- **Commit 1a (the schema half):** migration `0015` creates the per-tenant
+  `grade_tiers` table (S16's TABLE replacing a CHECK), backfills it from the data
+  present, and re-points `product_prices.grade`/`sellers.grade`/`tenants.default_grade`
+  at it by composite FK on `code`, dropping the three A–D CHECKs (`product_prices_grade_check`,
+  `ck_sellers_grade`, `ck_tenants_default_grade` — re-derived from `pg_constraint`, not
+  the log). `reconcile.py`, `seed_dev.py` and `provision_shop.py` learn the table, and
+  the backup round-trip carries it. Applied to dev, proven up / backfill / down / guard.
+  Every existing route still works on the same values — A–D for the seeded shops, whose
+  tiers the backfill guarantees.
+- **Commit 1b (owed):** the ROUTES — `GET/POST/PATCH /grade-tiers`, the deactivation
+  refusal carrying its count, and `/shop`/seller/price validation against the shop's
+  OWN tier set — plus `prove_grade_tiers.py`. Until 1b, a grade a shop has not declared
+  is refused by the FK, not by a message a person can read.
+- **DONE WHEN, read literally: NOT YET MET, and that is why it split.** Its first half
+  (a shop CONFIGURES a non-default tier set, a seller against one of its tiers, a bill
+  priced from it) needs the routes to configure tiers — 1b. Its second half (a no-grade
+  shop trades a walk-in with no round trip) needs seller-create to seat a seller in the
+  one tier — 1b, per F2's "a nullable grade is NOT the answer". 1a builds the storage
+  both rest on.
 
 ---
 

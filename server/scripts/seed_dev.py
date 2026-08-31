@@ -66,6 +66,26 @@ async def main() -> None:
                     ),
                     {"id": s["category_id"], "t": s["tenant_id"]},
                 )
+                # grade_tiers FIRST: product_prices.grade and sellers.grade carry
+                # composite FKs to grade_tiers since migration 0015, so a tier must
+                # exist before a graded row references it (same transaction, so the
+                # FK sees it). One tier per distinct grade this tenant uses,
+                # code=name=grade, 0-based alphabetical -- the rule 0015's backfill
+                # applies. Idempotent via ON CONFLICT (tenant_id, code) DO NOTHING.
+                grades = sorted(
+                    {g for p in s["products"] for g in p["prices"]}
+                    | {sl["grade"] for sl in s["sellers"] if sl["grade"]}
+                )
+                for i, g in enumerate(grades):
+                    await conn.execute(
+                        text(
+                            "INSERT INTO grade_tiers"
+                            " (tenant_id, code, name, sort_order, is_active)"
+                            " VALUES (:t, :code, :name, :so, true)"
+                            " ON CONFLICT (tenant_id, code) DO NOTHING"
+                        ),
+                        {"t": s["tenant_id"], "code": g, "name": g, "so": i},
+                    )
                 for p in s["products"]:
                     await conn.execute(
                         text(

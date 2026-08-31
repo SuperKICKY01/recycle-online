@@ -256,6 +256,24 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   The COUNT is untouched — nine is still nine, and this mints no tenth — but
   of the nine the schema now holds THREE: item 1's `default_grade`, item 7's
   address/phone, and item 9's `staff_money_visible`, superseding the "holds TWO" above.
+  **Superseded 2026-08-31 (P1.24, migration 0015): ITEM 1 IS NOW BUILT AS A TABLE, and
+  the "holds THREE" line above mislabelled which store is item 1's.** Item 1 is the
+  GRADE MODEL — "how many tiers, what they are called, and whether tiers exist at all"
+  — and that is now the per-tenant TABLE `grade_tiers` (0015), which is exactly what
+  item 1 asks for. `default_grade` (0010), which the line above attributed to item 1,
+  is NOT item 1: it is the shop-wide fallback this entry's own 2026-08-18 amendment
+  already reclassified ("the mechanism is not the one item 2 names ... a SHOP-WIDE
+  FALLBACK read at BILL time"), item-2-adjacent, and it is unchanged. The COUNT stays
+  NINE (no tenth minted). Re-derived, the schema now holds, of the nine, item 1
+  (`grade_tiers`), item 7 (`address`/`phone`) and item 9 (`staff_money_visible`) — the
+  same integer THREE, but now item 1 is represented by its own table rather than by a
+  mislabelled fallback — PLUS `default_grade` as the item-2 fallback beside them. Item
+  1's original *Not done:* line ("no column, no table, and no default to put one in")
+  is now false in full: there is a table, with a composite FK from every graded row.
+  What P1.24 has NOT yet built (S6-split: this is commit 1a): the ROUTES a shop uses to
+  DECLARE its tiers, and the seller/price validation against a shop's OWN set — until
+  1b lands, a grade a shop has not declared is refused by the FK, not by a message a
+  person can read.
   **2026-08-31 (P1.21 phase 1) — WHAT ENABLING THE TOGGLE EXPOSES, and E1 does not make
   it obvious.** With `staff_money_visible` on, `GET /sellers/{seller_id}/history` returns
   the bill total and each line's `unit_price` for a staff caller on ALL of a seller's
@@ -1417,6 +1435,17 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Code debt found and left in place
 
+- **AN UNTRACKED `0015_tenant_grade_tiers.py` PRE-EXISTED THE P1.24 COMMIT-1a SESSION
+  AND WAS OVERWRITTEN UNREAD — recorded 2026-08-31, NOT RECOVERABLE.** The session-start
+  `git status --porcelain` (in the phase-brief handoff) held exactly ONE entry:
+  `?? server/migrations/versions/0015_tenant_grade_tiers.py`. The commit-1a session
+  `Write` to that path replaced it without reporting an overwrite-conflict and without
+  reading the prior content first — a `CLAUDE.md § Engineering conduct` "look before
+  overwriting" miss. The committed `0015` is the version proven on dev (up / backfill /
+  down / guard). The prior file was UNTRACKED, so git never held it and its content is
+  gone; measured this pass, nothing else from that earlier attempt survives: `git stash
+  list` is empty, `git log --oneline -3` shows no P1.24 commit (HEAD `0b2aee4`), and the
+  only other untracked path is this session's own new lesson. Recorded, not hunted for.
 - **`GET /reports/summary`'s `by=day` query SEQ-SCANS `purchase_bills` — found
   2026-08-30 (P1.23 item 4 unit 2), NOT A DEFECT AT FIXTURE SIZE, RECORDED NOT
   FIXED.** `EXPLAIN` over the fixture shows a `Seq Scan on purchase_bills` filtered on
@@ -4296,6 +4325,19 @@ with no feature of its own.
 
 ## Documentation
 
+- **`ARCHITECTURE.md`'s TABLE-AND-RLS COUNTS OUTSIDE § 4 ARE STALE — found
+  2026-08-31 (P1.24, migration 0015), NOT REPAIRED.** P1.24's brief scoped the
+  ARCHITECTURE edit to § 4 (superseded in place: the count, the two grade CHECK
+  cells, the new `grade_tiers` row). The same counts recur OUTSIDE § 4 and are now
+  wrong: § 2.1 "10 business tables" and the `server/` row's "5 migrations applied";
+  § 8.1 rule 2 "all 10 tables"; § 8.2 "policy, 9 tables" / "the 10th table" and
+  "the ten FORCE-RLS business tables". Re-derived on dev 2026-08-31 (reconcile S1/S3):
+  `public` holds FOURTEEN relations, THIRTEEN business tables, and TWELVE carry FORCE
+  RLS with a policy ("12 of 12"). These were ALREADY stale before 0015 — `0012` added
+  a FORCE-RLS business table (`seller_code_reservations`) that none of them counts — so
+  0015 aggravates a pre-existing gap rather than creating it. Not repaired: the brief
+  scoped § 4 only, and correcting the § 8 enumeration is a-quantified-sentence work
+  `0012` owed. Recorded so a reader of § 8 is not misled. (Line numbers drift; re-derive.)
 - **`lessons/proof-must-run-twice.md`'s FIFTH amendment says `prove_reconcile.py`
   "has been red ever since" the 2026-08-03 rebuild — that claim is now STALE.
   Found 2026-08-30, NOT REPAIRED.** Re-measured this pass, twice with no reseed:

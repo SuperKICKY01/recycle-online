@@ -32,17 +32,20 @@ load_dotenv()
 
 APP_URL = os.environ["APP_DATABASE_URL"]
 
-# tenants is keyed on `id`; the other eight on `tenant_id`.
+# tenants is keyed on `id`; the others on `tenant_id`. grade_tiers (0015) is
+# included so a tier this proof seeds is counted by the straggler check.
 ALL_TABLES = [
     "tenants", "users", "uoms", "product_categories", "products",
-    "product_prices", "sellers", "purchase_bills", "purchase_bill_items",
+    "product_prices", "sellers", "grade_tiers", "purchase_bills", "purchase_bill_items",
 ]
 
 
 # Teardown order: children before parents, so no composite FK is ever violated.
+# grade_tiers sits AFTER product_prices and sellers (both FK to it) and BEFORE
+# tenants (it FKs to tenants) -- migration 0015.
 _TEARDOWN_ORDER = [
     "purchase_bill_items", "purchase_bills", "product_prices", "products",
-    "sellers", "product_categories", "uoms", "users", "tenants",
+    "sellers", "grade_tiers", "product_categories", "uoms", "users", "tenants",
 ]
 
 
@@ -92,6 +95,14 @@ async def seed_tenant(conn, tid, label: str) -> dict:
         text("INSERT INTO products (id, tenant_id, category_id, uom_id, code, name)"
              " VALUES (:id, :t, :cat, :uom, 'FE-STEEL', 'Steel scrap')"),
         {"id": ids["product"], "t": tid, "cat": ids["cat"], "uom": ids["uom"]})
+    # grade_tiers FIRST (0015): product_prices.grade is a composite FK to
+    # grade_tiers (tenant_id, code), so tier 'A' must exist before the price row
+    # below references it. app.tenant_id == tid, so this exercises the RLS WITH
+    # CHECK on grade_tiers too.
+    await conn.execute(
+        text("INSERT INTO grade_tiers (tenant_id, code, name, sort_order, is_active)"
+             " VALUES (:t, 'A', 'A', 0, true)"),
+        {"t": tid})
     await conn.execute(
         text("INSERT INTO product_prices (id, tenant_id, product_id, grade, price)"
              " VALUES (:id, :t, :p, 'A', :price)"),
@@ -117,7 +128,7 @@ async def seed_tenant(conn, tid, label: str) -> dict:
     return ids
 
 
-async def drop_tenant(conn, tid) -> tuple[int, list[str]]:
+async def drop_tenant(conn, owner_conn, tid) -> tuple[int, list[str]]:
     """Delete one THROWAWAY tenant's entire graph. Returns (rows, errors).
 
     WHY DELETING IS RIGHT HERE, AND ONLY HERE. Hard rule 5 forbids hard-deleting
@@ -141,15 +152,20 @@ async def drop_tenant(conn, tid) -> tuple[int, list[str]]:
     """
     removed, errors = 0, []
     for table in _TEARDOWN_ORDER:
+        # grade_tiers is deleted by the OWNER: F4 REVOKEs DELETE from recycle_app,
+        # so the app role cannot remove a tier. The owner is FORCE-RLS-bound too,
+        # so with the tenant context set the DELETE is still scoped to this one
+        # tenant -- the same isolation, one privileged role over.
+        dc = owner_conn if table == "grade_tiers" else conn
         try:
-            async with tenant_tx(conn, tid):
-                removed += (await conn.execute(text(f"DELETE FROM {table}"))).rowcount
+            async with tenant_tx(dc, tid):
+                removed += (await dc.execute(text(f"DELETE FROM {table}"))).rowcount
         except Exception as e:  # noqa: BLE001 - report every one, skip none
             errors.append(f"{table}: {type(e).__name__}: {str(e).splitlines()[0]}")
     return removed, errors
 
 
-async def teardown(conn, tenant_a, tenant_b, failures: list[str]) -> None:
+async def teardown(conn, owner_conn, tenant_a, tenant_b, failures: list[str]) -> None:
     """Remove both throwaway tenants, and ASSERT that nothing was left behind.
 
     "It passed" and "it cleaned up" are separate claims and this makes the second
@@ -158,7 +174,7 @@ async def teardown(conn, tenant_a, tenant_b, failures: list[str]) -> None:
     """
     banner("TEARDOWN - remove the two throwaway tenants this run invented")
     for label, tid in (("A", tenant_a), ("B", tenant_b)):
-        removed, errors = await drop_tenant(conn, tid)
+        removed, errors = await drop_tenant(conn, owner_conn, tid)
         print(f"  tenant {label} {tid}: {removed} rows removed")
         for e in errors:
             print(f"    !!! {e}")
@@ -187,6 +203,13 @@ async def count_all(conn) -> dict:
 
 async def main() -> int:
     engine = create_async_engine(APP_URL)
+    # A SECOND engine as the OWNER, used ONLY to delete grade_tiers in teardown.
+    # F4 REVOKEs DELETE on grade_tiers from recycle_app (a tier is deactivated,
+    # never deleted), so a throwaway tenant's tier cannot be removed by the app
+    # role, and its tenant then cannot be dropped either (grade_tiers FKs to
+    # tenants). The owner CAN delete it, and is FORCE-RLS-bound too, so with the
+    # tenant context set the DELETE is still scoped to that one tenant.
+    owner_engine = create_async_engine(os.environ["MIGRATION_DATABASE_URL"])
     failures: list[str] = []
     tenant_a, tenant_b = uuid.uuid4(), uuid.uuid4()
 
@@ -194,11 +217,12 @@ async def main() -> int:
     # the LOCAL tenant context did not leak out of its transaction.
     async with AsyncExitStack() as stack:
         conn = await stack.enter_async_context(engine.connect())
+        owner_conn = await stack.enter_async_context(owner_engine.connect())
         # Teardown is registered HERE, before a single fixture row exists, so it
         # runs on EVERY exit path — including an unexpected exception halfway
         # through a step. Callbacks unwind LIFO, so it fires while the connection
         # is still open and before it is returned to the pool.
-        stack.push_async_callback(teardown, conn, tenant_a, tenant_b, failures)
+        stack.push_async_callback(teardown, conn, owner_conn, tenant_a, tenant_b, failures)
 
         banner("ROLE / PRIVILEGE PROOF  (this is who the queries run as)")
         async with conn.begin():
@@ -338,6 +362,7 @@ async def main() -> int:
             print(f"    item(A) with product_id = <B's product pk> -> rejected: {first}")
 
     await engine.dispose()
+    await owner_engine.dispose()
 
     banner("RESULT")
     if failures:

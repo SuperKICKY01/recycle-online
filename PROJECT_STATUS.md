@@ -75,8 +75,94 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.24 — THE PER-TENANT GRADE MODEL, COMMIT 1a: the schema, the backfill, the
+operational surfaces (S6 split). 2026-08-31.** No sha yet (this record precedes the
+commit; anchor next pass). This is the current-phase pointer.
+**BUILT and PROVEN on dev; NO device work and NO new routes in this commit — those are 1b.**
+Migration `0015_tenant_grade_tiers.py` creates the per-tenant `grade_tiers` table (S16's
+TABLE replacing a CHECK), applied to dev `recycle` (`alembic current` = 0015). Columns
+re-read from `information_schema`: `id` uuid PK (gen_random_uuid), `tenant_id` NOT NULL →
+tenants, `code`/`name` text NOT NULL, `sort_order` int NOT NULL, `is_active` bool NOT NULL
+default true, `created_at` timestamptz. Constraints: `uq_grade_tiers_tenant_id (tenant_id,id)`,
+`uq_grade_tiers_tenant_code (tenant_id,code)`, `ck_grade_tiers_code_len (1..32)`,
+`ck_grade_tiers_name_len (1..100)`; RLS ENABLE+FORCE+`tenant_isolation`; grants
+SELECT/INSERT/UPDATE, DELETE REVOKED (F4).
+**THE RE-POINT (FK target = `code`, not `id`).** The three A–D CHECKs — `product_prices_grade_check`
+(0001, inline/auto-named), `ck_sellers_grade` (0003), `ck_tenants_default_grade` (0010),
+re-derived from `pg_constraint`, NOT the log's mistaken "four/five sites" (`purchase_bill_items.grade`
+was DROPPED by 0003 and does not exist) — are DROPPED. `product_prices.grade` and `sellers.grade`
+become composite FKs `(tenant_id, grade) → grade_tiers (tenant_id, code)`; `tenants.default_grade`
+becomes `(id, default_grade) → grade_tiers (tenant_id, code)`, nullable/MATCH SIMPLE. `code`
+over `id`: the grade columns keep their type and every existing read/write keeps working; the
+composite FK on `code` carries `tenant_id`, so ARCHITECTURE § 4 point-1 tenant-consistency holds;
+the `name` is the freely-renameable display (F3), the `code` the stable handle (F4's rename answer).
+**THE BACKFILL (from data present, MEASURED on dev, read back from Postgres).** One tier per
+distinct grade a tenant uses across product_prices/sellers/default_grade; a no-grade tenant gets
+ONE tier code='A' (F2 — the programme's neutral placeholder, never shown). Shop A `1111` and Shop
+B `2222` each {A,B,C,D} sort 0-3; `982d76af` and `a45432ea` each one 'A' — 10 tiers, 0 orphans
+(positive control: a fake code returns 1).
+**FORCE-RLS backfill.** Migrations run as `recycle_owner`, FORCE-bound → reads 0 rows with no
+context; the migration lifts FORCE on the three source tables (owner-only; recycle_app stays
+governed), backfills, restores FORCE — measured (owner reads 0/0/0 with FORCE, 24/11/4 with NO
+FORCE, rollback left forced=t). The downgrade GUARD had the same trap (would read 0 and silently
+drop invented tiers) and was fixed to lift FORCE. **LESSON WRITTEN**:
+`lessons/a-migration-reads-zero-under-force-rls.md`.
+**WHICH GRADE VALUES EACH ROUTE STILL ACCEPTS AFTER 1a, AND THE KNOWN GAP.** The routes are
+UNCHANGED in 1a: `POST/PATCH /sellers`, `PUT /products/{id}/prices/{grade}`, `PATCH /shop
+{default_grade}` still validate a grade against the pydantic `Grade = Literal["A","B","C","D"]`.
+For the seeded shops (A/B) the backfill guarantees tiers A–D, so those routes work on exactly the
+values they used before. Nothing is yet validated against a shop's OWN tier set. A newly-provisioned
+shop is a ONE-TIER shop (`provision_shop.py` seeds one tier 'A', default_grade NULL): its routes
+accept only 'A'; a B/C/D would pass the Literal but be **refused by the composite FK (an
+IntegrityError), NOT by a readable 422** — that readable validation, and the `/grade-tiers` routes
+to DECLARE more tiers, are commit 1b. This is the named GAP of 1a.
+**OPERATIONAL SURFACES.** `reconcile.py` learns grade_tiers (TENANT_TABLES/SCOPE_SQL/SCOPE_COLUMN;
+T10 gains three grade-tier resolve arms joined on `code` under RLS — X1 is NOT used, because `code`
+is unique only within a tenant and the composite FK already forbids cross-tenant); its constraints
+are deliberately NOT in REQUIRED_CONSTRAINTS (the 0012 dump wake-condition). `provision_shop.py`
+seeds one starter tier. `seed_dev.py` seeds tiers before its graded rows. `backup_db.py`/`restore_db.py`
+are catalogue-driven — no edit; the round-trip carries grade_tiers.
+**PROVEN (every command bare, exit in the same invocation; PYTHONIOENCODING=utf-8 where a proof
+does not self-reconfigure stdout on this cp874 box).** `alembic upgrade head` on dev EXIT=0,
+`alembic current`=0015, information_schema rows printed. Down-then-up on scratch (0015→0014→0015)
+both EXIT=0, CHECKs restored on the way down, the GUARD refuses a renamed tier (EXIT=1). Backfill
+read back: 10 tiers, 0 orphans + positive control. `reconcile.py` on dev EXIT=0, 0 violations —
+S1/S2 "14 tables in public" (was 13, grade_tiers, a count I moved), S3 "12 of 12" (was 11), X2 sums
+grade_tiers=10, 17 checks/tenant all clean (T10 grade arms found 0 orphans; check count unchanged).
+`prove_reconcile.py --from <fresh 0015 dump>` EXIT=0 TWICE (its RLS-disable injection fires the T10
+grade arms). `prove_backup_restore.py` EXIT=0 TWICE (manifest/restore carry grade_tiers db=10 dump=10
+restored=10). `seed_dev.py` runs clean on dev; `provision_shop.py` on a scratch yields one 'A' tier,
+default_grade NULL.
+**THE THREE PROOFS THIS CHANGE BROKE, fixed and GREEN TWICE.** `prove_seller_history.py`,
+`prove_reports_summary.py` — each gained a grade_tiers seed in its fresh-tenant `seed_tenant`, before
+the product_prices/sellers INSERTs; NO cell count moved. `prove_rls.py` — gained a grade_tiers seed
+before its product_price, grade_tiers in ALL_TABLES (**9→10**) and `_TEARDOWN_ORDER`, and an OWNER
+connection to delete the tier (F4 REVOKEs DELETE from the app role); teardown now removes **10**
+rows/tenant (was 9), "nothing left in any of the 10 tables". `prove_seller_create.py` GREEN TWICE,
+unchanged — the route-grade path into Shop A, confirming SAFE.
+**NOT RUN, NAMED (argus-validated SAFE — its file:line survey correctly predicted the 3 breaks AND
+prove_seller_create's safety, so its verdict on the rest is calibrated).** The remaining
+grade/sellers/product_prices proofs seed grades ONLY into Shop A/B (tiers guaranteed by the backfill)
+or via the unchanged Literal or seed no grade, so the re-point FK cannot fire; each needs infra not
+stood up — a live :8099/:8000 API writing bills/master into dev (dev debris): prove_master,
+prove_master_write, prove_master_data_gate, prove_seller_pricing, prove_daily_report, prove_revocation,
+prove_bills, prove_year_gate; or a per-proof scratch: prove_seller_code_reservations,
+prove_seller_code_guards, prove_docno_clock, prove_shop_settings. The higher not-additive bar is met
+by a POSITIVE argument (the FK cannot fire) plus having run the representative direct-SQL and route
+grade paths and both fresh-tenant paths, not by "infra".
+**NOT OBSERVED / NOT BUILT in 1a:** the `/grade-tiers` routes, the deactivation refusal with its
+count, seller/price/shop validation against a shop's own tiers, and `prove_grade_tiers.py` — all
+commit 1b. No device work.
+**IS A LESSON OWED? YES, WRITTEN.** `lessons/a-migration-reads-zero-under-force-rls.md`. The other
+disciplines were already recorded and re-derived at the artefact: count from `pg_constraint` not the
+log is `a-migration-stack-is-a-log-not-a-schema`; the 'A' placeholder not a Thai name is
+`fallback-default-is-a-wrong-number`; the round-trip carrying a new relation is
+`a-round-trip-must-agree-on-its-key-space`; the field-by-field schema-audit caught the apostrophe and
+the guard bug before dev.
+
 **P1.21 — SELLER HISTORY AT THE WEIGHBRIDGE, PHASE 2: the drawing on the phone. 2026-08-31.**
-No sha yet (this record precedes the commit; anchor next pass). This is the current-phase pointer.
+Committed at `0b2aee4` (anchored 2026-08-31 in the P1.24 commit-1a pass above). This WAS the
+current-phase pointer until the P1.24 record above.
 **BUILT HEADLESS and PROVEN; the on-device pass is UNOBSERVED (the owner's).** New pure builder
 `mobile/src/sellerHistory/sellerHistoryView.ts` (behind `prove:sellerhistory`): the view model from
 a `GET /sellers/{seller_id}/history` response — money rendered ONLY when the response's own

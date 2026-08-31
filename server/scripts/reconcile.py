@@ -307,6 +307,22 @@ TENANT_TABLES = [
     # twins: a dump taken AFTER 0012 becoming the oldest one anyone restores
     # from.
     "seller_code_reservations",
+    # Migration 0015. Added the day grade_tiers landed, for the reason 0012 gives
+    # above: S2 goes red on a table it has never heard of, and this list is what
+    # puts grade_tiers under S1's tenant_id check, S3's RLS check, B1's blind read
+    # and X2's completeness sum. Its per-tenant integrity check is T10 (a grade
+    # must resolve to a tier IN THIS TENANT), NOT X1: the re-point FK is keyed on
+    # (tenant_id, code), and `code` is unique only WITHIN a tenant, so X1's
+    # id-keyed cross-tenant join would false-match every tenant's same-letter tier;
+    # the composite FK already forbids a cross-tenant reference structurally
+    # (referential integrity carries tenant_id), so T10's resolve-under-own-context
+    # lens is the right and only one.
+    #
+    # ITS CONSTRAINTS ARE DELIBERATELY NOT IN REQUIRED_CONSTRAINTS, and neither are
+    # the three FKs on product_prices/sellers/tenants that 0015 re-points at it,
+    # the same decision 0012 records above: a dump taken before 0015 has none of
+    # them, so S5 would go red on such a copy for a reason unrelated to money.
+    "grade_tiers",
 ]
 ALL_RLS_TABLES = ["tenants", *TENANT_TABLES]
 
@@ -515,6 +531,26 @@ SQL_CHECKS: list[SqlCheck] = [
           FROM product_prices pp
           LEFT JOIN products p2 ON p2.id = pp.product_id
          WHERE p2.id IS NULL
+        UNION ALL
+        -- grade_tiers references (0015). Joined on `code`, not id: the FK is
+        -- (tenant_id, grade) -> (tenant_id, code). Under this tenant's RLS
+        -- context, grade_tiers holds only this tenant's tiers and code is unique
+        -- within it, so a resolvable tier is necessarily the SAME tenant's --
+        -- "exists" and "in the same tenant" are one condition here.
+        SELECT 'price -> grade tier', pp.id::text, pp.grade
+          FROM product_prices pp
+          LEFT JOIN grade_tiers gt ON gt.code = pp.grade
+         WHERE gt.code IS NULL
+        UNION ALL
+        SELECT 'seller -> grade tier', s.code, s.grade
+          FROM sellers s
+          LEFT JOIN grade_tiers gt ON gt.code = s.grade
+         WHERE s.grade IS NOT NULL AND gt.code IS NULL
+        UNION ALL
+        SELECT 'shop default -> grade tier', t.id::text, t.default_grade
+          FROM tenants t
+          LEFT JOIN grade_tiers gt ON gt.code = t.default_grade
+         WHERE t.default_grade IS NOT NULL AND gt.code IS NULL
         """,
     ),
     SqlCheck(
@@ -612,7 +648,8 @@ SELECT (SELECT count(*) FROM purchase_bills)                              AS bil
        (SELECT count(*) FROM uoms)                                        AS uoms,
        (SELECT count(*) FROM users)                                       AS users,
        (SELECT count(*) FROM doc_no_counters)                             AS counters,
-       (SELECT count(*) FROM seller_code_reservations)                    AS reservations
+       (SELECT count(*) FROM seller_code_reservations)                    AS reservations,
+       (SELECT count(*) FROM grade_tiers)                                  AS grade_tiers
 """
 
 # Which SCOPE_SQL column feeds each table's running total for X2.
@@ -628,6 +665,7 @@ SCOPE_COLUMN = {
     "product_categories": "categories", "uoms": "uoms", "users": "users",
     "doc_no_counters": "counters",
     "seller_code_reservations": "reservations",
+    "grade_tiers": "grade_tiers",
 }
 
 CHECKS_PER_TENANT = len(SQL_CHECKS) + 4      # T0 + the SQL checks + T7/T8/T9

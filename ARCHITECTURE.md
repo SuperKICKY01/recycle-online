@@ -206,6 +206,19 @@ bookkeeping — it carries no tenant column, no RLS and no policy, and it is nam
 here only because "exactly ten tables" is a claim the next session re-derives with
 `count(*)`, gets eleven, and mistrusts the file over.
 
+**Superseded 2026-08-31 (P1.24 / migration 0015; unanchored, anchor next pass).**
+Re-derived from `information_schema` on dev: `public` now holds FOURTEEN relations.
+The heading's "ten" and the "eleventh relation" above are both stale — the heading
+is kept UNRENAMED on purpose, because citations resolve on its text and a rename
+orphans them (`lessons/README.md`, the section-name-collision hazard). The
+fourteen are the ten in the table below, PLUS `alembic_version`, PLUS TWO business
+tables this table has never listed — `server_clock_watermark` (0008) and
+`seller_code_reservations` (0012) — PLUS `grade_tiers` (0015, added as the row
+below). So the business-table count read literally is THIRTEEN. That the 0008 and
+0012 tables are absent from this table is a pre-existing gap (they predate 0015),
+recorded at `OPEN_ITEMS.md` and not repaired here; only `grade_tiers`, the P1.24
+addition, is added below.
+
 | table | what it is for | shape worth knowing |
 |---|---|---|
 | `tenants` | one row per shop; the unit a licence would attach to | `(id, name, created_at)` and nothing else — no address, no phone. **No endpoint reads it** <br>**Superseded 2026-08-30 (unanchored; anchor next pass):** re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone)` — `default_grade` (migration 0010), `seller_code_target_holding` (0012), `address`+`phone` (0013). It IS read and written: `GET /shop` returns it (staff-readable) and `PATCH /shop` writes `default_grade`/`address`/`phone` (admin-only), so "no endpoint reads it" went false at `9ad225e`. `name` stays immutable-by-decision (`9ad225e`). <br>**Superseded 2026-08-30 (P1.23 item 4 unit 2; unanchored; anchor next pass):** `staff_money_visible` (boolean NOT NULL DEFAULT false, migration 0014) is added — re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone, staff_money_visible)`, EIGHT columns. It is the per-shop switch the dashboard reads: `GET /shop` returns it (staff-readable), `PATCH /shop` writes it (admin-only), and `GET /reports/summary` refuses a staff caller its money unless it is on (D1). |
@@ -213,11 +226,12 @@ here only because "exactly ten tables" is a claim the next session re-derives wi
 | `uoms` | units of measure (kg, crate, piece) | `(code, name)` + `is_active` |
 | `product_categories` | paper, steel, copper … | `(code, name)` + `is_active` |
 | `products` | what a yard buys | composite FKs to category and uom + `is_active`. **No sell price, no stock column** |
-| `product_prices` | the CURRENT buy list, per product per grade | `UNIQUE (tenant_id, product_id, grade)`, grade CHECK `A`–`D`. Historical bills never read back from here |
-| `sellers` | who sells to the yard | grade selects the price tier; `id_number`/`address`/`vehicle_no` added by 0004 (SRS 1.6) + `is_active` |
+| `product_prices` | the CURRENT buy list, per product per grade | `UNIQUE (tenant_id, product_id, grade)`, grade CHECK `A`–`D`. Historical bills never read back from here. **Superseded 2026-08-31 (0015):** the `A`–`D` CHECK (`product_prices_grade_check`) is DROPPED; `grade` is now a composite FK `(tenant_id, grade) → grade_tiers (tenant_id, code)`, so the admissible grades are the shop's own tier codes, not a fixed letter set |
+| `sellers` | who sells to the yard | grade selects the price tier; `id_number`/`address`/`vehicle_no` added by 0004 (SRS 1.6) + `is_active`. **Superseded 2026-08-31 (0015):** `ck_sellers_grade` (`A`–`D`) is DROPPED; the nullable `grade` is now a composite FK to `grade_tiers (tenant_id, code)`, MATCH SIMPLE (unchecked while NULL) |
 | `purchase_bills` | the bill header — one load, one bill | client-supplied `id` (no default), nullable `doc_no`, `idempotency_key`, two timestamps, three void columns |
 | `purchase_bill_items` | the money lines | three weights, both prices, stored `amount`, `line_no` |
 | `doc_no_counters` | the gap-free document sequence | `PRIMARY KEY (tenant_id, be_year)`, one row per shop per Buddhist year (0002) |
+| `grade_tiers` | the per-tenant grade tiers a shop declares (P1.24 / S16) | `UNIQUE (tenant_id, code)` and `(tenant_id, id)`; columns `code`/`name`/`sort_order`/`is_active`; `product_prices.grade` and `sellers.grade` reference it by composite FK on `code`. A tier is DEACTIVATED, never deleted (no DELETE grant). Added 0015 |
 
 **Why the shape is this shape**, in four points that are not obvious from the
 column list:
@@ -270,6 +284,12 @@ of the picker" means: the row keeps its code and name, keeps answering every
 historical bill, and stops being offered for new work. List endpoints exclude
 retired rows; **row-level reads never filter**, which is what makes "the bill stays
 intact" observable through the real path rather than only in SQL.
+
+**Superseded 2026-08-31 (0015):** `grade_tiers` carries `is_active` too, and its
+deactivation IS this retirement pattern — a tier is deactivated, never deleted (no
+DELETE grant), row-level reads never filter it, so a deactivated tier still resolves
+for a historical bill's display. So FIVE tables now carry `is_active`; the "(0004)"
+above scopes the four that migration added and stands.
 
 ---
 

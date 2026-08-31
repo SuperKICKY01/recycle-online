@@ -413,6 +413,21 @@ async def provision(ctx: Ctx) -> None:
                      " VALUES (:id, :t, 'SCRAP', 'Scrap')"),
                 {"id": cat, "t": tid},
             )
+            # grade_tiers FIRST (migration 0015): product_prices.grade and
+            # sellers.grade carry composite FKs to grade_tiers, so a tier must
+            # exist before a graded row references it. This tenant is FRESH, so
+            # seed one per distinct grade it uses -- same transaction.
+            tier_codes = sorted(
+                {g for _p, _c, prices in products for g in prices}
+                | {g for _s, _c, g in sellers if g}
+            )
+            for _i, tcode in enumerate(tier_codes):
+                await conn.execute(
+                    text("INSERT INTO grade_tiers (tenant_id, code, name,"
+                         " sort_order, is_active)"
+                         " VALUES (:t, :code, :code, :so, true)"),
+                    {"t": tid, "code": tcode, "so": _i},
+                )
             for pid, code, prices in products:
                 await conn.execute(
                     text("INSERT INTO products (id, tenant_id, category_id, uom_id, code,"
