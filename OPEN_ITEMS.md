@@ -1516,6 +1516,28 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   one each in `AddSellerSheet`, `BillList`, `BillsPanel`, `LoginScreen`, `SellerPicker`,
   `SignOutSheet`, `StatusStrip`), plus the list-row conversion of the three named screen bodies. None
   is a bug — the screens work and are proven — it is the reference bar not yet reached on those bodies.
+  **CLOSED 2026-09-01 (P1.23 item 3 phase D):** the reference-pinned pass reached the bar. `prove:tapaudit`
+  Cs2 = 0 across 0 files (all 23 literals tokenised); A1 one-accent applied app-wide (money/border off teal;
+  status tints kept); the tier ⋯ restructure landed; RED destructive with the measured danger cells;
+  reference-pinned to AllTCAS read directly (the phase-D records
+  `PROJECT_STATUS.md § Current phase` and `ROADMAP.md § P1.23 — The mobile UX rework`). WHAT REMAINS, held deliberately (each an owner decision or a follow-up, not a
+  bug): (1) the SKELETON loading component (L1 — DashboardScreen's bare `ActivityIndicator` when
+  `daily === null` is unchanged; the one net-new component, not built this pass); (2) the `ข้อมูลร้าน` /
+  `เครื่องนี้` settings section headings and the empty-state teaching copy (What/Why/How) — both NEW Thai,
+  blocked by no-Thai-reworded, the OWNER'S decision whether to admit new Thai; (3) the FULL type-rank
+  consolidation (one muted-meta per screen) — a light pass done, a deeper sweep owed; (4) moving the theme
+  control + server diagnostic into a trailing `เครื่องนี้` group inside the settings scroll — kept
+  always-visible-above-the-scroll this pass (a legitimate current choice; blocked from a labelled group by
+  #2's new-Thai). See also the dependency decision below.
+- **PRESS/MOTION DEPENDENCIES DEFERRED — the owner decides, recorded 2026-09-01 (P1.23 item 3 phase D).**
+  Press-scale (0.97 on press-in, via RN `Pressable`'s `pressed` state) costs NO dependency and is the
+  reference-faithful press feel to add. Two skill-recommended enhancements DO need a dependency and were
+  NOT built toward: `expo-haptics` (small) for `Haptics.selectionAsync()` on the segmented/chip tick and a
+  commit impact (animate-expo §8) — "the thing that makes the app feel expensive," off system-wide for many
+  users so never the only feedback; and `react-native-reanimated` (larger) for interruptible/grabbable
+  sheet springs (animate-expo §5, apple-design §3), where today's sheets keep the platform slide/fade. The
+  owner decides each separately (its size vs. what it buys), after the reference-pinned look is seen on a
+  handset. Neither is in `mobile/package.json` and neither was added.
 
 - **AN UNTRACKED `0015_tenant_grade_tiers.py` PRE-EXISTED THE P1.24 COMMIT-1a SESSION
   AND WAS OVERWRITTEN UNREAD — recorded 2026-08-31, NOT RECOVERABLE.** The session-start

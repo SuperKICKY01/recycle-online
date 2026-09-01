@@ -439,7 +439,7 @@ function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     fill: { flex: 1, backgroundColor: t.color.background },
     body: { padding: t.space.x3, paddingBottom: t.space.x5 },
-    empty: { textAlign: "center", color: t.color.textSubtle, marginTop: 40, fontSize: t.type.bodyLg },
+    empty: { textAlign: "center", color: t.color.textSubtle, marginTop: t.space.x5, fontSize: t.type.bodyLg },
 
     card: {
       backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xl, marginBottom: t.space.xl,
@@ -462,7 +462,7 @@ function makeStyles(t: ThemeTokens) {
     badgeVoid: { backgroundColor: t.color.textMuted },
     badgeParked: { backgroundColor: t.color.warning },
     doc: { flex: 1, fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.text },
-    total: { fontSize: t.type.title, fontWeight: "900", color: t.color.primary },
+    total: { fontSize: t.type.title, fontWeight: "900", color: t.color.text },
     struck: { textDecorationLine: "line-through", color: t.color.placeholder },
     meta: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.sm },
     // Informational blue, not amber: this is provenance, not a fault. The bill is

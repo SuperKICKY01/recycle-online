@@ -107,8 +107,9 @@ function makeStyles(t: ThemeTokens) {
       flexDirection: "row", alignItems: "center", paddingHorizontal: t.space.xxl,
       paddingVertical: t.space.md, gap: t.space.md, borderRadius: t.radius.card,
     },
-    // A 12px decorative dot; its radius is half its size, so both stay literal.
-    dot: { width: 12, height: 12, borderRadius: 6 },
+    // A 12px decorative dot; width/height stay literal (not layout keys), and its
+    // radius reads t.radius.sm (6 = half of 12), the same token App.tsx's noticeDot uses.
+    dot: { width: 12, height: 12, borderRadius: t.radius.sm },
     text: { flex: 1, fontSize: t.type.body, fontWeight: "800" },
     time: { fontSize: t.type.body, fontWeight: "700", opacity: 0.85 },
     action: {

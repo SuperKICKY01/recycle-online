@@ -390,19 +390,23 @@ function makeStyles(t: ThemeTokens) {
     barHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
     barLabel: { flex: 1, fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.text, marginRight: t.space.md },
     barLabelOthers: { color: t.color.textSubtle, fontStyle: "italic" },
-    barValue: { fontSize: t.type.bodyLg, fontWeight: "900", color: t.color.primary },
+    // A1 (P1.23 item 3 phase D): the per-row money and the bar fill were teal on
+    // EVERY row — the accent's most-repeated home, not its rarest. Money → neutral
+    // text; the fill -> a neutral so teal is left for the ONE hero figure
+    // (figureValueBig, the paid total), the selected chip and the buttons.
+    barValue: { fontSize: t.type.bodyLg, fontWeight: "900", color: t.color.text },
     barTrack: {
-      flexDirection: "row", height: 10, backgroundColor: t.color.borderSoft, borderRadius: 5,
+      flexDirection: "row", height: 10, backgroundColor: t.color.borderSoft, borderRadius: t.radius.sm,
       overflow: "hidden", marginTop: t.space.sm,
     },
-    barFill: { backgroundColor: t.color.primary },
+    barFill: { backgroundColor: t.color.textMuted },
     barFillOthers: { backgroundColor: t.color.placeholder },
     barSub: { fontSize: t.type.body, fontWeight: "700", color: t.color.placeholder, marginTop: t.space.xs },
 
     billSpinner: { marginVertical: t.space.x3 },
 
     /* --- the non-report screens --- */
-    messageCard: { borderRadius: t.radius.pill, padding: t.space.x3, marginTop: 24, alignItems: "flex-start" },
+    messageCard: { borderRadius: t.radius.card, padding: t.space.x3, marginTop: t.space.x5, alignItems: "flex-start" },
     messageBadge: {
       color: t.color.onPrimary, fontSize: t.type.body, fontWeight: "800", paddingHorizontal: t.space.lg,
       paddingVertical: t.space.xs, borderRadius: t.radius.sm, overflow: "hidden",

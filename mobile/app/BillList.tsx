@@ -67,7 +67,7 @@ function makeStyles(t: ThemeTokens) {
     billMid: { flex: 1 },
     billDoc: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.text },
     billSeller: { fontSize: t.type.body, color: t.color.textSubtle, fontWeight: "600" },
-    billOff: { fontSize: t.type.body, color: t.color.warning, fontWeight: "800", marginTop: 2 },
-    billAmount: { fontSize: t.type.subhead, fontWeight: "900", color: t.color.primary },
+    billOff: { fontSize: t.type.body, color: t.color.warning, fontWeight: "800", marginTop: t.space.xs },
+    billAmount: { fontSize: t.type.subhead, fontWeight: "900", color: t.color.text },
   });
 }

@@ -135,7 +135,7 @@ function makeStyles(t: ThemeTokens) {
     backdrop: {
       flex: 1, backgroundColor: t.color.overlay, justifyContent: "center", padding: t.space.x4,
     },
-    card: { backgroundColor: t.color.surface, borderRadius: 16, padding: t.space.x4, maxHeight: "88%" },
+    card: { backgroundColor: t.color.surface, borderRadius: t.radius.card, padding: t.space.x4, maxHeight: "88%" },
     title: { fontSize: t.type.title, fontWeight: "900", color: t.color.text, marginBottom: t.space.xl },
 
     fromTo: { borderTopWidth: 1, borderTopColor: t.color.borderSoft, paddingTop: t.space.xl },
@@ -155,7 +155,7 @@ function makeStyles(t: ThemeTokens) {
       padding: t.space.lg, marginTop: t.space.md, fontWeight: "700",
     },
 
-    buttons: { flexDirection: "row", gap: t.space.xl, marginTop: 18 },
+    buttons: { flexDirection: "row", gap: t.space.xl, marginTop: t.space.x4 },
     btn: { flex: 1, minHeight: t.tapMin + t.space.xs, borderRadius: t.radius.xl, alignItems: "center", justifyContent: "center" },
     cancel: { backgroundColor: t.color.borderSoft },
     cancelText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },

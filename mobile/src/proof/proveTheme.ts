@@ -113,8 +113,14 @@ const TEXT_PAIRS: readonly (readonly [Key, Key, number])[] = [
   ["placeholder", "surface", 4.5],
   ["neutralFg", "surface", 4.5],
   ["neutralFg", "surfaceAlt", 4.5],
-  ["primary", "surface", 4.5], // the money total is primary-coloured text
+  ["primary", "surface", 4.5], // primary as TEXT — the change/history row affordances and links
   ["primary", "background", 4.5],
+  // DESTRUCTIVE TEXT ON THE PAGE GROUND ITSELF (P1.23 item 3 phase D). The sign-out
+  // control, and the deactivate action in the tier menu, are red on `surface`/`background`,
+  // NOT on a danger tint. New pairs, their own cells, ratios printed. If either
+  // drops under 4.5:1 the destructive red changes — never this floor, never the rule.
+  ["danger", "surface", 4.5],
+  ["danger", "background", 4.5],
   ["onPrimary", "primary", 4.5], // button label
   // notice tint text
   ["dangerFg", "dangerBg", 4.5],

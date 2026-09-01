@@ -89,7 +89,7 @@ function makeStyles(t: ThemeTokens) {
       justifyContent: "center",
       padding: t.space.x4,
     },
-    card: { backgroundColor: t.color.surface, borderRadius: 16, padding: t.space.x4, maxHeight: "88%" },
+    card: { backgroundColor: t.color.surface, borderRadius: t.radius.card, padding: t.space.x4, maxHeight: "88%" },
     title: { fontSize: t.type.title, fontWeight: "900", marginBottom: t.space.xs },
     scroll: { marginTop: t.space.md },
     line: { fontSize: t.type.bodyLg, fontWeight: "600", color: t.color.neutralFg, marginTop: t.space.lg, lineHeight: 22 },

@@ -139,6 +139,7 @@ import type {
   AdminGradeTier,
   GradeTierCreateBody,
   GradeTierFetch,
+  TierAdminRow,
   TierAdminScreen,
 } from "./src/settings/gradeTierAdmin";
 import { accountProfile, passwordChangeResult, readWhoAmI } from "./src/settings/account";
@@ -194,6 +195,7 @@ import type { DashboardCustom } from "./app/DashboardScreen";
 import { SettingsScreen } from "./app/SettingsScreen";
 import { AccountScreen } from "./app/AccountScreen";
 import { SellerHistorySheet } from "./app/SellerHistorySheet";
+import { TierActionsSheet } from "./app/TierActionsSheet";
 import { ConfirmSaveDialog } from "./app/ConfirmSaveDialog";
 import { ConfirmSellerChangeDialog } from "./app/ConfirmSellerChangeDialog";
 import { API_BASE_URL } from "./app/config";
@@ -429,6 +431,14 @@ function AppInner() {
   const [settingsTierScreen, setSettingsTierScreen] = useState<TierAdminScreen | null>(null);
   const [settingsTierRefusal, setSettingsTierRefusal] = useState<string | null>(null);
   const [settingsTierBusy, setSettingsTierBusy] = useState(false);
+  /**
+   * THE TIER THE ⋯ MENU ACTS ON (P1.23 item 3 phase D). PAYLOAD, NOT VISIBILITY —
+   * written WITH the `open_tier_actions` dispatch (`openTierMenu`) and by nothing
+   * else, the same rule `pendingChange` states for the seller-change dialog: the
+   * `tier_actions` sheet renders null when this is null, so a stack asking for the
+   * menu with no target cannot draw actions for no tier.
+   */
+  const [tierMenuTarget, setTierMenuTarget] = useState<TierAdminRow | null>(null);
   /*
    * THE ACCOUNT SCREEN (P1.23). `accountProfileState` is the profile (username +
    * role from /whoami, shop name from GET /shop), null while loading.
@@ -1707,6 +1717,19 @@ function AppInner() {
   const reorderTiers = useCallback(
     (order: readonly string[]) => void runTierAction((t) => reorderGradeTiers(t, order)),
     [runTierAction],
+  );
+  /**
+   * OPEN THE ⋯ MENU for a tier row (P1.23 item 3 phase D). The ONE writer of
+   * `tierMenuTarget`, setting it WITH the dispatch so the sheet always has its tier.
+   * The sheet's own actions (rename / retire) call the tier handlers above and close;
+   * the reorder ↑ ↓ stay on the row and never reach here.
+   */
+  const openTierMenu = useCallback(
+    (row: TierAdminRow) => {
+      setTierMenuTarget(row);
+      sheet("open_tier_actions");
+    },
+    [sheet],
   );
 
   /* ---------------------------------------------------------- account (P1.23) -- */
@@ -3057,10 +3080,8 @@ function AppInner() {
               onSignIn={closeTopSheet}
               onSave={(patch) => void saveSettings(patch)}
               onAddTier={addTier}
-              onRenameTier={renameTier}
-              onDeactivateTier={deactivateTier}
-              onReactivateTier={reactivateTier}
               onReorderTiers={reorderTiers}
+              onTierMenu={openTierMenu}
             />
           ),
         };
@@ -3138,6 +3159,41 @@ function AppInner() {
             />
           ),
         };
+
+      /* P1.23 item 3 phase D. The tier ... menu on a grade-tier row — OVER the settings
+         sheet (the stack settings>tier_actions), through this one host. Rename and the
+         destructive deactivate moved off the row so a wet thumb cannot hit retire beside
+         the reorder arrows. Payload-guarded: a null target or an unloaded tier screen
+         renders nothing, the pendingChange rule. */
+      case "tier_actions":
+        return tierMenuTarget === null || settingsTierScreen === null
+          ? { content: null, animation: "fade", back: closeTopSheet }
+          : {
+              animation: "fade",
+              back: closeTopSheet,
+              content: (
+                <TierActionsSheet
+                  row={tierMenuTarget}
+                  nameMaxLength={settingsTierScreen.nameMaxLength}
+                  busy={settingsTierBusy}
+                  /* Fire the tier action (the SAME handlers the inline row used), then
+                     close to the tier list; a refusal shows there, revealed on close. */
+                  onRename={(id, name) => {
+                    renameTier(id, name);
+                    closeTopSheet();
+                  }}
+                  onDeactivate={(id) => {
+                    deactivateTier(id);
+                    closeTopSheet();
+                  }}
+                  onReactivate={(id) => {
+                    reactivateTier(id);
+                    closeTopSheet();
+                  }}
+                  onClose={closeTopSheet}
+                />
+              ),
+            };
 
       default: {
         const never: never = onScreen;
@@ -3397,10 +3453,13 @@ function makeStyles(t: ThemeTokens) {
       paddingHorizontal: t.layout.screenPad,
     },
     wordmark: { flex: 1, fontSize: t.type.titleLg, fontWeight: "900", color: t.color.text },
-    // Sign out — subdued and separated; it is destructive, so it is NOT an accent and
-    // sits alone in the trailing zone. The confirm sheet, not this control, carries danger.
+    // Sign out — DESTRUCTIVE, so RED (P1.23 item 3 phase D, the reference's own
+    // treatment: its sign-out and delete-account controls are red). danger on
+    // `surface` (the header ground) is proven >=4.5:1 in both themes by prove:theme
+    // (6.47 light / 5.29 dark).
+    // It still sits alone in the trailing zone; the confirm sheet carries the rest.
     signOut: { minHeight: t.tapMin, paddingHorizontal: t.space.md, justifyContent: "center", alignItems: "center" },
-    signOutText: { fontSize: t.type.body, fontWeight: "700", color: t.color.textMuted },
+    signOutText: { fontSize: t.type.body, fontWeight: "700", color: t.color.danger },
     // The horizontal navigation scroll row.
     navRow: { flexDirection: "row", gap: t.space.md, paddingHorizontal: t.layout.screenPad, paddingBottom: t.space.sm },
     // Neutral pill chips — navigation, NOT the one accent. Every one clears TAP_MIN.

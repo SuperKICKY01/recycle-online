@@ -7180,6 +7180,58 @@ no count is written into the criterion:
    8-step count. Proven headless (both typechecks; 42 proofs green twice; the seven new disproofs
    each redden exactly their cell). THE VISUAL RESULT IS A HANDSET OBSERVATION, OWED — in the
    PROJECT_STATUS consolidated device pass. Design skill used: `ui-ux-pro-max`.
+   **PHASE D 2026-09-01 (P1.23 item 3): THE REFERENCE-PINNED SCREEN BODIES — the deferred
+   card-ification unit (W5 / P4), built AGAINST the skills' knowledge, not near it.** No sha yet
+   (this record precedes the commit; anchor next pass). The owner judged phase C still below his bar
+   (verbatim, never translated): "ตอนนี้มันกากมากเลยนะ UX UI อ่ะ ผมไม่พอใจ", and named WHY prior passes
+   failed: "ทำไม พาแก้ ux ui แต่ไม่ใช้ skills และใช้ความรู้แบบโครต AI เลย ผมก็บอกแล้วให้ใช้ skills ให้ claude
+   code ไปอ่าน ไปใช้ ดิ ทำux ui สวยๆ frontendสวยๆ".
+   RECON: the pre-installed `ui-ux-pro-max` returns generic FlatList/memo/keyExtractor + web UX tips —
+   thin — and the two prior visual passes filled that gap with the session's OWN design sense, which the
+   owner has rejected twice. The instrument was wrong, not the honesty.
+   THREE OWNER-SUPPLIED SKILL REPOS were cloned and installed into gitignored `.claude/skills/` (never
+   `--force`): `emilkowalski/skills` d23d7f8 (animate-expo — RN/Expo press-feel; apple-design foundations),
+   `pbakaus/impeccable` 5b585c0 (Operate-mode product UI WITH a native track — the design authority; its
+   playbooks are the asset, its node/browser scripts are web-only and not run), `leonxlnx/taste-skill`
+   ccbc156 (mostly web/landing, out of scope). METHOD (impeccable's own new-work.md): `theme.ts` is an
+   ESTABLISHED visual world — inherit it, do not replace; the owner rejects the CRAFT, not the palette. So
+   impeccable Operate + apple-design + animate-expo supply the craft, PINNED to the owner's reference app
+   (AllTCAS, ten screenshots at `E:\reffe`, read DIRECTLY off disk — never a second-hand description).
+   The reference's STRUCTURE is the authority and is donated: inset cards with real gaps, grouped rows
+   under small muted section headings, notices behind a count, one accent used rarely, segmented controls,
+   grab-handle sheets. NOT DONATED (the owner's line): its brand hue, the "A" logo, the mascots, the
+   bottom tab bar, the gamification.
+   WHAT CHANGED (presentation only — no logic/route/store/sync; the one exception is a presentation sheet
+   kind). **A1, ONE ACCENT:** teal only on the primary action, the current selection, and one hero figure
+   per screen; every other money figure, bar fill and decorative border becomes neutral text or a hairline
+   — on the cart the running total is NEUTRAL (prominence from weight+size, not colour; the CTA is the
+   accent there — the owner's ruling). Status tints (danger/warning/success/info/cyan) stay as the semantic
+   vocabulary (A2). **DESTRUCTIVE IN RED:** ออกจากระบบ and the deactivate action in the tier menu — a NEW
+   contrast pair, MEASURED not estimated by prove:theme: `danger` on `surface` 6.47:1 (light) / 5.29:1
+   (dark), `danger` on `background` 6.18:1 / 6.77:1 — all clear 4.5:1, so the pinned red stands; the 34
+   pinned colours are unmoved (these are 4 new cells). **THE TIER ⋯ MENU:** rename + deactivate moved OFF
+   the tier row (the reorder ↑ ↓ stay) into a new grab-handle bottom sheet `app/TierActionsSheet.tsx`
+   through the ONE SheetHost — so a wet thumb at 5am cannot hit retire beside the arrows; a new
+   `tier_actions` sheet kind (`settings>tier_actions`, the second two-deep stack) moved prove:sheets
+   reachable 13→14. **THE 23 RAW GEOMETRY LITERALS across 12 files → 0** (prove:tapaudit Cs2). Card corners
+   unified to `t.radius.card`; type-rank / muted-meta consolidation applied where clean.
+   DELIBERATE DIVERGENCE FROM THE REFERENCE, recorded so a later reader does not "fix" it back in: the
+   inline-edit settings fields carry NO chevron — a › that opens nothing is a promise the screen cannot
+   keep, and the reference's own row→detail-screen model is the one part "no new screen" forbids; inline
+   edit is one tap, where a detail sheet adds a step to every edit of the shop's address or phone. The
+   chevron survives ONLY where it truly navigates — the tier ⋯ opening `tier_actions`.
+   PROVEN (headless, every command BARE, exit read in the same invocation): both typechecks green (before
+   and after); prove:theme green TWICE (every ratio printed, the 4 new danger cells named); prove:sheets
+   green TWICE (reachable 14 NAMED settings→settings>tier_actions, S9 exactly ONE Modal via the host, S10
+   open_tier_actions dispatched); prove:tapaudit green (Cs2 23→0, zero tap findings, scaffold clean); the
+   full mobile headless suite green (44 proofs — settings/gradeTiers/account/dashboard/prices/
+   sellerhistory/saveconfirm/signout/noticeStack/reservestrip/notice/daily/sync/cart/money/void/… — plus
+   forbidden green, its F6 hitting the real dev server on :8000); prove:login / prove:loginscreen exit 1
+   ONLY on server-availability (their server on :8231 is not running — no change touches login logic).
+   NO THAI REWORDED: the filtered diff shows exactly the 5 tier-label MOVES (SettingsScreen `<Text>` →
+   TierActionsSheet `<Text>`, byte-identical), 0 added Thai in tracked files. THE VISUAL RESULT IS A
+   HANDSET OBSERVATION, OWED — in the PROJECT_STATUS consolidated device pass. Skills used: impeccable
+   (Operate/layout/onboard/new-work), animate-expo (§7 press), apple-design (§1/§15/§16).
 4. The shop-owner dashboard and the phone settings surface are drawn — both homed
    on mobile by the owner (2026-08-28/29): S24 homes the dashboard, absorbing the
    existing daily screen as a view inside it, and the S6 extension homes the

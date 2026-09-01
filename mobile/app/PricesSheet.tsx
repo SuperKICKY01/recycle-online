@@ -353,8 +353,8 @@ function makeStyles(t: ThemeTokens) {
     grade: { fontSize: t.type.bodyLg, fontWeight: "700", color: t.color.neutralFg, flexShrink: 1 },
     price: { fontSize: t.type.subhead, color: t.color.text, flex: 1 },
     unpriced: { fontSize: t.type.bodyLg, color: t.color.warning, flex: 1 },
-    editBtn: { paddingHorizontal: t.space.lg, paddingVertical: t.space.sm, backgroundColor: t.color.infoAltBg, borderRadius: t.radius.sm },
-    editText: { fontSize: t.type.bodyLg, color: t.color.infoStrong },
+    editBtn: { paddingHorizontal: t.space.lg, paddingVertical: t.space.sm, backgroundColor: t.color.surface, borderWidth: 1, borderColor: t.color.borderSoft, borderRadius: t.radius.sm },
+    editText: { fontSize: t.type.bodyLg, color: t.color.primary },
     editor: { flex: 1, padding: t.space.x3, gap: t.space.xl },
     editorGrade: { fontSize: t.type.subhead, fontWeight: "700", color: t.color.text },
     input: {
@@ -369,10 +369,12 @@ function makeStyles(t: ThemeTokens) {
     editorActions: { flexDirection: "row", gap: t.space.xl },
     cancelBtn: { paddingHorizontal: t.space.x3, paddingVertical: t.space.xl },
     cancelText: { fontSize: t.type.subhead, color: t.color.neutralFg },
+    // A1 (P1.23 item 3 phase D): the primary action is the app's ONE accent (teal),
+    // not info-blue — the same save button the other screens use.
     saveBtn: {
       paddingHorizontal: t.space.x3,
       paddingVertical: t.space.xl,
-      backgroundColor: t.color.infoStrong,
+      backgroundColor: t.color.primary,
       borderRadius: t.radius.md,
     },
     saveBtnOff: { backgroundColor: t.color.placeholder },

@@ -246,7 +246,7 @@ function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     fill: { flex: 1, backgroundColor: t.color.background },
 
-    body: { padding: t.space.x3, paddingBottom: 64 },
+    body: { padding: t.space.x3, paddingBottom: t.layout.scrollGutter },
 
     notice: { borderRadius: t.radius.xl, borderWidth: 2, padding: t.space.xl, marginBottom: t.space.x3 },
     noticeHead: { fontSize: t.type.subhead, fontWeight: "900", marginBottom: t.space.sm },

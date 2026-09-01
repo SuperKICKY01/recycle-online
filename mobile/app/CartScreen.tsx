@@ -693,16 +693,19 @@ function makeStyles(t: ThemeTokens) {
     col: { flex: 1 },
     grow: { flex: 1 },
 
+    // A1 (P1.23 item 3 phase D): the permanent teal border was decoration, not an
+    // action or a selection — a neutral hairline card now, teal reserved for the save
+    // button and the selected product. sellerBoxBad still turns it danger (a real state).
     sellerBox: {
-      backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xl, borderWidth: 2,
-      borderColor: t.color.primary, minHeight: t.tapMin, justifyContent: "center",
+      backgroundColor: t.color.surface, borderRadius: t.radius.card, padding: t.space.xl, borderWidth: 1,
+      borderColor: t.color.borderSoft, minHeight: t.tapMin, justifyContent: "center",
     },
     sellerBoxBad: { borderColor: t.color.danger, backgroundColor: t.color.dangerSoftBg },
     sellerTop: {
       flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     },
-    sellerName: { fontSize: t.type.title, fontWeight: "900", color: t.color.text, marginTop: 2 },
-    sellerMeta: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: 2, fontWeight: "600" },
+    sellerName: { fontSize: t.type.title, fontWeight: "900", color: t.color.text, marginTop: t.space.xs },
+    sellerMeta: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.xs, fontWeight: "600" },
     noGrade: { color: t.color.danger, fontWeight: "800" },
     sellerWarn: {
       fontSize: t.type.body, color: t.color.dangerFg, backgroundColor: t.color.dangerBg, borderRadius: t.radius.md,
@@ -723,12 +726,12 @@ function makeStyles(t: ThemeTokens) {
     },
 
     product: {
-      borderWidth: 1, borderColor: t.color.border, borderRadius: t.radius.lg, padding: t.space.xl,
+      borderWidth: 1, borderColor: t.color.border, borderRadius: t.radius.card, padding: t.space.xl,
       marginTop: t.space.md, backgroundColor: t.color.surface, minHeight: t.tapMin, justifyContent: "center",
     },
     productActive: { backgroundColor: t.color.primary, borderColor: t.color.primary },
     productName: { fontSize: t.type.subhead, fontWeight: "700", color: t.color.text },
-    productMeta: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: 2 },
+    productMeta: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.xs },
     onDark: { color: t.color.onPrimary },
 
     fieldBlock: { marginTop: t.space.xxl },
@@ -757,19 +760,20 @@ function makeStyles(t: ThemeTokens) {
     lockHint: { fontSize: t.type.body, color: t.color.warningFg, marginTop: t.space.sm, fontWeight: "600" },
 
     computed: { fontSize: t.type.headline, fontWeight: "800", color: t.color.text, marginTop: t.space.xs },
-    lineAmount: { fontSize: t.type.display, fontWeight: "900", color: t.color.primary, marginTop: t.space.xs },
+    // A1: money is data, not an accent — neutral text, prominence from size + weight.
+    lineAmount: { fontSize: t.type.display, fontWeight: "900", color: t.color.text, marginTop: t.space.xs },
 
     err: { color: t.color.danger, fontSize: t.type.body, marginTop: t.space.sm, fontWeight: "600" },
     note: { color: t.color.warning, fontSize: t.type.body, marginTop: t.space.sm, fontWeight: "600" },
     empty: { color: t.color.textSubtle, fontSize: t.type.bodyLg, marginTop: t.space.x4, textAlign: "center" },
 
     addBtn: {
-      marginTop: 18, minHeight: t.tapMin, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
+      marginTop: t.space.x4, minHeight: t.tapMin, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
       alignItems: "center", justifyContent: "center",
     },
     addText: { color: t.color.onPrimary, fontWeight: "800", fontSize: t.type.subhead },
     cancelBtn: {
-      marginTop: 18, minHeight: t.tapMin, borderRadius: t.radius.xl, paddingHorizontal: t.space.x4,
+      marginTop: t.space.x4, minHeight: t.tapMin, borderRadius: t.radius.xl, paddingHorizontal: t.space.x4,
       backgroundColor: t.color.borderSoft, alignItems: "center", justifyContent: "center",
     },
     cancelText: { color: t.color.neutralFg, fontWeight: "700", fontSize: t.type.subhead },
@@ -783,17 +787,17 @@ function makeStyles(t: ThemeTokens) {
     clearText: { color: t.color.danger, fontWeight: "700", fontSize: t.type.bodyLg },
 
     line: {
-      backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xl, marginTop: t.space.lg,
+      backgroundColor: t.color.surface, borderRadius: t.radius.card, padding: t.space.xl, marginTop: t.space.lg,
       borderWidth: 1, borderColor: t.color.borderSoft,
     },
     lineEditing: { borderColor: t.color.primary, borderWidth: 2 },
     lineTop: { flexDirection: "row", alignItems: "center" },
     lineNo: {
-      width: 28, height: 28, borderRadius: 14, backgroundColor: t.color.text, color: t.color.onPrimary,
+      width: 28, height: 28, borderRadius: t.radius.pill, backgroundColor: t.color.text, color: t.color.onPrimary,
       textAlign: "center", lineHeight: 28, fontWeight: "800", fontSize: t.type.bodyLg, overflow: "hidden",
     },
     lineName: { flex: 1, marginLeft: t.space.lg, fontSize: t.type.subhead, fontWeight: "700", color: t.color.text },
-    lineAmt: { fontSize: t.type.titleLg, fontWeight: "900", color: t.color.primary },
+    lineAmt: { fontSize: t.type.titleLg, fontWeight: "900", color: t.color.text },
     lineMeta: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.sm },
     lineBtns: { flexDirection: "row", gap: t.space.lg, marginTop: t.space.lg },
     lineBtn: {

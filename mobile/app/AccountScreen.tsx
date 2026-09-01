@@ -190,7 +190,7 @@ function makeStyles(t: ThemeTokens) {
     loading: { fontSize: t.type.bodyLg, color: t.color.textSubtle, fontWeight: "700" },
 
     card: {
-      backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xxl, marginBottom: t.space.xl,
+      backgroundColor: t.color.surface, borderRadius: t.radius.card, padding: t.space.xxl, marginBottom: t.space.xl,
       borderWidth: 1, borderColor: t.color.borderSoft,
     },
     cardHeading: { fontSize: t.type.subhead, fontWeight: "900", color: t.color.text, marginBottom: t.space.md },
@@ -207,7 +207,7 @@ function makeStyles(t: ThemeTokens) {
     },
 
     field: { marginTop: t.space.xl },
-    label: { fontSize: t.type.body, fontWeight: "900", color: t.color.textSubtle },
+    label: { fontSize: t.type.body, fontWeight: "800", color: t.color.textSubtle },
     input: {
       minHeight: t.tapMin, marginTop: t.space.sm, borderWidth: 1, borderColor: t.color.border,
       borderRadius: t.radius.lg, paddingHorizontal: t.space.xl, fontSize: t.type.subhead, fontWeight: "700",
@@ -221,7 +221,7 @@ function makeStyles(t: ThemeTokens) {
     saveText: { color: t.color.onPrimary, fontSize: t.type.subhead, fontWeight: "900" },
 
     noticeCard: {
-      backgroundColor: t.color.cyanBg, borderRadius: t.radius.pill, padding: t.space.x3, marginBottom: t.space.xl,
+      backgroundColor: t.color.cyanBg, borderRadius: t.radius.card, padding: t.space.x3, marginBottom: t.space.xl,
       borderWidth: 1, borderColor: t.color.cyanBorder,
     },
     noticeBadge: {

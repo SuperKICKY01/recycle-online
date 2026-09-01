@@ -39,7 +39,7 @@ import type {
   ShopSettings,
   ShopSettingsScreen,
 } from "../src/settings/shopSettings";
-import { moveActiveTier, validateNewTier, validateRename } from "../src/settings/gradeTierAdmin";
+import { moveActiveTier, validateNewTier } from "../src/settings/gradeTierAdmin";
 import type {
   GradeTierCreateBody,
   TierAdminRow,
@@ -97,11 +97,12 @@ interface Props {
   onSave: (patch: ShopPatch) => void;
   /** The app performs the network POST and re-reads the list; this passes a valid body. */
   onAddTier: (body: GradeTierCreateBody) => void;
-  onRenameTier: (id: string, name: string) => void;
-  onDeactivateTier: (id: string) => void;
-  onReactivateTier: (id: string) => void;
   /** The app PUTs the whole new order and re-reads; this passes the full tier-id order. */
   onReorderTiers: (order: readonly string[]) => void;
+  /** Open the ⋯ actions menu for a tier row (P1.23 item 3 phase D) — rename and retire
+   *  move into a sheet so the destructive control leaves the row (they wire to the sheet
+   *  in App.tsx, not here). */
+  onTierMenu: (row: TierAdminRow) => void;
 }
 
 export function SettingsScreen({
@@ -116,10 +117,8 @@ export function SettingsScreen({
   onSignIn,
   onSave,
   onAddTier,
-  onRenameTier,
-  onDeactivateTier,
-  onReactivateTier,
   onReorderTiers,
+  onTierMenu,
 }: Props) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
@@ -147,10 +146,8 @@ export function SettingsScreen({
           tierRefusal={tierRefusal}
           tierBusy={tierBusy}
           onAddTier={onAddTier}
-          onRenameTier={onRenameTier}
-          onDeactivateTier={onDeactivateTier}
-          onReactivateTier={onReactivateTier}
           onReorderTiers={onReorderTiers}
+          onTierMenu={onTierMenu}
         />
       )}
     </View>
@@ -206,10 +203,8 @@ function FormBody({
   tierRefusal,
   tierBusy,
   onAddTier,
-  onRenameTier,
-  onDeactivateTier,
-  onReactivateTier,
   onReorderTiers,
+  onTierMenu,
 }: {
   form: ShopFormScreen;
   shop: ShopSettings | null;
@@ -219,10 +214,8 @@ function FormBody({
   tierRefusal: string | null;
   tierBusy: boolean;
   onAddTier: (body: GradeTierCreateBody) => void;
-  onRenameTier: (id: string, name: string) => void;
-  onDeactivateTier: (id: string) => void;
-  onReactivateTier: (id: string) => void;
   onReorderTiers: (order: readonly string[]) => void;
+  onTierMenu: (row: TierAdminRow) => void;
 }) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
@@ -398,10 +391,8 @@ function FormBody({
           refusal={tierRefusal}
           busy={tierBusy}
           onAdd={onAddTier}
-          onRename={onRenameTier}
-          onDeactivate={onDeactivateTier}
-          onReactivate={onReactivateTier}
           onReorder={onReorderTiers}
+          onTierMenu={onTierMenu}
         />
       ) : null}
     </ScrollView>
@@ -421,33 +412,26 @@ function TierAdminBody({
   refusal,
   busy,
   onAdd,
-  onRename,
-  onDeactivate,
-  onReactivate,
   onReorder,
+  onTierMenu,
 }: {
   tierScreen: TierAdminScreen;
   refusal: string | null;
   busy: boolean;
   onAdd: (body: GradeTierCreateBody) => void;
-  onRename: (id: string, name: string) => void;
-  onDeactivate: (id: string) => void;
-  onReactivate: (id: string) => void;
   onReorder: (order: readonly string[]) => void;
+  onTierMenu: (row: TierAdminRow) => void;
 }) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
   const editable = tierScreen.editable;
 
-  // The add-form buffer, and the one row being renamed (id + its name buffer). A
-  // local validation message is separate from `refusal` (the last NETWORK refusal):
-  // one is caught at the keypad, the other came back from the server.
+  // The add-form buffer. A local validation message is separate from `refusal` (the
+  // last NETWORK refusal): one is caught at the keypad, the other came back from the
+  // server. The rename buffer moved to the ⋯ sheet (TierActionsSheet) with the label.
   const [addCode, setAddCode] = useState("");
   const [addName, setAddName] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editError, setEditError] = useState<string | null>(null);
 
   const submitAdd = (): void => {
     const v = validateNewTier(addCode, addName, tierScreen.rows);
@@ -459,23 +443,6 @@ function TierAdminBody({
     setAddCode("");
     setAddName("");
     onAdd(v.body);
-  };
-
-  const startRename = (row: TierAdminRow): void => {
-    setEditId(row.id);
-    setEditName(row.name);
-    setEditError(null);
-  };
-
-  const submitRename = (id: string): void => {
-    const v = validateRename(editName);
-    if (!v.ok) {
-      setEditError(v.message);
-      return;
-    }
-    setEditError(null);
-    setEditId(null);
-    onRename(id, v.name);
   };
 
   // One move = one PUT of the WHOLE new order. moveActiveTier returns the full id
@@ -493,84 +460,44 @@ function TierAdminBody({
       {tierScreen.rows.map((row) => (
         <View key={row.id} style={styles.tierRow}>
           <View style={styles.tierRowMain}>
-            {editId === row.id ? (
-              <TextInput
-                style={styles.input}
-                value={editName}
-                onChangeText={setEditName}
-                maxLength={tierScreen.nameMaxLength}
-                autoFocus
-              />
-            ) : (
-              <>
-                <Text style={[styles.tierName, !row.is_active && styles.tierNameOff]}>
-                  {row.name}
-                </Text>
-                <Text style={styles.tierCode}>{row.code}</Text>
-              </>
-            )}
+            <Text style={[styles.tierName, !row.is_active && styles.tierNameOff]}>
+              {row.name}
+            </Text>
+            <Text style={styles.tierCode}>{row.code}</Text>
           </View>
           {!row.is_active ? <Text style={styles.tierOffBadge}>ปิดใช้งาน</Text> : null}
 
           {editable ? (
-            editId === row.id ? (
-              <View style={styles.tierActions}>
-                <Pressable
-                  style={[styles.tierBtn, styles.tierBtnPrimary]}
-                  disabled={busy}
-                  onPress={() => submitRename(row.id)}
-                >
-                  <Text style={styles.tierBtnPrimaryText}>บันทึกชื่อ</Text>
+            <View style={styles.tierActions}>
+              {/* Reorder ↑ ↓ stay ON the row — one PUT of the whole order per move,
+                  disabled at the edges (canMoveUp / canMoveDown). */}
+              {row.canMoveUp ? (
+                <Pressable style={styles.tierBtn} disabled={busy} onPress={() => move(row, "up")}>
+                  <Text style={styles.tierBtnText}>↑</Text>
                 </Pressable>
-                <Pressable style={styles.tierBtn} disabled={busy} onPress={() => setEditId(null)}>
-                  <Text style={styles.tierBtnText}>ยกเลิก</Text>
+              ) : null}
+              {row.canMoveDown ? (
+                <Pressable style={styles.tierBtn} disabled={busy} onPress={() => move(row, "down")}>
+                  <Text style={styles.tierBtnText}>↓</Text>
                 </Pressable>
-              </View>
-            ) : (
-              <View style={styles.tierActions}>
-                {/* Move up / down over the ACTIVE list — one PUT of the whole order
-                    per move. Disabled at the edges (canMoveUp / canMoveDown). */}
-                {row.canMoveUp ? (
-                  <Pressable style={styles.tierBtn} disabled={busy} onPress={() => move(row, "up")}>
-                    <Text style={styles.tierBtnText}>↑</Text>
-                  </Pressable>
-                ) : null}
-                {row.canMoveDown ? (
-                  <Pressable style={styles.tierBtn} disabled={busy} onPress={() => move(row, "down")}>
-                    <Text style={styles.tierBtnText}>↓</Text>
-                  </Pressable>
-                ) : null}
-                <Pressable style={styles.tierBtn} disabled={busy} onPress={() => startRename(row)}>
-                  <Text style={styles.tierBtnText}>แก้ชื่อ</Text>
-                </Pressable>
-                {row.is_active ? (
-                  row.mayDeactivate ? (
-                    <Pressable
-                      style={styles.tierBtn}
-                      disabled={busy}
-                      onPress={() => onDeactivate(row.id)}
-                    >
-                      <Text style={styles.tierBtnDanger}>ปิดใช้งาน</Text>
-                    </Pressable>
-                  ) : null
-                ) : (
-                  <Pressable
-                    style={styles.tierBtn}
-                    disabled={busy}
-                    onPress={() => onReactivate(row.id)}
-                  >
-                    <Text style={styles.tierBtnText}>เปิดใช้งานอีกครั้ง</Text>
-                  </Pressable>
-                )}
-              </View>
-            )
+              ) : null}
+              {/* The ... menu (P1.23 item 3 phase D): rename and the destructive deactivate
+                  leave the row into a sheet, so a wet thumb cannot hit retire beside the
+                  arrows. A real tap target >= TAP_MIN; its accessibilityLabel names the tier
+                  it acts on (ruling 3). */}
+              <Pressable
+                style={styles.tierBtn}
+                disabled={busy}
+                onPress={() => onTierMenu(row)}
+                accessibilityRole="button"
+                accessibilityLabel={row.name}
+              >
+                <Text style={styles.tierBtnText}>⋯</Text>
+              </Pressable>
+            </View>
           ) : null}
         </View>
       ))}
-
-      {editId !== null && editError !== null ? (
-        <Text style={styles.tierError}>{editError}</Text>
-      ) : null}
 
       {/* The LAST NETWORK refusal — the F4 deactivation count, a duplicate, an outage. */}
       {refusal !== null ? <Text style={styles.tierRefusal}>{refusal}</Text> : null}
@@ -676,11 +603,11 @@ function makeStyles(t: ThemeTokens) {
 
     themeCard: {
       backgroundColor: t.color.surface, marginHorizontal: t.space.x3, marginTop: t.space.x3,
-      borderRadius: t.radius.xl, padding: t.space.xxl, borderWidth: 1, borderColor: t.color.borderSoft,
+      borderRadius: t.radius.card, padding: t.space.xxl, borderWidth: 1, borderColor: t.color.borderSoft,
     },
 
     card: {
-      backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xxl, marginBottom: t.space.xl,
+      backgroundColor: t.color.surface, borderRadius: t.radius.card, padding: t.space.xxl, marginBottom: t.space.xl,
       borderWidth: 1, borderColor: t.color.borderSoft,
     },
     label: { fontSize: t.type.body, fontWeight: "900", color: t.color.textSubtle },
@@ -718,26 +645,26 @@ function makeStyles(t: ThemeTokens) {
 
     saveBtn: {
       minHeight: t.tapMin, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
-      alignItems: "center", justifyContent: "center", marginTop: t.space.sm,
+      alignItems: "center", justifyContent: "center",
     },
     saveBusy: { opacity: 0.6 },
     saveText: { color: t.color.onPrimary, fontSize: t.type.subhead, fontWeight: "900" },
     readOnlyNote: { fontSize: t.type.body, color: t.color.textSubtle, fontWeight: "700", marginTop: t.space.sm, textAlign: "center" },
 
     confirmCard: {
-      backgroundColor: t.color.warningSoftBg, borderRadius: t.radius.xl, padding: t.space.xxl, marginTop: t.space.sm,
+      backgroundColor: t.color.warningSoftBg, borderRadius: t.radius.card, padding: t.space.xxl, marginTop: t.space.sm,
       borderWidth: 2, borderColor: t.color.warning,
     },
     confirmText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.warningFg },
     confirmRow: { flexDirection: "row", gap: t.space.lg, marginTop: t.space.xl },
-    confirmYes: { flex: 1, marginTop: 0 },
+    confirmYes: { flex: 1 },
     cancelBtn: {
       minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.xl, backgroundColor: t.color.borderSoft,
       alignItems: "center", justifyContent: "center",
     },
     cancelText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
 
-    messageCard: { borderRadius: t.radius.pill, padding: t.space.x3, marginTop: 24, alignItems: "flex-start" },
+    messageCard: { borderRadius: t.radius.card, padding: t.space.x3, marginTop: t.space.x5, alignItems: "flex-start" },
     messageBadge: {
       color: t.color.onPrimary, fontSize: t.type.body, fontWeight: "800", paddingHorizontal: t.space.lg,
       paddingVertical: t.space.xs, borderRadius: t.radius.sm, overflow: "hidden",
@@ -751,10 +678,13 @@ function makeStyles(t: ThemeTokens) {
     messageBtnText: { color: t.color.onPrimary, fontSize: t.type.bodyLg, fontWeight: "800" },
 
     tierCard: {
-      backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xxl,
+      backgroundColor: t.color.surface, borderRadius: t.radius.card, padding: t.space.xxl,
       marginBottom: t.space.xl, borderWidth: 1, borderColor: t.color.borderSoft,
     },
-    tierTitle: { fontSize: t.type.subhead, fontWeight: "900", color: t.color.text, marginBottom: t.space.md },
+    // The reference's section heading: small and muted (P1.23 item 3 phase D), the
+    // same body/800/textSubtle DashboardScreen's `sectionLabel` already uses. The
+    // shop-info / this-device headings are new Thai and deferred (OPEN_ITEMS).
+    tierTitle: { fontSize: t.type.body, fontWeight: "800", color: t.color.textSubtle, marginBottom: t.space.md },
     tierRow: {
       flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: t.space.md,
       paddingVertical: t.space.lg, borderTopWidth: 1, borderTopColor: t.color.borderSoft,
@@ -773,10 +703,7 @@ function makeStyles(t: ThemeTokens) {
       minHeight: t.tapMin, paddingHorizontal: t.space.xl, borderRadius: t.radius.lg, borderWidth: 1,
       borderColor: t.color.border, backgroundColor: t.color.surface, alignItems: "center", justifyContent: "center",
     },
-    tierBtnPrimary: { backgroundColor: t.color.primary, borderColor: t.color.primary },
     tierBtnText: { fontSize: t.type.body, fontWeight: "800", color: t.color.neutralFg },
-    tierBtnPrimaryText: { fontSize: t.type.body, fontWeight: "800", color: t.color.onPrimary },
-    tierBtnDanger: { fontSize: t.type.body, fontWeight: "800", color: t.color.danger },
     tierError: { fontSize: t.type.body, color: t.color.danger, fontWeight: "800", marginTop: t.space.md },
     tierRefusal: {
       fontSize: t.type.body, color: t.color.warningFg, fontWeight: "800", marginTop: t.space.lg,

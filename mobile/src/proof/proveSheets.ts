@@ -223,13 +223,15 @@ function walk(): { readonly stacks: readonly SheetStack[]; readonly keys: readon
  *
  * ---------------------------------------------------------------------------
  * THIS LIST MOVED EIGHT -> NINE (P1.9) -> ELEVEN (P1.23) -> TWELVE (P1.21,
- * `seller_history`) -> THIRTEEN (P1.23 item 3 phase C, `notices`); P1.23 item 4
- * unit 3 SWAPPED `daily` FOR `dashboard` WITHOUT MOVING THE COUNT, AND THE SET IS
- * THE ASSERTION
+ * `seller_history`) -> THIRTEEN (P1.23 item 3 phase C, `notices`) -> FOURTEEN
+ * (P1.23 item 3 phase D, `settings>tier_actions`, the tier ⋯ menu — the SECOND
+ * two-deep stack, over `settings`); P1.23 item 4 unit 3 SWAPPED `daily` FOR
+ * `dashboard` WITHOUT MOVING THE COUNT, AND THE SET IS THE ASSERTION
  * ---------------------------------------------------------------------------
- * `prices` (P1.9), `settings` and `account` (P1.23), `seller_history` (P1.21), then
- * `notices` (P1.23 item 3 phase C), were each added deliberately, by hand, after
- * reading App.tsx — which is what this constant is for. It is NOT computed from
+ * `prices` (P1.9), `settings` and `account` (P1.23), `seller_history` (P1.21),
+ * `notices` (P1.23 item 3 phase C), then `settings>tier_actions` (phase D), were
+ * each added deliberately, by hand, after reading App.tsx — which is what this
+ * constant is for. It is NOT computed from
  * `SHEET_KINDS`, so adding a kind reddens S1 until a person has decided the new
  * stack really is reachable and really does close where they say. That red is the
  * feature: the count moving on its own would mean a screen appeared that nobody
@@ -262,6 +264,7 @@ const EXPECTED_REACHABLE: readonly string[] = [
   "seller_picker",
   "seller_picker>add_seller",
   "settings", // the ตั้งค่าร้าน button, in the header (P1.23)
+  "settings>tier_actions", // the ⋯ menu on a grade-tier row, OVER settings (P1.23 item 3 phase D)
   "sign_out",
 ];
 
@@ -297,6 +300,11 @@ const EXPECTED_CLOSE: readonly (readonly [string, string, string])[] = [
     "settings",
     "-",
     "back to the cart. The settings screen is not a step in anything — an owner who has finished with it is finished, and there is nothing underneath it to return to (P1.23)",
+  ],
+  [
+    "settings>tier_actions",
+    "settings",
+    "BACK TO THE SETTINGS TIER LIST, not the cart: the tier ... menu is a leaf over settings, and closing it (rename, deactivate, or cancel) returns to the tier the operator was looking at (P1.23 item 3 phase D)",
   ],
   [
     "account",

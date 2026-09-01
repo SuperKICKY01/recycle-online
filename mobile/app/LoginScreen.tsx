@@ -156,7 +156,7 @@ function makeStyles(t: ThemeTokens) {
     // typed once, and character-by-character comparison is the whole task.
     code: { letterSpacing: 4, fontSize: t.type.titleLg, fontWeight: "700" },
     btn: {
-      marginTop: 18, minHeight: t.tapMin + t.space.xs, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
+      marginTop: t.space.x4, minHeight: t.tapMin + t.space.xs, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
       alignItems: "center", justifyContent: "center",
     },
     btnText: { color: t.color.onPrimary, fontWeight: "800", fontSize: t.type.subhead },

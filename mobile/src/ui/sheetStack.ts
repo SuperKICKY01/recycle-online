@@ -82,6 +82,15 @@ export const SHEET_KINDS = [
   /** P1.23 item 3 phase C. The collapsed notices, in full — opened from the main
    *  screen's notice count (the reference's "notices behind a count"). A leaf. */
   "notices",
+  /**
+   * P1.23 item 3 phase D. The grade-tier row's actions menu (rename / deactivate),
+   * opened from the ... control on a tier row INSIDE the settings sheet. Opened OVER
+   * `settings`, so the one two-deep stack besides `seller_picker>add_seller`;
+   * closing it returns to the tier list. The destructive deactivate leaves the row
+   * so a wet thumb at 5am cannot hit it beside the reorder arrows (the owner's
+   * mis-tap reason). A leaf: nothing opens over it.
+   */
+  "tier_actions",
 ] as const;
 
 export type SheetKind = (typeof SHEET_KINDS)[number];
@@ -275,6 +284,19 @@ export const SHEET_TRANSITIONS = {
     action: { kind: "open", sheet: "notices" },
     from: [null],
     site: "App.tsx the notice-count control, from the arranged notice stack",
+  },
+  /**
+   * P1.23 item 3 phase D. The ⋯ menu on a grade-tier row. Opened from the SETTINGS
+   * sheet — the tier list lives inside it — so `from: ["settings"]` and the reached
+   * stack is `settings>tier_actions`, a two-deep leaf exactly like
+   * `seller_picker>add_seller`. WHICH tier it acts on is App.tsx payload
+   * (`tierMenuTarget`), written WITH this dispatch and never inferred by the sheet,
+   * the same rule `pendingChange` states for the seller-change dialog.
+   */
+  open_tier_actions: {
+    action: { kind: "open", sheet: "tier_actions" },
+    from: ["settings"],
+    site: "App.tsx onTierMenu, the ⋯ control on a SettingsScreen tier row",
   },
   /**
    * A DIFFERENT SELLER WAS PICKED FOR A CART THAT ALREADY HAS LINES.

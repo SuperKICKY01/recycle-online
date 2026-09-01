@@ -75,7 +75,60 @@ not read the green as re-run.**
 
 ## Current phase
 
-**P1.23 ITEM 3 — PHASE C: THE VISUAL PASS. 2026-08-31.** No sha yet (this record precedes the
+**P1.23 ITEM 3 — PHASE D: THE REFERENCE-PINNED SCREEN BODIES. 2026-09-01.** No sha yet (this record
+precedes the commit; anchor next pass). The current-phase pointer, superseding the phase-C pointer below;
+phase C's work stands — this closes the deferred card-ification unit (W5 / P4).
+**THE OWNER'S JUDGEMENT IS THE PHASE'S AUTHORITY (Thai verbatim, never translated):** phase C was still
+below his bar — "ตอนนี้มันกากมากเลยนะ UX UI อ่ะ ผมไม่พอใจ" — and prior passes failed because they used the
+installed skill as a reference and let the session's OWN design sense do the work: "ทำไม พาแก้ ux ui แต่ไม่ใช้
+skills และใช้ความรู้แบบโครต AI เลย ผมก็บอกแล้วให้ใช้ skills ให้ claude code ไปอ่าน ไปใช้ ดิ ทำux ui สวยๆ
+frontendสวยๆ". RECON (verified): the pre-installed `ui-ux-pro-max` returns thin/generic guidance; the fix
+is the OWNER'S OWN skills, used directly.
+**THREE SKILL REPOS INSTALLED** into gitignored `.claude/skills/` (never `--force`): `emilkowalski/skills`
+d23d7f8 (animate-expo, apple-design), `pbakaus/impeccable` 5b585c0 (Operate-mode product UI + a native
+track — the authority), `leonxlnx/taste-skill` ccbc156 (mostly out of scope). The reference (AllTCAS, ten
+screenshots at `E:\reffe`) was read DIRECTLY off disk. METHOD (impeccable new-work.md): inherit theme.ts's
+established world, apply impeccable Operate + apple-design + animate-expo craft, PINNED to the reference's
+STRUCTURE (inset cards + gaps, grouped rows + muted headings, notices behind a count, one rare accent,
+segmented controls, grab-handle sheets). NOT donated: the brand hue, the logo, the mascots, the bottom tab
+bar, the gamification. `ROADMAP.md § P1.23 — The mobile UX rework` (item 3, phase D) carries the full method record.
+**BUILT (presentation only; no logic/route/store/sync; the one exception is a presentation sheet kind).**
+A1 one-accent (money, bar fills and decorative borders off teal; teal only on the primary action, the
+selected state and one hero figure per screen; the CART TOTAL is NEUTRAL — weight+size, the CTA is the
+accent — the owner's ruling); status tints kept as the semantic vocabulary (A2). RED destructive
+(ออกจากระบบ + the deactivate action in the tier menu), with the `danger`-on-`surface`/`background` pair
+MEASURED not estimated (4 new prove:theme cells; the 34 pinned colours unmoved). The tier ⋯ menu: rename +
+deactivate moved OFF the row (the reorder ↑ ↓ stay) into a new grab-handle bottom sheet
+`app/TierActionsSheet.tsx` via the ONE SheetHost, so a wet thumb cannot hit retire beside the arrows; a new
+`tier_actions` sheet kind (`settings>tier_actions`, the second two-deep stack). The 23 raw geometry literals
+across 12 files → 0. Card corners unified to `t.radius.card`; muted-meta consolidation applied where clean.
+**PROVEN (headless, every command BARE, exit read in the same invocation).** Both typechecks green;
+`prove:theme` green TWICE — the 4 new danger cells MEASURED: `danger`/surface 6.47:1 (light) / 5.29:1
+(dark), `danger`/background 6.18:1 / 6.77:1, all ≥4.5 so the pinned red stands; `prove:sheets` green TWICE
+(reachable 13→14 NAMED settings→settings>tier_actions, S9 exactly ONE Modal via the host, S10
+open_tier_actions dispatched); `prove:tapaudit` green (Cs2 23→0, zero tap findings, scaffold clean); the
+full mobile headless suite green (44 proofs — settings/gradeTiers/account/dashboard/prices/sellerhistory/
+saveconfirm/signout/noticeStack/reservestrip/notice/daily/sync/cart/money/entry/seller/void/… plus
+`forbidden`, whose F6 hit the real dev server on :8000). `prove:login` and `prove:loginscreen` exit 1 ONLY
+on server-availability (their server on :8231 is not running; no change touches login/session/shop-code
+logic). NO THAI REWORDED: the byte-level filtered diff shows exactly the 5 tier-label MOVES (SettingsScreen
+`<Text>` → TierActionsSheet `<Text>`, byte-identical), 0 added Thai in tracked files.
+**DEFERRED (recorded in `OPEN_ITEMS.md`):** the skeleton loading component (L1 — DashboardScreen's bare
+spinner is unchanged); the ข้อมูลร้าน / เครื่องนี้ section headings and the empty-state teaching copy (both
+NEW Thai — the owner's decision, held under no-Thai-reworded); the full type-rank consolidation (a light
+pass done); dependencies for press haptics (`expo-haptics`) and grabbable sheet springs
+(`react-native-reanimated`) — the owner decides these separately.
+**DELIBERATE DIVERGENCE from the reference (do not "fix" back):** the inline-edit settings fields carry NO
+chevron — a › that opens nothing is a promise the screen cannot keep, and the reference's own row→detail
+model is the one part "no new screen" forbids; inline edit is one tap. The chevron survives only on the
+tier ⋯. Recorded in the ROADMAP phase-D note.
+**IS A LESSON OWED? YES, WRITTEN.** `lessons/comment-thai-pollutes-a-moves-only-diff.md`: on a Thai-MOVE
+phase, documentation comments and docstrings that QUOTE the moved strings show up as "added Thai" in the
+"moves only" filtered diff — a false positive that can hide a real reword or be waved through as a clean
+diff. Caught this pass by a BYTE-LEVEL filtered-diff check (removed=5, added_tracked=0), then every comment
+was de-Thai'd. The device pass is UNOBSERVED and is the ONE owed handset pass amended below.
+
+ No sha yet (this record precedes the
 commit; anchor next pass). The current-phase pointer, superseding the P1.24 commit-3 pointer below;
 P1.24's work stands — this is the newer session in time, an earlier step number.
 **THE OWNER'S JUDGEMENT IS THE PHASE'S AUTHORITY, recorded as his (Thai verbatim, never
@@ -657,6 +710,16 @@ full reload FIRST — `CLAUDE.md § Boot check` "WHICH BUNDLE"), the owner reads
   segmented control, and the API address is GONE from the main screen (moved to the settings
   diagnostics). DARK rendering is OBSERVED (V1, 2026-08-31, the owner); light, follow-system and
   cold-start persistence remain UNOBSERVED.
+- P1.23 ITEM 3 PHASE D (the reference-pinned bodies — this session): the owner re-reads the CART,
+  ตั้งค่าร้าน, the DASHBOARD and every list body against his AllTCAS reference, in BOTH themes —
+  teal appears RARELY (only the primary action, the selected state and the ONE hero figure per
+  screen; every money figure, bar fill and decorative border now neutral, incl. the cart total by
+  weight+size); the grade-tier rows read as name·code with the reorder ↑ ↓ on the row and a ⋯ that
+  opens a grab-handle bottom sheet holding แก้ชื่อ and ปิดใช้งาน (retire OFF the row); ออกจากระบบ and
+  the tier ปิดใช้งาน read RED and legible in both themes; cards share one corner with real gaps; and
+  no body still touches the frame. He confirms the ⋯ menu is legible-and-hittable at arm's length in
+  sun (≥ TAP_MIN) and that the red destructive is unmistakable. All UNOBSERVED (no device pass this
+  session).
 All UNOBSERVED except dark rendering (V1, OBSERVED 2026-08-31 by the owner).
 **IS A LESSON OWED? NO.** The brief flagged the text-scanner-as-proof shape as "a new
 instrument here"; re-derived against the tree, it is NOT new — `proveSheets.ts` already

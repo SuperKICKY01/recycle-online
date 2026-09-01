@@ -251,7 +251,7 @@ function makeStyles(t: ThemeTokens) {
     searchHint: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.sm, fontWeight: "600" },
 
     body: { padding: t.space.x3, paddingBottom: t.space.x5 },
-    empty: { textAlign: "center", color: t.color.textSubtle, marginTop: 40, fontSize: t.type.bodyLg },
+    empty: { textAlign: "center", color: t.color.textSubtle, marginTop: t.space.x5, fontSize: t.type.bodyLg },
 
     row: {
       backgroundColor: t.color.surface, borderRadius: t.radius.xl, padding: t.space.xl, marginBottom: t.space.lg,
