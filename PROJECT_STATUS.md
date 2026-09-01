@@ -75,6 +75,63 @@ not read the green as re-run.**
 
 ## Current phase
 
+**THE OPEN DOOR — LOGIN RATE-LIMITING, ACCOUNT LOCKOUT, AND A FAILED-LOGIN RECORD. 2026-09-01.** No sha yet
+(this record precedes the commit; anchor next pass). The current-phase pointer, superseding the
+blueprint-adoption pointer below AS THE POINTER ONLY — that adoption stands and this phase builds under it.
+Blueprint 13.3 and the STEP-4 no-dependency cluster at
+`ROADMAP.md § The product blueprint, reconciled — 2026-09-01`: the one item that waited on nothing and closed
+a hole that was open right now.
+**WHAT IS BUILT.** `POST /auth/login` now derives a temporary account lockout from an append-only counter.
+Migration `0016` adds `failed_login_attempts (id, tenant_id, username, outcome, created_at)` — RLS+FORCE,
+append-only at the grant level (SELECT+INSERT; UPDATE/DELETE revoked from `recycle_app`). `server/app/login_guard.py`
+holds the bounds (`FAILURE_THRESHOLD`=5, `LOCKOUT_WINDOW`=15 min) and the SQL: a login counts `failed` rows for
+`(tenant_id, submitted-username)` in a trailing window (after the last admin-unlock marker) and refuses at the
+threshold with a body BYTE-IDENTICAL to a wrong password; the lock auto-expires as the failures age out; an
+admin clears it early at `POST /users/{user_id}/unlock-login` (append a marker, never a DELETE). NO password
+material is stored. `scripts/reconcile.py` registers the table (S1/S2/S3/X2) and records its one X2 boundary
+(a bogus-tenant row) in `CANNOT_SEE`.
+**KEY DECISIONS, each argued in the code/migration.** Keyed on `(tenant_id, username)` because reaching a real
+account forces the real tenant through RLS; the lock AUTO-EXPIRES so a stranger causes only a bounded,
+self-healing outage and a guesser gets ~5 tries per 15 min per account; `tenant_id` and `username` carry NO FK
+(unverified caller input — a login against a shop or user that does not exist must record, not raise); it FAILS
+CLOSED (the counter shares fate with the login's own DB read); the refusal DISCLOSES NOTHING (the
+username-oracle question stays the owner's — the admin unlock route is the channel that reports the state).
+SEPARATE from `users.is_active` (the durable admin lock); neither reuses the other. TWO CHOICES GO BEYOND THE
+BRIEF and are the reusable part, argued in `app/login_guard.py`: the lock is DERIVED from the record, not stored,
+so it self-heals and needs NO unlock path for the owner's OWN lockout (the admin route only speeds a staff
+recovery); and the locked path pays a `DUMMY_HASH` verify, closing a timing oracle for "this account is locked"
+that the brief never named. A self-healing derived state and an equalised refusal cost carry to the next guard.
+**PROVEN, headless.** `scripts/prove_login_guard.py` — 32 cells over real HTTP (its own child uvicorn on a
+scratch), GREEN TWICE with `--skip-restore` between, plus the four disproofs: (b) bypass-the-lock and (c)
+unknown-user-body each red EXACTLY their named cell; (a) remove-the-increment reds the lock cell AND the
+recording-dependent family, which is CORRECT and NOT a relaxed rule — removing the increment removes the very
+FACT those cells observe, so a single-cell red would have meant the others were green for some reason OTHER than
+the behaviour they name; the no-password-material cell's presence sibling reds too, catching the vacuous absence
+that a bare "password not found" over zero rows would have passed. (d) log-the-password reds the
+no-password-material cell alone. `alembic upgrade head` exit 0 with the schema read back field-by-field from `information_schema`;
+downgrade+upgrade proven on a SCRATCH, both 0. S5 — every login proof that submits wrong passwords is green
+twice: `prove_auth`, `prove_revocation` (standalone AND chained inside `prove_user_create`), `prove_user_create`
+(133 cells); plus correct-password smoke tests `prove_bills`, `prove_master`, `prove_grade_tiers`. No seeded or
+per-run account tripped the lockout.
+**EDITS THIS COMMIT.** New: `migrations/versions/0016_failed_login_attempts.py`, `app/login_guard.py`,
+`scripts/prove_login_guard.py`. Changed: `app/main.py` (the login body), `app/users.py` (the unlock route),
+`scripts/reconcile.py` (register the table + a `CANNOT_SEE` entry), and four docs (this record, `OPEN_ITEMS.md`,
+`ROADMAP.md`, `ARCHITECTURE.md § 4. The data model`). Nothing under `mobile/`, `desktop/`, `packages/`,
+`tools/`, `.claude/`; no
+second migration; no change to JWT issuance, `token_version`, any existing table, or any existing RLS policy;
+the two owner artefacts untouched.
+**WHAT IS NOT BUILT, recorded not done.** Rate limiting proper (per-IP / global, blueprint 13.12), the password
+route's free guessing, and the table's retention/prune — all held at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's`, where the gap stays ONE whole-system item so
+that guarding login does not read as fixing the system.
+**GATES (each command BARE, exit read in the same invocation; cp874 box).** `reconcile.py` exit 0 (15 tables,
+S2 green, X2 attributes `failed_login_attempts=0`, VIOLATIONS 0). `verify_shared_checks.py` exit 0 (IDENTICAL,
+4 items, 586 chars). `build_all_lessons.py --check` exit 0 (62 lessons, 515898 bytes; one lesson added this
+commit). `verify_citations.ps1` over the named 14 (call operator, `[string[]]` bound; SOURCES read first):
+SOURCES=14, CITATIONS 607→611 (delta +4, every new one resolves), BROKEN=6 — the floor UNMOVED, its exact
+pre-existing distribution (OPEN_ITEMS ×4, SRS_MAP ×1, nemesis ×1); PROJECT_STATUS, ROADMAP and ARCHITECTURE at
+BROKEN=0, so ZERO new breaks. The 607 baseline is 40a06cd's reading.
+
 **ADOPT THE PRODUCT BLUEPRINT AS THE PLAN OF RECORD. 2026-09-01.** No sha yet (this record precedes the
 commit; anchor next pass). The current-phase pointer, superseding the phase-E pointer below AS THE POINTER
 ONLY — phase E's build stands, and this phase touches NO product code. The owner approved a product plan —

@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from . import clock_guard
+from . import clock_guard, login_guard
 from .auth import Principal, get_principal
 from .bills import router as bills_router
 from .db import directory_engine, engine, tenant_connection
@@ -223,8 +223,11 @@ async def login(body: LoginRequest) -> LoginResponse:
     # Tenant context is set from the SUBMITTED tenant_id (an identity claim).
     # RLS then guarantees the lookup can only ever see THAT tenant's users, so a
     # username belonging to another tenant is simply invisible here -> there is
-    # no cross-tenant login path.
+    # no cross-tenant login path. The lockout count reads the SAME tenant in the
+    # SAME snapshot, so a guesser can only ever move the counter for the
+    # (tenant_id, username) it is actually attacking (login_guard, migration 0016).
     async with tenant_connection(body.tenant_id) as conn:
+        locked = await login_guard.is_locked_out(conn, body.username)
         row = (
             await conn.execute(
                 text(
@@ -235,11 +238,41 @@ async def login(body: LoginRequest) -> LoginResponse:
             )
         ).mappings().first()
 
+    # THE LOCKOUT, CHECKED FIRST AND BYTE-IDENTICAL TO THE OTHER REFUSALS.
+    #
+    # A locked account is refused with the SAME _INVALID_LOGIN a wrong password
+    # gets, deliberately: disclosing "locked" here would tell a guesser that a
+    # given (tenant, username) has recently seen real failed traffic, and re-open
+    # the username-oracle question OPEN_ITEMS.md records as the owner's decision,
+    # not a fix. The operator is told instead through the AUTHENTICATED admin
+    # unlock route, the same channel-not-the-refused-caller shape the is_active
+    # note below uses.
+    #
+    # A DUMMY_HASH verify is paid so a locked refusal costs the same one argon2 as
+    # every other refusal — the anti-timing-oracle discipline the DUMMY_HASH
+    # verify below already applies, extended to this third refusal.
+    #
+    # NOTHING IS RECORDED on this path. An attempt against an already-locked
+    # account writes no row: recording it as `failed` would let a guesser hold the
+    # lockout open past its window, and any recording would let them grow the table
+    # one row per request without bound. So the lockout bounds the table's own
+    # growth (login_guard / migration 0016).
+    if locked:
+        await verify_password(DUMMY_HASH, body.password)
+        raise _INVALID_LOGIN
+
     if row is None:
         # Equalise timing with the found-user path; never reveal user existence.
         await verify_password(DUMMY_HASH, body.password)
+        # Record the refused attempt so it counts toward the lockout. This is a
+        # SEPARATE committed transaction inside login_guard (the login's own read
+        # transaction is already closed above), so the row survives the raise
+        # below — a record inside a rolling-back block would never move the
+        # counter, which is exactly one disproof prove_login_guard.py performs.
+        await login_guard.record_failed_attempt(body.tenant_id, body.username)
         raise _INVALID_LOGIN
     if not await verify_password(row["password_hash"], body.password):
+        await login_guard.record_failed_attempt(body.tenant_id, body.username)
         raise _INVALID_LOGIN
 
     # THE LOCK, AND IT IS CHECKED AFTER THE PASSWORD ON PURPOSE.
@@ -270,6 +303,10 @@ async def login(body: LoginRequest) -> LoginResponse:
     # POST /users/{id}/deactivate returns is_active and the new token_version in
     # its own 200.
     if not row["is_active"]:
+        # A deactivated account is a refused credential too, so it counts toward
+        # the lockout like the two above. Harmless overlap: the account is already
+        # refused by is_active, and the counter simply also fills.
+        await login_guard.record_failed_attempt(body.tenant_id, body.username)
         raise _INVALID_LOGIN
 
     token = create_access_token(

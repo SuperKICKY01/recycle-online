@@ -8079,6 +8079,18 @@ assumed; this section names the candidates and BUILDS NONE of them.
   middleware; the failed-login record is a small append-only relation or structured
   log (NOT one of the fourteen schema decisions, and low-risk). No owner or shop
   answer needed.
+  **DONE 2026-09-01 (this commit) — the LOCKOUT and RECORD halves.** Built as a
+  failure-driven lockout of `POST /auth/login`: an append-only `failed_login_attempts`
+  table (migration `0016`), a DERIVED count keyed on `(tenant_id, submitted-username)`
+  over a trailing window (`server/app/login_guard.py`), a byte-identical refusal, an
+  auto-expiry, and an admin unlock at `POST /users/{id}/unlock-login`. The framing
+  above was half-right: `users.is_active` (0007) is the DURABLE admin lock, a SEPARATE
+  notion from this TRANSIENT failure-driven one — the two do not overlap and neither
+  reuses the other. WHAT REMAINS OF 13.3: the RATE-LIMITING half proper — per-IP /
+  global request throttling (blueprint 13.12, a separate unit) — and the password
+  route's free guessing; both are held under `OPEN_ITEMS.md § Decisions open`, where
+  the gap is filed as one whole-system item so that guarding login does not read as
+  fixing the system.
 - **Off-box encrypted backup + a restore drill** (blueprint 13.10) — P1.2's backup
   half; a schedule and a destination, no domain (S13).
 - **Server-side API versioning + a min-version check** (blueprint 14.3) — startable

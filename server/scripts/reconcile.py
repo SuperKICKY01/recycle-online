@@ -323,6 +323,25 @@ TENANT_TABLES = [
     # the same decision 0012 records above: a dump taken before 0015 has none of
     # them, so S5 would go red on such a copy for a reason unrelated to money.
     "grade_tiers",
+    # Migration 0016. Added the day the relation landed, for the reason 0012 and
+    # 0015 give above: S2 goes red on a table it has never heard of, and this list
+    # is what puts failed_login_attempts under S1's no-context read, S3's RLS
+    # check, B1's blind read and X2's completeness sum. It carries no per-tenant
+    # SQL check: it holds no money and no cross-tenant reference to reconcile.
+    #
+    # ITS CONSTRAINTS AND ITS INDEX ARE DELIBERATELY NOT IN REQUIRED_CONSTRAINTS
+    # OR REQUIRED_INDEXES, the same decision 0005/0006/0011/0012/0015 recorded:
+    # prove_reconcile.py restores a COPY from a dump, and a dump taken before 0016
+    # has neither, so S5 would go red on such a copy for a reason unrelated to
+    # money. Wake condition, the same as its twins: a dump taken AFTER 0016
+    # becoming the oldest one anyone restores from.
+    #
+    # THE ONE BOUNDARY THIS TABLE ADDS is recorded in CANNOT_SEE below: its
+    # tenant_id is an UNVERIFIED submitted claim with no FK, so a row can carry a
+    # tenant_id that names no shop, and X2's per-tenant sum cannot attribute it.
+    # No such row exists on this LAN-only database and none is written by any
+    # proof, so X2 is green today.
+    "failed_login_attempts",
 ]
 ALL_RLS_TABLES = ["tenants", *TENANT_TABLES]
 
@@ -649,7 +668,8 @@ SELECT (SELECT count(*) FROM purchase_bills)                              AS bil
        (SELECT count(*) FROM users)                                       AS users,
        (SELECT count(*) FROM doc_no_counters)                             AS counters,
        (SELECT count(*) FROM seller_code_reservations)                    AS reservations,
-       (SELECT count(*) FROM grade_tiers)                                  AS grade_tiers
+       (SELECT count(*) FROM grade_tiers)                                  AS grade_tiers,
+       (SELECT count(*) FROM failed_login_attempts)                        AS failed_logins
 """
 
 # Which SCOPE_SQL column feeds each table's running total for X2.
@@ -666,6 +686,7 @@ SCOPE_COLUMN = {
     "doc_no_counters": "counters",
     "seller_code_reservations": "reservations",
     "grade_tiers": "grade_tiers",
+    "failed_login_attempts": "failed_logins",
 }
 
 CHECKS_PER_TENANT = len(SQL_CHECKS) + 4      # T0 + the SQL checks + T7/T8/T9
@@ -1341,6 +1362,19 @@ CANNOT_SEE = [
     " ADDED TO THIS TABLE: that prohibition is the whole reason a table outside"
     " the isolation model is acceptable, and if it is ever broken S1 and S2 will"
     " NOT catch it, because they have been told to skip this table.",
+
+    "A failed_login_attempts ROW WHOSE tenant_id NAMES NO SHOP. That table's"
+    " tenant_id is the SUBMITTED login claim (migration 0016), with no FK to"
+    " tenants on purpose, so a guesser who posts a tenant_id that matches no shop"
+    " writes a row X2 cannot attribute: the per-tenant sweep iterates the tenants"
+    " that EXIST, so such a row is counted in the global total and in no tenant's"
+    " sweep, and X2 would report it UNSEEN — a red about isolation that is really"
+    " about an unverified claim. It is in ALL_RLS_TABLES for S1/S3 (its RLS is"
+    " real and worth checking) but this boundary on X2 is why a future X2 red on"
+    " this table alone is read here first. No such row exists on a LAN-only"
+    " database and none is written by any proof; the boundary becomes reachable at"
+    " the P1.2 internet move, and the fix then is to exclude this table from X2,"
+    " not to engineer the checker now.",
 
     "THAT THE CLOCK WATERMARK ONLY EVER MOVES FORWARD. app/clock_guard.py"
     " advances it with GREATEST(highest_seen, now()), so no code path in the"

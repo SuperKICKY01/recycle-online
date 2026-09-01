@@ -104,6 +104,7 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
+from . import login_guard
 from .auth import (
     ADMIN_ROLE,
     STAFF_ROLE,
@@ -691,6 +692,75 @@ async def activate_user(
         ).mappings().first()
 
     return _user_or_404(row)
+
+
+@router.post("/users/{user_id}/unlock-login")
+async def unlock_login(
+    user_id: uuid.UUID, principal: Principal = Depends(require_admin)
+) -> dict:
+    """Clear the temporary LOGIN LOCKOUT on an account. ADMIN ONLY.
+
+    NOT the same thing as /activate, and the two must not be confused. /activate
+    clears is_active, the DURABLE admin lock; this clears the TRANSIENT lockout
+    that repeated failed logins build up in failed_login_attempts (migration
+    0016). An account can be under one, the other, both, or neither: they answer
+    different questions, and this route touches only the failure counter, never
+    is_active. login_guard's module docstring draws the line in full.
+
+    WHY IT EXISTS ALONGSIDE THE AUTO-EXPIRY. The lockout clears itself once the
+    failures age out of the window, which is the recovery path for a shop whose
+    only admin locks itself out with nobody to call. This route is the OTHER
+    recovery: an admin unlocking a STAFF account NOW, without making them wait out
+    the window — the same authority as deactivating or resetting an account, so
+    the same require_admin tier as the rest of this module.
+
+    IT IS ALSO THE AUTHENTICATED DISCLOSURE CHANNEL. POST /auth/login refuses a
+    locked account byte-identically to a wrong password on purpose, so nothing the
+    refused caller sees says "locked". The admin is on a different channel, and
+    this response tells them the state — how many failures counted, and whether
+    that had crossed the threshold — the same way /deactivate's own 200 is how an
+    admin observes a lock the refused caller cannot.
+
+    AN UNLOCK IS AN APPEND, NEVER A DELETE. clear_lockout writes an
+    `unlocked_by_admin` marker and the count query ignores everything at or before
+    it. The append-only table has no DELETE grant to the app role, and this route
+    needs none: the whole mechanism is additive.
+
+    404, NOT 403, on an unknown id — the doctrine revoke_sessions states and the
+    other account routes follow: from inside this tenant the row does not exist,
+    and answering "forbidden" would confirm some other shop holds a user with that
+    id. The lockout is keyed on the username, so the id is resolved to a username
+    UNDER the admin's own tenant context first; an id in another tenant matches
+    nothing and 404s, and the marker can only ever land in the admin's own tenant.
+
+    IDEMPOTENT ENOUGH: a second call on an already-clear account writes a second
+    marker and reports zero cleared. Harmless — a marker only ever moves the
+    count's floor forward, and there is nothing to get wrong in the permissive
+    direction because clearing a lockout that is not there is a no-op the login
+    path already allows.
+    """
+    async with tenant_connection(principal.tenant_id) as conn:
+        urow = (
+            await conn.execute(
+                text("SELECT id, username FROM users WHERE id = :id"),
+                {"id": user_id},
+            )
+        ).mappings().first()
+        if urow is None:
+            raise _not_found("user")
+        username = urow["username"]
+        # BEFORE the reset, so the admin sees the state that was there. Both the
+        # read and the append run under the admin's TOKEN tenant, and the block
+        # returns 200 normally, so the marker commits with it.
+        before = await login_guard.recent_failure_count(conn, username)
+        await login_guard.clear_lockout(conn, username)
+
+    return {
+        "user_id": str(urow["id"]),
+        "username": username,
+        "was_locked": before >= login_guard.FAILURE_THRESHOLD,
+        "failed_attempts_cleared": before,
+    }
 
 
 # ---------------------------------------------------------------------------

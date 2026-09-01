@@ -4311,6 +4311,33 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   changes if a limiter arrives** — it is a decision about where attempts are
   counted, not about what the 400 means.
 
+  **LOGIN NOW HAS A LOCKOUT AND A RECORD — 2026-09-01, this commit — AND THE ITEM
+  STAYS OPEN, ON PURPOSE.** `POST /auth/login` now counts failed attempts per
+  `(tenant_id, submitted-username)` over a trailing window in an append-only table
+  `failed_login_attempts` (migration `0016`): it locks the account after
+  `FAILURE_THRESHOLD` (5) failures within `LOCKOUT_WINDOW` (15 min), refuses even a
+  correct password while locked with a body BYTE-IDENTICAL to a wrong one, clears
+  itself as the failures age past the window, and is cleared early by an admin at
+  `POST /users/{id}/unlock-login`. The record holds NO password material and is
+  append-only at the grant level (SELECT+INSERT; UPDATE and DELETE revoked from
+  `recycle_app`). The counter and lock are `server/app/login_guard.py`; proven by
+  `server/scripts/prove_login_guard.py` (32 cells) with the four disproofs the
+  phase brief named.
+  **WHAT IS NOT BUILT, AND THIS IS WHY THE ITEM IS NOT CLOSED.** (1) It is ACCOUNT
+  LOCKOUT, not rate limiting: there is no per-IP or global request throttle, so a
+  distributed guesser spread thin across accounts, or a flood at any endpoint, is
+  unbounded (blueprint 13.12, a separate unit). (2) The password route's free
+  guessing (the `cb11f6a` widening above) is UNTOUCHED — a borrowed unlocked
+  handset still gets unlimited tries at `POST /users/me/password`. (3) The table
+  has NO retention/prune: it grows unbounded over time, bounded only in the short
+  run by the lockout throttling its own writes — a pruner that deletes rows older
+  than the window is safe because such rows can no longer affect a count, and it is
+  owed here. (4) A reconcile boundary, recorded in `reconcile.py`'s `CANNOT_SEE`: a
+  `failed` row whose submitted `tenant_id` names no shop cannot be attributed by
+  X2's per-tenant sum, reachable only after the `P1.2` internet move. The item was
+  filed as ONE whole-system gap so that guarding login could not read as fixing the
+  system; that argument holds, and only the login half is done.
+
 - **P1.13's DONE WHEN WILL REDDEN OVER A CORRECT DESKTOP, BECAUSE ITS INSTRUMENT
   READS COMMENTS.** Found 2026-08-19. RECORDED, NOT REPAIRED; `ROADMAP.md` was
   outside this phase's declared file set and NOTHING BELOW IS AUTHORISED.

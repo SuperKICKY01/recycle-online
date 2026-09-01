@@ -219,10 +219,20 @@ below). So the business-table count read literally is THIRTEEN. That the 0008 an
 recorded at `OPEN_ITEMS.md` and not repaired here; only `grade_tiers`, the P1.24
 addition, is added below.
 
+**Superseded 2026-09-01 (migration 0016; unanchored, anchor next pass).** Re-derived
+from `information_schema` on dev: `public` now holds FIFTEEN relations — the fourteen
+above PLUS `failed_login_attempts` (0016), added as a row below, so the business-table
+count read literally is FOURTEEN. It is a SECURITY/operational table, not shop data,
+and it breaks point 1's composite-FK rule ON PURPOSE — its `tenant_id` and `username`
+are UNVERIFIED caller input, so neither carries a foreign key; the row itself says why.
+`§ 8.2`'s RLS-policy enumeration is NOT updated for it, the same pre-existing gap
+0008/0012/0015 sit in (recorded above); `reconcile.py`'s S3 DOES check its RLS+FORCE,
+and its S1/S2/X2 account for it.
+
 | table | what it is for | shape worth knowing |
 |---|---|---|
 | `tenants` | one row per shop; the unit a licence would attach to | `(id, name, created_at)` and nothing else — no address, no phone. **No endpoint reads it** <br>**Superseded 2026-08-30 (unanchored; anchor next pass):** re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone)` — `default_grade` (migration 0010), `seller_code_target_holding` (0012), `address`+`phone` (0013). It IS read and written: `GET /shop` returns it (staff-readable) and `PATCH /shop` writes `default_grade`/`address`/`phone` (admin-only), so "no endpoint reads it" went false at `9ad225e`. `name` stays immutable-by-decision (`9ad225e`). <br>**Superseded 2026-08-30 (P1.23 item 4 unit 2; unanchored; anchor next pass):** `staff_money_visible` (boolean NOT NULL DEFAULT false, migration 0014) is added — re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone, staff_money_visible)`, EIGHT columns. It is the per-shop switch the dashboard reads: `GET /shop` returns it (staff-readable), `PATCH /shop` writes it (admin-only), and `GET /reports/summary` refuses a staff caller its money unless it is on (D1). |
-| `users` | authentication, not an employee master | `tenant_id NOT NULL`; `role` CHECK 2 values; `token_version` (0005). No `is_active`, so a session can be revoked but an account cannot be locked |
+| `users` | authentication, not an employee master | `tenant_id NOT NULL`; `role` CHECK 2 values; `token_version` (0005). No `is_active`, so a session can be revoked but an account cannot be locked <br>**Superseded 2026-09-01 (this row was stale; `§ 13` already records it):** `is_active` (0007, `boolean NOT NULL DEFAULT true`) DOES exist — an account CAN be locked, permanently, by an admin. Beside that DURABLE lock there is now a TRANSIENT one: `failed_login_attempts` (0016, the row below) records refused logins and drives a temporary lockout of `/auth/login`. So the per-account auth state is THREE things — `token_version`, `is_active`, and the derived failed-login count — not one |
 | `uoms` | units of measure (kg, crate, piece) | `(code, name)` + `is_active` |
 | `product_categories` | paper, steel, copper … | `(code, name)` + `is_active` |
 | `products` | what a yard buys | composite FKs to category and uom + `is_active`. **No sell price, no stock column** |
@@ -232,6 +242,7 @@ addition, is added below.
 | `purchase_bill_items` | the money lines | three weights, both prices, stored `amount`, `line_no` |
 | `doc_no_counters` | the gap-free document sequence | `PRIMARY KEY (tenant_id, be_year)`, one row per shop per Buddhist year (0002) |
 | `grade_tiers` | the per-tenant grade tiers a shop declares (P1.24 / S16) | `UNIQUE (tenant_id, code)` and `(tenant_id, id)`; columns `code`/`name`/`sort_order`/`is_active`; `product_prices.grade` and `sellers.grade` reference it by composite FK on `code`. A tier is DEACTIVATED, never deleted (no DELETE grant). Added 0015 |
+| `failed_login_attempts` | the append-only record of a REFUSED login, and the counter a temporary lockout is derived from (0016) | `(id, tenant_id, username, outcome, created_at)`, `outcome` CHECK `failed`/`unlocked_by_admin`. THE ONE TABLE THAT DEPARTS FROM POINT 1: `tenant_id` is the UNVERIFIED submitted login claim and `username` the string as typed, so NEITHER carries a foreign key — a guesser may name a shop or user that does not exist and the attempt must record, not raise. RLS+FORCE keyed on the submitted tenant like the rest; APPEND-ONLY at the grant level (`recycle_app` holds SELECT+INSERT, UPDATE/DELETE revoked). Holds NO password material. Added 0016 |
 
 **Why the shape is this shape**, in four points that are not obvious from the
 column list:
