@@ -130,6 +130,14 @@ work untouched, the seam test); nothing new was relearned.
 **GATES.** Both mobile typechecks bare exit 0. `prove:version` + eight regression proofs GREEN TWICE (above).
 `verify_shared_checks.py`, `build_all_lessons.py --check` and the 14-source citation floor are unaffected by
 mobile code and are re-read at commit. Device pass owed (headless-proven; the handset run is P1.11's).
+**CORRECTION (RED-TEAM 2026-09-01, `21ae0a7`).** "ONE calm … screen" above is TRUE of the sync STRIP and OVERSTATES
+the rest: the "update to continue" state covers only that strip. A nemesis pass found the LOGIN/shop-code screen, the
+SIGN-OUT sheet and the RESERVE-code strip still render wrong instructions on a 426 ("tell the shop owner", "wait for
+a send", "connect to refill" — none says "update"), that `appOutdated` has no in-process clearer (a rolled-back
+floor leaves a device wedged or contradicting its own synced rows), and that the seller/void `clientOutdated`
+counter is unproven. All are LATENT while the floor is 0 and MUST be closed before it is ever raised. Recorded, NOT
+repaired, at `OPEN_ITEMS.md`'s "THERE IS NO API VERSION" entry (the RED-TEAM block). No lesson yet — a red-team
+finding produces a lesson when it is FIXED, and these are recorded for a follow-up, not fixed here.
 
 **THE VERSION CONTRACT — SERVER-SIDE API VERSIONING AND A FORCED-UPGRADE GATE (SERVER HALF). 2026-09-01.** No sha
 yet (this record precedes the commit; anchor next pass). The current-phase pointer, superseding the login-lockout

@@ -5671,6 +5671,64 @@ below and says so.
   server phase record). Reconciled at
   `ROADMAP.md § The product blueprint, reconciled — 2026-09-01`, item (d)'s
   "Server-side API versioning".
+- **[RED-TEAM 2026-09-01, `21ae0a7`] THE VERSION CONTRACT'S CLIENT HALF IS
+  INCOMPLETE — CLOSE THESE BEFORE THE FLOOR IS EVER RAISED. NOT REPAIRED.** A
+  nemesis pass on the two version-contract commits found the "update to continue"
+  state covers ONLY the sync strip. Every finding is LATENT while the floor is 0 (no
+  client is refused a 426), and each becomes LIVE the moment the floor is raised —
+  which is the whole point of the contract, so these are prerequisites for USING it,
+  not optional polish. All re-derived at the artefacts this pass; none is a live
+  defect today. The two owner-named questions (the sticky state, the seller-kind
+  exception) are findings 4/5 and the note below.
+  1. *[screen]* A 426 at LOGIN or SHOP-CODE renders "เซิร์ฟเวอร์ตอบกลับผิดปกติ … แจ้งเจ้าของร้าน"
+     (tell the shop owner), NEVER "update" — `attemptLogin`
+     (`mobile/src/session/signInIdentity.ts:159-162,239`) and `exchangeShopCode`
+     (`mobile/src/session/shopCode.ts`) map any non-401 to `server_fault`. A signed-out
+     or freshly-installed old build shows ONLY this, and the owner cannot change an
+     app version. The strip cannot compensate: `maySync` needs a token, so a
+     signed-out device runs no pass and never sets `appOutdated`.
+  2. *[screen]* The SIGN-OUT sheet tells a 426-refused operator "รอให้ส่งครบก่อน" — wait
+     for a send that cannot happen — because a 426 leaves `session="active"` and
+     `appOutdated` was given to `statusNotice` but NOT to `SignOutCardInput`
+     (`mobile/src/session/signOutNotice.ts:264-265`). This is
+     `correct-classification-can-still-render-as-an-error`'s R2b defect re-entering by
+     the same missing-required-field route R2b closed.
+  3. *[screen]* The RESERVE-CODE strip says "…จะเติมเองเมื่อต่อเน็ต" / "…จนกว่าจะต่อเน็ต"
+     (`mobile/src/master/reserveNotice.ts:82,90`) on a 426-refused build, because the
+     reservation top-up maps a 426 to `unavailable` (`mobile/src/adapters/httpSellerTransport.ts`,
+     non-200 → unavailable). Connecting does not help; only an update does.
+  4. *[state]* `appOutdated` (`mobile/App.tsx:691`, set true only at :1292) has NO
+     false-writer and is absent from `ClearedSession`, so a device the server would
+     NOW accept (a bad floor raise, rolled back) keeps showing "too old" even as its
+     bills sync — the screen contradicting the row.
+  5. *[state]* A floor RAISED past this build's version then LOWERED again WEDGES the
+     device for its whole process: the outbox kinds are halted (`halt_kind`) and
+     neither retraction is reachable — no 401 arrives (so no sign-in), and the
+     sign-out gate refuses at `totalOwed>0`; only force-quit clears it, and no screen
+     says so (`mobile/src/sync/outboxRunner.ts` `halted`; `engine.ts:273,297`;
+     `signOut.ts` the gate).
+  6. *[proof, shape 1]* `prove:version` is GREEN with `result.clientOutdated += 1`
+     deleted from the `bill_void` AND `seller_create` arms (nemesis mutation, exit 0):
+     `caseEngine` uses `noSellerKind()` and stages no void, so only the `bill_send`
+     counter is exercised — the change's one deliberate rule-break (the seller kind's
+     counter) has no assertion.
+  7. *[server, PLAUSIBLE]* `version_gate.current_floor`'s `(mtime_ns, size)` cache key:
+     on this box, back-to-back same-size writes shared the key in 169/200 trials
+     (~1.35 ms granularity), and every floor value is one byte, so a corrective LOWER
+     floor written within a tick of a wrong one can be masked until the next write —
+     the opposite of what the comment claims. Not traced against a live request in
+     the window; recipe in the pass. *Also noted, not a finding:* raising the floor
+     via PowerShell `>` writes UTF-16LE, which the reader decode-fails to the default
+     0 (documented fail-open), so an operator has no in-band confirmation a raise
+     took effect.
+  *The SELLER-KIND EXCEPTION (owner question 3) is SOUND, not a finding:* the
+  no-`SyncRunResult`-counter rule (`1d7f638`) is about `attempted`-shaped CONNECTION
+  conclusions from a non-bill kind; `clientOutdated` is a device-global BUILD fact
+  produced only by a real 426, so it extends past a case the rule never considered
+  rather than contradicting it. *The ORDER of refusals (owner question 2) is
+  correct:* the version gate is the outermost middleware, so a 426 pre-empts every
+  401, and the recovery update→sign-in→drain works end to end (only the reverse
+  order — session expires first, then the floor rises — hits finding 1).
 - **[MEASURED] WHAT `mobile/app.json`'s `extra` CARRIES TODAY, AND WHAT DECIDES
   WHAT IT CARRIES NEXT.** A release build is readable by anyone holding the app,
   and `extra` is compiled into it. Measured by reading the file in this pass: it
