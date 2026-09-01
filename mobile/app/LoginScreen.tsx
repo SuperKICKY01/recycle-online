@@ -15,6 +15,11 @@
  * error.md: app/ is unreachable by the headless proofs, so wording that lives
  * here is wording no assertion can ever go red on.
  *
+ * PRESENTATION (P1.23 phase E): the fields, button and notice come from the one
+ * component vocabulary (Kit). Fields are single-line at the tap floor — a field
+ * says "a short line goes here". Nothing about the two states, the props, or the
+ * password-drop-on-submit changed; only how it is drawn.
+ *
  * LEAVING THE SHOP IS NOT HERE, and its absence is deliberate rather than
  * forgotten. Signing OUT ends a session and keeps the shop; leaving the shop is
  * a different act that must refuse while this shop's bills are unsent, and
@@ -23,9 +28,10 @@
  * clear() for the same reason.
  */
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { useTheme, type ThemeTokens } from "./theme";
+import { Button, Card, Field } from "./Kit";
 
 interface Props {
   /** Null until this device has been set up. Decides which state is drawn. */
@@ -53,117 +59,134 @@ export function LoginScreen({ shopTenantId, busy, notice, onSetup, onSignIn }: P
   const canSignIn = username.trim().length > 0 && password.length > 0 && !busy;
 
   return (
-    <View style={styles.wrap}>
-      {setUp ? (
-        <>
-          <Text style={styles.title}>เข้าสู่ระบบ</Text>
-          <Text style={styles.label}>ชื่อผู้ใช้</Text>
-          <TextInput
-            style={styles.input}
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!busy}
-            placeholder="ชื่อผู้ใช้"
-          />
-          <Text style={styles.label}>รหัสผ่าน</Text>
-          <TextInput
-            style={styles.input}
-            value={password}
-            onChangeText={setPassword}
-            /*
-             * secureTextEntry, and autoCorrect OFF with it. A password field
-             * that feeds the keyboard's learned-words dictionary puts the
-             * shop's password in a suggestion strip on the next device the
-             * account is typed into.
-             */
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!busy}
-            placeholder="รหัสผ่าน"
-          />
-          <Pressable
-            style={[styles.btn, !canSignIn && styles.dim]}
-            disabled={!canSignIn}
-            onPress={() => {
-              onSignIn(username.trim(), password);
-              // The password is dropped from component state the moment it is
-              // handed over. The username is kept: retyping it after a typo in
-              // the password is the commonest thing that happens here.
-              setPassword("");
-            }}
-          >
-            <Text style={styles.btnText}>เข้าสู่ระบบ</Text>
-          </Pressable>
-        </>
-      ) : (
-        <>
-          <Text style={styles.title}>ตั้งค่าเครื่องนี้</Text>
-          <Text style={styles.hint}>
-            กรอกรหัสร้าน 8 หลักที่ร้านได้รับ — กรอกครั้งเดียว เครื่องจะจำร้านไว้
-          </Text>
-          <Text style={styles.label}>รหัสร้าน</Text>
-          <TextInput
-            style={[styles.input, styles.code]}
-            value={code}
-            onChangeText={setCode}
-            /*
-             * NO client-side pattern and no length limit. The server answers
-             * one refusal for unknown, malformed and over-long alike, and
-             * deliberately so (server/app/directory.py) — a check here would
-             * tell the person something the server declines to, and would
-             * disagree with ck_shop_code the day the alphabet changes.
-             */
-            autoCapitalize="characters"
-            autoCorrect={false}
-            editable={!busy}
-            placeholder="เช่น K7M2P9QB"
-          />
-          <Pressable
-            style={[styles.btn, !canSetup && styles.dim]}
-            disabled={!canSetup}
-            onPress={() => onSetup(code.trim())}
-          >
-            <Text style={styles.btnText}>ตั้งค่า</Text>
-          </Pressable>
-        </>
-      )}
+    <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
+      <View style={styles.brand}>
+        <Text style={styles.wordmark}>รับซื้อของเก่า</Text>
+      </View>
+      <Card>
+        <Text style={styles.title}>{setUp ? "เข้าสู่ระบบ" : "ตั้งค่าเครื่องนี้"}</Text>
+        {setUp ? (
+          <>
+            <Field
+              label="ชื่อผู้ใช้"
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!busy}
+              placeholder="ชื่อผู้ใช้"
+              style={styles.field}
+            />
+            <Field
+              label="รหัสผ่าน"
+              value={password}
+              onChangeText={setPassword}
+              /*
+               * secureTextEntry, and autoCorrect OFF with it. A password field
+               * that feeds the keyboard's learned-words dictionary puts the
+               * shop's password in a suggestion strip on the next device.
+               */
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!busy}
+              placeholder="รหัสผ่าน"
+              style={styles.field}
+            />
+            <Button
+              label="เข้าสู่ระบบ"
+              onPress={() => {
+                onSignIn(username.trim(), password);
+                // The password is dropped from component state the moment it is
+                // handed over. The username is kept: retyping it after a typo in
+                // the password is the commonest thing that happens here.
+                setPassword("");
+              }}
+              disabled={!canSignIn}
+              busy={busy}
+              style={styles.action}
+            />
+          </>
+        ) : (
+          <>
+            <Text style={styles.hint}>
+              กรอกรหัสร้าน 8 หลักที่ร้านได้รับ — กรอกครั้งเดียว เครื่องจะจำร้านไว้
+            </Text>
+            <Field
+              label="รหัสร้าน"
+              value={code}
+              onChangeText={setCode}
+              /*
+               * NO client-side pattern and no length limit. The server answers
+               * one refusal for unknown, malformed and over-long alike, and
+               * deliberately so (server/app/directory.py) — a check here would
+               * tell the person something the server declines to, and would
+               * disagree with ck_shop_code the day the alphabet changes.
+               */
+              autoCapitalize="characters"
+              autoCorrect={false}
+              editable={!busy}
+              placeholder="เช่น K7M2P9QB"
+              style={styles.field}
+              inputStyle={styles.code}
+            />
+            <Button
+              label="ตั้งค่า"
+              onPress={() => onSetup(code.trim())}
+              disabled={!canSetup}
+              busy={busy}
+              style={styles.action}
+            />
+          </>
+        )}
 
-      {/*
-        The failure line. Not numberOfLines-clamped: it names which of three
-        different things went wrong and what to do, and a truncated instruction
-        at five in the morning is an instruction that did not happen.
-      */}
-      {notice !== null && <Text style={styles.notice}>{notice}</Text>}
-    </View>
+        {/*
+          The failure line. Not clamped: it names which of three different things
+          went wrong and what to do, and a truncated instruction at five in the
+          morning is an instruction that did not happen.
+        */}
+        {notice !== null ? (
+          <View style={styles.notice}>
+            <Text style={styles.noticeText}>{notice}</Text>
+          </View>
+        ) : null}
+      </Card>
+    </ScrollView>
   );
 }
 
 function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
-    wrap: { paddingHorizontal: t.space.x4, paddingTop: t.space.x5, gap: t.space.sm },
-    title: { fontSize: t.type.titleLg, fontWeight: "800", color: t.color.text, marginBottom: t.space.md },
-    hint: { fontSize: t.type.bodyLg, color: t.color.textMuted, marginBottom: t.space.lg, lineHeight: 20 },
-    label: { fontSize: t.type.body, fontWeight: "700", color: t.color.textMuted, marginTop: t.space.md },
-    input: {
-      borderWidth: 1, borderColor: t.color.border, borderRadius: t.radius.lg,
-      paddingHorizontal: t.space.xxl, minHeight: t.tapMin, fontSize: t.type.subhead, backgroundColor: t.color.surface,
+    wrap: {
+      flexGrow: 1,
+      justifyContent: "center",
+      paddingHorizontal: t.layout.screenPad,
+      paddingVertical: t.space.x5,
+      gap: t.space.x4,
+    },
+    brand: { alignItems: "center" },
+    wordmark: { fontSize: t.type.headline, fontWeight: "800", color: t.color.text, letterSpacing: -0.3 },
+    title: {
+      fontSize: t.type.titleLg,
+      fontWeight: "800",
       color: t.color.text,
+      textAlign: "center",
+      marginBottom: t.space.lg,
     },
-    // Wide tracking and a monospace-ish feel: the code is read off paper and
-    // typed once, and character-by-character comparison is the whole task.
+    hint: { fontSize: t.type.bodyLg, color: t.color.textMuted, lineHeight: 21, marginBottom: t.space.lg },
+    field: { marginBottom: t.space.xl },
+    // Wide tracking: the code is read off paper and typed once, and
+    // character-by-character comparison is the whole task.
     code: { letterSpacing: 4, fontSize: t.type.titleLg, fontWeight: "700" },
-    btn: {
-      marginTop: t.space.x4, minHeight: t.tapMin + t.space.xs, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
-      alignItems: "center", justifyContent: "center",
-    },
-    btnText: { color: t.color.onPrimary, fontWeight: "800", fontSize: t.type.subhead },
-    dim: { opacity: 0.4 },
+    action: { marginTop: t.space.md },
     notice: {
-      marginTop: t.space.x3, fontSize: t.type.bodyLg, fontWeight: "700", color: t.color.dangerFg,
-      backgroundColor: t.color.dangerBg, borderRadius: t.radius.md, padding: t.space.xl, lineHeight: 20,
+      marginTop: t.space.x3,
+      backgroundColor: t.color.dangerBg,
+      borderColor: t.color.danger,
+      borderWidth: 1,
+      borderRadius: t.radius.md,
+      padding: t.space.xl,
     },
+    noticeText: { fontSize: t.type.bodyLg, fontWeight: "700", color: t.color.dangerFg, lineHeight: 20 },
   });
 }

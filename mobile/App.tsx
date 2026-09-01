@@ -196,6 +196,10 @@ import { SettingsScreen } from "./app/SettingsScreen";
 import { AccountScreen } from "./app/AccountScreen";
 import { SellerHistorySheet } from "./app/SellerHistorySheet";
 import { TierActionsSheet } from "./app/TierActionsSheet";
+import { Button, EmptyState } from "./app/Kit";
+import { Icon, type IconName } from "./app/Icon";
+import { Touchable } from "./app/Press";
+import { display } from "./src/money/format";
 import { ConfirmSaveDialog } from "./app/ConfirmSaveDialog";
 import { ConfirmSellerChangeDialog } from "./app/ConfirmSellerChangeDialog";
 import { API_BASE_URL } from "./app/config";
@@ -3233,17 +3237,17 @@ function AppInner() {
               the operator cannot discover by trying.
             */}
             {token !== null ? (
-              <Pressable
+              <Touchable
                 style={styles.signOut}
                 onPress={() => {
                   setSignOutFailure(null);
                   sheet("open_sign_out");
                 }}
-                accessibilityRole="button"
                 accessibilityLabel="ออกจากระบบ"
               >
+                <Icon name="logout" size={16} color={theme.color.danger} />
                 <Text style={styles.signOutText}>ออกจากระบบ</Text>
-              </Pressable>
+              </Touchable>
             ) : null}
           </View>
           {/*
@@ -3262,9 +3266,15 @@ function AppInner() {
           >
             {NAV_ITEMS.map((item) =>
               navGateOpen(item.gate) ? (
-                <Pressable key={item.dest} style={styles.navChip} onPress={navHandler(item.dest)}>
+                <Touchable
+                  key={item.dest}
+                  style={styles.navChip}
+                  onPress={navHandler(item.dest)}
+                  accessibilityLabel={item.label}
+                >
+                  <Icon name={navIcon(item.dest)} size={16} color={theme.color.textMuted} />
                   <Text style={styles.navChipText}>{item.label}</Text>
-                </Pressable>
+                </Touchable>
               ) : null,
             )}
           </ScrollView>
@@ -3289,18 +3299,17 @@ function AppInner() {
           <View style={styles.noticeZone}>
             {noticeArrangement.inline !== null ? noticeStripFor(noticeArrangement.inline.id) : null}
             {noticeArrangement.count > 0 ? (
-              <Pressable
+              <Touchable
                 style={styles.noticeCount}
                 onPress={() => sheet("open_notices")}
-                accessibilityRole="button"
               >
                 <View style={[styles.noticeDot, { backgroundColor: noticeCountColor }]} />
                 <Text style={styles.noticeCountNum}>{String(noticeArrangement.count)}</Text>
-                <Text style={styles.noticeCountChevron}>›</Text>
-              </Pressable>
+                <Icon name="chevron" size={18} color={theme.color.textSubtle} />
+              </Touchable>
             ) : null}
             {bills.length > 0 ? (
-              <Pressable style={styles.latest} onPress={() => sheet("open_bills")}>
+              <Touchable style={styles.latest} onPress={() => sheet("open_bills")} accessibilityLabel="บิลล่าสุด">
                 {latest !== null ? (
                   <>
                     <Text
@@ -3312,14 +3321,17 @@ function AppInner() {
                       บิลล่าสุด {latest.doc_no ?? "ยังไม่มีเลขที่บิล"}
                     </Text>
                     <Text style={styles.latestTotal}>
-                      {latest.payload.total_amount ?? "-"} ({latest.payload.items.length})
+                      {latest.payload.total_amount !== null ? display(latest.payload.total_amount) : "-"} ({latest.payload.items.length})
                     </Text>
                   </>
                 ) : (
                   <Text style={styles.latestDoc}>ไม่มีบิลที่ยังไม่ถูกยกเลิก</Text>
                 )}
-                <Text style={styles.latestOpen}>ดู/ยกเลิก ›</Text>
-              </Pressable>
+                <View style={styles.latestOpenWrap}>
+                  <Text style={styles.latestOpen}>ดู/ยกเลิก</Text>
+                  <Icon name="chevron" size={16} color={theme.color.primary} />
+                </View>
+              </Touchable>
             ) : null}
           </View>
         ) : null}
@@ -3354,42 +3366,32 @@ function AppInner() {
         ) : draft === null ? (
           /* No bill in progress. It starts with WHO, not with what. */
           <View style={styles.center}>
-            <Text style={styles.startHint}>ยังไม่มีบิลที่กำลังทำอยู่</Text>
+            <EmptyState icon="seller">ยังไม่มีบิลที่กำลังทำอยู่</EmptyState>
             {/*
-              A CART IS BEING KEPT THAT THIS PERSON MAY NOT CONTINUE. Without
-              this line the screen above is byte-identical to an ordinary morning
-              with nothing in progress, so somebody who left half a cart last
-              night would read "it is gone". The sentence and the decision to
-              show nothing about WHOSE it is live in src/cart/draftNotice.ts,
-              where a proof can reach them; this is only its render.
+              A CART IS BEING KEPT THAT THIS PERSON MAY NOT CONTINUE. Without this
+              line the screen above is byte-identical to an ordinary morning with
+              nothing in progress; the sentence, and the decision to show nothing
+              about WHOSE it is, live in src/cart/draftNotice.ts where a proof can
+              reach them — this is only its render.
             */}
-            {withheldDraftNotice(draftsWithheld) !== null && (
-              <Text style={styles.withheldDraft}>
-                {withheldDraftNotice(draftsWithheld)}
-              </Text>
-            )}
+            {withheldDraftNotice(draftsWithheld) !== null ? (
+              <View style={styles.withheldDraft}>
+                <Text style={styles.withheldDraftText}>{withheldDraftNotice(draftsWithheld)}</Text>
+              </View>
+            ) : null}
             {/*
-              NO USABLE MASTER DATA, SO NO BILL. Two ways to get here and the
-              button cannot tell them apart, which is correct — a device that has
-              never fetched, and a device whose cached lists are not this shop's
-              (P1.7). Either way there is no customer to file the bill to and no
-              product to weigh. The DECISION is mayStartBill in
-              src/master/freshness.ts, where a proof can reach it; this is only
-              its render.
-
-              The button is disabled rather than opening an empty picker, because
-              a picker that says "no sellers" reads as "this shop has no
-              customers", which is a different and alarming claim. The strip above
-              already says which list is missing and what fixes it — and says it
-              differently for the two cases; this only stops the dead end.
+              NO USABLE MASTER DATA, SO NO BILL. The button is disabled rather than
+              opening an empty picker — a picker that says "no sellers" reads as
+              "this shop has no customers", which is a different and alarming claim.
+              The DECISION is mayStartBill in src/master/freshness.ts, where a proof
+              reaches it; this only renders it.
             */}
-            <Pressable
-              style={[styles.loginBtn, (busy || !mayStartBill(freshness)) && styles.dim]}
-              disabled={busy || !mayStartBill(freshness)}
+            <Button
+              label="เลือกผู้ขาย เพื่อเริ่มบิลใหม่"
+              icon="seller"
               onPress={openPicker}
-            >
-              <Text style={styles.loginText}>เลือกผู้ขาย เพื่อเริ่มบิลใหม่</Text>
-            </Pressable>
+              disabled={busy || !mayStartBill(freshness)}
+            />
           </View>
         ) : (
           <CartScreen
@@ -3432,10 +3434,24 @@ function describe(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** The nav chip's leading icon, by destination (P1.23 phase E). */
+function navIcon(dest: NavDest): IconName {
+  switch (dest) {
+    case "dashboard":
+      return "dashboard";
+    case "prices":
+      return "prices";
+    case "settings":
+      return "settings";
+    case "account":
+      return "account";
+  }
+}
+
 function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: t.color.background },
-    center: { flex: 1, justifyContent: "center", paddingHorizontal: t.space.x4 },
+    center: { flex: 1, justifyContent: "center", paddingHorizontal: t.layout.screenPad, gap: t.space.x3 },
     spinner: { marginTop: t.space.x5 },
     // THE FIXED TOP BAR — surface chrome, distinct from the page below it.
     header: {
@@ -3458,16 +3474,20 @@ function makeStyles(t: ThemeTokens) {
     // `surface` (the header ground) is proven >=4.5:1 in both themes by prove:theme
     // (6.47 light / 5.29 dark).
     // It still sits alone in the trailing zone; the confirm sheet carries the rest.
-    signOut: { minHeight: t.tapMin, paddingHorizontal: t.space.md, justifyContent: "center", alignItems: "center" },
+    signOut: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.md, flexDirection: "row", gap: t.space.xs,
+      justifyContent: "center", alignItems: "center",
+    },
     signOutText: { fontSize: t.type.body, fontWeight: "700", color: t.color.danger },
     // The horizontal navigation scroll row.
     navRow: { flexDirection: "row", gap: t.space.md, paddingHorizontal: t.layout.screenPad, paddingBottom: t.space.sm },
     // Neutral pill chips — navigation, NOT the one accent. Every one clears TAP_MIN.
     navChip: {
       minHeight: t.tapMin, paddingHorizontal: t.space.xl, borderRadius: t.radius.pill,
+      flexDirection: "row", alignItems: "center", gap: t.space.sm,
       justifyContent: "center", backgroundColor: t.color.surfaceAlt,
     },
-    navChipText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.text },
+    navChipText: { fontSize: t.type.bodyLg, fontWeight: "600", color: t.color.text },
     status: {
       fontSize: t.type.body, color: t.color.textSubtle,
       paddingHorizontal: t.layout.screenPad, paddingBottom: t.space.sm,
@@ -3483,7 +3503,7 @@ function makeStyles(t: ThemeTokens) {
     },
     noticeDot: { width: 12, height: 12, borderRadius: t.radius.sm },
     noticeCountNum: { flex: 1, fontSize: t.type.subhead, fontWeight: "900", color: t.color.text },
-    noticeCountChevron: { fontSize: t.type.title, fontWeight: "800", color: t.color.textSubtle },
+    latestOpenWrap: { flexDirection: "row", alignItems: "center", gap: t.space.xs },
 
     // THE LATEST BILL — a navigation card (it was a full-bleed strip).
     latest: {
@@ -3499,26 +3519,18 @@ function makeStyles(t: ThemeTokens) {
     latestTotal: { fontSize: t.type.body, color: t.color.textMuted, fontWeight: "700" },
     latestOpen: { fontSize: t.type.body, color: t.color.primary, fontWeight: "800" },
 
-    loginBtn: {
-      minHeight: t.tapMin, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
-      alignItems: "center", justifyContent: "center",
-    },
-    loginText: { color: t.color.onPrimary, fontWeight: "800", fontSize: t.type.subhead },
-    startHint: {
-      fontSize: t.type.bodyLg, color: t.color.textSubtle, textAlign: "center", marginBottom: t.space.xxl,
-      fontWeight: "600",
-    },
     /*
      * Amber, and NOT the red `block` tone the master strip uses. Nothing is
      * broken and nothing is stopped — a bill can be started normally — so this
      * must not read as a refusal. It is information about work being held.
-     * Not numberOfLines-clamped: a truncated "it has not been deleted" is the
-     * half of the sentence that matters going missing.
+     * Not clamped: a truncated "it has not been deleted" is the half that matters.
      */
     withheldDraft: {
-      fontSize: t.type.body, color: t.color.warningFg, backgroundColor: t.color.warningBg,
-      textAlign: "center", fontWeight: "700", marginBottom: t.space.xxl,
+      backgroundColor: t.color.warningBg, borderColor: t.color.warning, borderWidth: 1,
       paddingHorizontal: t.space.xl, paddingVertical: t.space.md, borderRadius: t.radius.md,
+    },
+    withheldDraftText: {
+      fontSize: t.type.body, color: t.color.warningFg, textAlign: "center", fontWeight: "700",
     },
     dim: { opacity: 0.4 },
   });

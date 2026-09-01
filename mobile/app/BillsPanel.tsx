@@ -38,6 +38,9 @@ import { isVoided, isVoidRefused } from "../src/sync/types";
 import { shopDateTime } from "@recycle/shop-time";
 import { useTheme, type ThemeTokens } from "./theme";
 import { SheetHeader } from "./SheetHeader";
+import { Icon } from "./Icon";
+import { Touchable } from "./Press";
+import { display } from "../src/money/format";
 
 const STATE_TH: Record<SyncState, string> = {
   pending: "รอส่ง",
@@ -276,9 +279,12 @@ export function BillsPanel({
               ]}
             >
               {isBlocker ? (
-                <Text style={styles.blockerBanner}>
-                  ⚠ บิลนี้ส่งไม่ผ่านและกำลังขวางคิว — บิลที่เหลือจะส่งไม่ได้จนกว่าจะแก้ไขใบนี้
-                </Text>
+                <View style={styles.blockerBanner}>
+                  <Icon name="warn" size={16} color={t.color.dangerFg} />
+                  <Text style={styles.blockerBannerText}>
+                    บิลนี้ส่งไม่ผ่านและกำลังขวางคิว — บิลที่เหลือจะส่งไม่ได้จนกว่าจะแก้ไขใบนี้
+                  </Text>
+                </View>
               ) : null}
               <View style={styles.cardTop}>
                 {notice.badge !== null && notice.tone !== "none" ? (
@@ -310,7 +316,7 @@ export function BillsPanel({
                 )}
                 <Text style={styles.doc}>{b.doc_no ?? "ยังไม่มีเลขที่บิล"}</Text>
                 <Text style={[styles.total, voided && styles.struck]}>
-                  {b.payload.total_amount ?? "-"}
+                  {b.payload.total_amount !== null ? display(b.payload.total_amount) : "-"}
                 </Text>
               </View>
 
@@ -377,13 +383,14 @@ export function BillsPanel({
               ) : null}
 
               {canRequestVoid(b, role) && voidingId !== b.id ? (
-                <Pressable
+                <Touchable
                   style={styles.voidBtn}
                   onPress={() => startVoid(b.id)}
                   disabled={busy}
+                  accessibilityLabel="ยกเลิกบิลนี้"
                 >
                   <Text style={styles.voidBtnText}>ยกเลิกบิลนี้</Text>
-                </Pressable>
+                </Touchable>
               ) : null}
 
               {/*
@@ -411,19 +418,22 @@ export function BillsPanel({
                     <Text style={styles.reasonErr}>ต้องกรอกเหตุผลก่อนจึงจะยกเลิกได้</Text>
                   ) : null}
                   <View style={styles.reasonBtns}>
-                    <Pressable
+                    <Touchable
                       style={[styles.rBtn, styles.rCancel]}
                       onPress={() => setVoidingId(null)}
+                      accessibilityLabel="ไม่ยกเลิก"
                     >
                       <Text style={styles.rCancelText}>ไม่ยกเลิก</Text>
-                    </Pressable>
-                    <Pressable
+                    </Touchable>
+                    <Touchable
                       style={[styles.rBtn, styles.rConfirm, !reasonOk && styles.dim]}
                       onPress={submitVoid}
                       disabled={!reasonOk || busy}
+                      haptic="medium"
+                      accessibilityLabel="ยืนยันยกเลิกบิล"
                     >
                       <Text style={styles.rConfirmText}>ยืนยันยกเลิกบิล</Text>
-                    </Pressable>
+                    </Touchable>
                   </View>
                 </View>
               ) : null}
@@ -451,9 +461,11 @@ function makeStyles(t: ThemeTokens) {
     cardParked: { borderColor: t.color.warning, backgroundColor: t.color.warningSoftBg },
     cardBlocker: { borderColor: t.color.danger, borderWidth: 2, backgroundColor: t.color.dangerSoftBg },
     blockerBanner: {
-      fontSize: t.type.body, fontWeight: "800", color: t.color.dangerFg, backgroundColor: t.color.dangerBg,
-      borderRadius: t.radius.md, paddingHorizontal: t.space.lg, paddingVertical: t.space.md, marginBottom: t.space.lg,
+      flexDirection: "row", alignItems: "center", gap: t.space.sm,
+      backgroundColor: t.color.dangerBg, borderRadius: t.radius.md,
+      paddingHorizontal: t.space.lg, paddingVertical: t.space.md, marginBottom: t.space.lg,
     },
+    blockerBannerText: { flex: 1, fontSize: t.type.body, fontWeight: "800", color: t.color.dangerFg },
     cardTop: { flexDirection: "row", alignItems: "center", gap: t.space.md },
     badge: {
       color: t.color.onPrimary, fontSize: t.type.body, fontWeight: "800", paddingHorizontal: t.space.md,

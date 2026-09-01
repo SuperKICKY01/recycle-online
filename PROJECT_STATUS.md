@@ -75,6 +75,88 @@ not read the green as re-run.**
 
 ## Current phase
 
+**P1.23 ITEM 3 — PHASE E: THE FULL UX/UI REWORK. 2026-09-01.** No sha yet (this record precedes the
+commit; anchor next pass). The current-phase pointer, superseding the phase-D pointer below; phase D's work
+stands — this is the rework the owner authorised once the cosmetic constraints (no new Thai / no new
+dependency / no new screen / presentation-only / one screen at a time) were LIFTED, so phases C/D could
+only move existing boxes. Full method + the deps case: `ROADMAP.md § P1.23 — The mobile UX rework` (PHASE E).
+**THE OWNER'S INSTRUCTION IS THE AUTHORITY (Thai verbatim, never translated):** "คือ ที่ผมต้องการคือ rework
+ux ui ใหม่ทั้งหมด เหมือนตอนนี้ ux ui แม่งเหมือน สมัย 2000 อ่ะ นี่ 2026 แล้วนะ … ผมปลดโซ่ ไม่มีข้อจำกัดทำเลย
+แต่อย่าทำให้ไฟล์อื่นเสียรับผลกระทบ".
+**BUILT.** FOUR DEPENDENCIES (`npx expo install`, SDK-54-matched; the owner approved each; New Architecture
+already on by SDK-54 default so Reanimated 4 needed no arch flip): `react-native-reanimated@~4.1.1` +
+`react-native-worklets@0.5.1`, `react-native-gesture-handler@~2.28.0`, `expo-haptics@~15.0.8`,
+`@expo/vector-icons@^15.0.3` (Feather). NO custom font (system stack renders Thai + is sunlight-tuned;
+custom risks Thai coverage + CP874). The install was MEASURED inert — both typechecks + the full suite were
+unmoved by it before any use. NEW `src/money/format.ts` — `display()`/`stripSeparators`, integer grouping
+by pure string surgery (no arithmetic/rounding/Number/toFixed/Intl), applied ONLY at render sites; builders
+pass raw strings. `theme.ts` split the accent (`primary` = text/link/border; new bright `primaryFill`/
+`onPrimaryFill` = every CTA — the owner's light-accent fix) and gained a `MOTION` group. NEW component
+vocabulary `app/Kit.tsx` (Card/GroupCard/SectionHeading/Row/Divider/Segmented/Figure/Badge/Button/
+EmptyState/Field) + `app/Press.tsx` (`Touchable` — press-scale on the UI thread + commit haptics) +
+`app/Icon.tsx` (Feather map). EVERY screen rebuilt on it: LoginScreen, the App.tsx shell (top bar, icon-
+label nav pills, ranked notices, start-bill EmptyState), CartScreen, DashboardScreen, PricesSheet,
+SettingsScreen (new `ข้อมูลร้าน` / `เครื่องนี้` section headings; segmented → reference raised-pill),
+AccountScreen, SellerPicker, AddSellerSheet, BillsPanel, SellerHistorySheet, BillList, ConfirmSaveDialog,
+ConfirmSellerChangeDialog, SignOutSheet, NoticeSheet, TierActionsSheet, SheetHeader, the three strips
+(dropped the >1px coloured left-rail for a leading dot). Numpad unchanged (its `⌫` is the conventional
+keypad backspace; its keys are 100+/day so keep the platform opacity-press, not a scale — animate-expo
+frequency gate).
+**PROVEN (headless, every command BARE, exit read in the same invocation; cp874 box).** Both typechecks
+`EXIT=0` (baseline before + after). The full 45-proof suite green TWICE (run1 + run2), only
+`proveLogin`/`proveLoginScreen` exit 1 both times (their server on :8231 not running; no login-logic
+change) — every other proof green twice. `prove:theme` **92→98 cells**, each ratio labelled for what it is:
+the fill-label pair is TEXT-ON-FILL legibility (the 4.5 rule — `onPrimaryFill on primaryFill` 5.70:1 light /
+8.35:1 dark, both ≥4.5); P7 is FILL-VS-GROUND PROMINENCE, a different measurement with NO 4.5 threshold,
+reported so the CTA is shown the brightest thing on its screen (light 2.49:1, a bright accent NOT the
+rejected ~4.9:1 teal-700 slab; dark 10.06:1); plus the segmented `textMuted`/`surfaceAlt` TEXT pair (6.92:1
+light / 12.02:1 dark). A `fill` disproof added; all disproofs redden EXACTLY one cell. **EVERY
+text/background pair clears 4.5:1 in both themes — no text pair anywhere is below 4.5** (the notice dot/bar
+accent pairs clear their separate 3:1 non-text floor; P7 is prominence, not legibility, no floor).
+`prove:money` **36→64 cells** (M5 round-trip over `0.00`/`0.005`/negatives/4-decimals/12-integer-digits; a
+`drop_digit` disproof reddens EXACTLY the 23 round-trip cells; M1–M4 unweakened). `prove:tapaudit` ZERO
+findings, Cs2 = **0 raw layout literals across 0 files** over all 27 app files. `prove:sheets` green (one
+Modal via SheetHost; reachable stacks unchanged). The MONEY PROOFS (`prove:money`/`cart`/`daily`/`dashboard`/
+`sellerhistory`/`prices`) green TWICE with the src-builder cell counts UNMOVED — constraint 1's evidence
+(the `.tsx` change only wraps an already-produced string in `display()`).
+**THAI LEDGER (old→new, file:line).** NEW Thai (section headings, reusing settled roots): `SettingsScreen.tsx`
+`ข้อมูลร้าน` (formHead; reuses `ร้าน` from `ตั้งค่าร้าน`) and `เครื่องนี้` (deviceHead; reuses `เครื่องนี้`
+from the theme note). All other string changes are decorative-glyph removals, NO wording changed:
+`navRow.ts:43-46` `ยอดวันนี้ ›→ยอดวันนี้`, `ราคารับซื้อ ›→ราคารับซื้อ`, `ตั้งค่าร้าน ›→ตั้งค่าร้าน`,
+`บัญชีของฉัน ›→บัญชีของฉัน`; `App.tsx` latest-open `ดู/ยกเลิก ›→ดู/ยกเลิก` (and the notice-count `›` → drawn
+icon); `CartScreen.tsx` `เปลี่ยน ›→เปลี่ยน`, `เลือก ›→เลือก`, `ดูประวัติการซื้อขายของผู้ขายรายนี้ ›→…รายนี้`;
+`SellerPicker.tsx` `+ เพิ่มผู้ขาย→เพิ่มผู้ขาย` (the `+` is now a drawn plus icon); `BillsPanel.tsx`
+`⚠ บิลนี้ส่งไม่ผ่าน…→บิลนี้ส่งไม่ผ่าน…` (drawn warn icon); `SheetHeader.tsx` `‹`, `SettingsScreen.tsx`
+`↑`/`↓`/`⋯` → drawn icons (no Thai). Rendered sentences elsewhere are byte-identical (the start-bill
+EmptyState reuses the existing `ยังไม่มีบิลที่กำลังทำอยู่`). Kept glyph: `Numpad.tsx` `⌫`.
+**THE THREE THAT DID NOT BEND.** (1) Money is a decimal string in a `<Text>`, only regrouped at render.
+(2) Nothing under `src/sync/` or `src/adapters/sqlite/` changed. (3) Every tap target ≥56, body ≥13px,
+contrast ≥4.5 both themes (measured). No server/desktop/packages/tools change; `.claude/` read-only.
+**DEFERRED / OPEN (recorded in `OPEN_ITEMS.md`):** the skeleton loading component (L1 — spinners remain);
+the padding-sized sheet buttons under 56px (a tap-floor the text-scanner cannot catch); the message-card
+consolidation into a Kit component; the `expo-system-ui` (Android auto-dark) finding; and the PLATFORM
+DECISION for the device pass (iOS via EAS + Apple Developer membership or a Mac; Android builds on this box
+today; the owner's to settle).
+**NOT OBSERVED — the plain statement, not a hedge: EVERY visual, motion and haptic claim in this phase is
+COMPUTED or COMPILED, never observed; NO human has seen this interface; and the Android dev build HAS NOT
+BEEN RUN EVEN ONCE, so even "it compiles on the device" is itself unverified — a green headless suite is
+not a working app.** The device pass is OWED on whichever platform the owner builds. The whole visual/
+motion/haptic result is a HANDSET observation and none of it is claimed: the bright light-mode CTA, the grouped
+money at arm's length, press feel and jank on real hardware, the commit haptics, safe-area insets, the
+system-font Thai rendering, nav fit at real widths, and — because Reanimated 4 on the New Architecture
+replaces Expo Go — that the **dev build compiles and installs at all** (`npx expo prebuild` is done for
+Android on this box; `npx expo run:android` is the owner's next step; iOS needs EAS or a Mac). This is the
+ONE consolidated handset list for the new interface; it supersedes the phase-A/B/C/D device lists below,
+which were about the pre-rework screens.
+**IS A LESSON OWED? NO.** Two self-caught trip-ups: (a) the `Touchable.onPress` type under
+`exactOptionalPropertyTypes` refused a `(() => void) | undefined` value passed to an optional-but-not-
+`|undefined` prop — a compile error the app typecheck caught and the prop type was widened; caught by the
+gate, not a runtime bug class. (b) a proveMoney control that claimed "a Number()/toLocaleString formatter
+alters digits" used an input that formatter happened to PRESERVE, so the control went red — replaced with a
+deterministic digit-losing control; this is the existing `a-check-that-never-went-red` discipline (a
+control that does not fire proves nothing, caught by running it), not a new class. The deps, tokens, money
+function and screen rebuilds are the brief's requirements built to spec, not lessons relearned.
+
 **P1.23 ITEM 3 — PHASE D: THE REFERENCE-PINNED SCREEN BODIES. 2026-09-01.** No sha yet (this record
 precedes the commit; anchor next pass). The current-phase pointer, superseding the phase-C pointer below;
 phase C's work stands — this closes the deferred card-ification unit (W5 / P4).

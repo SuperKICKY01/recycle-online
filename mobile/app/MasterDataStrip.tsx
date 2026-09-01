@@ -52,7 +52,8 @@ export function MasterDataStrip({ notice }: { notice: MasterNotice | null }) {
   if (notice === null) return null;
   const tone = makeTones(t)[notice.tone];
   return (
-    <View style={[styles.strip, { backgroundColor: tone.bg, borderLeftColor: tone.bar }]}>
+    <View style={[styles.strip, { backgroundColor: tone.bg }]}>
+      <View style={[styles.dot, { backgroundColor: tone.bar }]} />
       <Text style={[styles.text, { color: tone.fg }]}>{notice.message}</Text>
     </View>
   );
@@ -61,14 +62,19 @@ export function MasterDataStrip({ notice }: { notice: MasterNotice | null }) {
 function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     strip: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: t.space.md,
       paddingHorizontal: t.space.xxl,
-      paddingVertical: t.space.md,
-      borderLeftWidth: 6,
+      paddingVertical: t.space.lg,
       borderRadius: t.radius.card,
     },
+    // A leading dot carries the tone, replacing the >1px coloured left-rail
+    // (craft-floor refuses that as a default); width/height are decorative.
+    dot: { width: 8, height: 8, borderRadius: t.radius.sm, marginTop: t.space.xs },
     // Not numberOfLines-clamped: this is the one message on the screen that must
     // be readable in full, and a truncated price warning is a price warning that
     // did not happen.
-    text: { fontSize: t.type.body, fontWeight: "800" },
+    text: { flex: 1, fontSize: t.type.body, fontWeight: "800" },
   });
 }

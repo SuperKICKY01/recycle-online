@@ -68,6 +68,8 @@ import { messageFor } from "./messages";
 import type { LineErrorCode } from "./messages";
 import { Numpad } from "./Numpad";
 import { useTheme, type ThemeTokens } from "./theme";
+import { Icon } from "./Icon";
+import { display } from "../src/money/format";
 
 const UNDO_MS = 8000;
 
@@ -345,7 +347,10 @@ export function CartScreen({
         >
           <View style={styles.sellerTop}>
             <Text style={styles.label}>ผู้ขาย</Text>
-            <Text style={styles.changeBtn}>{sellerKnown ? "เปลี่ยน ›" : "เลือก ›"}</Text>
+            <View style={styles.changeBtnWrap}>
+              <Text style={styles.changeBtn}>{sellerKnown ? "เปลี่ยน" : "เลือก"}</Text>
+              <Icon name="chevron" size={16} color={t.color.primary} />
+            </View>
           </View>
           {seller !== null ? (
             <>
@@ -378,7 +383,10 @@ export function CartScreen({
             seller box's own Pressable), drawn only once a seller is chosen. */}
         {seller !== null ? (
           <Pressable style={styles.historyBtn} onPress={onViewHistory} disabled={busy}>
-            <Text style={styles.historyBtnText}>ดูประวัติการซื้อขายของผู้ขายรายนี้ ›</Text>
+            <View style={styles.historyBtnRow}>
+              <Text style={styles.historyBtnText}>ดูประวัติการซื้อขายของผู้ขายรายนี้</Text>
+              <Icon name="chevron" size={16} color={t.color.primary} />
+            </View>
           </Pressable>
         ) : null}
 
@@ -416,6 +424,7 @@ export function CartScreen({
         <Text style={styles.label}>สินค้า</Text>
         {products.map((p) => {
           const isOn = p.id === form.product_id;
+          const gp = gradePrice(p.prices, grade);
           return (
             <Pressable
               key={p.id}
@@ -433,8 +442,8 @@ export function CartScreen({
                 reads as evidence; inside that box it would be an assertion.
               */}
               <Text style={[styles.productMeta, isOn && styles.onDark]}>
-                {p.code} · {gradePrice(p.prices, grade) ?? "ไม่มีราคาตามเกรด"} บาท/{p.uom_code}
-                {stale && gradePrice(p.prices, grade) !== null ? " (ราคาเก่า)" : ""}
+                {p.code} · {gp !== null ? display(gp) : "ไม่มีราคาตามเกรด"} บาท/{p.uom_code}
+                {stale && gp !== null ? " (ราคาเก่า)" : ""}
               </Text>
             </Pressable>
           );
@@ -495,7 +504,7 @@ export function CartScreen({
           <Text style={styles.note}>{stalePriceHint(listPrice, freshness)}</Text>
         ) : offTier ? (
           <Text style={styles.note}>
-            ราคาถูกแก้จากราคาตามเกรด ({listPrice})
+            ราคาถูกแก้จากราคาตามเกรด ({listPrice !== null ? display(listPrice) : ""})
             {locks.price ? " — ราคานี้ค้างไว้จากสินค้าก่อนหน้า ตรวจสอบก่อนบันทึก" : ""}
           </Text>
         ) : null}
@@ -504,13 +513,13 @@ export function CartScreen({
           <View style={styles.col}>
             <Text style={styles.label}>น้ำหนักสุทธิ</Text>
             <Text style={styles.computed}>
-              {candidate.ok ? candidate.line.net_weight : "—"}
+              {candidate.ok ? display(candidate.line.net_weight) : "—"}
             </Text>
           </View>
           <View style={styles.col}>
             <Text style={styles.label}>เป็นเงิน</Text>
             <Text style={styles.lineAmount}>
-              {candidate.ok ? candidate.line.amount : "—"}
+              {candidate.ok ? display(candidate.line.amount) : "—"}
             </Text>
           </View>
         </View>
@@ -550,11 +559,11 @@ export function CartScreen({
               <Text style={styles.lineName} numberOfLines={1}>
                 {l.product_name}
               </Text>
-              <Text style={styles.lineAmt}>{l.amount}</Text>
+              <Text style={styles.lineAmt}>{display(l.amount)}</Text>
             </View>
             <Text style={styles.lineMeta}>
-              {l.product_code} · สุทธิ {l.net_weight} {l.uom_code} × {l.unit_price}
-              {l.unit_price !== l.list_price ? `  (เกรด ${l.list_price})` : ""}
+              {l.product_code} · สุทธิ {display(l.net_weight)} {l.uom_code} × {display(l.unit_price)}
+              {l.unit_price !== l.list_price ? `  (เกรด ${display(l.list_price)})` : ""}
             </Text>
             <View style={styles.lineBtns}>
               <Pressable style={styles.lineBtn} onPress={() => startEdit(l)} disabled={busy}>
@@ -575,7 +584,7 @@ export function CartScreen({
       {undo !== null ? (
         <View style={styles.undoBar}>
           <Text style={styles.undoText} numberOfLines={1}>
-            ลบ {undo.product_name} ({undo.amount} บาท)
+            ลบ {undo.product_name} ({display(undo.amount)} บาท)
           </Text>
           <Pressable style={styles.undoBtn} onPress={undoDelete}>
             <Text style={styles.undoBtnText}>เลิกทำ</Text>
@@ -587,8 +596,8 @@ export function CartScreen({
         <Numpad
           fieldLabel={FIELD_LABEL[active]}
           value={form[active]}
-          net={candidate.ok ? candidate.line.net_weight : "—"}
-          amount={candidate.ok ? candidate.line.amount : "—"}
+          net={candidate.ok ? display(candidate.line.net_weight) : "—"}
+          amount={candidate.ok ? display(candidate.line.amount) : "—"}
           onKey={pressKey}
           onDone={() => setActive(null)}
         />
@@ -597,7 +606,7 @@ export function CartScreen({
       <View style={styles.totalBar}>
         <View>
           <Text style={styles.totalLabel}>{lines.length} รายการ</Text>
-          <Text style={styles.totalValue}>{total}</Text>
+          <Text style={styles.totalValue}>{display(total)}</Text>
         </View>
         <Pressable
           style={[styles.saveBtn, !canSave && styles.dim]}
@@ -712,12 +721,14 @@ function makeStyles(t: ThemeTokens) {
       paddingHorizontal: t.space.md, paddingVertical: t.space.sm, marginTop: t.space.md, fontWeight: "700",
     },
     changeBtn: { fontSize: t.type.bodyLg, fontWeight: "900", color: t.color.primary },
+    changeBtnWrap: { flexDirection: "row", alignItems: "center", gap: t.space.xs },
     historyBtn: {
       minHeight: t.tapMin, marginTop: t.space.md, borderRadius: t.radius.lg, borderWidth: 1,
       borderColor: t.color.border, backgroundColor: t.color.surface,
       alignItems: "center", justifyContent: "center", paddingHorizontal: t.space.x3,
     },
     historyBtnText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.primary },
+    historyBtnRow: { flexDirection: "row", alignItems: "center", gap: t.space.xs },
 
     vehicleInput: {
       borderWidth: 1, borderColor: t.color.border, borderRadius: t.radius.lg, paddingHorizontal: t.space.xxl,
@@ -768,10 +779,10 @@ function makeStyles(t: ThemeTokens) {
     empty: { color: t.color.textSubtle, fontSize: t.type.bodyLg, marginTop: t.space.x4, textAlign: "center" },
 
     addBtn: {
-      marginTop: t.space.x4, minHeight: t.tapMin, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
-      alignItems: "center", justifyContent: "center",
+      marginTop: t.space.x4, minHeight: t.tapMin, borderRadius: t.radius.xl, backgroundColor: t.color.primaryFill,
+      borderWidth: 1, borderColor: t.color.primary, alignItems: "center", justifyContent: "center",
     },
-    addText: { color: t.color.onPrimary, fontWeight: "800", fontSize: t.type.subhead },
+    addText: { color: t.color.onPrimaryFill, fontWeight: "800", fontSize: t.type.subhead },
     cancelBtn: {
       marginTop: t.space.x4, minHeight: t.tapMin, borderRadius: t.radius.xl, paddingHorizontal: t.space.x4,
       backgroundColor: t.color.borderSoft, alignItems: "center", justifyContent: "center",
@@ -825,8 +836,9 @@ function makeStyles(t: ThemeTokens) {
     totalValue: { fontSize: t.type.display, fontWeight: "900", color: t.color.text },
     saveBtn: {
       minHeight: t.tapMin, paddingHorizontal: t.space.x5, borderRadius: t.radius.xl,
-      backgroundColor: t.color.primary, alignItems: "center", justifyContent: "center",
+      backgroundColor: t.color.primaryFill, borderWidth: 1, borderColor: t.color.primary,
+      alignItems: "center", justifyContent: "center",
     },
-    saveText: { color: t.color.onPrimary, fontWeight: "900", fontSize: t.type.subhead },
+    saveText: { color: t.color.onPrimaryFill, fontWeight: "900", fontSize: t.type.subhead },
   });
 }

@@ -16,6 +16,7 @@ import { useMemo, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { useTheme, type ThemeTokens } from "./theme";
+import { Touchable } from "./Press";
 
 export function NoticeSheet({
   notices,
@@ -42,14 +43,9 @@ export function NoticeSheet({
             <View key={i}>{n}</View>
           ))}
         </ScrollView>
-        <Pressable
-          style={styles.close}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="ปิด"
-        >
+        <Touchable style={styles.close} onPress={onClose} accessibilityLabel="ปิด">
           <Text style={styles.closeText}>ปิด</Text>
-        </Pressable>
+        </Touchable>
       </View>
     </View>
   );

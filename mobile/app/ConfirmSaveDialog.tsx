@@ -21,6 +21,8 @@ import { saveConfirmNotice } from "../src/master/saveConfirmNotice";
 import { tierName } from "../src/cart/sellers";
 import type { NamedTier } from "../src/cart/sellers";
 import { useTheme, type ThemeTokens } from "./theme";
+import { Touchable } from "./Press";
+import { display } from "../src/money/format";
 
 /**
  * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
@@ -84,7 +86,7 @@ export function ConfirmSaveDialog({
           <Text style={styles.lines}>{lineCount}</Text>
 
           <Text style={styles.label}>รวมทั้งสิ้น (บาท)</Text>
-          <Text style={styles.total}>{total}</Text>
+          <Text style={styles.total}>{display(total)}</Text>
 
           {/*
             Seller and plate are shown HERE, at the last irreversible step,
@@ -117,16 +119,18 @@ export function ConfirmSaveDialog({
         <Text style={styles.warn}>{fate.warn}</Text>
 
         <View style={styles.buttons}>
-          <Pressable style={[styles.btn, styles.cancel]} onPress={onCancel} disabled={busy}>
+          <Touchable style={[styles.btn, styles.cancel]} onPress={onCancel} disabled={busy} accessibilityLabel="ยกเลิก">
             <Text style={styles.cancelText}>ยกเลิก</Text>
-          </Pressable>
-          <Pressable
+          </Touchable>
+          <Touchable
             style={[styles.btn, styles.confirm, busy && styles.dim]}
             onPress={onConfirm}
             disabled={busy}
+            haptic="success"
+            accessibilityLabel="ยืนยันบันทึก"
           >
             <Text style={styles.confirmText}>ยืนยันบันทึก</Text>
-          </Pressable>
+          </Touchable>
         </View>
       </View>
     </View>
@@ -166,8 +170,8 @@ function makeStyles(t: ThemeTokens) {
     btn: { flex: 1, minHeight: t.tapMin + t.space.xs, borderRadius: t.radius.xl, alignItems: "center", justifyContent: "center" },
     cancel: { backgroundColor: t.color.borderSoft },
     cancelText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.neutralFg },
-    confirm: { backgroundColor: t.color.primary },
-    confirmText: { fontSize: t.type.subhead, fontWeight: "900", color: t.color.onPrimary },
+    confirm: { backgroundColor: t.color.primaryFill, borderWidth: 1, borderColor: t.color.primary },
+    confirmText: { fontSize: t.type.subhead, fontWeight: "900", color: t.color.onPrimaryFill },
     dim: { opacity: 0.4 },
   });
 }

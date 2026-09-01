@@ -20,6 +20,8 @@ import { useMemo, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useTheme, type ThemeTokens } from "./theme";
+import { Icon } from "./Icon";
+import { Touchable } from "./Press";
 
 export function SheetHeader({
   title,
@@ -35,15 +37,10 @@ export function SheetHeader({
   const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <View style={styles.head}>
-      <Pressable
-        style={styles.close}
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel="ปิด"
-      >
-        <Text style={styles.chevron}>‹</Text>
+      <Touchable style={styles.close} onPress={onClose} accessibilityLabel="ปิด">
+        <Icon name="back" size={22} color={t.color.primary} />
         <Text style={styles.closeText}>ปิด</Text>
-      </Pressable>
+      </Touchable>
       <Text style={styles.title} numberOfLines={1}>
         {title}
       </Text>

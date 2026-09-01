@@ -21,6 +21,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import type { BillsSection } from "../src/reports/dailyView";
 import { useTheme, type ThemeTokens } from "./theme";
+import { display } from "../src/money/format";
 
 export function BillList({ section }: { section: BillsSection }) {
   const t = useTheme();
@@ -39,7 +40,7 @@ export function BillList({ section }: { section: BillsSection }) {
             </Text>
             {r.offListNote !== null ? <Text style={styles.billOff}>{r.offListNote}</Text> : null}
           </View>
-          <Text style={styles.billAmount}>{r.amount}</Text>
+          <Text style={styles.billAmount}>{display(r.amount)}</Text>
         </View>
       ))}
       {section.moreNote !== null ? <Text style={styles.note}>{section.moreNote}</Text> : null}

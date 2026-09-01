@@ -18,6 +18,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { SignOutAction, SignOutCard } from "../src/session/signOutNotice";
 import { useTheme, type ThemeTokens } from "./theme";
+import { Touchable } from "./Press";
 
 /**
  * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
@@ -60,7 +61,7 @@ export function SignOutSheet({ card, busy, onAction }: Props) {
 
         <View style={styles.buttons}>
           {card.actions.map((action) => (
-            <Pressable
+            <Touchable
               key={action.kind}
               style={[
                 styles.btn,
@@ -68,12 +69,14 @@ export function SignOutSheet({ card, busy, onAction }: Props) {
                 busy && styles.dim,
               ]}
               disabled={busy}
+              haptic={action.kind === "dismiss" ? "none" : "medium"}
+              accessibilityLabel={action.label}
               onPress={() => onAction(action)}
             >
               <Text style={action.kind === "dismiss" ? styles.cancelText : styles.confirmText}>
                 {action.label}
               </Text>
-            </Pressable>
+            </Touchable>
           ))}
         </View>
       </View>

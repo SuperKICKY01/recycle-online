@@ -26,6 +26,7 @@ import { statusNotice } from "../src/sync/statusNotice";
 import type { StatusInput, StatusTone } from "../src/sync/statusNotice";
 import { shopTime } from "@recycle/shop-time";
 import { useTheme, type ThemeTokens } from "./theme";
+import { Touchable } from "./Press";
 
 export interface StatusStripProps extends StatusInput {
   lastSyncedAt: string | null;
@@ -78,9 +79,9 @@ export function StatusStrip(props: StatusStripProps) {
         {notice.message}
       </Text>
       {notice.action !== null ? (
-        <Pressable style={styles.action} onPress={onPress}>
+        <Touchable style={styles.action} onPress={onPress} haptic="light" accessibilityLabel={notice.action.label}>
           <Text style={styles.actionText}>{notice.action.label}</Text>
-        </Pressable>
+        </Touchable>
       ) : null}
       {/*
         shopTime, not a local getHours()/getMinutes() pair. That happened to be
@@ -113,9 +114,9 @@ function makeStyles(t: ThemeTokens) {
     text: { flex: 1, fontSize: t.type.body, fontWeight: "800" },
     time: { fontSize: t.type.body, fontWeight: "700", opacity: 0.85 },
     action: {
-      minHeight: t.tapMin, paddingHorizontal: t.space.xl, justifyContent: "center",
-      borderRadius: t.radius.md, backgroundColor: t.color.primary,
+      minHeight: t.tapMin, paddingHorizontal: t.space.xl, justifyContent: "center", alignItems: "center",
+      borderRadius: t.radius.md, backgroundColor: t.color.primaryFill, borderWidth: 1, borderColor: t.color.primary,
     },
-    actionText: { color: t.color.onPrimary, fontSize: t.type.body, fontWeight: "800" },
+    actionText: { color: t.color.onPrimaryFill, fontSize: t.type.body, fontWeight: "800" },
   });
 }

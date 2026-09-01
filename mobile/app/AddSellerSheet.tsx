@@ -57,6 +57,7 @@ import { BLANK_SELLER_FORM, localSellerDraftFrom, sellerFormReady } from "../src
 import type { SellerFormFields } from "../src/master/sellerForm";
 import { useTheme, type ThemeTokens } from "./theme";
 import { SheetHeader } from "./SheetHeader";
+import { Touchable } from "./Press";
 
 /**
  * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
@@ -205,14 +206,16 @@ export function AddSellerSheet({ create, held, onPick, onClose }: Props) {
               </Text>
             ))}
             {notice.action !== null ? (
-              <Pressable
+              <Touchable
                 style={[styles.noticeBtn, { backgroundColor: TONES[notice.tone].border }]}
+                haptic="light"
+                accessibilityLabel={notice.action.label}
                 onPress={() => {
                   if (notice.action !== null) act(notice.action);
                 }}
               >
                 <Text style={styles.noticeBtnText}>{notice.action.label}</Text>
-              </Pressable>
+              </Touchable>
             ) : null}
           </View>
         ) : null}
@@ -229,13 +232,15 @@ export function AddSellerSheet({ create, held, onPick, onClose }: Props) {
         */}
         {field("vehicle_no", "ทะเบียนรถที่ใช้ประจำ", "ไม่ใช่ทะเบียนรถของบิลใบนี้")}
 
-        <Pressable
+        <Touchable
           style={[styles.save, (!ready || busy) && styles.saveOff]}
           disabled={!ready || busy}
+          haptic="success"
+          accessibilityLabel="บันทึกผู้ขาย"
           onPress={() => void submit()}
         >
           <Text style={styles.saveText}>{busy ? "กำลังบันทึก…" : "บันทึกผู้ขาย"}</Text>
-        </Pressable>
+        </Touchable>
         {!ready ? <Text style={styles.gate}>ต้องกรอกชื่อผู้ขายก่อนจึงจะบันทึกได้</Text> : null}
       </ScrollView>
     </KeyboardAvoidingView>
@@ -268,11 +273,11 @@ function makeStyles(t: ThemeTokens) {
     inputTall: { minHeight: t.tapMin + t.space.x5, textAlignVertical: "top", paddingTop: t.space.lg },
 
     save: {
-      minHeight: t.tapMin + t.space.xs, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
-      alignItems: "center", justifyContent: "center", marginTop: t.space.md,
+      minHeight: t.tapMin + t.space.xs, borderRadius: t.radius.xl, backgroundColor: t.color.primaryFill,
+      borderWidth: 1, borderColor: t.color.primary, alignItems: "center", justifyContent: "center", marginTop: t.space.md,
     },
     saveOff: { opacity: 0.4 },
-    saveText: { color: t.color.onPrimary, fontWeight: "800", fontSize: t.type.subhead },
+    saveText: { color: t.color.onPrimaryFill, fontWeight: "800", fontSize: t.type.subhead },
     gate: { fontSize: t.type.body, color: t.color.textSubtle, fontWeight: "700", textAlign: "center", marginTop: t.space.lg },
   });
 }

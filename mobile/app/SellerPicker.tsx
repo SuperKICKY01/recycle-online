@@ -34,6 +34,8 @@ import type { NamedTier, SellerMatch } from "../src/cart/sellers";
 import type { Seller } from "./api";
 import { useTheme, type ThemeTokens } from "./theme";
 import { SheetHeader } from "./SheetHeader";
+import { Icon } from "./Icon";
+import { Touchable } from "./Press";
 
 /**
  * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
@@ -128,9 +130,10 @@ export function SellerPicker({
         title={changing ? "เปลี่ยนผู้ขาย" : "เลือกผู้ขาย"}
         onClose={close}
         actions={
-          <Pressable style={styles.addBtn} onPress={onAddSeller}>
-            <Text style={styles.addText}>+ เพิ่มผู้ขาย</Text>
-          </Pressable>
+          <Touchable style={styles.addBtn} onPress={onAddSeller} accessibilityLabel="เพิ่มผู้ขาย">
+            <Icon name="plus" size={16} color={t.color.onPrimaryFill} />
+            <Text style={styles.addText}>เพิ่มผู้ขาย</Text>
+          </Touchable>
         }
       />
 
@@ -182,9 +185,10 @@ export function SellerPicker({
           const isCurrent = s.id === currentSellerId;
           const noGrade = s.grade === null;
           return (
-            <Pressable
+            <Touchable
               style={[styles.row, isCurrent && styles.rowCurrent]}
               onPress={() => pick(item)}
+              accessibilityLabel={s.name}
             >
               <View style={styles.rowTop}>
                 <Text style={styles.name} numberOfLines={1}>
@@ -220,7 +224,7 @@ export function SellerPicker({
                 </Text>
               ) : null}
               {isCurrent ? <Text style={styles.current}>ผู้ขายของบิลนี้</Text> : null}
-            </Pressable>
+            </Touchable>
           );
         }}
       />
@@ -235,9 +239,10 @@ function makeStyles(t: ThemeTokens) {
     // beside a neutral ปิด. Same TAP_MIN floor as every other control here.
     addBtn: {
       minHeight: t.tapMin, paddingHorizontal: t.space.xxl, borderRadius: t.radius.lg,
-      backgroundColor: t.color.primary, alignItems: "center", justifyContent: "center",
+      backgroundColor: t.color.primaryFill, borderWidth: 1, borderColor: t.color.primary,
+      flexDirection: "row", alignItems: "center", gap: t.space.xs, justifyContent: "center",
     },
-    addText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.onPrimary },
+    addText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.onPrimaryFill },
 
     searchWrap: {
       paddingHorizontal: t.space.x3, paddingTop: t.space.xl, paddingBottom: t.space.md, backgroundColor: t.color.surface,

@@ -169,6 +169,32 @@ export const LAYOUT = {
 } as const;
 
 /**
+ * MOTION — the one motion vocabulary (P1.23 phase E). Plain data, no React
+ * Native here (this file stays pure TS and node-compiled); the components drive
+ * Reanimated from these. Values from animate-expo + apple-design: press feedback
+ * under 150ms, a small state change ~180ms, a sheet a ~300ms spring. Tabs never
+ * slide, so no screen-transition token lives here — navigation uses the
+ * platform default. `press.scale` is the press-in target on every tappable.
+ */
+export const MOTION = {
+  press: { scale: 0.97, durationMs: 120 },
+  stateMs: 180,
+  sheetMs: 300,
+  /** Cubic-bezier control points for `Easing.bezier(...)` (UI curves, never ease-in). */
+  ease: {
+    out: [0.23, 1, 0.32, 1],
+    inOut: [0.77, 0, 0.175, 1],
+    sheet: [0.32, 0.72, 0, 1],
+  },
+  /** Reanimated spring configs in Apple's damping/response form. */
+  spring: {
+    settle: { duration: 400, dampingRatio: 1 },
+    snap: { duration: 400, dampingRatio: 0.8 },
+    sheet: { duration: 300, dampingRatio: 0.8 },
+  },
+} as const;
+
+/**
  * ONE ELEVATION STEP for a card, per scheme.
  *
  * Separation on this app comes FIRST from the surface/background colour difference (both
@@ -222,6 +248,15 @@ export interface Palette {
   // Brand.
   readonly primary: string;
   readonly onPrimary: string;
+  /** The primary ACTION fill (buttons/CTAs) and its label. Split from `primary`
+   *  so the fill can be a BRIGHT, saturated accent in BOTH themes while `primary`
+   *  stays dark enough to read as text/links/border on the pale ground — one
+   *  token cannot be both (white-on-teal forced `primary` to the teal-700 slab).
+   *  In dark these coincide with primary/onPrimary; in light the fill is bright
+   *  and its label a dark ink. Proven: `onPrimaryFill on primaryFill` ≥4.5 in
+   *  both themes; the fill-vs-ground pop is measured and printed (P7). */
+  readonly primaryFill: string;
+  readonly onPrimaryFill: string;
   /** The modal backdrop. rgba on purpose — it dims what is behind the sheet. */
   readonly overlay: string;
 
@@ -288,6 +323,14 @@ const LIGHT: Palette = {
 
   primary: "#0f766e",
   onPrimary: "#ffffff",
+  // The CTA fill: teal-500, bright and saturated — NOT the teal-700 slab the app
+  // shipped, which read heavy and old on the pale ground. Its label is a near-
+  // black teal ink. `primary` (teal-700) stays the text/link/border accent, and
+  // the CTA border is drawn in `primary` so the control is perceivable (the
+  // bright fill's luminance-contrast with a pale ground is low by nature — that
+  // low pop IS the modern bright-accent look, printed in P7, not a slab).
+  primaryFill: "#14b8a6",
+  onPrimaryFill: "#04312c",
   overlay: "rgba(15,23,42,0.6)",
 
   danger: "#b91c1c",
@@ -347,6 +390,10 @@ const DARK: Palette = {
 
   primary: "#2dd4bf",
   onPrimary: "#062925",
+  // In dark the bright accent already carries as a fill, so the fill coincides
+  // with primary/onPrimary; kept as its own token so the button code is one path.
+  primaryFill: "#2dd4bf",
+  onPrimaryFill: "#062925",
   overlay: "rgba(0,0,0,0.66)",
 
   danger: "#f87171",
@@ -394,6 +441,8 @@ export interface ThemeTokens {
   readonly radius: typeof RADIUS;
   /** Structural layout constants (scheme-independent). */
   readonly layout: typeof LAYOUT;
+  /** The one motion vocabulary (scheme-independent). */
+  readonly motion: typeof MOTION;
   /** The one card elevation step for THIS scheme. */
   readonly elevation: Elevation;
   readonly tapMin: number;
@@ -408,6 +457,7 @@ const LIGHT_TOKENS: ThemeTokens = {
   space: SPACE,
   radius: RADIUS,
   layout: LAYOUT,
+  motion: MOTION,
   elevation: LIGHT_CARD_ELEVATION,
   tapMin: TAP_MIN,
   statusBar: "dark",
@@ -420,6 +470,7 @@ const DARK_TOKENS: ThemeTokens = {
   space: SPACE,
   radius: RADIUS,
   layout: LAYOUT,
+  motion: MOTION,
   elevation: DARK_CARD_ELEVATION,
   tapMin: TAP_MIN,
   statusBar: "light",

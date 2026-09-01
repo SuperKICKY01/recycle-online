@@ -23,6 +23,8 @@ import { tierName } from "../src/cart/sellers";
 import type { NamedTier } from "../src/cart/sellers";
 import type { Seller } from "./api";
 import { useTheme, type ThemeTokens } from "./theme";
+import { Touchable } from "./Press";
+import { display } from "../src/money/format";
 
 /**
  * NO MODAL ELEMENT AND NO `visible` PROP. This app has one Modal — app/SheetHost
@@ -109,8 +111,8 @@ export function ConfirmSellerChangeDialog({
               • ราคาจะเปลี่ยนเป็นราคาตามเกรดใหม่{" "}
               {impact === null
                 ? ""
-                : `(${impact.pendingPriceWas === "" ? "ว่าง" : impact.pendingPriceWas} → ${
-                    impact.pendingPriceNow === "" ? "ว่าง" : impact.pendingPriceNow
+                : `(${impact.pendingPriceWas === "" ? "ว่าง" : display(impact.pendingPriceWas)} → ${
+                    impact.pendingPriceNow === "" ? "ว่าง" : display(impact.pendingPriceNow)
                   })`}
             </Text>
           )}
@@ -118,12 +120,12 @@ export function ConfirmSellerChangeDialog({
         </ScrollView>
 
         <View style={styles.buttons}>
-          <Pressable style={[styles.btn, styles.cancel]} onPress={onCancel}>
+          <Touchable style={[styles.btn, styles.cancel]} onPress={onCancel} accessibilityLabel="ไม่เปลี่ยน">
             <Text style={styles.cancelText}>ไม่เปลี่ยน</Text>
-          </Pressable>
-          <Pressable style={[styles.btn, styles.confirm]} onPress={onConfirm}>
+          </Touchable>
+          <Touchable style={[styles.btn, styles.confirm]} onPress={onConfirm} haptic="medium" accessibilityLabel="เปลี่ยนผู้ขาย">
             <Text style={styles.confirmText}>เปลี่ยนผู้ขาย</Text>
-          </Pressable>
+          </Touchable>
         </View>
       </View>
     </View>

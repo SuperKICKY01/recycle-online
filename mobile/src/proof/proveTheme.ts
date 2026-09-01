@@ -26,6 +26,8 @@
  *             ascending steps. Reddens the "smallest step is the 13px floor" cell
  *             only — the count and monotonic cells stay green, which is what makes
  *             the floor cell the one that carries the claim.
+ *   fill      collapses the light onPrimaryFill onto the fill (ratio 1). Reddens
+ *             the "onPrimaryFill on primaryFill (light)" cell only.
  *
  * main() prints `PROVE_THEME_EXIT=<n>` from the integer it returns; the line is
  * ABSENT if the run dies before the summary, and the absence is the signal
@@ -52,7 +54,7 @@ function header(title: string): void {
 }
 
 const BREAK = (process.argv.find((a) => a.startsWith("--break=")) ?? "").split("=")[1] ?? "";
-const BREAK_MODES: readonly string[] = ["contrast", "tapmin", "floor"];
+const BREAK_MODES: readonly string[] = ["contrast", "tapmin", "floor", "fill"];
 if (BREAK !== "" && !BREAK_MODES.includes(BREAK)) {
   console.log(`  [FAIL] unknown --break=${BREAK} — nothing was damaged and nothing was measured`);
   console.log(`         known breaks: ${BREAK_MODES.join(", ")}`);
@@ -85,6 +87,9 @@ function paletteOf(t: ThemeTokens): Palette {
   if (BREAK === "contrast" && t.scheme === "light") {
     return { ...t.color, dangerFg: t.color.dangerBg };
   }
+  if (BREAK === "fill" && t.scheme === "light") {
+    return { ...t.color, onPrimaryFill: t.color.primaryFill };
+  }
   return t.color;
 }
 /** The tap floor under test. */
@@ -113,6 +118,7 @@ const TEXT_PAIRS: readonly (readonly [Key, Key, number])[] = [
   ["placeholder", "surface", 4.5],
   ["neutralFg", "surface", 4.5],
   ["neutralFg", "surfaceAlt", 4.5],
+  ["textMuted", "surfaceAlt", 4.5], // the segmented control's unselected label on its track
   ["primary", "surface", 4.5], // primary as TEXT — the change/history row affordances and links
   ["primary", "background", 4.5],
   // DESTRUCTIVE TEXT ON THE PAGE GROUND ITSELF (P1.23 item 3 phase D). The sign-out
@@ -121,7 +127,8 @@ const TEXT_PAIRS: readonly (readonly [Key, Key, number])[] = [
   // drops under 4.5:1 the destructive red changes — never this floor, never the rule.
   ["danger", "surface", 4.5],
   ["danger", "background", 4.5],
-  ["onPrimary", "primary", 4.5], // button label
+  ["onPrimary", "primary", 4.5], // white-on-accent label (badge / legacy path)
+  ["onPrimaryFill", "primaryFill", 4.5], // TEXT-ON-FILL legibility (the 4.5 rule): the CTA label on the CTA fill, BOTH themes
   // notice tint text
   ["dangerFg", "dangerBg", 4.5],
   ["warningFg", "warningBg", 4.5],
@@ -238,6 +245,31 @@ function main(): number {
   check(
     "the three are light, dark, system",
     THEME_PREFS.includes("light") && THEME_PREFS.includes("dark") && THEME_PREFS.includes("system"),
+  );
+
+  // P7 — the CTA fill's PROMINENCE against its ground (owner correction 1). THIS IS
+  // NOT A LEGIBILITY CELL: a fill-against-ground ratio has NO 4.5 threshold — the 4.5
+  // rule governs TEXT on its own background only. The CTA LABEL's legibility is the
+  // `onPrimaryFill on primaryFill` cell (>=4.5, in P1/P2), and the control's edge is
+  // `primary` (a proven >=4.5 text/border pair). This section reports the pop so the
+  // CTA can be SHOWN to be the brightest/most-saturated thing on its screen. A
+  // pale-ground bright accent has LOW pop by nature (that low light figure IS the
+  // modern look); a HIGH light pop would be the teal-700 slab that was rejected. So
+  // light asserts an UPPER bound (bright, not a slab), dark a LOWER bound (pops on dark).
+  header("P7 the CTA fill's PROMINENCE vs its ground (fill-vs-ground, NOT a legibility floor)");
+  const lightPopSurf = contrast(light.color.primaryFill, light.color.surface);
+  const lightPopBg = contrast(light.color.primaryFill, light.color.background);
+  const darkPopSurf = contrast(dark.color.primaryFill, dark.color.surface);
+  const darkPopBg = contrast(dark.color.primaryFill, dark.color.background);
+  check(
+    "light CTA fill-vs-ground PROMINENCE (no 4.5 rule): a bright accent, not a slab (< 3.5)",
+    lightPopSurf < 3.5,
+    `fill-vs-ground ${lightPopSurf.toFixed(2)}:1 vs surface / ${lightPopBg.toFixed(2)}:1 vs background — prominence only, no legibility threshold; ${light.color.primaryFill}`,
+  );
+  check(
+    "dark CTA fill-vs-ground PROMINENCE (no 4.5 rule): pops on the dark ground (>= 3)",
+    darkPopBg >= 3,
+    `fill-vs-ground ${darkPopBg.toFixed(2)}:1 vs background / ${darkPopSurf.toFixed(2)}:1 vs surface — prominence only, no legibility threshold; ${dark.color.primaryFill}`,
   );
 
   console.log("");

@@ -26,6 +26,7 @@ import type {
 } from "../src/settings/account";
 import { useTheme, type ThemeTokens } from "./theme";
 import { SheetHeader } from "./SheetHeader";
+import { Touchable } from "./Press";
 
 interface Props {
   /** null while /whoami is in flight. */
@@ -93,11 +94,11 @@ export function AccountScreen({ profile, outcome, busy, onClose, onSignIn, onSub
                 {line}
               </Text>
             ))}
-            <Pressable style={styles.messageBtn} onPress={onSignIn}>
+            <Touchable style={styles.messageBtn} onPress={onSignIn} haptic="light" accessibilityLabel="เข้าสู่ระบบ">
               <Text style={styles.messageBtnText}>
                 {outcome.kind === "changed" ? outcome.signInLabel : "เข้าสู่ระบบ"}
               </Text>
-            </Pressable>
+            </Touchable>
           </View>
         ) : sessionEnded ? (
           <View style={styles.noticeCard}>
@@ -105,11 +106,11 @@ export function AccountScreen({ profile, outcome, busy, onClose, onSignIn, onSub
             <Text style={styles.noticeLead}>
               {outcome.kind === "session" ? outcome.message : ""}
             </Text>
-            <Pressable style={styles.messageBtn} onPress={onSignIn}>
+            <Touchable style={styles.messageBtn} onPress={onSignIn} haptic="light" accessibilityLabel="เข้าสู่ระบบ">
               <Text style={styles.messageBtnText}>
                 {outcome.kind === "session" ? outcome.signInLabel : "เข้าสู่ระบบ"}
               </Text>
-            </Pressable>
+            </Touchable>
           </View>
         ) : (
           <View style={styles.card}>
@@ -127,13 +128,15 @@ export function AccountScreen({ profile, outcome, busy, onClose, onSignIn, onSub
             <Field label="รหัสผ่านใหม่" value={next} onChange={setNext} />
             <Field label="พิมพ์รหัสผ่านใหม่อีกครั้ง" value={repeat} onChange={setRepeat} />
 
-            <Pressable
+            <Touchable
               style={[styles.saveBtn, busy && styles.saveBusy]}
               disabled={busy}
+              haptic="light"
+              accessibilityLabel="เปลี่ยนรหัสผ่าน"
               onPress={submit}
             >
               <Text style={styles.saveText}>{busy ? "กำลังเปลี่ยน…" : "เปลี่ยนรหัสผ่าน"}</Text>
-            </Pressable>
+            </Touchable>
             <Text style={styles.note}>
               เมื่อเปลี่ยนสำเร็จ เครื่องนี้จะออกจากระบบ ต้องเข้าสู่ระบบใหม่ด้วยรหัสผ่านใหม่
             </Text>
@@ -214,11 +217,11 @@ function makeStyles(t: ThemeTokens) {
       color: t.color.text, backgroundColor: t.color.surface,
     },
     saveBtn: {
-      minHeight: t.tapMin, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
-      alignItems: "center", justifyContent: "center", marginTop: t.space.x3,
+      minHeight: t.tapMin, borderRadius: t.radius.xl, backgroundColor: t.color.primaryFill,
+      borderWidth: 1, borderColor: t.color.primary, alignItems: "center", justifyContent: "center", marginTop: t.space.x3,
     },
     saveBusy: { opacity: 0.6 },
-    saveText: { color: t.color.onPrimary, fontSize: t.type.subhead, fontWeight: "900" },
+    saveText: { color: t.color.onPrimaryFill, fontSize: t.type.subhead, fontWeight: "900" },
 
     noticeCard: {
       backgroundColor: t.color.cyanBg, borderRadius: t.radius.card, padding: t.space.x3, marginBottom: t.space.xl,
@@ -232,8 +235,9 @@ function makeStyles(t: ThemeTokens) {
     noticeCalm: { fontSize: t.type.body, fontWeight: "600", color: t.color.cyanFg, marginTop: t.space.md },
     messageBtn: {
       marginTop: t.space.x3, minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
-      backgroundColor: t.color.primary, alignItems: "center", justifyContent: "center", alignSelf: "stretch",
+      backgroundColor: t.color.primaryFill, borderWidth: 1, borderColor: t.color.primary,
+      alignItems: "center", justifyContent: "center", alignSelf: "stretch",
     },
-    messageBtnText: { color: t.color.onPrimary, fontSize: t.type.bodyLg, fontWeight: "800" },
+    messageBtnText: { color: t.color.onPrimaryFill, fontSize: t.type.bodyLg, fontWeight: "800" },
   });
 }

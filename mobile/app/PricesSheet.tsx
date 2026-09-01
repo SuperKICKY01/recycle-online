@@ -58,8 +58,10 @@ import type {
   TierPrice,
 } from "../src/master/priceEdit";
 import type { FieldError } from "../src/money/money";
+import { display } from "../src/money/format";
 import { useTheme, type ThemeTokens } from "./theme";
 import { SheetHeader } from "./SheetHeader";
+import { Touchable } from "./Press";
 
 function makeTone(t: ThemeTokens): Record<PriceTone, { bg: string; fg: string; badge: string }> {
   return {
@@ -228,12 +230,12 @@ function ProductRows({
           {t.price === null ? (
             <Text style={styles.unpriced}>ยังไม่ได้ตั้งราคา</Text>
           ) : (
-            <Text style={styles.price}>{t.price}</Text>
+            <Text style={styles.price}>{display(t.price)}</Text>
           )}
           {editable ? (
-            <Pressable style={styles.editBtn} onPress={() => onEdit(t)}>
+            <Touchable style={styles.editBtn} onPress={() => onEdit(t)} accessibilityLabel={EDIT_TIER_LABEL}>
               <Text style={styles.editText}>{EDIT_TIER_LABEL}</Text>
-            </Pressable>
+            </Touchable>
           ) : null}
         </View>
       ))}
@@ -295,12 +297,14 @@ function TierEditor({
       />
       {complaint === null ? null : <Text style={styles.error}>{messageFor(complaint)}</Text>}
       <View style={styles.editorActions}>
-        <Pressable style={styles.cancelBtn} onPress={onCancel}>
+        <Touchable style={styles.cancelBtn} onPress={onCancel} accessibilityLabel="ยกเลิก">
           <Text style={styles.cancelText}>ยกเลิก</Text>
-        </Pressable>
-        <Pressable
+        </Touchable>
+        <Touchable
           style={[styles.saveBtn, parsed.ok ? null : styles.saveBtnOff]}
           disabled={!parsed.ok}
+          haptic="light"
+          accessibilityLabel={SAVE_TIER_LABEL}
           /*
             THE NORMALISED VALUE, not the raw text. `parseTierPrice` returns the
             string at fixed scale, so "15.5" and "15.50" leave this screen as one
@@ -312,7 +316,7 @@ function TierEditor({
           }}
         >
           <Text style={styles.saveText}>{SAVE_TIER_LABEL}</Text>
-        </Pressable>
+        </Touchable>
       </View>
     </View>
   );
@@ -326,9 +330,9 @@ function ActionButton({ action, onPress }: { action: PriceAction; onPress: () =>
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
   return (
-    <Pressable style={styles.actionBtn} onPress={onPress}>
+    <Touchable style={styles.actionBtn} onPress={onPress} accessibilityLabel={action.label}>
       <Text style={styles.actionText}>{action.label}</Text>
-    </Pressable>
+    </Touchable>
   );
 }
 
@@ -374,11 +378,13 @@ function makeStyles(t: ThemeTokens) {
     saveBtn: {
       paddingHorizontal: t.space.x3,
       paddingVertical: t.space.xl,
-      backgroundColor: t.color.primary,
+      backgroundColor: t.color.primaryFill,
+      borderWidth: 1,
+      borderColor: t.color.primary,
       borderRadius: t.radius.md,
     },
-    saveBtnOff: { backgroundColor: t.color.placeholder },
-    saveText: { fontSize: t.type.subhead, color: t.color.onPrimary, fontWeight: "700" },
+    saveBtnOff: { backgroundColor: t.color.placeholder, borderColor: t.color.placeholder },
+    saveText: { fontSize: t.type.subhead, color: t.color.onPrimaryFill, fontWeight: "700" },
     actions: {
       flexDirection: "row",
       gap: t.space.xl,

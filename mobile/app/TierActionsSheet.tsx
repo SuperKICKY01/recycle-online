@@ -22,6 +22,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { validateRename } from "../src/settings/gradeTierAdmin";
 import type { TierAdminRow } from "../src/settings/gradeTierAdmin";
 import { useTheme, type ThemeTokens } from "./theme";
+import { Touchable } from "./Press";
 
 export function TierActionsSheet({
   row,
@@ -80,37 +81,39 @@ export function TierActionsSheet({
                 autoFocus
               />
               {error !== null ? <Text style={styles.error}>{error}</Text> : null}
-              <Pressable
+              <Touchable
                 style={[styles.action, styles.actionPrimary]}
                 disabled={busy}
+                haptic="light"
+                accessibilityLabel="บันทึกชื่อ"
                 onPress={submitRename}
               >
                 <Text style={styles.actionPrimaryText}>บันทึกชื่อ</Text>
-              </Pressable>
+              </Touchable>
             </>
           ) : (
-            <Pressable style={styles.action} disabled={busy} onPress={() => setRenaming(true)}>
+            <Touchable style={styles.action} disabled={busy} onPress={() => setRenaming(true)} accessibilityLabel="แก้ชื่อ">
               <Text style={styles.actionText}>แก้ชื่อ</Text>
-            </Pressable>
+            </Touchable>
           )}
 
           {/* Retire / restore. Deactivate is drawn only when the client guard allows it
               (mayDeactivate — not the shop's last active tier); the server refuses it too. */}
           {row.is_active ? (
             row.mayDeactivate ? (
-              <Pressable style={styles.action} disabled={busy} onPress={() => onDeactivate(row.id)}>
+              <Touchable style={styles.action} disabled={busy} haptic="medium" onPress={() => onDeactivate(row.id)} accessibilityLabel="ปิดใช้งาน">
                 <Text style={styles.actionDanger}>ปิดใช้งาน</Text>
-              </Pressable>
+              </Touchable>
             ) : null
           ) : (
-            <Pressable style={styles.action} disabled={busy} onPress={() => onReactivate(row.id)}>
+            <Touchable style={styles.action} disabled={busy} onPress={() => onReactivate(row.id)} accessibilityLabel="เปิดใช้งานอีกครั้ง">
               <Text style={styles.actionText}>เปิดใช้งานอีกครั้ง</Text>
-            </Pressable>
+            </Touchable>
           )}
 
-          <Pressable style={styles.action} onPress={onClose}>
+          <Touchable style={styles.action} onPress={onClose} accessibilityLabel="ยกเลิก">
             <Text style={styles.actionText}>ยกเลิก</Text>
-          </Pressable>
+          </Touchable>
         </View>
       </View>
     </View>
@@ -166,8 +169,8 @@ function makeStyles(t: ThemeTokens) {
       justifyContent: "center",
     },
     actionText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.text },
-    actionPrimary: { backgroundColor: t.color.primary, borderColor: t.color.primary },
-    actionPrimaryText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.onPrimary },
+    actionPrimary: { backgroundColor: t.color.primaryFill, borderColor: t.color.primary },
+    actionPrimaryText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.onPrimaryFill },
     actionDanger: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.danger },
   });
 }

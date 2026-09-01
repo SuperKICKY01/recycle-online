@@ -7232,6 +7232,59 @@ no count is written into the criterion:
    TierActionsSheet `<Text>`, byte-identical), 0 added Thai in tracked files. THE VISUAL RESULT IS A
    HANDSET OBSERVATION, OWED — in the PROJECT_STATUS consolidated device pass. Skills used: impeccable
    (Operate/layout/onboard/new-work), animate-expo (§7 press), apple-design (§1/§15/§16).
+   **PHASE E 2026-09-01 (P1.23 item 3): THE FULL UX/UI REWORK — the cosmetic constraints lifted, every
+   screen rebuilt on one vocabulary, built FROM the skills' knowledge.** No sha yet (this record precedes
+   the commit; anchor next pass). The owner lifted the constraints that kept phases C/D cosmetic (no new
+   Thai, no new dependency, no new screen, presentation-only, one screen at a time). His instruction,
+   verbatim, never translated, is the authority: "คือ ที่ผมต้องการคือ rework ux ui ใหม่ทั้งหมด เหมือนตอนนี้
+   ux ui แม่งเหมือน สมัย 2000 อ่ะ นี่ 2026 แล้วนะ skills ก็อัปมาให้แล้ว ไม่ใช่ทำงานสักทีวะ งง ref ก็มี ความรู้
+   ก็มี จะทำตัวเป็นความรู้ 0 ทำไม เหมือนคนไม่รู้เรื่องทั้งที่ตัวเองก็มีความรู้เยอะ จนแม่งทำ ai slop ai generate
+   ทีผมลง skills ก็คือแก้พวกนี้นิ แต่นี้ ux ui แม่งกากสัด และโครตกาก ตัวเองมีความรู้ตั้งเยอะแต่เสือกเริ่มจาก0
+   คิดเอง ผมปลดโซ่ ไม่มีข้อจำกัดทำเลย แต่อย่าทำให้ไฟล์อื่นเสียรับผลกระทบ".
+   METHOD (the skills design it, in their order, NOT the session's own taste — the failure of C/D): the
+   `impeccable` new-work flow ruled this a BRIEF-PINNED world — the owner's AllTCAS reference IS the pinned
+   direction, so NO concept-seed roll was run (a pinned direction beats the roll, always); Operate mode +
+   craft-floor governed; `animate-expo` supplied native motion (UI-thread press-scale, commit haptics, the
+   frequency gate that keeps the keypad un-animated); `apple-design` type/depth/response. Reference read
+   directly off `E:\reffe`, never a second-hand description.
+   FOUR DEPENDENCIES ADDED (`npx expo install`, SDK-54-matched, owner-approved each): react-native-reanimated
+   ~4.1.1 + react-native-worklets 0.5.1 (the UI-thread motion foundation), react-native-gesture-handler
+   ~2.28.0, expo-haptics ~15.0.8 (commit haptics), @expo/vector-icons ^15.0.3 (Feather — the drawn set that
+   replaced the ›/‹/⋯/⌫/↑↓/+ text glyphs). NO custom font (the system stack renders Thai and is sunlight-
+   tuned; a custom face risks Thai coverage and this box's CP874 traps). New Architecture is already on
+   (SDK-54 default), so Reanimated 4 needed no arch flip; the deps were measured inert (typechecks + full
+   suite unmoved by the install alone).
+   MONEY SEPARATOR (the owner's no-defer ruling — a 5am `128,400.00`/`12840.00` misread is a money error the
+   UI caused): ONE function `src/money/format.ts` `display()` groups the integer part by pure string surgery
+   — no arithmetic, no rounding, no Number/toFixed/Intl — with the inverse `stripSeparators` proving
+   `stripSeparators(display(x)) === x` (proveMoney M5, 36→64 cells; a `drop_digit` disproof reddens exactly
+   the 23 round-trip cells). Applied ONLY at render sites; builders pass raw strings. Every money/weight
+   figure on every screen renders grouped, none ungrouped (constraint 1 held).
+   LIGHT-ACCENT FIX (owner correction 1): `theme.ts` split the accent into `primary` (text/link/border teal,
+   dark enough on the pale ground) and a bright `primaryFill`/`onPrimaryFill` for every CTA, so the primary
+   action is the brightest, most saturated thing in BOTH themes — measured and LABELLED for what each ratio
+   is: TEXT-ON-FILL legibility (the 4.5 rule) is the CTA label at 5.70:1 (light) / 8.35:1 (dark) on the
+   fill; FILL-VS-GROUND PROMINENCE (a different measurement, NO 4.5 threshold, reported so the CTA is shown
+   brightest) is light 2.49:1 — a bright accent, not the rejected ~4.9:1 teal-700 slab — and dark 10.06:1.
+   Every TEXT pair clears 4.5 in both themes. Added a `MOTION` token group; moved the segmented control to the
+   reference's raised-pill selection. prove:theme 92→98 (+fill-label, +P7 pop, +segmented `textMuted`/
+   `surfaceAlt`); a `fill` disproof added; all disproofs redden exactly one cell.
+   COMPONENT VOCABULARY: one `app/Kit.tsx` (Card/GroupCard/SectionHeading/Row/Divider/Segmented/Figure/
+   Badge/Button/EmptyState/Field), `app/Press.tsx` (`Touchable`, the one press primitive), `app/Icon.tsx`
+   (the Feather map) — replacing the message-card and per-file primitives. Every screen rebuilt on it and
+   every geometry value drawn from a token (prove:tapaudit Cs2 = 0 across 27 app files); the notice strips
+   dropped their >1px coloured left-rail for a leading dot (a craft-floor default).
+   THE THREE THAT DID NOT BEND: (1) money — a decimal string in a Text node, only regrouped at render.
+   (2) queued work — nothing under `src/sync/` or `src/adapters/sqlite/` changed; the money proofs
+   (money/cart/daily/dashboard/sellerhistory/prices) green with counts unmoved. (3) 5am — tap targets ≥56,
+   body ≥13px, contrast ≥4.5 both themes. NEW THAI: the settings headings `ข้อมูลร้าน` / `เครื่องนี้`
+   (reusing settled `ร้าน` / `เครื่องนี้`); the only string CHANGES are decorative-glyph removals (old→new
+   with file:line in the PROJECT_STATUS record). PROVEN headless: both typechecks EXIT=0; the full 45-proof
+   suite green TWICE (only proveLogin/proveLoginScreen exit 1, server :8231 down — no login-logic change);
+   prove:theme 98, prove:money 64, prove:tapaudit 0, prove:sheets 0. THE VISUAL/MOTION/HAPTIC RESULT IS A
+   HANDSET OBSERVATION, OWED — a dev build (not Expo Go, since Reanimated 4 on the New Architecture replaces
+   it); the platform decision and the `expo-system-ui` finding are in `OPEN_ITEMS.md`. Skills: impeccable
+   (new-work/operate/craft-floor), animate-expo, apple-design; artifact-design for the direction preview.
 4. The shop-owner dashboard and the phone settings surface are drawn — both homed
    on mobile by the owner (2026-08-28/29): S24 homes the dashboard, absorbing the
    existing daily screen as a view inside it, and the S6 extension homes the

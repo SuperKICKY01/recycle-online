@@ -20,6 +20,21 @@ import {
   parseWeight,
   sumAmounts,
 } from "../money/money.js";
+import { display, stripSeparators } from "../money/format.js";
+
+// Disproof, per lessons/a-check-that-never-went-red-was-never-observed.md:
+// PROVE_MONEY_BREAK=drop_digit makes the display under test drop its last
+// character — a dropped digit the M5 round-trip MUST catch, reddening M5 and
+// nothing else. An unknown break exits 2 without measuring, so a typo in the
+// break name can never read as a pass.
+const BREAK = process.env.PROVE_MONEY_BREAK ?? "";
+const BREAK_MODES: readonly string[] = ["drop_digit"];
+if (BREAK !== "" && !BREAK_MODES.includes(BREAK)) {
+  console.log(`unknown PROVE_MONEY_BREAK=${BREAK}; known: ${BREAK_MODES.join(", ")}`);
+  process.exit(2);
+}
+const displayUnderTest = (s: string): string =>
+  BREAK === "drop_digit" ? display(s).slice(0, -1) : display(s);
 
 let failures = 0;
 
@@ -152,6 +167,44 @@ function caseValidation(): void {
   check("price 0 accepted", parsePrice("0").ok);
 }
 
+/** Money and weight strings the app actually renders, plus the boundary cases. */
+const RENDERED: readonly string[] = [
+  "0.00", "0.005", "0.20", "7.00", "105.00", "150.05", "1.01", "4.45",
+  "10.003", "10.000", "99.998", "0.001", // weights, 3dp
+  "-0.01", "-2850.00", // negatives (ส่วนต่างจากราคาประกาศ can be below zero)
+  "1000.00", "128400.00", "131250.00", // one separator
+  "1234567.89", "8420.00", // two separators / a weight ≥ 1000
+  "99999999999.99", // 12 integer digits — no JS double holds this exactly
+  "1234567.8901", // more decimals than the wire produces: display still moves no digit
+  "0", "47", // integer-only (a count passes through unharmed)
+];
+
+function caseSeparators(): void {
+  header("M5: display() groups for reading and never alters a digit");
+  for (const x of RENDERED) {
+    const shown = displayUnderTest(x);
+    check(
+      `round-trip preserves ${x}`,
+      stripSeparators(shown) === x,
+      `display=${shown}  strip=${stripSeparators(shown)}`,
+    );
+  }
+  // The round-trip only bites if a wrong display would fail it: a display that
+  // loses its last digit — the shape of every reformatting bug — must break it.
+  // Deterministic, so the control does not depend on a locale library.
+  const digitLosing = (s: string): string => display(s).replace(/\d$/u, "");
+  check(
+    "control: a digit-losing display fails the round-trip (so M5 is not vacuous)",
+    stripSeparators(digitLosing("1234567.89")) !== "1234567.89",
+    `digitLosing("1234567.89") = ${digitLosing("1234567.89")}`,
+  );
+  // And display groups exactly where a person needs it.
+  check("128400.00 -> 128,400.00", display("128400.00") === "128,400.00", display("128400.00"));
+  check("1234567.89 -> 1,234,567.89 (two separators)", display("1234567.89") === "1,234,567.89", display("1234567.89"));
+  check("-2850.00 -> -2,850.00 (sign kept)", display("-2850.00") === "-2,850.00", display("-2850.00"));
+  check("999.99 -> 999.99 (no leading separator)", display("999.99") === "999.99", display("999.99"));
+}
+
 function main(): number {
   console.log("Phase 2c-2 — client decimal math, headless proof");
   console.log("decimal.js, ROUND_HALF_UP, strings only — no JS number touches money");
@@ -160,6 +213,7 @@ function main(): number {
   caseFloatTrap();
   caseRounding();
   caseValidation();
+  caseSeparators();
 
   console.log("");
   console.log(failures === 0 ? "ALL MONEY CASES PASSED" : `FAILED — ${failures} check(s)`);

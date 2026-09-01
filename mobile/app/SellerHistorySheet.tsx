@@ -20,6 +20,8 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import type { HistoryTone, SellerHistoryScreen } from "../src/sellerHistory/sellerHistoryView";
 import { useTheme, type ThemeTokens } from "./theme";
 import { SheetHeader } from "./SheetHeader";
+import { Touchable } from "./Press";
+import { display } from "../src/money/format";
 
 function makeTone(t: ThemeTokens): Record<HistoryTone, { bg: string; fg: string; badge: string }> {
   return {
@@ -88,9 +90,9 @@ function MessageBody({
           </Text>
         ))}
         {screen.action !== null ? (
-          <Pressable style={styles.messageBtn} onPress={handler}>
+          <Touchable style={styles.messageBtn} onPress={handler} haptic="light" accessibilityLabel={screen.action.label}>
             <Text style={styles.messageBtnText}>{screen.action.label}</Text>
-          </Pressable>
+          </Touchable>
         ) : null}
       </View>
     </ScrollView>
@@ -123,15 +125,15 @@ function ReportBody({ report }: { report: Extract<SellerHistoryScreen, { kind: "
                   {l.product}
                 </Text>
                 <Text style={styles.lineWeight}>
-                  {l.net_weight} {report.weightUnit}
+                  {display(l.net_weight)} {report.weightUnit}
                 </Text>
-                {l.unit_price !== null ? <Text style={styles.linePrice}>{l.unit_price}</Text> : null}
+                {l.unit_price !== null ? <Text style={styles.linePrice}>{display(l.unit_price)}</Text> : null}
               </View>
             ))}
             {b.total !== null ? (
               <View style={styles.totalRow}>
                 <Text style={styles.totalLabel}>รวม</Text>
-                <Text style={styles.totalValue}>{b.total}</Text>
+                <Text style={styles.totalValue}>{display(b.total)}</Text>
               </View>
             ) : null}
           </View>
@@ -203,11 +205,13 @@ function makeStyles(t: ThemeTokens) {
     messageBtn: {
       minHeight: t.tapMin,
       borderRadius: t.radius.lg,
-      backgroundColor: t.color.primary,
+      backgroundColor: t.color.primaryFill,
+      borderWidth: 1,
+      borderColor: t.color.primary,
       alignItems: "center",
       justifyContent: "center",
       paddingHorizontal: t.space.x4,
     },
-    messageBtnText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.onPrimary },
+    messageBtnText: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.onPrimaryFill },
   });
 }

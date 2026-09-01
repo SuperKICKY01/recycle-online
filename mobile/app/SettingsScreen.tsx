@@ -47,6 +47,8 @@ import type {
 } from "../src/settings/gradeTierAdmin";
 import { useTheme, useThemeControl, type ThemePref, type ThemeTokens } from "./theme";
 import { SheetHeader } from "./SheetHeader";
+import { Icon } from "./Icon";
+import { Touchable } from "./Press";
 import { API_BASE_URL } from "./config";
 
 /**
@@ -126,6 +128,7 @@ export function SettingsScreen({
     <View style={styles.fill}>
       <SheetHeader title="ตั้งค่าร้าน" onClose={onClose} />
 
+      <Text style={styles.deviceHead}>เครื่องนี้</Text>
       <ThemeControl />
       <ServerDiagnostics />
 
@@ -183,9 +186,9 @@ function MessageBody({
           </Text>
         ))}
         {screen.action !== null ? (
-          <Pressable style={styles.messageBtn} onPress={handler}>
+          <Touchable style={styles.messageBtn} onPress={handler} haptic="light" accessibilityLabel={screen.action.label}>
             <Text style={styles.messageBtnText}>{screen.action.label}</Text>
-          </Pressable>
+          </Touchable>
         ) : null}
       </View>
     </ScrollView>
@@ -253,6 +256,7 @@ function FormBody({
 
   return (
     <ScrollView contentContainerStyle={styles.body}>
+      <Text style={styles.formHead}>ข้อมูลร้าน</Text>
       {/* NAME — read-only for both roles: it is on printed slips (D4). */}
       <View style={styles.card}>
         <Text style={styles.label}>{form.nameLabel}</Text>
@@ -275,13 +279,15 @@ function FormBody({
               {form.gradeOptions.map((opt) => {
                 const on = opt.value === grade;
                 return (
-                  <Pressable
+                  <Touchable
                     key={opt.value ?? "__none__"}
                     style={[styles.chip, on && styles.chipOn]}
                     onPress={() => setGrade(opt.value)}
+                    haptic="light"
+                    accessibilityLabel={opt.label}
                   >
                     <Text style={[styles.chipText, on && styles.chipTextOn]}>{opt.label}</Text>
-                  </Pressable>
+                  </Touchable>
                 );
               })}
             </View>
@@ -350,9 +356,11 @@ function FormBody({
           <View style={styles.confirmCard}>
             <Text style={styles.confirmText}>{pending.confirm}</Text>
             <View style={styles.confirmRow}>
-              <Pressable
+              <Touchable
                 style={[styles.saveBtn, styles.confirmYes]}
                 disabled={saving}
+                haptic="success"
+                accessibilityLabel="ยืนยันบันทึก"
                 onPress={() => {
                   const p = pending.patch;
                   setPending(null);
@@ -360,20 +368,22 @@ function FormBody({
                 }}
               >
                 <Text style={styles.saveText}>ยืนยันบันทึก</Text>
-              </Pressable>
-              <Pressable style={styles.cancelBtn} disabled={saving} onPress={() => setPending(null)}>
+              </Touchable>
+              <Touchable style={styles.cancelBtn} disabled={saving} onPress={() => setPending(null)} accessibilityLabel="ยกเลิก">
                 <Text style={styles.cancelText}>ยกเลิก</Text>
-              </Pressable>
+              </Touchable>
             </View>
           </View>
         ) : (
-          <Pressable
+          <Touchable
             style={[styles.saveBtn, saving && styles.saveBusy]}
             disabled={saving}
+            haptic="light"
+            accessibilityLabel={form.saveLabel}
             onPress={attemptSave}
           >
             <Text style={styles.saveText}>{saving ? "กำลังบันทึก…" : form.saveLabel}</Text>
-          </Pressable>
+          </Touchable>
         )
       ) : (
         <Text style={styles.readOnlyNote}>
@@ -472,28 +482,27 @@ function TierAdminBody({
               {/* Reorder ↑ ↓ stay ON the row — one PUT of the whole order per move,
                   disabled at the edges (canMoveUp / canMoveDown). */}
               {row.canMoveUp ? (
-                <Pressable style={styles.tierBtn} disabled={busy} onPress={() => move(row, "up")}>
-                  <Text style={styles.tierBtnText}>↑</Text>
-                </Pressable>
+                <Touchable style={styles.tierBtn} disabled={busy} onPress={() => move(row, "up")} accessibilityLabel={row.name}>
+                  <Icon name="up" size={18} color={t.color.neutralFg} />
+                </Touchable>
               ) : null}
               {row.canMoveDown ? (
-                <Pressable style={styles.tierBtn} disabled={busy} onPress={() => move(row, "down")}>
-                  <Text style={styles.tierBtnText}>↓</Text>
-                </Pressable>
+                <Touchable style={styles.tierBtn} disabled={busy} onPress={() => move(row, "down")} accessibilityLabel={row.name}>
+                  <Icon name="down" size={18} color={t.color.neutralFg} />
+                </Touchable>
               ) : null}
               {/* The ... menu (P1.23 item 3 phase D): rename and the destructive deactivate
                   leave the row into a sheet, so a wet thumb cannot hit retire beside the
                   arrows. A real tap target >= TAP_MIN; its accessibilityLabel names the tier
                   it acts on (ruling 3). */}
-              <Pressable
+              <Touchable
                 style={styles.tierBtn}
                 disabled={busy}
                 onPress={() => onTierMenu(row)}
-                accessibilityRole="button"
                 accessibilityLabel={row.name}
               >
-                <Text style={styles.tierBtnText}>⋯</Text>
-              </Pressable>
+                <Icon name="more" size={18} color={t.color.neutralFg} />
+              </Touchable>
             </View>
           ) : null}
         </View>
@@ -523,13 +532,15 @@ function TierAdminBody({
           />
           {addError !== null ? <Text style={styles.tierError}>{addError}</Text> : null}
           <Text style={styles.note}>{tierScreen.addHint}</Text>
-          <Pressable
+          <Touchable
             style={[styles.saveBtn, busy && styles.saveBusy]}
             disabled={busy}
+            haptic="light"
+            accessibilityLabel="เพิ่มเกรด"
             onPress={submitAdd}
           >
             <Text style={styles.saveText}>{busy ? "กำลังบันทึก…" : "เพิ่มเกรด"}</Text>
-          </Pressable>
+          </Touchable>
         </View>
       ) : (
         <Text style={styles.readOnlyNote}>{tierScreen.readOnlyNote}</Text>
@@ -557,15 +568,15 @@ function ThemeControl() {
         {THEME_OPTIONS.map((opt) => {
           const on = opt.pref === pref;
           return (
-            <Pressable
+            <Touchable
               key={opt.pref}
               style={[styles.segment, on && styles.segmentOn]}
               onPress={() => setPref(opt.pref)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: on }}
+              haptic="light"
+              accessibilityLabel={opt.label}
             >
               <Text style={[styles.segmentText, on && styles.segmentTextOn]}>{opt.label}</Text>
-            </Pressable>
+            </Touchable>
           );
         })}
       </View>
@@ -611,6 +622,14 @@ function makeStyles(t: ThemeTokens) {
       borderWidth: 1, borderColor: t.color.borderSoft,
     },
     label: { fontSize: t.type.body, fontWeight: "900", color: t.color.textSubtle },
+    deviceHead: {
+      fontSize: t.type.body, fontWeight: "800", color: t.color.textSubtle, letterSpacing: 0.3,
+      marginHorizontal: t.space.x3, marginTop: t.space.x3, marginBottom: t.space.xs,
+    },
+    formHead: {
+      fontSize: t.type.body, fontWeight: "800", color: t.color.textSubtle, letterSpacing: 0.3,
+      marginBottom: t.space.md,
+    },
     readValue: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.text, marginTop: t.space.sm },
     note: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.md, fontWeight: "600" },
     empty: { fontSize: t.type.body, color: t.color.placeholder, marginTop: t.space.md, fontWeight: "700", fontStyle: "italic" },
@@ -633,22 +652,29 @@ function makeStyles(t: ThemeTokens) {
     // connected track, the selected segment filled. The grade selector above stays chips.
     segmented: {
       flexDirection: "row", marginTop: t.space.md, borderRadius: t.radius.lg,
-      borderWidth: 1, borderColor: t.color.border, backgroundColor: t.color.surfaceAlt, overflow: "hidden",
+      backgroundColor: t.color.surfaceAlt, padding: t.space.xs, gap: t.space.xs,
     },
-    segment: { flex: 1, minHeight: t.tapMin, alignItems: "center", justifyContent: "center", paddingHorizontal: t.space.md },
-    segmentOn: { backgroundColor: t.color.primary },
-    segmentText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.text },
-    segmentTextOn: { color: t.color.onPrimary },
+    segment: {
+      flex: 1, minHeight: t.tapMin, borderRadius: t.radius.md,
+      alignItems: "center", justifyContent: "center", paddingHorizontal: t.space.md,
+    },
+    segmentOn: {
+      backgroundColor: t.color.surface,
+      shadowColor: t.elevation.shadowColor, shadowOpacity: t.elevation.shadowOpacity,
+      shadowRadius: t.elevation.shadowRadius, shadowOffset: t.elevation.shadowOffset, elevation: t.elevation.elevation,
+    },
+    segmentText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.textMuted },
+    segmentTextOn: { color: t.color.text },
     // The server-address diagnostic, moved off the operator's main screen.
     diagCard: { marginHorizontal: t.space.x3, marginTop: t.space.md, paddingHorizontal: t.space.xxl, paddingVertical: t.space.md },
     diagText: { fontSize: t.type.body, color: t.color.textSubtle, fontWeight: "600" },
 
     saveBtn: {
-      minHeight: t.tapMin, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
-      alignItems: "center", justifyContent: "center",
+      minHeight: t.tapMin, borderRadius: t.radius.xl, backgroundColor: t.color.primaryFill,
+      borderWidth: 1, borderColor: t.color.primary, alignItems: "center", justifyContent: "center",
     },
     saveBusy: { opacity: 0.6 },
-    saveText: { color: t.color.onPrimary, fontSize: t.type.subhead, fontWeight: "900" },
+    saveText: { color: t.color.onPrimaryFill, fontSize: t.type.subhead, fontWeight: "900" },
     readOnlyNote: { fontSize: t.type.body, color: t.color.textSubtle, fontWeight: "700", marginTop: t.space.sm, textAlign: "center" },
 
     confirmCard: {
@@ -673,9 +699,10 @@ function makeStyles(t: ThemeTokens) {
     messageCalm: { fontSize: t.type.body, fontWeight: "600", marginTop: t.space.md },
     messageBtn: {
       marginTop: t.space.x3, minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
-      backgroundColor: t.color.primary, alignItems: "center", justifyContent: "center", alignSelf: "stretch",
+      backgroundColor: t.color.primaryFill, borderWidth: 1, borderColor: t.color.primary,
+      alignItems: "center", justifyContent: "center", alignSelf: "stretch",
     },
-    messageBtnText: { color: t.color.onPrimary, fontSize: t.type.bodyLg, fontWeight: "800" },
+    messageBtnText: { color: t.color.onPrimaryFill, fontSize: t.type.bodyLg, fontWeight: "800" },
 
     tierCard: {
       backgroundColor: t.color.surface, borderRadius: t.radius.card, padding: t.space.xxl,

@@ -38,6 +38,8 @@ import type { DailyScreen as DailyScreenModel } from "../src/reports/dailyView";
 import { BillList } from "./BillList";
 import { useTheme, type ThemeTokens } from "./theme";
 import { SheetHeader } from "./SheetHeader";
+import { Touchable } from "./Press";
+import { display } from "../src/money/format";
 
 function makeTone(t: ThemeTokens): Record<SummaryTone, { bg: string; fg: string; badge: string }> {
   return {
@@ -133,9 +135,9 @@ function MessageBody({
           </Text>
         ))}
         {screen.action !== null ? (
-          <Pressable style={styles.messageBtn} onPress={handler}>
+          <Touchable style={styles.messageBtn} onPress={handler} haptic="light" accessibilityLabel={screen.action.label}>
             <Text style={styles.messageBtnText}>{screen.action.label}</Text>
-          </Pressable>
+          </Touchable>
         ) : null}
       </View>
     </ScrollView>
@@ -158,10 +160,10 @@ function Chip({
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
   return (
-    <Pressable style={[styles.chip, selected && styles.chipOn]} onPress={onPress}>
+    <Touchable style={[styles.chip, selected && styles.chipOn]} onPress={onPress} haptic="light" accessibilityLabel={label}>
       <Text style={[styles.chipText, selected && styles.chipTextOn]}>{label}</Text>
       {note ? <Text style={[styles.chipNote, selected && styles.chipTextOn]}>{note}</Text> : null}
-    </Pressable>
+    </Touchable>
   );
 }
 
@@ -195,7 +197,7 @@ function Bars({ report }: { report: SummaryReport }) {
             <Text style={[styles.barLabel, r.isOthers && styles.barLabelOthers]} numberOfLines={1}>
               {r.label}
             </Text>
-            <Text style={styles.barValue}>{r.paid_total}</Text>
+            <Text style={styles.barValue}>{display(r.paid_total)}</Text>
           </View>
           {/* THE BAR IS A LAYOUT FRACTION, drawn from Views (E6). Two flex children,
               so no percentage string and no chart library. */}
@@ -204,7 +206,7 @@ function Bars({ report }: { report: SummaryReport }) {
             <View style={{ flex: 1 - r.fraction }} />
           </View>
           <Text style={styles.barSub}>
-            {String(r.bill_count)} ใบ · {r.net_weight} กก. · ส่วนต่าง {r.list_minus_paid}
+            {String(r.bill_count)} ใบ · {display(r.net_weight)} กก. · ส่วนต่าง {display(r.list_minus_paid)}
           </Text>
         </View>
       ))}
@@ -258,9 +260,9 @@ function DashboardBody(props: Props & { model: DashboardReport }) {
               autoCorrect={false}
             />
           </View>
-          <Pressable style={styles.customApply} onPress={props.onApplyCustom}>
+          <Touchable style={styles.customApply} onPress={props.onApplyCustom} haptic="light" accessibilityLabel="ดูช่วงนี้">
             <Text style={styles.customApplyText}>ดูช่วงนี้</Text>
-          </Pressable>
+          </Touchable>
           {custom.error !== null ? <Text style={styles.customError}>{custom.error}</Text> : null}
         </View>
       ) : null}
@@ -280,10 +282,10 @@ function DashboardBody(props: Props & { model: DashboardReport }) {
 
       {/* THE TOTALS — the server's strings, byte for byte. */}
       <View style={styles.totalsCard}>
-        <FigureRow label={report.figureLabels.paid} value={report.totals.paid_total} unit="บาท" big />
-        <FigureRow label={report.figureLabels.list} value={report.totals.list_total} unit="บาท" />
-        <FigureRow label={report.figureLabels.diff} value={report.totals.list_minus_paid} unit="บาท" />
-        <FigureRow label={report.figureLabels.weight} value={report.totals.net_weight} unit="กก." />
+        <FigureRow label={report.figureLabels.paid} value={display(report.totals.paid_total)} unit="บาท" big />
+        <FigureRow label={report.figureLabels.list} value={display(report.totals.list_total)} unit="บาท" />
+        <FigureRow label={report.figureLabels.diff} value={display(report.totals.list_minus_paid)} unit="บาท" />
+        <FigureRow label={report.figureLabels.weight} value={display(report.totals.net_weight)} unit="กก." />
         <FigureRow label={report.figureLabels.count} value={String(report.totals.bill_count)} unit="ใบ" />
         <Text style={styles.explain}>{report.diffExplain}</Text>
 
@@ -351,10 +353,10 @@ function makeStyles(t: ThemeTokens) {
     },
     customDash: { fontSize: t.type.body, fontWeight: "800", color: t.color.textSubtle },
     customApply: {
-      minHeight: t.tapMin, marginTop: t.space.lg, borderRadius: t.radius.xl, backgroundColor: t.color.primary,
-      alignItems: "center", justifyContent: "center",
+      minHeight: t.tapMin, marginTop: t.space.lg, borderRadius: t.radius.xl, backgroundColor: t.color.primaryFill,
+      borderWidth: 1, borderColor: t.color.primary, alignItems: "center", justifyContent: "center",
     },
-    customApplyText: { color: t.color.onPrimary, fontSize: t.type.bodyLg, fontWeight: "800" },
+    customApplyText: { color: t.color.onPrimaryFill, fontSize: t.type.bodyLg, fontWeight: "800" },
     customError: {
       fontSize: t.type.body, fontWeight: "800", color: t.color.dangerFg, backgroundColor: t.color.dangerBg,
       borderRadius: t.radius.md, paddingHorizontal: t.space.lg, paddingVertical: t.space.md, marginTop: t.space.lg,
@@ -415,9 +417,9 @@ function makeStyles(t: ThemeTokens) {
     messageCalm: { fontSize: t.type.body, fontWeight: "600", marginTop: t.space.md },
     messageBtn: {
       marginTop: t.space.x3, minHeight: t.tapMin, paddingHorizontal: t.space.x4, borderRadius: t.radius.lg,
-      backgroundColor: t.color.primary, alignItems: "center", justifyContent: "center",
-      alignSelf: "stretch",
+      backgroundColor: t.color.primaryFill, borderWidth: 1, borderColor: t.color.primary,
+      alignItems: "center", justifyContent: "center", alignSelf: "stretch",
     },
-    messageBtnText: { color: t.color.onPrimary, fontSize: t.type.bodyLg, fontWeight: "800" },
+    messageBtnText: { color: t.color.onPrimaryFill, fontSize: t.type.bodyLg, fontWeight: "800" },
   });
 }

@@ -40,10 +40,10 @@ export interface NavItem {
 
 /** The destinations, in scroll-row order (most-used first). */
 export const NAV_ITEMS: readonly NavItem[] = [
-  { dest: "dashboard", label: "ยอดวันนี้ ›", transition: "open_dashboard", gate: "dashboard_entry" },
-  { dest: "prices", label: "ราคารับซื้อ ›", transition: "open_prices", gate: "edit_prices" },
-  { dest: "settings", label: "ตั้งค่าร้าน ›", transition: "open_settings", gate: "signed_in" },
-  { dest: "account", label: "บัญชีของฉัน ›", transition: "open_account", gate: "signed_in" },
+  { dest: "dashboard", label: "ยอดวันนี้", transition: "open_dashboard", gate: "dashboard_entry" },
+  { dest: "prices", label: "ราคารับซื้อ", transition: "open_prices", gate: "edit_prices" },
+  { dest: "settings", label: "ตั้งค่าร้าน", transition: "open_settings", gate: "signed_in" },
+  { dest: "account", label: "บัญชีของฉัน", transition: "open_account", gate: "signed_in" },
 ];
 
 /** The complete destination set, written by hand so a proof can catch a drop in

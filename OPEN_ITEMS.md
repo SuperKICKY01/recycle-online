@@ -1538,6 +1538,39 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   sheet springs (animate-expo §5, apple-design §3), where today's sheets keep the platform slide/fade. The
   owner decides each separately (its size vs. what it buys), after the reference-pinned look is seen on a
   handset. Neither is in `mobile/package.json` and neither was added.
+  **RESOLVED 2026-09-01 (P1.23 item 3 PHASE E):** the owner LIFTED the constraints and approved all four
+  deps — `react-native-reanimated@~4.1.1` + `react-native-worklets@0.5.1`, `react-native-gesture-handler@~2.28.0`,
+  `expo-haptics@~15.0.8`, `@expo/vector-icons@^15.0.3`. `Touchable` (`app/Press.tsx`) gives every tappable a
+  UI-thread press-scale + a commit haptic; the drawn Feather set replaced the text glyphs. The phase-D "WHAT
+  REMAINS" list above is closed by phase E EXCEPT the skeleton (L1, below): the `ข้อมูลร้าน` / `เครื่องนี้`
+  section headings are added, the EmptyState teaching pattern is in the kit, and the type-rank / one-accent
+  consolidation landed across the rebuilt screens. Grabbable drag-to-dismiss sheet springs are AVAILABLE now
+  (reanimated is in) but NOT yet wired — today's sheets keep the RN Modal slide/fade; a follow-up, not a defect.
+
+- **PHASE E FOLLOW-UPS — recorded 2026-09-01, none a bug; the tree is green and every headless proof twice.**
+  (1) THE SKELETON LOADING COMPONENT (L1) is still not built — Dashboard/Prices/Settings/Account/SellerHistory
+  show a centred `ActivityIndicator` while a read is in flight, not a skeleton of the card it becomes. The one
+  net-new component the rework did not add.
+  (2) PADDING-SIZED SHEET BUTTONS UNDER 56px — several sheet buttons (the price editor's cancel/save, the bottom
+  action row, the tier ⋯ buttons) are sized by `paddingVertical` alone (~41px), under the B1 wet-hand floor.
+  `prove:tapaudit` CANNOT catch a flex/padding-sized control (its own stated boundary — it flags only raw
+  `minHeight`/`minWidth` literals), which is why they passed. Owed: a `minHeight: t.tapMin` sweep over the
+  padding-sized tappables; the owner's handset pass is the authority on which actually fall short. Pre-existing
+  (phase C/D shipped them), surfaced here.
+  (3) THE MESSAGE-CARD is still copy-pasted across Dashboard/SellerHistory/Settings/Account (badge + lines +
+  optional button). Phase E gave those buttons `primaryFill` + press but did not extract the card into a Kit
+  `MessageCard`; a consolidation follow-up.
+  (4) `expo-system-ui` NOT installed, so `app.json`'s `userInterfaceStyle: "automatic"` may not make Android's
+  native layer auto-follow the OS light/dark (surfaced by `npx expo prebuild` as a warning). The app's OWN theme
+  control (light/dark/system) is unaffected for explicit light/dark; only the Android "system" native follow is
+  in question. A pre-existing config gap, out of phase-E scope; the owner decides whether to add the dep.
+  (5) THE DEVICE-PASS PLATFORM DECISION — the owner's, not decided here. All reference/screenshots are iPhone;
+  this Windows box builds Android (`npx expo run:android`), not iOS. Established this pass: Android now (device
+  or emulator) covers build-viability + colour + layout + grouped money + jank conservatively, but NOT iOS
+  haptic feel, SF-Thai rendering, or notch/home-indicator insets; a true iPhone pass needs an EAS cloud build +
+  an Apple Developer membership ($99/yr) for device provisioning, or a Mac + Xcode. `P1.11` already carries "the
+  Android answer" in its own title. The consolidated owed device pass is `PROJECT_STATUS.md § Current phase`
+  (PHASE E).
 
 - **AN UNTRACKED `0015_tenant_grade_tiers.py` PRE-EXISTED THE P1.24 COMMIT-1a SESSION
   AND WAS OVERWRITTEN UNREAD — recorded 2026-08-31, NOT RECOVERABLE.** The session-start

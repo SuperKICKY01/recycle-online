@@ -51,12 +51,15 @@ export function ReserveStrip({ notice }: { notice: ReserveStripNotice | null }) 
   if (notice === null) return null;
   const tone = makeTones(t)[notice.tone];
   return (
-    <View style={[styles.strip, { backgroundColor: tone.bg, borderLeftColor: tone.bar }]}>
-      {notice.lines.map((line, i) => (
-        <Text key={i} style={[styles.text, { color: tone.fg }]}>
-          {line}
-        </Text>
-      ))}
+    <View style={[styles.strip, { backgroundColor: tone.bg }]}>
+      <View style={[styles.dot, { backgroundColor: tone.bar }]} />
+      <View style={styles.lines}>
+        {notice.lines.map((line, i) => (
+          <Text key={i} style={[styles.text, { color: tone.fg }]}>
+            {line}
+          </Text>
+        ))}
+      </View>
     </View>
   );
 }
@@ -64,11 +67,17 @@ export function ReserveStrip({ notice }: { notice: ReserveStripNotice | null }) 
 function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     strip: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: t.space.md,
       paddingHorizontal: t.space.xxl,
-      paddingVertical: t.space.md,
-      borderLeftWidth: 6,
+      paddingVertical: t.space.lg,
       borderRadius: t.radius.card,
     },
+    // A leading dot carries the tone, replacing the >1px coloured left-rail
+    // (craft-floor refuses that as a default); width/height are decorative.
+    dot: { width: 8, height: 8, borderRadius: t.radius.sm, marginTop: t.space.xs },
+    lines: { flex: 1 },
     // Not numberOfLines-clamped: a truncated "you cannot add a seller offline"
     // warning is a warning that did not happen. Each of reserveNotice's lines is
     // drawn in full, in order.
