@@ -167,6 +167,21 @@ Three things this picture is deliberately explicit about:
   choice; `SRS_MAP.md § 6. Security posture, per area` "No transport security."
   states what it becomes the moment the API is reachable from outside one.
 
+**Every client also obeys a version contract, enforced BEFORE the tiers below.** A
+global middleware (`server/app/main.py::_refuse_outdated_client`, judgement in
+`server/app/version_gate.py`) reads an integer API-contract version off each
+request's `x-client-api-version` header and refuses a client below a floor with
+**426 Upgrade Required** — a status this API emits nowhere else, so a client
+branches on it without parsing the body. It is why a shop that never updates its
+phones cannot silently talk to a server that has changed meaning: the divergence
+becomes a loud, single-instruction refusal the moment it could begin. The floor is
+DATA (a file read per request, raised with no restart), it DEFAULTS to 0 (every
+client admitted, including a header-less build), and `/health` is exempt. The
+version is bumped only when the server changes a contract an old client would
+MISHANDLE, never for an additive-and-ignorable change — `version_gate.py` states
+the rule and a worked example. This is the server half; the client sending the
+header and rendering an update screen on a 426 rides the mobile program (P1.11).
+
 ### 3.1 Three authentication tiers, not two
 
 The API has three tiers, and the middle one is easy to miss because the

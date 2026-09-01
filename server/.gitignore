@@ -1,3 +1,9 @@
 # Runtime logs from the local uvicorn dev server (never part of the product)
 .uvicorn.out.log
 .uvicorn.err.log
+
+# The API version floor (version_gate.FLOOR_FILE): a per-deployment operator
+# value, not code. Absent = the compiled default (0, accept every client).
+# Raising it is a data edit an operator makes on the server; it is never part
+# of the product and must never be committed, exactly like .env.
+api_version_floor

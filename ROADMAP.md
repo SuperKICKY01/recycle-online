@@ -4534,6 +4534,17 @@ lands here rather than at P1.2, whose own DONE WHEN a tunnel hostname already
 satisfies with no name at all. This adds no work to the step and moves no bar; it
 records which decision's clock this step is on.
 
+**THE VERSION CONTRACT BINDS HERE TOO — recorded 2026-09-01.** The SERVER half of
+blueprint 14.3's forced-upgrade/API-versioning gate is built (item (d) of the
+reconciliation section, "Server-side API versioning"): the server refuses a client
+below a version floor with 426. Because THIS step bakes the build, the build must
+now carry the CLIENT half — (a) SEND `x-client-api-version` on every request (the
+app's API-contract version, 1 at first release) and (b) render one calm "update to
+continue, your work is safe" screen on a 426, distinct from the sign-in and offline
+states. That client half is owed as its own commit landing before this step. The
+floor DEFAULTS to admit today's build, so the gate is inert until deliberately
+raised; this adds no bar to P1.11's DONE WHEN, it records what the build must send.
+
 ### P1.12 — The shared package
 
 **What it is.** A workspace change to `mobile/` so `shopTime.ts` lives somewhere the
@@ -8043,7 +8054,9 @@ already has a home:
 - **Billing and the 3%** (blueprint 15.4) → P3.9 (needs the accountant, section 18).
 - **OTA + forced update / API versioning** (blueprint 10.11, 14.3) → P1.11 plus the
   named-not-minted forced-upgrade/API-versioning gate in this file's completion
-  sequence.
+  sequence. **The SERVER half of that gate is BUILT (2026-09-01)** — see (d)'s
+  "Server-side API versioning" entry below; the client half (send the header,
+  render the update screen) and OTA proper remain P1.11's.
 - **HTTPS + off-box backup** (blueprint 13.2, 13.10) → P1.2.
 - **Activate licence / setup wizard** (blueprint 9.1; inventory 11.2) → desktop
   activation (S1's extension) and P3.6; the activation-surface/state split is flagged
@@ -8095,6 +8108,21 @@ assumed; this section names the candidates and BUILDS NONE of them.
   half; a schedule and a destination, no domain (S13).
 - **Server-side API versioning + a min-version check** (blueprint 14.3) — startable
   now; the client half rides the mobile program (P1.11 bakes the build).
+  **DONE 2026-09-01 (this commit) — the SERVER half.** A global middleware
+  (`server/app/main.py::_refuse_outdated_client`) reads an integer API-contract
+  version off every request's `x-client-api-version` header and refuses a client
+  below the floor with **426 Upgrade Required** — a status this API emits nowhere
+  else, so a client branches on it without parsing the body, and it is a fifth axis
+  beside the 422/424/401/5xx/403 the auth-refusal contract enumerates. The
+  judgement lives in `server/app/version_gate.py`; the floor is a FILE read per
+  request (raise it with no code edit and no restart), NOT a table, so no migration.
+  The floor DEFAULTS to 0, which admits every client including the header-less
+  build on the owner's handset today — the contract is voluntary until the floor is
+  deliberately raised, which nobody has done. `/health` is the one exempt path.
+  WHAT REMAINS: the CLIENT half — the app sending the header on every request and
+  rendering ONE calm "update to continue, your work is safe" screen on a 426 (its
+  own commit, designed and owed, landing before P1.11 bakes the build). OTA proper
+  (blueprint 10.11, expo-updates) and the in-app update prompt stay P1.11's.
 - **A staging environment** (blueprint 14.4) — startable once the P1.2 hosting
   decision names a machine; that is its only dependency.
 - **Monitoring + crash reporting** (blueprint 14.1, 14.2) — an EXTERNAL-service

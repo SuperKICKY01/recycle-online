@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from . import clock_guard, login_guard
+from . import clock_guard, login_guard, version_gate
 from .auth import Principal, get_principal
 from .bills import router as bills_router
 from .db import directory_engine, engine, tenant_connection
@@ -190,6 +190,54 @@ async def _refuse_while_clock_is_wrong(request, call_next):
                      "status": clock_guard.STATE.refusal_status(),
                      "clock": clock_guard.STATE.as_dict()},
         )
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def _refuse_outdated_client(request, call_next):
+    """Refuse a client too old to speak this API version — except /health.
+
+    THE CONTRACT IN ONE PLACE. Enforced as middleware, not as a per-route
+    dependency, so no route can forget it — including routes that do not exist
+    yet. The judgement itself lives in `version_gate`; this is only the seam that
+    reads the request and returns the refusal. See that module for what a version
+    means, why the floor fails OPEN, and why the floor is a file read per request.
+
+    WHY 426, AND DISTINGUISHABLE FROM EVERYTHING ELSE. A too-old client is
+    answered 426 (Upgrade Required), which this API emits nowhere else and which a
+    client branches on WITHOUT parsing the body — the same status-not-prose
+    discipline auth.py (295-326) states for 401/403 and bills.py for 424. It must
+    not be mistaken for a 401 (the login screen renders on that and a version
+    refusal would send the operator to sign in forever) nor for a 5xx (an old
+    client retries those forever behind the poison alarm). It is a fifth axis:
+    about the client's BUILD, cleared only by an update.
+
+    /health IS THE ONE EXEMPT PATH, and the exemption is by exact equality, like
+    the clock guard above it. A too-old client — and any monitor — can still
+    confirm the server is up; it learns it is too old from the 426 every OTHER
+    route returns, so no separate "version endpoint" is owed. Nothing else is
+    exempt: a too-old client hitting /auth/shop-code or /auth/login is refused
+    426, which is correct — it must not proceed to sign in against a server whose
+    contract it can no longer read.
+
+    THIS RUNS OUTERMOST, BEFORE THE CLOCK GUARD. Registered after the clock
+    middleware, and Starlette wraps `reversed(user_middleware)` over an
+    insert(0) list, so the later registration is the outer wrapper and runs
+    first. The consequence, chosen deliberately: a too-old client is told to
+    UPDATE even while the clock guard is tripped — because updating is its one way
+    forward in every server state, whereas a 503 would read as "retry later" for a
+    client that retrying can never fix.
+    """
+    if request.url.path != "/health":
+        client_version = version_gate.client_version_from(
+            request.headers.get(version_gate.CLIENT_API_VERSION_HEADER)
+        )
+        floor = version_gate.current_floor()
+        if version_gate.too_old(client_version, floor):
+            return JSONResponse(
+                status_code=status.HTTP_426_UPGRADE_REQUIRED,
+                content=version_gate.refusal_payload(client_version, floor),
+            )
     return await call_next(request)
 
 

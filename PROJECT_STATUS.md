@@ -75,6 +75,92 @@ not read the green as re-run.**
 
 ## Current phase
 
+**THE VERSION CONTRACT — SERVER-SIDE API VERSIONING AND A FORCED-UPGRADE GATE (SERVER HALF). 2026-09-01.** No sha
+yet (this record precedes the commit; anchor next pass). The current-phase pointer, superseding the login-lockout
+pointer below AS THE POINTER ONLY — that phase stands and this builds beside it. Blueprint 10.11/14.3 and the
+STEP-4 no-dependency item "Server-side API versioning" reconciled at
+`ROADMAP.md § The product blueprint, reconciled — 2026-09-01` (d): the contract that must exist BEFORE the first
+installable build (P1.11), because a contract change against an un-updated handset fails SILENTLY — a bill that
+saves but means something else. Closes the SERVER half of the OPEN_ITEMS "THERE IS NO API VERSION" gap.
+**WHAT IS BUILT.** A global middleware `_refuse_outdated_client` (`server/app/main.py`) reads an integer
+API-contract version off every request's `x-client-api-version` header and, when it is below a floor, refuses with
+426 Upgrade Required — a status this API emits NOWHERE ELSE (the in-use set is
+200/201/400/401/403/404/409/422/424/503), so a client branches on the STATUS alone, never the body. The judgement
+lives in `server/app/version_gate.py`; the refusal body is the house `{"detail":{kind,code,message,...}}` envelope
+with a distinct `kind="client_outdated"` and machine-readable integer floor/version fields, its English message for
+logs only. It runs OUTERMOST (registered after the clock guard; Starlette wraps `reversed(user_middleware)` over an
+insert(0) list), so a too-old client is told to UPDATE even while the clock guard is tripped. `/health` is the ONE
+exempt path, by exact equality like the clock guard.
+**KEY DECISIONS, each argued in the module.** The version is a single monotonic INTEGER — the API contract the
+client was built against, NOT the marketing version (app.json's 1.0.0), carrying NOTHING that identifies a person
+or a device. It rises by one only when the server changes a contract an old client would MISHANDLE (worked example
+in `version_gate.py`: introducing 424 WOULD have raised it — an old client classifies an unknown 4xx as
+retry-forever+poison; adding `user_id` to the login response or a whole new route WOULD NOT). The floor FAILS OPEN,
+the OPPOSITE of JWT_SECRET: it is an availability value, not an identity one, so a floor that cannot be read must
+ADMIT — default 0, absent/malformed header = version 0, and at floor 0 EVERY client is admitted. THE FLOOR IS DATA,
+NOT A DEPLOY: its value lives in a FILE read PER REQUEST (mtime-cached), so raising it needs no code edit and no
+restart; the file's PATH is import-time config, env-settable only for the proof (the `clock_guard.TICK_SECONDS`
+shape). NO TABLE, so NO MIGRATION. Enforced as MIDDLEWARE, not a per-route dependency, so no route can forget it.
+**THE FLOOR IS SET TO ACCEPT TODAY'S BUILD, AND RAISING IT IS A DELIBERATE ACT NOBODY HAS TAKEN.** With no floor
+file present the floor is 0, which admits the header-less build on the owner's handset today and every future
+version; the contract is VOLUNTARY until someone writes a higher number to the floor file. The gate is a proven
+pass-through until then.
+**THE FLOOR IS A LOADED GUN UNTIL THE CLIENT HALF SHIPS — leave it at 0.** Raising it above 0 does NOT refuse an
+outdated fleet politely, it WEDGES it: today's app turns an unknown 4xx, 426 INCLUDED, into `unavailable` on the
+bill path (`mobile/src/adapters/httpTransport.ts`), which retries forever, trips the poison alarm and blocks the
+HEAD of the outbox queue. So a floor raised before the CLIENT half ships turns every un-updated handset into a
+jammed, red-alarmed device that cannot send the bill in front of it. The client half is what unlocks raising the
+floor (it adds the `client_outdated` class that reads a 426 as "update the app"); until it has shipped AND is on
+the handsets being cut off, whoever raises the floor checks that first. The warning is repeated where the hand
+reaches for it (`server/app/version_gate.py`, the comment above `current_floor`).
+**THE FLOOR FILE'S OPERATIONAL FACTS, so an operator who cannot find it does not conclude the gate is broken.** The
+value lives in `server/api_version_floor`, GITIGNORED like `.env`, so it does NOT travel with a deploy. On a fresh
+box the file simply does not exist, and its ABSENCE is the normal, healthy state: no file means floor 0 means every
+client admitted. An operator creates it, when and only when the fleet is ready, by writing a single integer to that
+path (or to the path named by the `CLIENT_API_VERSION_FLOOR_FILE` env var); the next request reads it, no restart.
+Deleting the file lowers the floor back to 0.
+**PROVEN, headless.** `scripts/prove_version_gate.py` — 14 cells over real HTTP (its own child uvicorn on a free
+port against a scratch, gated on `/openapi.json` first), GREEN TWICE with `--skip-restore` between. It writes the
+floor file DURING the run, so "the floor rises without a restart" is one process changing its verdict (401 at
+floor 0 → 426 at floor 1 → 401 again when the file is removed). Three disproofs, each reddening its NAMED cell
+while the controls held (B5/B6 admitted-version and B7 /health stayed green under all three): (a) exempt /products
+too → B1; (b) freeze the floor at import → B_FLIP; (c) return 401 not 426 → B_DISTINCT. REGRESSION: the middleware
+is mathematically a no-op at floor 0 (too_old is client<0 and the parser clamps to ≥0), and no existing proof
+sends the header or creates the floor file; verified through the new middleware by `prove_login_guard` (32 cells)
+and `prove_grade_tiers`, each GREEN TWICE. THE OTHER 19 HTTP PROOFS WERE NOT RE-RUN, each NAMED with the reason (a
+green not run today is not written as green): eight OTHER own-child proofs import this same `main.py` and hit the
+same middleware at floor 0 — `prove_shop_code`, `prove_user_create`, `prove_seller_create`,
+`prove_seller_code_reservations`, `prove_seller_code_guards`, `prove_shop_settings`, `prove_reports_summary`,
+`prove_seller_history`; eight run against a SEPARATELY-started server (they do not import this code unless that
+server is restarted onto it, and are no-ops at floor 0 either way) — `prove_auth`, `prove_bills`, `prove_master`,
+`prove_master_data_gate`, `prove_master_write`, `prove_revocation`, `prove_seller_pricing`, `prove_daily_report`;
+three HTTP+SQL against that same external server — `prove_shop_time`, `prove_clock_guard`, `prove_year_gate`. All
+19 exercise the floor-0 pass-through identically to the two representatives run green twice. `reconcile.py` NOT
+run — no schema/table change (the floor is a file).
+**WHAT IS NOT BUILT — the CLIENT half, owed as its own commit (S6 split).** The app does not yet SEND
+`x-client-api-version` nor react to a 426; today an unknown 4xx on the bill path is retry-forever+poison
+(`mobile/src/adapters/httpTransport.ts`). The client half — send the header on all three transports and render ONE
+calm device-global "update to continue, your work is safe" screen on a 426 (its own class, like the 401 session
+class: no poison, queued bills untouched, NOT the sign-out path) — is DESIGNED and taken as commit two / its own
+phase with a red-team pass, because it lands in the sync engine's most lesson-dense area. Floor 0 means the server
+never refuses the app that exists, so this tree is safe to stop at (S6).
+**EDITS THIS COMMIT.** New: `server/app/version_gate.py`, `server/scripts/prove_version_gate.py`. Changed:
+`server/app/main.py` (import + the version middleware), `server/.gitignore` (the floor file), and four docs (this
+record, `ROADMAP.md` reconciliation (c)/(d) + P1.11, `OPEN_ITEMS.md`, `ARCHITECTURE.md` section 3). Nothing under
+`mobile/`, `desktop/`, `packages/`, `tools/`, `.claude/`; no migration; no change to auth, `token_version`, the
+login guard, RLS, or any table; the two owner artefacts untouched.
+**GATES (each command BARE, exit read in the same invocation; cp874 box).** `prove_version_gate.py` GREEN TWICE
+(14 cells, exit 0) plus three disproofs each RED at its named cell. `prove_login_guard.py` (32) and
+`prove_grade_tiers.py` GREEN TWICE through the new middleware. `verify_shared_checks.py` IDENTICAL (4 items, 586
+chars), exit 0. `build_all_lessons.py --check` exit 0 (62 lessons, 515898 bytes; NO lesson added). `verify_citations.ps1`
+over the named 14 (call operator, `[string[]]` bound; SOURCES read first): SOURCES=14, CITATIONS 611→613 (delta +2,
+both new cross-references resolve), BROKEN=6 — the floor UNMOVED, its exact pre-existing distribution (OPEN_ITEMS
+×4, SRS_MAP ×1, nemesis ×1); ARCHITECTURE, PROJECT_STATUS and ROADMAP at BROKEN=0, so ZERO new breaks. The 611
+baseline is 241c959's reading. `reconcile.py` NOT run — no migration/schema change (the floor is a file). Both
+mobile typecheck programs UNAFFECTED and not re-run: `git status --porcelain` shows no `mobile/` path — the change
+is server Python only. `git diff --stat` = 6 tracked files changed (197 insertions, 2 deletions) plus 2 new
+(`server/app/version_gate.py`, `server/scripts/prove_version_gate.py`).
+
 **THE OPEN DOOR — LOGIN RATE-LIMITING, ACCOUNT LOCKOUT, AND A FAILED-LOGIN RECORD. 2026-09-01.** No sha yet
 (this record precedes the commit; anchor next pass). The current-phase pointer, superseding the
 blueprint-adoption pointer below AS THE POINTER ONLY — that adoption stands and this phase builds under it.
