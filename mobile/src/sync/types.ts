@@ -370,6 +370,25 @@ export type SendOutcome =
    * precisely this reason).
    */
   | { kind: "forbidden"; code: string; reason: string }
+  /**
+   * THE BUILD IS TOO OLD. The server answered 426: this client's API-contract
+   * version is below the floor the server now enforces (server/app/version_gate.py).
+   *
+   * A SIXTH class, and it is about neither the bill, the network, the session,
+   * nor the account — it is about the BUILD. The bill is perfect and untouched;
+   * it sends the moment the app is updated past the floor. Retrying THIS build
+   * cannot help (every request answers 426), so it is not `unavailable`, and its
+   * poison counter would fire on every bill equally, which is the same mistake
+   * 401 and 403 were pulled out of `unavailable` to avoid.
+   *
+   * DISTINCT FROM 401, deliberately: signing in returns the SAME too-old build,
+   * so the recovery is not a sign-in — it is an update, which is a new process.
+   * The kind therefore halts (`halt_kind`), the row goes back to `pending`
+   * untouched, and the operator is shown ONE calm "update to continue" state that
+   * is device-global and never the sign-out path. `code` is not carried because a
+   * 426 has only one meaning and the client branches on the status alone.
+   */
+  | { kind: "client_outdated"; reason: string }
   | { kind: "unavailable"; reason: string; reachable: boolean };
 
 /**
@@ -404,6 +423,13 @@ export type VoidOutcome =
    * while the card promised it would be handled automatically.
    */
   | { kind: "forbidden"; code: string; reason: string }
+  /**
+   * Same meaning as SendOutcome.client_outdated: the server answered 426, this
+   * BUILD is too old. A void owed by a too-old client stays owed — a repeat is
+   * idempotent (409 -> already_voided) — and the kind halts so it does not
+   * re-POST every pass against a server that will 426 it until the app updates.
+   */
+  | { kind: "client_outdated"; reason: string }
   | { kind: "unavailable"; reason: string };
 
 /**
@@ -679,6 +705,17 @@ export interface LocalStore {
    * stands, which is device-global and in memory (see SyncEngine.sendForbidden).
    */
   markSendForbidden(id: string, reason: string, attempt: number, now: Date): Promise<void>;
+  /**
+   * The send bounced on a 426: THIS BUILD is too old for the server. Same row
+   * shape as markSendForbidden — back to `pending`, poison columns cleared,
+   * next_attempt_at = now, no schedule — because a 426 also refuses every bill
+   * from this build equally, so it carries none of the poison signal's meaning
+   * and no delay can make an old app new. It is its OWN named transition rather
+   * than a reuse of markSendForbidden, so the row's history does not read
+   * "forbidden" for a version refusal; what actually stops the retry is the kind
+   * halting on the runner and the device-global "update to continue" state.
+   */
+  markClientOutdated(id: string, reason: string, attempt: number, now: Date): Promise<void>;
   /** Every bill currently parked on master data, for the UI. */
   listMasterDataBlocked(limit: number): Promise<LocalBill[]>;
   /**

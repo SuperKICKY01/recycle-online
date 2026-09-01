@@ -39,6 +39,14 @@ export interface StatusNotice {
 }
 
 export interface StatusInput {
+  /**
+   * THE BUILD IS TOO OLD (426), device-global. Outranks everything, session
+   * included: a 426 refuses even the sign-in a dead session would ask for, so
+   * "update the app" is the one action. It is NOT an error — the queued bills are
+   * safe and send after the update. Sticky in App until the process restarts on
+   * an updated bundle.
+   */
+  appOutdated: boolean;
   /** Can this device act as someone at all? Outranks everything below. */
   session: SessionState;
   /**
@@ -188,6 +196,31 @@ function unspokenOwed(owed: OwedByKind): readonly string[] {
 }
 
 export function statusNotice(s: StatusInput): StatusNotice {
+  /*
+   * 0. THE BUILD IS TOO OLD (426) — ABOVE THE SESSION ITSELF.
+   *
+   * A 426 refuses every request, the sign-in a dead session would ask for
+   * included, so no message below is an action the operator can take until the
+   * app is updated. It is deliberately NOT an error: amber (a waiting state, like
+   * an outage or parking), and NO button — the update comes from outside the app,
+   * and WHERE from is P1.11's business, so none is invented here. It is not
+   * recoverable by retry, and the reassurance is that the queued bills are safe.
+   *
+   * Sticky: App sets it on the first 426 and never clears it, because nothing on
+   * this device makes an old build new — only an update, which is a new process.
+   */
+  if (s.appOutdated) {
+    const tail =
+      s.pending > 0
+        ? ` บิล ${String(s.pending)} ใบยังอยู่ครบ จะส่งให้เองหลังอัปเดต`
+        : " บิลที่บันทึกไว้ยังอยู่ครบ";
+    return {
+      tone: "warn",
+      message: "แอปเวอร์ชันนี้เก่าเกินไป — ต้องอัปเดตก่อนใช้งานต่อ" + tail,
+      action: null,
+    };
+  }
+
   /*
    * 1. NO USABLE SESSION — first, above the poison alarm itself.
    *

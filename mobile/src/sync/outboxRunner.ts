@@ -81,6 +81,7 @@ function emptyRunResult(): SyncRunResult {
     sessionExpired: 0,
     forbidden: 0,
     voidsForbidden: 0,
+    clientOutdated: 0,
   };
 }
 

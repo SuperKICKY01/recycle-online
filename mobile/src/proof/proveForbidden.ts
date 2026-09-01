@@ -139,6 +139,7 @@ async function makeBill(
 /** The strip inputs App derives, so the assertions run on what the yard sees. */
 function strip(over: Partial<StatusInput>): string {
   return statusNotice({
+    appOutdated: false,
     session: "active",
     account: "ok",
     voidsRefused: 0,
@@ -667,6 +668,7 @@ async function f5Disproof(): Promise<void> {
   const snapS = await storeS.pendingQueueSnapshot();
   const healthS = assessQueue(snapS, clockS.now());
   const legacyStrip = statusNotice({
+    appOutdated: false,
     session: "active",
     account: "ok", // App had no such state: a 403 set nothing at all
     voidsRefused: 0,

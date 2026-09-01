@@ -242,6 +242,12 @@ export class HttpSellerTransport implements SellerCreateTransport, ReservationTr
       // the status whose body can echo an id number.
       return { kind: "invalid", reason: `${String(status)} refused on the payload` };
     }
+    if (status === 426) {
+      // THIS BUILD is too old (server/app/version_gate.py). The body is NOT read
+      // — like every refusal on this route, its body can echo an id number. The
+      // create stays owed with its token and resends after the app is updated.
+      return { kind: "client_outdated", reason: "426" };
+    }
     // 404, 405, 5xx, anything unforeseen: the server answered and the answer is
     // unusable, which for owed work is the same instruction as no answer.
     return { kind: "unavailable", reason: `unusable status ${String(status)}` };

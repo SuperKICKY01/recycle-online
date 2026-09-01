@@ -21,6 +21,16 @@ import type { PasswordChangeRequest, PasswordFetch } from "../src/settings/accou
 import type { SummaryFetch } from "../src/dashboard/summaryView";
 import type { SellerHistoryFetch } from "../src/sellerHistory/sellerHistoryView";
 import { API_BASE_URL } from "./config";
+import { withClientVersion } from "../src/net/clientVersion";
+
+/**
+ * THE ONE TRANSPORT THIS FILE NOW OWNS. Every request below goes through it, so
+ * the API-contract version header is on all of them and no call site has to
+ * remember it — the header-on-every-request half of the version contract. The
+ * version wrapper adds the header and preserves each caller's content-type and
+ * authorization; `.bind` keeps `fetch`'s own receiver.
+ */
+const apiFetch = withClientVersion(globalThis.fetch.bind(globalThis));
 
 export interface Product {
   id: string;
@@ -142,7 +152,7 @@ export const isUnauthorized = (err: unknown): boolean =>
 
 
 async function getJson<T>(path: string, token: string): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await apiFetch(`${API_BASE_URL}${path}`, {
     headers: { authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
@@ -199,7 +209,7 @@ async function getJson<T>(path: string, token: string): Promise<T> {
  */
 export function resolveShopCode(code: string): Promise<ShopCodeResult> {
   return exchangeShopCode(() =>
-    fetch(`${API_BASE_URL}/auth/shop-code`, {
+    apiFetch(`${API_BASE_URL}/auth/shop-code`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ code }),
@@ -213,7 +223,7 @@ export function login(
   password: string,
 ): Promise<SignInResult> {
   return attemptLogin(() =>
-    fetch(`${API_BASE_URL}/auth/login`, {
+    apiFetch(`${API_BASE_URL}/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ tenant_id: tenantId, username, password }),
@@ -266,7 +276,7 @@ export async function setProductPrice(
   const timer = setTimeout(() => controller.abort(), 20_000);
   let res: Response;
   try {
-    res = await fetch(
+    res = await apiFetch(
       `${API_BASE_URL}/products/${encodeURIComponent(productId)}/prices/${encodeURIComponent(grade)}`,
       {
         method: "PUT",
@@ -381,7 +391,7 @@ export async function fetchDailyReport(
   const timer = setTimeout(() => controller.abort(), 20_000);
   let res: Response;
   try {
-    res = await fetch(`${API_BASE_URL}/reports/daily${query}`, {
+    res = await apiFetch(`${API_BASE_URL}/reports/daily${query}`, {
       headers: { authorization: `Bearer ${token}` },
       signal: controller.signal,
     });
@@ -489,7 +499,7 @@ async function transportJson(
  *  Transport only; the account screen parses it (src/settings/account.readWhoAmI). */
 export function fetchWhoAmI(token: string): Promise<PasswordFetch> {
   return transportJson((signal) =>
-    fetch(`${API_BASE_URL}/whoami`, {
+    apiFetch(`${API_BASE_URL}/whoami`, {
       headers: { authorization: `Bearer ${token}` },
       signal,
     }),
@@ -500,7 +510,7 @@ export function fetchWhoAmI(token: string): Promise<PasswordFetch> {
  *  src/settings/shopSettings.ts. Returns a value, never throws. */
 export function fetchShop(token: string): Promise<ShopFetch> {
   return transportJson((signal) =>
-    fetch(`${API_BASE_URL}/shop`, {
+    apiFetch(`${API_BASE_URL}/shop`, {
       headers: { authorization: `Bearer ${token}` },
       signal,
     }),
@@ -519,7 +529,7 @@ export function fetchShop(token: string): Promise<ShopFetch> {
  */
 export function fetchSellerHistory(token: string, sellerId: string): Promise<SellerHistoryFetch> {
   return transportJson((signal) =>
-    fetch(`${API_BASE_URL}/sellers/${encodeURIComponent(sellerId)}/history`, {
+    apiFetch(`${API_BASE_URL}/sellers/${encodeURIComponent(sellerId)}/history`, {
       headers: { authorization: `Bearer ${token}` },
       signal,
     }),
@@ -530,7 +540,7 @@ export function fetchSellerHistory(token: string, sellerId: string): Promise<Sel
  *  fields; an empty patch is never sent (shopPatchBody/patchIsEmpty decide that). */
 export function patchShop(token: string, patch: ShopPatch): Promise<ShopFetch> {
   return transportJson((signal) =>
-    fetch(`${API_BASE_URL}/shop`, {
+    apiFetch(`${API_BASE_URL}/shop`, {
       method: "PATCH",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify(patch),
@@ -578,7 +588,7 @@ async function transportJsonKeepingBody(
  *  the CRUD below is admin-only on the server. Returns a value, never throws. */
 export function fetchGradeTiersAdmin(token: string): Promise<GradeTierFetch> {
   return transportJsonKeepingBody((signal) =>
-    fetch(`${API_BASE_URL}/grade-tiers?include_inactive=true`, {
+    apiFetch(`${API_BASE_URL}/grade-tiers?include_inactive=true`, {
       headers: { authorization: `Bearer ${token}` },
       signal,
     }),
@@ -592,7 +602,7 @@ export function createGradeTier(
   body: GradeTierCreateBody,
 ): Promise<GradeTierFetch> {
   return transportJsonKeepingBody((signal) =>
-    fetch(`${API_BASE_URL}/grade-tiers`, {
+    apiFetch(`${API_BASE_URL}/grade-tiers`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify(body),
@@ -611,7 +621,7 @@ export function patchGradeTier(
   patch: GradeTierPatchBody,
 ): Promise<GradeTierFetch> {
   return transportJsonKeepingBody((signal) =>
-    fetch(`${API_BASE_URL}/grade-tiers/${encodeURIComponent(tierId)}`, {
+    apiFetch(`${API_BASE_URL}/grade-tiers/${encodeURIComponent(tierId)}`, {
       method: "PATCH",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify(patch),
@@ -630,7 +640,7 @@ export function reorderGradeTiers(
   order: readonly string[],
 ): Promise<GradeTierFetch> {
   return transportJsonKeepingBody((signal) =>
-    fetch(`${API_BASE_URL}/grade-tiers/order`, {
+    apiFetch(`${API_BASE_URL}/grade-tiers/order`, {
       method: "PUT",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify({ order }),
@@ -662,7 +672,7 @@ export function fetchSummary(
     `&by=${encodeURIComponent(params.by)}` +
     `&state=${encodeURIComponent(params.state)}`;
   return transportJson((signal) =>
-    fetch(`${API_BASE_URL}/reports/summary${query}`, {
+    apiFetch(`${API_BASE_URL}/reports/summary${query}`, {
       headers: { authorization: `Bearer ${token}` },
       signal,
     }),
@@ -680,7 +690,7 @@ export function changeOwnPassword(
   request: PasswordChangeRequest,
 ): Promise<PasswordFetch> {
   return transportJson((signal) =>
-    fetch(`${API_BASE_URL}/users/me/password`, {
+    apiFetch(`${API_BASE_URL}/users/me/password`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify(request),

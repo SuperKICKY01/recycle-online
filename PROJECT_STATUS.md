@@ -75,6 +75,62 @@ not read the green as re-run.**
 
 ## Current phase
 
+**THE VERSION CONTRACT — THE CLIENT HALF: SEND THE HEADER, AND ONE CALM "UPDATE TO CONTINUE" SCREEN ON A 426.
+2026-09-01.** No sha yet (this record precedes the commit; anchor next pass). The current-phase pointer, superseding
+the version-contract SERVER-HALF pointer below AS THE POINTER ONLY — that half stands (`f911d9c`) and this completes
+the handshake as its S6 second commit. The app now IDENTIFIES itself on every request AND reacts to a 426 as its
+own class, so the floor can be raised without wedging the fleet: the "loaded gun" the server commit warned of is
+disarmed on any handset carrying this build.
+**WHAT IS BUILT — THE HEADER.** A headless module `mobile/src/net/clientVersion.ts` owns `CLIENT_API_VERSION = 1`
+(the API-contract version this build speaks, NOT app.json's 1.0.0, carrying NOTHING that identifies a person or a
+device) and `withClientVersion(fetchImpl)`, which stamps `x-client-api-version` on every request while preserving
+the caller's own content-type/authorization. It is injected at the THREE transports the app had no chokepoint
+across: the two sync adapters via their injected `fetchImpl` (`mobile/App.tsx`), and `mobile/app/api.ts`'s 15
+read/write sites, now routed through one module-owned `apiFetch`.
+**WHAT IS BUILT — THE 426 CLASS.** A SIXTH failure class `client_outdated` on `SendOutcome`, `VoidOutcome` and
+`SellerCreateOutcome` — adding it made every exhaustive switch a compile error (the 401 lesson's mechanism, and how
+the transports, classifiers, records and stores were all found). A 426 classifies to `halt_kind` (the kind stops
+durably, like a 403: a 426 refuses every unit equally and no sign-in helps); the row returns to `pending` untouched
+via `markClientOutdated`, a NAMED store transition byte-identical to `markSendForbidden` (poison cleared, no
+schedule) on both the SQLite store and the in-memory fake; no poison clock starts; and a new
+`SyncRunResult.clientOutdated` counter drives a device-global, STICKY `appOutdated` state in App — never cleared,
+because only an app update (a new process) makes an old build new. `statusNotice` ranks it ABOVE the session (a 426
+refuses the sign-in a dead session would offer) and renders ONE calm AMBER state with NO button (the update comes
+from outside the app; where is P1.11's business, so none is invented) and NOT the sign-out path.
+**KEY DECISIONS.** The header value is a single integer, not the marketing version. The 426 reuses `halt_kind`
+(not a new disposition): a 426 is a 403 one axis along — refuses every unit, cleared only from outside the request.
+The SEND row gets its own `markClientOutdated` rather than reusing `markSendForbidden`, so a row's history never
+reads "forbidden" for a version refusal (the codebase's named-transition-per-class discipline). The seller kind
+DOES set the `clientOutdated` counter — an exception to its no-`SyncRunResult`-counter rule, argued at the arm —
+because a 426 is a DEVICE-GLOBAL build fact, so the "update" screen must show even on a seller-only device.
+**NEW THAI (vocabulary settled 2026-08-31, extended), old→new.** Three strings, all in the existing
+"แอปรุ่นนี้อ่านไม่ได้" / "…ยังอยู่ครบ" register: the head "แอปเวอร์ชันนี้เก่าเกินไป — ต้องอัปเดตก่อนใช้งานต่อ", and the two tails
+" บิล N ใบยังอยู่ครบ จะส่งให้เองหลังอัปเดต" (adapted from the session tail's "…หลังเข้าสู่ระบบ") and " บิลที่บันทึกไว้ยังอยู่ครบ".
+**PROVEN, headless.** `prove:version` (`mobile/src/proof/proveVersion.ts`): the header on every adapter request WITH
+a control that reddens without the wrapper; 426→`client_outdated` beside a 401→`session_expired` sibling (the
+transport seam); the engine on BOTH stores — a 426 halts, leaves the bill pending, sets `clientOutdated` NOT
+`sessionExpired` (401 the presence sibling), starts no poison, reaches no server; THE OWNER'S CELL — a bill queued
+BEFORE the 426 is present and SENDS after a fresh engine (the updated build) drains the same store; and the strip —
+calm, amber, no button, outranks the session, and THREE DIFFERENT sentences for 426/401/offline (the
+two-green-proofs seam in one run). GREEN TWICE. Regression, GREEN TWICE: `proveSync`, `proveNotice`,
+`proveSignOut`, `proveOutbox`, `proveStatusCounts`, `proveOwedSurfaces`, `proveClock`, `proveSeller`. Both
+typechecks bare exit 0. NOT run — the four real-HTTP proofs `proveForbidden`, `proveCold`, `proveLogin`,
+`proveLoginScreen` need the running dev server; their only change is a non-behavioral `appOutdated: false` in a
+`StatusInput` literal, typecheck-covered. Adding the header breaks no proof: those that build requests by hand omit
+the wrapper, and the server floor is 0, which admits a header-less request.
+**EDITS THIS COMMIT (all under `mobile/`).** New: `src/net/clientVersion.ts`, `src/proof/proveVersion.ts`. Changed:
+`src/sync/{types,sellerCreate,outboxHandlers,engine,outboxRunner,statusNotice}.ts`, `src/adapters/httpTransport.ts`,
+`src/adapters/httpSellerTransport.ts`, `src/adapters/sqlite/SqliteLocalStore.ts`, `src/proof/fakes.ts`, `App.tsx`,
+`app/api.ts`, `package.json`, seven proofs for `appOutdated: false` (`proveClock`, `proveCold`, `proveForbidden`,
+`proveNotice`, `proveOwedSurfaces`, `proveStatusCounts`, `proveSync`), and four docs (this record, `ROADMAP.md`
+reconciliation (c)/(d) + P1.11, `OPEN_ITEMS.md`, `ARCHITECTURE.md` section 3). Nothing under `server/`, `desktop/`,
+`packages/`, `tools/`, `.claude/`; no migration; the two owner artefacts untouched. Lesson owed? NO — the 401 lesson
+already carries this shape (a caller-not-bill class: own member, device-global derived state, no poison, queued
+work untouched, the seam test); nothing new was relearned.
+**GATES.** Both mobile typechecks bare exit 0. `prove:version` + eight regression proofs GREEN TWICE (above).
+`verify_shared_checks.py`, `build_all_lessons.py --check` and the 14-source citation floor are unaffected by
+mobile code and are re-read at commit. Device pass owed (headless-proven; the handset run is P1.11's).
+
 **THE VERSION CONTRACT — SERVER-SIDE API VERSIONING AND A FORCED-UPGRADE GATE (SERVER HALF). 2026-09-01.** No sha
 yet (this record precedes the commit; anchor next pass). The current-phase pointer, superseding the login-lockout
 pointer below AS THE POINTER ONLY — that phase stands and this builds beside it. Blueprint 10.11/14.3 and the

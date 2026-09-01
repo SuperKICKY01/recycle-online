@@ -96,6 +96,7 @@ import {
 import { reserveStripNotice } from "./src/master/reserveStrip";
 import { statusNotice } from "./src/sync/statusNotice";
 import type { StatusInput } from "./src/sync/statusNotice";
+import { withClientVersion } from "./src/net/clientVersion";
 import { arrangeNotices, masterEntry, reserveEntry, statusEntry, type NoticeId } from "./src/ui/noticeStack";
 import { NAV_ITEMS, type NavDest, type NavGate } from "./src/ui/navRow";
 import { NoticeSheet } from "./app/NoticeSheet";
@@ -679,6 +680,15 @@ function AppInner() {
    * sign-in replaces.
    */
   const [sessionEnded, setSessionEnded] = useState(false);
+  /*
+   * THE BUILD IS TOO OLD (426), device-global and STICKY: once the server has
+   * refused this build's API version, nothing on this device makes it new again —
+   * only an update, which is a new process that starts this back at false. So it
+   * is never set back to false here, unlike sessionEnded/submitRefused which any
+   * server answer clears. It is what the status strip turns into the calm "update
+   * to continue" state, and it is NOT the sign-out path (see the pass handler).
+   */
+  const [appOutdated, setAppOutdated] = useState(false);
 
   /*
    * Can this device act as someone right now? One derived value, consumed by
@@ -1005,7 +1015,10 @@ function AppInner() {
           transport: new HttpTransport({
             baseUrl: API_BASE_URL,
             getToken: () => Promise.resolve(tokenRef.current),
-            fetchImpl: (input, init) => fetch(input, init),
+            // Every bill send and void carries the API-contract version header,
+            // so the server can refuse a too-old build with 426 instead of
+            // silently accepting a request it no longer means the same way.
+            fetchImpl: withClientVersion((input, init) => fetch(input, init)),
           }),
           /*
            * THE SELLER KIND, wired to the SAME driver as the bill store —
@@ -1037,7 +1050,9 @@ function AppInner() {
           sellerTransport: new HttpSellerTransport({
             baseUrl: API_BASE_URL,
             getToken: () => Promise.resolve(tokenRef.current),
-            fetchImpl: (input, init) => fetch(input, init),
+            // The seller-create and reservation requests carry the version header
+            // too — the whole client identifies itself, not just the bill path.
+            fetchImpl: withClientVersion((input, init) => fetch(input, init)),
           }),
           clock: systemClock,
           backoffBaseMs: 2000,
@@ -1262,6 +1277,22 @@ function AppInner() {
      * this pass does.
      */
     if (!maySync({ paused: syncPausedRef.current, token: tokenRef.current })) return;
+
+    /*
+     * THE BUILD IS TOO OLD (426) — checked ABOVE the session case, because a 426
+     * refuses even the sign-in the session case would offer. STICKY and never
+     * cleared: nothing on this device makes an old build new, only an update (a
+     * new process). NOT setSessionEnded and NOT the sign-out path — signing in
+     * returns the same too-old build. online = true, because the server answered
+     * promptly; calling this an outage would be the 401/403 mistake again. The
+     * queued bills are untouched (markClientOutdated left them pending) and send
+     * unchanged once the app is updated.
+     */
+    if (r.clientOutdated > 0) {
+      setAppOutdated(true);
+      setOnline(true);
+      return;
+    }
 
     // THE SESSION ENDED — checked FIRST and above `attempted === 0`, because a
     // pass that sent no bills can still have tried to push a void and been told
@@ -2751,6 +2782,7 @@ function AppInner() {
   // navigation card, not one of these. statusNotice is computed here for its tone;
   // StatusStrip re-derives it from the same input, which is pure and cheap.
   const statusInput: StatusInput = {
+    appOutdated,
     session,
     account,
     voidsRefused: voidsRefusedCount,

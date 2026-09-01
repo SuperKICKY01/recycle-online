@@ -5656,16 +5656,19 @@ below and says so.
   update, and no way for the server to tell an old client that it is obsolete. A
   shop with six phones is six independent builds. *Not done:* nothing. *Unblocks:*
   nothing built — it decides what a contract change costs on the day one is needed.
-  **PARTLY DONE 2026-09-01 — the SERVER half.** The measurement above stands as
-  history; the sentence "no way for the server to tell an old client that it is
-  obsolete" is now FALSE. A global middleware refuses a client below a version
-  floor with **426** (`server/app/main.py::_refuse_outdated_client`,
-  `server/app/version_gate.py`), so the server CAN now name an obsolete client.
-  The floor defaults to 0 (every client admitted, including today's header-less
-  builds), so nothing changes until it is deliberately raised. *Still owed (the
-  CLIENT half, its own commit):* the app must SEND `x-client-api-version` on every
-  request and render one calm update screen on a 426; until it does, the six phones
-  are six builds that do not yet identify themselves. Reconciled at
+  **DONE 2026-09-01 — BOTH halves.** The measurement above stands as history; the
+  sentence "no way for the server to tell an old client that it is obsolete" is now
+  FALSE. Server half (`f911d9c`): a global middleware refuses a client below a
+  version floor with **426** (`server/app/main.py::_refuse_outdated_client`,
+  `server/app/version_gate.py`). Client half (commit two): the app SENDS
+  `x-client-api-version` on every request (`mobile/src/net/clientVersion.ts`) and
+  classifies a 426 as its own `client_outdated` class — queued bills stay owed and
+  untouched, one calm "update to continue" screen renders. So a contract change no
+  longer breaks a handset silently; it becomes a loud 426 the app turns into an
+  update prompt. The floor defaults to 0 (every client admitted), so nothing
+  changes until it is deliberately raised — and it MUST stay 0 until this client
+  build is on the handsets (until then a raise wedges an old build's queue; see the
+  server phase record). Reconciled at
   `ROADMAP.md § The product blueprint, reconciled — 2026-09-01`, item (d)'s
   "Server-side API versioning".
 - **[MEASURED] WHAT `mobile/app.json`'s `extra` CARRIES TODAY, AND WHAT DECIDES

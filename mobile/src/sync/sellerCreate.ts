@@ -92,6 +92,13 @@ export type SellerCreateOutcome =
    * is what `halt_kind` is for.
    */
   | { kind: "forbidden"; code: string; reason: string }
+  /**
+   * 426. THIS BUILD is too old for the server. Refuses every seller equally and
+   * is cleared only by an app update, so the kind halts, exactly as
+   * SendOutcome/VoidOutcome.client_outdated. The row stays owed with its token,
+   * so the create resends after the update.
+   */
+  | { kind: "client_outdated"; reason: string }
   /** No answer, or an answer nobody can use: transport failure, timeout, 5xx. */
   | { kind: "unavailable"; reason: string }
   /**
@@ -168,6 +175,11 @@ export function classifySellerCreate(o: SellerCreateOutcome): OutboxDisposition 
       // A 403 refuses every seller equally: the KIND stops, durably, until a
       // sign-in or a sign-out retracts it.
       return { next: "halt_kind", reason: o.reason, code: o.code };
+    case "client_outdated":
+      // A 426 refuses every seller equally too, and no sign-in helps: the KIND
+      // stops until the app is updated (a new process). Same disposition as 403;
+      // the code is a fixed marker, since a 426 carries no server code.
+      return { next: "halt_kind", reason: o.reason, code: "client_outdated" };
     case "unavailable":
     case "ambiguous":
       // BOTH RETRY, and only because the request carried the token. Without it

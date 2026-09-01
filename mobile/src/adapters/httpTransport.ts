@@ -10,6 +10,7 @@
  *   424     -> master data not set up yet                  (rejected_resolvable)
  *   401     -> the session ended, sign in again            (session_expired)
  *   403     -> this ACCOUNT may not do this                (forbidden)
+ *   426     -> this BUILD is too old for the server        (client_outdated)
  *   5xx     -> server answered but unusably      (unavailable, reachable: true)
  *   timeout / network / no token -> no answer    (unavailable, reachable: false)
  *
@@ -187,6 +188,14 @@ export class HttpTransport implements Transport {
         code: refusalCode(body.detail, "master_data_missing"),
       };
     }
+    if (response.status === 426) {
+      // THE BUILD IS TOO OLD. The server refused this client's API-contract
+      // version (server/app/version_gate.py). Nothing is wrong with the bill,
+      // the network, the session or the account — the bill stays queued and goes
+      // the moment the app is updated. Read off the STATUS, which survives a body
+      // that fails to parse; a 426 carries no code the client branches on.
+      return { kind: "client_outdated", reason: `HTTP 426: ${describe(body.detail)}` };
+    }
     // A status we could not use (5xx, or anything unforeseen). The server
     // ANSWERED, so the network is usable and this is reachable-but-refusing:
     // reachable: true.
@@ -269,6 +278,11 @@ export class HttpTransport implements Transport {
     }
     if (response.status === 404 || response.status === 400 || response.status === 422) {
       return { kind: "rejected", reason: `HTTP ${response.status}: ${describe(body.detail)}` };
+    }
+    if (response.status === 426) {
+      // THIS BUILD is too old (server/app/version_gate.py). Same as sendBill's
+      // 426: the void stays owed and applies after the app is updated.
+      return { kind: "client_outdated", reason: `HTTP 426: ${describe(body.detail)}` };
     }
     return { kind: "unavailable", reason: `HTTP ${response.status}: ${describe(body.detail)}` };
   }

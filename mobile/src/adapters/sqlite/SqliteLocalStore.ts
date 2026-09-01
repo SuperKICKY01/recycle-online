@@ -614,6 +614,37 @@ export class SqliteLocalStore implements LocalStore {
   }
 
   /**
+   * The send bounced on a 426: THIS BUILD is too old for the server.
+   *
+   * The row ends up shaped exactly like markSendForbidden's — pending, poison
+   * columns cleared, next_attempt_at = now, no schedule — and for the same
+   * reasons: a 426 refuses EVERY bill from this build equally, so it carries none
+   * of the meaning first_server_error_at exists to carry, and no delay makes an
+   * old app new. It is a SEPARATE named method rather than a call to
+   * markSendForbidden so the row's last_error and the reader of this transition
+   * do not say "forbidden" for a version refusal. What stops the retry is the
+   * kind halting on the runner plus the device-global "update to continue" state,
+   * not this row; the bill sends unchanged once the app is updated.
+   */
+  async markClientOutdated(
+    id: string,
+    reason: string,
+    attempt: number,
+    now: Date,
+  ): Promise<void> {
+    const nowIso = now.toISOString();
+    await this.db.run(
+      `UPDATE local_bills
+       SET sync_state = 'pending', attempt_count = ?, last_error = ?,
+           next_attempt_at = ?,
+           first_attempt_at = COALESCE(first_attempt_at, ?),
+           first_server_error_at = NULL, server_error_attempts = 0
+       WHERE id = ?`,
+      [attempt, reason, nowIso, nowIso, id],
+    );
+  }
+
+  /**
    * The parked bills themselves, oldest weighed first.
    *
    * NO PRODUCTION CALLER. Measured across the whole mobile tree in this commit:

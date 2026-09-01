@@ -882,6 +882,9 @@ interface StripCell {
 }
 
 const stripInput = (c: StripCell): StatusInput => ({
+  // Not a dimension of THIS sweep: a too-old build is above every branch here and
+  // is enumerated in proveVersion.ts alongside its 401/offline seam.
+  appOutdated: false,
   session: c.session,
   account: c.account,
   voidsRefused: c.voidsRefused,

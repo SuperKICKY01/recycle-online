@@ -292,6 +292,24 @@ export class InMemoryStore implements LocalStore {
     return Promise.resolve();
   }
 
+  /**
+   * Mirrors SqliteLocalStore.markClientOutdated, which is markSendForbidden's own
+   * statement: back to pending, poison columns cleared, no backoff. A 426 leaves
+   * the bill exactly as owed and untouched as a 403 does; the difference is which
+   * device-global screen the counter drives, not what happens to the row.
+   */
+  markClientOutdated(id: string, reason: string, attempt: number, now: Date): Promise<void> {
+    const row = this.require(id);
+    row.sync_state = "pending";
+    row.attempt_count = attempt;
+    row.last_error = reason;
+    row.next_attempt_at = now.toISOString();
+    row.first_attempt_at = row.first_attempt_at ?? now.toISOString();
+    row.first_server_error_at = null;
+    row.server_error_attempts = 0;
+    return Promise.resolve();
+  }
+
   listMasterDataBlocked(limit: number): Promise<LocalBill[]> {
     const out = [...this.rows.values()]
       .filter((b) => b.sync_state === "pending" && b.master_data_missing_at !== null)

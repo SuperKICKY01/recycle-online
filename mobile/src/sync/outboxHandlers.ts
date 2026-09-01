@@ -89,6 +89,11 @@ function classifySend(o: SendOutcome): OutboxDisposition {
     case "forbidden":
       // A 403 refuses every bill equally: the KIND stops, durably.
       return { next: "halt_kind", reason: o.reason, code: o.code };
+    case "client_outdated":
+      // A 426 refuses every bill equally too, and no sign-in helps: the KIND
+      // stops until the app is updated (a new process). Same disposition as 403;
+      // the code is a fixed marker, since a 426 carries none.
+      return { next: "halt_kind", reason: o.reason, code: "client_outdated" };
     case "unavailable":
       return { next: "retry", reason: o.reason };
   }
@@ -227,6 +232,14 @@ export function billSendHandler(deps: OutboxDeps): OutboxHandler<LocalBill, Send
           await deps.store.markSendForbidden(row.id, o.reason, attempt, now);
           result.forbidden += 1;
           return;
+        case "client_outdated":
+          // A named transition, poison cleared, the bill left pending and
+          // untouched. What stops the retry is the kind halting on the runner and
+          // the device-global "update to continue" state App derives from this
+          // counter; the bill sends unchanged once the app is updated.
+          await deps.store.markClientOutdated(row.id, o.reason, attempt, now);
+          result.clientOutdated += 1;
+          return;
         case "unavailable":
           // `o.reachable` drives the poison columns — the reason record takes
           // the OUTCOME: the disposition dropped it, by design.
@@ -267,6 +280,12 @@ function classifyVoid(o: VoidOutcome): OutboxDisposition {
       return { next: "retry", reason: o.reason };
     case "forbidden":
       return { next: "terminal", reason: o.reason, code: o.code };
+    case "client_outdated":
+      // NOT terminal like the 403 arm: the void is still owed (a repeat is
+      // idempotent) and must survive to apply after the app updates. It halts so
+      // it does not re-POST every pass — the void kind has no backoff — against a
+      // server that will 426 it until then.
+      return { next: "halt_kind", reason: o.reason, code: "client_outdated" };
     case "unavailable":
       return { next: "retry", reason: o.reason };
   }
@@ -328,6 +347,13 @@ export function billVoidHandler(deps: OutboxDeps): OutboxHandler<LocalBill, Void
           // server's own code, retractable by the next sign-in.
           await deps.store.markVoidRefused(row.id, o.code, o.reason, attempt, now);
           result.voidsForbidden += 1;
+          return;
+        case "client_outdated":
+          // Still OWED (a repeat is idempotent) and NOT a refusal — the UI shows
+          // "update the app", not that the void failed. markVoidAttemptFailed
+          // keeps void_requested_at, so the cancellation applies after the update.
+          await deps.store.markVoidAttemptFailed(row.id, o.reason, attempt);
+          result.clientOutdated += 1;
           return;
         case "unavailable":
           await deps.store.markVoidAttemptFailed(row.id, o.reason, attempt);
@@ -466,7 +492,7 @@ export function sellerCreateHandler(
      * behind a seller that is already on the server is stranded exactly as hard
      * as one behind a seller that never settled.
      */
-    record: async (row, o, _d, attempt, next, now, _result) => {
+    record: async (row, o, _d, attempt, next, now, result) => {
       switch (o.kind) {
         case "created":
         case "already_created":
@@ -523,6 +549,16 @@ export function sellerCreateHandler(
           // and stays owed: nothing about this row is wrong, and the refusal is
           // retracted by a sign-in or a sign-out.
           await deps.sellerStore.markSellerCreateAttemptFailed(row.id, o.reason, attempt, now);
+          return;
+        case "client_outdated":
+          // The KIND halts (classify); the ROW stays owed with its token so it
+          // resends after the update. UNLIKE this kind's other arms it SETS a
+          // SyncRunResult counter, and deliberately: client_outdated is a
+          // DEVICE-GLOBAL fact about the BUILD, not the per-kind connection
+          // conclusion `attempted`/etc. are — so the "update to continue" screen
+          // must show even on a device whose only owed work is a seller create.
+          await deps.sellerStore.markSellerCreateAttemptFailed(row.id, o.reason, attempt, now);
+          result.clientOutdated += 1;
           return;
       }
     },

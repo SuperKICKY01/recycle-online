@@ -234,6 +234,7 @@ async function s4abTwoNumbersMoveApart(): Promise<void> {
 
   // What the operator actually reads.
   const notice = statusNotice({
+    appOutdated: false,
     session: "active",
     account: "ok",
     voidsRefused: 0,
@@ -292,6 +293,7 @@ async function s4cUnknownOwner(): Promise<void> {
 
   // The sentence must not promise a release that cannot happen.
   const notice = statusNotice({
+    appOutdated: false,
     session: "active", account: "ok", voidsRefused: 0, online: true,
     pending: 0, parkedForAnother: 0, parkedUnknownOwner: u.unknownOwner,
     failed: 0, blocked: null, waitingOnMasterData: 0, masterDataCodes: [],
@@ -412,6 +414,7 @@ async function s4eNothing(): Promise<void> {
     JSON.stringify(u),
   );
   const notice = statusNotice({
+    appOutdated: false,
     session: "active", account: "ok", voidsRefused: 0, online: true,
     pending: 0, parkedForAnother: 0, parkedUnknownOwner: 0,
     failed: 0, blocked: null, waitingOnMasterData: 0, masterDataCodes: [],

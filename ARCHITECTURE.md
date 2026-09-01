@@ -179,8 +179,10 @@ DATA (a file read per request, raised with no restart), it DEFAULTS to 0 (every
 client admitted, including a header-less build), and `/health` is exempt. The
 version is bumped only when the server changes a contract an old client would
 MISHANDLE, never for an additive-and-ignorable change — `version_gate.py` states
-the rule and a worked example. This is the server half; the client sending the
-header and rendering an update screen on a 426 rides the mobile program (P1.11).
+the rule and a worked example. BOTH halves are built: the mobile client sends the
+header (`mobile/src/net/clientVersion.ts`, `CLIENT_API_VERSION`) on every request
+and classifies a 426 as its own `client_outdated` class — queued bills untouched,
+one calm "update to continue" screen. OTA and the in-app update prompt are P1.11's.
 
 ### 3.1 Three authentication tiers, not two
 

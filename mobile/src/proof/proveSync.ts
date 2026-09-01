@@ -1268,6 +1268,7 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
    * are the exact inputs the screen gets.
    */
   const soloStrip = statusNotice({
+    appOutdated: false,
     session: "expired",
     account: "ok",
     voidsRefused: 0,
@@ -1316,6 +1317,7 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
   }).runOnce();
   // This is the number App branched on: retryable > 0 -> setOnline(false).
   const legacyStrip = statusNotice({
+    appOutdated: false,
     session: "active",
     account: "ok",
     voidsRefused: 0,
@@ -1408,6 +1410,7 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
   );
 
   const manyStrip = statusNotice({
+    appOutdated: false,
     session: "expired",
     account: "ok",
     voidsRefused: 0,
@@ -1462,6 +1465,7 @@ async function case11SessionExpired(harness: StoreHarness): Promise<void> {
   const legacySnap = await legacyMany.store.pendingQueueSnapshot();
   const legacyHealth = assessQueue(legacySnap, legacyMany.clock.now());
   const legacyManyStrip = statusNotice({
+    appOutdated: false,
     session: "active",
     account: "ok",
     voidsRefused: 0,

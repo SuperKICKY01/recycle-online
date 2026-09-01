@@ -4541,9 +4541,10 @@ below a version floor with 426. Because THIS step bakes the build, the build mus
 now carry the CLIENT half — (a) SEND `x-client-api-version` on every request (the
 app's API-contract version, 1 at first release) and (b) render one calm "update to
 continue, your work is safe" screen on a 426, distinct from the sign-in and offline
-states. That client half is owed as its own commit landing before this step. The
-floor DEFAULTS to admit today's build, so the gate is inert until deliberately
-raised; this adds no bar to P1.11's DONE WHEN, it records what the build must send.
+states. That client half is now BUILT (2026-09-01, commit two) — `CLIENT_API_VERSION`
+= 1 and `withClientVersion` across all three transports, proven by `prove:version`;
+P1.11 bakes it into the release build. The floor DEFAULTS to admit today's build, so
+the gate is inert until deliberately raised; this adds no bar to P1.11's DONE WHEN.
 
 ### P1.12 — The shared package
 
@@ -8054,9 +8055,10 @@ already has a home:
 - **Billing and the 3%** (blueprint 15.4) → P3.9 (needs the accountant, section 18).
 - **OTA + forced update / API versioning** (blueprint 10.11, 14.3) → P1.11 plus the
   named-not-minted forced-upgrade/API-versioning gate in this file's completion
-  sequence. **The SERVER half of that gate is BUILT (2026-09-01)** — see (d)'s
-  "Server-side API versioning" entry below; the client half (send the header,
-  render the update screen) and OTA proper remain P1.11's.
+  sequence. **BOTH halves of that gate are BUILT (2026-09-01)** — see (d)'s
+  "Server-side API versioning" entry below: the server refuses a too-old build with
+  426, and the client sends its version and renders a calm "update to continue"
+  screen on a 426. OTA proper and the in-app update prompt remain P1.11's.
 - **HTTPS + off-box backup** (blueprint 13.2, 13.10) → P1.2.
 - **Activate licence / setup wizard** (blueprint 9.1; inventory 11.2) → desktop
   activation (S1's extension) and P3.6; the activation-surface/state split is flagged
@@ -8119,10 +8121,15 @@ assumed; this section names the candidates and BUILDS NONE of them.
   The floor DEFAULTS to 0, which admits every client including the header-less
   build on the owner's handset today — the contract is voluntary until the floor is
   deliberately raised, which nobody has done. `/health` is the one exempt path.
-  WHAT REMAINS: the CLIENT half — the app sending the header on every request and
-  rendering ONE calm "update to continue, your work is safe" screen on a 426 (its
-  own commit, designed and owed, landing before P1.11 bakes the build). OTA proper
-  (blueprint 10.11, expo-updates) and the in-app update prompt stay P1.11's.
+  **AND THE CLIENT half — DONE 2026-09-01 (commit two).** The app now sends
+  `x-client-api-version` on every request (a `withClientVersion` wrapper across all
+  three transports) and classifies a 426 as its own `client_outdated` class — the
+  kind halts, queued bills stay owed and untouched, and ONE calm device-global
+  "update to continue, your work is safe" screen renders, distinct from the sign-in
+  and offline states. Proven headless (`mobile prove:version`, incl. the two-green
+  seam and a bill surviving the 426 to send after the update). So both halves of
+  the handshake now exist. OTA proper (blueprint 10.11, expo-updates) and the
+  in-app update PROMPT (where the update comes from) stay P1.11's.
 - **A staging environment** (blueprint 14.4) — startable once the P1.2 hosting
   decision names a machine; that is its only dependency.
 - **Monitoring + crash reporting** (blueprint 14.1, 14.2) — an EXTERNAL-service

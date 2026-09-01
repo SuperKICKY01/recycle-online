@@ -120,6 +120,16 @@ export interface SyncRunResult {
   forbidden: number;
   /** Voids the server refused on identity grounds (403). Not owed any more. */
   voidsForbidden: number;
+  /**
+   * Sends, voids or seller-creates the server refused because THIS BUILD is too
+   * old (426). Device-global — the build is one fact for every kind — and its
+   * reaction is unlike all the others: not wait (`retryable`), not sign in
+   * (`sessionExpired`), not ask the owner (`forbidden`), but UPDATE THE APP, which
+   * is a new process. It is the signal App turns into the sticky "update to
+   * continue" screen; the kinds halt on the runner, and every queued unit stays
+   * owed and untouched for the updated build to send.
+   */
+  clientOutdated: number;
 }
 
 const emptyResult = (): SyncRunResult => ({
@@ -137,6 +147,7 @@ const emptyResult = (): SyncRunResult => ({
   sessionExpired: 0,
   forbidden: 0,
   voidsForbidden: 0,
+  clientOutdated: 0,
 });
 
 export class SyncEngine {
@@ -446,6 +457,17 @@ export class SyncEngine {
       total.sessionExpired += r.sessionExpired;
       total.forbidden += r.forbidden;
       total.voidsForbidden += r.voidsForbidden;
+      total.clientOutdated += r.clientOutdated;
+
+      /*
+       * THE BUILD IS TOO OLD (426). No number of passes makes an old app new —
+       * every send re-hits 426 and re-halts its kind — so spinning would only
+       * inflate attempt_count before the operator has seen the "update" screen.
+       * Checked FIRST of the three early returns, because a 426 refuses even the
+       * sign-in a 401 would ask for. The caller (which has a screen) learns it
+       * from the returned totals.
+       */
+      if (r.clientOutdated > 0) return total;
 
       /*
        * A REFUSAL ABOUT WHO IS ASKING is not progress this loop can make either,

@@ -261,6 +261,7 @@ function sheetOf(owed: OwedByKind, failed = 0): string {
 /** The quiet strip — nothing wrong anywhere — so the only variable is `owed`. */
 function stripInputOf(owed: OwedByKind, over: Partial<StatusInput> = {}): StatusInput {
   return {
+    appOutdated: false,
     session: "active",
     account: "ok",
     voidsRefused: 0,
