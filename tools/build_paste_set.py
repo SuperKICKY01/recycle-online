@@ -37,8 +37,9 @@ specific question needs one.
     plans against the ACTIVE state -- the three active files are in the set and
     each points at its archive for when history is needed.
 Both are listed in EXCLUDED so a pasted-set reader sees the boundary and its
-reason. SET_FILES itself is unchanged by M2: the ten declared files all still
-pass the wrong-advice test.
+reason. SET_FILES was unchanged by M2; the twelve declared files all still
+pass the wrong-advice test. (M2 left ten; the product blueprint and its
+predecessor inventory were added 2026-09-01, so the advisor can see the plan.)
 
 EXIT CODES, matching server/scripts/build_all_lessons.py so that two doc tools
 in this repo cannot mean different things by the same number:
@@ -148,6 +149,10 @@ SET_FILES: list[tuple[str, str, str]] = [
      "the advising chat's rules: role bounds, unprompted duties, the checklist"),
     ("lessons/README.md", "lessons_README.md",
      "the lesson index: one line per lesson, enough to ask for one by name"),
+    ("PRODUCT_BLUEPRINT.md", "PRODUCT_BLUEPRINT.md",
+     "the product plan of record: the owner-approved blueprint (2026-09-01) and its fourteen schema-decision queue"),
+    ("SYSTEM_INVENTORY.md", "SYSTEM_INVENTORY.md",
+     "the blueprint's predecessor inventory draft, kept as the record; superseded in scope by PRODUCT_BLUEPRINT.md"),
 ]
 
 
@@ -295,7 +300,7 @@ def working_tree_dirty() -> tuple[bool, list[str]]:
 def dirty_set_paths() -> list[str]:
     """Which of the DECLARED set files are uncommitted. A different question.
 
-    Asked of git directly, scoped to the nine paths, rather than by filtering
+    Asked of git directly, scoped to the twelve paths, rather than by filtering
     the repo-wide list -- porcelain lines carry a two-column status prefix and
     quote unusual paths, so a substring match against them is a guess. Scoping
     the query means git does the matching and the answer is exact.

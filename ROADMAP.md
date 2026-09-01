@@ -7893,3 +7893,204 @@ know they are known rather than undiscovered.
   measured at `ddf3c85`. It matters beyond arithmetic — that file sets its own
   split-review trigger at 2000 lines in its own text, and the pointer a new session
   reads first still reports it as under.
+
+---
+
+## The product blueprint, reconciled — 2026-09-01
+
+**WHAT THIS IS.** On 2026-09-01 the owner approved a product plan — "ตามนี้ทำงานเลย"
+— and it is now the repository's plan of record: `PRODUCT_BLUEPRINT.md`, with its
+predecessor draft `SYSTEM_INVENTORY.md` kept as the record and marked superseded in
+scope. This section reconciles that plan against what the ROADMAP already carried.
+It is the reconciliation the adoption phase was told to produce; it designs nothing,
+moves no bar and reorders nothing, and it mints NO P-, S- or D-number.
+
+**WHAT IT DOES NOT DO.** Nothing in the blueprint is authorised by its adoption
+beyond what the ROADMAP already carried. The fourteen schema-touching decisions and
+the field research the blueprint names gate the next stage; every collision below is
+the owner's alone to resolve, and each is filed unresolved and marked NOTHING IS
+AUTHORISED at `OPEN_ITEMS.md § Decisions open — the owner's, not the code's`.
+
+**HOW THE BLUEPRINT IS CITED, and it is a deliberate, dated deviation from this
+project's citation discipline.** `PRODUCT_BLUEPRINT.md` and `SYSTEM_INVENTORY.md` are
+referenced BY NUMBER IN PROSE (e.g. "the blueprint, section 17"), never as a
+`file § heading` handle, and they are NOT in the citation checker's source list, so
+NOTHING MACHINE-CHECKS a reference into them. Two reasons: their headings are Thai on
+a codepage-874 box, where a section handle is a known footgun
+(`CLAUDE.md § Machine footguns`); and a handle pointing into a file the checker does
+not scan would LOOK checked while nothing checks it — worse than plain prose, because
+the shape invites trust. The precedent is `README.md`, a tracked document this repo
+deliberately keeps OUT of the citation source list because it carries no citations to
+resolve; adding a citation-less file only fires the checker's own non-empty control.
+So the source list stays at fourteen and its floor stays at six; the tension — the
+checker's design would read every citing `.md` as a source, and these two are the
+owner's artefacts we do not edit to please a tool — is recorded here and not settled.
+Where the blueprint's own prose happens to contain a backticked identifier, it is a
+column or route name, not a `file § heading` citation, so the checker's parser does
+not reach into it.
+
+### (a) Where the blueprint COLLIDES with a settled decision or a locked scope
+
+Named on both sides. NONE is resolved here — each is the owner's, filed at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's`.
+
+**A1 — the three-deliverable scope (S1) against three surfaces the blueprint
+implies.** S1 locks *the mobile app, the desktop application, the provider web*.
+The blueprint adds, and each is a scope question the owner alone settles:
+- **A cashier counter on a tablet** — the blueprint, section 3 ("เคาน์เตอร์เสมียน —
+  บทบาทที่หายไป"), section 2's five roles, and section 3.7 ("แท็บเล็ตแนวนอน"). The
+  mobile app is defined as the yard-floor bill-maker (`CLAUDE.md § Architecture`); the
+  desktop is Electron (S20). A cashier surface on "แท็บเล็ต / desktop" fits neither
+  cleanly, and it brushes D8 above, which already presumed the cashier is a desktop
+  admin rather than a tablet surface.
+- **Product master-data maintenance reachable from mobile** — the blueprint, section
+  7.1 (add/edit/close products, level A, no device named) and section 4.8 (product
+  search/pin/filter on the yard, level A), against the locked line "desktop — Back
+  office: master data" (`CLAUDE.md § Architecture`). This is ALREADY PARTLY TRUE:
+  grade-tier management ships on the phone (P1.24 Phase 2, `66f2e20`;
+  `mobile/app/TierActionsSheet.tsx`), so "master data = desktop" is already superseded
+  for grades — and `CLAUDE.md § Architecture`'s read-only-yard claim is already logged
+  false for sellers and prices under D12 (see *Corrections owed elsewhere* above).
+  Whether product/category/unit maintenance also moves to mobile is scope against the
+  lock and against S8's mobile-then-desktop order.
+- **A seller-facing LINE/web surface** — the blueprint, section 2 (ผู้ขาย on "LINE /
+  เว็บ"), section 11.5 (LIFF mini-app) and section 5.7 — a fourth client surface
+  beyond S1's three, which the blueprint's own section 16 files as future ("PWA —
+  client ตัวที่สี่"), and a new third-party data-exposure axis adjacent to S4.
+
+**A2 — S23's bar against the blueprint's width.** S23 sets the MOBILE completion bar
+to a commercial-grade general app ("แอพที่ใช้ได้หมดอ่ะ แต่ไม่ใช่ฟรี") and says in as
+many words that what "commercial-grade" covers is the owner's to set. The blueprint's
+section 10 ("คุณภาพชีวิตของแอป 2026") maps closely onto that bar; its sections 1–9 and
+11–15 (a cashier role, ID/legal surfaces, LINE, network effects, SaaS billing) go far
+past a "general app". The collision is what S23's bar now MEANS — the whole blueprint,
+or the narrower section-10 quality surface.
+
+**A3 — the staff-money model against a cashier who must see money.** Today a staff
+principal's money visibility is governed by `tenants.staff_money_visible` (boolean,
+migration 0014, `46a18b4`) and by E1 (settled 2026-08-31 in this file's completion
+sequence): with the toggle ON a staff principal sees ONLY their own figures, shop-wide
+figures are admin-only regardless, and with it OFF the dashboard is not drawn for
+staff at all. S9 fixes the roles at owner/admin/staff and D8 makes the cashier an
+admin. The blueprint, sections 3.5 and 3.7, give the cashier the drawer balance, and
+section 8.3 makes a เสมียน role with "เห็นเงินร้าน" and "จ่ายเงิน (วงเงิน)" as
+sub-permissions. A cashier must see money; the current model defaults staff to none
+and has no cashier role. Resolving this REOPENS S9. *(The label "D1" is ambiguous
+across files and is deliberately NOT used for this: `ARCHITECTURE.md`'s D1 is the
+provider's separate seat, a different decision — see the discovery filed at
+`OPEN_ITEMS.md § Documentation`.)*
+
+**A4 — the domain bought at the end against work that may want a public name earlier.**
+S13's extension (2026-08-26/28) has the domain bought at the END — "ผมจะซื้อ domain
+ตอนที่ app desktop web เสร็จหมดแล้ว" — gating P1.11 and nothing earlier, because a
+tunnel gives `https://` with no purchase. The blueprint's LINE work (section 11), OTA
+(section 10.11) and monitoring/crash (sections 14.1, 14.2) may want a public callback
+or update URL sooner. **The honest bound:** a tunnel hostname satisfies webhooks, OTA
+and monitoring endpoints without a purchased domain — the same reasoning that unblocks
+P1.2 — and crash/monitoring use external DSNs, not a domain; so the collision is
+NARROW and bites only where a shop-facing or store-facing BRANDED name matters before
+"the end" (a LINE OA display name, the section-7.9 public price page, a store listing).
+
+### (b) What the blueprint marks built — verified at the tree, not from its prose
+
+Each claim re-derived with `git`/`rg` against the tree, cited to the migration or
+commit that carries it; ARCHITECTURE's table shape read at
+`ARCHITECTURE.md § 4. The data model`:
+
+- **RLS + composite FK, "พิสูจน์แล้ว"** (blueprint 13.1; inventory 9.1) — `FORCE ROW
+  LEVEL SECURITY` and composite tenant-carrying FKs, migration 0001 (`92037e8`).
+- **The main purchase cycle** (blueprint 4; inventory 1.1–1.4) — idempotent bills,
+  gap-free `doc_no`, three weights with a CHECK, void columns; 0001–0002 (`0915ca1`).
+- **Seller core fields** (blueprint 5.4; inventory 3.2) — `id_number`/`address`/
+  `vehicle_no` + `is_active`, migration 0004 (`9592140`).
+- **The grade tiers** (blueprint 5.7; S16's grade clause) — `grade_tiers`, composite
+  FKs replacing the A–D CHECK, migration 0015 / P1.24 (`ad2806e`).
+- **`tenants.staff_money_visible`, "ตัวแรกที่ทำแล้ว"** (blueprint 8.3) — migration
+  0014 (`46a18b4`).
+- **The dashboard** (blueprint 6.1; inventory 4.1) — `GET /reports/summary`
+  (`46a18b4`) and `mobile/app/DashboardScreen.tsx`; `list_minus_paid` (blueprint 6.5)
+  is `reports.py`'s computed difference of the two price bases.
+- **Theme, speed/feel** (blueprint 10.4, 10.9) — `mobile/app/theme.tsx` (phase A);
+  the reanimated/haptics pass is P1.23 phase E (`bcdb97a`).
+- **A permanent bill-line id** (blueprint 16) — `purchase_bill_items.line_no` on a
+  composite id, client-minted bill id; migration 0001.
+
+**ONE BUILT CLAIM THE BLUEPRINT AND THE INVENTORY BOTH GET WRONG, AND THE ADVISOR'S
+OWN DOCUMENTS ARE WRONG WITH THEM — recorded so a later reader does not re-derive the
+error as fact.** The blueprint, section 8 ("`users` ไม่มี `is_active`") and
+`SYSTEM_INVENTORY.md` 5.2 ("`users` ไม่มีคอลัมน์ `is_active`") both say the column is
+absent. It is NOT: migration 0007 (`c9356a2`, P1.4, MET 2026-08-07) runs `ALTER TABLE
+users ADD COLUMN is_active boolean NOT NULL DEFAULT true`. The `users` row in
+`ARCHITECTURE.md § 4. The data model` carries the same stale claim ("No `is_active`")
+and was never superseded the way its `tenants` row was. **The true gap is the deactivate
+SCREEN, not the column:** no client calls the lock; user management is P3.7's. The
+stale ARCHITECTURE row and the ambiguous D-label are filed as discoveries at
+`OPEN_ITEMS.md § Documentation`; the owner's two documents are left unedited, and this
+correction is their only home.
+
+### (c) What the blueprint already has under another name — mapped, not re-homed
+
+Recording the same work twice is failure #3 at plan scale. Each blueprint item below
+already has a home:
+
+- **Shift/drawer/close** (blueprint 3.5; inventory 4.2) → P1.19 (the end-of-day cash
+  close) — the blueprint itself says "นี่คือ P1.19 ที่ขยายเป็นรายกะ".
+- **Price-history** (blueprint 7.4; inventory 1.9) → P1.20.
+- **Anomaly detection** (blueprint 6.5) → P1.22.
+- **Product master data** (blueprint 7.1; inventory 2) → P1.15 — plus the A1
+  mobile-reach collision.
+- **Open a shop without SQL** (blueprint 15.1) → P3.6.
+- **Billing and the 3%** (blueprint 15.4) → P3.9 (needs the accountant, section 18).
+- **OTA + forced update / API versioning** (blueprint 10.11, 14.3) → P1.11 plus the
+  named-not-minted forced-upgrade/API-versioning gate in this file's completion
+  sequence.
+- **HTTPS + off-box backup** (blueprint 13.2, 13.10) → P1.2.
+- **Activate licence / setup wizard** (blueprint 9.1; inventory 11.2) → desktop
+  activation (S1's extension) and P3.6; the activation-surface/state split is flagged
+  at S9.
+- **User-management screens** (blueprint 8.1; inventory 5.1/5.6) → P3.7 (routes exist,
+  screens owed).
+- **Shop identity for the slip** (blueprint 9.1 legal) → P1.16, extended by
+  `OPEN_ITEMS.md § Schema requirements raised by the 2026-08-17 legal research round`,
+  and P1.1.
+- **Per-shop feature switches** (blueprint 9.2) →
+  `OPEN_ITEMS.md § Schema requirements raised by the 2026-08-17 legal research round`
+  (the per-tenant settings home) with S11 and S16 (no JSON bag).
+- **Lump-sum / per-piece** (blueprint 4.6) → the same schema-requirements section
+  (lump-sum) with S16's bill-line clause; the `reconcile.py` caveat travels with it.
+- **Photographs / file system** (blueprint 5.1, 4.7, 7.3, logo) → S12 (three
+  photographs), S14 (one outbox mechanism) and S15 (beside the database).
+- **The default grade / grade model** (blueprint 5.5, wizard item 5) → built as P1.24,
+  with `OPEN_ITEMS.md § Blocking one real paying shop` holding the shop-shape block.
+- **`sellers.created_by`** → filed in the schema-requirements section and now BUILT
+  (migration 0011, `b3d3654`).
+- **Offline seller codes** (blueprint 5.6 region) → S22 and P1.8b.
+
+### (d) What can start with NO owner decision and NO shop visit — the next brief
+
+Pure risk reduction that no blueprint answer can invalidate. Verified per item, not
+assumed; this section names the candidates and BUILDS NONE of them.
+
+- **HTTPS** (blueprint 13.2) — no schema, no shop visit; depends only on P1.2's tunnel
+  being stood up (a tunnel gives `https://` with no domain, per S13). It is P1.2's own
+  risk half.
+- **Login rate-limit + lockout + failed-login record** (blueprint 13.3) — server-side.
+  Account lockout already has its column (`users.is_active`, 0007); rate-limiting is
+  middleware; the failed-login record is a small append-only relation or structured
+  log (NOT one of the fourteen schema decisions, and low-risk). No owner or shop
+  answer needed.
+- **Off-box encrypted backup + a restore drill** (blueprint 13.10) — P1.2's backup
+  half; a schedule and a destination, no domain (S13).
+- **Server-side API versioning + a min-version check** (blueprint 14.3) — startable
+  now; the client half rides the mobile program (P1.11 bakes the build).
+- **A staging environment** (blueprint 14.4) — startable once the P1.2 hosting
+  decision names a machine; that is its only dependency.
+- **Monitoring + crash reporting** (blueprint 14.1, 14.2) — an EXTERNAL-service
+  dependency (a DSN/target to choose and pay for), like P1.2's procurement clock;
+  neither schema nor shop.
+- **`users.is_active`** (blueprint 8.4) is ALREADY BUILT (0007) — not a start, done;
+  what remains is the deactivate screen below.
+- **User-management screens over the existing routes** (blueprint 8.1) — the routes
+  exist (`POST /users`, revoke-sessions, reset-password, `POST /users/me/password`);
+  this carries a HOMING dependency (which program — P3.7 owns user management inside a
+  shop, and S8 sequences the programs), not an unknown-answer one.

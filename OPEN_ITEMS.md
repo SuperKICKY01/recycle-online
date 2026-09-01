@@ -4359,6 +4359,79 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   code. *Not done:* neither. *Unblocks:* nothing built — it stops P1.13 being
   argued about on the day it is otherwise finished.
 
+- **THE PRODUCT BLUEPRINT RAISES FOUR SCOPE COLLISIONS, EACH THE OWNER'S ALONE.**
+  Filed 2026-09-01 when the owner-approved `PRODUCT_BLUEPRINT.md` became the plan of
+  record. The reconciliation — both sides of each, and the evidence — is at
+  `ROADMAP.md § The product blueprint, reconciled — 2026-09-01`; only the decisions
+  are restated here so the queue carries them. The blueprint is referenced by
+  NUMBER, not by a machine-checked handle (the reason is in that section).
+  - **(A1) The three-deliverable scope (S1) against three new surfaces:** a cashier
+    counter on a tablet (blueprint 3, 2, 3.7), product master-data maintenance
+    reachable from mobile (blueprint 7.1, 4.8 — already partly true via P1.24 tier
+    management on the phone, `66f2e20`), and a seller-facing LINE/web surface
+    (blueprint 2, 11.5, 5.7). Each is a program the scope does not name.
+  - **(A2) S23's "commercial-grade general app" bar against the blueprint's width:**
+    does the bar mean the whole blueprint or its section-10 quality surface.
+  - **(A3) The staff-money model (E1 + `tenants.staff_money_visible`, migration 0014)
+    against a cashier who must see money and the drawer (blueprint 3.5, 3.7, 8.3).**
+    Resolving it REOPENS S9's owner/admin/staff.
+  - **(A4) The domain bought at the end (S13 extension) against LINE/OTA/monitoring
+    work that may want a public name earlier** — narrow, because a tunnel hostname
+    and external DSNs cover most of it; it bites only a shop- or store-facing branded
+    name.
+  NOTHING IS AUTHORISED — every one is the owner's to resolve, and none is resolved
+  by the blueprint's adoption.
+
+- **THE FOURTEEN SCHEMA-TOUCHING DECISIONS — ONE ORDERED QUEUE, NOTHING AUTHORISED.**
+  From `PRODUCT_BLUEPRINT.md` section 17, kept in the blueprint's own order (risk if
+  deferred, high to low; not reordered). Tables re-derived from
+  `ARCHITECTURE.md § 4. The data model`, not from the blueprint's prose — the current
+  business tables are `tenants, users, uoms, product_categories, products,
+  product_prices, sellers, purchase_bills, purchase_bill_items, doc_no_counters,
+  grade_tiers` plus `server_clock_watermark`, `seller_code_reservations` and
+  `directory.shop_codes`. Each entry: the decision · tables (existing / NEW) · cost to
+  defer · what must be KNOWN first (blueprint section 18 — 2–3 shop visits, an
+  accountant, the lawyer/PDPA of P1.1). The mapping into existing homes is at
+  `ROADMAP.md § The product blueprint, reconciled — 2026-09-01`.
+  1. **Payment status + method + payer + time** (3.1, 3.3) · `purchase_bills` + NEW
+     `payments` · rewrites every bill · how shops actually pay (cash/transfer/credit,
+     who pays, part-payment) — shop visits.
+  2. **Per-piece / lump-sum price** (4.6) · `purchase_bill_items` · rewrites every
+     bill line; `reconcile.py` must learn the mode or flag every lump-sum line · which
+     goods are per-piece/lump — shop visits.
+  3. **Multi-branch** (9.3) · EVERY business table · rebuild the whole database, the
+     most expensive · whether the pilot/target shops have branches — shop visits.
+  4. **Roles + sub-permissions + deactivate account** (8.2–8.4) · `users`
+     (`is_active` already built, 0007) + NEW `roles`/`permissions` · medium, but every
+     permission gate changes · which action each role (esp. the cashier) may do —
+     collides with A3 and REOPENS S9.
+  5. **Audit every action** (8.8) · NEW `audit_log` · doable later, but prior history
+     is lost forever · nothing external — a pure build.
+  6. **A file system** (5.1, 4.7, 7.3, logo) · NEW `files` + real storage · doable
+     later, but the security design must be right once · PDPA retention/consent
+     (lawyer) and which photographs are required.
+  7. **Price history** (7.4) · NEW `price_history` · doable later, but prior prices
+     are lost forever · nothing external — a pure build (home: P1.20).
+  8. **Shift / drawer / expenses** (3.5) · 3 NEW tables · medium · shift structure and
+     who holds the till — shop visits (home: P1.19).
+  9. **Per-shop feature switches** (9.2) · NEW `tenant_features` (key/bool) · easy, but
+     every feature must read it · nothing external (S11/S16; no JSON bag).
+  10. **Full seller: phone/LINE/bank/type/multi-vehicle/credit/watchlist** (5.4) ·
+      `sellers` + NEW sub-tables · medium · whether shops keep credit/watchlist, and
+      PDPA for a shared watchlist (lawyer).
+  11. **Containers / moisture** (4.4, 4.5) · NEW `containers` + columns on
+      `purchase_bill_items` · medium · how shops deduct moisture/containers — shop
+      visits.
+  12. **Notifications + devices + push token** (6.2, 8.7) · NEW tables · easy ·
+      nothing external.
+  13. **Per-user language** (10.1) · `users.locale` · easy — but app-wide i18n is the
+      large work · which languages the labour reads, and in what proportion — shop
+      visits (blueprint 10.1 [ถาม]).
+  14. **Shop legal data: registration/licence number** (9.1) · `tenants` · easy ·
+      P1.1 (what the act requires).
+  NOTHING IN THIS QUEUE IS AUTHORISED — all fourteen await the field research named,
+  and none is ordered differently from the blueprint.
+
 ## Business questions — unanswered, and not answerable from the code
 
 Both were raised and neither has been resolved. Recorded as QUESTIONS;
@@ -5403,6 +5476,33 @@ with no feature of its own.
   the checker's default source list should be the six rather than the two, since a
   done-condition nobody can reach by running the default command is a
   done-condition that will be read off the wrong number.
+
+- **`ARCHITECTURE.md § 4. The data model`'s `users` ROW SAYS "No `is_active`", AND
+  IT IS STALE — the column has existed since migration 0007.** Found 2026-09-01 while
+  reconciling the product blueprint against the tree. `0007_users_is_active.py`
+  (`c9356a2`, P1.4, MET 2026-08-07) runs `ALTER TABLE users ADD COLUMN is_active
+  boolean NOT NULL DEFAULT true`. The `users` row in that table was never superseded
+  the way its `tenants` row was, so it still reads "No `is_active`, so a session can
+  be revoked but an account cannot be locked" — the second clause is now false. The
+  owner's two documents carry the same error (`PRODUCT_BLUEPRINT.md` section 8 and
+  `SYSTEM_INVENTORY.md` 5.2 both say the column is absent), and they are NOT edited —
+  the correction lives at `ROADMAP.md § The product blueprint, reconciled — 2026-09-01`.
+  **The true gap is the deactivate SCREEN, not the column:** no client calls the lock;
+  it is P3.7's. *Not done:* the stale row is recorded, not fixed — `ARCHITECTURE.md`
+  was outside this phase's bounds. *Unblocks:* a one-line supersession the next
+  ARCHITECTURE phase makes, in the manner of its `tenants` row.
+
+- **THE LABEL "D1" NAMES TWO DIFFERENT DECISIONS ACROSS FILES, AND A MONEY RULE RIDES
+  ON THE COLLISION.** Found 2026-09-01 in the same reconciliation.
+  `ARCHITECTURE.md § D1 — the provider gets a separate seat` is the provider's seat;
+  the staff-money-visibility rule that `ARCHITECTURE.md § 4. The data model` calls
+  "(D1)" in its `tenants` row is a DIFFERENT decision — the one the completion
+  sequence settled as E1 on 2026-08-31 (toggle on, a staff principal sees only their
+  own figures). This is the `a-label-is-a-reference-with-no-checker` shape at plan
+  scale: a bare "D1" across a file boundary resolves to whichever the reader opens
+  first, and here one of them gates who sees money. *Not done:* recorded, not
+  repaired — both are settled decisions in locked/near-locked files. *Unblocks:*
+  a session that must cite the money rule should cite E1, never a bare "D1".
 
 
 ## What a product sold to strangers needs and this one has not built

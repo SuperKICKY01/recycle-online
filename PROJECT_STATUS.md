@@ -75,6 +75,54 @@ not read the green as re-run.**
 
 ## Current phase
 
+**ADOPT THE PRODUCT BLUEPRINT AS THE PLAN OF RECORD. 2026-09-01.** No sha yet (this record precedes the
+commit; anchor next pass). The current-phase pointer, superseding the phase-E pointer below AS THE POINTER
+ONLY — phase E's build stands, and this phase touches NO product code. The owner approved a product plan —
+"ตามนี้ทำงานเลย" (Thai verbatim, never translated) — and it is now the repository's plan of record:
+`PRODUCT_BLUEPRINT.md` is admitted as the product authority, and `SYSTEM_INVENTORY.md` as its predecessor
+draft, kept as the record and marked superseded in scope by a one-line header.
+**WHAT IS AUTHORISED: NOTHING BEYOND WHAT THE ROADMAP ALREADY CARRIED.** The blueprint is the plan of record,
+not a work order. Its fourteen schema-touching decisions and the field research it names (blueprint section
+18 — 2–3 shop visits, an accountant, the lawyer/PDPA of P1.1) gate the next stage; nothing in the blueprint
+is built or scheduled by this adoption.
+**WHERE THE WORK LIVES.** The reconciliation (collisions, what is already built, what is already homed) and
+the no-owner-decision start list are at `ROADMAP.md § The product blueprint, reconciled — 2026-09-01`; the
+four scope collisions and the fourteen-item schema queue, each marked NOTHING IS AUTHORISED, are at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's`.
+**EDITS THIS COMMIT (six).** `git add` of the two documents; the one-line supersession header on
+`SYSTEM_INVENTORY.md` (its body otherwise unchanged); two SET_FILES tuples in `tools/build_paste_set.py` so
+the advisor's paste set carries the plan; the ROADMAP reconciliation section; the OPEN_ITEMS collisions and
+queue; and this record. No product code anywhere; no migration; no P/S/D number minted; no blueprint content
+rewritten; no ROADMAP heading renamed, deleted or reordered.
+**TWO COUNT-WORDS CORRECTED in `tools/build_paste_set.py` as part of the SET_FILES change** (the owner's
+call): the module docstring's "ten declared files" → "twelve" and `dirty_set_paths`'s "the nine paths" →
+"the twelve paths" — SET_FILES re-counted by hand (ten before, twelve after). The "nine" was ALREADY stale
+before this change (SET_FILES held ten). A sweep of the whole tool and of PROJECT_STATUS/OPEN_ITEMS/ROADMAP/
+START_HERE/CLAUDE for any other quantifier NAMING the set found none — every functional count uses
+`len(SET_FILES)`, and the "nine/twelve" hits elsewhere name `.claude/` skills, per-commit declared file sets,
+or the R-number census, not the paste set.
+**THREE DISCOVERIES RECORDED, NOT FIXED (out of this phase's bounds).** The blueprint's own section 8 and
+`SYSTEM_INVENTORY.md` 5.2 both say `users` has no `is_active`; it does (migration 0007, `c9356a2`) — the
+owner's documents are left unedited and the correction lives in the ROADMAP reconciliation section.
+`ARCHITECTURE.md`'s `users` row carries the same stale claim, and the label "D1" names two decisions across
+files (the money rule is E1); both are filed at `OPEN_ITEMS.md § Documentation`.
+**CITED, NOT MACHINE-CHECKED:** the two owner artefacts carry zero `§`-citations and stay OUT of the citation
+source list (SOURCES=14, floor 6 unchanged), so a reference into them is by number in prose, never a handle —
+the reasoning and the `README.md` precedent are in the ROADMAP reconciliation section.
+**GATES (headless; each command BARE, exit read in the same invocation; cp874 box).** `verify_shared_checks.py`
+IDENTICAL (4 items, 586 chars), exit 0. `build_all_lessons.py --check` exit 0 (61 lessons, 511975 bytes).
+`verify_citations.ps1` over the NAMED 14-file source list (call operator + `[string[]]`; SOURCES read first):
+SOURCES=14, CITATIONS 584 → 607 (delta +23, every new one resolves), BROKEN=6 — the floor UNMOVED, its exact
+pre-existing distribution (OPEN_ITEMS ×4, SRS_MAP ×1, nemesis ×1); ROADMAP and PROJECT_STATUS at BROKEN=0, so
+ZERO new breaks. The 584 baseline was measured at `bcdb97a` in a throwaway `git worktree` (the two owner
+artefacts are NOT in the source list — they carry no `§`-citations, so adding them would only fire the
+non-empty control; SOURCES stays 14 and the floor stays 6). One self-inflicted break each in ROADMAP and
+OPEN_ITEMS was caught and fixed before this reading: a `§ 4. The data model` citation that wrapped a line
+(CLAUDE's "one line at both ends"), and a "Price history" label that gave a live handle a second hit (hyphenated
+to "Price-history"). `build_paste_set.py --check` exits 1 as designed — it detects the drift (declares 12,
+manifest 10; the two new files declared-but-absent); the `--check → --write → --check` regeneration is owed in
+the post-confirmation sequence. `git diff --stat` = exactly the six named files, 1118 insertions, 3 deletions.
+
 **P1.23 ITEM 3 — PHASE E: THE FULL UX/UI REWORK. 2026-09-01.** No sha yet (this record precedes the
 commit; anchor next pass). The current-phase pointer, superseding the phase-D pointer below; phase D's work
 stands — this is the rework the owner authorised once the cosmetic constraints (no new Thai / no new
