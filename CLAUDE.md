@@ -29,6 +29,17 @@ read `ADVISOR.md` before answering; handed a diff to attack, `RED_TEAM.md`.
 Mobile and desktop are both clients of the same API. Neither talks
 to the database directly. Neither implements business rules.
 
+**Superseded 2026-09-02 (measured at `98cbc2d`): the `desktop/` line's "Back office:
+master data" no longer says where master data is edited.** Five master-data surfaces
+ship on the PHONE and none on the desktop, which is still one placeholder
+(`git ls-files desktop` returns `desktop/.gitkeep`): prices `mobile/app/PricesSheet.tsx`,
+sellers `mobile/app/AddSellerSheet.tsx`, grade tiers `mobile/app/TierActionsSheet.tsx`,
+shop settings `mobile/app/SettingsScreen.tsx`, users `mobile/app/UsersScreen.tsx`. The
+three programs, their stacks, and "neither client implements a business rule" are
+unchanged and stay LOCKED; only the division of labour in that one line is stale.
+Where master data finally lives is the owner's open call, filed under
+`OPEN_ITEMS.md § Decisions open` "DOES USER MANAGEMENT ALSO LIVE ON THE PROVIDER WEB".
+
 ## Hard rules (violating any of these = wrong, redo)
 
 1. Money and weight columns are NUMERIC. Never float, anywhere —

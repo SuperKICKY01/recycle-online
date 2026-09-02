@@ -195,6 +195,19 @@ unauthenticated surface is small:
 | **any signed-in principal** | `Depends(get_principal)` (`auth.py:91`) | reads, and bill creation |
 | **admin only** | `Depends(require_admin)` (`auth.py:286`) | every master-data write, void, the daily report, session revocation |
 
+**Superseded 2026-09-02 (measured at `98cbc2d`; unanchored, anchor next pass).** Two
+rows above are no longer exact. The "admin only" row's "every master-data write" is
+FALSE of two routes: `POST /sellers` takes `Depends(get_principal)` at
+`server/app/master.py:1519` — staff create sellers, narrowed on purpose per that
+module's docstring, which cites ROADMAP's D1 and says `prove_seller_create.py` cells 4
+and 5 prove the narrowing — and `POST /seller-code-reservations` at
+`server/app/master.py:2129`. The "no authentication" row is three routes, not two:
+`POST /auth/shop-code` (`server/app/directory.py:87`), already recorded in § 13. And
+the two dependency positions in the table have moved: `get_principal` is defined at
+`auth.py:100` and `require_admin` at `auth.py:337`. Paired by a script over every
+decorator at that commit: 3 unauthenticated, 15 `get_principal`, 29 `require_admin`,
+47 routes. The membership stays where the paragraph below says it lives.
+
 **The endpoint list is deliberately NOT copied here.** It moves every phase, and a
 copied list is wrong within one. `PROJECT_STATUS.md § What is built` "in THREE
 categories, not two" holds the current membership of all three tiers, read off the

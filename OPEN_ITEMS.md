@@ -1530,6 +1530,67 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Code debt found and left in place
 
+- **ARCHITECTURE REVIEW OF THE WHOLE CODEBASE, 2026-09-02 AT `98cbc2d` — STRUCTURAL
+  FINDINGS, NOT REPAIRED, NOTHING BELOW AUTHORISED.** Recorded from the read-only
+  review the owner accepted; every figure carries the instrument that produced it.
+  These are findings for the advisor and the owner to turn into work or decline; this
+  entry authorises none of them, and no P-number is minted here.
+  - **The outbox costs about 1,900 non-proof lines per kind.** `OutboxKind` has three
+    members (`mobile/src/sync/outbox.ts:76`) and the registry is total by
+    construction, so the bones are right. The skin is the cost: adding `seller_create`
+    took, by `wc -l`, `localSeller.ts` 355, `SqliteLocalSellerStore.ts` 626,
+    `sellerCreate.ts` 190, `sellerRefill.ts` 206, `httpSellerTransport.ts` 317, about
+    180 lines of handler in `outboxHandlers.ts`, plus its schema tables — every kind
+    gets its own store contract by rule (`LocalStore` 29 methods, `LocalSellerStore`
+    16) — and it reddened 67 `new SyncEngine` sites (`mobile/src/sync/engine.ts:44-46`).
+    Payments and photographs are both outbox kinds in the blueprint and would each pay
+    this again.
+  - **Every phone feature is five files.** A pure model in `src/`, a screen in `app/`,
+    state and callbacks in `App.tsx`, a transport in `app/api.ts`, a kind and a
+    transition in `src/ui/sheetStack.ts`, and a proof. The users screen added four
+    `useState`s, nine `useCallback`s and two sheet cases to `App.tsx` alone. `App.tsx`
+    at `98cbc2d`: 3,787 lines, of which about 1,447 are comment lines; one component,
+    `AppInner`, from `:283` to `:3680`; 66 `useState`, 60 `useCallback`, 22 sheet-slot
+    cases; the top-churn code file at 47 commits (`git log --format= --name-only`).
+  - **No service or repository layer on the server.** 47 routes and 87 inline `text(`
+    calls under `server/app` (grep), zero repository, service or ORM symbols (grep,
+    with a control that hit). Every cross-cutting concern — audit, permissions, rate
+    limiting, message policy — is therefore a sweep of the handlers. `master.py` holds
+    29 routes over eight concerns in 2,332 lines.
+  - **`_invalid` is duplicated byte-identical** at `server/app/master.py:212` and
+    `server/app/reports.py:219`, and the refusal builders are spread over five files
+    (`auth.py`, `master.py`, `reports.py`, `bills.py`, `version_gate.py`) plus an inline
+    dict at `server/app/users.py:730`. The refusal-module debt is already filed in
+    this section and is NOT re-filed here.
+  - **Two bare-string refusals survive** at `server/app/bills.py:710` ("bill not found")
+    and `:712` ("bill already voided"): no `kind`/`code` envelope, unlike every other
+    refusal on the API.
+  - **`year_gate_refused` is a kind the catalogue does not list.** Emitted at
+    `server/app/bills.py:525`; the "kinds in play across the whole API" comment at
+    `server/app/master.py:133-139` names five and not this one.
+  - **The UI layer is about 8,000 code lines with no executing proof.** `App.tsx`
+    about 2,183 code lines and `mobile/app/*.tsx` about 5,780, by subtracting comment
+    and blank lines. No proof imports either: a grep for import paths into `app/` or
+    `App.tsx` over `mobile/src/proof` returns only prose and two file-TEXT reads
+    (`proveSheets.ts:597-598`, `proveTapAudit.ts:64-65`); the control `^import `
+    returns 552 lines in the same directory. Both text scans use a non-recursive
+    `readdirSync` (`proveTapAudit.ts:75`, `proveSheets.ts:623`), so a screen moved into
+    a subdirectory under `app/` silently escapes both. `PROJECT_STATUS.md § Current phase`
+    records no handset pass on any screen since phase E.
+  - **No `prove:all` and no CI.** 47 `prove:*` scripts and 27 `prove_*.py` run one at a
+    time by hand, twice each by rule; `mobile/package.json` has no aggregate script and
+    the repository has no `.github/` directory (`ls -a .github`: no such directory).
+  - **The lessons index is 113 KB.** `lessons/README.md` is 72 lines whose index
+    entries carry their amendments inline, and `START_HERE.md` puts it in every
+    session's boot path. 64 lesson files by `build_all_lessons.py --check`'s own
+    count (66 `.md` files in `lessons/` once the index and the generated
+    `all-lessons.md` are included — say which definition you counted).
+  - **Documentation is larger than the product.** 55,847 tracked markdown lines
+    against roughly 42,700 lines of product code — `server/app` 7,123, migrations
+    3,239, mobile outside `src/proof` 32,348 — by `wc -l` over `git ls-files`. The
+    boot path (`START_HERE.md`, `CLAUDE.md`, `lessons/README.md`, `PROJECT_STATUS.md`,
+    `ROADMAP.md`, `OPEN_ITEMS.md`) is roughly 18,000 lines before a session reads code.
+  NOTHING IN THIS LIST IS AUTHORISED BY THE REVIEW OR BY THIS ENTRY.
 - **THE VISUAL PASS (P1.23 item 3 phase C) COVERED THE MAIN SCREEN AND THE SHEET HEADERS; THE
   OTHER SCREEN BODIES ARE NOT YET CARD-IFIED — recorded 2026-08-31.** Phase C built the visual
   SYSTEM (tokens, the ranked notice stack, the notice sheet, the shared `SheetHeader`, the segmented
@@ -3118,6 +3179,24 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
 
 ## Decisions open — the owner's, not the code's
 
+- **HARD RULE 8 NAMES THREE SYNC STATES; THE TYPE THE PHONE RUNS HAS FOUR — the
+  owner's to amend, REPORTED NOT FIXED, 2026-09-02 (measured at `98cbc2d`).**
+  `CLAUDE.md` hard rule 8 reads "Sync state per record: pending / synced / failed"
+  (`CLAUDE.md:51-52` at that commit) and `BRIEFING.md:172` says "waiting, sent,
+  failed". The type is
+  `export type SyncState = "pending" | "syncing" | "synced" | "failed"` at
+  `mobile/src/sync/types.ts:16`, and section 7 of ARCHITECTURE.md already records the
+  fourth member as the one a lesson exists for
+  (`lessons/sync-state-needs-startup-recovery.md`: an in-progress state nothing polls
+  strands the record unless startup sweeps it back). *Contradicts:* a HARD RULE against
+  the code that implements it. *Why not fixed here:* a hard rule is the owner's text; a
+  session may correct a STATUS claim — the table at the head of
+  `PROJECT_STATUS.md § What is built` does, in this same commit — but not the rule.
+  *The decision owed:* whether rule 8 gains `syncing` as a named fourth state, or is
+  reworded to name three OUTCOMES and let the implementation carry the in-flight state
+  as its own axis, which is how section 7 of ARCHITECTURE.md frames it. Either is one
+  line in `CLAUDE.md` and one in `BRIEFING.md`, and `BRIEFING.md` is updated only when
+  a hard rule changes, which this would be. NOTHING IS AUTHORISED.
 - **LAST-ACTIVE-ADMIN — the server now guards it. DECIDED AND REVERSED 2026-09-02
   (the owner's), and the pointer that claimed the OLD decision was DANGLING.**
   `server/app/users.py` refused self-deactivation (`cannot_deactivate_self`) but
@@ -4659,6 +4738,51 @@ with no feature of its own.
 
 ## Documentation
 
+- **THE WHAT-IS-BUILT SECTION IS SUPERSEDED PAST READABILITY — measured 2026-09-02 at
+  `98cbc2d`, superseded in place in this commit, and its replacement is PROPOSED here,
+  not performed.** Twenty-one claims in `PROJECT_STATUS.md § What is built` were
+  re-derived against the tree, one command each; sixteen were stale or false and five
+  held. The stale ones: 16 migrations, not `0001`–`0005`; 14 business tables, not the
+  nine named; the A–D CHECK dropped by 0015; six `is_active` tables, not four; 47
+  routes in a 3/15/29 split against a list that put `POST /sellers` under admin and
+  cited `users.py:56` for a route now at `:522`; `users.is_active` present since 0007
+  where the text says absent; 27 server proofs, not 13, and 15 refusing the live
+  database, not 2; four sync states, not three; an eight-member `SendOutcome`, not
+  "three-way"; 11 adapter files; 28 screen files; 47 `prove:*` scripts, not 14; four
+  live-API proofs, not one. The table carrying every command sits at the head of that
+  section; the bullets stand unedited by rule, each ending in a pointer to it. The
+  advising chat reads that section from the paste set to learn what exists and has
+  repeated the stale values to the owner more than once — the cost this entry is about.
+  **WHY IN-PLACE SUPERSESSION HAS STOPPED WORKING THERE.** The section's first
+  bullet's first sentence is false. A reader meets the correction only at the bullet's
+  end or in the table above it, and the mobile subsection already held two
+  struck-and-reinstated paragraphs. This is the shape the 2026-09-02 architecture
+  review found at `ARCHITECTURE.md § 4. The data model` — "ten tables", then three
+  dated corrections. A section whose first sentence misleads is no longer read; it is
+  skimmed for the latest date, and a chat reading a paste set does not skim.
+  **THE PROPOSAL (the owner's call).** Replace the prose inventory with a MEASURED
+  INVENTORY: a small script (`tools/inventory.py`, not written) that prints the counts
+  and lists in that table from the tree, run at every phase boundary, its output
+  pasted under the `## What is built` heading with the sha it was taken at, and the
+  2026-07/08 prose moved to `archive/` as the dated record. The heading itself stays,
+  because citations resolve on it. The same treatment is owed to
+  `ARCHITECTURE.md § 4. The data model` and to the policy enumeration in its section
+  8.2, both already filed below. *Not done:* nothing beyond the in-place supersession.
+  **THE SWEEP FOR OTHER PHRASINGS, and what it left.** `git grep` over tracked `*.md`
+  for the stale values in their other spellings (`0001`–`0005`, five migrations,
+  THIRTEEN, FOURTEEN, no `is_active`, three-way failure, pending / synced / failed,
+  grade A–D) returned 34 lines. Corrected in this commit: the section itself, and one
+  more present-tense site in the same file — the R1 sign-out record's "`users` still
+  has no `is_active` column" under What is NOT built. Left because dated and pinned:
+  the 2026-08-02 observation records under Baseline observations ("all THIRTEEN
+  headless mobile proofs green"), `ARCHITECTURE.md:220` (already superseded in its own
+  section 13), and every `archive/` hit. **Left STALE and OWED, outside this commit's
+  declared file set:** `SRS_MAP.md:133` ("10 business tables, created by 5 migrations
+  (`0001`–`0005`"), `SRS_MAP.md:284` ("pending/synced/failed … three-way failure
+  classification"), `SRS_MAP.md:377` ("`users` has no `is_active` column"), and
+  `research/master-plan-2026-08-26.md:82` ("three-way failure classification", a dated
+  research note). Line numbers drift; re-derive before editing. NOTHING BEYOND THE
+  SUPERSESSION IS AUTHORISED.
 - **THE CITATION CHECK MUST BE THE LAST COMMAND BEFORE THE COMMIT MESSAGE, AFTER
   EVERY DOC EDIT — recorded 2026-08-31, and it rode a defect into `ad2806e`.** The
   P1.24 commit-1a citation check read `BROKEN=6` (the floor), then a LATER doc edit

@@ -2055,6 +2055,49 @@ already warns of, not a new lesson.
 
 ## What is built
 
+**MEASURED 2026-09-02 AT `98cbc2d` — THE THREE INVENTORIES BELOW ARE THE 2026-07/08
+PICTURE, AND MOST OF THEIR FACTS HAVE GONE STALE. READ THIS TABLE FOR WHAT EXISTS;
+READ THE BULLETS FOR WHAT WAS TRUE WHEN THEY WERE WRITTEN.** Every claim in the
+section was re-derived against the tree, one command each; the bullets are left
+unedited by this repository's rule (supersede, never delete) and each stale bullet
+now ends in a one-line pointer back to this table. Why a table and not corrected
+sentences: the advising chat reads this section to learn what exists and has repeated
+its stale values to the owner more than once, and a sentence re-remembered is how they
+got stale. Treat the TABLE, not any count in this paragraph, as the authority on how
+many claims moved.
+
+| claim as written below | true value at `98cbc2d` | command (repo root, Bash tool) |
+|---|---|---|
+| migrations `0001`–`0005` | **16**: `0001_initial_schema.py` … `0016_failed_login_attempts.py` | `m=(server/migrations/versions/0*.py); echo ${#m[@]}` |
+| nine tables named (and `doc_no_counters`, 0002, was absent even then) | **14 business tables** in `public` plus `directory.shop_codes` (0009) outside it: the nine, `doc_no_counters` (0002), `server_clock_watermark` (0008), `seller_code_reservations` (0012), `grade_tiers` (0015), `failed_login_attempts` (0016) | `grep -n "CREATE TABLE\|DROP TABLE" server/migrations/versions/0*.py` — 15 CREATEs; every DROP sits in a `downgrade()`, so none reaches head |
+| `product_prices` (grade A–D) | the A–D CHECK is **DROPPED** (0015:311); `grade` is a composite FK to `grade_tiers (tenant_id, code)`, a per-tenant set | `grep -n "DROP CONSTRAINT product_prices_grade_check" server/migrations/versions/0015_tenant_grade_tiers.py` |
+| "The four master-data tables carry `is_active` (0004)" | **SIX** tables carry it: the four (0004:71), `users` (0007:173), `grade_tiers` (0015:218) | `grep -n "is_active boolean" server/migrations/versions/0*.py` |
+| no authentication: `GET /health` (`main.py:105`), `POST /auth/login` (`main.py:119`) | **THREE** routes, and both positions moved: `GET /health` `main.py:255`, `POST /auth/login` `main.py:269`, `POST /auth/shop-code` `directory.py:87` | a Python script pairing every `@router.`/`@app.` decorator in `server/app/*.py` with the first `Depends(...)` in its signature; the one signature longer than the script's window (`GET /reports/summary`) read by hand at `reports.py:886` |
+| any signed-in user: eight routes listed | **FIFTEEN**: the eight, plus `GET /sellers/{seller_id}/history`, `POST /sellers` (staff create sellers), `GET /grade-tiers`, `POST /seller-code-reservations`, `GET /shop`, `GET /reports/summary` (money gated inside the handler), `POST /users/me/password` | the same script |
+| admin only: the list ending `POST /users/{user_id}/revoke-sessions` (`users.py:56`) | **TWENTY-NINE**: the written list minus `POST /sellers` (now staff), plus `POST /grade-tiers`, `PATCH /grade-tiers/{id}`, `PUT /grade-tiers/order`, `PATCH /shop`, `GET /users`, `POST /users`, `POST /users/{id}/deactivate`, `/activate`, `/unlock-login`, `POST /users/{id}/password`; revoke-sessions is at `users.py:522` | the same script; 3 + 15 + 29 = 47 decorators |
+| "because `users` has no `is_active` column" | **FALSE since 0007** (`0007_users_is_active.py:173`): an account CAN be locked, `POST /users/{id}/deactivate` at `users.py:600`, and the module docstring at `users.py:50-62` no longer calls revoke-sessions a stopgap for that reason | `grep -n "ADD COLUMN is_active" server/migrations/versions/0007_users_is_active.py` |
+| reconcile: 17 checks per tenant plus 10 global | **UNCHANGED**: T0–T16 = 17; S1–S5, B1–B2, X1–X3 = 10 | Python `re.findall(r'"([TSBX]\d+)"', src)` over `server/scripts/reconcile.py`, deduplicated |
+| proofs: THIRTEEN scripts, listed by name | **27** `prove_*.py` files | `p=(server/scripts/prove_*.py); echo ${#p[@]}` |
+| two proofs need a scratch copy and refuse the live database | **15** files carry a live-database refusal string (a string in source is a declared intent, not a refusal observed) | `grep -il "REFUSES TO RUN AGAINST THE LIVE\|equals the live database\|is the LIVE database\|NEVER AGAINST dev\|SCRATCH ONLY\|REFUSES to run against the database named" server/scripts/prove_*.py` |
+| seed: an `admin` AND a `staff` user per tenant | UNCHANGED | `grep -n '"role"' server/app/seeddata.py` — `:110`, `:112`, `:125`, `:127` |
+| backup: three files, `--overwrite-live` | UNCHANGED and now INCOMPLETE: `safety_net_backup.py`, `safety_net_common.py`, `verify_backup.py`, `check_backup_freshness.py` landed 2026-09-02 (see § Current phase) | `ls server/scripts/safety_net_*.py server/scripts/verify_backup.py server/scripts/check_backup_freshness.py` |
+| Postgres 16, `recycle_pg`, host port 5544 | UNCHANGED | `grep -n "image:\|5544\|container_name" server/docker-compose.yml` |
+| mobile: "per-record pending / synced / failed" | **FOUR** states: `"pending" \| "syncing" \| "synced" \| "failed"` | `sed -n '16p' mobile/src/sync/types.ts` |
+| mobile: a "three-way" classification of send failures | `SendOutcome` has **EIGHT** members: two successes (`accepted`, `duplicate`) and six others (`rejected`, `rejected_resolvable`, `session_expired`, `forbidden`, `client_outdated`, `unavailable`) | `grep -o 'kind: "[a-z_]*"'` over `mobile/src/sync/types.ts` lines 302–404 |
+| storage: bills store, draft store, master-data cache, driver, mutex, schema | **ELEVEN** files: those plus `SqliteIdentityStore`, `SqliteShopStore`, `SqliteDeviceStore`, `SqliteLocalSellerStore`, `nodeDriver` | `a=(mobile/src/adapters/sqlite/*.ts); echo ${#a[@]}` |
+| screens: cart, picker, master strip, status strip, bills panel, sign-out sheet | **28** `.tsx` files under `mobile/app/`, including login, dashboard, prices, settings, grade tiers, users, account, seller history and add-seller | `s=(mobile/app/*.tsx); echo ${#s[@]}` |
+| proofs: FOURTEEN headless `npm run prove:*` scripts | **47** | `node -e` over `mobile/package.json` `scripts`, keys with the `prove:` prefix |
+| "`prove:forbidden` is the first mobile proof that REQUIRES the live API" | **FOUR** require it: `proveForbidden`, `proveLogin`, `proveLoginScreen`, `proveUsers` | `grep -l "RECYCLE_API_BASE" mobile/src/proof/*.ts` |
+| desktop: "Empty but for `.gitkeep`" | UNCHANGED | `git ls-files desktop` |
+
+**THIS SECTION HAS CROSSED THE LINE WHERE SUPERSEDING IN PLACE STOPS WORKING.** Its
+first bullet's first sentence is false, and a reader meets the correction only at that
+bullet's end or in the table above; the mobile subsection already carried two
+struck-and-reinstated paragraphs before this pass. The same shape is recorded for
+`ARCHITECTURE.md § 4. The data model`, where "ten tables" is followed by three dated
+corrections. What should happen to this section is PROPOSED, not done, at
+`OPEN_ITEMS.md § Documentation` "THE WHAT-IS-BUILT SECTION IS SUPERSEDED PAST READABILITY".
+
 ### `server/` — running API
 
 - **Schema**, migrations `0001`–`0005` in `server/migrations/versions/`:
@@ -2070,6 +2113,9 @@ already warns of, not a new lesson.
   a confident zero. Row-level security is FORCEd per tenant; the
   runtime role `recycle_app` is NOSUPERUSER + NOBYPASSRLS and holds
   DML only.
+  **Superseded 2026-09-02 — see the table at the head of this section:** 16
+  migrations, 14 business tables, the A–D CHECK dropped by 0015, six tables carrying
+  `is_active`.
 - **Endpoints** (`server/app/`), in THREE categories, not two. **No
   authentication at all**: `GET /health` (`main.py:105`), `POST /auth/login`
   (`main.py:119`) — read off the handlers, neither of which takes a
@@ -2096,6 +2142,10 @@ already warns of, not a new lesson.
   is scoped to its token's tenant with `SET LOCAL` inside the request
   transaction. `code` is immutable after create on every entity — it is
   what a historical bill is read against.
+  **Superseded 2026-09-02 — see the table at the head of this section:** 3
+  unauthenticated, 15 signed-in and 29 admin-only routes; `POST /sellers` is
+  staff-reachable; `users.is_active` exists (0007), so the STOPGAP sentence above is
+  false.
 - **Reconciliation** — `reconcile.py`, the one instrument that checks the
   money against itself rather than exercising a path. Not a proof: it makes
   no fixtures, writes nothing, and is meant to be run against a REAL
@@ -2136,6 +2186,8 @@ already warns of, not a new lesson.
   had observed such a run; the prose was the thing that was wrong. This
   matters beyond tidiness: the 0009 blast-radius claim in `OPEN_ITEMS.md`
   names this script, and that red can only reach a `--from` run.
+  **Superseded 2026-09-02 — see the table at the head of this section:** 27 scripts,
+  15 of which carry a live-database refusal.
 - **Backup** — `backup_db.py` writes plain `globals.sql` /
   `database.sql` / `recycle.sql` + manifests + sha256 to a host path
   outside the docker volume; `restore_db.py` restores into a scratch
@@ -2161,10 +2213,14 @@ programs — see the boot check in CLAUDE.md.
   startup recovery sweeps records stranded mid-flight; an expired
   session is its own state, not a bill failure; stored future
   instants are treated as clock evidence, not data.
+  **Superseded 2026-09-02 — see the table at the head of this section:** four sync
+  states (`syncing` is the fourth) and an eight-member `SendOutcome`.
 - **Storage** (`src/adapters/sqlite/`): bills store, crash-safe draft
   store, master-data cache store, shared driver and mutex, schema.
   Money and weight are TEXT — the guarantee is the TypeScript type,
   not the column (`lessons/sqlite-money-is-text.md`).
+  **Superseded 2026-09-02 — see the table at the head of this section:** eleven
+  adapter files.
 - **Device-only code** (`src/device/`): the expo-sqlite driver and
   the SecureStore token store. Neither can run under node — see the
   device gaps below.
@@ -2200,6 +2256,8 @@ programs — see the boot check in CLAUDE.md.
   nobody signed in through it to reach the cart screen and nothing was weighed,
   the product and seller lists being empty on that tenant; iOS has never drawn
   it; and no release build exists on either platform.
+  **Superseded 2026-09-02 — see the table at the head of this section:** 28 screen
+  files under `mobile/app/`.
 - **The owner's screen** (`app/DailyScreen.tsx`, `src/reports/dailyView.ts`):
   the day's total, the permanent understatement caveat, voided bills, voids
   applied today against older bills, off-list payments, and the bill list. Read
@@ -2218,6 +2276,8 @@ programs — see the boot check in CLAUDE.md.
   first mobile proof that REQUIRES the live API: its F6 logs in as the
   seeded staff user and reads the server's actual 403 through the real
   `HttpTransport`. `--offline` skips that case and exits **2**, never 0.
+  **Superseded 2026-09-02 — see the table at the head of this section:** 47
+  `prove:*` scripts, four of which require the live API.
 
 ### `desktop/` — not started
 
@@ -2295,6 +2355,12 @@ not a new feature:
   a handover and wrong for a dismissal, and there is currently no way to
   express the second. The revocation endpoint says so in its own docstring and
   calls itself a stopgap.
+  **Superseded 2026-09-02 (measured at `98cbc2d`):** `users.is_active` EXISTS —
+  migration 0007 (`0007_users_is_active.py:173`, 2026-08-07) — and an account CAN be
+  locked as distinct from signed out (`POST /users/{user_id}/deactivate`,
+  `server/app/users.py:600`). The sentence above was true on 2026-08-06 and false
+  from the next day; it is the same claim the table at the head of the What is built
+  section corrects, found by the sweep for other phrasings of it.
 
   **CORRECTED 2026-08-05.** This paragraph used to end by saying that bills
   written on a handed-over phone are "attributed in `purchase_bills` to the person
