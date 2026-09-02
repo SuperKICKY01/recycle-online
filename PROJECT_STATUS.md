@@ -75,6 +75,51 @@ not read the green as re-run.**
 
 ## Current phase
 
+**STAFF MANAGEMENT ON THE PHONE — SCREEN SUB-PHASE 2 OF 2: THE USER-MANAGEMENT SCREEN. 2026-09-02.** No sha yet
+(this record precedes the commit; anchor next pass). Supersedes the server sub-phase record below AS THE POINTER ONLY
+— that work stands and is committed (0a42b59). This closes the CLIENT half of the two-phase step; P3.7 is still NOT
+closed (it may also home on the provider web — the owner's open call).
+**WHAT A SHOP CAN DO TODAY THAT IT COULD NOT YESTERDAY, IN PLAIN TERMS.** The owner adds, deactivates, reactivates
+and resets the password of his own staff FROM THE PHONE — no curl, no SQL, no call to us — and a removed employee's
+phone stops working at its very next request. That is the first change in a week a person standing in a yard would
+notice, and it is what lets a real shop be opened without the vendor doing the hiring and firing by hand.
+**WHAT WAS BUILT (client only; no server change, no migration, no new dependency).** `mobile/src/users/usersAdmin.ts`
+(pure builders: readUsers, the roster model incl. the last-admin client guard, checkNewUser/checkPassword, the refusal
+and read-message classifiers, all the Thai sentences); `mobile/app/UsersScreen.tsx` (the roster grouped active/inactive
+under muted headings, the signed-in row marked, an inline add-user form) and `mobile/app/UserActionsSheet.tsx` (the ⋯
+grab-handle sheet mirroring TierActionsSheet — reset password, deactivate with a confirmation, reactivate); the five
+`api.ts` transports (fetch/create/deactivate/activate/reset); `mayManageUsers` + `readTokenUserId` in deviceRole; two
+new sheet kinds (`users`, `user_actions`) + transitions; and an ADMIN-ONLY row in SettingsScreen that opens it (staff
+never see it). Reached from ตั้งค่าร้าน the way the tier list is.
+**DESIGN DECISIONS (approved by the owner at the S0 stop).** (1) The admin TYPES the first password (D8 — no reveal
+UI to build, no clipboard/secret-store exists; the buffer dies with the sheet and is cleared on submit, nothing logs
+it). (2) The signed-in row offers NO destructive action and points at the account screen's change-own-password. (3)
+Refusals are worded from the cause on status+code (never the server prose), asserted negatively over the whole render
+with a presence sibling. (4) The last-active-admin refusal is the SERVER's authority (409 `last_active_admin`, shipped
+in sub-phase 1); the phone's "don't offer deactivate on the last active admin" is a SECOND layer, and a note says what
+the absence protects.
+**READINGS (each command bare; cp874 box).** Both typechecks GREEN before and after (`npm run typecheck` and
+`typecheck:app`, exit 0 each). `prove:users` (new) GREEN TWICE (exit 0/0, 60 cells): headless H1–H5 (the admin-only
+entry gate with an admin presence sibling; the roster incl. a deactivated user and the last-admin guard; every refusal
+sentence with no diagnostic leak and a presence sibling; the first-password note shown once, no console in either
+screen, the buffer cleared, the password carried in exactly one body field; the deactivate/reset confirmations naming
+the sign-out) PLUS a real-HTTP round against a fresh uvicorn on a scratch — create, deactivate, `R2c` THE DEACTIVATED
+USER'S EXISTING TOKEN IS REFUSED 401, reactivate, reset (old password stops, new works). `prove:users -- --offline`
+exits 2 (never 0) — the headless-only run is marked incomplete, so a green without a server reads for what it is.
+`prove:sheets` GREEN — the reachable set moved by EXACTLY the two stacks added (`settings>users`,
+`settings>users>user_actions`); the max-depth expectation was edited 2→3 for the one three-deep drill-down and NAMED.
+`prove:tapaudit` ZERO across 29 files (the two new screens use theme tokens only). Regression spot-checks green:
+`prove:theme`, `prove:settings`. The remaining behavioural proofs cover modules this phase did not change; both
+typechecks confirm the tree compiles. Citation floor re-derived at the boundary, BROKEN unchanged at 6.
+**NOT OBSERVED ON A HANDSET.** Like every screen since phase E, no human has run this on a device; the readings above
+are headless + a real-HTTP round through the app's own request SHAPE (app/api.ts itself cannot be imported by the
+node proof — it reaches expo-constants — so the shape is reconstructed with the same withClientVersion wrapper). The
+handset pass is owed, and `prove:users`' live round is the closest evidence short of it.
+**LESSON OWED? NO.** The design decisions are recorded here and in the code's own comments; no real mistake landed in
+the screen half that a future session would relearn (the one build error — an exactOptionalPropertyTypes `undefined`
+on an optional prop — was caught by the typecheck and is ordinary strict-mode discipline, not a footgun). The machine
+footgun list is unchanged.
+
 **STAFF MANAGEMENT ON THE PHONE — SERVER SUB-PHASE 1 OF 2: THE LAST-ACTIVE-ADMIN GUARD. 2026-09-02.** No sha yet
 (this record precedes the commit; anchor next pass). Supersedes the safety-net record below AS THE POINTER ONLY — that
 work stands. This is the SERVER half of a two-phase step (the brief allowed "two phases if the server half needs

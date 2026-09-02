@@ -159,6 +159,34 @@ export function readTokenRole(token: string | null): DeviceRole {
 }
 
 /**
+ * The user id (`sub`) this session token was minted for, or null when it cannot be
+ * read. Same decode as readTokenRole and the same NEVER-THROWS contract. It is a
+ * COURTESY only — the roster uses it to mark the signed-in row and to keep its own
+ * destructive actions off that row — so a null (a token this build cannot parse)
+ * simply marks no row as self, which the server still backs: self-deactivation is
+ * refused (cannot_deactivate_self) whatever the client believes.
+ */
+export function readTokenUserId(token: string | null): string | null {
+  if (token === null) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const payload = parts[1];
+  if (payload === undefined || payload.length === 0) return null;
+  try {
+    const bytes = base64UrlToBytes(payload);
+    if (bytes === null) return null;
+    const json = utf8ToString(bytes);
+    if (json === null) return null;
+    const claims: unknown = JSON.parse(json);
+    if (typeof claims !== "object" || claims === null || !("sub" in claims)) return null;
+    const sub = (claims as { sub: unknown }).sub;
+    return typeof sub === "string" ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * May this device OFFER the void button?
  *
  * Only a definite "staff" hides it. Unknown shows it — see the header on why
@@ -232,5 +260,30 @@ export function mayEditPrices(role: DeviceRole): boolean {
  * against the database row. Staff read the screen; only admin may write it.
  */
 export function mayEditShopSettings(role: DeviceRole): boolean {
+  return role !== "staff";
+}
+
+/**
+ * May this device OFFER the "จัดการผู้ใช้งาน" entry inside settings (P3.7)?
+ *
+ * A SEPARATE function from the three above, deliberately, and for the same reason
+ * mayEditPrices gives: these are distinct product decisions that happen to agree
+ * today. Every user route is `require_admin` on the server; this only decides
+ * whether the ENTRY is drawn, so a staff session does not see a screen whose every
+ * action the server refuses (the P1.9 rule, the same shape as the dashboard entry
+ * gate).
+ *
+ * IT FAILS OPEN, exactly as the three above and for the same reason (see this
+ * file's header): only a DEFINITE "staff" hides the entry. An unparseable token, an
+ * absent claim, or an unrecognised role all read as unknown, and unknown OFFERS the
+ * entry. The claim is up to an hour stale while the server re-reads the role every
+ * request, so an owner promoted this morning is admin to the server and still
+ * `staff` in their token; failing closed would hide the one screen that manages the
+ * shop's people. The cost the other way is a 403 the roster words, never a lockout.
+ *
+ * NOTHING IS AUTHORISED ON THIS VALUE. `require_admin` is, on GET /users and every
+ * write, against the database row.
+ */
+export function mayManageUsers(role: DeviceRole): boolean {
   return role !== "staff";
 }

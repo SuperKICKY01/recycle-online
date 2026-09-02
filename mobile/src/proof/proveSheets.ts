@@ -225,7 +225,9 @@ function walk(): { readonly stacks: readonly SheetStack[]; readonly keys: readon
  * THIS LIST MOVED EIGHT -> NINE (P1.9) -> ELEVEN (P1.23) -> TWELVE (P1.21,
  * `seller_history`) -> THIRTEEN (P1.23 item 3 phase C, `notices`) -> FOURTEEN
  * (P1.23 item 3 phase D, `settings>tier_actions`, the tier ⋯ menu — the SECOND
- * two-deep stack, over `settings`); P1.23 item 4 unit 3 SWAPPED `daily` FOR
+ * two-deep stack, over `settings`) -> SIXTEEN (P3.7, `settings>users` and the
+ * three-deep `settings>users>user_actions`, the roster and its ⋯ menu over
+ * settings); P1.23 item 4 unit 3 SWAPPED `daily` FOR
  * `dashboard` WITHOUT MOVING THE COUNT, AND THE SET IS THE ASSERTION
  * ---------------------------------------------------------------------------
  * `prices` (P1.9), `settings` and `account` (P1.23), `seller_history` (P1.21),
@@ -265,6 +267,8 @@ const EXPECTED_REACHABLE: readonly string[] = [
   "seller_picker>add_seller",
   "settings", // the ตั้งค่าร้าน button, in the header (P1.23)
   "settings>tier_actions", // the ⋯ menu on a grade-tier row, OVER settings (P1.23 item 3 phase D)
+  "settings>users", // the admin-only จัดการผู้ใช้งาน row, OVER settings (P3.7)
+  "settings>users>user_actions", // the ⋯ menu on a roster row, OVER users — three deep (P3.7)
   "sign_out",
 ];
 
@@ -305,6 +309,16 @@ const EXPECTED_CLOSE: readonly (readonly [string, string, string])[] = [
     "settings>tier_actions",
     "settings",
     "BACK TO THE SETTINGS TIER LIST, not the cart: the tier ... menu is a leaf over settings, and closing it (rename, deactivate, or cancel) returns to the tier the operator was looking at (P1.23 item 3 phase D)",
+  ],
+  [
+    "settings>users",
+    "settings",
+    "BACK TO SETTINGS, not the cart: the roster is opened from the admin-only row inside settings, and closing it returns to that settings screen (P3.7)",
+  ],
+  [
+    "settings>users>user_actions",
+    "settings>users",
+    "BACK TO THE ROSTER, not settings: the ⋯ menu is a leaf over the users list, and closing it (reset, deactivate, reactivate, or cancel) returns to the roster the operator was looking at (P3.7)",
   ],
   [
     "account",
@@ -430,7 +444,14 @@ function s3Valid(stacks: readonly SheetStack[]): void {
     check(`${stackKey(stack)} is a valid stack`, sheetStackValid(stack));
   }
   const deepest = stacks.reduce((m, s) => Math.max(m, s.length), 0);
-  check("nothing is more than two deep", deepest <= 2, `deepest = ${String(deepest)}`);
+  // AT MOST THREE DEEP since P3.7. The one three-deep stack is
+  // settings>users>user_actions: the roster is a sheet opened from the admin-only
+  // row inside settings, and a row's ⋯ opens the actions sheet over it. (The
+  // two-deep ones are seller_picker>add_seller and settings>tier_actions.) Depth is
+  // NOT what the modal invariant rests on — S2 shows one sheet on screen at ANY
+  // depth, because there is one host — so this cap only catches a runaway push, and
+  // a NEW stack of any depth reddens S1 (the exact reachable set) first.
+  check("nothing is more than three deep", deepest <= 3, `deepest = ${String(deepest)}`);
 }
 
 function s4Close(stacks: readonly SheetStack[]): void {

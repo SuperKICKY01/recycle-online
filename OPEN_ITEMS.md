@@ -3170,6 +3170,24 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   than moved to a closed log because the dangling-pointer discovery and the
   corrected advisor instruction are the part a later reader must not re-derive.
 
+- **DOES USER MANAGEMENT ALSO LIVE ON THE PROVIDER WEB? Open, raised 2026-09-02 when
+  the screen shipped on the PHONE.** P3.7 ("User management inside a shop") was homed
+  on the PHONE by the advisor — the owner may veto — because the provider web does
+  not exist and neither does the desktop back office, and waiting for either means no
+  real shop can be opened (a stranger's shop hires and fires without us). The
+  precedent is set twice: shop settings (P1.23 item 4 unit 1) and grade-tier
+  management (P1.24 phase 2) both ship on the phone despite the "master data =
+  desktop" line in CLAUDE.md's Architecture. So the mobile app now has the roster,
+  add-a-user, deactivate/reactivate and password-reset screens over the existing
+  `/users` routes, reached from an admin-only row in ตั้งค่าร้าน. **THE COLLISION,
+  UNRESOLVED:** whether user management should ALSO (or instead) live on the provider
+  web once that exists is the owner's call, not settled by shipping it on the phone.
+  *Not done:* nothing decided about a second home — a later provider-web phase would
+  decide whether it duplicates, replaces, or complements the phone screen. *Unblocks:*
+  that phase. This phase does NOT close P3.7; the ROADMAP P3.7 step carries the dated
+  note. NOTHING BELOW THIS SENTENCE IS AUTHORISED — the homing is the advisor's
+  recommendation and the owner's to confirm or reverse.
+
 - **P1.8b HAS NO DONE WHEN, SO NOTHING CAN SAY WHEN THE OFFLINE HALF IS FINISHED.**
   Raised 2026-08-25 by P1.8b GATES while re-deriving the step's closure at the
   phase boundary. MEASURED: `grep -n "DONE WHEN"` over `### P1.8`'s body returns
@@ -5592,10 +5610,13 @@ with no feature of its own.
   owner's two documents carry the same error (`PRODUCT_BLUEPRINT.md` section 8 and
   `SYSTEM_INVENTORY.md` 5.2 both say the column is absent), and they are NOT edited —
   the correction lives at `ROADMAP.md § The product blueprint, reconciled — 2026-09-01`.
-  **The true gap is the deactivate SCREEN, not the column:** no client calls the lock;
-  it is P3.7's. *Not done:* the stale row is recorded, not fixed — `ARCHITECTURE.md`
-  was outside this phase's bounds. *Unblocks:* a one-line supersession the next
-  ARCHITECTURE phase makes, in the manner of its `tenants` row.
+  **The true gap WAS the deactivate SCREEN, not the column** — and that gap is now
+  CLOSED ON THE PHONE 2026-09-02: the roster's ⋯ menu calls the lock (P3.7's screen
+  half), so a client does call it, with a server last-active-admin guard added under
+  it. What remains stale is only the `ARCHITECTURE.md § 4. The data model` row itself.
+  *Not done:* the stale row is recorded, not fixed — `ARCHITECTURE.md` was outside
+  this phase's bounds. *Unblocks:* a one-line supersession the next ARCHITECTURE phase
+  makes, in the manner of its `tenants` row.
 
 - **THE LABEL "D1" NAMES TWO DIFFERENT DECISIONS ACROSS FILES, AND A MONEY RULE RIDES
   ON THE COLLISION.** Found 2026-09-01 in the same reconciliation.

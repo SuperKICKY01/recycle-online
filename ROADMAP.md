@@ -7822,6 +7822,21 @@ without us, which is why this cannot stay a request someone runs on their behalf
 **DONE WHEN:** a shop admin adds a user, changes a password, and locks an account
 from a screen, and the locked account is then refused at login — observed.
 
+**PHONE SCREEN BUILT 2026-09-02, AND P3.7 IS NOT CLOSED BY IT.** The mobile app now
+has the user-management screen — an admin adds a user, resets a password, and
+deactivates/reactivates an account from a screen reached via an ADMIN-ONLY row in
+ตั้งค่าร้าน, and the deactivated account is refused at login. The DONE WHEN's
+observables are MET AGAINST THE REAL API (`prove:users`' live round: create,
+deactivate, `R2c` the deactivated user's existing token is refused 401, reactivate,
+reset — twice green); a HANDSET pass is still owed, as for every screen since phase
+E (`PROJECT_STATUS.md § Current phase`). P3.7 is NOT closed, deliberately: the
+HOMING decision (the advisor's, the owner may veto) shipped this on the PHONE
+because the provider web and desktop back office do not exist, and whether user
+management ALSO lives on the provider web later is the owner's open call, filed at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's`. The server
+last-active-admin guard shipped first (its own sub-phase); its lock is P1.4's,
+which now has its first client.
+
 ### P3.8 — Backup, restore and retention, per shop
 
 **What it is.** A retention rule, and a restore that can be scoped to one shop.
@@ -8171,8 +8186,14 @@ assumed; this section names the candidates and BUILDS NONE of them.
   dependency (a DSN/target to choose and pay for), like P1.2's procurement clock;
   neither schema nor shop.
 - **`users.is_active`** (blueprint 8.4) is ALREADY BUILT (0007) — not a start, done;
-  what remains is the deactivate screen below.
+  the deactivate SCREEN it needed is now BUILT ON THE PHONE 2026-09-02 (the roster's
+  ⋯ menu), with a server last-active-admin guard added under it.
 - **User-management screens over the existing routes** (blueprint 8.1) — the routes
   exist (`POST /users`, revoke-sessions, reset-password, `POST /users/me/password`);
   this carries a HOMING dependency (which program — P3.7 owns user management inside a
   shop, and S8 sequences the programs), not an unknown-answer one.
+  **BUILT ON THE PHONE 2026-09-02:** the homing dependency was resolved by the
+  advisor toward the PHONE (the owner may veto), so the mobile app now has the
+  roster, add-a-user, deactivate/reactivate and password-reset screens over these
+  routes; the deactivate route also gained a server last-active-admin guard. P3.7 is
+  NOT closed — see the P3.7 step's 2026-09-02 note.

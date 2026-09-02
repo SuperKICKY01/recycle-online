@@ -105,6 +105,10 @@ interface Props {
    *  move into a sheet so the destructive control leaves the row (they wire to the sheet
    *  in App.tsx, not here). */
   onTierMenu: (row: TierAdminRow) => void;
+  /** Open the user-management screen (P3.7). NULL for a staff session — the entry is
+   *  ADMIN-ONLY (mayManageUsers, decided in App.tsx), so a staff account does not see
+   *  the row at all, the dashboard-entry-gate shape. */
+  onManageUsers: (() => void) | null;
 }
 
 export function SettingsScreen({
@@ -121,6 +125,7 @@ export function SettingsScreen({
   onAddTier,
   onReorderTiers,
   onTierMenu,
+  onManageUsers,
 }: Props) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
@@ -131,6 +136,22 @@ export function SettingsScreen({
       <Text style={styles.deviceHead}>เครื่องนี้</Text>
       <ThemeControl />
       <ServerDiagnostics />
+
+      {/* USER MANAGEMENT (P3.7). Admin-only: onManageUsers is null for a staff
+          session, so the row is not drawn at all — a staff account does not learn
+          the screen exists, the P1.9 entry-gate shape. Fixed above the scrolling
+          shop form so it is reachable whatever state that read is in. */}
+      {onManageUsers !== null ? (
+        <Touchable
+          style={styles.entryRow}
+          onPress={onManageUsers}
+          accessibilityLabel="จัดการผู้ใช้งาน"
+        >
+          <Icon name="account" size={20} color={t.color.primary} />
+          <Text style={styles.entryLabel}>จัดการผู้ใช้งาน</Text>
+          <Icon name="chevron" size={18} color={t.color.textSubtle} />
+        </Touchable>
+      ) : null}
 
       {screen === null ? (
         <View style={styles.center}>
@@ -626,6 +647,13 @@ function makeStyles(t: ThemeTokens) {
       fontSize: t.type.body, fontWeight: "800", color: t.color.textSubtle, letterSpacing: 0.3,
       marginHorizontal: t.space.x3, marginTop: t.space.x3, marginBottom: t.space.xs,
     },
+    entryRow: {
+      flexDirection: "row", alignItems: "center", gap: t.space.xl, minHeight: t.tapMin,
+      backgroundColor: t.color.surface, borderRadius: t.radius.card, borderWidth: 1,
+      borderColor: t.color.borderSoft, paddingHorizontal: t.space.xxl, paddingVertical: t.space.lg,
+      marginHorizontal: t.space.x3, marginTop: t.space.x3,
+    },
+    entryLabel: { flex: 1, fontSize: t.type.bodyLg, fontWeight: "700", color: t.color.text },
     formHead: {
       fontSize: t.type.body, fontWeight: "800", color: t.color.textSubtle, letterSpacing: 0.3,
       marginBottom: t.space.md,

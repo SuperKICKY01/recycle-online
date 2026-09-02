@@ -91,6 +91,22 @@ export const SHEET_KINDS = [
    * mis-tap reason). A leaf: nothing opens over it.
    */
   "tier_actions",
+  /**
+   * P3.7. The shop's people — the roster, add-a-user, and the per-row actions.
+   * Opened from an ADMIN-ONLY row INSIDE the settings sheet (the tier list's
+   * neighbour), so it stacks `settings>users`. A staff session never sees the row
+   * (mayManageUsers), so it never reaches this sheet; the server refuses GET /users
+   * for staff regardless.
+   */
+  "users",
+  /**
+   * P3.7. The ⋯ actions on one roster row — reset password, deactivate, reactivate
+   * — opened OVER `users` (the stack `settings>users>user_actions`), the same
+   * grab-handle leaf as `tier_actions`. The destructive deactivate leaves the row
+   * and carries a confirmation; the signed-in row offers none. WHICH user it acts
+   * on is App.tsx payload (`userMenuTarget`), written WITH the dispatch.
+   */
+  "user_actions",
 ] as const;
 
 export type SheetKind = (typeof SHEET_KINDS)[number];
@@ -297,6 +313,29 @@ export const SHEET_TRANSITIONS = {
     action: { kind: "open", sheet: "tier_actions" },
     from: ["settings"],
     site: "App.tsx onTierMenu, the ⋯ control on a SettingsScreen tier row",
+  },
+  /**
+   * P3.7. The ADMIN-ONLY จัดการผู้ใช้งาน row inside the settings sheet. Opened from
+   * `settings`, so the stack is `settings>users` and closing it returns to settings
+   * — the same shape as the tier list living inside settings. The row is hidden
+   * from a definite staff session (mayManageUsers), which is about who may open it,
+   * not which sheet is on screen, so `from` is `["settings"]`.
+   */
+  open_users: {
+    action: { kind: "open", sheet: "users" },
+    from: ["settings"],
+    site: "App.tsx onManageUsers, the จัดการผู้ใช้งาน row on SettingsScreen",
+  },
+  /**
+   * P3.7. The ⋯ menu on a roster row. Opened from the USERS sheet, so
+   * `from: ["users"]` and the reached stack is `settings>users>user_actions`, a
+   * three-deep leaf. WHICH user it acts on is App.tsx payload (`userMenuTarget`),
+   * written WITH this dispatch and never inferred, the tier-menu rule.
+   */
+  open_user_actions: {
+    action: { kind: "open", sheet: "user_actions" },
+    from: ["users"],
+    site: "App.tsx onUserMenu, a roster row on UsersScreen",
   },
   /**
    * A DIFFERENT SELLER WAS PICKED FOR A CART THAT ALREADY HAS LINES.

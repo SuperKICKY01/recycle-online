@@ -122,7 +122,7 @@ import { unsentLine } from "./src/dashboard/unsentLine";
 import type { UnsentLine } from "./src/dashboard/unsentLine";
 import { sellerHistoryScreen } from "./src/sellerHistory/sellerHistoryView";
 import type { SellerHistoryScreen } from "./src/sellerHistory/sellerHistoryView";
-import { mayEditPrices, readTokenRole } from "./src/session/deviceRole";
+import { mayEditPrices, mayManageUsers, readTokenRole, readTokenUserId } from "./src/session/deviceRole";
 import type { DeviceRole } from "./src/session/deviceRole";
 import {
   formScreen,
@@ -144,6 +144,13 @@ import type {
   TierAdminRow,
   TierAdminScreen,
 } from "./src/settings/gradeTierAdmin";
+import { userWriteOutcome, usersScreenState } from "./src/users/usersAdmin";
+import type {
+  UserCreateBody,
+  UserFetch,
+  UserRow,
+  UsersScreenState,
+} from "./src/users/usersAdmin";
 import { accountProfile, passwordChangeResult, readWhoAmI } from "./src/settings/account";
 import type {
   AccountProfile,
@@ -182,6 +189,11 @@ import {
   fetchSummary,
   patchGradeTier,
   reorderGradeTiers,
+  fetchUsers,
+  createUser,
+  deactivateUser,
+  activateUser,
+  resetUserPassword,
   fetchWhoAmI,
   isUnauthorized,
   login,
@@ -198,6 +210,8 @@ import { SettingsScreen } from "./app/SettingsScreen";
 import { AccountScreen } from "./app/AccountScreen";
 import { SellerHistorySheet } from "./app/SellerHistorySheet";
 import { TierActionsSheet } from "./app/TierActionsSheet";
+import { UsersScreen } from "./app/UsersScreen";
+import { UserActionsSheet } from "./app/UserActionsSheet";
 import { Button, EmptyState } from "./app/Kit";
 import { Icon, type IconName } from "./app/Icon";
 import { Touchable } from "./app/Press";
@@ -445,6 +459,19 @@ function AppInner() {
    * menu with no target cannot draw actions for no tier.
    */
   const [tierMenuTarget, setTierMenuTarget] = useState<TierAdminRow | null>(null);
+  /*
+   * USER MANAGEMENT (P3.7), opened from an admin-only row inside settings.
+   * `usersScreen` is the roster-or-message the read produced; `usersRefusal` is the
+   * last write's readable refusal (a duplicate username, the last-active-admin lock,
+   * an outage), cleared on the next load; `usersBusy` disables the controls during a
+   * write; `userMenuTarget` is the row the ⋯ acts on — PAYLOAD, written WITH the
+   * `open_user_actions` dispatch and by nothing else, the tier-menu rule. Not cached:
+   * the roster is read live, for the reason user management is not offline work.
+   */
+  const [usersScreen, setUsersScreen] = useState<UsersScreenState | null>(null);
+  const [usersRefusal, setUsersRefusal] = useState<string | null>(null);
+  const [usersBusy, setUsersBusy] = useState(false);
+  const [userMenuTarget, setUserMenuTarget] = useState<UserRow | null>(null);
   /*
    * THE ACCOUNT SCREEN (P1.23). `accountProfileState` is the profile (username +
    * role from /whoami, shop name from GET /shop), null while loading.
@@ -1783,6 +1810,106 @@ function AppInner() {
     (row: TierAdminRow) => {
       setTierMenuTarget(row);
       sheet("open_tier_actions");
+    },
+    [sheet],
+  );
+
+  /* ------------------------------------------------- user management (P3.7) -- */
+
+  /**
+   * READ THE ROSTER. Online only — like settings, this surface has no offline cache
+   * and no outbox, so with no network it says so and draws no list. The self id
+   * (`readTokenUserId`) marks the signed-in row and keeps its destructive actions
+   * off it; a token this build cannot parse marks no self, which the server still
+   * backs (cannot_deactivate_self). A 401 ends the session.
+   */
+  const loadUsers = useCallback(async (): Promise<void> => {
+    const t = tokenRef.current;
+    if (t === null) {
+      setUsersScreen(usersScreenState({ kind: "no_token" }, role, null));
+      return;
+    }
+    setUsersScreen(null);
+    setUsersRefusal(null);
+    const result = await fetchUsers(t);
+    setUsersScreen(usersScreenState(result, role, readTokenUserId(t)));
+    if (result.kind === "unreachable") {
+      setOnline(false);
+      return;
+    }
+    setOnline(true);
+    if (result.kind === "http" && result.status === 401) setSessionEnded(true);
+  }, [role]);
+
+  const openUsers = useCallback(() => {
+    setUsersBusy(false);
+    setUsersRefusal(null);
+    sheet("open_users");
+    void loadUsers();
+  }, [loadUsers, sheet]);
+
+  /**
+   * ONE USER WRITE — create, deactivate, activate, or reset a password. The server
+   * is authoritative, so on success the WHOLE roster is re-read (loadUsers) rather
+   * than patched in place: a create adds a row, a deactivate changes which rows may
+   * be deactivated next. A refusal (a duplicate username, the last-active-admin
+   * lock, an outage) shows as a readable sentence; a 401 ends the session. NOTHING
+   * queues — user management is not offline work, the same as the /shop save.
+   */
+  const runUserAction = useCallback(
+    async (action: (token: string) => Promise<UserFetch>): Promise<void> => {
+      const t = tokenRef.current;
+      if (t === null) {
+        setSessionEnded(true);
+        return;
+      }
+      setUsersBusy(true);
+      setUsersRefusal(null);
+      const result = await action(t);
+      const outcome = userWriteOutcome(result);
+      setUsersBusy(false);
+      if (outcome.kind === "ok") {
+        setOnline(true);
+        setSessionEnded(false);
+        await loadUsers();
+        return;
+      }
+      if (outcome.kind === "session") {
+        setSessionEnded(true);
+        return;
+      }
+      if (result.kind === "unreachable") setOnline(false);
+      else setOnline(true);
+      setUsersRefusal(outcome.message);
+    },
+    [loadUsers],
+  );
+
+  const addUser = useCallback(
+    (body: UserCreateBody) => void runUserAction((t) => createUser(t, body)),
+    [runUserAction],
+  );
+  const deactivateUserAccount = useCallback(
+    (id: string) => void runUserAction((t) => deactivateUser(t, id)),
+    [runUserAction],
+  );
+  const reactivateUserAccount = useCallback(
+    (id: string) => void runUserAction((t) => activateUser(t, id)),
+    [runUserAction],
+  );
+  const resetUserAccountPassword = useCallback(
+    (id: string, newPassword: string) =>
+      void runUserAction((t) => resetUserPassword(t, id, { new_password: newPassword })),
+    [runUserAction],
+  );
+  /**
+   * OPEN THE ⋯ MENU for a roster row (P3.7). The ONE writer of `userMenuTarget`,
+   * setting it WITH the dispatch so the sheet always has its user, the tier-menu rule.
+   */
+  const openUserMenu = useCallback(
+    (row: UserRow) => {
+      setUserMenuTarget(row);
+      sheet("open_user_actions");
     },
     [sheet],
   );
@@ -3141,6 +3268,10 @@ function AppInner() {
               onAddTier={addTier}
               onReorderTiers={reorderTiers}
               onTierMenu={openTierMenu}
+              /* ADMIN-ONLY (P3.7): null for a staff session, so the จัดการผู้ใช้งาน
+                 row is not drawn — the dashboard-entry-gate shape. mayManageUsers
+                 fails open, and the server refuses every user route regardless. */
+              onManageUsers={mayManageUsers(role) ? openUsers : null}
             />
           ),
         };
@@ -3248,6 +3379,69 @@ function AppInner() {
                   onReactivate={(id) => {
                     reactivateTier(id);
                     closeTopSheet();
+                  }}
+                  onClose={closeTopSheet}
+                />
+              ),
+            };
+
+      /* P3.7. The shop's people — the roster, add-a-user, and the row that opens the
+         actions sheet. OVER the settings sheet (the stack settings>users), reached
+         only from the admin-only row; a staff session never gets here. */
+      case "users":
+        return {
+          animation: "slide",
+          back: closeTopSheet,
+          content: (
+            <UsersScreen
+              state={usersScreen}
+              refusal={usersRefusal}
+              busy={usersBusy}
+              onClose={closeTopSheet}
+              /* Retry re-READS the roster; a user write never replays on its own. */
+              onRetry={() => void loadUsers()}
+              /* Closes the sheet to reveal the login screen; it cannot sign in itself
+                 and must not re-read afterwards (a different person may sign in). */
+              onSignIn={closeTopSheet}
+              onCreate={addUser}
+              onUserMenu={openUserMenu}
+            />
+          ),
+        };
+
+      /* P3.7. The ⋯ actions on one roster row — reset / deactivate / reactivate —
+         OVER the users sheet (settings>users>user_actions), through this one host.
+         Payload-guarded: a null target renders nothing, the pendingChange rule. The
+         signed-in row's only move is onGoToAccount, which clears the stack and opens
+         the account screen cleanly (open_account is reachable from the app's own
+         screen), where own-password change lives. */
+      case "user_actions":
+        return userMenuTarget === null
+          ? { content: null, animation: "fade", back: closeTopSheet }
+          : {
+              animation: "fade",
+              back: closeTopSheet,
+              content: (
+                <UserActionsSheet
+                  row={userMenuTarget}
+                  busy={usersBusy}
+                  /* Fire the action, then close to the roster; a refusal shows there,
+                     revealed on close. */
+                  onReset={(id, pw) => {
+                    resetUserAccountPassword(id, pw);
+                    closeTopSheet();
+                  }}
+                  onDeactivate={(id) => {
+                    deactivateUserAccount(id);
+                    closeTopSheet();
+                  }}
+                  onReactivate={(id) => {
+                    reactivateUserAccount(id);
+                    closeTopSheet();
+                  }}
+                  onGoToAccount={() => {
+                    sheet("close_every_sheet");
+                    openAccount();
                   }}
                   onClose={closeTopSheet}
                 />

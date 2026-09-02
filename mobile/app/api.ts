@@ -17,6 +17,7 @@ import type {
   GradeTierFetch,
   GradeTierPatchBody,
 } from "../src/settings/gradeTierAdmin";
+import type { UserCreateBody, UserFetch, UserResetBody } from "../src/users/usersAdmin";
 import type { PasswordChangeRequest, PasswordFetch } from "../src/settings/account";
 import type { SummaryFetch } from "../src/dashboard/summaryView";
 import type { SellerHistoryFetch } from "../src/sellerHistory/sellerHistoryView";
@@ -644,6 +645,82 @@ export function reorderGradeTiers(
       method: "PUT",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify({ order }),
+      signal,
+    }),
+  );
+}
+
+/* ------------------------------------------------ the shop's people (P3.7) ---- */
+
+/**
+ * The user routes, all admin-only on the server, all keeping the body on a refusal
+ * (a 409 carries the `code` that tells `last_active_admin` from a duplicate
+ * username). The classification lives in src/users/usersAdmin.ts; `no_token` is the
+ * caller's case (App checks the token first), so these return the ok/http/
+ * unreachable subset. Every outcome is a VALUE, nothing is thrown, nothing queues —
+ * user management is not offline work.
+ */
+type UserFetchNoToken = Exclude<UserFetch, { kind: "no_token" }>;
+
+/** GET /users?include_inactive — the roster for the admin (active AND inactive; the
+ *  yard never reads this). A staff caller is refused 403 on the server. */
+export function fetchUsers(token: string): Promise<UserFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/users?include_inactive=true`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/** POST /users — bring an account into existence, its first password included. A
+ *  duplicate username is a 409 the caller words. */
+export function createUser(token: string, body: UserCreateBody): Promise<UserFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/users`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      signal,
+    }),
+  );
+}
+
+/** POST /users/{id}/deactivate — lock an account; its live sessions end now.
+ *  Refused 409 last_active_admin when it is the shop's last active admin. No body. */
+export function deactivateUser(token: string, userId: string): Promise<UserFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/users/${encodeURIComponent(userId)}/deactivate`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/** POST /users/{id}/activate — unlock an account. Idempotent. No body. */
+export function activateUser(token: string, userId: string): Promise<UserFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/users/${encodeURIComponent(userId)}/activate`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/** POST /users/{id}/password — an admin sets another user's password; the target's
+ *  sessions end, the caller's do not. */
+export function resetUserPassword(
+  token: string,
+  userId: string,
+  body: UserResetBody,
+): Promise<UserFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/users/${encodeURIComponent(userId)}/password`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
       signal,
     }),
   );
