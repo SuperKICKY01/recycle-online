@@ -75,6 +75,68 @@ not read the green as re-run.**
 
 ## Current phase
 
+**THE LOCAL SAFETY NET — THE BACKUP HALF'S LOCAL, FREE AUTOMATION (P1.2). 2026-09-02.** No sha yet (this record
+precedes the commit; anchor next pass). The current-phase pointer, superseding the version-contract records below AS
+THE POINTER ONLY — that work stands. Owner's decision, verbatim, never translated: "ผมอยากทำทุกอย่าง local อยู่บนเครื่องผมก่อนครับ ผมยังไม่อยากจ่ายอะไรทั้งสิ้น" — local on his machine first, nothing paid yet. So this is the FREE half;
+P1.2's DONE WHEN (an https URL the phone reaches, and a dump fetched off-box) is UNCHANGED and open.
+**HAS A RESTORE EVER BEEN PERFORMED FROM A REAL BACKUP FILE ON THIS BOX? YES — repeatedly, before today.** The cluster
+holds ~19 restored/scratch databases (recycle_restore_scratch/_source/_target, recycle_keyshape_scratch,
+recycle_tw20260809_0009fixture, plus a dozen feature scratches); the keyshape and tw0009fixture scratches correspond
+one-to-one to at-rest dump directories on E:, so real files were restored. The disaster rehearsal is recorded in
+ROADMAP.md's P1.2 step and server/scripts/BACKUP.md. This phase did NOT create the safety net — it automated and
+verified it.
+**TWO SURVEY CORRECTIONS (owner-directed, recorded so the next reader does not repeat them).** (1) Backups were NOT
+absent — sixteen real dumps (2026-07-28 to 08-30); the gap is narrower: nothing SCHEDULED them and every copy shared
+a disk with the repo. (2) The database (C:, physical disk 3, the Docker/WSL2 vhdx) and the existing backups (E:, disk
+1) were ALREADY on different physical disks, so a single disk death and `docker compose down -v` were already
+survivable. What is NOT survivable is losing the MACHINE — so the phase's job was to make the backup run itself and
+reach a drive that can physically leave the building.
+**WHAT IS BUILT (all under server/scripts/, plus .gitignore).** safety_net_backup.py (daily job: wraps the proven
+backup_db.py, adds a copy of server/.env and a SOURCE_REVISION.json recording the git commit + alembic revision the
+schema matches, REFUSES any destination on the repo/.env disk or the database's Docker disk, prunes to 30 runs, fails
+LOUDLY on unplugged/full/failed); verify_backup.py (weekly restore drill: restores the NEWEST dump into a scratch via
+restore_db.py and adds alembic-revision, grants and byte-identical-known-row checks, then drops the scratch, and
+distinguishes UNPLUGGED exit 3 from FAILING exit 1); check_backup_freshness.py (writes BACKUP_OVERDUE.md at the repo
+root after 3 stale days, surfaced by `git status` and every session's opening snapshot); safety_net_common.py (the
+shared exit-code/disk-detection/heartbeat plumbing); RECOVERY.md (the one-page disaster-recovery procedure). The
+destination is a removable USB (D:, disk 4); it is CONFIGURATION (`--dest` or the scheduled task), never hardcoded;
+retention is the named constant KEEP_RUNS=30; the scheduled task is OWNER-registered (command in RECOVERY.md), not
+auto-registered.
+**TWO ACCEPTED RISKS, STATED (recorded in OPEN_ITEMS.md).** (a) The copies live on the same physical MACHINE (the USB
+stays in the building), so fire/theft/whole-machine loss still loses the DB — accepted until the owner pays for
+off-site + HTTPS. (b) The destination holds live credentials in CLEARTEXT (globals.sql password hashes + a copy of
+server/.env) — accepted only while the drive stays under the machine's physical control; the trigger to add
+encryption is the drive leaving the building OR a real shop's data being in the dumps.
+**PROVEN (each command BARE, exit read in the same invocation; cp874 box).** Job refusals: no --dest -> EXIT 2;
+destination on E: (repo disk 1) -> EXIT 4, message naming the disk; an absent drive letter (unplugged) -> EXIT 3.
+Passing case against D: -> EXIT 0 (dump of 1333 rows across 15 tables, server/.env copied, SOURCE_REVISION git
+f14738c / alembic 0016, the overdue marker cleared). verify_backup.py against D: GREEN TWICE (EXIT 0/0 — restore +
+row counts vs the manifest + RLS 13 ENABLE/13 FORCE/13 policies + restored alembic == recorded 0016 + 155 table
+grants match live + witness bill immutable columns byte-identical, money as TEXT + Thai names byte-faithful to the
+dump). Corruption DISPROOF: one byte flipped in a COPY of recycle.sql -> EXIT 1 at the named checksum cell (sha256
+mismatch printed), good copy green again. check_backup_freshness.py EXIT 0 (fresh, no marker).
+**LIVE READ, NOT WRITTEN.** reconcile.py on the live recycle database EXIT 0 (6 tenants swept, 112 checks, 0 skipped,
+0 could-not-run, 0 violations) — this phase read the live DB and never wrote it; the drill writes only a scratch it
+then drops.
+**GATES.** reconcile.py EXIT 0; verify_shared_checks.py EXIT 0 (4 items); build_all_lessons.py --check EXIT 0
+(unchanged — no lesson file touched); verify_citations.ps1 over the named 14 (call operator, `[string[]]`; SOURCES
+read first): SOURCES=14 CITATIONS=613 BROKEN=6 — the floor is UNMOVED (the doc edits reference lessons and files by
+name in prose, not as citation handles). git diff --stat: 4 tracked files modified (.gitignore, OPEN_ITEMS.md,
+PROJECT_STATUS.md itself, ROADMAP.md) plus 5 new files under server/scripts/. No typecheck/TS relevant — nothing
+under mobile/ or desktop/.
+**LESSON OWED? NO — two real mistakes, both caught WITHIN the phase by disciplines already written down.** (1) The
+disk resolver silently returned None (an f-string collapsed a PowerShell command's braces), which COLLAPSED the
+same-disk refusal (exit 4) into "unavailable" (exit 3); caught because the proof asserted the SPECIFIC exit code per
+refusal case, not merely "refused" — a-check-that-never-went-red-was-never-observed's rule to assert the
+DISCRIMINATING field, not the shared outcome. (2) The failure handler wrote LAST_RUN_FAILED/STATUS to the
+destination even on the unsafe-disk refusal — creating a directory on the very disk it had just refused; caught by
+this phase's own cleanup verification (listing the disks AFTER the refusal runs), which is applied != verified /
+measure-what-you-write. Both are the existing disciplines working exactly as written; nothing new was relearned.
+Environment facts recorded (the volume is `server_recycle_pgdata`; the DB vhdx is on C:) are facts, not footguns.
+**BOUNDS HELD.** No migration; no write to the live recycle database; no secret value printed or committed; nothing
+under mobile/, desktop/, packages/, .claude/; the two owner artefacts (PRODUCT_BLUEPRINT.md, docs/SRS.md) untouched.
+Device pass: N/A (no device surface). NOT COMMITTED — awaiting the owner's confirmation.
+
 **THE VERSION CONTRACT — THE RED-TEAM REPAIR: THE UPDATE STATE REACHES ALL FOUR SURFACES, THE WEDGE IS CLOSED, AND
 THE FLOOR CANNOT MASK A CORRECTIVE WRITE. 2026-09-02.** No sha yet (this record precedes the commit; anchor next
 pass). The current-phase pointer, superseding the client-half pointer below AS THE POINTER ONLY — that half stands

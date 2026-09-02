@@ -1792,6 +1792,41 @@ schedule nobody triggered by hand has been fetched from off-box and restored int
 scratch database, with its row counts read back against its own manifest
 (`lessons/README.md § Lessons` "a-backup-is-a-claim-until-it-is-restored.md").
 
+**BACKUP HALF — THE LOCAL, FREE AUTOMATION IS BUILT, 2026-09-02.** No sha yet
+(this note precedes the commit; anchor next pass). The owner's decision, verbatim:
+"ผมอยากทำทุกอย่าง local อยู่บนเครื่องผมก่อนครับ ผมยังไม่อยากจ่ายอะไรทั้งสิ้น" — everything local
+on his machine first, nothing paid yet. So this is the free half only, and P1.2's
+DONE WHEN is UNCHANGED and still open.
+**TWO THINGS THE PRE-BUILD SURVEY CORRECTED, recorded because the next reader will
+otherwise repeat them.** (1) **Backups were NOT absent.** Sixteen real dumps existed
+(2026-07-28 → 08-30), restores from at-rest files had been performed repeatedly, and
+the disaster rehearsal this step's `What it is` already cites was real. The gap was
+narrower than "no backups": nothing SCHEDULED them, and every copy shared a disk with
+the repo. (2) **The database (`C:`, physical disk 3) and the existing backups (`E:`,
+disk 1) were ALREADY on different physical disks**, so a single disk death — and
+`docker compose down -v` — were already survivable. What is NOT survivable is losing
+the MACHINE. So the backup half's job was never "create a safety net"; it was **make
+the backup run itself and reach a drive that can physically leave the building.**
+**WHAT IS BUILT:** `server/scripts/safety_net_backup.py` (the daily job — wraps the
+proven `backup_db.py`, adds a copy of `server/.env` and a `SOURCE_REVISION.json`
+recording the git commit + alembic revision the schema matches, and REFUSES to write
+to any destination on the same physical disk as the repo/.env disk or the database's
+Docker disk), `verify_backup.py` (the weekly restore drill — restores the newest dump
+into a scratch DB via `restore_db.py` and adds alembic-revision, grants and
+byte-identical-known-row checks, then drops the scratch), and
+`check_backup_freshness.py` (writes `BACKUP_OVERDUE.md` at the repo root after 3 days
+with no successful backup, so a silent failure surfaces in `git status`).
+`server/scripts/RECOVERY.md` is the one-page recovery procedure. The destination is a
+removable USB drive (`D:`, disk 4); it is CONFIGURATION (`--dest` / the scheduled
+task), never hardcoded, and the task is registered by the owner, not auto-registered.
+**WHAT REMAINS FOR THIS STEP'S DONE WHEN, all deferred by the owner's local-and-free
+decision:** HTTPS and the phone's 200 off an `https://` URL (untouched); a TRULY
+off-box copy (the USB is off the source disks but stays in the building, so it is not
+yet "off-box" in the DONE WHEN's sense); and encryption at rest (the destination holds
+password hashes and `server/.env` in cleartext — accepted only while the drive stays
+under the machine's physical control; the trigger to revisit is recorded in
+`OPEN_ITEMS.md`). Anything paid or networked is out of scope until the owner chooses.
+
 ### P1.3 — What identifies a shop at login
 
 **What it is.** The decision at D4, then the migration and the server change that

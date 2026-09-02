@@ -77,3 +77,11 @@ desktop.ini
 # and none of the nine authored skills appears in it at all.
 .agents/
 skills-lock.json
+
+# Local safety-net backup subsystem (P1.2). The heartbeat/last-run state lives
+# on the repo disk so it survives the USB destination being unplugged, and
+# changes every run, so it must stay out of git to keep the tree clean. But
+# BACKUP_OVERDUE.md is deliberately NOT ignored: being seen in `git status` (and
+# in a session's opening git snapshot) is how a silent backup failure reaches
+# the owner (server/scripts/check_backup_freshness.py).
+server/scripts/.backup_state/

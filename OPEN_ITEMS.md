@@ -585,6 +585,32 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   encryption at rest become real questions rather than deferred ones.
   **Not separable from the hosting step:** the moment the server holds
   one real bill, an unscheduled backup is a single copy.
+  **PARTIALLY ADDRESSED 2026-09-02 — the LOCAL, FREE half is built (owner's
+  decision to defer anything paid: "ผมอยากทำทุกอย่าง local อยู่บนเครื่องผมก่อนครับ ผมยังไม่อยากจ่ายอะไรทั้งสิ้น").** `server/scripts/safety_net_backup.py` (daily),
+  `verify_backup.py` (weekly restore drill) and `check_backup_freshness.py` now
+  automate the proven dump to a removable USB drive (`D:`, physical disk 4),
+  which the job REFUSES to write to unless it is a different physical disk from
+  both the repo/.env disk (`E:`, disk 1) and the database's Docker disk (`C:`,
+  disk 3). Retention is 30 runs; `server/scripts/RECOVERY.md` is the one-page
+  disaster-recovery procedure. The scheduled task is registered by the owner (the
+  command is in `RECOVERY.md`), not auto-registered.
+  **THE RESIDUAL RISK, STATED PLAINLY AND ACCEPTED DELIBERATELY (2026-09-02):**
+  the copies still live on the same physical MACHINE — the USB stays plugged in,
+  in the same building — so a single disk death and `docker compose down -v` are
+  now survivable, but **fire, theft or a whole-machine failure still loses the
+  database.** This is accepted until the owner chooses to pay for a truly off-site
+  copy and HTTPS; P1.2's own DONE WHEN is therefore NOT met (it wants a dump
+  fetched off-box and an `https://` URL, neither of which a same-building USB and
+  a plain-HTTP LAN server provide).
+  **AND THE DESTINATION HOLDS LIVE CREDENTIALS IN CLEARTEXT — a stated decision,
+  not a side effect (2026-09-02, addition to this phase).** Each dump directory
+  carries `globals.sql` (cluster PASSWORD HASHES) and a copy of `server/.env`
+  (the three DSN passwords and `JWT_SECRET`), unencrypted. This is ACCEPTED
+  because the drive stays under the SAME physical control as the machine — it adds
+  no secret the machine did not already hold. **It becomes UNACCEPTABLE the moment
+  either is true: the drive leaves the building, or a real shop's data is in the
+  dumps.** That is the trigger to add encryption at rest BEFORE off-site upload —
+  named here so it is not forgotten when off-site becomes tempting.
 
 - **THE BACKUP TOOLING CANNOT REACH A REMOTE DATABASE AT ALL, AND THIS IS
   UNBUILT WORK NOBODY HAS COUNTED — `R3`/P1.2. Measured 2026-08-12 at
