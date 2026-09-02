@@ -3118,6 +3118,58 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
 
 ## Decisions open — the owner's, not the code's
 
+- **LAST-ACTIVE-ADMIN — the server now guards it. DECIDED AND REVERSED 2026-09-02
+  (the owner's), and the pointer that claimed the OLD decision was DANGLING.**
+  `server/app/users.py` refused self-deactivation (`cannot_deactivate_self`) but
+  deliberately did NOT refuse deactivating the last remaining active admin. Two
+  comments in that file (its module docstring and the self-deactivation site) said
+  that gap was "Recorded in OPEN_ITEMS.md as the owner's decision, with the cost
+  stated." **No such entry ever existed.** Searched 2026-09-02 across tracked `*.md`
+  and `archive/` for `last remaining/active admin`, `locks a shop out`,
+  `user management for a reason`, `count of active`, `cannot_deactivate_self`,
+  `self-deactivat` — only unrelated hits (a login-unlock marker, a grade-tier line).
+  A code comment asserting "recorded as the owner's decision" that points at
+  nothing borrows an authority it never had; it is the same defect class as a
+  citation to a heading that does not exist, and it protected this footgun for
+  months. This entry is the record catching up, and the guard's own comment cites
+  THIS entry rather than the phantom one.
+
+  **THE DECISION, taken by the owner 2026-09-02:** add the server guard. The
+  reasoning is a risk asymmetry the old comment got backwards. An over-refusing
+  guard fails as "you cannot deactivate that admin" — recoverable in one step. No
+  guard fails as a shop with zero active admins: permanently unable to sign in to
+  its own user management, void a bill or move a price, recoverable only by a
+  second admin nobody thought to create in advance (D7) or by driving to the yard
+  with SQL. Those are not comparable, and an unlikely, cheap-to-close, unrecoverable
+  failure gets closed. The precedent that changed the answer is
+  `grade_tier_last_active` (master.py, shipped 2026-08-31, after the users.py
+  decision was made): it proved counting the last active member is simple, cheap
+  and safe, so the old comment's fear of "a count wrong in the refusing direction"
+  no longer stands.
+
+  **TWO FINDINGS FROM BUILDING IT, both in the record because they change what the
+  guard is.** (1) A SERIAL deactivate can never reach zero active admins:
+  `require_admin` means the caller is an active admin this request, a deactivate
+  targets one user, and if it is not the caller the caller stays active — so
+  `cannot_deactivate_self` was ALREADY the whole serial guarantee, and the ruling's
+  stated fear (a serial permanent lockout) was not reachable. (2) The advisor's
+  instruction to "mirror `grade_tier_last_active` exactly" was WRONG, and finding 1
+  is why: grade tiers have no self-check before their guard, so their plain
+  `SELECT count(*)` is serially reachable and effective; the admin path has
+  `cannot_deactivate_self` in front of it, so a plain-count mirror would be
+  UNREACHABLE serially (the seventh mechanism in
+  `lessons/a-check-that-never-went-red-was-never-observed.md` — a sibling guard
+  gets there first) and INEFFECTIVE concurrently (under READ COMMITTED both racers
+  read count=2 before either commits). A guard that cannot fire, or that fires on a
+  count both racers already read, is FALSE ASSURANCE — worse than a known gap. So
+  the guard is a `SELECT … FOR NO KEY UPDATE` lock over the active-admin set, and
+  its ONLY reachable trigger is the concurrent mutual-deactivation race. Proven by
+  `server/scripts/prove_user_admin.py` with a deterministic external-transaction
+  barrier; the named disproof drops the lock and the active-admin count reaches
+  zero. NOTHING FURTHER IS OPEN: the decision is made and built. Left here rather
+  than moved to a closed log because the dangling-pointer discovery and the
+  corrected advisor instruction are the part a later reader must not re-derive.
+
 - **P1.8b HAS NO DONE WHEN, SO NOTHING CAN SAY WHEN THE OFFLINE HALF IS FINISHED.**
   Raised 2026-08-25 by P1.8b GATES while re-deriving the step's closure at the
   phase boundary. MEASURED: `grep -n "DONE WHEN"` over `### P1.8`'s body returns

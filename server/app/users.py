@@ -87,11 +87,20 @@ Locking your own account is a different thing: /activate is admin-only, so an
 admin who locks itself cannot unlock itself, and a shop whose ONLY admin does it
 has nobody left who can. Refused at the call site, with the reason.
 
-A LARGER VERSION OF THAT HAZARD IS DELIBERATELY NOT GUARDED — locking the last
-remaining active admin by any route. The guard needs a count of active admins,
-and a count wrong in the refusing direction locks a shop out of its own user
-management for a reason nobody on the shop floor can see. Recorded in
-OPEN_ITEMS.md as the owner's decision, with that cost stated.
+A LARGER VERSION OF THAT HAZARD IS NOW GUARDED — locking the last remaining
+active admin. SUPERSEDED 2026-09-02: this paragraph read "DELIBERATELY NOT
+GUARDED … Recorded in OPEN_ITEMS.md as the owner's decision, with that cost
+stated", and BOTH halves were wrong. The pointer was dangling — no such
+OPEN_ITEMS entry existed — so the comment borrowed an authority it never had and
+protected the gap for months. And the cost it stated (a count wrong in the
+refusing direction locking a shop out) does not survive scrutiny: an over-refusal
+just fails to deactivate an admin, which is recoverable, while NO guard fails as a
+shop with zero admins, which is not. The owner reversed it 2026-09-02 on that
+asymmetry. The guard lives in deactivate_user below and is REACHABLE ONLY UNDER A
+CONCURRENT RACE — serially the self-deactivation refusal already prevents zero
+admins; its body carries the full argument, and OPEN_ITEMS.md § Decisions open
+"LAST-ACTIVE-ADMIN — the server now guards it" carries the decision and the
+dangling-pointer discovery.
 """
 from __future__ import annotations
 
@@ -613,6 +622,11 @@ async def deactivate_user(
     So this route is a STATE request that performs an EVENT every time. It lands
     on the same state as often as it is called, unlike master._set_active, whose
     caller asks only for a state and which is idempotent for that reason.
+
+    IT ALSO REFUSES DEACTIVATING THE LAST ACTIVE ADMIN (409 `last_active_admin`),
+    added 2026-09-02. That refusal is reachable ONLY under a concurrent race —
+    serially the self-check above already prevents a shop reaching zero admins —
+    and the guard body says why a lock, not a plain count, is what makes it real.
     """
     if user_id == principal.user_id:
         # SELF-DEACTIVATION IS REFUSED, and note this is the OPPOSITE of
@@ -623,12 +637,15 @@ async def deactivate_user(
         # itself has no way back, and a shop whose only admin does it has nobody
         # left who can unlock it.
         #
-        # DELIBERATELY NOT GUARDED HERE: the same hazard reached the other way,
-        # by locking the LAST active admin rather than yourself. That needs a
-        # count of active admins, and a count wrong in the refusing direction
-        # locks a shop out of its own user management for a reason nobody can
-        # see from a screen. Recorded in OPEN_ITEMS.md as the owner's decision,
-        # with the cost, rather than guessed at here.
+        # This self-check IS the serial guarantee against the LARGER hazard —
+        # locking the last active admin — because reaching zero active admins in a
+        # single request means the target is the caller (see the guard below for
+        # why), which lands here. The concurrent race the self-check cannot see is
+        # closed by the locked guard below. SUPERSEDED 2026-09-02: this comment
+        # read "DELIBERATELY NOT GUARDED HERE … Recorded in OPEN_ITEMS.md as the
+        # owner's decision"; that pointer was dangling (no such entry existed) and
+        # the decision is now reversed — OPEN_ITEMS.md § Decisions open
+        # "LAST-ACTIVE-ADMIN — the server now guards it".
         raise forbidden(
             "cannot_deactivate_self",
             "an admin cannot deactivate their own account",
@@ -636,6 +653,91 @@ async def deactivate_user(
         )
 
     async with tenant_connection(principal.tenant_id) as conn:
+        # LAST-ACTIVE-ADMIN GUARD. A shop must always keep at least one active
+        # admin: a shop with zero cannot sign in to its own user management, void
+        # a bill or move a price, and there is NO recovery inside the product —
+        # only SQL on site. This is master.update_grade_tier's last-active
+        # invariant (code `grade_tier_last_active`, shipped 2026-08-31, which is
+        # what proved counting the last active member is simple and safe) applied
+        # to a far worse consequence: a shop with zero tiers still has a signed-in
+        # admin to add one; a shop with zero admins has nobody.
+        #
+        # WHAT THIS DOES *NOT* GUARD, BECAUSE SOMETHING ELSE ALREADY DOES. No
+        # SERIAL request can reach zero active admins. The caller passed
+        # require_admin, so IS an active admin this request; a deactivate targets
+        # one user_id; if it is the caller, cannot_deactivate_self above already
+        # refused; if it is anyone else, the caller's own row is untouched and
+        # stays an active admin. So `user_id` being the SOLE active admin implies
+        # `user_id == caller`, which the self-check caught — this branch is
+        # unreachable through any single request. cannot_deactivate_self IS the
+        # serial guarantee.
+        #
+        # WHAT IT DOES GUARD: the CONCURRENT race. Admins A and B each deactivate
+        # the other in overlapping transactions. Without serialisation both read
+        # two active admins, both proceed, both commit — zero admins, unrecoverable.
+        # A plain `SELECT count(*)` (grade_tier_last_active's exact shape) would be
+        # FALSE ASSURANCE here: never fires serially (self-check first) and does not
+        # stop the race (READ COMMITTED lets both racers read count=2 before either
+        # commits). The LOCK is the whole mechanism. See OPEN_ITEMS.md § Decisions
+        # open "LAST-ACTIVE-ADMIN — the server now guards it".
+        #
+        # BEFORE YOU SIMPLIFY THIS LOCK, read what happens without it. Because no
+        # serial path reaches this branch, its ONLY direct evidence is the disproof
+        # in prove_user_admin.py: drop ` FOR NO KEY UPDATE` and cell C2 returns 200
+        # (the loser is not refused) and C3 reads ZERO active admins — the shop is
+        # locked out of its own management. That reading is this guard's
+        # documentation, not a step in building it.
+        #
+        # WHY `FOR NO KEY UPDATE`, NOT `FOR UPDATE`, and it is not a detail: a
+        # concurrent POST /bills by an admin takes FOR KEY SHARE on that admin's
+        # users row for its (tenant_id, created_by) FK check, and FOR UPDATE
+        # conflicts with FOR KEY SHARE while FOR NO KEY UPDATE does not — the
+        # measured argument in master._lock_shop_for_code_assignment (PostgreSQL
+        # 16.14, 2026-08-24). This UPDATE touches no key column so it takes FOR NO
+        # KEY UPDATE anyway; the explicit lock matches it and adds no new conflict.
+        # It serialises exactly the other admin-row writers (a racing deactivate,
+        # revoke or password reset) and nothing else — a plain-SELECT login never
+        # blocks on it, and a bill by an admin does not either.
+        #
+        # NO hand-written `WHERE tenant_id` (hard rule 2): RLS scopes the set to
+        # the caller's tenant, so this locks and counts only THIS shop's admins.
+        active_admin_ids = set(
+            (
+                await conn.execute(
+                    text(
+                        "SELECT id FROM users"
+                        " WHERE role = :admin AND is_active"
+                        " ORDER BY id"
+                        " FOR NO KEY UPDATE"
+                    ),
+                    {"admin": ADMIN_ROLE},
+                )
+            )
+            .scalars()
+            .all()
+        )
+        # `active_admins` in the detail is the count read UNDER THE LOCK at refusal
+        # time — 1, the target itself, the last one; allowing this would leave 0.
+        # The loser of the race re-reads the set here after the winner commits, sees
+        # the winner already dropped (EPQ re-evaluates `is_active` on the locked
+        # rows), and finds its own target is now the only member. The screen keys
+        # its sentence on the CODE, never this number (here for diagnosis and for
+        # parity with grade_tier_last_active's `active_tiers`).
+        if user_id in active_admin_ids and len(active_admin_ids) == 1:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail={
+                    "kind": "conflict",
+                    "code": "last_active_admin",
+                    "message": (
+                        "ร้านต้องมีผู้ดูแลระบบที่เปิดใช้งานอย่างน้อยหนึ่งคน "
+                        "จึงปิดผู้ดูแลระบบคนสุดท้ายไม่ได้ — เพิ่มผู้ดูแลระบบอีกคนก่อน"
+                    ),
+                    "entity": "user",
+                    "active_admins": str(len(active_admin_ids)),
+                },
+            )
+
         # NO hand-written `WHERE tenant_id`, for the reason revoke_sessions
         # gives above (hard rule 2): the RLS policy already restricts the visible
         # rows to the context tenant, so an admin of tenant A naming a user id in

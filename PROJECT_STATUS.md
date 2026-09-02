@@ -75,6 +75,59 @@ not read the green as re-run.**
 
 ## Current phase
 
+**STAFF MANAGEMENT ON THE PHONE — SERVER SUB-PHASE 1 OF 2: THE LAST-ACTIVE-ADMIN GUARD. 2026-09-02.** No sha yet
+(this record precedes the commit; anchor next pass). Supersedes the safety-net record below AS THE POINTER ONLY — that
+work stands. This is the SERVER half of a two-phase step (the brief allowed "two phases if the server half needs
+anything"); the SCREEN half is NOT built and P3.7 is NOT closed by this.
+**THE HOMING DECISION (advisor's, the owner may veto), recorded as the advisor's:** user management ships on the
+PHONE. P3.7 homes it on the provider web, which does not exist, and the desktop back office does not exist either;
+waiting for either means no shop can be opened. Precedent set twice (shop settings P1.23, grade-tier management
+P1.24). The collision — whether user management ALSO lives on the provider web later — is the owner's, filed under
+OPEN_ITEMS.md Decisions open. This phase does not close P3.7.
+**WHAT WAS BUILT (server only).** `POST /users/{id}/deactivate` now refuses deactivating the last active admin with
+409 `last_active_admin` (detail carries `active_admins`), guarded by a `SELECT … FOR NO KEY UPDATE` lock over the
+active-admin set in the same transaction as the write. `server/app/users.py` only; no migration, no other route, no
+client. The Thai message mirrors `grade_tier_last_active`'s shape; the screen half will render its own sentence keyed
+on the code.
+**THE GUARD REVERSES A DECISION THE CODE CLAIMED THE OWNER HAD MADE, AND THAT CLAIM WAS DANGLING.** `users.py`'s
+module docstring and its self-deactivation site both said the last-admin gap was "Recorded in OPEN_ITEMS.md as the
+owner's decision, with the cost stated." No such entry existed (searched tracked `*.md` and `archive/` for six
+distinct phrasings; only unrelated hits). A comment asserting a recorded decision that points at nothing borrows
+authority it never had and protected this footgun for months — the same defect class as a citation to a heading that
+does not exist. Both the reversal (owner's decision of 2026-09-02) and the dangling pointer are recorded under
+OPEN_ITEMS.md Decisions open, and the two stale comments are superseded in place.
+**THE ADVISOR'S INSTRUCTION WAS WRONG, CORRECTED HERE ON THE OWNER'S DIRECTION.** The brief said to mirror
+`grade_tier_last_active` EXACTLY. That would have shipped FALSE ASSURANCE, for two measured reasons. FINDING 1: no
+serial deactivate can reach zero active admins — the caller passed `require_admin` so is an active admin this request,
+and a deactivate either targets the caller (`cannot_deactivate_self` refuses first) or someone else (the caller stays
+active). So `cannot_deactivate_self` was ALREADY the whole serial guarantee, and the ruling's stated fear (a serial
+permanent lockout) was not reachable. FINDING 2: grade tiers have no self-check before their guard, so a plain
+`SELECT count(*)` is serially reachable there; the admin path has the self-check in front, so a plain-count mirror
+would be UNREACHABLE serially (the seventh mechanism in
+`lessons/a-check-that-never-went-red-was-never-observed.md`) and INEFFECTIVE concurrently (READ COMMITTED lets both
+racers read count=2 before either commits). The ONLY zero-admins path is a concurrent mutual-deactivation race, and
+only a lock closes it. The owner ruled to build the airtight lock on the risk asymmetry: an over-refusal is
+recoverable, a zero-admin shop is not.
+**READINGS (each command BARE, exit read in the same invocation; cp874 box).** `prove_user_admin.py` (new) GREEN
+TWICE, EXIT 0/0 — 15 cells: the serial success (2 admins → deactivate one → 200, one remains), the self-check still
+first and still `cannot_deactivate_self` NOT `last_active_admin` when the sole admin self-deactivates, reactivation
+restoring the pair, a staff deactivation ungated, and the concurrency cell — an EXTERNAL transaction holds the lock as
+a deterministic barrier, the real HTTP deactivate is OBSERVED blocked on a NOT-granted lock (waiting, not slow), the
+winner commits, and the loser is refused `409 last_active_admin` with exactly one active admin left. DISPROOF (named
+first, run by hand): dropping ` FOR NO KEY UPDATE` from the guard reddens EXACTLY C2 (the loser gets 200, not 409) and
+C3 (active admins = 0) — the shop is locked out — while C1 (blocked) stays green; that red is the only direct evidence
+the lock does anything, since no serial path reaches the guard. It is deterministic because the interleaving is
+imposed by the external transaction's commit point, not raced. NEIGHBOURS UNCHANGED: `prove_user_create.py --database
+recycle_users_scratch` GREEN TWICE (133 OK, 0 FAIL each), and its P8 ran `prove_revocation.py` GREEN both times (70
+OK, 0 FAIL) — create, both password routes, and the deactivate/activate/revocation cases all pass unchanged, so the
+shared-handler edit caused no regression.
+**GATES.** verify_shared_checks.py EXIT 0 (4 items, no shared-checks block touched); verify_citations.ps1 over the
+named 14 — BROKEN unchanged at the floor of 6 (the doc edits reference lessons and files by name in prose, not as
+citation handles). No typecheck/TS run — nothing under mobile/ or desktop/ was touched.
+**LESSON OWED? NO — the two findings are recorded as the DECISION's record (OPEN_ITEMS) and belong there, not as a
+lesson; the guard's own body carries the concurrency reasoning. The machine footgun list is unchanged (no new
+box).** The SCREEN sub-phase, when it runs, will re-assess whether IT owes one.
+
 **THE LOCAL SAFETY NET — THE BACKUP HALF'S LOCAL, FREE AUTOMATION (P1.2). 2026-09-02.** No sha yet (this record
 precedes the commit; anchor next pass). The current-phase pointer, superseding the version-contract records below AS
 THE POINTER ONLY — that work stands. Owner's decision, verbatim, never translated: "ผมอยากทำทุกอย่าง local อยู่บนเครื่องผมก่อนครับ ผมยังไม่อยากจ่ายอะไรทั้งสิ้น" — local on his machine first, nothing paid yet. So this is the FREE half;
