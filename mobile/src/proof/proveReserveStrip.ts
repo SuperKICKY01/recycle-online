@@ -73,7 +73,7 @@ const FUTURE_AT = "2026-08-28T12:10:00.000Z"; // 10 min ahead — clock moved ba
 
 /** A reserve state with sensible defaults; override the field a cell is about. */
 function state(over: Partial<ReserveStripState>): ReserveStripState {
-  return { spendable: 5, held: 10, target: 10, targetAt: FRESH_AT, now: NOW, ...over };
+  return { spendable: 5, held: 10, target: 10, targetAt: FRESH_AT, now: NOW, appOutdated: false, ...over };
 }
 
 /** The strip as it is drawn: every line, in order. */
@@ -213,6 +213,7 @@ async function i1EnginePersistsTarget(): Promise<void> {
       target: null,
       targetAt: null,
       now: clock.now().toISOString(),
+      appOutdated: false,
     });
     check("I1: ...and the strip renders never_provisioned, not a defaulted target", drawn(before).includes("ยังไม่เคยรับ"), drawn(before));
 
@@ -230,6 +231,7 @@ async function i1EnginePersistsTarget(): Promise<void> {
       target: persisted?.target ?? null,
       targetAt: persisted?.target_at ?? null,
       now: clock.now().toISOString(),
+      appOutdated: false,
     };
     check("I1: the persisted state reads as ample and the strip suppresses it", render(afterState) === null, drawn(render(afterState)));
 

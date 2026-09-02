@@ -185,7 +185,7 @@ async function s1RefusedWhilePending(): Promise<void> {
   check("the sync tick was never paused", paused === false, `paused=${String(paused)}`);
 
   const text = signOutCardText(
-    signOutCard({ owed: owedWith({ bill_send: 3 }), failed: 0, failure: null, session: "active" }),
+    signOutCard({ owed: owedWith({ bill_send: 3 }), failed: 0, failure: null, session: "active", appOutdated: false }),
   );
   console.log(`  sheet: ${text}`);
   check(
@@ -199,7 +199,7 @@ async function s1RefusedWhilePending(): Promise<void> {
   check(
     "...and the count is the input's, not a digit fixed in the wording",
     signOutCardText(
-      signOutCard({ owed: owedWith({ bill_send: 7 }), failed: 0, failure: null, session: "active" }),
+      signOutCard({ owed: owedWith({ bill_send: 7 }), failed: 0, failure: null, session: "active", appOutdated: false }),
     ).includes(
       "มีบิลรอส่ง 7 ใบ",
     ),
@@ -225,7 +225,7 @@ async function s1RefusedWhilePending(): Promise<void> {
     withFailed.kind,
   );
   const failedText = signOutCardText(
-    signOutCard({ owed: owedWith({ bill_send: 0 }), failed: 2, failure: null, session: "active" }),
+    signOutCard({ owed: owedWith({ bill_send: 0 }), failed: 2, failure: null, session: "active", appOutdated: false }),
   );
   console.log(`  sheet: ${failedText}`);
   check(
@@ -236,7 +236,7 @@ async function s1RefusedWhilePending(): Promise<void> {
   check(
     "...and that count is the input's too",
     signOutCardText(
-      signOutCard({ owed: owedWith({ bill_send: 0 }), failed: 5, failure: null, session: "active" }),
+      signOutCard({ owed: owedWith({ bill_send: 0 }), failed: 5, failure: null, session: "active", appOutdated: false }),
     ).includes(
       "มีบิลที่ระบบไม่รับ 5 ใบค้างอยู่",
     ),
@@ -468,7 +468,7 @@ async function s3ClearFails(): Promise<void> {
   }
   const failure: SignOutFailure = outcome.failure;
   const text = signOutCardText(
-    signOutCard({ owed: owedWith({ bill_send: 0 }), failed: 0, failure, session: "active" }),
+    signOutCard({ owed: owedWith({ bill_send: 0 }), failed: 0, failure, session: "active", appOutdated: false }),
   );
   console.log(`  sheet: ${text}`);
   check(
@@ -1059,22 +1059,22 @@ function s6WholeSheet(): void {
   }[] = [
     {
       name: "confirm, clean queue",
-      input: { owed: owedWith({ bill_send: 0 }), failed: 0, failure: null, session: "active" },
+      input: { owed: owedWith({ bill_send: 0 }), failed: 0, failure: null, session: "active", appOutdated: false },
       saysExpired: false,
     },
     {
       name: "confirm, failed bills",
-      input: { owed: owedWith({ bill_send: 0 }), failed: 2, failure: null, session: "active" },
+      input: { owed: owedWith({ bill_send: 0 }), failed: 2, failure: null, session: "active", appOutdated: false },
       saysExpired: false,
     },
     {
       name: "refused, pending",
-      input: { owed: owedWith({ bill_send: 3 }), failed: 0, failure: null, session: "active" },
+      input: { owed: owedWith({ bill_send: 3 }), failed: 0, failure: null, session: "active", appOutdated: false },
       saysExpired: false,
     },
     {
       name: "refused, pending+failed",
-      input: { owed: owedWith({ bill_send: 3 }), failed: 2, failure: null, session: "active" },
+      input: { owed: owedWith({ bill_send: 3 }), failed: 2, failure: null, session: "active", appOutdated: false },
       saysExpired: false,
     },
     {
@@ -1084,6 +1084,7 @@ function s6WholeSheet(): void {
         failed: 0,
         failure: { kind: "clear_failed", reason: "errSecIO" } as SignOutFailure,
         session: "active",
+        appOutdated: false,
       },
       saysExpired: false,
     },
@@ -1094,18 +1095,19 @@ function s6WholeSheet(): void {
         failed: 1,
         failure: { kind: "clear_failed", reason: "errSecIO" } as SignOutFailure,
         session: "active",
+        appOutdated: false,
       },
       saysExpired: false,
     },
     /* ---- R2b. The session is now an input, so the matrix has a second axis. -- */
     {
       name: "refused, pending, session EXPIRED",
-      input: { owed: owedWith({ bill_send: 3 }), failed: 0, failure: null, session: "expired" },
+      input: { owed: owedWith({ bill_send: 3 }), failed: 0, failure: null, session: "expired", appOutdated: false },
       saysExpired: true,
     },
     {
       name: "refused, pending+failed, session EXPIRED",
-      input: { owed: owedWith({ bill_send: 3 }), failed: 2, failure: null, session: "expired" },
+      input: { owed: owedWith({ bill_send: 3 }), failed: 2, failure: null, session: "expired", appOutdated: false },
       saysExpired: true,
     },
     {
@@ -1113,7 +1115,7 @@ function s6WholeSheet(): void {
       // `token !== null`) and written anyway, because the wording differs: a
       // device that never signed in has not run out of time.
       name: "refused, pending, session SIGNED OUT",
-      input: { owed: owedWith({ bill_send: 3 }), failed: 0, failure: null, session: "signed_out" },
+      input: { owed: owedWith({ bill_send: 3 }), failed: 0, failure: null, session: "signed_out", appOutdated: false },
       saysExpired: false,
     },
     {
@@ -1125,6 +1127,7 @@ function s6WholeSheet(): void {
         failed: 0,
         failure: { kind: "clear_failed", reason: "errSecIO" } as SignOutFailure,
         session: "expired",
+        appOutdated: false,
       },
       saysExpired: false,
     },
@@ -1133,7 +1136,7 @@ function s6WholeSheet(): void {
       // is nothing owed, so signing out is allowed and the expiry is not the
       // operator's problem on this screen.
       name: "confirm, clean queue, session EXPIRED",
-      input: { owed: owedWith({ bill_send: 0 }), failed: 0, failure: null, session: "expired" },
+      input: { owed: owedWith({ bill_send: 0 }), failed: 0, failure: null, session: "expired", appOutdated: false },
       saysExpired: false,
     },
   ];
@@ -1178,7 +1181,7 @@ function s6WholeSheet(): void {
   // The one sentence that must be on the sheet BEFORE the tap, on every path
   // where a sign-out can actually be started from.
   const confirm = signOutCardText(
-    signOutCard({ owed: owedWith({ bill_send: 0 }), failed: 0, failure: null, session: "active" }),
+    signOutCard({ owed: owedWith({ bill_send: 0 }), failed: 0, failure: null, session: "active", appOutdated: false }),
   );
   check(
     "the CONFIRMATION warns that signing back in needs a connection, before the tap",
@@ -1195,6 +1198,7 @@ function s6WholeSheet(): void {
     failed: 0,
     failure: { kind: "clear_failed", reason: "x" },
     session: "active",
+    appOutdated: false,
   });
   check(
     "a failed attempt outranks a queue count on the same sheet",
@@ -1210,7 +1214,7 @@ function s6WholeSheet(): void {
    * would pass a check that only bans the wrong word.
    */
   const neverSignedIn = signOutCardText(
-    signOutCard({ owed: owedWith({ bill_send: 3 }), failed: 0, failure: null, session: "signed_out" }),
+    signOutCard({ owed: owedWith({ bill_send: 3 }), failed: 0, failure: null, session: "signed_out", appOutdated: false }),
   );
   check(
     "a device that never signed in is told THAT, not that its time ran out",
@@ -1378,6 +1382,7 @@ async function s9SessionDrivesTheSheet(): Promise<void> {
       failed: 0,
       failure: null,
       session: deadSession,
+      appOutdated: false,
     });
     const deadText = signOutCardText(deadCard);
     console.log(`  sheet (expired): ${deadText}`);
@@ -1519,6 +1524,7 @@ async function s9SessionDrivesTheSheet(): Promise<void> {
       failed: 0,
       failure: null,
       session: liveSession,
+      appOutdated: false,
     });
     const liveText = signOutCardText(liveCard);
     console.log(`  sheet (active) : ${liveText}`);

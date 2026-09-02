@@ -298,6 +298,21 @@ export class SyncEngine {
   }
 
   /**
+   * Retract the per-kind halts so the NEXT pass RE-PROBES the server — the
+   * recovery path for the version gate (red-team findings 4-5). A 426 halts every
+   * kind, so without a periodic retract a floor RAISED past this build and then
+   * LOWERED again (a bad raise, rolled back) could never be observed and the
+   * device would stay wedged on the "update" screen. App calls this before each
+   * pass WHILE it believes the build is too old; the re-probe either re-halts
+   * (still 426) or drains (accepted). Unlike resumeAfterSignIn it clears NO
+   * backoff and NO void refusals — it is only a re-probe, not a change of who is
+   * asking, so it must not disturb work that was blocked for those other reasons.
+   */
+  retractOutdatedHalt(): void {
+    this.runner.retractHalts();
+  }
+
+  /**
    * Call once at startup, BEFORE any sync run.
    *
    * One sweep per kind, THROUGH the registry, and the return value is a map

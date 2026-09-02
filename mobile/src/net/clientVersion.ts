@@ -28,6 +28,15 @@ export const CLIENT_API_VERSION = 1;
 export const CLIENT_API_VERSION_HEADER = "x-client-api-version";
 
 /**
+ * THE ONE STATEMENT of the status the server uses to refuse a too-old build (426
+ * Upgrade Required). Every surface that classifies a refusal reads it from here,
+ * the way `signInIdentity.UNAUTHORIZED_STATUS` is the one statement of 401 — so a
+ * 426 is recognised identically at the login screen, the shop-code screen and the
+ * three sync transports, and the number lives in exactly one place.
+ */
+export const CLIENT_OUTDATED_STATUS = 426;
+
+/**
  * WRAP A fetch SO EVERY REQUEST THROUGH IT CARRIES THE VERSION HEADER.
  *
  * The app has no single transport chokepoint — `app/api.ts` and the two sync

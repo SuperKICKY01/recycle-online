@@ -29,6 +29,8 @@
  *   - it does not STAMP an owner on any row. Nothing reads this value yet.
  */
 
+import { CLIENT_OUTDATED_STATUS } from "../net/clientVersion.js";
+
 /** The identity, as the server names it. Both are server-issued identifiers. */
 export interface SignedInIdentity {
   tenant_id: string;
@@ -105,6 +107,15 @@ export type SignInResult =
   | ({ kind: "ok" } & SignInOutcome)
   | { kind: "refused" }
   | { kind: "unreachable" }
+  /**
+   * THE BUILD IS TOO OLD (426). Its own member, NOT `server_fault`, because the
+   * two have opposite instructions: `server_fault` says "the server responded
+   * abnormally, tell the shop owner" — a person who cannot change an app version —
+   * while this says "update the app". A signed-out or freshly-installed old build
+   * meets the version floor HERE, at login, before any sync pass exists to set the
+   * device-global `appOutdated`, so this screen must carry the fact itself.
+   */
+  | { kind: "client_outdated" }
   | { kind: "server_fault"; status: number; detail: "unexpected_status" | "no_token" };
 
 /**
@@ -157,6 +168,7 @@ export async function attemptLogin(
   }
 
   if (!res.ok) {
+    if (res.status === CLIENT_OUTDATED_STATUS) return { kind: "client_outdated" };
     return isUnauthorizedStatus(res.status)
       ? { kind: "refused" }
       : { kind: "server_fault", status: res.status, detail: "unexpected_status" };
@@ -235,6 +247,8 @@ export function signInNotice(result: SignInResult): string | null {
       return "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง — ลองพิมพ์อีกครั้ง";
     case "unreachable":
       return "ติดต่อเซิร์ฟเวอร์ไม่ได้ — ตรวจสอบการเชื่อมต่อเน็ต แล้วลองอีกครั้ง (ไม่ใช่เรื่องรหัสผ่าน)";
+    case "client_outdated":
+      return "แอปเวอร์ชันนี้เก่าเกินไป — ต้องอัปเดตแอปก่อนจึงจะเข้าสู่ระบบได้ (ไม่ใช่เรื่องรหัสผ่าน)";
     case "server_fault":
       return "เซิร์ฟเวอร์ตอบกลับผิดปกติ จึงเข้าสู่ระบบไม่ได้ — รหัสผ่านไม่ใช่ปัญหา แจ้งเจ้าของร้าน";
   }

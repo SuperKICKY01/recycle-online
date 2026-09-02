@@ -5729,6 +5729,23 @@ below and says so.
   correct:* the version gate is the outermost middleware, so a 426 pre-empts every
   401, and the recovery update→sign-in→drain works end to end (only the reverse
   order — session expires first, then the floor rises — hits finding 1).
+  **REPAIRED 2026-09-02 (the repair phase).** All seven closed and proven. F1: a
+  `client_outdated` member on `SignInResult`/`ShopCodeResult` — the login and
+  shop-code screens now say "update", not "tell the shop owner". F2/F3: `appOutdated`
+  is a REQUIRED field on `SignOutCardInput` and the reserve strip state — the
+  sign-out sheet says "update, work safe" (not "wait for a send") and the reserve
+  strip says "…หลังอัปเดตแอป" (not "…ต่อเน็ต"); the compiler enumerated exactly these
+  surfaces and no fourth appeared. F4/F5: `appOutdated` is now DERIVED every pass
+  (`mobile/src/sync/outdatedState.ts`), not a sticky latch, and App retracts the
+  version halt to re-probe (`SyncEngine.retractOutdatedHalt`), so a floor lowered
+  after a bad raise clears the flag and drains the queue — the wedge is gone. F6:
+  `prove:version` now stages a void and a seller-create, so the deliberate seller
+  counter has a cell (the runtime-no-op mutation reddens three named cells). F7: the
+  `(mtime,size)` cache is removed — `current_floor` reads the content every request.
+  Lessons written: `a-sticky-device-global-state-needs-a-clearing-rule` (F4-5),
+  `a-cache-key-must-distinguish-the-values-it-caches` (F7), amendments to
+  `correct-classification-can-still-render-as-an-error` (F1-3) and
+  `a-check-that-never-went-red-was-never-observed` (F6). The floor stays 0.
 - **[MEASURED] WHAT `mobile/app.json`'s `extra` CARRIES TODAY, AND WHAT DECIDES
   WHAT IT CARRIES NEXT.** A release build is readable by anyone holding the app,
   and `extra` is compiled into it. Measured by reading the file in this pass: it

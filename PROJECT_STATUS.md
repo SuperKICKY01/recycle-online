@@ -75,6 +75,63 @@ not read the green as re-run.**
 
 ## Current phase
 
+**THE VERSION CONTRACT — THE RED-TEAM REPAIR: THE UPDATE STATE REACHES ALL FOUR SURFACES, THE WEDGE IS CLOSED, AND
+THE FLOOR CANNOT MASK A CORRECTIVE WRITE. 2026-09-02.** No sha yet (this record precedes the commit; anchor next
+pass). The current-phase pointer, superseding the client-half pointer below AS THE POINTER ONLY — that half stands
+(`21ae0a7`) and this closes the seven red-team findings recorded at `6ca9a3f`. The client-half record's own
+"CORRECTION (RED-TEAM)" note — "the update state covers only the sync strip" — is now RESOLVED here. The floor
+stays 0 throughout, and nothing in the repair raises it.
+**THE ORDER IS THE REUSABLE PART.** When a red-team pass finds BOTH a green-under-mutation proof AND the defects
+that proof should have caught, the proof is repaired first and its red is a published reading — because until that
+cell can fail, nothing it measures is trustworthy, including the exception argued in the previous commit. Only then
+were the surfaces fixed. That is why F6 came before F1-7 below.
+**WHAT IS FIXED.** F6 FIRST, as the owner ruled (it is the instrument, not a feature): `prove:version`'s engine
+cell used `noSellerKind()` and staged no void, so only `bill_send` ever produced `clientOutdated` — the deliberate
+seller-counter exception had no cell. Added a void cell (a synced bill + a void, both stores) and a seller cell (a
+one-seller store), so the runtime-no-op mutation (`+= 0`) on the void AND seller arms reddens THREE named cells
+(C-void mem, C-void sqlite, C-seller) while `bill_send` stays green — the split is the reading, reported before any
+other fix. F1-3 are ONE RULE — every surface that instructs an operator about a refusal reads the device-global
+build fact — found by MAKING THE COMPILER ASK: a `client_outdated` member on `SignInResult`/`ShopCodeResult` (the
+login/shop-code message switches went red until they said "update", not "แจ้งเจ้าของร้าน"), and a REQUIRED
+`appOutdated` field on `SignOutCardInput` and the reserve-strip state (every construction site went red until it
+passed the fact). The two typecheck programs enumerated EXACTLY four surfaces (strip already done; login/shop-code,
+sign-out sheet, reserve strip); NO fourth appeared. F4-5 (the wedge): `appOutdated` is now DERIVED every pass by a
+pure `outdatedAfterPass(was, r)` — a 426 sets it, a definitive non-426 answer clears it, no answer keeps it — not a
+sticky latch; and because the 426's `halt_kind` blocks the re-probe, App retracts the halt before each pass while
+the flag holds (`SyncEngine.retractOutdatedHalt`), so a floor lowered after a bad raise DRAINS the queue and clears
+the flag. F7: the `(mtime,size)` cache is removed — `current_floor` reads the file's content every request, so a
+corrective LOWER floor (same byte size) is honoured at once.
+**THE CLEARING RULE, DECIDED AND DEFENDED (owner's question).** Evidence sufficient to conclude the build is
+acceptable again: a FRESH non-426 answer this pass. It cannot be forged by a stale response because every counter
+`outdatedAfterPass` reads (`r.synced`, `r.rejected`, …) is set only when the server returned that status on a
+request THIS pass made — there is no client state that yields `r.synced > 0` without an actual accepted send
+(transport security is out of scope today; even under tampering the safe direction holds — the app either sends or
+is re-refused 426). Queued work survives BOTH directions: rows stay pending/owed and untouched under the 426 and
+drain unchanged when the fact goes false; clearing the flag discards nothing. The re-probe rides the sync cadence
+because a floor that cannot be lowered promptly is worse than none.
+**PROVEN.** `prove:version` GREEN TWICE, now with the F1-3 surface cells (each with a current-build control), the
+F4-5 recovery cell (a 426 sets the flag; a halted pass KEEPS it — the wedge; a lowered floor + retract DRAINS and
+clears it with the bill surviving), and the F6 void/seller cells; the F6 mutation reading reported above. Server
+`prove_version_gate.py` GREEN TWICE (16 cells; Phase D: a corrective lower floor, same byte size, honoured on the
+next request). Regression GREEN TWICE: `proveSignOut`, `proveReserveStrip`, `proveOwedSurfaces`, `proveNotice`,
+`proveSync`, `proveSeller`. Both mobile typechecks bare exit 0. NOT run: `proveLogin`/`proveLoginScreen` (real-HTTP,
+need the dev server; the `SignInResult` change is typecheck-covered and its 426 arm is proven headless in
+`prove:version` F1). `reconcile.py` NOT run — no migration/schema change (server change is the floor read; client
+changes are TS). Device pass owed.
+**LESSONS WRITTEN (deferred by the pass, owed on landing).** New:
+`a-sticky-device-global-state-needs-a-clearing-rule` (F4-5), `a-cache-key-must-distinguish-the-values-it-caches`
+(F7). Amendments: `correct-classification-can-still-render-as-an-error` (F1-3, one fact / four surfaces / the
+compiler-enumeration), `a-check-that-never-went-red-was-never-observed` (F6, a rule-break with no cell because the
+fixture never staged the kind). `build_all_lessons.py`: 64 files, 64 toc, 31 amendments, CHECK OK.
+**GATES (each command BARE, exit read in the same invocation; cp874 box).** Both mobile typechecks exit 0.
+`prove:version` and server `prove_version_gate.py` GREEN TWICE; six mobile regression proofs GREEN TWICE (above).
+`verify_shared_checks.py` IDENTICAL (4 items), exit 0. `build_all_lessons.py --check` exit 0 (64 lessons, two new +
+two amendments). `verify_citations.ps1` over the named 14 (call operator, `[string[]]`; SOURCES read first):
+SOURCES=14, CITATIONS=613 UNCHANGED (the doc edits cite lessons by name in prose, not as `§` handles), BROKEN=6 —
+floor unmoved. `git diff --stat` = 19 tracked files (683 insertions, 52 deletions) plus 3 new
+(`mobile/src/sync/outdatedState.ts`, `lessons/a-sticky-device-global-state-needs-a-clearing-rule.md`,
+`lessons/a-cache-key-must-distinguish-the-values-it-caches.md`).
+
 **THE VERSION CONTRACT — THE CLIENT HALF: SEND THE HEADER, AND ONE CALM "UPDATE TO CONTINUE" SCREEN ON A 426.
 2026-09-01.** No sha yet (this record precedes the commit; anchor next pass). The current-phase pointer, superseding
 the version-contract SERVER-HALF pointer below AS THE POINTER ONLY — that half stands (`f911d9c`) and this completes

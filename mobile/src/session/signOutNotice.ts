@@ -80,6 +80,16 @@ export interface SignOutCardInput {
    * inheritance of the wording that was written for the only caller there was.
    */
   session: SessionState;
+  /**
+   * THE BUILD IS TOO OLD (426), device-global. REQUIRED, never optional with
+   * `false` as a default — exactly the argument `session` above makes: a 426
+   * leaves `session === "active"`, so without this field a too-old device selects
+   * the "wait, it will send when the network returns" arm, which is the R2b defect
+   * (`correct-classification-can-still-render-as-an-error`) verbatim — a wait
+   * promised over a queue that only an update can drain. Making it required turns
+   * every call site into a compile error until it passes the fact.
+   */
+  appOutdated: boolean;
 }
 
 /**
@@ -214,6 +224,22 @@ export function signOutCard(input: SignOutCardInput): SignOutCard {
    * rather than a branch that is correct only while a distant condition holds.
    */
   if (totalOwed(input.owed) > 0) {
+    // THE BUILD IS TOO OLD (426) — ranked above the session split, because a 426
+    // refuses even the sign-in that split offers. The queue drains by an UPDATE,
+    // not by waiting (the network is fine) and not by signing in (the same build
+    // is refused), so this sheet says NEITHER "wait" nor "sign in".
+    if (input.appOutdated) {
+      return {
+        tone: "warn",
+        title: "ยังออกจากระบบไม่ได้",
+        lines: [
+          ...owedLines(input.owed),
+          "แอปเวอร์ชันนี้เก่าเกินไป — งานที่ค้างอยู่ยังอยู่ครบ แต่จะส่งได้หลังอัปเดตแอป",
+          ...failedLine(input.failed),
+        ],
+        actions: [{ kind: "dismiss", label: "ปิด" }],
+      };
+    }
     const noSession = input.session !== "active";
     /*
      * THE SAME HEAD SPLIT statusNotice.ts MAKES, and for the same reason: one

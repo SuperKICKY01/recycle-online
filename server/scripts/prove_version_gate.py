@@ -239,6 +239,24 @@ async def run(client: httpx.AsyncClient) -> None:
     check(c1.status_code == UNAUTHORIZED and kind_of(c1) == "unauthenticated",
           "C1: removing the floor file re-admits the header-less client -> 401, no restart (read live both ways)")
 
+    header("PHASE D — a corrective LOWER floor, SAME byte size, is honoured at once (finding 7).")
+    # Red-team finding 7: the old (mtime_ns, size) cache could mask a corrective
+    # write, because every floor value is one byte so size never discriminated and
+    # a back-to-back same-size write shared the mtime tick ~85% of the time on this
+    # box. The fix reads the file CONTENT every request. Here: raise to 2, then
+    # LOWER to 1 (both one byte) and require the lower to take effect on the very
+    # next request. With the fix this is deterministic; a reintroduced cache would
+    # redden it whenever the two writes collide.
+    set_floor(2)
+    d1 = await get_products(client, 1)
+    check(d1.status_code == UPGRADE_REQUIRED,
+          "D1: floor 2 refuses a version-1 client (1 < 2)")
+    set_floor(1)  # same 1-byte size, written straight after
+    d2 = await get_products(client, 1)
+    check(d2.status_code == UNAUTHORIZED and kind_of(d2) == "unauthenticated",
+          "D2: the corrective LOWER floor (2 -> 1, same byte size) is honoured on the NEXT request — version 1 is now ADMITTED; no cache masks it")
+    set_floor(None)
+
 
 async def main() -> int:
     global BASE, FLOOR_PATH

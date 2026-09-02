@@ -1508,3 +1508,25 @@ be mistaken for a pass.
 Ask of any test harness, not just its assertions: **if I asked for a mode that
 does not exist, would this program tell me, or would it tell me the mode was
 on?**
+
+## Amendment (version-contract red-team, 2026-09-02): a deliberate rule-break with no cell, because the harness never staged the kind that would exercise it
+
+`prove:version` asserted `run.clientOutdated === 1` and was green — but its engine
+cell built every engine with `noSellerKind()` (an empty seller store) and staged no
+void, so ONLY the `bill_send` arm ever produced that counter. The `bill_void` and
+`seller_create` arms each also do `result.clientOutdated += 1`, and the seller one is
+the change's ONE deliberate exception to that kind's no-counter rule — exactly the
+line most in need of a cell. A red-team mutation MEASURED it: replace the increment
+with a runtime no-op (`+= 0`, so it still compiles — a comment-out instead makes the
+seller arm's `result` unused and the build stops, observing no cell, mechanism 3's
+sibling) in the void and seller arms, `bill_send` left intact → `ALL CHECKS PASSED`,
+exit 0, every cell green. The assertion was satisfied by ONE kind while naming a fact
+three kinds set. The tell was cheap: `grep clientOutdated src/proof/` returned the
+one proof and its one cell, and the seller arm's own comment named a device state
+("shows even on a seller-only device") the proof's fixture could not reach. Repair:
+a cell that stages a synced bill + a void, and a cell that stages a seller-create
+against a real seller store, so the SAME mutation now reddens three named cells while
+`bill_send` stays green — the split is the evidence. **Ask of any assertion over a
+counter more than one code path writes: which path did THIS fixture drive, and is the
+path carrying the deliberate exception among them?** A green over a union of writers
+measures whichever writer the fixture happened to exercise.

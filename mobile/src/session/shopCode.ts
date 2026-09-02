@@ -30,6 +30,8 @@
  * `acea1ac`, one step earlier in the chain.
  */
 
+import { CLIENT_OUTDATED_STATUS } from "../net/clientVersion.js";
+
 /** The shop, as the SERVER resolved it. Never derived on the device. */
 export interface ResolvedShop {
   tenant_id: string;
@@ -61,6 +63,13 @@ export type ShopCodeResult =
   | ({ kind: "ok" } & ResolvedShop)
   | { kind: "unknown_code" }
   | { kind: "unreachable" }
+  /**
+   * THE BUILD IS TOO OLD (426), met at the very first request the app makes. Its
+   * own member, not `server_fault`, for the reason SignInResult.client_outdated
+   * carries: "tell the shop owner" and "update the app" are opposite instructions,
+   * and a fresh install refused by the version floor must be told the second.
+   */
+  | { kind: "client_outdated" }
   | { kind: "server_fault"; status: number; detail: "unexpected_status" | "no_tenant" };
 
 /** The status the server uses for "no such code". One place, one number. */
@@ -93,6 +102,7 @@ export async function exchangeShopCode(
   }
 
   if (!res.ok) {
+    if (res.status === CLIENT_OUTDATED_STATUS) return { kind: "client_outdated" };
     return res.status === UNKNOWN_SHOP_CODE_STATUS
       ? { kind: "unknown_code" }
       : { kind: "server_fault", status: res.status, detail: "unexpected_status" };
@@ -127,6 +137,8 @@ export function shopCodeNotice(result: ShopCodeResult): string | null {
       return "รหัสร้านนี้ใช้ไม่ได้ — ตรวจสอบรหัส 8 หลักที่ร้านได้รับ แล้วลองอีกครั้ง";
     case "unreachable":
       return "ติดต่อเซิร์ฟเวอร์ไม่ได้ — ตรวจสอบการเชื่อมต่อเน็ต แล้วลองอีกครั้ง (ไม่ใช่เรื่องรหัสร้าน)";
+    case "client_outdated":
+      return "แอปเวอร์ชันนี้เก่าเกินไป — ต้องอัปเดตแอปก่อนจึงจะตั้งค่าร้านได้ (ไม่ใช่เรื่องรหัสร้าน)";
     case "server_fault":
       return "เซิร์ฟเวอร์ตอบกลับผิดปกติ จึงตั้งค่าร้านไม่ได้ — รหัสร้านไม่ใช่ปัญหา แจ้งเจ้าของร้าน";
   }

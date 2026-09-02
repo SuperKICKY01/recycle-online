@@ -66,6 +66,13 @@ export interface ReserveStripState {
   readonly target: number | null;
   readonly targetAt: string | null;
   readonly now: string;
+  /**
+   * THE BUILD IS TOO OLD (426), device-global. REQUIRED: the strip's level lines
+   * promise "…จะเติมเองเมื่อต่อเน็ต" / "…จนกว่าจะต่อเน็ต", and while the build is too
+   * old the top-up 426s, so connecting refills nothing — only an update does. A
+   * required field makes the call site a compile error until it passes the fact.
+   */
+  readonly appOutdated: boolean;
 }
 
 /** `info` is calm (the count); `red` is a state that needs a person now. */
@@ -128,6 +135,12 @@ function effectiveLevel(state: ReserveStripState): ReserveLevel {
 export function reserveStripNotice(state: ReserveStripState): ReserveStripNotice | null {
   const level = effectiveLevel(state);
   if (level === "ample") return null;
+  if (state.appOutdated) {
+    // THE BUILD IS TOO OLD: the top-up 426s, so the level lines' "…เมื่อต่อเน็ต"
+    // promise is false — connecting refills nothing. One calm line naming the real
+    // fix (an update), in the same register as the status strip's update state.
+    return { tone: "info", lines: ["โควตารหัสผู้ขายจะเติมเองหลังอัปเดตแอป"] };
+  }
   const notice = reserveLevelNotice(level, state.spendable);
   return { tone: notice.tone === "red" ? "red" : "info", lines: notice.lines };
 }

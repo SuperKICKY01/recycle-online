@@ -93,12 +93,6 @@ FLOOR_FILE = os.environ.get(
     "CLIENT_API_VERSION_FLOOR_FILE", os.path.join(_SERVER_DIR, "api_version_floor")
 )
 
-# (mtime_ns, size, floor) of the last GOOD read. A changed file (either component
-# differs) forces a re-read, so an operator's edit is picked up by the next
-# request with no restart. Keyed on both mtime and size so two edits within one
-# clock tick cannot be missed.
-_floor_cache: tuple[int, int, int] | None = None
-
 
 # ===========================================================================
 # THE FLOOR IS A LOADED GUN UNTIL THE CLIENT CAN CLASSIFY A 426. LEAVE IT AT 0.
@@ -120,32 +114,28 @@ _floor_cache: tuple[int, int, int] | None = None
 def current_floor() -> int:
     """The minimum client API version this server accepts, right now.
 
-    Read PER CALL from FLOOR_FILE, mtime-cached. Absent or unparseable -> the
-    compiled default, which admits today's build: a floor that cannot be read
-    must ADMIT, never refuse (see the module docstring — this is an availability
-    value, the opposite direction to an identity secret). A bad read is never
-    cached, so fixing the file recovers on the next request without a restart.
+    The file's CONTENT is read per call — no cache. Absent or unparseable -> the
+    compiled default, which admits today's build: a floor that cannot be read must
+    ADMIT, never refuse (see the module docstring — this is an availability value,
+    the opposite direction to an identity secret). So a corrected file, INCLUDING a
+    LOWER floor written to recover from a bad raise, takes effect on the very next
+    request with no restart.
+
+    NO (mtime, size) CACHE, and the removal is a red-team fix (finding 7). Every
+    floor value is one byte, so `size` never discriminates, and on this box a
+    corrective back-to-back same-size write shared `st_mtime_ns` with the value it
+    was meant to replace in 169/200 measured trials (~1.35 ms tick) — which would
+    have masked a lower floor and kept the fleet refused. The file is tiny and the
+    OS caches it, so reading the content every request is negligible and cannot be
+    fooled by a stamp that did not move.
     """
-    global _floor_cache
-    try:
-        st = os.stat(FLOOR_FILE)
-    except OSError:
-        # No file is the normal, default state — the floor is DEFAULT.
-        _floor_cache = None
-        return DEFAULT_MIN_CLIENT_API_VERSION
-    key = (st.st_mtime_ns, st.st_size)
-    if _floor_cache is not None and _floor_cache[:2] == key:
-        return _floor_cache[2]
     try:
         with open(FLOOR_FILE, "r", encoding="utf-8") as f:
-            floor = int(f.read().strip())
+            return int(f.read().strip())
     except (OSError, ValueError):
-        # A file that exists but cannot be read as an integer must not brick the
-        # fleet either. Fall back to the default and do NOT cache the bad read,
-        # so a corrected file is honoured immediately.
+        # Absent (the normal, default state) or present-but-unparseable both admit
+        # today's build. A floor that cannot be read must never brick the fleet.
         return DEFAULT_MIN_CLIENT_API_VERSION
-    _floor_cache = (key[0], key[1], floor)
-    return floor
 
 
 def client_version_from(header_value: str | None) -> int:

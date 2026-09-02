@@ -35,8 +35,18 @@ import { statusNotice } from "../sync/statusNotice.js";
 import type { StatusInput } from "../sync/statusNotice.js";
 import { NOTHING_OWED } from "../sync/outbox.js";
 import { CLIENT_API_VERSION, CLIENT_API_VERSION_HEADER, withClientVersion } from "../net/clientVersion.js";
+import { attemptLogin, signInNotice } from "../session/signInIdentity.js";
+import { exchangeShopCode, shopCodeNotice } from "../session/shopCode.js";
+import { signOutCard, signOutCardText } from "../session/signOutNotice.js";
+import { reserveStripNotice } from "../master/reserveStrip.js";
+import { outdatedAfterPass } from "../sync/outdatedState.js";
+import type { OwedByKind } from "../sync/outbox.js";
 import type { BillItemPayload, LocalBill, SendOutcome, Transport, VoidOutcome } from "../sync/types.js";
+import type { LocalSeller } from "../sync/localSeller.js";
+import type { SellerCreateOutcome, SellerCreateTransport } from "../sync/sellerCreate.js";
+import type { ReservationTransport, RefillOutcome } from "../sync/sellerRefill.js";
 import {
+  EmptySellerStore,
   ExpiredSessionTransport,
   FakeClock,
   FakeServer,
@@ -61,15 +71,64 @@ function header(title: string): void {
 
 /* ---------------------------------------------------------------- fakes -- */
 
-/** A server that answers 426 to everything: this build is too old. */
+/**
+ * A server that answers 426 to everything — until `lowerFloor()`, which models an
+ * operator LOWERING the floor after a bad raise. After that it accepts, via the
+ * FakeServer, so the recovery case can re-probe in ONE process.
+ */
 class ClientOutdatedTransport implements Transport {
   readonly attemptedIds: string[] = [];
+  private lowered = false;
+  constructor(private readonly server: FakeServer | null = null) {}
+  lowerFloor(): void {
+    this.lowered = true;
+  }
   sendBill(bill: LocalBill): Promise<SendOutcome> {
     this.attemptedIds.push(bill.id);
-    return Promise.resolve({ kind: "client_outdated", reason: "HTTP 426: client too old" });
+    if (!this.lowered) {
+      return Promise.resolve({ kind: "client_outdated", reason: "HTTP 426: client too old" });
+    }
+    const r = this.server!.submit(bill.payload);
+    return Promise.resolve({ kind: r.kind, doc_no: r.bill.doc_no });
   }
   voidBill(): Promise<VoidOutcome> {
+    return this.lowered
+      ? Promise.resolve({ kind: "unavailable", reason: "not exercised after lowering" })
+      : Promise.resolve({ kind: "client_outdated", reason: "HTTP 426: client too old" });
+  }
+}
+
+/** A seller store holding ONE pending seller-create, recording the fail-transition. */
+class OneSellerStore extends EmptySellerStore {
+  readonly failedIds: string[] = [];
+  constructor(private readonly seller: LocalSeller) {
+    super();
+  }
+  override listSellersToCreate(): Promise<LocalSeller[]> {
+    return Promise.resolve([this.seller]);
+  }
+  override countSellersOwed(): Promise<number> {
+    return Promise.resolve(1);
+  }
+  override claimSellerCreate(): Promise<boolean> {
+    return Promise.resolve(true);
+  }
+  // `id?` (not `id`) so it stays assignable to the base's no-arg signature under
+  // noImplicitOverride; the runner calls it with the row id, which is what we record.
+  override markSellerCreateAttemptFailed(id?: string): Promise<void> {
+    if (id !== undefined) this.failedIds.push(id);
+    return Promise.resolve();
+  }
+}
+
+/** A seller transport that answers 426 to the create; the top-up throws, which
+ *  refillOnce catches, so the pass's reservation top-up is a no-op. */
+class ClientOutdatedSellerTransport implements SellerCreateTransport, ReservationTransport {
+  createSeller(): Promise<SellerCreateOutcome> {
     return Promise.resolve({ kind: "client_outdated", reason: "HTTP 426: client too old" });
+  }
+  topUp(): Promise<RefillOutcome> {
+    return Promise.reject(new Error("HTTP 426: client too old"));
   }
 }
 
@@ -279,6 +338,161 @@ async function caseEngine(harness: StoreHarness, tag: string): Promise<void> {
     run2.synced === 1 && row2?.sync_state === "synced" && r.server.distinctBillIds().has(bill.id),
     `synced=${run2.synced} state=${String(row2?.sync_state)} onServer=${r.server.billCount}`,
   );
+
+  header(`C-void: a 426 on the VOID path sets clientOutdated (the bill_void arm) (${tag})`);
+  // The bill is now synced; request a void and meet a 426 on the void path.
+  // clientOutdated must come from the bill_VOID arm this time, and the void must
+  // stay OWED (void_requested_at kept, voided_at null) so it applies after the
+  // update. This is the cell finding 6 named: without it, deleting the counter
+  // from the void arm leaves prove:version green.
+  await store.requestVoid(bill.id, "แก้ไข", r.clock.now());
+  const eV = new SyncEngine({ ...noSellerKind(), store, transport: new ClientOutdatedTransport(), clock: r.clock, backoffBaseMs: 1000, backoffMaxMs: 5000 });
+  const runV = await eV.runOnce();
+  const rowV = await store.getBill(bill.id);
+  check(
+    "a 426 on the VOID path sets clientOutdated (bill_void arm) and leaves the void OWED",
+    runV.clientOutdated === 1 && rowV?.void_requested_at !== null && rowV?.voided_at === null,
+    `clientOutdated=${runV.clientOutdated} requested=${String(rowV?.void_requested_at !== null)} settled=${String(rowV?.voided_at !== null)}`,
+  );
+}
+
+async function caseSellerEngine(harness: StoreHarness): Promise<void> {
+  header("C-seller: a 426 on the SELLER-CREATE path sets clientOutdated (the deliberate rule-break)");
+  const r = await rig(harness, "ver-seller");
+  const seller = {
+    id: "seller-1",
+    attempt_count: 0,
+    next_attempt_at: new Date(0).toISOString(),
+  } as unknown as LocalSeller;
+  const sellerStore = new OneSellerStore(seller);
+  const e = new SyncEngine({
+    ...noSellerKind(),
+    store: r.session.store, // no bills owed — only the seller kind fires
+    transport: new OnlineTransport(r.server),
+    sellerStore,
+    sellerTransport: new ClientOutdatedSellerTransport(),
+    clock: r.clock,
+    backoffBaseMs: 1000,
+    backoffMaxMs: 5000,
+  });
+  const run = await e.runOnce();
+  check(
+    "a 426 on the seller-create path sets clientOutdated (seller_create arm) and leaves the seller OWED — the device-global build fact shows even on a seller-only device",
+    run.clientOutdated === 1 && sellerStore.failedIds.includes("seller-1"),
+    `clientOutdated=${run.clientOutdated} failed=${JSON.stringify(sellerStore.failedIds)}`,
+  );
+}
+
+/* ------------------------- F1-3: the other refusal surfaces (repair) ------ */
+
+async function caseSurfaces(): Promise<void> {
+  header("F1: login and shop-code on a 426 say UPDATE, not 'tell the shop owner'");
+  const r426 = { ok: false, status: 426, json: () => Promise.resolve({}) };
+  const r500 = { ok: false, status: 500, json: () => Promise.resolve({}) };
+
+  const login = await attemptLogin(() => Promise.resolve(r426));
+  const loginMsg = signInNotice(login) ?? "";
+  check(
+    "login: a 426 is client_outdated and its message names the UPDATE, not the shop owner",
+    login.kind === "client_outdated" && loginMsg.includes("อัปเดต") && !loginMsg.includes("แจ้งเจ้าของร้าน"),
+    `kind=${login.kind} msg=${loginMsg}`,
+  );
+  const login5 = await attemptLogin(() => Promise.resolve(r500));
+  check(
+    "control: a 500 is STILL server_fault ('แจ้งเจ้าของร้าน') — the 426 arm is distinct, not swallowing all",
+    login5.kind === "server_fault" && (signInNotice(login5) ?? "").includes("แจ้งเจ้าของร้าน"),
+    `kind=${login5.kind}`,
+  );
+  const shop = await exchangeShopCode(() => Promise.resolve(r426));
+  const shopMsg = shopCodeNotice(shop) ?? "";
+  check(
+    "shop-code: a 426 is client_outdated and its message names the UPDATE, not the shop owner",
+    shop.kind === "client_outdated" && shopMsg.includes("อัปเดต") && !shopMsg.includes("แจ้งเจ้าของร้าน"),
+    `kind=${shop.kind} msg=${shopMsg}`,
+  );
+
+  header("F2: the sign-out sheet on a too-old build says UPDATE, not 'wait for a send'");
+  const owed1: OwedByKind = { bill_send: 2, bill_void: 0, seller_create: 0 };
+  const outdatedSheet = signOutCardText(
+    signOutCard({ owed: owed1, failed: 0, failure: null, session: "active", appOutdated: true }),
+  );
+  const normalSheet = signOutCardText(
+    signOutCard({ owed: owed1, failed: 0, failure: null, session: "active", appOutdated: false }),
+  );
+  check(
+    "sign-out (appOutdated): names the UPDATE and does NOT promise a wait that cannot happen",
+    outdatedSheet.includes("อัปเดต") && !outdatedSheet.includes("รอให้ส่งครบ") && !outdatedSheet.includes("เมื่อเชื่อมต่อ"),
+    outdatedSheet,
+  );
+  check(
+    "control: the SAME owed queue on a CURRENT build DOES show the wait wording — the appOutdated arm is what changes it",
+    normalSheet.includes("รอให้ส่งครบ") && !normalSheet.includes("อัปเดต"),
+    normalSheet,
+  );
+
+  header("F3: the reserve strip on a too-old build says UPDATE, not 'connect to refill'");
+  const base = {
+    spendable: 2,
+    held: 8,
+    target: 8,
+    targetAt: "2026-09-01T00:00:00.000Z",
+    now: "2026-09-01T00:01:00.000Z",
+  };
+  const outLines = (reserveStripNotice({ ...base, appOutdated: true })?.lines ?? []).join(" ");
+  const normLines = (reserveStripNotice({ ...base, appOutdated: false })?.lines ?? []).join(" ");
+  check(
+    "reserve strip (appOutdated): names the UPDATE and does NOT promise 'ต่อเน็ต'",
+    outLines.includes("อัปเดต") && !outLines.includes("ต่อเน็ต"),
+    outLines,
+  );
+  check(
+    "control: the SAME holding on a CURRENT build DOES promise 'ต่อเน็ต' — the appOutdated arm is what changes it",
+    normLines.includes("ต่อเน็ต") && !normLines.includes("อัปเดต"),
+    normLines,
+  );
+}
+
+/* ------------------------- F4-5: the wedge and its clearing (repair) ------ */
+
+async function caseRecovery(harness: StoreHarness): Promise<void> {
+  header("F4-5: the flag is DERIVED per pass, and a lowered floor clears the wedge");
+  const r = await rig(harness, "ver-recover");
+  const bill = await makeBill(r);
+  const store = r.session.store;
+  const t = new ClientOutdatedTransport(r.server);
+  const e = new SyncEngine({ ...noSellerKind(), store, transport: t, clock: r.clock, backoffBaseMs: 1000, backoffMaxMs: 5000 });
+
+  const run1 = await e.runOnce();
+  check(
+    "a 426 pass sets the flag — outdatedAfterPass(false, run1) === true",
+    run1.clientOutdated === 1 && outdatedAfterPass(false, run1) === true,
+    `clientOutdated=${run1.clientOutdated}`,
+  );
+  // The wedge WITHOUT a retract: the kind is halted, so a plain pass observes
+  // nothing and the flag is KEPT — this is exactly why App must re-probe.
+  const runHalted = await e.runOnce();
+  check(
+    "while halted a pass observes nothing and the flag is KEPT (not cleared) — the wedge a retract must break",
+    runHalted.clientOutdated === 0 && runHalted.synced === 0 && outdatedAfterPass(true, runHalted) === true,
+    `run=${JSON.stringify({ c: runHalted.clientOutdated, y: runHalted.synced })}`,
+  );
+
+  // THE OPERATOR LOWERS THE FLOOR (a bad raise, rolled back). App's re-probe
+  // retracts the halt; the next pass DRAINS and outdatedAfterPass CLEARS.
+  t.lowerFloor();
+  e.retractOutdatedHalt();
+  const run2 = await e.runOnce();
+  const row2 = await store.getBill(bill.id);
+  check(
+    "after the floor is lowered the re-probe DRAINS and clears the flag — outdatedAfterPass(true, run2) === false",
+    run2.synced === 1 && outdatedAfterPass(true, run2) === false && row2?.sync_state === "synced",
+    `synced=${run2.synced} state=${String(row2?.sync_state)}`,
+  );
+  check(
+    "the queued bill survived the wedge and its rollback — same bill, now on the server",
+    r.server.distinctBillIds().has(bill.id),
+    `onServer=${r.server.billCount}`,
+  );
 }
 
 /* -------------------------------------------------------- E. the screen --- */
@@ -363,9 +577,12 @@ async function main(): Promise<number> {
   try {
     await caseEngine(memoryHarness, "mem");
     await caseEngine(sqliteHarness, "sqlite");
+    await caseSellerEngine(memoryHarness);
+    await caseRecovery(memoryHarness);
   } finally {
     await disposeAll();
   }
+  await caseSurfaces();
   caseScreen();
 
   console.log("");

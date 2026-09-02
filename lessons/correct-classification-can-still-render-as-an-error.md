@@ -654,3 +654,31 @@ Re-introducing the `{kind:"ok"}` call reddens exactly four cells in
 `provePrices`, printing the sentence above as the failure detail; the positive
 control is the SAVE screen, which must still say `บันทึก`, or "claims nothing
 about a save" would be true of a module that never says it at all.
+
+## Amendment (version-contract red-team, 2026-09-02): ONE device-global fact, FOUR surfaces, wired into ONE
+
+R2b added a device-global state (`session`) to ONE renderer and made it a required
+field so the next call site was a compile error. The version contract's client half
+introduced another device-global fact — "this build is too old" (a 426) — and wired
+it into ONE surface (the sync strip) while THREE others went on rendering the wrong
+instruction on the same 426: the LOGIN/shop-code screen said "เซิร์ฟเวอร์ตอบกลับผิดปกติ …
+แจ้งเจ้าของร้าน" (tell the owner, who cannot change an app version), the SIGN-OUT sheet
+said "รอให้ส่งครบก่อน" (wait for a send that only an update can make happen — the R2b
+defect verbatim), and the RESERVE strip said "…จะเติมเองเมื่อต่อเน็ต" (connect to refill,
+when the top-up 426s). Every one was internally correct and separately green; the
+strip's own proof could not see them, the seam
+[[two-green-proofs-do-not-cover-the-seam]] names.
+
+**The repair is R2b's, applied ACROSS the surfaces at once so the compiler
+enumerates them.** A device-global fact is not "wired" when one renderer reads it —
+it is wired when EVERY surface that renders an instruction about the refusal reads
+the same value. Make the compiler ask: add the fact as a REQUIRED field to each
+input type (SignOutCardInput, the reserve strip state) and as a member of each
+result union a screen switches on (SignInResult, ShopCodeResult) — every
+construction site and every switch is then a compile error until it handles the
+fact, and a FOURTH surface of either shape cannot be added without meeting it too.
+Here the two typecheck programs enumerated exactly the sites; no fourth appeared.
+**Ask, of any new device-global fact: how many surfaces tell the operator what to do
+about the state it names, and does the type system force every one of them to read
+it?** Wiring it into the surface that happened to bite first is the same instance
+bug 2c-7 opens this file with, one axis out.

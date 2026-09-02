@@ -12,11 +12,11 @@ lesson file; anything written here is destroyed by the next run.
 byte for byte, with line endings normalised to LF on both sides first. It exits
 1 on any difference. That is how a lesson edited without regenerating is caught.
 
-**Sources:** 62 lesson files, `lessons/*.md`, ASCII filename order.
+**Sources:** 64 lesson files, `lessons/*.md`, ASCII filename order.
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 29 across 16 files, counted from the source headings and
+**Amendments:** 31 across 16 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -36,7 +36,8 @@ line instead of by heading depth.
 - `401-is-about-the-caller-not-the-bill.md` -- A 401 is neither unavailable nor rejected: the request was fine, the CALLER is no longer anyone
 - `403-is-about-what-the-caller-may-do.md` -- A 403 is the fourth class: the caller is SOMEONE, and may not do this
 - `a-backup-is-a-claim-until-it-is-restored.md` -- A backup is a claim until it has been restored
-- `a-check-that-never-went-red-was-never-observed.md` *(2 amendments)* -- A check that has never gone red has not been observed
+- `a-cache-key-must-distinguish-the-values-it-caches.md` -- A cache key must distinguish the values it caches — or a corrective write is masked
+- `a-check-that-never-went-red-was-never-observed.md` *(3 amendments)* -- A check that has never gone red has not been observed
 - `a-checker-must-not-share-the-code-it-checks.md` *(1 amendment)* -- A checker must not share the code it checks — and must not reach past it
 - `a-column-that-describes-content-must-follow-a-rewrite.md` -- A column that describes the row's CONTENT must follow a rewrite; one that records its ORIGIN never may
 - `a-control-must-contain-what-fooled-you.md` *(1 amendment)* -- A control must contain the thing that fools the counter
@@ -62,6 +63,7 @@ line instead of by heading depth.
 - `a-round-trip-must-agree-on-its-key-space.md` -- A round trip must agree on its key space
 - `a-rule-outside-the-repo-cannot-be-seen-to-drift.md` -- A rule outside the repo cannot be seen to drift
 - `a-scratch-proof-imports-the-app-only-after-it-rebinds-the-database.md` -- A scratch proof must not import the app before it rebinds the database URL
+- `a-sticky-device-global-state-needs-a-clearing-rule.md` -- A sticky device-global state is a wedge when its fact can go false without a new process
 - `a-stored-future-instant-is-a-promise-about-a-clock.md` -- A stored future instant is a promise about a clock you do not control
 - `a-value-comparison-cannot-prove-a-path.md` *(1 amendment)* -- A value comparison cannot prove a PATH
 - `a-warning-in-one-file-does-not-protect-the-next.md` -- A warning written in one file does not protect the file beside it
@@ -72,7 +74,7 @@ line instead of by heading depth.
 - `concurrency-tests-need-a-barrier.md` -- A concurrency test without a start barrier proves nothing
 - `config-defaults-must-fail-closed.md` -- A default for a security secret is a default IDENTITY
 - `console-is-not-the-observation.md` *(1 amendment)* -- The console is not the observation — verify text at the source, in bytes
-- `correct-classification-can-still-render-as-an-error.md` *(6 amendments)* -- A correct classification is not correct behaviour until the screen agrees
+- `correct-classification-can-still-render-as-an-error.md` *(7 amendments)* -- A correct classification is not correct behaviour until the screen agrees
 - `decimal-precision-for-domain-scale.md` -- Decimal precision must be set for the domain's scale, not left at the default
 - `diagnosis-must-precede-the-fix.md` -- Diagnose before you fix: read the real error and the real files first
 - `doc-no-is-arrival-order-not-event-time.md` -- doc_no is arrival order; device clocks are wrong. Report on server time.
@@ -483,6 +485,49 @@ file is internally consistent and frozen there. With no WAL archiving there is
 no point-in-time recovery, and everything written between two backups is gone
 with the disk. Say the window out loud — "up to a day" — rather than letting
 "we have backups" imply otherwise.
+
+---
+
+**SOURCE:** `a-cache-key-must-distinguish-the-values-it-caches.md`
+
+# A cache key must distinguish the values it caches — or a corrective write is masked
+
+Applies whenever a value is cached against cheap metadata instead of re-read: a
+file's `(mtime, size)`, an ETag, a version counter, a "last modified" stamp. The key
+is only as good as its power to tell two DIFFERENT values apart. If two distinct
+values can share a key, the cache returns the stale one and the fresh write silently
+does nothing — and the write most likely to be masked is the CORRECTIVE one made in
+a hurry right after a mistake.
+
+## What happened (red-team finding 7, version contract)
+
+`version_gate.current_floor` cached the API-version floor against `(st_mtime_ns,
+st_size)` of a one-byte file, so an operator's edit would be picked up "with no
+restart." But every floor value is one byte, so `size` never discriminates, and on
+this box `st_mtime_ns` granularity is coarse enough that two back-to-back writes
+share a tick: **measured 169/200 (85%) identical `(st_mtime_ns, st_size)` over
+same-size back-to-back writes, ~1.35 ms apart.** So the exact recovery the floor
+depends on — raise to `2`, realise it was wrong, write `1` a moment later — could be
+masked: the cache keeps serving `2` and keeps refusing the fleet the correction was
+meant to admit. A floor that cannot be lowered promptly is worse than no floor.
+
+## The fix, and the general rule
+
+The file is tiny and the OS caches it in memory, so the cache bought nothing real.
+Read the CONTENT every call; there is then no key to collide. More generally: before
+caching a value against metadata, ask **can two values I need to tell apart produce
+the same key?** For a small mutable config file the answer is yes (same size, same
+clock tick), so do not cache it on stat metadata at all — the read is already cheap.
+Where a cache is genuinely worth it, the key must be a function of the CONTENT (a
+hash), never of stat fields the content does not move.
+
+The box-specific half — this machine's `st_mtime_ns` resolution — is why the
+collision was frequent rather than rare, but the principle is not box-specific: a
+one-byte value has a one-value-wide size dimension anywhere.
+
+**Where proven.** `server/app/version_gate.py::current_floor` (content read, cache
+removed), `server/scripts/prove_version_gate.py` Phase D — a corrective lower floor
+(`2 -> 1`, same byte size, back-to-back) is honoured on the very next request.
 
 ---
 
@@ -1998,6 +2043,28 @@ be mistaken for a pass.
 Ask of any test harness, not just its assertions: **if I asked for a mode that
 does not exist, would this program tell me, or would it tell me the mode was
 on?**
+
+## Amendment (version-contract red-team, 2026-09-02): a deliberate rule-break with no cell, because the harness never staged the kind that would exercise it
+
+`prove:version` asserted `run.clientOutdated === 1` and was green — but its engine
+cell built every engine with `noSellerKind()` (an empty seller store) and staged no
+void, so ONLY the `bill_send` arm ever produced that counter. The `bill_void` and
+`seller_create` arms each also do `result.clientOutdated += 1`, and the seller one is
+the change's ONE deliberate exception to that kind's no-counter rule — exactly the
+line most in need of a cell. A red-team mutation MEASURED it: replace the increment
+with a runtime no-op (`+= 0`, so it still compiles — a comment-out instead makes the
+seller arm's `result` unused and the build stops, observing no cell, mechanism 3's
+sibling) in the void and seller arms, `bill_send` left intact → `ALL CHECKS PASSED`,
+exit 0, every cell green. The assertion was satisfied by ONE kind while naming a fact
+three kinds set. The tell was cheap: `grep clientOutdated src/proof/` returned the
+one proof and its one cell, and the seller arm's own comment named a device state
+("shows even on a seller-only device") the proof's fixture could not reach. Repair:
+a cell that stages a synced bill + a void, and a cell that stages a seller-create
+against a real seller store, so the SAME mutation now reddens three named cells while
+`bill_send` stays green — the split is the evidence. **Ask of any assertion over a
+counter more than one code path writes: which path did THIS fixture drive, and is the
+path carrying the deliberate exception among them?** A green over a union of writers
+measures whichever writer the fixture happened to exercise.
 
 ---
 
@@ -5308,6 +5375,75 @@ side is talking to before trusting any answer. Also of [[proof-must-run-twice]]
 
 ---
 
+**SOURCE:** `a-sticky-device-global-state-needs-a-clearing-rule.md`
+
+# A sticky device-global state is a wedge when its fact can go false without a new process
+
+Applies to any device-global flag set from a server answer and meant to persist —
+a session end, a "too old" build, a "server in maintenance" banner. The 401 lesson
+already says such state is **device-global and DERIVED, never stamped on a row**.
+This is the other half: *derived* means derived on EVERY pass, and a flag that is
+set-once and never re-derived is a **latch**, not a derivation — and a latch is
+wrong the moment the fact it stands for can become false again on its own.
+
+## What happened (red-team findings 4-5, version contract)
+
+`appOutdated` was set `true` when a pass saw a 426 and **never set false** — sticky,
+"cleared only by a new process (the app update)". That reasoning holds for the
+normal case: an old build stays old until it is replaced. It breaks on one input the
+author did not consider: the server floor is DATA, so a bad raise can be **rolled
+back**, and then the same build the server refused a minute ago is accepted — with
+nothing on the device to notice. Measured headless: floor raised past the build,
+`appOutdated=true`, floor lowered again → the device went on rendering
+`แอปเวอร์ชันนี้เก่าเกินไป` while its bills were syncing successfully. The screen
+contradicting its own rows, and a shop that cannot work and cannot be helped
+remotely.
+
+## Two traps, and the second is subtler than the first
+
+1. **THE LATCH.** A `boolean` set true and never false cannot represent a fact that
+   oscillates. Replace it with a pure derivation over the pass result:
+   `outdatedAfterPass(was, r)` — a fresh 426 sets it, a definitive **non-426** server
+   answer clears it, no answer keeps `was`. The clearing evidence is unforgeable by a
+   stale response because every counter it reads (`r.synced`, `r.rejected`, …) is set
+   only when the server returned that status on a request THIS pass made — there is no
+   cached client state that produces `r.synced > 0` without an actual accepted send.
+
+2. **THE HALT THAT BLOCKS ITS OWN RE-PROBE.** The 426 correctly `halt_kind`s every
+   kind (like a 403) so the queue does not re-POST. But a halted kind attempts
+   nothing, so a plain pass observes an all-zero result and the derivation KEEPS the
+   flag — for ever. The state that would clear the flag is the state the flag's own
+   mechanism prevents from being observed. The recovery therefore needs an explicit
+   **re-probe**: while the flag holds, retract the halt before each pass so it
+   re-attempts and either re-halts (still 426) or drains (accepted). Prompt matters —
+   *a floor that cannot be lowered promptly is worse than no floor* — so the re-probe
+   rides the normal sync cadence rather than a slow timer.
+
+**The queued work must survive BOTH directions**, and that is the acceptance test the
+derivation is written against: the rows stay pending/owed and untouched under the
+426, and drain unchanged when the fact goes false. Clearing a flag must never be able
+to discard work.
+
+## How to spot it before it ships
+
+Ask of any device-global flag set from a server answer: **what event sets it back,
+and is that event reachable in the state the flag creates?** For `appOutdated` the
+answer was "a new process", and the input the author missed is the one where the
+fact ends WITHOUT one. If the only clearer is a restart, and the underlying fact is
+server-controlled data (a floor, a licence, a maintenance switch), it can change
+under you and the latch will lie. Derive it; give it a re-probe if a halt hides the
+evidence; and prove the clear on a real run, not the set.
+
+**Where proven.** `mobile/src/sync/outdatedState.ts` (the derivation),
+`SyncEngine.retractOutdatedHalt` (the re-probe), `mobile/src/proof/proveVersion.ts`
+`caseRecovery` — a 426 sets the flag, a halted pass KEEPS it (the wedge), and a
+lowered floor with a retract DRAINS and clears it with the bill surviving.
+Sibling of [[401-is-about-the-caller-not-the-bill]] (rule 4, device-global and
+derived) and of [[correct-classification-can-still-render-as-an-error]] (a screen
+contradicting the row behind it).
+
+---
+
 **SOURCE:** `a-stored-future-instant-is-a-promise-about-a-clock.md`
 
 # A stored future instant is a promise about a clock you do not control
@@ -7178,6 +7314,34 @@ Re-introducing the `{kind:"ok"}` call reddens exactly four cells in
 `provePrices`, printing the sentence above as the failure detail; the positive
 control is the SAVE screen, which must still say `บันทึก`, or "claims nothing
 about a save" would be true of a module that never says it at all.
+
+## Amendment (version-contract red-team, 2026-09-02): ONE device-global fact, FOUR surfaces, wired into ONE
+
+R2b added a device-global state (`session`) to ONE renderer and made it a required
+field so the next call site was a compile error. The version contract's client half
+introduced another device-global fact — "this build is too old" (a 426) — and wired
+it into ONE surface (the sync strip) while THREE others went on rendering the wrong
+instruction on the same 426: the LOGIN/shop-code screen said "เซิร์ฟเวอร์ตอบกลับผิดปกติ …
+แจ้งเจ้าของร้าน" (tell the owner, who cannot change an app version), the SIGN-OUT sheet
+said "รอให้ส่งครบก่อน" (wait for a send that only an update can make happen — the R2b
+defect verbatim), and the RESERVE strip said "…จะเติมเองเมื่อต่อเน็ต" (connect to refill,
+when the top-up 426s). Every one was internally correct and separately green; the
+strip's own proof could not see them, the seam
+[[two-green-proofs-do-not-cover-the-seam]] names.
+
+**The repair is R2b's, applied ACROSS the surfaces at once so the compiler
+enumerates them.** A device-global fact is not "wired" when one renderer reads it —
+it is wired when EVERY surface that renders an instruction about the refusal reads
+the same value. Make the compiler ask: add the fact as a REQUIRED field to each
+input type (SignOutCardInput, the reserve strip state) and as a member of each
+result union a screen switches on (SignInResult, ShopCodeResult) — every
+construction site and every switch is then a compile error until it handles the
+fact, and a FOURTH surface of either shape cannot be added without meeting it too.
+Here the two typecheck programs enumerated exactly the sites; no fourth appeared.
+**Ask, of any new device-global fact: how many surfaces tell the operator what to do
+about the state it names, and does the type system force every one of them to read
+it?** Wiring it into the surface that happened to bite first is the same instance
+bug 2c-7 opens this file with, one axis out.
 
 ---
 

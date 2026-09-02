@@ -97,6 +97,7 @@ import { reserveStripNotice } from "./src/master/reserveStrip";
 import { statusNotice } from "./src/sync/statusNotice";
 import type { StatusInput } from "./src/sync/statusNotice";
 import { withClientVersion } from "./src/net/clientVersion";
+import { outdatedAfterPass } from "./src/sync/outdatedState";
 import { arrangeNotices, masterEntry, reserveEntry, statusEntry, type NoticeId } from "./src/ui/noticeStack";
 import { NAV_ITEMS, type NavDest, type NavGate } from "./src/ui/navRow";
 import { NoticeSheet } from "./app/NoticeSheet";
@@ -689,6 +690,12 @@ function AppInner() {
    * to continue" state, and it is NOT the sign-out path (see the pass handler).
    */
   const [appOutdated, setAppOutdated] = useState(false);
+  // Mirror of `appOutdated` for `syncOnce` to read without taking it as a
+  // dependency (which would restart the 4 s interval every time the flag moved).
+  const appOutdatedRef = useRef(false);
+  useEffect(() => {
+    appOutdatedRef.current = appOutdated;
+  }, [appOutdated]);
 
   /*
    * Can this device act as someone right now? One derived value, consumed by
@@ -1243,6 +1250,13 @@ function AppInner() {
     // as well, so both guards hold.
     if (!maySync({ paused: syncPausedRef.current, token: tokenRef.current })) return;
     if (!engine) return;
+    // RE-PROBE while the build is flagged too old (findings 4-5): a 426 halted
+    // every kind, so retract the halts before this pass so it re-attempts. It
+    // either re-halts (still 426) or drains (a floor lowered after a bad raise) —
+    // and outdatedAfterPass below clears the flag on that drain. The queued work
+    // is untouched either way. Read from a ref so this callback is not re-created
+    // when the flag moves (which would restart the 4 s interval).
+    if (appOutdatedRef.current) engine.retractOutdatedHalt();
     const r = await engine.runOnce();
     // A pass tops the holding up (topUpReservations) and persists the target, so
     // refresh the reserve for the strip and the add-seller refusal.
@@ -1288,8 +1302,14 @@ function AppInner() {
      * queued bills are untouched (markClientOutdated left them pending) and send
      * unchanged once the app is updated.
      */
+    // THE BUILD-TOO-OLD FLAG, DERIVED EVERY PASS (findings 4-5), not a sticky
+    // latch: a 426 sets it, a definitive non-426 answer clears it, no answer keeps
+    // it. This is what lets a device recover when a bad floor raise is rolled back
+    // — the derivation and its defence live in outdatedAfterPass.
+    setAppOutdated((was) => outdatedAfterPass(was, r));
     if (r.clientOutdated > 0) {
-      setAppOutdated(true);
+      // Every request 426s: nothing else this pass matters. online = true (the
+      // server answered), and NOT setSessionEnded — a 426 is not a session end.
       setOnline(true);
       return;
     }
@@ -2740,6 +2760,9 @@ function AppInner() {
       the three renderers of one fact read one value.
     */
     session,
+    // The BUILD-too-old fact (426), the same device-global value the strip reads,
+    // so the sheet says "update" instead of "wait for a send" that cannot happen.
+    appOutdated,
   });
 
   /*
@@ -2799,7 +2822,7 @@ function AppInner() {
     owed,
   };
   const statusValue = statusNotice(statusInput);
-  const reserveValue = reserveStripNotice({ ...reserve, now: nowIso() });
+  const reserveValue = reserveStripNotice({ ...reserve, now: nowIso(), appOutdated });
   const noticeArrangement = arrangeNotices([
     statusEntry(statusValue.tone, mustShowSignIn({ token, sessionEnded })),
     masterEntry(masterMessage),

@@ -251,7 +251,7 @@ async function newLocalSeller(r: Rig): Promise<LocalSeller> {
  * (`lessons/correct-classification-can-still-render-as-an-error.md`).
  */
 function sheetInputOf(owed: OwedByKind, failed = 0): SignOutCardInput {
-  return { owed, failed, failure: null, session: "active" };
+  return { owed, failed, failure: null, session: "active", appOutdated: false };
 }
 
 function sheetOf(owed: OwedByKind, failed = 0): string {
