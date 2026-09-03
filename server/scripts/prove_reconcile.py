@@ -435,6 +435,7 @@ class Fx:
     mid2: Any           # another one
     mid_item: Any
     voided: Any         # a voided bill
+    audit_present: bool  # the copy is a 0017+ database (audit_log + triggers exist)
 
 
 async def fixtures(conn: asyncpg.Connection) -> Fx:
@@ -507,10 +508,13 @@ async def fixtures(conn: asyncpg.Connection) -> Fx:
     other_seller = None if other is None else await conn.fetchval(
         "SELECT id FROM sellers WHERE tenant_id = $1 LIMIT 1", other)
 
+    audit_present = await conn.fetchval(
+        "SELECT to_regclass('public.audit_log') IS NOT NULL")
     fx = Fx(tenant=tenant, other_tenant=other, other_seller=other_seller,
             tenants=len(tenant_ids), tenant_ids=tenant_ids,
             be_year=top["be_year"], max_seq=top["seq"], max_bill=top["id"],
-            mid=mid, mid2=mid2, mid_item=item, voided=voided[0])
+            mid=mid, mid2=mid2, mid_item=item, voided=voided[0],
+            audit_present=audit_present)
     print(f"  tenants in copy   : {fx.tenants}  (every expectation about a tenant count"
           " below is derived from this number, at runtime)")
     print(f"  tenant under test : {tenant}  ({len(bills)} numbered bills,"
@@ -544,7 +548,7 @@ IDX_DOCNO = ("CREATE UNIQUE INDEX uq_bills_tenant_docno ON purchase_bills"
 
 def build(fx: Fx) -> list[Injection]:
     mid, mid2, item, voided = fx.mid, fx.mid2, fx.mid_item, fx.voided
-    return [
+    injs = [
         Injection(
             "T1", "a bill's stored total no longer equals its lines — the one"
                   " number an owner balances the cash box against",
@@ -810,6 +814,23 @@ def build(fx: Fx) -> list[Injection]:
                   " have nothing to cascade from."),
         ),
     ]
+    # S6 (migration 0017) exists only on a 0017+ copy. Dropping the audit trigger
+    # from product_prices is the silent loss this design's worst failure -- a write
+    # that then leaves NO record -- and S6 is what makes reconcile notice it. Gated
+    # on audit_present so a pre-0017 copy (no trigger to drop) simply omits it.
+    if fx.audit_present:
+        injs.append(Injection(
+            "S6", "the audit_capture trigger is DROPPED from product_prices — after"
+                  " this a price change leaves no record, and S6 is the production"
+                  " detector for a silently-missing trigger",
+            apply=[("DROP TRIGGER audit_capture ON product_prices", ())],
+            undo=[("CREATE TRIGGER audit_capture AFTER INSERT OR UPDATE OR DELETE"
+                   " ON product_prices FOR EACH ROW EXECUTE FUNCTION audit_capture()",
+                   ())],
+            expect={"S6": 1},
+            expect_rows=["table=product_prices  HAS NO audit_capture TRIGGER"],
+        ))
+    return injs
 
 
 def t0_tenants_named(out: str) -> set[str]:
@@ -900,6 +921,15 @@ async def prove_x3(conn: asyncpg.Connection, database: str, fx: Fx) -> None:
           " fixtures", now == fx.tenants, f"fixtures={fx.tenants} now={now}")
 
     tid = uuidlib.uuid4()
+    # On a 0017 copy the INSERT and DELETE below fire the audit trigger, which needs
+    # an actor (and a tenant for the audit row). conn is the superuser, so set both
+    # session-level; harmless on a pre-0017 copy where no trigger reads them. The
+    # audit row's tenant is the probe's own tenant (this INSERT creates it).
+    await conn.execute("SELECT set_config('app.tenant_id', $1, false)", str(tid))
+    await conn.execute("SELECT set_config('app.actor_id', $1, false)",
+                       "00000000-0000-0000-0000-000000000000")
+    await conn.execute("SELECT set_config('app.actor_username', $1, false)",
+                       "system:prove_reconcile")
     proc = await asyncio.create_subprocess_exec(
         # -u, AND IT IS THE WHOLE PROBE.
         #
@@ -949,8 +979,14 @@ async def prove_x3(conn: asyncpg.Connection, database: str, fx: Fx) -> None:
     counts = {k: int(v) for k, v in COUNT_RE.findall(out)}
     print(f"      checker: exit {m.group(1) if m else '?'}, "
           f"{t.group(1) if t else '?'} violations {counts}")
+    # On a 0017 copy the INSERT fires the audit trigger, so TWO tables drift under
+    # the sweep -- tenants AND its audit_log row -- and X3 correctly reports both.
+    # On a pre-0017 copy only tenants drifts.
+    expected_x3 = 2 if fx.audit_present else 1
     check("X3: a row landing mid-run is reported, not silently absorbed",
-          counts.get("X3") == 1, f"got {counts}")
+          counts.get("X3") == expected_x3,
+          f"got {counts}, expected X3={expected_x3}"
+          + (" (tenants AND its audit_log row)" if fx.audit_present else ""))
     check("X3: the report names the table and both counts",
           f"table=tenants  rows_at_start={fx.tenants}  rows_at_end={fx.tenants + 1}" in out,
           f"expected rows_at_start={fx.tenants} rows_at_end={fx.tenants + 1}")

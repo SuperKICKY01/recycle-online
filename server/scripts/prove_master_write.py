@@ -135,6 +135,15 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
     url = os.environ["APP_DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
     db = await asyncpg.connect(url)
     await db.execute("SELECT set_config('app.tenant_id', $1, false)", str(TENANT_A_ID))
+    # This proof's DIRECT writes to audited master-data tables (the X1 demotion and
+    # the finally-block restores) fire the audit trigger (0017), which refuses a
+    # write with no actor. The proof is a system writer, so it declares the reserved
+    # system actor once, session-level like the tenant above; it persists across the
+    # tenant switches in the finally block.
+    await db.execute("SELECT set_config('app.actor_id', $1, false)",
+                     "00000000-0000-0000-0000-000000000000")
+    await db.execute("SELECT set_config('app.actor_username', $1, false)",
+                     "system:prove_master_write")
 
     saved_price = await db.fetchval(
         "SELECT price FROM product_prices WHERE product_id = $1 AND grade = $2",

@@ -196,7 +196,11 @@ async def run(args: argparse.Namespace) -> int:
         .set(database=args.database)
         .render_as_string(hide_password=False)
     )
-    from app.db import constraint_name_of, tenant_connection  # noqa: E402
+    from app.db import (  # noqa: E402
+        SYSTEM_ACTOR_ID,
+        constraint_name_of,
+        tenant_connection,
+    )
     from app.security import hash_password  # noqa: E402
 
     owner_engine = create_async_engine(
@@ -283,7 +287,15 @@ async def run(args: argparse.Namespace) -> int:
             # the next transaction on that connection, which is the leak
             # lessons/set-local-per-request.md exists to forbid.
             pw_hash = await hash_password(admin_password)
-            async with tenant_connection(tenant_id) as conn:
+            # tenants, users and grade_tiers are all audited (0017), and there is no
+            # prior user to attribute a shop's FIRST admin to -- so this writer
+            # declares itself as the system actor rather than falling through the
+            # trigger fail-closed. See db.SYSTEM_ACTOR_ID.
+            async with tenant_connection(
+                tenant_id,
+                actor_id=SYSTEM_ACTOR_ID,
+                actor_username="system:provision_shop",
+            ) as conn:
                 await conn.execute(
                     text(
                         "INSERT INTO public.tenants (id, name)"

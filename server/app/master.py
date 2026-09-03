@@ -51,10 +51,12 @@ one. The row keeps its id, code, name and price tiers, and keeps answering.
 
 TENANT SCOPING — THERE IS NOT ONE HAND-WRITTEN `WHERE tenant_id` IN THIS FILE
 -----------------------------------------------------------------------------
-Every handler opens its connection through tenant_connection(principal.tenant_id),
-which issues SET LOCAL app.tenant_id inside the request transaction from the
-TOKEN's tenant. RLS then does the rest, and it does it for WRITES as well as
-reads, in three separate ways:
+Every handler opens its connection through tenant_connection with
+principal.tenant_id (and, since migration 0017, the actor: principal.user_id /
+principal.username, so every audited write records who did it), which issues SET
+LOCAL app.tenant_id inside the request transaction from the TOKEN's tenant. RLS
+then does the rest, and it does it for WRITES as well as reads, in three separate
+ways:
 
   - SELECT/UPDATE see only this tenant's rows (the policy's USING clause), so
     another tenant's id is not "forbidden", it is INVISIBLE -> a plain 404.
@@ -414,7 +416,7 @@ async def list_uoms(
     include_inactive: IncludeInactive = False,
     principal: Principal = Depends(get_principal),
 ) -> dict:
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         rows = (
             await conn.execute(
                 text(f"{_UOM_SELECT}{_active_filter(include_inactive)} ORDER BY code")
@@ -427,7 +429,7 @@ async def list_uoms(
 async def create_uom(
     body: UomCreate, principal: Principal = Depends(require_admin)
 ) -> dict:
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         try:
             row = (
                 await conn.execute(
@@ -452,7 +454,7 @@ async def update_uom(
     principal: Principal = Depends(require_admin),
 ) -> dict:
     changes = _changes(body, nullable=frozenset())
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         if not await _update_row(conn, "uoms", uom_id, changes):
             raise _not_found("uom")
         return await _read_uom(conn, uom_id)
@@ -462,7 +464,7 @@ async def update_uom(
 async def deactivate_uom(
     uom_id: uuid.UUID, principal: Principal = Depends(require_admin)
 ) -> dict:
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "uoms", "uom", uom_id, False)
         return await _read_uom(conn, uom_id)
 
@@ -471,7 +473,7 @@ async def deactivate_uom(
 async def activate_uom(
     uom_id: uuid.UUID, principal: Principal = Depends(require_admin)
 ) -> dict:
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "uoms", "uom", uom_id, True)
         return await _read_uom(conn, uom_id)
 
@@ -516,7 +518,7 @@ async def list_categories(
     include_inactive: IncludeInactive = False,
     principal: Principal = Depends(get_principal),
 ) -> dict:
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         rows = (
             await conn.execute(
                 text(
@@ -531,7 +533,7 @@ async def list_categories(
 async def create_category(
     body: CategoryCreate, principal: Principal = Depends(require_admin)
 ) -> dict:
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         try:
             row = (
                 await conn.execute(
@@ -556,7 +558,7 @@ async def update_category(
     principal: Principal = Depends(require_admin),
 ) -> dict:
     changes = _changes(body, nullable=frozenset())
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         if not await _update_row(conn, "product_categories", category_id, changes):
             raise _not_found("product_category")
         return await _read_category(conn, category_id)
@@ -566,7 +568,7 @@ async def update_category(
 async def deactivate_category(
     category_id: uuid.UUID, principal: Principal = Depends(require_admin)
 ) -> dict:
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "product_categories", "product_category", category_id, False)
         return await _read_category(conn, category_id)
 
@@ -575,7 +577,7 @@ async def deactivate_category(
 async def activate_category(
     category_id: uuid.UUID, principal: Principal = Depends(require_admin)
 ) -> dict:
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "product_categories", "product_category", category_id, True)
         return await _read_category(conn, category_id)
 
@@ -715,7 +717,7 @@ async def list_products(
     include_inactive: IncludeInactive = False,
     principal: Principal = Depends(get_principal),
 ) -> dict:
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         rows = (
             await conn.execute(
                 text(
@@ -749,7 +751,7 @@ async def list_products(
 async def create_product(
     body: ProductCreate, principal: Principal = Depends(require_admin)
 ) -> dict:
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _require_refs(
             conn, {"category_id": body.category_id, "uom_id": body.uom_id}
         )
@@ -786,7 +788,7 @@ async def update_product(
     principal: Principal = Depends(require_admin),
 ) -> dict:
     changes = _changes(body, nullable=frozenset())
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _require_refs(conn, changes)
         if not await _update_row(conn, "products", product_id, changes):
             raise _not_found("product")
@@ -806,7 +808,7 @@ async def deactivate_product(
     may already have tipped that load, and reactivating makes the same bill go
     through unchanged).
     """
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "products", "product", product_id, False)
         return await _read_product(conn, product_id)
 
@@ -815,7 +817,7 @@ async def deactivate_product(
 async def activate_product(
     product_id: uuid.UUID, principal: Principal = Depends(require_admin)
 ) -> dict:
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "products", "product", product_id, True)
         return await _read_product(conn, product_id)
 
@@ -841,7 +843,7 @@ async def set_product_price(
     tier it holds, active or not. A foreign code is a readable 422, not the
     composite FK's IntegrityError 500.
     """
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _require_product(conn, product_id)
         await _validate_grade(conn, grade, must_be_active=False)
         await conn.execute(
@@ -970,7 +972,7 @@ async def list_sellers(
     include_inactive: IncludeInactive = False,
     principal: Principal = Depends(get_principal),
 ) -> dict:
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         rows = (
             await conn.execute(
                 text(f"{_SELLER_SELECT}{_active_filter(include_inactive)} ORDER BY code")
@@ -1556,7 +1558,7 @@ async def create_seller(
     `uq_sellers_tenant_code` already made them do at the INSERT, and the mode is
     FOR NO KEY UPDATE so nothing else in the shop waits at all.
     """
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         # THE LOCK FIRST. Everything below either derives a code from a maximum
         # or checks a code against the reservation relation, and both are only
         # answers if nothing can write that namespace between the read and the
@@ -1766,7 +1768,7 @@ async def update_seller(
     # possible: a seller can lose their grade, and the resulting bills are then
     # refused with a resolvable 424 rather than mispriced.
     changes = _changes(body, nullable=_SELLER_NULLABLE)
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         # A grade being SET (not cleared) must be one of the shop's active tiers
         # (S16 / P1.24). An explicit null clears it -- the resulting bills park on
         # the resolvable 424 -- and needs no tier.
@@ -1782,7 +1784,7 @@ async def deactivate_seller(
     seller_id: uuid.UUID, principal: Principal = Depends(require_admin)
 ) -> dict:
     """Retire a seller. Their existing bills are untouched and stay readable."""
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "sellers", "seller", seller_id, False)
         return await _read_seller(conn, seller_id)
 
@@ -1791,7 +1793,7 @@ async def deactivate_seller(
 async def activate_seller(
     seller_id: uuid.UUID, principal: Principal = Depends(require_admin)
 ) -> dict:
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "sellers", "seller", seller_id, True)
         return await _read_seller(conn, seller_id)
 
@@ -1873,7 +1875,7 @@ async def list_grade_tiers(
     them and must draw the picker offline. Deactivated tiers are excluded by
     default (not offered for new work); include_inactive=true finds one again — a
     row it cannot list is a row it cannot reactivate."""
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         rows = (
             await conn.execute(
                 text(f"{_GRADE_TIER_SELECT}{_active_filter(include_inactive)}"
@@ -1890,7 +1892,7 @@ async def create_grade_tier(
     """Declare a tier. ADMIN ONLY (the gate every standing choice takes). A
     duplicate code is a 409 — the shop already holds that tier. NO product-imposed
     limit on how many (F1)."""
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         sort_order = body.sort_order
         if sort_order is None:
             # Append. coalesce(max, -1) + 1 gives 0 for the shop's first tier.
@@ -1930,7 +1932,7 @@ async def update_grade_tier(
     # None of the three is nullable (all NOT NULL columns), so an explicit null is
     # a 422 (field_not_nullable), never a clear.
     changes = _changes(body, nullable=frozenset())
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         tier = await _read_grade_tier(conn, tier_id)
         if tier is None:
             raise _not_found("grade_tier")
@@ -2003,7 +2005,7 @@ async def reorder_grade_tiers(
     a half-applied one -- RLS scopes each to its shop and `tenant_connection` runs
     the reads and every UPDATE in a single transaction, so the ordering moves as one
     write or not at all."""
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         # RLS-scoped: only this shop's tiers. The ordering must cover them exactly.
         existing = set(
             (await conn.execute(text("SELECT id FROM grade_tiers"))).scalars().all()
@@ -2135,7 +2137,7 @@ async def top_up_seller_code_reservations(
     alternated with the number of rows written would put the quantity back on the
     wire in the one place the design took it off.
     """
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         # THE LOCK FIRST, BEFORE ANYTHING IS READ. Everything below derives from
         # a maximum, and a derivation is only an answer if nothing can write this
         # namespace between the read and the INSERT.
@@ -2286,7 +2288,7 @@ async def get_shop(principal: Principal = Depends(get_principal)) -> dict:
     as the seller's fault. Nothing here is sensitive and nothing names a person
     -- it is the shop's own name, address, phone and grade choice.
     """
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         return await _read_shop(conn)
 
 
@@ -2308,7 +2310,7 @@ async def update_shop(
     # so model_dump cannot produce a key outside {default_grade, address, phone}),
     # never caller strings.
     assignments = ", ".join(f"{col} = :{col}" for col in changes)
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         # A default_grade being SET (not cleared) must be one of the shop's active
         # tiers (S16 / P1.24). Cleared (explicit null) takes the default away and
         # needs no tier. A foreign code is a readable 422, not the FK's 500.

@@ -6908,6 +6908,19 @@ so the previous value is gone the moment the new one lands. Read forward across
 `0001` to `0011` with every DROP applied, **there is no history relation and no
 audit relation of any kind in this schema.**
 
+**Superseded 2026-09-02 (migration 0017, this phase; anchor next pass) — THE WRITING
+HALF IS BUILT, AND THE DEADLINE IS MET.** There IS now an audit relation: `audit_log`
+records every write to `product_prices` (and the seven other master-data tables) by a
+`SECURITY DEFINER` trigger, with the actor (`actor_user_id`/`actor_username`), the
+moment (`created_at`), and the whole row before and after (`old_data`/`new_data`, money
+byte-identical). The three facts this step says "exist nowhere" — what a tier stood at
+on an untraded day, when it moved, who moved it — now exist for every change FROM THIS
+DATE ON, so the permanently-empty stretch stops growing today. What REMAINS of P1.20 is
+the READING half (a UI that shows a shop owner the history) — a later surface — plus a
+retention rule (filed in `OPEN_ITEMS.md`, the owner's call). A dedicated `price_history`
+table is deliberately NOT built: the log holds strictly more (author, before/after,
+every master-data table), so blueprint decision 7 is satisfied, not merely mitigated.
+
 **WHAT IS NOT LOST, said explicitly so this is not read as wider than it is.**
 Hard rule 6 keeps `unit_price` AND `list_price` on every bill line, so what a
 SOLD line was struck at, and the list price it was struck against, are preserved

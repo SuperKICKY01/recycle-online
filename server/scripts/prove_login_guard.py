@@ -171,8 +171,9 @@ class Ctx:
 
 async def provision(ctx: Ctx) -> None:
     from sqlalchemy import text
-    from app.db import tenant_connection
+    from app.db import SYSTEM_ACTOR_ID, tenant_connection
     from app.security import hash_password
+    ACTOR = dict(actor_id=SYSTEM_ACTOR_ID, actor_username="system:prove_login_guard")
 
     async def mkuser(conn, uid, username, role, password):
         ph = await hash_password(password)
@@ -183,7 +184,7 @@ async def provision(ctx: Ctx) -> None:
              "fn": username, "r": role, "ph": ph})
 
     conn_tenant = [None]
-    async with tenant_connection(ctx.main) as conn:
+    async with tenant_connection(ctx.main, **ACTOR) as conn:
         conn_tenant[0] = ctx.main
         await conn.execute(text("INSERT INTO tenants (id, name) VALUES (:id, :n)"),
                            {"id": ctx.main, "n": f"LG MAIN {RUN}"})
@@ -191,7 +192,7 @@ async def provision(ctx: Ctx) -> None:
         for k in ("allow", "lock", "expire", "adminlock", "bystander", "nopw", "collide"):
             await mkuser(conn, ctx.ids[k], U[k], "staff", PW[k])
 
-    async with tenant_connection(ctx.other) as conn:
+    async with tenant_connection(ctx.other, **ACTOR) as conn:
         conn_tenant[0] = ctx.other
         await conn.execute(text("INSERT INTO tenants (id, name) VALUES (:id, :n)"),
                            {"id": ctx.other, "n": f"LG OTHER {RUN}"})

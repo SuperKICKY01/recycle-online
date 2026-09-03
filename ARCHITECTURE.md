@@ -259,6 +259,16 @@ are UNVERIFIED caller input, so neither carries a foreign key; the row itself sa
 0008/0012/0015 sit in (recorded above); `reconcile.py`'s S3 DOES check its RLS+FORCE,
 and its S1/S2/X2 account for it.
 
+**Superseded 2026-09-02 (migration 0017; unanchored, anchor next pass).** Re-derived
+from `information_schema` on dev: `public` now holds SIXTEEN relations — the fifteen
+above PLUS `audit_log` (0017), the append-only master-data audit log D3 requires,
+added as a row below. `§ 8.2`'s RLS-policy enumeration is not updated for it (the same
+pre-existing gap 0008/0012/0015/0016 sit in). `reconcile.py` S1/S2/S3/B1 cover it and
+S6 checks its triggers, but it is DELIBERATELY EXCLUDED from X2: a forensic log retains
+a record after the tenant it names is deleted, so its per-tenant completeness is not a
+tenant-isolation invariant (measured — a restored dev copy read `seen=188 present=220`,
+32 rows for tenants a proof had since removed).
+
 | table | what it is for | shape worth knowing |
 |---|---|---|
 | `tenants` | one row per shop; the unit a licence would attach to | `(id, name, created_at)` and nothing else — no address, no phone. **No endpoint reads it** <br>**Superseded 2026-08-30 (unanchored; anchor next pass):** re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone)` — `default_grade` (migration 0010), `seller_code_target_holding` (0012), `address`+`phone` (0013). It IS read and written: `GET /shop` returns it (staff-readable) and `PATCH /shop` writes `default_grade`/`address`/`phone` (admin-only), so "no endpoint reads it" went false at `9ad225e`. `name` stays immutable-by-decision (`9ad225e`). <br>**Superseded 2026-08-30 (P1.23 item 4 unit 2; unanchored; anchor next pass):** `staff_money_visible` (boolean NOT NULL DEFAULT false, migration 0014) is added — re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone, staff_money_visible)`, EIGHT columns. It is the per-shop switch the dashboard reads: `GET /shop` returns it (staff-readable), `PATCH /shop` writes it (admin-only), and `GET /reports/summary` refuses a staff caller its money unless it is on (D1). |
@@ -273,6 +283,7 @@ and its S1/S2/X2 account for it.
 | `doc_no_counters` | the gap-free document sequence | `PRIMARY KEY (tenant_id, be_year)`, one row per shop per Buddhist year (0002) |
 | `grade_tiers` | the per-tenant grade tiers a shop declares (P1.24 / S16) | `UNIQUE (tenant_id, code)` and `(tenant_id, id)`; columns `code`/`name`/`sort_order`/`is_active`; `product_prices.grade` and `sellers.grade` reference it by composite FK on `code`. A tier is DEACTIVATED, never deleted (no DELETE grant). Added 0015 |
 | `failed_login_attempts` | the append-only record of a REFUSED login, and the counter a temporary lockout is derived from (0016) | `(id, tenant_id, username, outcome, created_at)`, `outcome` CHECK `failed`/`unlocked_by_admin`. THE ONE TABLE THAT DEPARTS FROM POINT 1: `tenant_id` is the UNVERIFIED submitted login claim and `username` the string as typed, so NEITHER carries a foreign key — a guesser may name a shop or user that does not exist and the attempt must record, not raise. RLS+FORCE keyed on the submitted tenant like the rest; APPEND-ONLY at the grant level (`recycle_app` holds SELECT+INSERT, UPDATE/DELETE revoked). Holds NO password material. Added 0016 |
+| `audit_log` | the append-only record of every master-data write, with its author (0017 / D3) | `(id, tenant_id, table_name, action, actor_user_id, actor_username, old_data, new_data, created_at)`. Written ONLY by the `audit_capture` SECURITY DEFINER trigger on 8 master-data tables (uoms, product_categories, products, product_prices, sellers, grade_tiers, users, tenants). The actor rides in the `app.actor_id`/`app.actor_username` GUCs (`tenant_connection`), and a write with NO actor is REFUSED. Whole row before/after as `jsonb`; money exact; `users.password_hash` redacted. RLS+FORCE keyed on `app.tenant_id`. APPEND-ONLY at the grant level: `recycle_app` holds SELECT only. NO FK — a forensic record outlives the rows it names. Added 0017 |
 
 **Why the shape is this shape**, in four points that are not obvious from the
 column list:
@@ -558,6 +569,7 @@ this is where each layer of it lives.
 | **policy, the 10th table** | `0002_bills_docno_and_vehicle.py:47-52` | `doc_no_counters` gets the same three statements, **in a different migration** |
 | the predicate | `0001_initial_schema.py:62` | `NULLIF(current_setting('app.tenant_id', true), '')::uuid` — unset or empty becomes NULL, the predicate becomes unknown, **no rows** |
 | context, per request | `server/app/db.py:86-91` | `conn.begin()`, then `set_config('app.tenant_id', :t, true)` — the third argument is what makes it `SET LOCAL`, transaction-scoped, unable to leak across a pooled connection |
+| **the actor, per request (0017)** | `server/app/db.py`, `tenant_connection` | alongside the tenant, `set_config('app.actor_id', …, true)` and `app.actor_username` carry WHO into the transaction, so the `audit_capture` SECURITY DEFINER trigger can attribute every master-data write (`§ 4`'s `audit_log` row, migration 0017). A write to an audited table with no actor is REFUSED; the two legitimate actor-less writers (`provision_shop.py`, `seed_dev.py`) declare a reserved system actor (`db.SYSTEM_ACTOR_ID`) |
 | the roles | `server/db/init/00_init_roles.sql` (the `CREATE ROLE` blocks) | all three of `recycle_owner`, `recycle_app` and `recycle_directory` are `NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`. `FORCE` is what makes the policy bind the owner too |
 | structural backstop | `0001_initial_schema.py:28-37` | composite tenant-carrying FKs (§4) — holds even where RLS does not apply |
 | asserted by | `reconcile.py:877-887` (S4, role attributes), `prove_rls.py` | the roles and the policies are checked, not assumed |

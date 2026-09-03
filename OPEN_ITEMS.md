@@ -672,6 +672,22 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   here. *Unblocks:* the step that owns it, `ROADMAP.md § STAGE 1`
   "Price history", which records the same measurement as a schema
   dependency rather than assuming the data exists.
+  **ADDRESSED 2026-09-02 (migration 0017, this phase; anchor next pass) — THE LIST'S
+  HISTORY NOW EXISTS.** Every write to `product_prices` and the seven other master-data
+  tables is recorded in the new append-only `audit_log` by a `SECURITY DEFINER` trigger,
+  with the actor (`actor_user_id`/`actor_username`), the moment (`created_at`), and the
+  whole row before and after (`old_data`/`new_data`, money byte-identical via `to_jsonb`).
+  So "what a tier stood at on a day nobody traded it, when it moved, and who moved it" is
+  answerable from the log alone for every change FROM THIS DATE ON — the irrecoverable
+  part (changes before 0017) stays gone, as this entry always said. A dedicated
+  `price_history` table is deliberately NOT built: the log holds strictly more (author,
+  before/after, every master-data table), so blueprint decision 7 is satisfied, not merely
+  mitigated. **RETENTION IS THE ONE THING LEFT OPEN AND IS THE OWNER'S CALL:** `audit_log`
+  is append-only and nothing prunes it (this system has no scheduler, deliberately). Growth
+  is slow — master-data writes are infrequent — but unbounded over time. A pruner deleting
+  rows older than a chosen window is safe (such a row can no longer answer a live question),
+  but the window is a decision, not a default; no migration writes it. Filed here, not
+  invented.
 
 ## Verification gaps — built, not proven
 

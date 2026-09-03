@@ -49,6 +49,16 @@ engine = create_async_engine(APP_DATABASE_URL, pool_pre_ping=True)
 # something uses it.
 directory_engine = create_async_engine(DIRECTORY_DATABASE_URL, pool_pre_ping=True)
 
+# The reserved actor for a write with NO human principal. Migration 0017's audit
+# trigger REFUSES a write to an audited table when app.actor_id is unset (fail
+# closed), so the two legitimate actor-less writers -- provision_shop.py, which
+# creates a shop's FIRST admin when there is no prior user, and seed_dev.py -- must
+# DECLARE themselves by passing this pair to tenant_connection rather than falling
+# through silently. All-zero id so it can never collide with a real users.id; the
+# specific system context (system:provision_shop, system:seed_dev) rides in the
+# username, so a forensic reader sees at a glance that no person did the write.
+SYSTEM_ACTOR_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
 
 def constraint_name_of(exc: BaseException) -> str:
     """The Postgres constraint an IntegrityError violated, or "" if unknown.
@@ -85,11 +95,27 @@ def constraint_name_of(exc: BaseException) -> str:
 
 @asynccontextmanager
 async def tenant_connection(
-    tenant_id: uuid.UUID | None, *, isolation_level: str | None = None
+    tenant_id: uuid.UUID | None,
+    *,
+    actor_id: uuid.UUID | None = None,
+    actor_username: str | None = None,
+    isolation_level: str | None = None,
 ) -> AsyncIterator[AsyncConnection]:
     """Yield a connection whose open transaction has app.tenant_id set LOCAL.
 
     tenant_id is None -> no context is set -> RLS returns nothing (fail closed).
+
+    THE ACTOR, for the audit log (migration 0017). A write to an audited master-data
+    table fires a trigger that records WHO did it, and a trigger cannot see the
+    principal -- so the actor is carried into the transaction as two more SET LOCAL
+    GUCs, app.actor_id and app.actor_username, exactly the shape app.tenant_id uses.
+    A handler passes actor_id=principal.user_id, actor_username=principal.username; a
+    system writer passes SYSTEM_ACTOR_ID with a system: username. Both are set or
+    neither: actor_id without actor_username is a ValueError here, because the log
+    stores both (the id is the durable identity, the username a point-in-time
+    snapshot for readability). A connection that writes an audited table with NO
+    actor is REFUSED by the trigger; this is where the value it wants is supplied.
+    Reads and writes to non-audited tables may omit the actor -- no trigger reads it.
 
     isolation_level exists for a request whose SEPARATE READS MUST AGREE WITH
     EACH OTHER. Under the default READ COMMITTED every statement takes a fresh
@@ -114,6 +140,23 @@ async def tenant_connection(
                 await conn.execute(
                     text("SELECT set_config('app.tenant_id', :t, true)"),
                     {"t": str(tenant_id)},
+                )
+            if actor_id is not None:
+                if actor_username is None:
+                    raise ValueError(
+                        "tenant_connection: actor_id was given without actor_username;"
+                        " the audit log stores both, so pass the pair (or neither)"
+                    )
+                # SET LOCAL, transaction-scoped, like app.tenant_id -- and visible
+                # inside the SECURITY DEFINER audit trigger, because a GUC is
+                # transaction state, not role state.
+                await conn.execute(
+                    text("SELECT set_config('app.actor_id', :a, true)"),
+                    {"a": str(actor_id)},
+                )
+                await conn.execute(
+                    text("SELECT set_config('app.actor_username', :u, true)"),
+                    {"u": actor_username},
                 )
             yield conn
 

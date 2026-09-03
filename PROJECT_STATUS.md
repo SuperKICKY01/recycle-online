@@ -75,6 +75,47 @@ not read the green as re-run.**
 
 ## Current phase
 
+**WHO DID WHAT — THE MASTER-DATA AUDIT LOG, WRITTEN BY TRIGGERS. 2026-09-02.** No sha yet (this record
+precedes the commit; anchor next pass). Supersedes the staff-management record below AS THE POINTER ONLY —
+that work stands and is committed (`98cbc2d`/`0a42b59`).
+**WHAT A SHOP GAINS.** Every change to a shop's master data — a price, a seller's tier, a product, a user's role
+or deactivation, a shop setting — is now recorded with WHO did it, WHEN, and the row before and after. Until now a
+`PUT .../prices/...` overwrote with no author (measured at `master.py`'s `DO UPDATE SET price`), and 21 of the app's
+25 write sites recorded no actor at all. This closes the write half of ARCHITECTURE D3 ("audit logging exists from
+the provider service's first day … every master-data write with its author"); the read half is the provider service,
+still unbuilt.
+**WHAT WAS BUILT.** Migration `0017_audit_log.py`: an append-only `audit_log` table, a `SECURITY DEFINER` trigger
+function `audit_capture` (owner `recycle_owner`, `search_path` pinned) on 8 master-data tables (uoms,
+product_categories, products, product_prices, sellers, grade_tiers, users, tenants), RLS+FORCE, and SELECT-only
+grants (the trigger is the sole writer, so `recycle_app` cannot forge or alter a row). The actor reaches the trigger
+through two GUCs `app.actor_id`/`app.actor_username` set by `tenant_connection` (`db.py`), which also gained
+`SYSTEM_ACTOR_ID`; the 36 master.py/users.py handler call sites pass `principal.user_id`/`principal.username`, and the
+two legitimate actor-less writers (`provision_shop.py`, `seed_dev.py`) declare the system actor. Whole-row before/after
+as `jsonb` (money exact; `users.password_hash` redacted). `reconcile.py` learned the table (S1/S2/S3/B1) and gained a
+NEW check S6 (every audited table still carries its trigger); it is deliberately EXCLUDED from X2 (a forensic log
+outlives the tenants it names). New proof `prove_audit.py`; ~16 existing proofs' direct-write connections now declare
+a system actor (the fail-closed trigger refuses an unattributed write).
+**DESIGN DECISIONS (mine, per the brief; defended in the phase report).** Triggers not handler code (no service
+layer; a hand-written insert misses one). SECURITY DEFINER + SELECT-only app grant (write-only-via-trigger). Fail
+closed: a write with no actor is REFUSED, system writers declare themselves. Whole-row jsonb (reconstruction needs
+complete steps; money survives `to_jsonb` byte-identical — measured). No `price_history` table (blueprint decision 7
+is satisfied — the log holds every price before/after with its author). Retention: none yet, recorded in OPEN_ITEMS.
+**READINGS (each command bare; cp874 box; UTF-8 stdout where a proof prints Thai).** `alembic` both directions exit 0
+(upgrade → downgrade drops table+8 triggers+function → upgrade). Schema audited field-by-field against
+`information_schema`/pg_catalog. `prove_audit.py` GREEN TWICE (A1 one attributed row with byte-identical money; A2
+price reconstruction; RED password redaction; AP append-only; RB rollback; XT cross-tenant RLS; three disproofs Da/Dc/
+Db all fire). `reconcile.py` exit 0 on live and on a restored copy — but only after THE INSTRUMENT CORRECTED THE
+DESIGNER: I registered `audit_log` in X2's per-tenant completeness sum asserting it "has NO boundary here", and X2
+disproved that on the first restored copy (`seen=188 present=220`, 32 rows for tenants a proof had since deleted). The
+check was right and I was wrong — a forensic log DELIBERATELY outlives the tenant whose rows it describes, so its
+completeness is not a tenant-isolation invariant. `audit_log` is now EXCLUDED from X2, kept in S1/S2/S3, and reconcile
+gained a new S6 so a silently-dropped audit trigger — this design's worst failure — is caught in production.
+`prove_reconcile.py` exit 0 with the S6 injection
+(drop trigger → S6 red → undo clean). `prove_backup_restore.py` exit 0 — `audit_log` round-trips (db=220 dump=220
+restored=220 through two cycles) and triggers do not fire on restore (created post-data). Eleven affected write-proofs
+re-run GREEN (prove_master_write, master_data_gate, seller_pricing, shop_settings, seller_code_guards, grade_tiers,
+login_guard, seller_history, reports_summary, user_admin, rls).
+
 **STAFF MANAGEMENT ON THE PHONE — SCREEN SUB-PHASE 2 OF 2: THE USER-MANAGEMENT SCREEN. 2026-09-02.** No sha yet
 (this record precedes the commit; anchor next pass). Supersedes the server sub-phase record below AS THE POINTER ONLY
 — that work stands and is committed (0a42b59). This closes the CLIENT half of the two-phase step; P3.7 is still NOT
@@ -2378,6 +2419,20 @@ not a new feature:
   added later. It is tracked as its own item in `OPEN_ITEMS.md`, as a SCHEMA and
   audit question; it is **not** part of R1 and adding the column would not make one
   existing bill traceable.
+
+  **Superseded 2026-09-02 (measured at head; migration 0017 pending commit, anchor
+  next pass):** THE PARAGRAPH ABOVE IS STALE. `purchase_bills` HAS carried
+  `created_by uuid` (composite FK to `users`) since migration 0006
+  (`0006_bills_created_by.py:159`, committed 2026-08-07 — one day after this paragraph
+  was written), POST /bills writes it from `principal.user_id` (`bills.py:586`), and
+  `GET /reports/summary?by=user` groups bills by it (`reports.py:771-777`). So the
+  `grep -rn "created_by" server/` the paragraph says "returns nothing" returns 24 lines
+  in `server/app` alone today, and a bill CAN be traced to its creator. What survives is
+  the SHAPE of the point, moved one table over: a MASTER-DATA write — a price, a seller
+  edit, a user deactivation — recorded no author at all until migration 0017's
+  `audit_log` (this phase), which is the gap D3 names. The paragraph is left standing,
+  not rewritten: it was true on 2026-08-05 and went false the next day, the same
+  supersede-and-date convention the `is_active` correction above it uses.
 
   **THIS PREDICTION WAS RIGHT, AND R1 DID BOTH HALVES** — `19a6b63` (server:
   `token_version`, migration 0005, `prove_revocation.py`) and `7484645`

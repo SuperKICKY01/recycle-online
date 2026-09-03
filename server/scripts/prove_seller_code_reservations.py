@@ -180,6 +180,12 @@ async def _in_tenant(dsn: str, tenant: uuid.UUID, fn):
         try:
             await conn.execute("SELECT set_config('app.tenant_id', $1, true)",
                                str(tenant))
+            # Audited-table writes need an actor (0017); this proof is a system
+            # writer and declares the reserved system actor for this transaction.
+            await conn.execute("SELECT set_config('app.actor_id', $1, true)",
+                               "00000000-0000-0000-0000-000000000000")
+            await conn.execute("SELECT set_config('app.actor_username', $1, true)",
+                               "system:prove_seller_code_reservations")
             result = await fn(conn)
             await tx.commit()
             return result
@@ -852,6 +858,13 @@ def main() -> int:  # noqa: PLR0915 - one linear script, read top to bottom
                                 await conn.execute(
                                     "SELECT set_config('app.tenant_id', $1, true)",
                                     str(TENANT_A_ID))
+                                # audited writes need an actor (0017)
+                                await conn.execute(
+                                    "SELECT set_config('app.actor_id', $1, true)",
+                                    "00000000-0000-0000-0000-000000000000")
+                                await conn.execute(
+                                    "SELECT set_config('app.actor_username', $1, true)",
+                                    "system:prove_seller_code_reservations")
                                 await conn.execute(hold_sql, *hold_args)
                                 taken.set()
                                 while not release.is_set():

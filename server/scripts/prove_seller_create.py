@@ -270,6 +270,15 @@ async def _seed_sentinel(code: str) -> None:
                 text("SELECT set_config('app.tenant_id', :t, true)"),
                 {"t": str(TENANT_A_ID)},
             )
+            # sellers is audited (0017); this proof is a system writer.
+            await conn.execute(
+                text("SELECT set_config('app.actor_id', :a, true)"),
+                {"a": "00000000-0000-0000-0000-000000000000"},
+            )
+            await conn.execute(
+                text("SELECT set_config('app.actor_username', :u, true)"),
+                {"u": "system:prove_seller_create"},
+            )
             await conn.execute(
                 text("INSERT INTO sellers (tenant_id, code, name, grade)"
                      " VALUES (:t, :c, :n, 'B')"),

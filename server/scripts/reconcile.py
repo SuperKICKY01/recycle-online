@@ -343,7 +343,38 @@ TENANT_TABLES = [
     # proof, so X2 is green today.
     "failed_login_attempts",
 ]
-ALL_RLS_TABLES = ["tenants", *TENANT_TABLES]
+# audit_log (migration 0017) is in ALL_RLS_TABLES but DELIBERATELY NOT in
+# TENANT_TABLES, so it is NOT in X2's per-tenant completeness sum. WHY, and it was
+# MEASURED, not reasoned: it is a FORENSIC log that retains a record after the tenant
+# it names is deleted (a proof's throwaway tenant today; any tenant delete later), so
+# a row whose tenant_id names no CURRENT shop is EXPECTED. On a restored dev copy X2
+# read audit_log seen=188 present=220 -- 32 rows for tenants a proof had since
+# removed -- a red about isolation that is really about a deleted tenant. This is the
+# failed_login_attempts X2 boundary, but REACHED NOW on any copy where a tenant was
+# ever deleted rather than a future one, which is why audit_log is EXCLUDED outright
+# instead of only documented. (The first draft put it in TENANT_TABLES claiming "no
+# boundary here"; X2 disproved that on the first restored copy, the checker working.)
+#
+# It STAYS in ALL_RLS_TABLES below, so S1 (tenant_id), S2 (known table), S3
+# (RLS+FORCE, one policy) and B1 (blind read) all still cover it, and S6 checks its
+# triggers. Only the completeness SUM, whose invariant it cannot satisfy, drops it.
+# APPEND-ONLY at the grant level, the SECURITY DEFINER trigger its sole writer
+# (recycle_app holds SELECT only). Its constraints/index are DELIBERATELY NOT in
+# REQUIRED_CONSTRAINTS/REQUIRED_INDEXES, the same decision 0005..0016 recorded: a
+# dump taken before 0017 has neither, so S5 would go red on such a copy for a reason
+# unrelated to money. Wake condition: a dump taken AFTER 0017 is the oldest restored.
+ALL_RLS_TABLES = ["tenants", *TENANT_TABLES, "audit_log"]
+
+# The tables migration 0017 attaches the audit_capture trigger to. S6 reads the
+# trigger set back out of pg_trigger and requires it to EQUAL this set -- a
+# containment check would pass over a dropped trigger, and only equality also
+# catches a trigger on a table this set forgot (the excess half). Restated from
+# 0017's _AUDITED_TABLES rather than imported (a migration is not a library); S6
+# is gated on audit_log's existence, so a pre-0017 restored copy simply skips it.
+AUDITED_TABLES = frozenset({
+    "uoms", "product_categories", "products", "product_prices",
+    "sellers", "grade_tiers", "users", "tenants",
+})
 
 # Named constraints and indexes the row checks lean on. If one is missing, the
 # row checks may still pass while the guarantee that MADE them true is gone — a
@@ -1114,6 +1145,56 @@ async def structure_checks(rep: Report, admin: asyncpg.Connection) -> None:
     r.rows = bad
     rep.add("global", r)
 
+    # S6 — the audit triggers are all present (migration 0017). A silently dropped
+    # trigger means a master-data write leaves NO record — the worst failure this
+    # design can have, and it moves no count, no exit code and no other check — so
+    # reconcile is where production notices it. Gated on audit_log's existence: a
+    # dump taken before 0017 has neither the table nor the triggers, and S6 must
+    # not red on such a restored copy (the same wake condition S5 gives the 0017
+    # constraints). EQUALITY, not containment: a MISSING trigger and an UNEXPECTED
+    # one both matter, and only checking both catches a set that drifted either way.
+    r = Result("S6", "every audited table carries its audit_capture trigger,"
+                     " and the trigger function is SECURITY DEFINER")
+    if "audit_log" not in present:
+        r.skipped = ("audit_log is absent (a database from before migration 0017);"
+                     " the audit triggers do not exist here yet")
+        rep.add("global", r)
+    else:
+        # tgenabled is the internal "char" type; asyncpg hands it back as BYTES,
+        # not str, so `x != 'O'` is true of a perfectly enabled trigger (measured:
+        # every trigger read as DISABLED). Compute the "does it fire" boolean in
+        # SQL instead -- 'O' fires in origin mode, 'A' fires always; 'D'/'R' do not.
+        trg = await admin.fetch(
+            "SELECT c.relname AS table_name, (t.tgenabled IN ('O','A')) AS fires"
+            "  FROM pg_trigger t"
+            "  JOIN pg_class c ON c.oid = t.tgrelid"
+            "  JOIN pg_namespace n ON n.oid = c.relnamespace"
+            " WHERE n.nspname = 'public' AND t.tgname = 'audit_capture'"
+            "   AND NOT t.tgisinternal")
+        have = {x["table_name"] for x in trg}
+        disabled = {x["table_name"] for x in trg if not x["fires"]}
+        fn = await admin.fetchrow(
+            "SELECT prosecdef FROM pg_proc WHERE proname = 'audit_capture'")
+        problems: list[str] = []
+        for miss in sorted(AUDITED_TABLES - have):
+            problems.append(f"table={miss}  HAS NO audit_capture TRIGGER"
+                            " — a write to it would leave no audit record")
+        for extra in sorted(have - AUDITED_TABLES):
+            problems.append(f"table={extra}  carries an audit_capture trigger this"
+                            " checker did not expect — update AUDITED_TABLES")
+        for off in sorted(disabled):
+            problems.append(f"table={off}  audit_capture trigger is DISABLED"
+                            " (tgenabled not in O/A), so it does not fire")
+        if fn is None:
+            problems.append("the audit_capture FUNCTION does not exist")
+        elif not fn["prosecdef"]:
+            problems.append("audit_capture is NOT SECURITY DEFINER — the app role"
+                            " cannot write audit_log, so every audited write fails")
+        r.examined = f"{len(have)} of {len(AUDITED_TABLES)} audited tables have the trigger"
+        r.total = len(problems)
+        r.rows = problems
+        rep.add("global", r)
+
 
 # ---------------------------------------------------------------------------
 # lens 1 — the sweep, per tenant, through the app's own primitive
@@ -1310,9 +1391,11 @@ CANNOT_SEE = [
     " here. This proves the arithmetic and the numbering hold, not that the"
     " facts are true.",
 
-    "HISTORY. There is no audit log of UPDATEs, so a total_amount edited by hand"
-    " with its items edited to match reconciles perfectly. What actually defends"
-    " against that is that nothing but create_bill and void_bill writes these"
+    "HISTORY. audit_log (0017) records every master-data write, but NOT the"
+    " transactional tables (purchase_bills / purchase_bill_items are deliberately"
+    " not audited), so a total_amount edited by hand with its items edited to match"
+    " reconciles perfectly. What actually defends against that is that nothing but"
+    " create_bill and void_bill writes these"
     " tables — an assumption this checker cannot verify from inside the"
     " database.",
 
@@ -1433,7 +1516,7 @@ def summarise(rep: Report, tenants: Sequence[uuidlib.UUID], started: dt.datetime
     print(f"  tenants swept   : {len(tenants)}")
     print(f"  checks run      : {rep.ran}"
           f"  ({CHECKS_PER_TENANT} per tenant x {len(tenants)},"
-          f" plus 5 structural, 2 blind, 3 global)")
+          f" plus 6 structural, 2 blind, 3 global)")
     print(f"  skipped         : {rep.skips}")
     print(f"  could not run   : {rep.errors}")
     print(f"  VIOLATIONS      : {rep.violations}")

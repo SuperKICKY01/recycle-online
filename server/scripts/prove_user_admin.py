@@ -183,10 +183,13 @@ class Ctx:
 
 async def provision(ctx: Ctx) -> None:
     from sqlalchemy import text
-    from app.db import tenant_connection
+    from app.db import SYSTEM_ACTOR_ID, tenant_connection
     from app.security import hash_password
 
-    async with tenant_connection(ctx.tenant) as conn:
+    async with tenant_connection(
+        ctx.tenant, actor_id=SYSTEM_ACTOR_ID,
+        actor_username="system:prove_user_admin",
+    ) as conn:
         await conn.execute(text("INSERT INTO tenants (id, name) VALUES (:id, :n)"),
                            {"id": ctx.tenant, "n": f"UA {RUN}"})
         for k, role in (("a1", "admin"), ("a2", "admin"), ("staff", "staff")):
@@ -297,6 +300,13 @@ async def cell_concurrency(ctx: Ctx, client: httpx.AsyncClient, admin_tok: str) 
             await c0.execute(
                 text("SELECT set_config('app.tenant_id', :t, true)"),
                 {"t": str(ctx.tenant)})
+            # the winner's UPDATE users below is audited (0017) -> declare an actor
+            await c0.execute(
+                text("SELECT set_config('app.actor_id', :a, true)"),
+                {"a": "00000000-0000-0000-0000-000000000000"})
+            await c0.execute(
+                text("SELECT set_config('app.actor_username', :u, true)"),
+                {"u": "system:prove_user_admin"})
             locked = (await c0.execute(text(
                 "SELECT id FROM users WHERE role = 'admin' AND is_active"
                 " ORDER BY id FOR NO KEY UPDATE"))).scalars().all()

@@ -61,6 +61,14 @@ async def tenant_tx(conn, tid):
     async with conn.begin():
         await conn.execute(
             text("SELECT set_config('app.tenant_id', :v, true)"), {"v": str(tid)})
+        # Audited-table writes (the seed INSERTs and the teardown DELETEs) need an
+        # actor (0017); this proof is a system writer. Set for the same transaction.
+        await conn.execute(
+            text("SELECT set_config('app.actor_id', :a, true)"),
+            {"a": "00000000-0000-0000-0000-000000000000"})
+        await conn.execute(
+            text("SELECT set_config('app.actor_username', :u, true)"),
+            {"u": "system:prove_rls"})
         yield
 
 

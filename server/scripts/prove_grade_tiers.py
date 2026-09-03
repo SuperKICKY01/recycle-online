@@ -227,7 +227,7 @@ async def provision(ctx: Ctx) -> None:
     """Three tenants, users and master data -- but NO grade_tiers, NO product_prices
     and NO sellers: those are built through the routes under test."""
     from sqlalchemy import text
-    from app.db import tenant_connection
+    from app.db import SYSTEM_ACTOR_ID, tenant_connection
     from app.security import hash_password
 
     admin_hash = await hash_password(ADMIN_PW)
@@ -236,7 +236,10 @@ async def provision(ctx: Ctx) -> None:
     other_hash = await hash_password(OTHER_PW)
 
     async def seed(tid, name, users, uom, cat, product_id):
-        async with tenant_connection(tid) as conn:
+        async with tenant_connection(
+            tid, actor_id=SYSTEM_ACTOR_ID,
+            actor_username="system:prove_grade_tiers",
+        ) as conn:
             await conn.execute(
                 text("INSERT INTO tenants (id, name) VALUES (:id, :n)"),
                 {"id": tid, "n": name})

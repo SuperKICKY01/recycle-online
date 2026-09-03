@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import text  # noqa: E402
 
-from app.db import engine, tenant_connection  # noqa: E402
+from app.db import SYSTEM_ACTOR_ID, engine, tenant_connection  # noqa: E402
 from app.security import hash_password  # noqa: E402
 from app.seeddata import SEED  # noqa: E402
 
@@ -26,7 +26,14 @@ async def main() -> None:
             user_hashes = [
                 (u, await hash_password(u["password"])) for u in s["users"]
             ]
-            async with tenant_connection(s["tenant_id"]) as conn:
+            # Every table seeded below is audited (0017), and dev seeding has no
+            # human principal, so it declares itself as the system actor. See
+            # db.SYSTEM_ACTOR_ID.
+            async with tenant_connection(
+                s["tenant_id"],
+                actor_id=SYSTEM_ACTOR_ID,
+                actor_username="system:seed_dev",
+            ) as conn:
                 await conn.execute(
                     text(
                         "INSERT INTO tenants (id, name) VALUES (:id, :name)"

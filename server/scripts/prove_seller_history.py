@@ -385,7 +385,7 @@ async def login(client: httpx.AsyncClient, tenant: uuid.UUID, username: str, pas
 # ---------------------------------------------------------------------------
 async def provision(ctx: Ctx) -> None:
     from sqlalchemy import text
-    from app.db import tenant_connection
+    from app.db import SYSTEM_ACTOR_ID, tenant_connection
     from app.security import hash_password
 
     admin_hash = await hash_password(ADMIN_PW)
@@ -393,7 +393,10 @@ async def provision(ctx: Ctx) -> None:
     other_hash = await hash_password(OTHER_ADMIN_PW)
 
     async def seed_tenant(tid, name, users, uom, cat, products, sellers):
-        async with tenant_connection(tid) as conn:
+        async with tenant_connection(
+            tid, actor_id=SYSTEM_ACTOR_ID,
+            actor_username="system:prove_seller_history",
+        ) as conn:
             await conn.execute(
                 text("INSERT INTO tenants (id, name) VALUES (:id, :n)"),
                 {"id": tid, "n": name},

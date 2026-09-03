@@ -167,6 +167,12 @@ async def _in_tenant(fn):
         try:
             await conn.execute("SELECT set_config('app.tenant_id', $1, true)",
                                str(TENANT_A_ID))
+            # Audited-table writes need an actor (0017); this proof is a system
+            # writer and declares the reserved system actor for this transaction.
+            await conn.execute("SELECT set_config('app.actor_id', $1, true)",
+                               "00000000-0000-0000-0000-000000000000")
+            await conn.execute("SELECT set_config('app.actor_username', $1, true)",
+                               "system:prove_seller_code_guards")
             out = await fn(conn)
             await tx.commit()
             return out
@@ -364,10 +370,40 @@ def restore_scratch(live_name: str, scratch: str) -> None:
         cwd=server_dir, capture_output=True, text=True, timeout=300)
     if cp.returncode != 0:
         raise RuntimeError(f"restore_db.py -> {scratch} failed: {cp.stderr.strip()[:600]}")
+    _give_scratch_a_default_actor(scratch)
     # The dump is consumed by the restore above; remove it so it does not
     # accumulate per run (~325 KB each). A restore FAILURE raises before this
     # line and leaves the dump for post-mortem -- only a success reaches here.
     shutil.rmtree(out, ignore_errors=True)
+
+
+def _give_scratch_a_default_actor(scratch: str) -> None:
+    """The scratch is a copy of LIVE, so it carries the 0017 audit triggers -- but
+    the OLD worktree server predates the actor mechanism and cannot set app.actor_id,
+    so its audited writes (creating sellers) would be refused. Give the SCRATCH a
+    DATABASE-SCOPED default actor so the legacy server is attributed to
+    system:old_server. DATABASE-scoped, never the ROLE: roles are cluster-wide and
+    an ALTER ROLE would reach the LIVE database
+    (lessons/a-grant-boundary-belongs-to-a-database-not-a-role.md). The current
+    server sets its own actor per request (SET LOCAL) and overrides this default."""
+    # SUPERUSER: ALTER DATABASE SET of a custom placeholder GUC (app.actor_id has no
+    # registering extension) requires it; recycle_owner is refused. Same postgres/
+    # postgres seat reconcile.py and restore_db.py use on this dev cluster.
+    u = make_url(os.environ["MIGRATION_DATABASE_URL"])
+    dsn = f"postgresql://postgres:postgres@{u.host}:{u.port}/{scratch}"
+
+    async def _go() -> None:
+        conn = await asyncpg.connect(dsn)
+        try:
+            await conn.execute(
+                f'ALTER DATABASE "{scratch}" SET app.actor_id ='
+                " '00000000-0000-0000-0000-000000000000'")
+            await conn.execute(
+                f'ALTER DATABASE "{scratch}" SET app.actor_username =' " 'system:old_server'")
+        finally:
+            await conn.close()
+
+    asyncio.run(_go())
 
 
 def main() -> int:  # noqa: PLR0912, PLR0915 - one linear script
@@ -918,6 +954,13 @@ def main() -> int:  # noqa: PLR0912, PLR0915 - one linear script
                                 await conn.execute(
                                     "SELECT set_config('app.tenant_id', $1, true)",
                                     str(TENANT_A_ID))
+                                # audited writes need an actor (0017)
+                                await conn.execute(
+                                    "SELECT set_config('app.actor_id', $1, true)",
+                                    "00000000-0000-0000-0000-000000000000")
+                                await conn.execute(
+                                    "SELECT set_config('app.actor_username', $1, true)",
+                                    "system:prove_seller_code_guards")
                                 await conn.execute(hold_sql, *hold_args)
                                 taken.set()
                                 while not release.is_set():

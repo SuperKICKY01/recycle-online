@@ -275,7 +275,7 @@ async def list_users(
     tenant and the RLS policy's USING clause does the scoping, so an admin of
     tenant A sees tenant A's users and there is no predicate here to get wrong.
     """
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         rows = (
             await conn.execute(
                 text(
@@ -486,7 +486,7 @@ async def create_user(
     # OUTSIDE the transaction — see the docstring.
     password_hash = await hash_password(body.password)
 
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         try:
             row = (
                 await conn.execute(
@@ -538,7 +538,7 @@ async def revoke_sessions(
     here the caller asks for an EVENT ("end the sessions that exist now"), and
     the second call ends any session created since the first.
     """
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         # NO hand-written `WHERE tenant_id`, deliberately (hard rule 2). The RLS
         # policy's USING clause already restricts the visible rows to the
         # context tenant, so an admin of tenant A naming a user id in tenant B
@@ -652,7 +652,7 @@ async def deactivate_user(
             user_id=str(user_id),
         )
 
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         # LAST-ACTIVE-ADMIN GUARD. A shop must always keep at least one active
         # admin: a shop with zero cannot sign in to its own user management, void
         # a bill or move a price, and there is NO recovery inside the product —
@@ -781,7 +781,7 @@ async def activate_user(
     NO SELF-CHECK, because the case cannot arise: reaching this handler needs a
     live session, and a deactivated account cannot have one.
     """
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         row = (
             await conn.execute(
                 text(
@@ -841,7 +841,7 @@ async def unlock_login(
     direction because clearing a lockout that is not there is a no-op the login
     path already allows.
     """
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         urow = (
             await conn.execute(
                 text("SELECT id, username FROM users WHERE id = :id"),
@@ -1032,7 +1032,7 @@ async def change_own_password(
     """
     new_hash = await hash_password(body.new_password)
 
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         # NO hand-written `WHERE tenant_id` (hard rule 2), the doctrine this
         # module states three times: the RLS policy scopes the row, and the id
         # comes from the TOKEN rather than from the body, so there is no
@@ -1116,7 +1116,7 @@ async def reset_user_password(
     """
     new_hash = await hash_password(body.new_password)
 
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         row = (
             await conn.execute(
                 text(

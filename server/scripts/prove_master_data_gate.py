@@ -99,6 +99,12 @@ async def main() -> int:
     url = os.environ["APP_DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
     db = await asyncpg.connect(url)
     await db.execute("SELECT set_config('app.tenant_id', $1, false)", str(TENANT_A_ID))
+    # Direct writes to audited tables (product_prices, sellers) need an actor
+    # (0017); this proof is a system writer and declares the reserved actor once.
+    await db.execute("SELECT set_config('app.actor_id', $1, false)",
+                     "00000000-0000-0000-0000-000000000000")
+    await db.execute("SELECT set_config('app.actor_username', $1, false)",
+                     "system:prove_master_data_gate")
 
     saved_price = await db.fetchval(
         "SELECT price FROM product_prices WHERE product_id = $1 AND grade = $2",

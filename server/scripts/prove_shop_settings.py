@@ -73,7 +73,7 @@ sys.path.insert(0, _SERVER_DIR)
 
 from sqlalchemy import text  # noqa: E402
 
-from app.db import tenant_connection  # noqa: E402
+from app.db import SYSTEM_ACTOR_ID, tenant_connection  # noqa: E402
 from app.seeddata import (  # noqa: E402
     ADMIN_USERNAME,
     STAFF_USERNAME,
@@ -206,7 +206,10 @@ async def read_shop_hex() -> dict:
 
 
 async def restore_shop(address, phone) -> None:
-    async with tenant_connection(TENANT_A_ID) as conn:
+    async with tenant_connection(
+        TENANT_A_ID, actor_id=SYSTEM_ACTOR_ID,
+        actor_username="system:prove_shop_settings",
+    ) as conn:
         await conn.execute(
             text("UPDATE tenants SET address = :a, phone = :p"),
             {"a": address, "p": phone},

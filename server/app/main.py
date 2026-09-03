@@ -380,8 +380,17 @@ async def login(body: LoginRequest) -> LoginResponse:
 
 
 async def get_authed_conn(principal: Principal = Depends(get_principal)):
-    """A DB connection whose transaction is scoped to the TOKEN's tenant."""
-    async with tenant_connection(principal.tenant_id) as conn:
+    """A DB connection whose transaction is scoped to the TOKEN's tenant.
+
+    It also carries the actor (app.actor_id / app.actor_username), so a route that
+    reaches an audited master-data table through this shared dependency records who
+    did the write (migration 0017); a read simply leaves the GUCs unread.
+    """
+    async with tenant_connection(
+        principal.tenant_id,
+        actor_id=principal.user_id,
+        actor_username=principal.username,
+    ) as conn:
         yield conn
 
 
