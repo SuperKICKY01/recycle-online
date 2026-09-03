@@ -3283,6 +3283,29 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   note. NOTHING BELOW THIS SENTENCE IS AUTHORISED — the homing is the advisor's
   recommendation and the owner's to confirm or reverse.
 
+- **DOES PRODUCT / CATEGORY / UNIT MASTER DATA ALSO LIVE ON THE DESKTOP (OR THE
+  PROVIDER WEB)? Open, raised 2026-09-03 when the screen shipped on the PHONE.** P1.15
+  ("Master data on the desktop") was homed on the PHONE by the advisor — the owner may
+  veto — because the desktop is one placeholder (`git ls-files desktop` →
+  `desktop/.gitkeep`) and the provider web does not exist, and waiting for either means
+  no real yard can add its fourth product (it has only the three SQL seeded). The
+  precedent is set five times: prices (P1.9), sellers (P1.8), grade tiers (P1.24
+  phase 2), shop settings (P1.23 item 4 unit 1) and user management (P3.7, the entry
+  above) all ship on the phone despite the "master data = desktop" line in CLAUDE.md's
+  Architecture — which was itself superseded for exactly this on 2026-09-02. So the
+  mobile app now has a segmented จัดการสินค้า screen (products grouped by category with
+  device-side search and filter; categories and units managed inline; per-product edit/
+  deactivate) over the existing `server/app/master.py` routes, reached from an
+  admin-only row in ตั้งค่าร้าน. **THE COLLISION, UNRESOLVED:** S6 wants BOTH the
+  weighbridge and the counter/office surface to exist, and P1.15's DESKTOP half is not
+  built; whether product master data should ALSO (or instead) live on the desktop or the
+  provider web once either exists is the owner's call, not settled by shipping it on the
+  phone. It brushes A1 in `ROADMAP.md`'s reconciled blueprint (the mobile-reach scope
+  question) and S1's locked three-surface scope. *Not done:* nothing decided about a
+  second home. *Unblocks:* the desktop P1.15 phase. This phase does NOT close P1.15; the
+  ROADMAP P1.15 step carries the dated note. NOTHING BELOW THIS SENTENCE IS AUTHORISED —
+  the homing is the advisor's recommendation and the owner's to confirm or reverse.
+
 - **P1.8b HAS NO DONE WHEN, SO NOTHING CAN SAY WHEN THE OFFLINE HALF IS FINISHED.**
   Raised 2026-08-25 by P1.8b GATES while re-deriving the step's closure at the
   phase boundary. MEASURED: `grep -n "DONE WHEN"` over `### P1.8`'s body returns

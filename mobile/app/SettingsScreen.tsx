@@ -109,6 +109,9 @@ interface Props {
    *  ADMIN-ONLY (mayManageUsers, decided in App.tsx), so a staff account does not see
    *  the row at all, the dashboard-entry-gate shape. */
   onManageUsers: (() => void) | null;
+  /** Open the product-management screen (P1.15). NULL for a staff session — the entry
+   *  is ADMIN-ONLY (mayManageProducts, decided in App.tsx), the same gate shape. */
+  onManageProducts: (() => void) | null;
 }
 
 export function SettingsScreen({
@@ -126,6 +129,7 @@ export function SettingsScreen({
   onReorderTiers,
   onTierMenu,
   onManageUsers,
+  onManageProducts,
 }: Props) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
@@ -149,6 +153,20 @@ export function SettingsScreen({
         >
           <Icon name="account" size={20} color={t.color.primary} />
           <Text style={styles.entryLabel}>จัดการผู้ใช้งาน</Text>
+          <Icon name="chevron" size={18} color={t.color.textSubtle} />
+        </Touchable>
+      ) : null}
+
+      {/* PRODUCT MASTER DATA (P1.15). Admin-only, the same shape: onManageProducts
+          is null for a staff session, so the row is not drawn at all. */}
+      {onManageProducts !== null ? (
+        <Touchable
+          style={styles.entryRow}
+          onPress={onManageProducts}
+          accessibilityLabel="จัดการสินค้า"
+        >
+          <Icon name="products" size={20} color={t.color.primary} />
+          <Text style={styles.entryLabel}>จัดการสินค้า</Text>
           <Icon name="chevron" size={18} color={t.color.textSubtle} />
         </Touchable>
       ) : null}

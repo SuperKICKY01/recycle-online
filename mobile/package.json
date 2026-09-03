@@ -55,6 +55,7 @@
     "prove:gradeTiers": "npm run build && node dist/proof/proveGradeTiers.js",
     "prove:account": "npm run build && node dist/proof/proveAccount.js",
     "prove:users": "npm run build && node dist/proof/proveUsers.js",
+    "prove:products": "npm run build && node dist/proof/proveProducts.js",
     "prove:dashboard": "npm run build && node dist/proof/proveDashboard.js",
     "prove:theme": "npm run build && node dist/proof/proveTheme.js",
     "prove:tapaudit": "npm run build && node dist/proof/proveTapAudit.js",

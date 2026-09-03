@@ -18,6 +18,13 @@ import type {
   GradeTierPatchBody,
 } from "../src/settings/gradeTierAdmin";
 import type { UserCreateBody, UserFetch, UserResetBody } from "../src/users/usersAdmin";
+import type {
+  EntityCreateBody,
+  EntityRenameBody,
+  ProductCreateBody,
+  ProductFetch,
+  ProductPatchBody,
+} from "../src/products/productsAdmin";
 import type { PasswordChangeRequest, PasswordFetch } from "../src/settings/account";
 import type { SummaryFetch } from "../src/dashboard/summaryView";
 import type { SellerHistoryFetch } from "../src/sellerHistory/sellerHistoryView";
@@ -721,6 +728,210 @@ export function resetUserPassword(
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify(body),
+      signal,
+    }),
+  );
+}
+
+/* ------------------------------------------- product master data (P1.15) ---- */
+
+/**
+ * The product / category / unit ADMIN routes, all admin-only on the server, all
+ * keeping the body on a refusal (a 409 carries `duplicate_code`, the one code these
+ * routes raise). The classification lives in src/products/productsAdmin.ts;
+ * `no_token` is the caller's case (App checks the token first), so these return the
+ * ok/http/unreachable subset. Every outcome is a VALUE, nothing is thrown, nothing
+ * queues — product management is not offline work. The reads ask for
+ * `?include_inactive=true`: this screen must see retired rows to filter and
+ * reactivate them, which the yard cache (active only) deliberately cannot answer.
+ */
+type ProductFetchNoToken = Exclude<ProductFetch, { kind: "no_token" }>;
+
+/** GET /products?include_inactive — every product (active AND retired), for the
+ *  admin. A staff caller is not refused the READ (the yard reads /products to price
+ *  bills), but the ENTRY is admin-only, so a staff session never calls this. */
+export function fetchProductsAdmin(token: string): Promise<ProductFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/products?include_inactive=true`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/** POST /products — bring a product into existence. A duplicate code is a 409 the
+ *  caller words; a foreign/retired category or unit is a 422. No price tiers yet —
+ *  that is the correct state (server create_product's note). */
+export function createProduct(token: string, body: ProductCreateBody): Promise<ProductFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/products`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      signal,
+    }),
+  );
+}
+
+/** PATCH /products/{id} — edit name / category / unit. `code` is never sent
+ *  (immutable). A retired category or unit is a 422 (category_inactive / uom_inactive). */
+export function patchProduct(
+  token: string,
+  productId: string,
+  body: ProductPatchBody,
+): Promise<ProductFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/products/${encodeURIComponent(productId)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      signal,
+    }),
+  );
+}
+
+/** POST /products/{id}/deactivate — retire a product. It KEEPS answering for every
+ *  bill that references it (server/app/bills.py); only new bills against it are
+ *  refused (424 product_inactive, resolvable). No body. */
+export function deactivateProduct(token: string, productId: string): Promise<ProductFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/products/${encodeURIComponent(productId)}/deactivate`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/** POST /products/{id}/activate — un-retire a product. Idempotent. No body. */
+export function activateProduct(token: string, productId: string): Promise<ProductFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/products/${encodeURIComponent(productId)}/activate`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/** GET /product-categories?include_inactive — every category, for the grouping and
+ *  the add-product form's picker (which offers the active ones only). */
+export function fetchCategoriesAdmin(token: string): Promise<ProductFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/product-categories?include_inactive=true`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/** POST /product-categories — declare a category. Duplicate code is a 409. */
+export function createCategory(token: string, body: EntityCreateBody): Promise<ProductFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/product-categories`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      signal,
+    }),
+  );
+}
+
+/** PATCH /product-categories/{id} — rename (the server accepts only `name`). */
+export function renameCategory(
+  token: string,
+  categoryId: string,
+  body: EntityRenameBody,
+): Promise<ProductFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/product-categories/${encodeURIComponent(categoryId)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      signal,
+    }),
+  );
+}
+
+/** POST /product-categories/{id}/deactivate — retire a category (never cascades;
+ *  existing products keep it, only NEW ones are refused it). No body. */
+export function deactivateCategory(token: string, categoryId: string): Promise<ProductFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/product-categories/${encodeURIComponent(categoryId)}/deactivate`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/** POST /product-categories/{id}/activate — un-retire a category. Idempotent. No body. */
+export function activateCategory(token: string, categoryId: string): Promise<ProductFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/product-categories/${encodeURIComponent(categoryId)}/activate`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/** GET /uoms?include_inactive — every unit, for the add-product form's picker. */
+export function fetchUomsAdmin(token: string): Promise<ProductFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/uoms?include_inactive=true`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/** POST /uoms — declare a unit. Duplicate code is a 409. */
+export function createUom(token: string, body: EntityCreateBody): Promise<ProductFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/uoms`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      signal,
+    }),
+  );
+}
+
+/** PATCH /uoms/{id} — rename (the server accepts only `name`). A retired unit still
+ *  renders on every product measured in it (server _PRODUCT_SELECT's note). */
+export function renameUom(
+  token: string,
+  uomId: string,
+  body: EntityRenameBody,
+): Promise<ProductFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/uoms/${encodeURIComponent(uomId)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      signal,
+    }),
+  );
+}
+
+/** POST /uoms/{id}/deactivate — retire a unit (never cascades). No body. */
+export function deactivateUom(token: string, uomId: string): Promise<ProductFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/uoms/${encodeURIComponent(uomId)}/deactivate`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/** POST /uoms/{id}/activate — un-retire a unit. Idempotent. No body. */
+export function activateUom(token: string, uomId: string): Promise<ProductFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/uoms/${encodeURIComponent(uomId)}/activate`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
       signal,
     }),
   );

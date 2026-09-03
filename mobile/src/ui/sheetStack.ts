@@ -107,6 +107,25 @@ export const SHEET_KINDS = [
    * on is App.tsx payload (`userMenuTarget`), written WITH the dispatch.
    */
   "user_actions",
+  /**
+   * P1.15 (homed on the phone). The shop's products, categories and units — one
+   * segmented management screen. Opened from an ADMIN-ONLY row INSIDE the settings
+   * sheet (the users row's neighbour), so it stacks `settings>products`. A staff
+   * session never sees the row (mayManageProducts), so it never reaches this sheet;
+   * every write route is `require_admin` regardless. Categories and units are
+   * managed INLINE in this one sheet (a segmented control), NOT their own sheets —
+   * a per-entity actions sheet would push `settings>products>...>...` to FOUR deep,
+   * which prove:sheets forbids, so the depth argument decided the segmented shape.
+   */
+  "products",
+  /**
+   * P1.15. The ⋯ actions on one product row — edit (name/category/unit) and
+   * deactivate/reactivate — opened OVER `products` (the stack
+   * `settings>products>product_actions`), the same grab-handle leaf as
+   * `user_actions`, and the DEEPEST the app goes (three). WHICH product it acts on
+   * is App.tsx payload (`productMenuTarget`), written WITH the dispatch.
+   */
+  "product_actions",
 ] as const;
 
 export type SheetKind = (typeof SHEET_KINDS)[number];
@@ -336,6 +355,30 @@ export const SHEET_TRANSITIONS = {
     action: { kind: "open", sheet: "user_actions" },
     from: ["users"],
     site: "App.tsx onUserMenu, a roster row on UsersScreen",
+  },
+  /**
+   * P1.15. The ADMIN-ONLY จัดการสินค้า row inside the settings sheet. Opened from
+   * `settings`, so the stack is `settings>products` and closing it returns to
+   * settings — the same shape as the users row. The row is hidden from a definite
+   * staff session (mayManageProducts), which is about who may open it, not which
+   * sheet is on screen, so `from` is `["settings"]`.
+   */
+  open_products: {
+    action: { kind: "open", sheet: "products" },
+    from: ["settings"],
+    site: "App.tsx onManageProducts, the จัดการสินค้า row on SettingsScreen",
+  },
+  /**
+   * P1.15. The ⋯ menu on a product row. Opened from the PRODUCTS sheet, so
+   * `from: ["products"]` and the reached stack is
+   * `settings>products>product_actions`, a three-deep leaf. WHICH product it acts
+   * on is App.tsx payload (`productMenuTarget`), written WITH this dispatch and
+   * never inferred, the tier/user-menu rule.
+   */
+  open_product_actions: {
+    action: { kind: "open", sheet: "product_actions" },
+    from: ["products"],
+    site: "App.tsx onProductMenu, a product row on ProductsScreen",
   },
   /**
    * A DIFFERENT SELLER WAS PICKED FOR A CART THAT ALREADY HAS LINES.

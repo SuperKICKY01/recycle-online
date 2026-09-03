@@ -481,6 +481,41 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
               and (detail_of(r) or {}).get("code") == "duplicate_code",
               f"status={r.status_code} detail={detail_of(r)!r}")
 
+        # THE SAME UNIQUE-CODE RULE ON THE OTHER THREE WRITE ROUTES. Until now it
+        # was proven for SELLERS ONLY (the cell above), so a rule that lives at the
+        # server — app/master.py's _raise_for_integrity over _DUPLICATE_CODE_CONSTRAINTS
+        # — was evidenced for one of the four routes it guards, and stayed green only
+        # because a client happened to walk it. THE NAMED DISPROOF, one per cell:
+        # without that constraint in the map, the unique violation surfaces as an
+        # UNHANDLED 500 (which the mobile client reads as `unavailable` and retries
+        # forever), never a 409 the back office can act on. Each re-posts the exact
+        # code W1 minted — whose 201 there is the PRESENCE SIBLING proving the route
+        # is not simply always-409 — and must come back 409 conflict/duplicate_code.
+        r = client.post(f"{BASE}/uoms", headers=admin,
+                        json={"code": f"KG-{RUN}", "name": "ซ้ำ"})
+        check("a duplicate UOM code is a named 409 duplicate_code, never an unhandled 500",
+              r.status_code == 409 and kind_of(r) == "conflict"
+              and (detail_of(r) or {}).get("code") == "duplicate_code",
+              f"status={r.status_code} detail={detail_of(r)!r}")
+
+        r = client.post(f"{BASE}/product-categories", headers=admin,
+                        json={"code": f"CAT-{RUN}", "name": "ซ้ำ"})
+        check("a duplicate CATEGORY code is a named 409 duplicate_code, never an unhandled 500",
+              r.status_code == 409 and kind_of(r) == "conflict"
+              and (detail_of(r) or {}).get("code") == "duplicate_code",
+              f"status={r.status_code} detail={detail_of(r)!r}")
+
+        # The product carries category_id/uom_id, so _require_refs runs FIRST and
+        # passes (both were just created active); the duplicate then lands on
+        # uq_products_tenant_code, not on a ref check — the 409 is about the CODE.
+        r = client.post(f"{BASE}/products", headers=admin, json={
+            "code": f"PROD-{RUN}", "name": "ซ้ำ",
+            "category_id": created["category"], "uom_id": created["uom"]})
+        check("a duplicate PRODUCT code is a named 409 duplicate_code, never an unhandled 500",
+              r.status_code == 409 and kind_of(r) == "conflict"
+              and (detail_of(r) or {}).get("code") == "duplicate_code",
+              f"status={r.status_code} detail={detail_of(r)!r}")
+
         r = client.put(f"{BASE}/products/{created['product']}/prices/A",
                        headers=admin, json={"price": "1.005"})
         check("an over-scale price is REFUSED (422), not silently rounded to 1.01",

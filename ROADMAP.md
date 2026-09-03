@@ -4676,6 +4676,26 @@ decides between them nowhere.
 master-data refresh, and a price changed on the desktop is the one the next bill
 quotes — both read back, not assumed.
 
+**PARTLY MET ON THE PHONE — 2026-09-03 (unanchored; anchor next pass). P1.15 IS NOT
+CLOSED.** Product / category / unit master data — add, edit, deactivate, reactivate,
+and find (search by name and code, filter by category and by active/inactive) — now
+ships on the PHONE, homed there by the advisor for the reason `P1.8`/`P1.9`/`P3.7`
+and grade tiers all were: the desktop does not exist (`git ls-files desktop` returns
+`desktop/.gitkeep`) and the provider web does not exist, so waiting for either means
+no real yard can stock its own products — today a shop has the three rows SQL seeded
+and cannot add a fourth. Built as a client-only phase over the existing
+`server/app/master.py` routes (which were already complete — create/edit/deactivate
+for all three entities, no code change and no migration this phase):
+`mobile/src/products/productsAdmin.ts` (pure builders), `mobile/app/ProductsScreen.tsx`
+(one segmented screen — products/categories/units), `mobile/app/ProductActionsSheet.tsx`,
+the 15 `api.ts` transports, `mayManageProducts`, and an admin-only ตั้งค่าร้าน entry.
+**What is STILL P1.15 and unclosed:** the DESKTOP surface. S6 wants BOTH surfaces to
+exist, and the counter/office half is not built. Whether the desktop ALSO gets these
+screens (or the provider web does) is the owner's open call, filed at
+`OPEN_ITEMS.md § Decisions open`. The homing note also lands in the reconciled
+blueprint's (c) entry below. Price EDITING is unchanged (`P1.9`, PricesSheet); this
+screen shows a product's price STATUS only and touches no pricing logic.
+
 ### P1.16 — Shop identity a slip header can print
 
 **What it is.** Whatever the printed slip has to say about the shop, and an endpoint
@@ -8113,7 +8133,15 @@ already has a home:
 - **Price-history** (blueprint 7.4; inventory 1.9) → P1.20.
 - **Anomaly detection** (blueprint 6.5) → P1.22.
 - **Product master data** (blueprint 7.1; inventory 2) → P1.15 — plus the A1
-  mobile-reach collision.
+  mobile-reach collision. **Superseded 2026-09-03 (unanchored; anchor next pass):**
+  the mobile-reach half of A1 is now BUILT and shipped on the phone (add/edit/
+  deactivate/find products, categories and units; blueprint 4.8's on-yard product
+  search rides the same device-side search). So "master data = desktop" is
+  superseded for products the way it already was for grades, sellers, prices, shop
+  settings and users. A1's SCOPE QUESTION is NOT thereby settled — whether the
+  desktop (S1's locked third surface) or the provider web ALSO homes these is the
+  owner's, unresolved at `OPEN_ITEMS.md § Decisions open`; P1.15's desktop half
+  stays open (see the P1.15 note above).
 - **Open a shop without SQL** (blueprint 15.1) → P3.6.
 - **Billing and the 3%** (blueprint 15.4) → P3.9 (needs the accountant, section 18).
 - **OTA + forced update / API versioning** (blueprint 10.11, 14.3) → P1.11 plus the

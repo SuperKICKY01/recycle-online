@@ -266,6 +266,8 @@ const EXPECTED_REACHABLE: readonly string[] = [
   "seller_picker",
   "seller_picker>add_seller",
   "settings", // the ตั้งค่าร้าน button, in the header (P1.23)
+  "settings>products", // the admin-only จัดการสินค้า row, OVER settings (P1.15)
+  "settings>products>product_actions", // the ⋯ menu on a product row, OVER products — three deep (P1.15)
   "settings>tier_actions", // the ⋯ menu on a grade-tier row, OVER settings (P1.23 item 3 phase D)
   "settings>users", // the admin-only จัดการผู้ใช้งาน row, OVER settings (P3.7)
   "settings>users>user_actions", // the ⋯ menu on a roster row, OVER users — three deep (P3.7)
@@ -304,6 +306,16 @@ const EXPECTED_CLOSE: readonly (readonly [string, string, string])[] = [
     "settings",
     "-",
     "back to the cart. The settings screen is not a step in anything — an owner who has finished with it is finished, and there is nothing underneath it to return to (P1.23)",
+  ],
+  [
+    "settings>products",
+    "settings",
+    "BACK TO SETTINGS, not the cart: the product-management screen is opened from the admin-only row inside settings, and closing it returns to that settings screen (P1.15)",
+  ],
+  [
+    "settings>products>product_actions",
+    "settings>products",
+    "BACK TO THE PRODUCT LIST, not settings: the ⋯ menu is a leaf over the products list, and closing it (edit, deactivate, reactivate, or cancel) returns to the list the operator was looking at (P1.15)",
   ],
   [
     "settings>tier_actions",
@@ -444,10 +456,13 @@ function s3Valid(stacks: readonly SheetStack[]): void {
     check(`${stackKey(stack)} is a valid stack`, sheetStackValid(stack));
   }
   const deepest = stacks.reduce((m, s) => Math.max(m, s.length), 0);
-  // AT MOST THREE DEEP since P3.7. The one three-deep stack is
-  // settings>users>user_actions: the roster is a sheet opened from the admin-only
-  // row inside settings, and a row's ⋯ opens the actions sheet over it. (The
-  // two-deep ones are seller_picker>add_seller and settings>tier_actions.) Depth is
+  // AT MOST THREE DEEP since P3.7. The three-deep stacks are
+  // settings>users>user_actions (P3.7) and settings>products>product_actions (P1.15):
+  // each is a sheet opened from an admin-only row inside settings, whose own rows'
+  // ⋯ open an actions sheet over it. Categories and units are managed INLINE in the
+  // products sheet (a segmented control), NOT their own sheets, precisely so nothing
+  // reaches four deep. (The two-deep ones are seller_picker>add_seller and
+  // settings>tier_actions.) Depth is
   // NOT what the modal invariant rests on — S2 shows one sheet on screen at ANY
   // depth, because there is one host — so this cap only catches a runaway push, and
   // a NEW stack of any depth reddens S1 (the exact reachable set) first.

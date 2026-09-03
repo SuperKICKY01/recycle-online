@@ -122,7 +122,7 @@ import { unsentLine } from "./src/dashboard/unsentLine";
 import type { UnsentLine } from "./src/dashboard/unsentLine";
 import { sellerHistoryScreen } from "./src/sellerHistory/sellerHistoryView";
 import type { SellerHistoryScreen } from "./src/sellerHistory/sellerHistoryView";
-import { mayEditPrices, mayManageUsers, readTokenRole, readTokenUserId } from "./src/session/deviceRole";
+import { mayEditPrices, mayManageProducts, mayManageUsers, readTokenRole, readTokenUserId } from "./src/session/deviceRole";
 import type { DeviceRole } from "./src/session/deviceRole";
 import {
   formScreen,
@@ -151,6 +151,16 @@ import type {
   UserRow,
   UsersScreenState,
 } from "./src/users/usersAdmin";
+import { productsScreenState, productWriteOutcome } from "./src/products/productsAdmin";
+import type {
+  AdminProduct,
+  EntityCreateBody,
+  EntityKind,
+  ProductCreateBody,
+  ProductFetch,
+  ProductPatchBody,
+  ProductsScreenState,
+} from "./src/products/productsAdmin";
 import { accountProfile, passwordChangeResult, readWhoAmI } from "./src/settings/account";
 import type {
   AccountProfile,
@@ -194,6 +204,21 @@ import {
   deactivateUser,
   activateUser,
   resetUserPassword,
+  fetchProductsAdmin,
+  createProduct,
+  patchProduct,
+  deactivateProduct,
+  activateProduct,
+  fetchCategoriesAdmin,
+  createCategory,
+  renameCategory,
+  deactivateCategory,
+  activateCategory,
+  fetchUomsAdmin,
+  createUom,
+  renameUom,
+  deactivateUom,
+  activateUom,
   fetchWhoAmI,
   isUnauthorized,
   login,
@@ -212,6 +237,8 @@ import { SellerHistorySheet } from "./app/SellerHistorySheet";
 import { TierActionsSheet } from "./app/TierActionsSheet";
 import { UsersScreen } from "./app/UsersScreen";
 import { UserActionsSheet } from "./app/UserActionsSheet";
+import { ProductsScreen } from "./app/ProductsScreen";
+import { ProductActionsSheet } from "./app/ProductActionsSheet";
 import { Button, EmptyState } from "./app/Kit";
 import { Icon, type IconName } from "./app/Icon";
 import { Touchable } from "./app/Press";
@@ -472,6 +499,20 @@ function AppInner() {
   const [usersRefusal, setUsersRefusal] = useState<string | null>(null);
   const [usersBusy, setUsersBusy] = useState(false);
   const [userMenuTarget, setUserMenuTarget] = useState<UserRow | null>(null);
+  /*
+   * PRODUCT MASTER DATA (P1.15, homed on the phone), opened from an admin-only row
+   * inside settings. `productsScreen` is the three-list-or-message the read produced;
+   * `productsRefusal` is the last write's readable refusal (a duplicate code, an
+   * outage), cleared on the next load; `productsBusy` disables the controls during a
+   * write; `productMenuTarget` is the product the ⋯ acts on — PAYLOAD, written WITH
+   * the `open_product_actions` dispatch and by nothing else, the tier/user-menu rule.
+   * Not cached: the admin list is read live (it must show the retired rows the yard
+   * cache excludes), for the reason product management is not offline work.
+   */
+  const [productsScreen, setProductsScreen] = useState<ProductsScreenState | null>(null);
+  const [productsRefusal, setProductsRefusal] = useState<string | null>(null);
+  const [productsBusy, setProductsBusy] = useState(false);
+  const [productMenuTarget, setProductMenuTarget] = useState<AdminProduct | null>(null);
   /*
    * THE ACCOUNT SCREEN (P1.23). `accountProfileState` is the profile (username +
    * role from /whoami, shop name from GET /shop), null while loading.
@@ -1914,6 +1955,140 @@ function AppInner() {
     [sheet],
   );
 
+  /* ------------------------------------------ product master data (P1.15) -- */
+
+  /**
+   * READ THE THREE LISTS — products, categories, units — over one session. Online
+   * only, like settings and users: this surface has no offline cache and no outbox,
+   * AND it must show the RETIRED rows the yard cache deliberately excludes, so with
+   * no network it says so and draws no list. The screen is a MESSAGE unless all three
+   * land (productsScreenState), because a product list cannot be grouped without its
+   * categories nor add one without a unit. A 401 ends the session.
+   */
+  const loadProducts = useCallback(async (): Promise<void> => {
+    const t = tokenRef.current;
+    if (t === null) {
+      setProductsScreen(
+        productsScreenState({ kind: "no_token" }, { kind: "no_token" }, { kind: "no_token" }, role),
+      );
+      return;
+    }
+    setProductsScreen(null);
+    setProductsRefusal(null);
+    const [pr, cr, ur] = await Promise.all([
+      fetchProductsAdmin(t),
+      fetchCategoriesAdmin(t),
+      fetchUomsAdmin(t),
+    ]);
+    setProductsScreen(productsScreenState(pr, cr, ur, role));
+    // The device-global flags follow the FIRST read that failed (products, then
+    // categories, then units), the same ranking productsScreenState words the screen by.
+    const governing: ProductFetch = pr.kind !== "ok" ? pr : cr.kind !== "ok" ? cr : ur;
+    if (governing.kind === "unreachable") {
+      setOnline(false);
+      return;
+    }
+    setOnline(true);
+    if (governing.kind === "http" && governing.status === 401) setSessionEnded(true);
+  }, [role]);
+
+  const openProducts = useCallback(() => {
+    setProductsBusy(false);
+    setProductsRefusal(null);
+    sheet("open_products");
+    void loadProducts();
+  }, [loadProducts, sheet]);
+
+  /**
+   * ONE PRODUCT-AREA WRITE — create/edit/deactivate a product, or add/rename/(de)activate
+   * a category or unit. The server is authoritative, so on success the WHOLE admin
+   * list is re-read (loadProducts). AND `refreshMaster` runs, so THIS device's yard
+   * cart reflects the new/edited product at once — the price-save flow's move
+   * (savePrice). It does NOTHING for ANOTHER handset: device B sees the change only at
+   * its next refreshMaster (boot / sign-in / a price write), never immediately — there
+   * is no push. A refusal (a duplicate code, an outage) shows as a readable sentence; a
+   * 401 ends the session. NOTHING queues — product management is not offline work.
+   */
+  const runProductAction = useCallback(
+    async (action: (token: string) => Promise<ProductFetch>): Promise<void> => {
+      const t = tokenRef.current;
+      if (t === null) {
+        setSessionEnded(true);
+        return;
+      }
+      setProductsBusy(true);
+      setProductsRefusal(null);
+      const result = await action(t);
+      const outcome = productWriteOutcome(result);
+      setProductsBusy(false);
+      if (outcome.kind === "ok") {
+        setOnline(true);
+        setSessionEnded(false);
+        await Promise.all([loadProducts(), refreshMaster(t)]);
+        return;
+      }
+      if (outcome.kind === "session") {
+        setSessionEnded(true);
+        return;
+      }
+      if (result.kind === "unreachable") setOnline(false);
+      else setOnline(true);
+      setProductsRefusal(outcome.message);
+    },
+    [loadProducts, refreshMaster],
+  );
+
+  const createProductAction = useCallback(
+    (body: ProductCreateBody) => void runProductAction((t) => createProduct(t, body)),
+    [runProductAction],
+  );
+  const editProductAction = useCallback(
+    (id: string, body: ProductPatchBody) => void runProductAction((t) => patchProduct(t, id, body)),
+    [runProductAction],
+  );
+  const deactivateProductAction = useCallback(
+    (id: string) => void runProductAction((t) => deactivateProduct(t, id)),
+    [runProductAction],
+  );
+  const reactivateProductAction = useCallback(
+    (id: string) => void runProductAction((t) => activateProduct(t, id)),
+    [runProductAction],
+  );
+  const createEntityAction = useCallback(
+    (kind: EntityKind, body: EntityCreateBody) =>
+      void runProductAction((t) => (kind === "category" ? createCategory(t, body) : createUom(t, body))),
+    [runProductAction],
+  );
+  const renameEntityAction = useCallback(
+    (kind: EntityKind, id: string, name: string) =>
+      void runProductAction((t) =>
+        kind === "category" ? renameCategory(t, id, { name }) : renameUom(t, id, { name }),
+      ),
+    [runProductAction],
+  );
+  const deactivateEntityAction = useCallback(
+    (kind: EntityKind, id: string) =>
+      void runProductAction((t) => (kind === "category" ? deactivateCategory(t, id) : deactivateUom(t, id))),
+    [runProductAction],
+  );
+  const reactivateEntityAction = useCallback(
+    (kind: EntityKind, id: string) =>
+      void runProductAction((t) => (kind === "category" ? activateCategory(t, id) : activateUom(t, id))),
+    [runProductAction],
+  );
+  /**
+   * OPEN THE ⋯ MENU for a product row (P1.15). The ONE writer of `productMenuTarget`,
+   * setting it WITH the dispatch so the sheet always has its product, the tier/user-menu
+   * rule. The sheet's edit/deactivate call the handlers above and close.
+   */
+  const openProductMenu = useCallback(
+    (product: AdminProduct) => {
+      setProductMenuTarget(product);
+      sheet("open_product_actions");
+    },
+    [sheet],
+  );
+
   /* ---------------------------------------------------------- account (P1.23) -- */
 
   /**
@@ -3272,6 +3447,10 @@ function AppInner() {
                  row is not drawn — the dashboard-entry-gate shape. mayManageUsers
                  fails open, and the server refuses every user route regardless. */
               onManageUsers={mayManageUsers(role) ? openUsers : null}
+              /* ADMIN-ONLY (P1.15): null for a staff session, so the จัดการสินค้า
+                 row is not drawn — the same entry-gate shape as จัดการผู้ใช้งาน.
+                 mayManageProducts fails open; the server refuses every write regardless. */
+              onManageProducts={mayManageProducts(role) ? openProducts : null}
             />
           ),
         };
@@ -3442,6 +3621,70 @@ function AppInner() {
                   onGoToAccount={() => {
                     sheet("close_every_sheet");
                     openAccount();
+                  }}
+                  onClose={closeTopSheet}
+                />
+              ),
+            };
+
+      /* P1.15. The shop's products, categories and units — one segmented management
+         screen, OVER the settings sheet (the stack settings>products), reached only
+         from the admin-only row; a staff session never gets here. */
+      case "products":
+        return {
+          animation: "slide",
+          back: closeTopSheet,
+          content: (
+            <ProductsScreen
+              state={productsScreen}
+              refusal={productsRefusal}
+              busy={productsBusy}
+              onClose={closeTopSheet}
+              /* Retry re-READS the three lists; a write never replays on its own. */
+              onRetry={() => void loadProducts()}
+              /* Closes the sheet to reveal the login screen; it cannot sign in itself
+                 and must not re-read afterwards (a different person may sign in). */
+              onSignIn={closeTopSheet}
+              onCreateProduct={createProductAction}
+              onProductMenu={openProductMenu}
+              onCreateEntity={createEntityAction}
+              onRenameEntity={renameEntityAction}
+              onDeactivateEntity={deactivateEntityAction}
+              onReactivateEntity={reactivateEntityAction}
+            />
+          ),
+        };
+
+      /* P1.15. The ⋯ actions on one product row — edit / deactivate / reactivate —
+         OVER the products sheet (settings>products>product_actions), through this one
+         host. Payload-guarded: a null target renders nothing, the pendingChange rule.
+         The edit form's pickers offer the ACTIVE categories and units only (the server
+         refuses a retired one). */
+      case "product_actions":
+        return productMenuTarget === null || productsScreen === null || productsScreen.kind !== "ready"
+          ? { content: null, animation: "fade", back: closeTopSheet }
+          : {
+              animation: "fade",
+              back: closeTopSheet,
+              content: (
+                <ProductActionsSheet
+                  product={productMenuTarget}
+                  categories={productsScreen.categories.filter((c) => c.is_active)}
+                  units={productsScreen.units.filter((u) => u.is_active)}
+                  busy={productsBusy}
+                  /* Fire the action, then close to the product list; a refusal shows
+                     there, revealed on close. */
+                  onEdit={(id, body) => {
+                    editProductAction(id, body);
+                    closeTopSheet();
+                  }}
+                  onDeactivate={(id) => {
+                    deactivateProductAction(id);
+                    closeTopSheet();
+                  }}
+                  onReactivate={(id) => {
+                    reactivateProductAction(id);
+                    closeTopSheet();
                   }}
                   onClose={closeTopSheet}
                 />

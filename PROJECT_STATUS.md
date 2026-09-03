@@ -75,6 +75,66 @@ not read the green as re-run.**
 
 ## Current phase
 
+**PRODUCT MASTER DATA ON THE PHONE — a shop stocks its own products. 2026-09-03.** No sha yet (this record
+precedes the commit; anchor next pass). Supersedes the audit-log record below AS THE POINTER ONLY — that work
+stands and is committed (`2f0c9d6`). This does NOT close P1.15: the DESKTOP half stays open, filed at
+`OPEN_ITEMS.md § Decisions open`; the ROADMAP P1.15 step carries the dated note.
+**WHAT A SHOP CAN DO TODAY THAT IT COULD NOT YESTERDAY, IN PLAIN TERMS.** The owner adds, edits, deactivates,
+reactivates and FINDS his own products, categories and units FROM THE PHONE — no SQL, no call to us. Until now a
+shop had exactly the three products SQL seeded (FE-STEEL, AL-CAN, CU-WIRE) and could not add a fourth, so no real
+yard could open. A real shop has hundreds, so the screen searches by name and code and filters by category and by
+active/inactive ON THE DEVICE — three products need none of that, a real one needs all of it.
+**WHAT WAS BUILT (client only; no server change, no migration, no new dependency).** The server routes were ALREADY
+complete (`server/app/master.py`: create/edit/deactivate/activate for products, `product-categories`, `uoms`, with a
+per-shop unique-code 409, ref validation, and NO delete), so this is a one-commit CLIENT phase.
+`mobile/src/products/productsAdmin.ts` (pure builders: the parsers, the grouped-by-category list model, the
+device-side search+filter with its two calm empty states, the validation, the write-outcome classifier, the
+screen-state); `mobile/app/ProductsScreen.tsx` (ONE segmented sheet — สินค้า/หมวดหมู่/หน่วยนับ — with a virtualized
+`SectionList` for the product list) and `mobile/app/ProductActionsSheet.tsx` (the ⋯ edit/deactivate leaf); the 15
+`api.ts` transports; `mayManageProducts` in deviceRole; two sheet kinds (`products`, `product_actions`) + transitions;
+a `products` icon; and an ADMIN-ONLY row in SettingsScreen that opens it (staff never see it). Reached from ตั้งค่าร้าน
+the way the users and tier lists are.
+**DESIGN DECISIONS (mine, per the brief; the owner confirmed all three at the S0 stop).** (1) The management list reads
+LIVE `?include_inactive=true`, admin-only — ONLINE ONLY BY CONSTRUCTION, not omission: it must show the RETIRED rows
+the yard cache (active-only) deliberately excludes, so the cache cannot answer the question it asks. A create/edit here
+also refreshes THIS device's yard cache (the price-save move) so its cart reflects the change at once; ANOTHER phone
+sees it only at its next `refreshMaster` (boot/sign-in/a price write), never immediately — no push. (2) ONE segmented
+screen, categories/units inline — the alternative (separate sheets) was rejected for reaching FOUR deep against
+`prove:sheets`' three-deep limit, recorded so a later session does not "improve" it into that wall. (3)
+`mayManageProducts` is its OWN predicate, not a shared `isNotStaff` — when the permission model lands (blueprint 8.3)
+these predicates are the map of what to convert, and a collapsed one hides a permission that should exist. Code is
+IMMUTABLE (shown read-only in edit); a product with no price shows the settled `ยังไม่ได้ตั้งราคา`; deactivate ≠ delete
+(old bills still read it). NEW Thai, old→new: the no-collection and no-match sentences follow the seller picker's two
+shapes — `ยังไม่มีผู้ขายในระบบ …` → `ยังไม่มีสินค้าในร้าน — เพิ่มสินค้าใหม่ได้ที่แท็บ หมวดหมู่/หน่วยนับ …`, and
+`ไม่พบผู้ขายที่ตรงกับ "…"` → `ไม่พบสินค้าที่ตรงกับ "…"` (plus `ไม่พบสินค้าที่ตรงกับตัวกรองที่เลือก` for a filter with no query).
+**A GAP CLOSED AT THE LAYER WHOSE RULE IT IS.** `duplicate_code` is a SERVER rule (`app/master.py`'s
+`_raise_for_integrity` over `_DUPLICATE_CODE_CONSTRAINTS`), and `prove_master_write.py` asserted it for SELLERS ONLY —
+so products/categories/units had an unproven uniqueness refusal that stayed green only because a client happened to
+walk it. Extended `prove_master_write.py` with three sibling cells (uom, product_category, product), each with the same
+NAMED DISPROOF the sellers cell carries — without the constraint in the map the violation is an unhandled 500, not a
+409 the office can act on — and the W1 201 create as the presence sibling; 111 → 114 cells, GREEN TWICE (a server proof
+belongs there, not inferred through a client seam). `prove:products`' live round (R2) additionally proves the same 409
+end-to-end through the client's own refusal branch — a seam test, not the substitute.
+**READINGS (each command bare; cp874 box; proof Thai captured to a UTF-8 file, never the cp874 console).** Both
+typechecks GREEN before and after (`npm run typecheck` and `typecheck:app`, exit 0 each). `prove:products` (new)
+GREEN TWICE against a live uvicorn on `recycle_products_scratch` (dev restored, so the bill the R-round writes never
+touches dev): exit 0/0, 69 cells each — headless H1–H7 (the admin-only entry gate with an admin presence sibling; the
+grouped model; search+filter over a 224-product fixture with a name, code, category, active, inactive and NO-MATCH
+cell; the two empty states; every refusal asserted negatively with a presence sibling; the entity model) and live
+R0–R5 (create; DUPLICATE 409 on products AND categories AND units; edit; a bill referencing the product, then
+deactivate, then THE RETIRED PRODUCT STILL READS ITS CODE AND NAME ON THAT BILL — `code=PRD-…`, `name=สินค้าทดสอบแก้แล้ว`;
+gone from the active picker but present in include_inactive with its identity intact; reactivate). `prove:products --offline`
+exits 2, never 0 (the prove:users rule). `prove:sheets` GREEN (18 reachable stacks, +2 by exactly what was added,
+deepest 3; S10 confirms App.tsx dispatches `open_products`/`open_product_actions`). `prove:tapaudit` ZERO (31 app files
+clean, the two new screens token-drawn). Full mobile headless sweep GREEN — every `prove:*` exit 0 (the four
+server-requiring ones via `--offline` → 2; login/loginscreen skipped, untouched). `prove_master_write.py` (the one
+server proof this phase touched — +3 duplicate-code cells, 111→114) GREEN TWICE against the scratch server (exit 0/0;
+cleanup verified — FE-STEEL price/role/is_active restored, run fixtures=0). Other server proofs NOT re-run: no server
+CODE changed.
+**TIMING (H3t).** The pure search+filter over 224 products: ~16 µs/call (2000 passes, no accidental quadratic). This is
+the PURE FUNCTION ONLY — the React/`SectionList` render on a real handset is UNOBSERVED, named in the consolidated
+handset list below; the list is virtualized so an unfiltered view need not mount every row.
+
 **WHO DID WHAT — THE MASTER-DATA AUDIT LOG, WRITTEN BY TRIGGERS. 2026-09-02.** No sha yet (this record
 precedes the commit; anchor next pass). Supersedes the staff-management record below AS THE POINTER ONLY —
 that work stands and is committed (`98cbc2d`/`0a42b59`).
@@ -661,6 +721,12 @@ replaces Expo Go — that the **dev build compiles and installs at all** (`npx e
 Android on this box; `npx expo run:android` is the owner's next step; iOS needs EAS or a Mac). This is the
 ONE consolidated handset list for the new interface; it supersedes the phase-A/B/C/D device lists below,
 which were about the pre-rework screens.
+**ADDED 2026-09-03 (product master data on the phone, § Current phase):** the จัดการสินค้า screen
+(`ProductsScreen`/`ProductActionsSheet`) joins this owed pass and adds ONE reading no earlier screen needed —
+the **virtualized `SectionList` render over HUNDREDS of products**. The pure search+filter is measured (~16 µs/call
+over 224, `prove:products` H3t) but the on-device scroll/render at a real shop's volume is UNOBSERVED; a shop that
+stutters at 300 rows is a defect only a handset pass finds. Its segmented tabs, the filter chip scroll, the inline
+category/unit rename, and the grab-handle product-actions sheet are all likewise COMPUTED, not seen.
 **IS A LESSON OWED? NO.** Two self-caught trip-ups: (a) the `Touchable.onPress` type under
 `exactOptionalPropertyTypes` refused a `(() => void) | undefined` value passed to an optional-but-not-
 `|undefined` prop — a compile error the app typecheck caught and the prop type was widened; caught by the

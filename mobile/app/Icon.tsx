@@ -22,6 +22,7 @@ export type IconName =
   | "settings"
   | "dashboard"
   | "prices"
+  | "products"
   | "account"
   | "edit"
   | "trash"
@@ -52,6 +53,7 @@ const MAP: Record<IconName, FeatherName> = {
   settings: "settings",
   dashboard: "bar-chart-2",
   prices: "tag",
+  products: "package",
   account: "user",
   edit: "edit-2",
   trash: "trash-2",

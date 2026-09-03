@@ -287,3 +287,28 @@ export function mayEditShopSettings(role: DeviceRole): boolean {
 export function mayManageUsers(role: DeviceRole): boolean {
   return role !== "staff";
 }
+
+/**
+ * May this device OFFER the "จัดการสินค้า" entry inside settings (P1.15, homed on
+ * the phone)?
+ *
+ * A SEPARATE function again, deliberately, and for the reason this file has repeated
+ * five times: managing products, editing prices, editing shop settings, voiding a
+ * bill and managing users are five product decisions that happen to agree TODAY
+ * (all admin-only). Collapsing them into one `isNotStaff` would mean the day one
+ * moves — when the permission model lands (blueprint 8.3), where these predicates
+ * become the map of what to convert into a real per-account permission — the others
+ * move silently with it, and a permission that should have existed is hidden.
+ *
+ * IT FAILS OPEN, exactly as the others (see this file's header): only a DEFINITE
+ * "staff" hides the entry; an unparseable/absent/unrecognised role OFFERS it. Every
+ * product/category/unit WRITE route is `require_admin` on the server, re-read from
+ * the row each request, so a stale claim costs at worst a 403 the screen words —
+ * never a lockout, and never a way to change the shop's product list.
+ *
+ * NOTHING IS AUTHORISED ON THIS VALUE. `require_admin` is, on every write in
+ * server/app/master.py, against the database row.
+ */
+export function mayManageProducts(role: DeviceRole): boolean {
+  return role !== "staff";
+}
