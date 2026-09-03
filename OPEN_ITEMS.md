@@ -3195,6 +3195,58 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
 
 ## Decisions open — the owner's, not the code's
 
+- **BRANCHES ADOPTED, AND ROADMAP's D8 SUPERSEDED — two decisions the owner took
+  2026-09-03 on the structural design (`STRUCTURE.md`, measured at `b25d7b0`),
+  recorded as his. DECIDED, not open; left in this section because it is where a
+  later reader looks for what the owner settled.** He approved the whole design in
+  one word, "เอาหมด"; the design beyond unit 1 is DESIGN and not authorisation, and
+  each unit is authorised individually as it is briefed. NO PROSE CAME BACK WITH THE
+  APPROVAL, so the one-line reason beside each decision below is the argument he
+  was SHOWN and approved, not a motive of his.
+  - **(1) BRANCHES ADOPTED, in `STRUCTURE.md` section 9's shape:** a branch is a row
+    inside the tenant, every tenant is born with one, every operational row carries
+    `branch_id` by composite FK, `doc_no_counters` is re-keyed per branch, and RLS is
+    untouched. The reason shown: the sweep is cheapest now, at seventeen tables with
+    no real row, and the OTHER shape's mistake is the rebuild.
+  - **(2) ROADMAP's D8 ("the desktop cashier is an admin of the shop") SUPERSEDED:**
+    a cashier is a ROLE a shop creates under the permission model of `STRUCTURE.md`
+    section 3, holding `money.view_shop` and `payments.record` and not
+    `bills.create`. The reason shown: a two-value CHECK cannot say "may pay, may not
+    weigh", and the shop next door must be able to say it differently. Superseded in
+    place at `ROADMAP.md § The decisions the ordering forced` as well.
+  **THREE CORRECTIONS the design made to the advisor's documents, recorded so they
+  are not re-derived later as facts.** (a) `ARCHITECTURE.md § 5. Money: three representations across three boundaries`
+  "no thousands separators" is STALE: `mobile/src/money/format.ts` groups digits at
+  render sites by string surgery over the server's decimal string, no `Intl`, no
+  `Number`, and `proveMoney` M5 proves `stripSeparators(display(x)) === x` —
+  superseded in place there, 2026-09-03. (b) The advisor's design brief said 28
+  `require_admin` sites; the measured figure is 29
+  (`grep -c 'Depends(require_admin)' server/app/*.py` at `b25d7b0`: master 20,
+  users 7, bills 1, reports 1), which the 2026-09-02 note in
+  `ARCHITECTURE.md § 3.1 Three authentication tiers, not two` already carries; no
+  repository document said 28, so this line is the correction's only home. (c)
+  `PRODUCT_BLUEPRINT.md` section 17 row 3 says branches added later mean
+  "รื้อทั้งฐาน — แพงที่สุด"; that OVERSTATES it. The measured cost is a wide backfill
+  migration under the NO FORCE idiom 0015 measured plus a handler-and-proof sweep
+  (`STRUCTURE.md` section 9.3), and the real asymmetry is the other shape's
+  rebuild. Superseded beside item 3 of the fourteen-decision queue below and at
+  `ROADMAP.md § The product blueprint, reconciled — 2026-09-01`; the owner's
+  document is left unedited.
+  **TWO LISTS, AND THEY HAVE DIVERGED — said in one line so a later reader does not
+  assume they are the same.** The PASTE SET (`tools/build_paste_set.py`, thirteen
+  files from this commit, `STRUCTURE.md` joining it) is what the advising chat is
+  GIVEN; the CITATION SOURCE LIST (`tools/citation_sources.txt`, fifteen files from
+  this commit) is what `verify_citations.ps1` OPENS; `STRUCTURE.md`, the blueprint
+  and the inventory are in the first and not the second, `EVIDENCE.md`, `SRS_MAP.md`
+  and the two agent files in the second and not the first. **The source list is now
+  a FILE the checker loads, not an array typed at the keyboard** — the M6 c3 rule,
+  mechanised, after this very commit's first check assembled fifteen by scanning
+  for the citation shape and wrongly reported that no document enumerated the
+  fourteen (M6 c3 does, by name). **Its growth from fourteen to fifteen is a
+  DECISION recorded here:** `server/README.md` is added because it carries one
+  citation and the checker's own header rule is that a document that cites is a
+  source; it read BROKEN=0 on the run that added it, so the floor of 6 is
+  unmoved. Removing it again is one line in that file, never a run's side effect.
 - **HARD RULE 8 NAMES THREE SYNC STATES; THE TYPE THE PHONE RUNS HAS FOUR — the
   owner's to amend, REPORTED NOT FIXED, 2026-09-02 (measured at `98cbc2d`).**
   `CLAUDE.md` hard rule 8 reads "Sync state per record: pending / synced / failed"
@@ -4642,6 +4694,13 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
      goods are per-piece/lump — shop visits.
   3. **Multi-branch** (9.3) · EVERY business table · rebuild the whole database, the
      most expensive · whether the pilot/target shops have branches — shop visits.
+     **Corrected and DECIDED 2026-09-03:** "rebuild the whole database" overstates
+     the cost of adding branches later — measured against the tree at `b25d7b0`, it
+     is a wide backfill migration under the 0015 NO FORCE idiom plus a
+     handler-and-proof sweep, and the rebuild is what choosing the OTHER shape
+     would cost (`STRUCTURE.md` section 9.3). The owner adopted branch-in-tenant on
+     2026-09-03; see the first entry of § Decisions open above. This row is kept in
+     the blueprint's order and wording; only this note is added.
   4. **Roles + sub-permissions + deactivate account** (8.2–8.4) · `users`
      (`is_active` already built, 0007) + NEW `roles`/`permissions` · medium, but every
      permission gate changes · which action each role (esp. the cashier) may do —

@@ -1,0 +1,42 @@
+# tools/citation_sources.txt -- THE canonical source list for verify_citations.ps1.
+#
+# One repository-relative path per line. Blank lines and lines starting with # are
+# ignored. The checker loads THIS file when it is run without -Source, so the list
+# cannot vary between runs and cannot be assembled at the keyboard -- the practice
+# that produced two wrong readings (5 and 7) before PROJECT_STATUS.md's M6 c3 named
+# the floor by its files. Read SOURCES= and LIST= off the checker's last line.
+#
+# THIS IS NOT THE PASTE SET. tools/build_paste_set.py declares what the advising
+# chat is given (thirteen files as of 2026-09-03); this file declares what the
+# citation checker OPENS. The two lists answer different questions and have
+# diverged: STRUCTURE.md, PRODUCT_BLUEPRINT.md and SYSTEM_INVENTORY.md are in the
+# paste set and deliberately NOT here (referenced by name in prose, never checked --
+# the reason is at ROADMAP.md, the reconciled-blueprint section); EVIDENCE.md,
+# SRS_MAP.md and the two agent files are here and NOT in the paste set.
+#
+# Deliberately absent, each firing the checker's non-empty control if added:
+# README.md and lessons/README.md carry zero citations.
+#
+# CHANGING THIS LIST IS A DECISION, recorded where the change is made (the commit
+# body and OPEN_ITEMS.md), never a side effect of a run.
+#
+# 2026-08-29 (M6 c3): the fourteen -- the twelve root .md that carry citations plus
+# the two agent files. 2026-09-03: server/README.md added, the fifteenth, because it
+# carries one citation and the checker's own rule is that a document that cites is
+# a source; it read BROKEN=0 on the run that added it.
+
+START_HERE.md
+ARCHITECTURE.md
+CLAUDE.md
+ROADMAP.md
+OPEN_ITEMS.md
+PROJECT_STATUS.md
+BRIEFING.md
+ADVISOR.md
+ADVISOR_CHAT_INSTRUCTIONS.md
+RED_TEAM.md
+SRS_MAP.md
+EVIDENCE.md
+.claude/agents/metis.md
+.claude/agents/nemesis.md
+server/README.md

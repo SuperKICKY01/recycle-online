@@ -1638,6 +1638,16 @@ the money. This is what `ARCHITECTURE.md § 3.1 Three authentication tiers, not 
 can express: the role is a two-value CHECK, not a permission system, and it cannot
 say "may void, may not re-price".
 
+**SUPERSEDED 2026-09-03 BY THE OWNER, with the structural design (`STRUCTURE.md`
+section 3); the paragraph above is left as written.** A cashier is a ROLE a shop
+creates under the permission model — holding `money.view_shop` and
+`payments.record` and not `bills.create` — and not an admin. D8 was true of what the
+two-value CHECK could express, and the permission model is what can say "may pay,
+may not weigh", differently in the shop next door. Recorded with its sibling
+decision (branches adopted) at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's`. S9's three roles
+are not reopened: they become the three system roles every shop is born with.
+
 **D10 — the pilot runs on the production database, and no rebuild of the
 2026-08-03 kind is available after the first real bill.** That rebuild is recorded
 at `archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md § What the rebuild cost — stated, not glossed` "Also gone:
@@ -8024,6 +8034,23 @@ Where the blueprint's own prose happens to contain a backticked identifier, it i
 column or route name, not a `file § heading` citation, so the checker's parser does
 not reach into it.
 
+**THE STRUCTURAL DESIGN IS `STRUCTURE.md` — 2026-09-03.** On 2026-09-03 the owner
+approved in full ("เอาหมด") a read-only structural design measured at `b25d7b0`,
+written verbatim to `STRUCTURE.md` at the repo root and added to the paste set
+(`tools/build_paste_set.py`). It is the SHAPE the blueprint's capabilities are built
+into, not a plan of what to build: the configuration spine, money as a ledger of
+payments and allocations, the permission model that replaces the two roles, files,
+seller identity and the law, licensing, notifications, the language layer, branches,
+fifteen invariants, a build order in six batches with its traps, and the first three
+units specified for briefing. Its sections beyond unit 1 are DESIGN and not
+authorisation; each unit is authorised individually by the owner as it is briefed.
+Two decisions were taken with it and are filed at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's`: branches adopted in
+its section 9 shape, and this file's D8 superseded (see *The decisions the ordering
+forced*). Like the blueprint, `STRUCTURE.md` is referenced by NAME in prose and is
+NOT in the citation checker's source list, so nothing machine-checks a reference into
+it; the reason is the paragraph above.
+
 ### (a) Where the blueprint COLLIDES with a settled decision or a locked scope
 
 Named on both sides. NONE is resolved here — each is the owner's, filed at
@@ -8122,6 +8149,20 @@ SCREEN, not the column:** no client calls the lock; user management is P3.7's. T
 stale ARCHITECTURE row and the ambiguous D-label are filed as discoveries at
 `OPEN_ITEMS.md § Documentation`; the owner's two documents are left unedited, and this
 correction is their only home.
+
+**A SECOND CLAIM THE BLUEPRINT OVERSTATES — recorded 2026-09-03 by the structural
+design (`STRUCTURE.md` section 9.3), and the owner's document is left unedited.**
+Section 17 row 3 says branches added later mean "รื้อทั้งฐาน — แพงที่สุด". Measured
+against the tree at `b25d7b0`: adding `branch_id NOT NULL` later is a per-tenant
+backfill to the one existing branch under the NO FORCE idiom migration 0015 measured,
+a re-key of `doc_no_counters`, one sweep over every handler and proof, and one column
+each on the phone's `local_bills` and `local_shop` — a wide backfill migration on live
+money rows, not a rebuild. The real asymmetry runs the other way: choosing
+branch-as-tenant and needing branch-in-tenant later IS the rebuild, re-homing whole
+tenants' rows into one with id and code namespaces colliding. The owner adopted
+branch-in-tenant on 2026-09-03
+(`OPEN_ITEMS.md § Decisions open — the owner's, not the code's`), which is why the
+correction is recorded rather than left as a pricing note.
 
 ### (c) What the blueprint already has under another name — mapped, not re-homed
 

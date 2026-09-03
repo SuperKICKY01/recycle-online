@@ -824,6 +824,24 @@ Said plainly rather than left as a lesson about care:
   bare default, which is the failure above. Invoke the script directly
   (`& .\tools\verify_citations.ps1 -Source A,B,C`) so `[string[]]` binds.
 
+**AMENDED 2026-09-03 — THE LIST IS A FILE NOW, AND THE THREE BULLETS ABOVE ARE THE
+RECORD OF WHY.** `verify_citations.ps1` no longer carries a default source list at
+all: run bare it loads `tools/citation_sources.txt`, the ONE canonical list (the
+fourteen `PROJECT_STATUS.md`'s M6 c3 named, plus `server/README.md`, added that day
+as a recorded decision because it cites), refuses with exit 2 when the file is
+missing, empty or carries a duplicate, and labels a hand-typed `-Source` run as
+such on its first and last lines. Measured on the day: the bare run read
+`SOURCES=15 CITATIONS=635 BROKEN=6 LIST=tools/citation_sources.txt`; a copy of the
+script with no list file beside it exited 2 printing `SOURCE LIST MISSING`; a list
+carrying `CLAUDE.md` twice exited 2 printing `SOURCE LIST DUPLICATE: CLAUDE.md`;
+`-Source @('BRIEFING.md')` printed `LIST=HAND-TYPED -Source, NOT the canonical
+list`. What forced it was this lesson's own sixth mechanism arriving a fourth time:
+a session assembled fifteen sources by scanning for the citation shape, reported
+that no document enumerated the fourteen, and was wrong — M6 c3 names them in
+prose, which a grep for an array spelling cannot see. The source list is NOT the
+paste set (`tools/build_paste_set.py`); the two have diverged, and the list file
+says which files are in one and not the other.
+
 ### Two more, appended to How to apply
 
 8. **Run a citation checker over EVERY source, never over the file you are

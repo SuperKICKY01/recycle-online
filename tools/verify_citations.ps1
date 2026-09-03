@@ -1,11 +1,23 @@
 # verify_citations.ps1 - every citation in the SOURCE documents must resolve to
 # exactly one place.
 #
-# Sources DEFAULT to START_HERE.md and ARCHITECTURE.md. Pass -Source to narrow or
-# extend:
+# THE SOURCE LIST IS A FILE -- tools\citation_sources.txt, one path per line --
+# loaded when -Source is not given. It is the ONE canonical list: PROJECT_STATUS.md's
+# M6 c3 named the floor by its files after a hand-assembled array had produced two
+# wrong readings, and a list typed at the keyboard can differ between runs while
+# printing the same words. Run it bare and read SOURCES= and LIST= off the last line:
 #
-#   powershell -File tools\verify_citations.ps1
-#   powershell -File tools\verify_citations.ps1 -Source ARCHITECTURE.md
+#   & .\tools\verify_citations.ps1
+#
+# -Source still exists, to NARROW a run while one document is being edited, and a
+# run given it is LABELLED hand-typed in its own output so it is never mistaken for
+# the canonical reading:
+#
+#   & .\tools\verify_citations.ps1 -Source @('ARCHITECTURE.md')
+#
+# (This header read "Sources DEFAULT to START_HERE.md and ARCHITECTURE.md" until
+# 2026-09-03; that default was stale from the day ROADMAP.md began to cite, which is
+# the sixth mechanism in lessons/a-check-that-never-went-red-was-never-observed.md.)
 #
 # Those documents cite by section and quoted handle rather than by line number,
 # because line numbers move: a three-line insert into CLAUDE.md once invalidated
@@ -58,15 +70,20 @@
 # perfectly good citation into it reports BROKEN.
 #
 # Exit 0 = every citation resolves and every control holds. Exit 1 = it does not,
-# and each failure is printed BROKEN with its hit count.
+# and each failure is printed BROKEN with its hit count. Exit 2 = the list file is
+# missing, empty or carries a duplicate, so NOTHING was checked -- the same number
+# build_all_lessons.py and build_paste_set.py use for "could not run", and never a
+# quiet BROKEN=0.
 #
 # Run it BARE, one invocation, no pipe - a pipeline's exit status is the last
-# command's (CLAUDE.md, Machine footguns, "hides a non-zero exit"):
+# command's (CLAUDE.md, Machine footguns, "hides a non-zero exit"); with the call
+# operator, never -File, because -File binds only the FIRST value of an array
+# argument (CLAUDE.md, Machine footguns, "binds the FIRST value"):
 #
-#   powershell -File tools\verify_citations.ps1
+#   & .\tools\verify_citations.ps1
 
 param(
-  [string[]]$Source = @('START_HERE.md', 'ARCHITECTURE.md')
+  [string[]]$Source = @()
 )
 
 $S    = [char]0x00A7                      # section mark, built from its codepoint
@@ -87,6 +104,34 @@ function Get-TargetLines([string]$path) {
   if (-not $targetCache.ContainsKey($path)) { $targetCache[$path] = Read-DocLines $path }
   return $targetCache[$path]
 }
+
+# THE CANONICAL LIST, loaded here -- after Read-DocLines exists and before any
+# source is opened. A missing file, an empty list or a duplicated entry is a
+# REFUSAL (exit 2, "could not run"), never a quiet zero: a list that cannot be read
+# must not print BROKEN=0. A hand-typed -Source is honoured for narrowing and is
+# labelled as such on the first and last lines of the output.
+$listPath = Join-Path $PSScriptRoot 'citation_sources.txt'
+if ($Source.Count -eq 0) {
+  if (-not (Test-Path -LiteralPath $listPath)) {
+    "SOURCE LIST MISSING: $listPath -- nothing was checked."
+    exit 2
+  }
+  $Source = @(Read-DocLines $listPath | ForEach-Object { $_.Trim() } |
+              Where-Object { $_ -ne '' -and -not $_.StartsWith('#') })
+  $listOrigin = 'tools/citation_sources.txt'
+} else {
+  $listOrigin = 'HAND-TYPED -Source, NOT the canonical list'
+}
+if ($Source.Count -eq 0) {
+  "SOURCE LIST EMPTY ($listOrigin) -- nothing was checked."
+  exit 2
+}
+$dupes = @($Source | Group-Object | Where-Object { $_.Count -gt 1 })
+if ($dupes.Count -gt 0) {
+  "SOURCE LIST DUPLICATE: $(($dupes | ForEach-Object { $_.Name }) -join ', ') -- nothing was checked."
+  exit 2
+}
+"SOURCE LIST: $listOrigin  ENTRIES=$($Source.Count)"
 
 $grandBad   = 0
 $grandCites = 0
@@ -182,5 +227,5 @@ foreach ($srcName in $Source) {
 
 ''
 '==================================================================='
-'SOURCES={0}  CITATIONS={1}  BROKEN={2}' -f $Source.Count, $grandCites, $grandBad
+'SOURCES={0}  CITATIONS={1}  BROKEN={2}  LIST={3}' -f $Source.Count, $grandCites, $grandBad, $listOrigin
 if ($grandBad -gt 0) { exit 1 } else { exit 0 }

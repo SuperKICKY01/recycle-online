@@ -382,6 +382,16 @@ byte for byte — no parse, no `toFixed`, no grouping, no currency formatter. Th
 are no thousands separators, deliberately: grouping means splitting the string, and
 splitting a money string is one edit from splitting it into numbers.
 
+**Superseded 2026-09-03 (measured at `b25d7b0`; unanchored, anchor next pass).** The
+paragraph above is stale from "no grouping" onward. `mobile/src/money/format.ts` DOES
+insert thousands separators, at render sites only, by string surgery over the
+server's decimal string — no parse, no `Number`, no `toFixed`, no `Intl`, no locale —
+and `proveMoney` M5 proves `stripSeparators(display(x)) === x`, so every digit
+survives in order and the string is never split into numbers. What stands: the wire,
+the builders and the stores never see a grouped string, and money is never
+reformatted from a number. The structural design (`STRUCTURE.md` section 8.3, by
+name in prose) extends this per locale under the same invariant.
+
 ---
 
 ## 6. Time: two formatters, two constants, and nothing checks that they agree

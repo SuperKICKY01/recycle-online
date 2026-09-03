@@ -37,9 +37,12 @@ specific question needs one.
     plans against the ACTIVE state -- the three active files are in the set and
     each points at its archive for when history is needed.
 Both are listed in EXCLUDED so a pasted-set reader sees the boundary and its
-reason. SET_FILES was unchanged by M2; the twelve declared files all still
+reason. SET_FILES was unchanged by M2; the thirteen declared files all still
 pass the wrong-advice test. (M2 left ten; the product blueprint and its
-predecessor inventory were added 2026-09-01, so the advisor can see the plan.)
+predecessor inventory were added 2026-09-01, so the advisor can see the plan;
+STRUCTURE.md was added 2026-09-03, so the advisor can brief units against the
+structural design rather than re-deriving it -- it cannot plan against a
+document it cannot see.)
 
 EXIT CODES, matching server/scripts/build_all_lessons.py so that two doc tools
 in this repo cannot mean different things by the same number:
@@ -153,6 +156,8 @@ SET_FILES: list[tuple[str, str, str]] = [
      "the product plan of record: the owner-approved blueprint (2026-09-01) and its fourteen schema-decision queue"),
     ("SYSTEM_INVENTORY.md", "SYSTEM_INVENTORY.md",
      "the blueprint's predecessor inventory draft, kept as the record; superseded in scope by PRODUCT_BLUEPRINT.md"),
+    ("STRUCTURE.md", "STRUCTURE.md",
+     "the structural design of 2026-09-03, measured at b25d7b0 and approved in full by the owner: the SHAPE every capability is built into, its fifteen invariants, the build order, and the first three units -- design beyond unit 1, not authorisation"),
 ]
 
 
@@ -300,7 +305,7 @@ def working_tree_dirty() -> tuple[bool, list[str]]:
 def dirty_set_paths() -> list[str]:
     """Which of the DECLARED set files are uncommitted. A different question.
 
-    Asked of git directly, scoped to the twelve paths, rather than by filtering
+    Asked of git directly, scoped to the thirteen paths, rather than by filtering
     the repo-wide list -- porcelain lines carry a two-column status prefix and
     quote unusual paths, so a substring match against them is a guess. Scoping
     the query means git does the matching and the answer is exact.
