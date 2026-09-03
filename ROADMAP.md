@@ -8279,3 +8279,172 @@ assumed; this section names the candidates and BUILDS NONE of them.
   roster, add-a-user, deactivate/reactivate and password-reset screens over these
   routes; the deactivate route also gained a server last-active-admin guard. P3.7 is
   NOT closed — see the P3.7 step's 2026-09-02 note.
+
+---
+
+## The SRS remainder, kept as a memory — deferred 2026-09-03, unordered, unauthorised
+
+**THIS LIST IS A MEMORY, NOT A PLAN: nothing in it is authorised, nothing is
+scheduled, and the main plan above is unchanged by its existence.** The owner's
+instruction, verbatim, 2026-09-03: "เราอ่ะทำตาม แบบแผนหลักก่อนดิ แค่จดไว้จำไว้ไม่ลืม
+ขี้เกียจตาม ก็อยู่ท้ายๆroadmap ไป". So it sits at the very end of this file, after the
+last `### P` step and after the reconciled blueprint. It mints no P-number, assigns
+no stage, orders nothing and estimates nothing; an item leaves it only by a decision
+of the owner's that gives it a step, and that decision is recorded where decisions
+are. Each line is one item, where it came from, and one word of status: SUPERSEDED
+(a later decision or built thing replaced it, cited), OUT OF SCOPE BY DECISION (the
+decision cited), or UNPLACED (nothing built, no `### P` step, no `STRUCTURE.md` batch
+and no commit claims it in this form).
+
+**HOW THIS WAS ENUMERATED, so a later reader can repeat it.** `docs/SRS.md` was read
+in full, all 95 lines, and every numbered field group, feature and flow in it (the
+overview at lines 6-10, sections 1.1-1.9, 2.1-2.3, 3.1-3.3, 4.1-4.2, and the UI
+block at lines 93-95) was checked against four claimants in this order: the
+out-of-MVP list at `PROJECT_STATUS.md § What is NOT built` "do not build, do not
+scaffold"; the `### P` steps of this file (`grep -n '^### P' ROADMAP.md`); the six
+batches and three units of `STRUCTURE.md`; and the migration stack
+(`server/migrations/versions/0*.py`) with the head schema read from
+`information_schema` on 2026-09-03. Then `PRODUCT_BLUEPRINT.md` section 16 (its
+eight rows, lines 378-385) and `SYSTEM_INVENTORY.md` section 12 (its eight rows,
+lines 274-281) were walked row by row, pinned by
+`grep -n 'LME\|PWA\|marketplace\|chat\|ecosystem' PRODUCT_BLUEPRINT.md SYSTEM_INVENTORY.md`.
+What the SRS asks for and the product already HAS in the SRS's own form (units,
+categories, products, the seller core fields, daily buy with a server document
+number, login with username and password, the slip-printing step, user create and
+password reset) is NOT listed: the test for a line here is that nothing built and
+nothing planned claims the item as the SRS wrote it. Line numbers are those of
+`docs/SRS.md` at `78e7466`; that file has not changed since 2026-08-07.
+
+**THE STANDING FACT THE OWNER NEEDS KEPT.** `docs/SRS.md` is the original
+requirement transcript, pasted from a chat window and transcribed once on
+2026-08-07 (its own first line says so, and that it was never diffed against the
+owner's original). It is STALE in the places measured on 2026-09-03: line 6 has the
+two platforms working through one shared database, and the built system has one API
+with no database client anywhere in `mobile/` (`ARCHITECTURE.md § 2.4 What the requirements document says instead, and one divergence nothing records`);
+line 23 fixes buy prices at grades A to D, and the grade set has been per-tenant
+since migration 0015; line 34 asks for a seller profile photo and personal QR, and
+`sellers` at head has neither. **It has NOT been rewritten, and it is read as
+history, not as the current specification.** The same is true of `SRS_MAP.md`, the
+2026-08-07 measurement of it, whose stale lines are filed at
+`OPEN_ITEMS.md § Documentation`. Neither file is in the paste set, by the recorded
+reasons in `tools/build_paste_set.py`; whether either joins it is the owner's open
+call.
+
+**The remainder, one line each.**
+
+- **Two platforms sharing one database, "Real-time" buy and sell from the phone**
+  (`docs/SRS.md` lines 6 and 10). SUPERSEDED by the LOCKED architecture: one API is
+  the only writer, no client touches the database, and the phone is offline-first
+  (`CLAUDE.md § Architecture`, `CLAUDE.md § Hard rules`).
+- **Master data managed primarily on the desktop** (line 13). SUPERSEDED: five
+  master-data surfaces ship on the phone and none on the desktop, recorded as a dated
+  supersession at `CLAUDE.md § Architecture`; the desktop half of P1.15 stays open.
+- **Fixed price grades A to D per product** (line 23). SUPERSEDED by the per-tenant
+  grade model, migration 0015 (`ROADMAP.md § P1.24 — The per-tenant grade model`).
+- **A sell price per product** (line 23, "ราคาขาย@"). OUT OF SCOPE BY DECISION: "sell
+  flow" is on the out-of-MVP list at `PROJECT_STATUS.md § What is NOT built`; the
+  blueprint's section 16 keeps the door open.
+- **Stock on hand, computed from buys and sells** (line 24). OUT OF SCOPE BY
+  DECISION: "stock", the same list; the door kept is that a bill line already answers
+  what entered the yard (blueprint 16, inventory 12).
+- **An employee master with addresses, phone and notes** (lines 26-27). OUT OF SCOPE
+  BY DECISION: "employee master", the same list; `users` is authentication and not an
+  employee record (`ARCHITECTURE.md § 4. The data model`), and the per-user phone and
+  email the blueprint wants for password recovery (its 10.2) have no step either.
+- **A buyers master** (lines 29-30). OUT OF SCOPE BY DECISION: "buyers", the same
+  list; it returns only with the sell side (blueprint 16).
+- **A seller profile photo** (line 34). SUPERSEDED by S12's one face photo per
+  seller, taken at creation (`ROADMAP.md § What the owner has settled`), designed as
+  a `files` row in `STRUCTURE.md` section 4 (batch C, design only).
+- **A seller's personal QR code or barcode** (line 34). UNPLACED: the blueprint names
+  it at level B (its 4.1 and 12.4), and no step, batch or commit claims it; the
+  out-of-MVP list's "QR codes" predates the blueprint's adoption.
+- **Expense categories and other-income categories** (lines 36-40), **recording
+  other income and expenses** (lines 57-59), and **their report** (line 74). OUT OF
+  SCOPE BY DECISION: "other income/expense", the same list; `STRUCTURE.md` section
+  2.4 designs `cash_movements` for expenses (batch B, design only), and the income
+  half has no home anywhere.
+- **A company profile printed on report and slip headers** (lines 42-43). SUPERSEDED
+  by `tenants.address` and `tenants.phone`, migration 0013, under
+  `ROADMAP.md § P1.16 — Shop identity a slip header can print`; the tax id and
+  licence number wait on P1.1.
+- **A desktop bill form with edit and delete** (line 49). SUPERSEDED: a bill is
+  voided, never edited or deleted, by
+  `CLAUDE.md § Hard rules` "No hard deletes on transactions"; the desktop's view of
+  a bill is `ROADMAP.md § P1.14 — Desktop sign-in, and bill viewing`, and its print
+  is `ROADMAP.md § P1.17 — Thermal slip printing from the desktop`.
+- **Scanning a member card by QR at the weighbridge** (line 51). UNPLACED: blueprint
+  4.1 at level B; no step, batch or commit.
+- **Reading the weight from the scale automatically** (line 51). OUT OF SCOPE BY
+  DECISION: weight is typed by staff and there is no scale integration
+  (`CLAUDE.md § Architecture`; "scale integration" on the out-of-MVP list); blueprint
+  4.3 holds it at level C.
+- **Container and impurity deduction typed on the line** (line 51). SUPERSEDED in its
+  form: `tare_weight` has been on every line since migration 0001, and named
+  containers with a deduction percentage are blueprint 4.4 and 4.5, designed in
+  `STRUCTURE.md` section 2.3 (batch B, design only).
+- **"Submit to Desktop"** (line 52). SUPERSEDED: the phone submits to the server,
+  which assigns the document number, and the desktop prints after sync (S3 at
+  `ROADMAP.md § What the owner has settled`).
+- **Daily sell, cutting stock** (lines 54-55). OUT OF SCOPE BY DECISION: "sell flow"
+  and "stock", the same list; blueprint 16 keeps the door open.
+- **A mobile history of other income and expenses by branch and date** (line 59).
+  UNPLACED as a screen; branches themselves were adopted 2026-09-03
+  (`STRUCTURE.md` section 9), and the income-and-expense half is out of scope by the
+  line above.
+- **Excel export with one sheet per product category** (lines 62 and 71). OUT OF
+  SCOPE BY DECISION: "Excel export", the same list; blueprint 6.9 and 12.7 hold it at
+  level B.
+- **Printed master-data lists** (lines 64-65). OUT OF SCOPE BY DECISION: "reports",
+  the same list.
+- **Transaction reports with date, category, product and person filters and three
+  grouping forms** (lines 67-70). SUPERSEDED in part by `GET /reports/summary`, which
+  aggregates a period by product, seller, user or day and by state (P1.23 item 4);
+  the single-key filter is deferred as E5 at
+  `ROADMAP.md § The completion sequence to handover`, grouping by document number
+  and the sell report are not built.
+- **The daily financial summary table** (lines 75-77). SUPERSEDED by `/reports/daily`
+  and the dashboard that absorbs it (S24 at `ROADMAP.md § What the owner has settled`);
+  its sell, other-income and expense columns are out of scope by the lines above.
+- **The inventory and stock-value report** (lines 78-81). OUT OF SCOPE BY DECISION:
+  "stock", the same list.
+- **Deleting a user** (line 86). SUPERSEDED by deactivation, migration 0007, with the
+  phone screen built 2026-09-02 under this file's P3.7 step, the one that owns a
+  shop's staff list (named in prose, not cited: its heading is the handle another
+  file cites, and a second line carrying it would resolve that citation to two).
+- **Checkbox permissions per menu** (line 87). SUPERSEDED by the permission model of
+  `STRUCTURE.md` section 3 (unit 1, to be briefed; the out-of-MVP list's "checkbox
+  permissions" predates it).
+- **QR-code login for staff** (line 91). UNPLACED: the nearest thing the blueprint
+  names is a PIN quick-switch (its 8.6, level B), and no step, batch or commit claims
+  either.
+- **The desktop colour scheme, circular icons, tabbed categories and MDI windows**
+  (line 94). UNPLACED: `ROADMAP.md § P1.13 — The desktop scaffold` carries no visual
+  specification, and nothing else does.
+- **The mobile colour scheme, 3D buttons and a large weight font** (line 95).
+  SUPERSEDED by the reference-pinned visual system built under
+  `ROADMAP.md § P1.23 — The mobile UX rework`.
+- **The sell side and the sales document** (blueprint 16, line 378; inventory 12,
+  line 274). OUT OF SCOPE BY DECISION: the blueprint's own section 16, "นอกขอบเขต
+  ห้ามปิดประตู", adopted 2026-09-01
+  (`ROADMAP.md § The product blueprint, reconciled — 2026-09-01`); the door kept is
+  the permanent bill-line id, built in migration 0001.
+- **Stock in the yard** (blueprint line 379; inventory line 275). OUT OF SCOPE BY
+  DECISION, the same section; the door kept is that a bill line answers what entered.
+- **Processing, one in and three out** (blueprint line 380; inventory line 276). OUT
+  OF SCOPE BY DECISION, the same section; the door kept is that a transformed-goods
+  concept touches stock and never a bill.
+- **In-shop chat between staff** (blueprint line 381; inventory line 277). OUT OF
+  SCOPE BY DECISION, the same section; `STRUCTURE.md` section 7.3 names it genuinely
+  separate from notifications and buildable at any time.
+- **A marketplace, and an ecosystem or social layer** (blueprint line 382; inventory
+  line 278). OUT OF SCOPE BY DECISION, the same section; both are a separate program.
+- **World metal prices pulled automatically** (blueprint line 383; inventory line
+  279). OUT OF SCOPE BY DECISION, the same section; the door kept is the price
+  history the audit log now records, migration 0017.
+- **Self-registration by a seller so a shop can find them** (blueprint line 384;
+  inventory line 281). OUT OF SCOPE BY DECISION, the same section; it collides with
+  RLS and needs a new authentication layer, which `STRUCTURE.md` section 7.3 also
+  names as the one seller-facing surface that opens the LOCKED client count.
+- **A PWA or web app as a fourth client** (blueprint line 385; inventory line 280).
+  OUT OF SCOPE BY DECISION, the same section.

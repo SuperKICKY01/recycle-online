@@ -3247,6 +3247,16 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   citation and the checker's own header rule is that a document that cites is a
   source; it read BROKEN=0 on the run that added it, so the floor of 6 is
   unmoved. Removing it again is one line in that file, never a run's side effect.
+- **THE SRS REMAINDER IS DEFERRED TO THE END OF THE ROADMAP AS A MEMORY LIST — the
+  owner's decision, 2026-09-03, in his words: "เราอ่ะทำตาม แบบแผนหลักก่อนดิ แค่จดไว้จำไว้ไม่ลืม
+  ขี้เกียจตาม ก็อยู่ท้ายๆroadmap ไป".** The main plan proceeds unchanged. Everything
+  `docs/SRS.md` describes that nothing built, no `### P` step, no `STRUCTURE.md`
+  batch and no commit claims is listed ONCE, each with its source line and a
+  one-word status, at `ROADMAP.md § The SRS remainder, kept as a memory`, together
+  with the blueprint's and the inventory's own future rows. Nothing in that list is
+  authorised, scheduled, ordered or estimated by being listed, and `docs/SRS.md`
+  itself stays UNREWRITTEN and is read as history, not as the current
+  specification. NOTHING IS AUTHORISED.
 - **HARD RULE 8 NAMES THREE SYNC STATES; THE TYPE THE PHONE RUNS HAS FOUR — the
   owner's to amend, REPORTED NOT FIXED, 2026-09-02 (measured at `98cbc2d`).**
   `CLAUDE.md` hard rule 8 reads "Sync state per record: pending / synced / failed"
