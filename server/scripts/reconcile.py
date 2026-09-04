@@ -278,12 +278,16 @@ def cut(rows: list[str], max_rows: int) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# The doc_no shape. RESTATED from bills.py's f"B-{be_year}-{seq}" — there is no
-# helper to import. Four-digit BE year; sequence from 1 with no leading zeros,
-# because "B-2569-007" and "B-2569-7" would be two different strings naming one
-# number and the partial unique index would not stop it.
+# The doc_no shape. RESTATED from bills.py's f"{branch.doc_prefix}-{be_year}-{seq}"
+# — there is no helper to import. A prefix of one to four uppercase ASCII
+# letters (branches.doc_prefix, CHECKed to '^[A-Z]{1,4}$' by migration 0018;
+# the born-with branch's is 'B', so every pre-0018 doc_no still matches);
+# four-digit BE year; sequence from 1 with no leading zeros, because
+# "B-2569-007" and "B-2569-7" would be two different strings naming one number
+# and the partial unique index would not stop it. Group 1 is the prefix, 2 the
+# year, 3 the sequence.
 # ---------------------------------------------------------------------------
-DOC_NO_RE = re.compile(r"^B-(\d{4})-([1-9]\d*)$")
+DOC_NO_RE = re.compile(r"^([A-Z]{1,4})-(\d{4})-([1-9]\d*)$")
 
 # Business tables. `tenants` is keyed on its own id, the rest on tenant_id;
 # alembic_version is Alembic's bookkeeping and is REVOKEd from the app role.
@@ -342,6 +346,20 @@ TENANT_TABLES = [
     # No such row exists on this LAN-only database and none is written by any
     # proof, so X2 is green today.
     "failed_login_attempts",
+    # Migration 0018. Added the day branches landed, for the reason 0012, 0015
+    # and 0016 give above: this list is what puts branches under S1's tenant_id
+    # check, S3's RLS check, B1's blind read and X2's completeness sum. Its
+    # per-tenant checks are T10's three resolve arms (bill/user/counter ->
+    # branch), T17 (a bill's prefix is its branch's) and T18 (every tenant has
+    # an active branch); its cross-tenant pairs are in CROSS_TENANT_PAIRS, and
+    # it is in AUDITED_TABLES for S6.
+    #
+    # ITS CONSTRAINTS ARE DELIBERATELY NOT IN REQUIRED_CONSTRAINTS, and neither
+    # is fk_bills_branch, the same decision 0012..0017 record: a dump taken
+    # before 0018 has none of them, so S5 would go red on such a copy for a
+    # reason unrelated to money. Wake condition, as for its twins: a dump taken
+    # AFTER 0018 becoming the oldest one anyone restores from.
+    "branches",
 ]
 # audit_log (migration 0017) is in ALL_RLS_TABLES but DELIBERATELY NOT in
 # TENANT_TABLES, so it is NOT in X2's per-tenant completeness sum. WHY, and it was
@@ -374,6 +392,9 @@ ALL_RLS_TABLES = ["tenants", *TENANT_TABLES, "audit_log"]
 AUDITED_TABLES = frozenset({
     "uoms", "product_categories", "products", "product_prices",
     "sellers", "grade_tiers", "users", "tenants",
+    # Migration 0018: branches is master data a shop edits (name, address,
+    # phone, activation), so it carries the trigger and S6 requires it.
+    "branches",
 })
 
 # Named constraints and indexes the row checks lean on. If one is missing, the
@@ -453,6 +474,11 @@ CROSS_TENANT_PAIRS = [
      "product_categories", "category_id"),
     ("products.uom_id -> uoms", "products", "uoms", "uom_id"),
     ("product_prices.product_id -> products", "product_prices", "products", "product_id"),
+    # Migration 0018. doc_no_counters.branch_id -> branches is NOT here: X1's SQL
+    # names the child's `id`, and the counter has none (its key is the triple).
+    # That pair is covered by T10's 'counter -> branch' arm under RLS instead.
+    ("purchase_bills.branch_id -> branches", "purchase_bills", "branches", "branch_id"),
+    ("users.branch_id -> branches", "users", "branches", "branch_id"),
 ]
 
 
@@ -534,12 +560,16 @@ SQL_CHECKS: list[SqlCheck] = [
         """,
     ),
     SqlCheck(
-        "T6", "doc_no has the shape B-<be_year>-<seq>, seq >= 1, no leading zeros", "bills",
+        # The prefix is the branch's (0018): one to four uppercase ASCII letters,
+        # the same class ck_branches_doc_prefix admits. Whether it is THIS bill's
+        # branch's prefix is T17's question, not this one's.
+        "T6", "doc_no has the shape <prefix>-<be_year>-<seq>, prefix A-Z x1..4,"
+              " seq >= 1, no leading zeros", "bills",
         """
         SELECT b.doc_no, b.id AS bill_id, b.server_received_at
           FROM purchase_bills b
          WHERE b.doc_no IS NOT NULL
-           AND b.doc_no !~ '^B-[0-9]{4}-[1-9][0-9]*$'
+           AND b.doc_no !~ '^[A-Z]{1,4}-[0-9]{4}-[1-9][0-9]*$'
          ORDER BY b.doc_no
         """,
     ),
@@ -601,6 +631,26 @@ SQL_CHECKS: list[SqlCheck] = [
           FROM tenants t
           LEFT JOIN grade_tiers gt ON gt.code = t.default_grade
          WHERE t.default_grade IS NOT NULL AND gt.code IS NULL
+        UNION ALL
+        -- branches references (0018). Under this tenant's RLS context branches
+        -- holds only this tenant's rows, so "resolves" and "in the same tenant"
+        -- are one condition here; X1 also holds the bill and user pairs.
+        -- The COUNTER arm is the only lens on doc_no_counters.branch_id: the
+        -- counter has no `id`, so X1's SQL cannot name it.
+        SELECT 'bill -> branch', b.doc_no, b.branch_id::text
+          FROM purchase_bills b
+          LEFT JOIN branches br ON br.id = b.branch_id
+         WHERE br.id IS NULL
+        UNION ALL
+        SELECT 'user -> branch', u.username, u.branch_id::text
+          FROM users u
+          LEFT JOIN branches br ON br.id = u.branch_id
+         WHERE u.branch_id IS NOT NULL AND br.id IS NULL
+        UNION ALL
+        SELECT 'counter -> branch', c.be_year::text, c.branch_id::text
+          FROM doc_no_counters c
+          LEFT JOIN branches br ON br.id = c.branch_id
+         WHERE br.id IS NULL
         """,
     ),
     SqlCheck(
@@ -685,6 +735,36 @@ SQL_CHECKS: list[SqlCheck] = [
          ORDER BY b.doc_no
         """,
     ),
+    SqlCheck(
+        # Migration 0018. The prefix inside doc_no is the branch's doc_prefix at
+        # the moment of minting; the two can only disagree if a prefix was
+        # changed under existing bills (a visibly restarted series) or a bill was
+        # re-pointed at another branch. T8 groups by the ROW's branch, so this is
+        # the check that says the string and the row agree.
+        "T17", "a bill's doc_no prefix is its branch's doc_prefix", "bills",
+        """
+        SELECT b.doc_no, b.id AS bill_id, br.code AS branch_code, br.doc_prefix
+          FROM purchase_bills b
+          JOIN branches br ON br.id = b.branch_id
+         WHERE b.doc_no IS NOT NULL
+           AND split_part(b.doc_no, '-', 1) <> br.doc_prefix
+         ORDER BY b.doc_no
+        """,
+    ),
+    SqlCheck(
+        # Migration 0018, STRUCTURE.md invariant 10: every tenant has at least
+        # one branch, and it must be ACTIVE or no bill can be written -- POST
+        # /bills refuses 424 no_active_branch. Under this tenant's context
+        # `tenants` holds exactly one row, so this is one row or none.
+        "T18", "the tenant has at least one ACTIVE branch", "branches",
+        """
+        SELECT t.id AS tenant_id, t.name,
+               (SELECT count(*) FROM branches) AS branches,
+               (SELECT count(*) FROM branches WHERE is_active) AS active_branches
+          FROM tenants t
+         WHERE NOT EXISTS (SELECT 1 FROM branches WHERE is_active)
+        """,
+    ),
 ]
 
 SCOPE_SQL = """
@@ -700,7 +780,8 @@ SELECT (SELECT count(*) FROM purchase_bills)                              AS bil
        (SELECT count(*) FROM doc_no_counters)                             AS counters,
        (SELECT count(*) FROM seller_code_reservations)                    AS reservations,
        (SELECT count(*) FROM grade_tiers)                                  AS grade_tiers,
-       (SELECT count(*) FROM failed_login_attempts)                        AS failed_logins
+       (SELECT count(*) FROM failed_login_attempts)                        AS failed_logins,
+       (SELECT count(*) FROM branches)                                     AS branches
 """
 
 # Which SCOPE_SQL column feeds each table's running total for X2.
@@ -718,6 +799,7 @@ SCOPE_COLUMN = {
     "seller_code_reservations": "reservations",
     "grade_tiers": "grade_tiers",
     "failed_login_attempts": "failed_logins",
+    "branches": "branches",
 }
 
 CHECKS_PER_TENANT = len(SQL_CHECKS) + 4      # T0 + the SQL checks + T7/T8/T9
@@ -1247,7 +1329,8 @@ async def sweep(rep: Report, tenants: Sequence[uuidlib.UUID],
                       f" {scope['items']} items, {scope['sellers']} sellers,"
                       f" {scope['products']} products, {scope['prices']} prices,"
                       f" {scope['counters']} counter rows, {scope['users']} users,"
-                      f" {scope['reservations']} code reservations")
+                      f" {scope['reservations']} code reservations,"
+                      f" {scope['branches']} branches")
             for r in results:
                 rep.add(str(tid), r, quiet=True)
             if (verbose or has_rows or failed) and not failed and not verbose:
@@ -1299,67 +1382,92 @@ async def docno_checks(conn: Any, max_rows: int) -> list[Result]:
     per-be_year aggregates with _be_year applied to the year boundaries instead
     of to each row.
     """
+    # SINCE MIGRATION 0018 THE SERIES IS PER BRANCH: doc_no_counters is keyed on
+    # (tenant_id, branch_id, be_year) and each branch mints its own gap-free
+    # series under its own prefix. So T8 and T9 group by (branch, year), never by
+    # year alone -- grouping by year alone would read two branches' interleaved
+    # series as one riddled with gaps and duplicates (a false red), or, if the
+    # counter key had lost its branch leg, would fail to see two branches
+    # sharing one series (the false green disproof (a) in prove_branches.py
+    # names). The branch is read off the BILL ROW, not parsed out of the prefix:
+    # T17 is what says the two agree. A bill whose branch does not resolve
+    # (T10's arm) is grouped under its raw branch_id so its numbers still count.
     rows = (await conn.execute(APP.sql(
-        "SELECT doc_no, id, server_received_at FROM purchase_bills"
-        " WHERE doc_no IS NOT NULL ORDER BY doc_no"))).mappings().all()
-    counters = {c["be_year"]: c["last_seq"] for c in (await conn.execute(APP.sql(
-        "SELECT be_year, last_seq FROM doc_no_counters"))).mappings().all()}
+        "SELECT b.doc_no, b.id, b.server_received_at, b.branch_id,"
+        "       br.code AS branch_code, br.doc_prefix"
+        "  FROM purchase_bills b"
+        "  LEFT JOIN branches br ON br.id = b.branch_id"
+        " WHERE b.doc_no IS NOT NULL ORDER BY b.doc_no"))).mappings().all()
+    counters = {(str(c["branch_id"]), c["be_year"]): c["last_seq"]
+                for c in (await conn.execute(APP.sql(
+                    "SELECT branch_id, be_year, last_seq FROM doc_no_counters"))).mappings().all()}
+    # Label per branch id, for the report: the code where it resolves, else the
+    # raw id so the row is still nameable.
+    label: dict[str, str] = {}
+    for x in rows:
+        label[str(x["branch_id"])] = x["branch_code"] or f"?{x['branch_id']}"
+    for bid, _year in counters:
+        label.setdefault(bid, f"?{bid}")
 
-    by_year: dict[int, dict[int, list[str]]] = {}
+    by_series: dict[tuple[str, int], dict[int, list[str]]] = {}
     mismatched: list[str] = []
     for x in rows:
         m = DOC_NO_RE.match(x["doc_no"])
         if not m:
             continue  # T6 owns a malformed doc_no; T8 will see the hole it leaves
-        year, seq = int(m.group(1)), int(m.group(2))
+        year, seq = int(m.group(2)), int(m.group(3))
         arrived_in = APP.be_year(x["server_received_at"])
         if year != arrived_in:
             mismatched.append(
                 f"doc_no={x['doc_no']}  bill_id={x['id']}"
                 f"  server_received_at={fmt(x['server_received_at'])}"
                 f"  be_year_in_doc_no={year}  be_year_of_arrival={arrived_in}")
-        by_year.setdefault(year, {}).setdefault(seq, []).append(str(x["id"]))
+        by_series.setdefault((str(x["branch_id"]), year), {}).setdefault(seq, []).append(str(x["id"]))
 
     t7 = Result("T7", "doc_no's BE year is the BE year that bill ARRIVED in, in shop time",
                 examined=f"{len(rows)} numbered bills")
     t7.total = len(mismatched)
     t7.rows = cut(mismatched, max_rows)
 
-    t8 = Result("T8", "doc_no per (tenant, be_year) runs 1..N — no gap, no duplicate,"
-                      " voided bills included",
-                examined=f"{len(rows)} numbered bills over {len(by_year)} be_year(s)")
+    t8 = Result("T8", "doc_no per (tenant, branch, be_year) runs 1..N — no gap, no"
+                      " duplicate, voided bills included",
+                examined=f"{len(rows)} numbered bills over {len(by_series)} (branch, be_year)"
+                         " series")
     gaps: list[str] = []
-    for year in sorted(by_year):
-        seqs = by_year[year]
+    for bid, year in sorted(by_series, key=lambda k: (label[k[0]], k[1])):
+        seqs = by_series[(bid, year)]
         top = max(seqs)
         missing = [n for n in range(1, top + 1) if n not in seqs]
         if missing:
             shown = missing if max_rows == 0 else missing[:50]
-            gaps.append(f"be_year={year}  issued={len(seqs)}  highest={top}"
+            gaps.append(f"branch={label[bid]}  be_year={year}  issued={len(seqs)}  highest={top}"
                         f"  MISSING seq={shown}"
                         + ("" if len(shown) == len(missing) else f" (+{len(missing) - len(shown)} more)"))
         for n, ids in sorted(seqs.items()):
             if len(ids) > 1:
-                gaps.append(f"be_year={year}  seq={n}  DUPLICATED by {' '.join(ids)}")
+                gaps.append(f"branch={label[bid]}  be_year={year}  seq={n}"
+                            f"  DUPLICATED by {' '.join(ids)}")
     t8.total = len(gaps)
     t8.rows = cut(gaps, max_rows)
 
-    t9 = Result("T9", "the doc_no counter equals the highest doc_no issued for its year",
+    t9 = Result("T9", "the doc_no counter equals the highest doc_no issued for its"
+                      " (branch, year)",
                 examined=f"{len(counters)} counter row(s)")
     bad: list[str] = []
-    for year in sorted(set(counters) | set(by_year)):
-        top = max(by_year[year]) if year in by_year else None
-        last = counters.get(year)
+    for bid, year in sorted(set(counters) | set(by_series), key=lambda k: (label[k[0]], k[1])):
+        top = max(by_series[(bid, year)]) if (bid, year) in by_series else None
+        last = counters.get((bid, year))
         if last is None:
-            bad.append(f"be_year={year}  highest_doc_no={top}  NO COUNTER ROW"
-                       " — the next bill of this year would be issued seq 1")
+            bad.append(f"branch={label[bid]}  be_year={year}  highest_doc_no={top}"
+                       "  NO COUNTER ROW — the next bill of this year would be issued seq 1")
         elif top is None:
             if last != 0:
-                bad.append(f"be_year={year}  counter_last_seq={last}  but NO BILL carries"
-                           " this year — numbers were issued to bills that are not here")
+                bad.append(f"branch={label[bid]}  be_year={year}  counter_last_seq={last}"
+                           "  but NO BILL carries this year — numbers were issued to bills"
+                           " that are not here")
         elif last != top:
-            bad.append(f"be_year={year}  counter_last_seq={last}  highest_doc_no={top}"
-                       f"  difference={last - top}")
+            bad.append(f"branch={label[bid]}  be_year={year}  counter_last_seq={last}"
+                       f"  highest_doc_no={top}  difference={last - top}")
     t9.total = len(bad)
     t9.rows = cut(bad, max_rows)
 

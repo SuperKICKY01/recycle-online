@@ -436,6 +436,7 @@ class Fx:
     mid_item: Any
     voided: Any         # a voided bill
     audit_present: bool  # the copy is a 0017+ database (audit_log + triggers exist)
+    branches_present: bool  # the copy is a 0018+ database (branches, T17/T18 exist)
 
 
 async def fixtures(conn: asyncpg.Connection) -> Fx:
@@ -510,11 +511,13 @@ async def fixtures(conn: asyncpg.Connection) -> Fx:
 
     audit_present = await conn.fetchval(
         "SELECT to_regclass('public.audit_log') IS NOT NULL")
+    branches_present = await conn.fetchval(
+        "SELECT to_regclass('public.branches') IS NOT NULL")
     fx = Fx(tenant=tenant, other_tenant=other, other_seller=other_seller,
             tenants=len(tenant_ids), tenant_ids=tenant_ids,
             be_year=top["be_year"], max_seq=top["seq"], max_bill=top["id"],
             mid=mid, mid2=mid2, mid_item=item, voided=voided[0],
-            audit_present=audit_present)
+            audit_present=audit_present, branches_present=branches_present)
     print(f"  tenants in copy   : {fx.tenants}  (every expectation about a tenant count"
           " below is derived from this number, at runtime)")
     print(f"  tenant under test : {tenant}  ({len(bills)} numbered bills,"
@@ -829,6 +832,48 @@ def build(fx: Fx) -> list[Injection]:
                    ())],
             expect={"S6": 1},
             expect_rows=["table=product_prices  HAS NO audit_capture TRIGGER"],
+        ))
+    # T17 and T18 (migration 0018) exist only on a 0018+ copy. Gated on
+    # branches_present so a pre-0018 copy simply omits them.
+    if fx.branches_present:
+        # A bill whose doc_no prefix is not its branch's. 'Z' is a legal prefix
+        # shape (T6 stays green) and the ROW still sits in the born-with branch,
+        # so T8 -- which groups by the row's branch, never by the string -- sees
+        # no hole: exactly ONE check moves, and it is the one that compares the
+        # string to the row.
+        injs.append(Injection(
+            "T17", "a bill's doc_no carries a prefix that is not its branch's —"
+                   " the string and the row disagree about which series it is in",
+            apply=[("UPDATE purchase_bills SET doc_no = $2 WHERE id = $1",
+                    (mid["id"], f"Z-{fx.be_year}-{mid['seq']}"))],
+            undo=[("UPDATE purchase_bills SET doc_no = $2 WHERE id = $1",
+                   (mid["id"], mid["doc_no"]))],
+            expect={"T17": 1},
+            expect_rows=[f"doc_no=Z-{fx.be_year}-{mid['seq']}", f"bill_id={mid['id']}",
+                         "branch_code=MAIN", "doc_prefix=B"],
+        ))
+        # The tenant's only branch deactivated: no bill can be written (POST
+        # /bills would answer 424 no_active_branch) and T18 is what notices.
+        # branches is AUDITED, so the UPDATE needs an actor in context; this
+        # superuser connection sets the GUCs session-level for the injection
+        # and clears them on undo (prove_x3 sets its own later).
+        injs.append(Injection(
+            "T18", "the tenant's ONLY branch is deactivated — no active branch"
+                   " remains to mint a bill",
+            apply=[("SELECT set_config('app.tenant_id', $1, false)", (str(fx.tenant),)),
+                   ("SELECT set_config('app.actor_id', $1, false)",
+                    ("00000000-0000-0000-0000-000000000000",)),
+                   ("SELECT set_config('app.actor_username', $1, false)",
+                    ("system:prove_reconcile",)),
+                   ("UPDATE branches SET is_active = false WHERE tenant_id = $1",
+                    (fx.tenant,))],
+            undo=[("UPDATE branches SET is_active = true WHERE tenant_id = $1",
+                   (fx.tenant,)),
+                  ("SELECT set_config('app.tenant_id', '', false)", ()),
+                  ("SELECT set_config('app.actor_id', '', false)", ()),
+                  ("SELECT set_config('app.actor_username', '', false)", ())],
+            expect={"T18": 1},
+            expect_rows=[f"tenant_id={fx.tenant}", "active_branches=0"],
         ))
     return injs
 

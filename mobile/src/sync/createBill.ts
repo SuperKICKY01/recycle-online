@@ -96,6 +96,17 @@ export interface BillDraft {
    * means unknown, never "fresh". See master/freshness.ts.
    */
   master_as_of: string | null;
+  /**
+   * The yard this bill is written at, as the device last learned it from
+   * GET /shop (server migration 0018; SqliteShopStore.readBranch). OPTIONAL,
+   * and it must stay so: a draft built with none -- an upgraded handset that
+   * has not refreshed yet, an unscoped owner of a multi-yard shop -- yields a
+   * payload with NO branch_id key, which is the exact wire shape every bill
+   * queued before 0018 has and the one the server resolves for itself. A
+   * REQUIRED field here would be a required field on the wire one refactor
+   * later, and that is the change migration 0018's docstring forbids.
+   */
+  branch_id?: string | null;
 }
 
 /**
@@ -138,6 +149,12 @@ export function buildLocalBill(deps: BuildBillDeps, draft: BillDraft): LocalBill
       idempotency_key: idempotencyKey,
       items: draft.items,
       total_amount: draft.total_amount,
+      // The key is PRESENT only when a branch is known. Spreading a `null`
+      // would put `"branch_id": null` on the wire, which the server also
+      // accepts -- but a bill with NO key is the shape every pre-0018 bill has,
+      // and keeping the two shapes identical is what lets one proof cell cover
+      // both (mobile prove:branch B2).
+      ...(draft.branch_id ? { branch_id: draft.branch_id } : {}),
     },
     sync_state: "pending",
     attempt_count: 0,

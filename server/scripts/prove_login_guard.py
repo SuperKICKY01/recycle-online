@@ -188,6 +188,14 @@ async def provision(ctx: Ctx) -> None:
         conn_tenant[0] = ctx.main
         await conn.execute(text("INSERT INTO tenants (id, name) VALUES (:id, :n)"),
                            {"id": ctx.main, "n": f"LG MAIN {RUN}"})
+        # THE BORN-WITH BRANCH (0018): this proof mints tenants by SQL and leaves
+        # them behind, and reconcile.py's T18 requires every tenant to hold an
+        # active branch -- so the tenant is provisioned with one, as
+        # provision_shop.py provisions it. No bill is written here.
+        await conn.execute(
+            text("INSERT INTO branches (tenant_id, code, name, doc_prefix, is_active)"
+                 " VALUES (:t, 'MAIN', :n, 'B', true)"),
+            {"t": ctx.main, "n": f"LG MAIN {RUN}"})
         await mkuser(conn, ctx.ids["admin"], U["admin"], "admin", PW["admin"])
         for k in ("allow", "lock", "expire", "adminlock", "bystander", "nopw", "collide"):
             await mkuser(conn, ctx.ids[k], U[k], "staff", PW[k])
@@ -196,6 +204,10 @@ async def provision(ctx: Ctx) -> None:
         conn_tenant[0] = ctx.other
         await conn.execute(text("INSERT INTO tenants (id, name) VALUES (:id, :n)"),
                            {"id": ctx.other, "n": f"LG OTHER {RUN}"})
+        await conn.execute(
+            text("INSERT INTO branches (tenant_id, code, name, doc_prefix, is_active)"
+                 " VALUES (:t, 'MAIN', :n, 'B', true)"),
+            {"t": ctx.other, "n": f"LG OTHER {RUN}"})
         await mkuser(conn, ctx.collide_other_id, U["collide"], "staff",
                      PW_COLLIDE_OTHER)
 

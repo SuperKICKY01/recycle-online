@@ -8051,6 +8051,29 @@ forced*). Like the blueprint, `STRUCTURE.md` is referenced by NAME in prose and 
 NOT in the citation checker's source list, so nothing machine-checks a reference into
 it; the reason is the paragraph above.
 
+**BUILT 2026-09-03 — BRANCHES, the design's section 9, as THE FIRST UNIT (unanchored;
+anchor next pass).** The advisor re-sequenced the units the design lists in its
+section 12: branches (there "Unit 2") were built FIRST and the permission model
+(there "Unit 1") follows, because branches re-key `doc_no_counters` and touch every
+operational table at a cost that grows with every table and every real row, while
+permissions cost the same whenever done. Migration `0018_branches.py`: the `branches`
+table, one born-with branch per tenant (`MAIN`, the shop's own name, prefix `B`),
+`purchase_bills.branch_id` NOT NULL, `doc_no_counters` re-keyed to
+`(tenant_id, branch_id, be_year)` with every high-water mark untouched (Shop A 617 →
+617, next bill 618), `users.branch_id` nullable; `POST /bills` mints per branch with
+`branch_id` OPTIONAL on the wire (a queued pre-0018 bill survives), `GET /shop` reports
+the caller's branch, `reconcile.py` T8/T9 per `(branch, year)` plus T17/T18, and the
+phone caches the branch beside its shop row and sends it on new bills. The
+fourteen-decision schema queue whose item 3 this closes lives at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's`
+(below the decisions entry), NOT in this section — the unit's brief pointed here and
+was corrected at the tree. Deferred to their own
+units, named so nobody reads them as missed: `product_prices.branch_id` (branch
+pricing), the branch-scope gate (the permission model), `branches` on `payments`,
+`shifts`, `cash_movements`, `files`, `notifications`, `deliveries`, `user_devices`
+(their creating batches), and a route to open a second yard. The record is
+`PROJECT_STATUS.md § Current phase`.
+
 ### (a) Where the blueprint COLLIDES with a settled decision or a locked scope
 
 Named on both sides. NONE is resolved here — each is the owner's, filed at

@@ -215,26 +215,39 @@ async def insert_bill(target_engine, tenant_id: uuid.UUID, note: str) -> dict:
     be_year = _be_year(now)
 
     async with _tenant_txn(target_engine, tenant_id) as conn:
+        # The counter is keyed per BRANCH since migration 0018, and the bill
+        # carries its branch NOT NULL. This fixture writes into the tenant's
+        # born-with branch (code MAIN, prefix B) and takes the prefix FROM THE
+        # ROW rather than restating 'B', so the marker's doc_no is what the
+        # real path would have minted for that branch.
+        branch = (
+            await conn.execute(
+                text("SELECT id, doc_prefix FROM branches WHERE code = 'MAIN'")
+            )
+        ).mappings().one()
         await conn.execute(
-            text("INSERT INTO doc_no_counters (tenant_id, be_year, last_seq) VALUES (:t, :y, 0)"
-                 " ON CONFLICT (tenant_id, be_year) DO NOTHING"),
-            {"t": tenant_id, "y": be_year},
+            text("INSERT INTO doc_no_counters (tenant_id, branch_id, be_year, last_seq)"
+                 " VALUES (:t, :b, :y, 0)"
+                 " ON CONFLICT (tenant_id, branch_id, be_year) DO NOTHING"),
+            {"t": tenant_id, "b": branch["id"], "y": be_year},
         )
         seq = (
             await conn.execute(
                 text("UPDATE doc_no_counters SET last_seq = last_seq + 1"
-                     " WHERE tenant_id = :t AND be_year = :y RETURNING last_seq"),
-                {"t": tenant_id, "y": be_year},
+                     " WHERE tenant_id = :t AND branch_id = :b AND be_year = :y"
+                     " RETURNING last_seq"),
+                {"t": tenant_id, "b": branch["id"], "y": be_year},
             )
         ).scalar_one()
-        doc_no = f"B-{be_year}-{seq}"
+        doc_no = f"{branch['doc_prefix']}-{be_year}-{seq}"
         await conn.execute(
             text("INSERT INTO purchase_bills (id, tenant_id, seller_id, doc_no,"
-                 " idempotency_key, total_amount, device_created_at, vehicle_no)"
-                 " VALUES (:id, :t, :s, :dn, :k, :tot, :dca, :vn)"),
+                 " idempotency_key, total_amount, device_created_at, vehicle_no,"
+                 " branch_id)"
+                 " VALUES (:id, :t, :s, :dn, :k, :tot, :dca, :vn, :br)"),
             {"id": bill_id, "t": tenant_id, "s": SELLER_A_ID, "dn": doc_no,
              "k": f"backup-proof-{note}-{bill_id}", "tot": amount, "dca": now,
-             "vn": f"proof-{note}"},
+             "vn": f"proof-{note}", "br": branch["id"]},
         )
         await conn.execute(
             text("INSERT INTO purchase_bill_items (id, tenant_id, bill_id, product_id, line_no,"

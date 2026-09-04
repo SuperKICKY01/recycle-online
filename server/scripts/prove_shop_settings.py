@@ -260,11 +260,24 @@ async def main() -> int:
             body = r.json()
             print(f"      E1 operands: status={r.status_code} keys={sorted(body)}")
             check(r.status_code == 200, f"E1: staff GET /shop -> 200 (got {r.status_code})")
+            # `branch` and `branch_count` since migration 0018: the caller's yard
+            # and the derived switch. A branch names no person either -- its
+            # object is exactly the branch's own identity, asserted below.
             check(
                 set(body) == {"id", "name", "default_grade", "address", "phone",
-                              "staff_money_visible"},
+                              "staff_money_visible", "branch", "branch_count"},
                 f"E1: body keys are exactly the shop's and none names a person "
                 f"(keys={sorted(body)})",
+            )
+            branch = body.get("branch")
+            check(
+                isinstance(branch, dict)
+                and set(branch) == {"id", "code", "name", "doc_prefix", "is_active"}
+                and isinstance(body.get("branch_count"), int),
+                "E1: the branch object is the yard's own identity (id, code, name,"
+                f" doc_prefix, is_active) and branch_count is an int"
+                f" (branch_keys={sorted(branch) if isinstance(branch, dict) else branch},"
+                f" branch_count={body.get('branch_count')!r})",
             )
             check(
                 body.get("address") == baseline["address"]

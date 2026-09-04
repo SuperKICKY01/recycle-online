@@ -35,6 +35,17 @@ export interface BillPayload {
   idempotency_key: string;
   items: BillItemPayload[];
   total_amount: string | null;
+  /**
+   * The yard this bill was written at (server migration 0018). OPTIONAL ON THE
+   * WIRE AND OPTIONAL HERE, deliberately: every bill queued before branches
+   * existed was stored as JSON without this key and is posted byte for byte
+   * (httpTransport.sendBill), and the server resolves an absent branch for
+   * itself. A required field here would type-check every old row as carrying
+   * a branch it does not have, and the next refactor would send `undefined`
+   * as a required key. Present only when the device had learned its branch
+   * (SqliteShopStore.readBranch) at the moment the bill was built.
+   */
+  branch_id?: string;
 }
 
 export interface LocalBill {

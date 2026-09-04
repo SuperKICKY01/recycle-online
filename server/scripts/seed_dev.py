@@ -41,6 +41,19 @@ async def main() -> None:
                     ),
                     {"id": s["tenant_id"], "name": s["tenant_name"]},
                 )
+                # THE BORN-WITH BRANCH (migration 0018): every tenant has one,
+                # code MAIN, name = the shop's own name, prefix B. Idempotent on
+                # (tenant_id, code); a re-run never touches a branch a shop has
+                # since renamed, and a tenant that predates 0018 already got its
+                # row from the migration's backfill, so this is a no-op there.
+                await conn.execute(
+                    text(
+                        "INSERT INTO branches (tenant_id, code, name, doc_prefix, is_active)"
+                        " VALUES (:t, 'MAIN', :name, 'B', true)"
+                        " ON CONFLICT (tenant_id, code) DO NOTHING"
+                    ),
+                    {"t": s["tenant_id"], "name": s["tenant_name"]},
+                )
                 for u, pw_hash in user_hashes:
                     await conn.execute(
                         text(

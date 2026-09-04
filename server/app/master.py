@@ -83,6 +83,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from .auth import ADMIN_ROLE, Principal, get_principal, require_admin
+from .branches import branch_payload, read_caller_branch
 from .config import SHOP_TIMEZONE
 from .db import constraint_name_of, tenant_connection
 
@@ -2254,7 +2255,7 @@ class ShopUpdate(BaseModel):
 _SHOP_NULLABLE = frozenset({"default_grade", "address", "phone"})
 
 
-async def _read_shop(conn: Any) -> dict:
+async def _read_shop(conn: Any, user_id: uuid.UUID) -> dict:
     # No WHERE and no tenant_id: the tenants policy is FORCED and this connection
     # carries SET LOCAL app.tenant_id, so exactly one row is visible. Nothing in
     # this row names a person -- it is the shop's own identity and its own choices.
@@ -2266,6 +2267,11 @@ async def _read_shop(conn: Any) -> dict:
             )
         )
     ).mappings().one()
+    # THE CALLER'S BRANCH (migration 0018): the user's own if scoped, else the
+    # tenant's single active branch, else null with the count. `branch_count`
+    # is the derived switch -- a shop with one active branch shows no branch
+    # control -- and `branch` is what the phone caches and sends on a bill.
+    caller = await read_caller_branch(conn, user_id)
     return {
         "id": str(row["id"]),
         "name": row["name"],
@@ -2276,20 +2282,23 @@ async def _read_shop(conn: Any) -> dict:
         # reads to know whether to render money at all (P1.23 item 4, D1). Serialised
         # as a JSON boolean, which is exactly what a flag is.
         "staff_money_visible": row["staff_money_visible"],
+        "branch": branch_payload(caller.branch),
+        "branch_count": caller.active_count,
     }
 
 
 @router.get("/shop")
 async def get_shop(principal: Principal = Depends(get_principal)) -> dict:
-    """The shop's own settings.
+    """The shop's own settings, and the caller's branch.
 
     Readable by STAFF as well as admin, deliberately: the yard app needs to know
     whether a default grade exists to explain a 424 it might otherwise present
-    as the seller's fault. Nothing here is sensitive and nothing names a person
-    -- it is the shop's own name, address, phone and grade choice.
+    as the seller's fault, and which branch its bills belong to. Nothing here is
+    sensitive and nothing names a person -- it is the shop's own name, address,
+    phone and grade choice, and the yard the caller works at.
     """
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
-        return await _read_shop(conn)
+        return await _read_shop(conn, principal.user_id)
 
 
 @router.patch("/shop")
@@ -2330,4 +2339,4 @@ async def update_shop(
                 "ไม่พบร้านของผู้ใช้นี้",
                 rowcount=str(result.rowcount),
             )
-        return await _read_shop(conn)
+        return await _read_shop(conn, principal.user_id)

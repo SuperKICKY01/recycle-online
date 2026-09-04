@@ -75,10 +75,154 @@ not read the green as re-run.**
 
 ## Current phase
 
-**PRODUCT MASTER DATA ON THE PHONE — a shop stocks its own products. 2026-09-03.** No sha yet (this record
-precedes the commit; anchor next pass). Supersedes the audit-log record below AS THE POINTER ONLY — that work
-stands and is committed (`2f0c9d6`). This does NOT close P1.15: the DESKTOP half stays open, filed at
-`OPEN_ITEMS.md § Decisions open`; the ROADMAP P1.15 step carries the dated note.
+**BRANCHES — one shop, many yards, and every shop born with one it never sees. 2026-09-03.** No sha yet (this
+record precedes the commit; anchor next pass). Supersedes the products record below AS THE POINTER ONLY — that
+work stands and is committed (`b25d7b0`). This is `STRUCTURE.md` section 9, the owner's decision of 2026-09-03,
+built as the FIRST unit of the structural design: the advisor re-sequenced it ahead of the permission model
+(section 12 numbers them the other way; the design file carries the dated line), because branches re-key the
+counter that mints the shop's legal bill series and touch every operational table at a cost that grows with
+every table and every real row, while permissions cost the same whenever done.
+**WHAT A SHOP CAN DO TODAY THAT IT COULD NOT YESTERDAY, IN PLAIN TERMS.** A shop can run MORE THAN ONE YARD
+UNDER ONE LICENCE — one seller list, one set of prices, one owner — with ITS OWN BILL SERIES PER YARD
+(`B-2569-618` at the main yard while a second yard is at `C-2569-1`). Every shop that exists today has exactly
+one yard, `MAIN`, carrying the shop's own name and the prefix `B` every bill has ever had, and it SEES NOTHING
+NEW: the branch control is a derived switch (`GET /shop` reports `branch_count`; one active branch shows no
+control). A route to OPEN a second yard is not in this unit; a second yard exists today only on a scratch.
+**THE ONE THING THAT COULD HAVE LOST A SHOP'S WORK, AND THE ANSWER THIS UNIT'S S0 STOP EXISTED FOR.** A bill
+sitting in a phone's outbox was built by a bundle that knows nothing of branches: the phone stores the wire body
+verbatim as JSON (`mobile/src/sync/createBill.ts:133-141`), parses it back unchanged (`SqliteLocalStore.ts:301`)
+and posts it byte for byte (`httpTransport.ts:108`); its seven fields (`types.ts:30-38`) carry no branch. On that
+phone a 422 is decided by STATUS ALONE (`httpTransport.ts:161-163`), maps to `terminal`
+(`outboxHandlers.ts:83`), lands in `sync_state='failed'` (`SqliteLocalStore.ts:769-777`) which the sendable
+queue excludes for ever (`:189-191`); the void button is withheld (`parkedReason.ts:788`) and the operator
+reads `"ระบบไม่รับบิลใบนี้ และจะไม่รับเองในภายหลัง"` and `"จ่ายเงินไปแล้วแต่ระบบไม่มีบิลใบนี้ — ต้องแจ้งสำนักงานให้บันทึกให้ ข้อมูลบิลนี้อยู่ในเครื่องนี้ที่เดียว"`
+(`parkedReason.ts:588-592`). So a REQUIRED `branch_id` on `POST /bills` would have turned every queued bill on
+every phone into a permanent refusal of cash already paid at the moment the server restarted. THEREFORE
+`branch_id` IS OPTIONAL ON THE WIRE and the server resolves it (`bills.py` `_resolve_bill_branch`: the caller's
+`users.branch_id`, else the tenant's single active branch; a named unknown branch is 422 by the seller doctrine,
+a deactivated one 424 `branch_inactive`, a multi-yard shop with an unscoped caller and no branch named is 424
+`branch_unresolved`, zero active branches 424 `no_active_branch`; no path reaches a 500). The argument with its
+file:line chain is in migration 0018's docstring, on the field in `bills.py`, and in
+`lessons/a-new-required-field-refuses-every-queued-payload.md` (NEW, unprompted); a session that wants to make
+the field required must meet it first.
+**THE CONTINUITY READING, FIRST.** The counter re-key never touched `last_seq`. Measured value against value on
+a scratch restored from the pre-0018 dev backup (`recycle_20260903T155319Z_pre-0018`) and then on dev itself:
+Shop A `(2569) → 617` before, `617` after, first bill after the migration `B-2569-618` (prove_bills pass 1 on
+dev, `prove_branches.py` B4 on the scratch, which also prints what a RESTARTED series would have produced,
+`B-2569-1`); Shop B `(2569) → 13` before, `13` after, next bill `14` (dev's counter read `14` after the proof
+sweep). Every one of the 630 `(id, doc_no)` pairs is byte-identical before and after (`diff` of two snapshots
+empty, with a control that reddens on one altered pair; `prove_branches.py` B2 repeats it in-process). The
+migration measures itself too: it reads every `(tenant_id, be_year, last_seq)` triple before and after the
+re-key and REFUSES if any moved.
+**WHAT WAS BUILT.** Migration `0018_branches.py`: `branches(id, tenant_id, code, name, address, phone, doc_prefix,
+is_active, created_at)` with `UNIQUE (tenant_id, id)`, `UNIQUE (tenant_id, code)`, `UNIQUE (tenant_id,
+doc_prefix)` and `CHECK (doc_prefix ~ '^[A-Z]{1,4}$')` — the last two are the builder's, closing a hole section 9
+left open (two branches sharing a prefix would mint ONE string and the partial unique index would answer the
+second with a 500 that jams a phone; the charset keeps `split_part` parsing unambiguous), confirmed by the
+owner; one born-with branch per tenant (`MAIN`, name = the tenant's own name, prefix `B`) backfilled under the
+0015 NO FORCE idiom; `purchase_bills.branch_id NOT NULL` + `fk_bills_branch`; `doc_no_counters` re-keyed to
+`PRIMARY KEY (tenant_id, branch_id, be_year)` + `fk_counters_branch`; `users.branch_id` nullable +
+`fk_users_branch`; RLS+FORCE+policy and SELECT/INSERT/UPDATE (no DELETE) on `branches`; the audit trigger
+attached LAST, after the backfill (a migration has no actor). Downgrade REFUSES on any of five conditions (a
+tenant with other than one branch; a non-pristine born-with row; a scoped user; a bill or a counter row on a
+non-born-with branch), proven on the scratch: pristine down 0 → PK restored, columns gone → up 0 → counters
+617/13 → a second branch inserted → downgrade exit 1 naming `1, 1, 0, 0, 0`. Server: `server/app/branches.py`
+(the caller's branch, one read shared by bills and the shop route — a READ, never a gate); `bills.py` mints per
+`(tenant, branch, year)` under the branch's prefix, the year gate stays PER TENANT (a second yard's first bill of
+a year the shop already trades in is not a clock jump), `_read_bill` and the list return `branch_id`;
+`master.py` `GET /shop` returns `branch` and `branch_count`; `reports.py` nulls `doc_no_span`/`doc_no_contiguous`
+when a day holds more than one prefix (the two-BE-year shape — a number that interleaves two series is worse
+than no number); `reconcile.py`: `branches` in `TENANT_TABLES`/`SCOPE`/`AUDITED_TABLES`, X1 gains the bill and
+user pairs, T10 three resolve arms (bill/user/counter → branch; the counter has no `id` so X1 cannot name it),
+`DOC_NO_RE` and T6 widened to the prefix, T8/T9 per `(branch, year)`, NEW T17 (a bill's prefix is its branch's)
+and T18 (every tenant has an ACTIVE branch); `provision_shop.py` and `seed_dev.py` write the born-with branch.
+Phone: `local_shop.branch_id` through the additive `PRAGMA table_info` migrator (never a rebuild; also in the
+CREATE for fresh installs), `SqliteShopStore.readBranch/saveBranch` keyed on the TENANT (a device that changes
+shop can never stamp the old yard on the new shop's bill; `save()` of a different shop drops it),
+`readShopBranch` off `/shop`, `refreshMoneyVisible` caches it on every boot and sign-in, `BillDraft.branch_id`
+OPTIONAL and the payload carries the key ONLY when known (null is never serialised — a bill with no key is the
+pre-0018 shape).
+**DESIGN DECISIONS (mine, confirmed by the owner at the S0 stop).** `MAIN` / tenant name / `B`; the unique and
+the CHECK on `doc_prefix`; year gate per tenant; the five downgrade refusals; T17/T18; the report's null;
+`branch_id` optional on the wire. Branch SCOPE is enforced by NOTHING but the composite FK — a staff phone can
+name any active branch of its own tenant — and no handler gained a permission check, by the brief's fence; the
+gate arrives with the permission model. `product_prices.branch_id` deferred with prices. Both, and two more, at
+`OPEN_ITEMS.md § Code debt found and left in place`.
+**TWO THINGS THE BRIEF MIS-LOCATED, corrected at the tree (the brief was wrong, not the tree).** It said "mark
+`STRUCTURE.md`'s unit 1 done" — that file's unit 1 is the permission model; the BRANCHES unit (its "Unit 2")
+is what was marked, with the re-sequencing line. It placed the fourteen-decision schema queue in ROADMAP's
+reconciled section — it lives at `OPEN_ITEMS.md § Decisions open — the owner's, not the code's`, and item 3
+there is marked built.
+**FILED, NOT REPAIRED:** `recycle_app` holds DELETE on `purchase_bills` and `doc_no_counters` from default
+privileges, so hard rule 5 is enforced by code and not by grant; 0016/0017 chose grant-level enforcement for
+their append-only tables, so the precedent exists; whether to revoke is the owner's call
+(`OPEN_ITEMS.md § Decisions open — the owner's, not the code's`, dated, with the measurement).
+**THE PROOFS THAT MINT THEIR OWN TENANT BY SQL — six, not four, each conscripted to provision a born-with
+branch (a proof failing on NOT NULL is the migration working, not a regression).** Cell counts before → after:
+`prove_rls.py` — first run after the migration RED at the TEARDOWN only (7 failure lines: the app role holds
+no DELETE on `branches`, exactly as for `grade_tiers`; every isolation cell passed, including the NEW bill(A) →
+branch(B) cell refused by `fk_bills_branch`), teardown moved to the owner connection, then GREEN TWICE ("ALL
+CASES PASSED"); `ALL_TABLES` 10 → 11, `_TEARDOWN_ORDER` 10 → 11 — the two debris tenants that red run left
+behind were removed by hand (6 tenants, 6 branches on dev after). `prove_grade_tiers.py` 0 → 0 (green first
+run after the seed edit). `prove_reports_summary.py` and `prove_seller_history.py` green first run after the
+seed edit. `prove_login_guard.py` and `prove_user_admin.py` (no bills, but T18 would red on the tenants they
+leave behind) green first run after the seed edit. `prove_shop_settings.py` 27 ok + 1 RED (E1 pinned the exact
+`GET /shop` key set) → 29 ok + 0 RED (the set widened by `branch`/`branch_count`, plus one new cell that the
+branch object names no person). `prove_backup_restore.py` (its `insert_bill` fixture writes the counter and the
+bill with the branch) green. `prove_year_gate.py` (its fabricated counters gain the branch leg) 14 PASS 0 FAIL on
+the scratch.
+**READINGS (each command bare, exit read in the same invocation; cp874 box, UTF-8 stdout pinned).** Both mobile
+typechecks GREEN before and after (`npm run typecheck` 0/0, `typecheck:app` 0/0). `alembic upgrade head` on the
+scratch EXIT=0 (after one refusal of my own making — apostrophes in the SQL COMMENT literals, the convention
+0015 records — fixed before dev was touched), catalogue read back: `alembic 0018`, 6 born-with branches with
+`name = tenants.name` true on all six, the constraints and columns above, 9 `audit_capture` triggers, RLS+FORCE
+on `branches`; then on dev EXIT=0, `alembic current` `0018 (head)`, the same read-back. NEW
+`server/scripts/prove_branches.py` (scratch-only; restores the pre-0018 dump, snapshots, upgrades, starts its own
+uvicorn child bound to the copy) GREEN TWICE, 25 cells each, 0 skip: B1–B12 as its docstring lists — the
+continuity cell, the 630-pair identity with its control, two independent series `C-2569-1`/`C-2569-2` beside
+`B-2569-618 → 619`, disproof (a) stated as the observation (a shared counter would have numbered YARD2's first
+bill 619; it is 1), a bill naming tenant B's branch refused 422 with no row and no counter movement (the FK
+half is `prove_rls.py` STEP 7), 424 `branch_inactive` then the SAME payload accepted after reactivation,
+424 `branch_unresolved` with `active_branches=2` then the SAME payload landing in `MAIN` once the user is
+scoped, `GET /shop` three ways, hard rule 4 across branches (replay 200, same `doc_no`, same branch), and
+`reconcile.py` exit 0 on the two-branch copy with T8 reporting per `(tenant, branch, be_year)`. NEW mobile
+`prove:branch` GREEN TWICE, 28 cells: the old-shape `local_shop` migrates additively (exactly its one column,
+nothing else outside `local_bills`, re-run adds nothing), THE SURVIVAL CELL (a bill with no branch drained
+through the real `SyncEngine`: the wire body has NO `branch_id` key and the row settles `synced` with a
+doc_no), the cache keyed on the tenant, a learned branch carried on the wire while `null` never is, and the
+`/shop` parser both ways. `reconcile.py` on dev EXIT=0, `19 per tenant x 6`, 125 checks, 0 violations
+(was 17 per tenant; +T17 +T18; X2 sums `branches=6`); on the restored 0018 copy EXIT=0, 163 checks over 8
+tenants, 0 violations. `prove_reconcile.py --from <the 0018 dump>` GREEN TWICE — 24 injections, 143 ok cells,
+1 pre-existing SKIP (the two-known-causes cell on a clean copy), the NEW T17 injection (`Z-2569-<seq>`, exactly
+T17 fires, names `doc_no`/`bill_id`/`branch_code=MAIN`/`doc_prefix=B`, clears) and T18 injection (the only
+branch deactivated under a declared actor, exactly T18 fires, names the tenant and `active_branches=0`, clears).
+`prove_bills.py` GREEN TWICE on dev (first bill `B-2569-618`). Every other dev-targeting server proof GREEN once
+against a uvicorn started from this code on 8099 (`/health` 200 first): master_data_gate, seller_pricing,
+shop_time, daily_report, reports_summary, seller_history, grade_tiers, login_guard, user_admin, master_write,
+audit, auth, master, revocation, seller_code_guards, version_gate. The scratch-only ones against a restored
+0018 copy: seller_create, seller_code_reservations, user_create GREEN; shop_code GREEN (two distinct
+databases); clock_guard GREEN once its server was started with `CLOCK_GUARD_TICK_SECONDS=2` (its first two
+reds were my invocation — a dev-bound server, then a 60-second tick — not the change); docno_clock GREEN;
+year_gate GREEN. Mobile headless: migration, void, sellerstore, sqlite, cart, sync, outbox, settings, dashboard,
+cold, docno, clock, owner, draftowner, parkedbill, statuscounts all EXIT=0; `prove:forbidden` and
+`prove:products` GREEN TWICE each against a uvicorn bound to a restored 0018 copy (so the bill the products
+round writes never touches dev); the rest of the suite — version, money, entry, seller, notice, time, signout,
+sendowner, voidterminal, voidowner, cachetenant, localsellercreate, saveconfirm, sheets, sellerkind,
+owedsurfaces, pickerseller, reservenotice, reservestrip, prices, gradeTiers, account, users, theme, tapaudit,
+sellerhistory, noticeStack, daily — EXIT=0 once each. `prove:loginscreen` NOT green — its resolve cells need a shop-code fixture that lives only
+in a directory scratch (`unknown_code` against dev), the same reason prior records skipped it; filed.
+`build_all_lessons.py --check` red → `--write` → `--check` 0; `verify_shared_checks.py` 0;
+`verify_citations.ps1` SOURCES=15 CITATIONS=661 BROKEN=6 — the SAME six that a clean HEAD worktree reads
+(657/6, measured), so this unit added four citations and broke none (it broke one, a two-line wrap, and fixed
+it before this line was written).
+**NOT OBSERVED.** No handset ran this bundle: the phone half is headless-proven only, and a real device's
+`GET /shop` → cache → bill-with-branch → `201` on the same yard is owed to the next device pass. No production
+row exists; the born-with backfill ran over dev's six tenants only.
+
+**PRODUCT MASTER DATA ON THE PHONE — a shop stocks its own products. 2026-09-03.** Committed at `b25d7b0`
+(anchored this pass; the record said "no sha yet"). Supersedes the audit-log record below AS THE POINTER ONLY
+— that work stands and is committed (`2f0c9d6`). This does NOT close P1.15: the DESKTOP half stays open, filed
+at `OPEN_ITEMS.md § Decisions open`; the ROADMAP P1.15 step carries the dated note.
 **WHAT A SHOP CAN DO TODAY THAT IT COULD NOT YESTERDAY, IN PLAIN TERMS.** The owner adds, edits, deactivates,
 reactivates and FINDS his own products, categories and units FROM THE PHONE — no SQL, no call to us. Until now a
 shop had exactly the three products SQL seeded (FE-STEEL, AL-CAN, CU-WIRE) and could not add a fourth, so no real

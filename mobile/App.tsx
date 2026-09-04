@@ -126,6 +126,7 @@ import { mayEditPrices, mayManageProducts, mayManageUsers, readTokenRole, readTo
 import type { DeviceRole } from "./src/session/deviceRole";
 import {
   formScreen,
+  readShopBranch,
   readShopSettings,
   shopSaveResult,
   shopSettingsScreen,
@@ -1502,7 +1503,19 @@ function AppInner() {
       return;
     }
     const r = await fetchShop(t);
-    if (r.kind === "ok") setMoneyVisible(readMoneyVisible(r.body));
+    if (r.kind === "ok") {
+      setMoneyVisible(readMoneyVisible(r.body));
+      // THE CALLER'S BRANCH, cached beside the shop row (server migration 0018)
+      // from the same read: this is the one GET /shop every boot and sign-in
+      // performs. Keyed on the body's own shop id, so the store refuses the
+      // write if this device belongs to another shop; an unreadable body writes
+      // nothing (readShopBranch says why). A bill built before this lands
+      // simply carries no branch, which the server resolves for itself.
+      const learned = readShopBranch(r.body);
+      if (learned !== null) {
+        await shopStoreRef.current?.saveBranch(learned.shop_id, learned.branch_id);
+      }
+    }
   }, []);
 
   /**
@@ -2936,6 +2949,14 @@ function AppInner() {
             ? { kind: "local", local_seller_id: draft.seller_id }
             : { kind: "server", seller_id: draft.seller_id };
 
+        // THE YARD (server migration 0018): the branch this device last learned
+        // from GET /shop, read for THIS device's shop and nothing else -- the
+        // store answers null for any other tenant, and null here means the bill
+        // carries no branch_id at all, the shape every pre-0018 bill has and one
+        // the server resolves for itself. Never a reason to refuse the save.
+        const branchId = shop === null
+          ? null
+          : ((await shopStoreRef.current?.readBranch(shop)) ?? null);
         const bill = buildLocalBill(
           { clock: systemClock, ids: deviceIds },
           {
@@ -2951,6 +2972,7 @@ function AppInner() {
             // the data these prices came from, not the data available at the
             // moment the confirm button was tapped.
             master_as_of: draft.master_as_of,
+            branch_id: branchId,
           },
         );
         const lineCount = draft.lines.length;

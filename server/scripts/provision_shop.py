@@ -303,6 +303,23 @@ async def run(args: argparse.Namespace) -> int:
                     ),
                     {"id": tenant_id, "name": args.name},
                 )
+                # THE BORN-WITH BRANCH (migration 0018, STRUCTURE.md section 9).
+                # Every tenant has exactly one at birth: code MAIN (the
+                # programme's ASCII handle, as 'A' is the tier's), name = the
+                # shop's OWN name (never an invented word), prefix 'B' -- the
+                # prefix every bill series in this system has carried since
+                # 0002, so a shop provisioned here numbers its bills B-<year>-1
+                # exactly as every earlier shop did. The derived switch is the
+                # count: with one branch the phone shows no branch control. A
+                # second yard is a later, deliberate act, not a provisioning one.
+                await conn.execute(
+                    text(
+                        "INSERT INTO public.branches"
+                        " (tenant_id, code, name, doc_prefix, is_active)"
+                        " VALUES (:t, 'MAIN', :name, 'B', true)"
+                    ),
+                    {"t": tenant_id, "name": args.name},
+                )
                 await conn.execute(
                     text(
                         "INSERT INTO public.users"
@@ -333,6 +350,7 @@ async def run(args: argparse.Namespace) -> int:
                 )
             print(f"  tenant         : {tenant_id} (created, {args.name!r})")
             print(f"  admin user     : {args.admin_username} (created)")
+            print("  branch         : MAIN (born-with; prefix B; a one-yard shop until a second is added)")
             print("  grade tier     : A (starter; a one-tier shop until configured)")
 
         # ------------------------------------------------------- the shop code

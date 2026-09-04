@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from .auth import Principal, get_principal, require_admin
+from .branches import Branch, branch_payload, read_branch, read_caller_branch
 from .config import SHOP_TIMEZONE
 from .db import tenant_connection
 
@@ -196,10 +197,77 @@ class BillCreate(BaseModel):
     total_amount: Decimal | None = Field(
         default=None, ge=0, max_digits=14, decimal_places=2
     )
+    # OPTIONAL ON THE WIRE, AND THE REASON IS MONEY ALREADY PAID. A bill sitting
+    # in a phone's outbox was written by a build that knows nothing of branches;
+    # the phone stores the body verbatim and posts it unchanged, and a 422 on it
+    # is TERMINAL there -- sync_state='failed', never retried, void withheld,
+    # cash already handed over. Making this field required would do that to
+    # every queued bill on every phone at the moment the server restarts.
+    # Absent, the server resolves it (_resolve_bill_branch). The full file:line
+    # chain is in migration 0018's docstring; meet it before making this
+    # required.
+    branch_id: uuid.UUID | None = None
 
 
 class VoidRequest(BaseModel):
     reason: str = Field(min_length=1)
+
+
+async def _resolve_bill_branch(
+    conn: AsyncConnection, principal: Principal, requested: uuid.UUID | None
+) -> Branch:
+    """Which yard this bill belongs to, and therefore which series numbers it.
+
+    NAMED in the payload: looked up under RLS, so another tenant's branch is
+    simply "not found" here and the composite FK is the structural backstop.
+    Unknown is PERMANENT (422), the seller doctrine at the top of this file: the
+    device got branch ids from this tenant's own GET /shop, so a miss is a corrupt
+    reference. Deactivated is RESOLVABLE (424 branch_inactive), the product
+    doctrine: one admin click makes the same bill valid.
+
+    ABSENT from the payload -- every bill queued before migration 0018, and any
+    build that does not send one: the caller's own branch (users.branch_id), else
+    the tenant's single active branch. A single-yard shop always resolves here,
+    which is what keeps a pre-0018 outbox draining. A multi-yard shop with an
+    unscoped caller and no branch named is 424 branch_unresolved: resolvable by
+    assigning the user a branch, and NOT a permission check -- the gate that says
+    who may write where arrives with the permission model.
+    """
+    if requested is not None:
+        named = await read_branch(conn, requested)
+        if named is None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "branch_id does not exist in this tenant",
+            )
+        if not named.is_active:
+            raise _master_data_missing(
+                "branch_inactive",
+                "สาขานี้ถูกปิดใช้งานแล้ว",
+                branch_id=str(named.id),
+            )
+        return named
+
+    caller = await read_caller_branch(conn, principal.user_id)
+    if caller.branch is None:
+        if caller.active_count == 0:
+            raise _master_data_missing(
+                "no_active_branch",
+                "ร้านนี้ยังไม่มีสาขาที่เปิดใช้งาน",
+                active_branches="0",
+            )
+        raise _master_data_missing(
+            "branch_unresolved",
+            "ยังไม่ได้กำหนดสาขาให้ผู้ใช้นี้ จึงยังไม่ทราบว่าบิลนี้เป็นของสาขาใด",
+            active_branches=str(caller.active_count),
+        )
+    if not caller.branch.is_active:
+        raise _master_data_missing(
+            "branch_inactive",
+            "สาขานี้ถูกปิดใช้งานแล้ว",
+            branch_id=str(caller.branch.id),
+        )
+    return caller.branch
 
 
 async def _read_bill(conn: AsyncConnection, bill_id) -> dict | None:
@@ -207,7 +275,7 @@ async def _read_bill(conn: AsyncConnection, bill_id) -> dict | None:
         await conn.execute(
             text(
                 "SELECT id, doc_no, seller_id, vehicle_no, idempotency_key, total_amount,"
-                " device_created_at, server_received_at, created_by,"
+                " device_created_at, server_received_at, created_by, branch_id,"
                 " voided_at, voided_by, void_reason"
                 " FROM purchase_bills WHERE id = :id"
             ),
@@ -254,6 +322,10 @@ async def _read_bill(conn: AsyncConnection, bill_id) -> dict | None:
         # Who SYNCED the bill, not necessarily who weighed the load. The bound
         # is the column's own COMMENT (migration 0006), not this line.
         "created_by": str(h["created_by"]) if h["created_by"] else None,
+        # The yard this bill was written at (migration 0018). NOT NULL on the
+        # row; every bill that predates branches reads back with the tenant's
+        # born-with branch, and its doc_no is unchanged.
+        "branch_id": str(h["branch_id"]),
         "status": "voided" if h["voided_at"] is not None else "active",
         "voided_at": h["voided_at"].isoformat() if h["voided_at"] else None,
         "voided_by": str(h["voided_by"]) if h["voided_by"] else None,
@@ -318,6 +390,11 @@ async def create_bill(
             if existing is not None:
                 response.status_code = status.HTTP_200_OK
                 return await _read_bill(conn, existing)
+
+            # WHICH YARD, hence which series. Resolved here, before any master
+            # data is read, because on a single-branch shop it always resolves
+            # and on a multi-branch shop it is the cheapest fact to refuse on.
+            branch = await _resolve_bill_branch(conn, principal, body.branch_id)
 
             # References must exist IN THIS TENANT. RLS hides other tenants' rows,
             # so a foreign seller/product is simply "not found" here; the composite
@@ -453,9 +530,18 @@ async def create_bill(
             # sequence number is already spent, B-<year>-1 never exists, and a
             # gap in a legal document sequence cannot be repaired afterwards.
             #
-            # So the gate fires HERE, at the moment a NEW (tenant_id, be_year)
-            # row would be created, and nowhere else. An existing counter is the
+            # So the gate fires HERE, at the moment a NEW be_year would be opened
+            # for this TENANT, and nowhere else. An existing counter is the
             # normal hot path and is not touched.
+            #
+            # PER TENANT, NOT PER BRANCH, since migration 0018 keyed the counter
+            # on (tenant_id, branch_id, be_year): the gate detects a wrong SERVER
+            # clock, which is a fact about the server and not about a yard. A
+            # second yard's first bill of a year the shop already trades in is
+            # not a clock jump and must not be refused, so max(be_year) and
+            # year_exists are read over every branch's rows below (the query
+            # names no branch on purpose) while the counter row itself is the
+            # branch's own.
             #
             # IT CANNOT CATCH A JUMP OF EXACTLY +1 YEAR. Y == max+1 is precisely
             # what a real new year looks like, and with only this server's own
@@ -535,34 +621,47 @@ async def create_bill(
             # the UPDATE, in the SAME transaction as the insert: concurrent submits
             # serialize on the row lock (no collision) and a rolled-back submit
             # releases its increment (no gap). A native sequence could not do this.
+            #
+            # THE COUNTER IS THE BRANCH'S (migration 0018): keyed on
+            # (tenant_id, branch_id, be_year), so each yard mints its own series
+            # under its own prefix -- B-2569-618 at the born-with yard while a
+            # second yard is at C-2569-1. Dropping the branch leg from either
+            # statement below would make two branches share one series, which is
+            # the first disproof scripts/prove_branches.py names.
             await conn.execute(
                 text(
-                    "INSERT INTO doc_no_counters (tenant_id, be_year, last_seq)"
-                    " VALUES (:t, :y, 0) ON CONFLICT (tenant_id, be_year) DO NOTHING"
+                    "INSERT INTO doc_no_counters (tenant_id, branch_id, be_year, last_seq)"
+                    " VALUES (:t, :b, :y, 0)"
+                    " ON CONFLICT (tenant_id, branch_id, be_year) DO NOTHING"
                 ),
-                {"t": principal.tenant_id, "y": be_year},
+                {"t": principal.tenant_id, "b": branch.id, "y": be_year},
             )
             seq = (
                 await conn.execute(
                     text(
                         "UPDATE doc_no_counters SET last_seq = last_seq + 1"
-                        " WHERE tenant_id = :t AND be_year = :y RETURNING last_seq"
+                        " WHERE tenant_id = :t AND branch_id = :b AND be_year = :y"
+                        " RETURNING last_seq"
                     ),
-                    {"t": principal.tenant_id, "y": be_year},
+                    {"t": principal.tenant_id, "b": branch.id, "y": be_year},
                 )
             ).scalar_one()
-            doc_no = f"B-{be_year}-{seq}"
+            # The prefix is the branch's own (branches.doc_prefix, unique per
+            # tenant, CHECKed to A-Z). The born-with branch keeps 'B', so every
+            # doc_no minted before 0018 reads exactly as it did.
+            doc_no = f"{branch.doc_prefix}-{be_year}-{seq}"
 
             await conn.execute(
                 text(
                     "INSERT INTO purchase_bills (id, tenant_id, seller_id, doc_no,"
                     " idempotency_key, total_amount, device_created_at,"
-                    " server_received_at, vehicle_no, created_by)"
-                    " VALUES (:id, :t, :s, :dn, :k, :tot, :dca, :sra, :vn, :cb)"
+                    " server_received_at, vehicle_no, created_by, branch_id)"
+                    " VALUES (:id, :t, :s, :dn, :k, :tot, :dca, :sra, :vn, :cb, :br)"
                 ),
                 {
                     "id": body.id, "t": principal.tenant_id, "s": body.seller_id,
                     "dn": doc_no, "k": body.idempotency_key, "tot": server_total,
+                    "br": branch.id,
                     "dca": body.device_created_at,
                     # EXPLICIT, not the column DEFAULT now(). The default would
                     # produce the same instant — it is the same transaction_timestamp
@@ -654,7 +753,7 @@ async def list_bills(
             await conn.execute(
                 text(
                     "SELECT id, doc_no, seller_id, vehicle_no, total_amount,"
-                    " device_created_at, server_received_at"
+                    " device_created_at, server_received_at, branch_id"
                     " FROM purchase_bills WHERE voided_at IS NULL"
                     " ORDER BY server_received_at DESC, id DESC LIMIT :lim"
                 ),
@@ -666,6 +765,7 @@ async def list_bills(
             {
                 "id": str(r["id"]),
                 "doc_no": r["doc_no"],
+                "branch_id": str(r["branch_id"]),
                 "seller_id": str(r["seller_id"]),
                 "vehicle_no": r["vehicle_no"],
                 "total_amount": str(r["total_amount"]),

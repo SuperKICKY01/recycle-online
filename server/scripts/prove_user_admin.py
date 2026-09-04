@@ -192,6 +192,14 @@ async def provision(ctx: Ctx) -> None:
     ) as conn:
         await conn.execute(text("INSERT INTO tenants (id, name) VALUES (:id, :n)"),
                            {"id": ctx.tenant, "n": f"UA {RUN}"})
+        # THE BORN-WITH BRANCH (0018): this proof mints a tenant by SQL and leaves
+        # it behind, and reconcile.py's T18 requires every tenant to hold an
+        # active branch -- so it is provisioned with one, as provision_shop.py
+        # provisions it. No bill is written here.
+        await conn.execute(
+            text("INSERT INTO branches (tenant_id, code, name, doc_prefix, is_active)"
+                 " VALUES (:t, 'MAIN', :n, 'B', true)"),
+            {"t": ctx.tenant, "n": f"UA {RUN}"})
         for k, role in (("a1", "admin"), ("a2", "admin"), ("staff", "staff")):
             ph = await hash_password(PW[k])
             await conn.execute(

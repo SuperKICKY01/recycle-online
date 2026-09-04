@@ -138,6 +138,36 @@ export function readShopSettings(raw: unknown): ShopSettings | null {
   return { id, name, default_grade, address, phone };
 }
 
+/**
+ * THE CALLER'S BRANCH off a /shop body (server migration 0018), for the cache
+ * `SqliteShopStore.saveBranch` keeps beside the shop row.
+ *
+ * Three outcomes, and the difference between the last two is the whole point:
+ *   - `{ shop_id, branch_id: "<uuid>" }` — the server named the caller's yard;
+ *   - `{ shop_id, branch_id: null }`     — the server ANSWERED that there is no
+ *     single one (an unscoped owner of a multi-yard shop). The cache is CLEARED,
+ *     because a branch cached from before the second yard opened would stamp
+ *     every bill on a yard the owner did not choose;
+ *   - `null`                              — the body is not a /shop body (no
+ *     string `id`, a `branch` that is neither null nor an object with a string
+ *     `id`). NOTHING is written: an unreadable body is not evidence that the
+ *     branch went away.
+ *
+ * A pre-0018 server sends no `branch` key at all; that reads as "no single
+ * branch" and clears the cache, which is right — such a server resolves every
+ * bill itself and a cached branch would be a claim about a yard it cannot see.
+ */
+export function readShopBranch(raw: unknown): { shop_id: string; branch_id: string | null } | null {
+  if (!isObj(raw)) return null;
+  const shop_id = readStr(raw["id"]);
+  if (shop_id === null) return null;
+  const branch = raw["branch"];
+  if (branch === null || branch === undefined) return { shop_id, branch_id: null };
+  if (!isObj(branch)) return null;
+  const branch_id = readStr(branch["id"]);
+  return branch_id === null ? null : { shop_id, branch_id };
+}
+
 /* ==========================================================================
  * 2. THE SCREEN — one shape per outcome
  * ========================================================================== */

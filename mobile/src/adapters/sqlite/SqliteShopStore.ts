@@ -47,6 +47,10 @@ interface ShopRow {
   tenant_id: string;
 }
 
+interface BranchRow {
+  branch_id: string | null;
+}
+
 export class SqliteShopStore {
   constructor(private readonly db: SqlDriver) {}
 
@@ -65,6 +69,40 @@ export class SqliteShopStore {
   }
 
   /**
+   * THE CALLER'S BRANCH, as GET /shop last reported it (server migration 0018),
+   * or null: never learned, learned as "none" (an unscoped owner of a multi-yard
+   * shop), or learned for a DIFFERENT shop than the one asked about.
+   *
+   * KEYED ON THE TENANT, and that is the whole design: the branch is cached
+   * beside the shop row and is only ever handed back for the tenant it was
+   * learned under, so a device that changes shop can never stamp the old yard's
+   * branch on the new shop's bill. Null fails OPEN in the only safe direction --
+   * a bill built with no branch carries none, which is the pre-0018 wire shape
+   * the server resolves for itself; it never refuses or parks a bill.
+   */
+  async readBranch(tenantId: string): Promise<string | null> {
+    const rows = await this.db.all<BranchRow>(
+      "SELECT branch_id FROM local_shop WHERE only_row = 1 AND tenant_id = ?",
+      [tenantId],
+    );
+    const row = rows[0];
+    return row === undefined ? null : row.branch_id;
+  }
+
+  /**
+   * Record the caller's branch for THIS tenant. A no-op when the device is set
+   * up for a different shop (the WHERE refuses the write rather than the row
+   * gaining a branch that belongs elsewhere). Null clears it -- GET /shop
+   * answered that the caller has no single branch.
+   */
+  async saveBranch(tenantId: string, branchId: string | null): Promise<void> {
+    await this.db.run(
+      "UPDATE local_shop SET branch_id = ? WHERE only_row = 1 AND tenant_id = ?",
+      [branchId, tenantId],
+    );
+  }
+
+  /**
    * Record which shop this device belongs to. Called when a typed shop code has
    * been exchanged for a tenant BY THE SERVER, and nowhere else.
    *
@@ -79,10 +117,14 @@ export class SqliteShopStore {
    * would send the operator back to a setup screen mid-shift.
    */
   async save(shop: LocalShop, now: Date = new Date()): Promise<void> {
+    // A cached branch belongs to the tenant it was learned under: kept when the
+    // same shop is re-saved, DROPPED when the device changes shop (0018).
     await this.db.run(
       `INSERT INTO local_shop (only_row, tenant_id, updated_at)
        VALUES (1, ?, ?)
        ON CONFLICT(only_row) DO UPDATE SET
+         branch_id = CASE WHEN local_shop.tenant_id = excluded.tenant_id
+                          THEN local_shop.branch_id ELSE NULL END,
          tenant_id = excluded.tenant_id,
          updated_at = excluded.updated_at`,
       [shop.tenant_id, now.toISOString()],

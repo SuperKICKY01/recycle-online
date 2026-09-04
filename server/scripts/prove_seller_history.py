@@ -401,6 +401,15 @@ async def provision(ctx: Ctx) -> None:
                 text("INSERT INTO tenants (id, name) VALUES (:id, :n)"),
                 {"id": tid, "n": name},
             )
+            # THE BORN-WITH BRANCH (0018): this fresh tenant writes bills through
+            # POST /bills, which resolves an absent branch_id to the tenant's
+            # single active branch -- provisioned here as provision_shop.py does,
+            # and as 0015 made this seed provision a tier.
+            await conn.execute(
+                text("INSERT INTO branches (tenant_id, code, name, doc_prefix, is_active)"
+                     " VALUES (:t, 'MAIN', :n, 'B', true)"),
+                {"t": tid, "n": name},
+            )
             for uid, un, fn, role, ph in users:
                 await conn.execute(
                     text("INSERT INTO users (id, tenant_id, username, full_name, role,"

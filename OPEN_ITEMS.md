@@ -1546,6 +1546,40 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Code debt found and left in place
 
+- **BRANCHES (migration 0018, 2026-09-03) — FOUR THINGS FOUND OR DEFERRED AND NOT
+  BUILT, named so a later reader does not think they were missed.**
+  - **`product_prices.branch_id` is DEFERRED.** `STRUCTURE.md` section 9 sketches a
+    nullable per-branch price override resolved branch-first at bill create; the
+    design's own unit spec for branches says "must not touch: prices", and the
+    unit's brief fenced off policy columns beyond what branches needs. Every shop
+    has ONE price list across its yards until the unit that builds branch pricing.
+  - **`branches.doc_prefix` is immutable BY INTENT and by nothing else.** No route
+    writes it in this unit, so the column is the only edge; a change under existing
+    bills would restart a visible series. The reconciler's T17 reds on any bill
+    whose prefix is not its branch's, which is detection after the fact, not
+    prevention. The unit that gives branches a management route (create a second
+    yard, rename, deactivate) must refuse a prefix change once any bill carries it
+    — a CHECK cannot say it, so it is a handler rule or a trigger.
+  - **Branch SCOPE is enforced by nothing but the composite FK.** A staff phone can
+    name any ACTIVE branch of its own tenant in a bill; `users.branch_id` is read
+    only to RESOLVE a bill that names none and to report the caller's branch. The
+    gate ("may this user write in that branch") arrives with the permission model,
+    and this unit deliberately half-built nothing toward it.
+  - **T18 conscripts every proof that mints a tenant by SQL.** `reconcile.py` T18
+    requires every tenant to hold an ACTIVE branch, so a proof that inserts a
+    tenant and leaves it behind (`prove_login_guard.py`, `prove_user_admin.py`) now
+    provisions a born-with branch, as do the four that write bills
+    (`prove_rls.py`, `prove_grade_tiers.py`, `prove_reports_summary.py`,
+    `prove_seller_history.py`) — the same conscription
+    `lessons/a-fail-closed-trigger-conscripts-every-writer-of-its-table.md`
+    records for the audit actor. A future proof that mints a tenant and forgets
+    the branch reds T18 on dev; that red is the checker working.
+  - **`mobile prove:loginscreen` was NOT run green in this unit**, for the reason
+    prior records give ("login/loginscreen skipped"): its resolve cells need a
+    shop-code fixture that exists only in a directory scratch, and against the dev
+    server they answer `unknown_code`. Its `SqliteShopStore` use (load/save) is
+    covered by `prove:branch` B3 for the one thing this unit changed there (the
+    upsert now keeps or drops the cached branch by tenant).
 - **ARCHITECTURE REVIEW OF THE WHOLE CODEBASE, 2026-09-02 AT `98cbc2d` — STRUCTURAL
   FINDINGS, NOT REPAIRED, NOTHING BELOW AUTHORISED.** Recorded from the read-only
   review the owner accepted; every figure carries the instrument that produced it.
@@ -3208,6 +3242,16 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
     `branch_id` by composite FK, `doc_no_counters` is re-keyed per branch, and RLS is
     untouched. The reason shown: the sweep is cheapest now, at seventeen tables with
     no real row, and the OTHER shape's mistake is the rebuild.
+    **BUILT 2026-09-03 as the FIRST unit (migration `0018_branches.py`; unanchored,
+    anchor next pass)** — the advisor re-sequenced it ahead of the permission model
+    (`STRUCTURE.md` section 12 numbers them the other way round; the design file
+    carries the dated line). The record is `PROJECT_STATUS.md § Current phase`.
+    Two things the unit's brief mis-located, corrected at the tree and recorded
+    here so the record shows the brief was wrong and not the tree: the brief
+    said "mark `STRUCTURE.md`'s unit 1 done" (its unit 1 is the permission model;
+    the BRANCHES unit, its unit 2, is what was marked), and it placed the
+    fourteen-decision schema queue in `ROADMAP.md`'s reconciled section (it lives
+    below, in this section; item 3 there is marked built).
   - **(2) ROADMAP's D8 ("the desktop cashier is an admin of the shop") SUPERSEDED:**
     a cashier is a ROLE a shop creates under the permission model of `STRUCTURE.md`
     section 3, holding `money.view_shop` and `payments.record` and not
@@ -3247,6 +3291,31 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   citation and the checker's own header rule is that a document that cites is a
   source; it read BROKEN=0 on the run that added it, so the floor of 6 is
   unmoved. Removing it again is one line in that file, never a run's side effect.
+- **[MEASURED] `recycle_app` HOLDS DELETE ON `purchase_bills` AND `doc_no_counters`,
+  SO HARD RULE 5 IS ENFORCED BY CODE AND NOT BY GRANT. Found 2026-09-03 during the
+  branches unit; NOT REPAIRED; whether to revoke is the owner's call.** Measured on
+  dev `recycle` at Alembic 0018 with
+  `SELECT table_name, grantee, string_agg(privilege_type, ',') FROM
+  information_schema.role_table_grants WHERE table_name IN ('doc_no_counters',
+  'purchase_bills') AND grantee = 'recycle_app' GROUP BY 1, 2`: both rows read
+  `DELETE,INSERT,SELECT,UPDATE`. The DELETE arrives from `ALTER DEFAULT PRIVILEGES`
+  in `db/init/00_init_roles.sql` (the `arwd` 0008/0012 measured) and nothing
+  narrowed it for these two tables; hard rule 5 ("no hard deletes on transactions;
+  wrong bill = void") is therefore true of every route (none deletes) and of nothing
+  in the database. The precedent for closing it EXISTS: 0016 and 0017 both chose
+  grant-level enforcement for their append-only tables (`failed_login_attempts`
+  SELECT+INSERT only; `audit_log` SELECT only), and 0015/0018 revoke DELETE on
+  `grade_tiers` and `branches`. Closing it here would be one
+  `REVOKE DELETE ON purchase_bills, purchase_bill_items, doc_no_counters FROM
+  recycle_app` in a migration (`lessons/revoke-in-migration.md`), and it would
+  conscript the two proofs that hard-delete bills on a scratch as the app role
+  (`prove_year_gate.py`'s `clear_bills` runs as OWNER already; `prove_rls.py`'s
+  teardown deletes bills as the app role and would move to the owner connection the
+  way `grade_tiers` and `branches` already do). Not done in this unit: out of its
+  bounds, and a grant boundary on the money table is the owner's decision.
+  Control for the measurement: the same query over `branches` read
+  `INSERT,SELECT,UPDATE` — the revoke this unit did make is visible to the
+  instrument.
 - **THE SRS REMAINDER IS DEFERRED TO THE END OF THE ROADMAP AS A MEMORY LIST — the
   owner's decision, 2026-09-03, in his words: "เราอ่ะทำตาม แบบแผนหลักก่อนดิ แค่จดไว้จำไว้ไม่ลืม
   ขี้เกียจตาม ก็อยู่ท้ายๆroadmap ไป".** The main plan proceeds unchanged. Everything
@@ -4711,6 +4780,12 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
      would cost (`STRUCTURE.md` section 9.3). The owner adopted branch-in-tenant on
      2026-09-03; see the first entry of § Decisions open above. This row is kept in
      the blueprint's order and wording; only this note is added.
+     **BUILT 2026-09-03 (migration `0018_branches.py`; unanchored, anchor next
+     pass):** `branches`, one born-with branch per tenant, `branch_id` on
+     `purchase_bills` / `doc_no_counters` (re-keyed, high-water marks untouched) /
+     `users`, the per-branch series, the phone's cache; the record is
+     `PROJECT_STATUS.md § Current phase`. The measured cost was what the correction
+     above said and not what the row says: one migration, no rebuild, no row moved.
   4. **Roles + sub-permissions + deactivate account** (8.2–8.4) · `users`
      (`is_active` already built, 0007) + NEW `roles`/`permissions` · medium, but every
      permission gate changes · which action each role (esp. the cashier) may do —

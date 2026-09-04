@@ -143,8 +143,15 @@ def set_counters(years: list[int]) -> None:
     clear_bills()
     sql(f"DELETE FROM doc_no_counters WHERE tenant_id = '{TENANT_A_ID}'")
     for y in years:
-        sql("INSERT INTO doc_no_counters (tenant_id, be_year, last_seq)"
-            f" VALUES ('{TENANT_A_ID}', {y}, 5)")
+        # The counter is keyed per BRANCH since migration 0018; the fabricated
+        # rows belong to the tenant's born-with branch (code MAIN), which is the
+        # one the gate's bills land in. The gate itself reads max(be_year) over
+        # EVERY branch of the tenant, so which branch holds the row does not
+        # change what it sees.
+        sql("INSERT INTO doc_no_counters (tenant_id, branch_id, be_year, last_seq)"
+            f" VALUES ('{TENANT_A_ID}',"
+            f" (SELECT id FROM branches WHERE tenant_id = '{TENANT_A_ID}'"
+            f"   AND code = 'MAIN'), {y}, 5)")
 
 
 def clear_bills() -> None:

@@ -33,10 +33,13 @@ load_dotenv()
 APP_URL = os.environ["APP_DATABASE_URL"]
 
 # tenants is keyed on `id`; the others on `tenant_id`. grade_tiers (0015) is
-# included so a tier this proof seeds is counted by the straggler check.
+# included so a tier this proof seeds is counted by the straggler check, and
+# branches (0018) for the same reason -- the born-with branch this proof seeds
+# is a row of the tenant's graph.
 ALL_TABLES = [
     "tenants", "users", "uoms", "product_categories", "products",
-    "product_prices", "sellers", "grade_tiers", "purchase_bills", "purchase_bill_items",
+    "product_prices", "sellers", "grade_tiers", "branches",
+    "purchase_bills", "purchase_bill_items",
 ]
 
 
@@ -45,7 +48,10 @@ ALL_TABLES = [
 # tenants (it FKs to tenants) -- migration 0015.
 _TEARDOWN_ORDER = [
     "purchase_bill_items", "purchase_bills", "product_prices", "products",
-    "sellers", "grade_tiers", "product_categories", "uoms", "users", "tenants",
+    "sellers", "grade_tiers", "product_categories", "uoms", "users",
+    # branches (0018) AFTER purchase_bills and users (both FK to it) and BEFORE
+    # tenants (it FKs to tenants).
+    "branches", "tenants",
 ]
 
 
@@ -83,10 +89,19 @@ async def seed_tenant(conn, tid, label: str) -> dict:
     """Insert one complete tenant graph. app.tenant_id is already == tid, so
     this ALSO exercises the RLS WITH CHECK on every INSERT."""
     ids = {k: uuid.uuid4() for k in
-           ("user", "uom", "cat", "product", "price", "seller", "bill", "item")}
+           ("user", "uom", "cat", "product", "price", "seller", "bill", "item", "branch")}
     await conn.execute(
         text("INSERT INTO tenants (id, name) VALUES (:id, :name)"),
         {"id": tid, "name": f"Shop {label}"})
+    # THE BORN-WITH BRANCH (0018): purchase_bills.branch_id is NOT NULL with a
+    # composite FK to branches, so a tenant this proof mints by SQL must be
+    # provisioned with its branch exactly as provision_shop.py provisions one --
+    # the same conscription 0015 applied for the tier above. The bill below
+    # lands in it.
+    await conn.execute(
+        text("INSERT INTO branches (id, tenant_id, code, name, doc_prefix, is_active)"
+             " VALUES (:id, :t, 'MAIN', :name, 'B', true)"),
+        {"id": ids["branch"], "t": tid, "name": f"Shop {label}"})
     await conn.execute(
         text("INSERT INTO users (id, tenant_id, username, full_name, role, password_hash)"
              " VALUES (:id, :t, 'admin', :fn, 'admin', 'x')"),
@@ -121,10 +136,11 @@ async def seed_tenant(conn, tid, label: str) -> dict:
         {"id": ids["seller"], "t": tid, "name": f"Seller {label}"})
     await conn.execute(
         text("INSERT INTO purchase_bills"
-             " (id, tenant_id, seller_id, idempotency_key, total_amount, device_created_at)"
-             " VALUES (:id, :t, :s, :idem, :amt, now())"),
+             " (id, tenant_id, seller_id, idempotency_key, total_amount, device_created_at,"
+             "  branch_id)"
+             " VALUES (:id, :t, :s, :idem, :amt, now(), :br)"),
         {"id": ids["bill"], "t": tid, "s": ids["seller"],
-         "idem": f"idem-{label}-0001", "amt": Decimal("105.00")})
+         "idem": f"idem-{label}-0001", "amt": Decimal("105.00"), "br": ids["branch"]})
     await conn.execute(
         text("INSERT INTO purchase_bill_items"
              " (id, tenant_id, bill_id, product_id, line_no,"
@@ -163,8 +179,10 @@ async def drop_tenant(conn, owner_conn, tid) -> tuple[int, list[str]]:
         # grade_tiers is deleted by the OWNER: F4 REVOKEs DELETE from recycle_app,
         # so the app role cannot remove a tier. The owner is FORCE-RLS-bound too,
         # so with the tenant context set the DELETE is still scoped to this one
-        # tenant -- the same isolation, one privileged role over.
-        dc = owner_conn if table == "grade_tiers" else conn
+        # tenant -- the same isolation, one privileged role over. branches
+        # (0018) is the same case: a branch is deactivated, never deleted, so
+        # the app role holds no DELETE on it either.
+        dc = owner_conn if table in ("grade_tiers", "branches") else conn
         try:
             async with tenant_tx(dc, tid):
                 removed += (await dc.execute(text(f"DELETE FROM {table}"))).rowcount
@@ -337,20 +355,48 @@ async def main() -> int:
         # Both INSERTs satisfy the RLS WITH CHECK (their tenant_id = A), so the
         # ONLY thing that can stop them is the composite (tenant_id, x) foreign
         # keys, which force the referenced row into the SAME tenant.
+        # branch_id is A's OWN born-with branch here, on purpose: since 0018 the
+        # column is NOT NULL, and leaving it out would have this INSERT refused
+        # for a reason that is not the seller FK -- a red for the wrong cause
+        # (lessons/correct-classification-can-still-render-as-an-error.md).
         try:
             async with tenant_tx(conn, tenant_a):
                 await conn.execute(
                     text("INSERT INTO purchase_bills"
                          " (id, tenant_id, seller_id, idempotency_key,"
-                         "  total_amount, device_created_at)"
-                         " VALUES (:id, :t, :s, :idem, 0, now())"),
+                         "  total_amount, device_created_at, branch_id)"
+                         " VALUES (:id, :t, :s, :idem, 0, now(), :br)"),
                     {"id": uuid.uuid4(), "t": tenant_a, "s": ids_b["seller"],
-                     "idem": "idem-A-fk-seller"})
+                     "idem": "idem-A-fk-seller", "br": ids_a["branch"]})
             print("    !!! bill(A) -> seller(B) INSERT SUCCEEDED - THIS IS A FAILURE !!!")
             failures.append("a bill in A referenced a seller in B")
         except DBAPIError as e:
             first = str(e.orig).splitlines()[0] if e.orig else str(e).splitlines()[0]
             print(f"    bill(A) with seller_id = <B's seller pk>  -> rejected: {first}")
+
+        # THE BRANCH LEG (0018): a bill in A naming B's branch. Seller is A's own,
+        # tenant_id is A, so the ONLY thing that can refuse it is fk_bills_branch
+        # (tenant_id, branch_id) -> branches (tenant_id, id). This is the
+        # structural half of "a bill naming another tenant's branch is
+        # unrepresentable"; the handler half (422 under RLS) is
+        # prove_branches.py's.
+        try:
+            async with tenant_tx(conn, tenant_a):
+                await conn.execute(
+                    text("INSERT INTO purchase_bills"
+                         " (id, tenant_id, seller_id, idempotency_key,"
+                         "  total_amount, device_created_at, branch_id)"
+                         " VALUES (:id, :t, :s, :idem, 0, now(), :br)"),
+                    {"id": uuid.uuid4(), "t": tenant_a, "s": ids_a["seller"],
+                     "idem": "idem-A-fk-branch", "br": ids_b["branch"]})
+            print("    !!! bill(A) -> branch(B) INSERT SUCCEEDED - THIS IS A FAILURE !!!")
+            failures.append("a bill in A referenced a branch in B")
+        except DBAPIError as e:
+            first = str(e.orig).splitlines()[0] if e.orig else str(e).splitlines()[0]
+            if "fk_bills_branch" not in first:
+                failures.append(
+                    f"bill(A) -> branch(B) was refused, but not by fk_bills_branch: {first}")
+            print(f"    bill(A) with branch_id = <B's branch pk>  -> rejected: {first}")
 
         try:
             async with tenant_tx(conn, tenant_a):

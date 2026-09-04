@@ -269,21 +269,34 @@ a record after the tenant it names is deleted, so its per-tenant completeness is
 tenant-isolation invariant (measured — a restored dev copy read `seen=188 present=220`,
 32 rows for tenants a proof had since removed).
 
+**Superseded 2026-09-03 (migration 0018, branches; unanchored, anchor next pass).**
+Re-derived from `information_schema` on dev: `public` now holds SEVENTEEN relations —
+the sixteen above PLUS `branches` (0018), added as a row below, so the business-table
+count read literally is FIFTEEN. THREE existing tables changed shape with it and their
+rows below carry the note: `purchase_bills.branch_id` (NOT NULL, composite FK),
+`doc_no_counters` re-keyed to `PRIMARY KEY (tenant_id, branch_id, be_year)`, and
+`users.branch_id` (nullable). The rule the change adds is point 5 below (STRUCTURE.md
+invariant 10). `§ 8.2`'s RLS-policy enumeration is not updated for it (the same
+pre-existing gap 0008..0017 sit in). `reconcile.py` S1/S2/S3/B1/X2 cover it, S6 checks
+its trigger, X1 holds the bill and user pairs, T10 the three resolve arms, and T17/T18
+are its own checks.
+
 | table | what it is for | shape worth knowing |
 |---|---|---|
 | `tenants` | one row per shop; the unit a licence would attach to | `(id, name, created_at)` and nothing else — no address, no phone. **No endpoint reads it** <br>**Superseded 2026-08-30 (unanchored; anchor next pass):** re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone)` — `default_grade` (migration 0010), `seller_code_target_holding` (0012), `address`+`phone` (0013). It IS read and written: `GET /shop` returns it (staff-readable) and `PATCH /shop` writes `default_grade`/`address`/`phone` (admin-only), so "no endpoint reads it" went false at `9ad225e`. `name` stays immutable-by-decision (`9ad225e`). <br>**Superseded 2026-08-30 (P1.23 item 4 unit 2; unanchored; anchor next pass):** `staff_money_visible` (boolean NOT NULL DEFAULT false, migration 0014) is added — re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone, staff_money_visible)`, EIGHT columns. It is the per-shop switch the dashboard reads: `GET /shop` returns it (staff-readable), `PATCH /shop` writes it (admin-only), and `GET /reports/summary` refuses a staff caller its money unless it is on (D1). |
-| `users` | authentication, not an employee master | `tenant_id NOT NULL`; `role` CHECK 2 values; `token_version` (0005). No `is_active`, so a session can be revoked but an account cannot be locked <br>**Superseded 2026-09-01 (this row was stale; `§ 13` already records it):** `is_active` (0007, `boolean NOT NULL DEFAULT true`) DOES exist — an account CAN be locked, permanently, by an admin. Beside that DURABLE lock there is now a TRANSIENT one: `failed_login_attempts` (0016, the row below) records refused logins and drives a temporary lockout of `/auth/login`. So the per-account auth state is THREE things — `token_version`, `is_active`, and the derived failed-login count — not one |
+| `users` | authentication, not an employee master | `tenant_id NOT NULL`; `role` CHECK 2 values; `token_version` (0005). No `is_active`, so a session can be revoked but an account cannot be locked <br>**Superseded 2026-09-01 (this row was stale; `§ 13` already records it):** `is_active` (0007, `boolean NOT NULL DEFAULT true`) DOES exist — an account CAN be locked, permanently, by an admin. Beside that DURABLE lock there is now a TRANSIENT one: `failed_login_attempts` (0016, the row below) records refused logins and drives a temporary lockout of `/auth/login`. So the per-account auth state is THREE things — `token_version`, `is_active`, and the derived failed-login count — not one. **Superseded 2026-09-03 (0018):** plus `branch_id` (nullable, composite FK to `branches`, MATCH SIMPLE): the yard this user works at, NULL meaning every branch. Read by `POST /bills` to resolve a bill that names no branch and by `GET /shop`; enforced as a SCOPE by nothing yet — the gate arrives with the permission model |
 | `uoms` | units of measure (kg, crate, piece) | `(code, name)` + `is_active` |
 | `product_categories` | paper, steel, copper … | `(code, name)` + `is_active` |
 | `products` | what a yard buys | composite FKs to category and uom + `is_active`. **No sell price, no stock column** |
 | `product_prices` | the CURRENT buy list, per product per grade | `UNIQUE (tenant_id, product_id, grade)`, grade CHECK `A`–`D`. Historical bills never read back from here. **Superseded 2026-08-31 (0015):** the `A`–`D` CHECK (`product_prices_grade_check`) is DROPPED; `grade` is now a composite FK `(tenant_id, grade) → grade_tiers (tenant_id, code)`, so the admissible grades are the shop's own tier codes, not a fixed letter set |
 | `sellers` | who sells to the yard | grade selects the price tier; `id_number`/`address`/`vehicle_no` added by 0004 (SRS 1.6) + `is_active`. **Superseded 2026-08-31 (0015):** `ck_sellers_grade` (`A`–`D`) is DROPPED; the nullable `grade` is now a composite FK to `grade_tiers (tenant_id, code)`, MATCH SIMPLE (unchecked while NULL) |
-| `purchase_bills` | the bill header — one load, one bill | client-supplied `id` (no default), nullable `doc_no`, `idempotency_key`, two timestamps, three void columns |
+| `purchase_bills` | the bill header — one load, one bill | client-supplied `id` (no default), nullable `doc_no`, `idempotency_key`, two timestamps, three void columns. **Superseded 2026-09-03 (0018):** plus `branch_id` (NOT NULL, composite FK `(tenant_id, branch_id) → branches`), backfilled to the tenant's born-with branch for every earlier bill with its `doc_no` UNCHANGED (proven value against value, 630 pairs). OPTIONAL ON THE WIRE: `POST /bills` resolves an absent `branch_id` from the caller (`users.branch_id`, else the tenant's single active branch), because a bill queued offline before 0018 carries none and a required field would refuse it terminally with the cash already paid — the argument is in migration 0018's docstring |
 | `purchase_bill_items` | the money lines | three weights, both prices, stored `amount`, `line_no` |
-| `doc_no_counters` | the gap-free document sequence | `PRIMARY KEY (tenant_id, be_year)`, one row per shop per Buddhist year (0002) |
+| `doc_no_counters` | the gap-free document sequence | `PRIMARY KEY (tenant_id, be_year)`, one row per shop per Buddhist year (0002). **Superseded 2026-09-03 (0018):** `PRIMARY KEY (tenant_id, branch_id, be_year)`, one row per BRANCH per Buddhist year, so each yard mints its own series under its own `doc_prefix` (`B-2569-618` at the born-with yard while a second yard is at `C-2569-1`). The re-key never touched `last_seq`: Shop A 617 → 617, next bill 618; Shop B 13 → 13, next 14. The year gate in `create_bill` still reads `max(be_year)` over the TENANT's rows: a second yard's first bill of a year the shop already trades in is not a clock jump |
 | `grade_tiers` | the per-tenant grade tiers a shop declares (P1.24 / S16) | `UNIQUE (tenant_id, code)` and `(tenant_id, id)`; columns `code`/`name`/`sort_order`/`is_active`; `product_prices.grade` and `sellers.grade` reference it by composite FK on `code`. A tier is DEACTIVATED, never deleted (no DELETE grant). Added 0015 |
 | `failed_login_attempts` | the append-only record of a REFUSED login, and the counter a temporary lockout is derived from (0016) | `(id, tenant_id, username, outcome, created_at)`, `outcome` CHECK `failed`/`unlocked_by_admin`. THE ONE TABLE THAT DEPARTS FROM POINT 1: `tenant_id` is the UNVERIFIED submitted login claim and `username` the string as typed, so NEITHER carries a foreign key — a guesser may name a shop or user that does not exist and the attempt must record, not raise. RLS+FORCE keyed on the submitted tenant like the rest; APPEND-ONLY at the grant level (`recycle_app` holds SELECT+INSERT, UPDATE/DELETE revoked). Holds NO password material. Added 0016 |
 | `audit_log` | the append-only record of every master-data write, with its author (0017 / D3) | `(id, tenant_id, table_name, action, actor_user_id, actor_username, old_data, new_data, created_at)`. Written ONLY by the `audit_capture` SECURITY DEFINER trigger on 8 master-data tables (uoms, product_categories, products, product_prices, sellers, grade_tiers, users, tenants). The actor rides in the `app.actor_id`/`app.actor_username` GUCs (`tenant_connection`), and a write with NO actor is REFUSED. Whole row before/after as `jsonb`; money exact; `users.password_hash` redacted. RLS+FORCE keyed on `app.tenant_id`. APPEND-ONLY at the grant level: `recycle_app` holds SELECT only. NO FK — a forensic record outlives the rows it names. Added 0017 |
+| `branches` | a yard of a shop — one shop, many yards (0018 / STRUCTURE.md section 9) | `(id, tenant_id, code, name, address, phone, doc_prefix, is_active, created_at)`; `UNIQUE (tenant_id, id)`, `UNIQUE (tenant_id, code)`, `UNIQUE (tenant_id, doc_prefix)`, `doc_prefix` CHECKed to `^[A-Z]{1,4}$`. A ROW INSIDE THE TENANT, never a second GUC and never a separate tenant; every tenant is born with one (code `MAIN`, name = the shop's own name, prefix `B`), written by the 0018 backfill, `provision_shop.py` and `seed_dev.py`. The derived switch is the COUNT: `GET /shop` reports the caller's branch and `branch_count`, and a one-branch shop shows no branch control. `purchase_bills.branch_id` and `doc_no_counters.branch_id` are NOT NULL composite FKs to it; `users.branch_id` is nullable (NULL = every branch). DEACTIVATED, never deleted (no DELETE grant); audited by the 0017 trigger. Branch SCOPE is enforced by nothing but the composite FK until the permission model lands. Added 0018 |
 
 **Why the shape is this shape**, in four points that are not obvious from the
 column list:
@@ -330,6 +343,21 @@ column list:
    response returns `user_id` for this reason and not as a convenience. A
    username belongs on a SCREEN, where a human resolves it in context.
 
+5. **A branch is a composite FK inside the tenant and never a GUC** (added
+   2026-09-03 with migration 0018; STRUCTURE.md invariant 10, stated here as the
+   rule). Every operational row carries `branch_id` by
+   `FOREIGN KEY (tenant_id, branch_id) REFERENCES branches (tenant_id, id)`, so a
+   bill in tenant A cannot name a branch of tenant B by point 1's mechanism, and
+   RLS is keyed on `tenant_id` alone — an "all branches" context would be the
+   unset-means-all shape the tenant predicate refuses. Every tenant has at least
+   one branch (`reconcile.py` T18), and `doc_no` is unique per TENANT (the partial
+   index `uq_bills_tenant_docno` stands) while its SERIES is per BRANCH:
+   `doc_no_counters` is keyed `(tenant_id, branch_id, be_year)` and the string is
+   `{doc_prefix}-{be_year}-{seq}` with `doc_prefix` unique per tenant, so two
+   branches can never mint one string. A bill that names no branch is resolved by
+   the server from the caller, never refused for the omission — the reason is in
+   migration 0018's docstring and it is about money already paid.
+
 **Retirement, not deletion.** Four master-data tables carry `is_active` (0004).
 A row referenced by a bill can never be removed, so retirement is what "take it out
 of the picker" means: the row keeps its code and name, keeps answering every
@@ -342,6 +370,11 @@ deactivation IS this retirement pattern — a tier is deactivated, never deleted
 DELETE grant), row-level reads never filter it, so a deactivated tier still resolves
 for a historical bill's display. So FIVE tables now carry `is_active`; the "(0004)"
 above scopes the four that migration added and stands.
+
+**Superseded 2026-09-03 (0018):** `branches` carries `is_active` too, the same
+retirement — deactivated, never deleted (no DELETE grant), row-level reads never
+filter it; a bill naming a deactivated branch is refused 424 `branch_inactive`,
+resolvable by reactivating it. SIX tables now carry `is_active`.
 
 ---
 

@@ -287,12 +287,14 @@ def _be_date_label(day_start_utc: dt.datetime, day: dt.date) -> str:
 _SUMMARY_SQL = """
 WITH day_bills AS (
     SELECT total_amount, voided_at, server_received_at, doc_no,
+           NULLIF(split_part(doc_no, '-', 1), '')      AS doc_prefix,
            NULLIF(split_part(doc_no, '-', 2), '')::int AS doc_be,
            NULLIF(split_part(doc_no, '-', 3), '')::int AS doc_seq
       FROM purchase_bills
      WHERE server_received_at >= :start AND server_received_at < :end
 )
 SELECT
+    count(DISTINCT doc_prefix)                                          AS prefix_count,
     count(*)                                                            AS bill_count,
     count(*) FILTER (WHERE voided_at IS NULL)                           AS active_count,
     count(*) FILTER (WHERE voided_at IS NOT NULL)                       AS voided_count,
@@ -480,10 +482,20 @@ async def daily_report(
     # happens legitimately when a bill's transaction straddles shop midnight, and
     # is ALSO what a missing document would look like. It is reported, never
     # interpreted: `contiguous` is a fact, not a verdict, and it is null when the
-    # range spans two Buddhist-era years, where the arithmetic is meaningless.
+    # range spans two Buddhist-era years, where the arithmetic is meaningless --
+    # and, since migration 0018, null when the day holds bills from MORE THAN ONE
+    # BRANCH: each branch mints its own series under its own prefix, so a span
+    # across `B-2569-5` and `C-2569-3` interleaves two numberings and says
+    # nothing. A number that interleaves two series is worse than no number.
+    # `prefix_count` is the count of distinct prefixes among the day's numbered
+    # bills; NULL prefixes (undocumented bills) do not count.
     span: int | None = None
     contiguous: bool | None = None
-    if summary["min_seq"] is not None and summary["min_be"] == summary["max_be"]:
+    if (
+        summary["min_seq"] is not None
+        and summary["min_be"] == summary["max_be"]
+        and int(summary["prefix_count"]) == 1
+    ):
         span = int(summary["max_seq"]) - int(summary["min_seq"]) + 1
         contiguous = span == int(summary["bill_count"]) - int(summary["undocumented_count"])
 

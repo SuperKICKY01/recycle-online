@@ -321,7 +321,8 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS local_shop (
      only_row   INTEGER NOT NULL PRIMARY KEY CHECK (only_row = 1),
      tenant_id  TEXT    NOT NULL,
-     updated_at TEXT    NOT NULL
+     updated_at TEXT    NOT NULL,
+     branch_id  TEXT
    ) STRICT`,
 
   /*
@@ -679,6 +680,23 @@ const ADDED_CACHE_TENANT_COLUMN: readonly { name: string; ddl: string }[] = [
 const CACHE_TABLES: readonly string[] = ["master_cache", "cached_products", "cached_sellers"];
 
 /**
+ * Columns added to local_shop after IT first shipped.
+ *
+ * `branch_id` (server migration 0018): the yard this device's caller works at,
+ * as GET /shop reported it, cached so a new bill can carry it. NULLABLE and
+ * ADDITIVE for the reason every entry above gives -- CREATE TABLE IF NOT EXISTS
+ * does nothing to a table that already exists, and a rebuild is refused on a
+ * database holding unsent bills. An upgraded handset gets NULL here, which means
+ * "not yet learned", and a bill built while it is NULL simply carries no
+ * branch_id -- the exact shape every bill queued before 0018 already has, and
+ * one the server resolves for itself. Nothing may read this column's absence or
+ * NULL as a reason to refuse or park a bill.
+ */
+const ADDED_SHOP_COLUMNS: readonly { name: string; ddl: string }[] = [
+  { name: "branch_id", ddl: "branch_id TEXT" },
+];
+
+/**
  * Adds any missing column, by asking the database what it actually has.
  *
  * Deliberately driven by PRAGMA table_info rather than by running ALTER TABLE
@@ -822,6 +840,7 @@ export async function initConnection(db: SqlDriver): Promise<string[]> {
     const added = [
       ...(await migrateColumns(tx, "local_bills", ADDED_BILL_COLUMNS)),
       ...(await migrateColumns(tx, "local_draft", ADDED_DRAFT_COLUMNS)),
+      ...(await migrateColumns(tx, "local_shop", ADDED_SHOP_COLUMNS)),
     ];
     for (const t of CACHE_TABLES) {
       added.push(...(await migrateColumns(tx, t, ADDED_CACHE_TENANT_COLUMN)));

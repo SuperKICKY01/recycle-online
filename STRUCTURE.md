@@ -470,6 +470,36 @@ Where this design needs a settled statement moved, and leaves it to the owner: R
 
 **Unit 2: branches.** Conditional on the owner's yes to section 9. Builds `branches`, the born-with branch per tenant in the migration and in `provision_shop.py`, `branch_id NOT NULL` on `purchase_bills` and `doc_no_counters` with the re-keyed primary key and `doc_prefix`, `users.branch_id` with `branches.all`, `local_shop.branch_id` on the phone with the bill payload carrying it, T8 widened, X1 widened, `GET /shop` returning the caller's branch. It proves: on a scratch, two branches mint two independent series `B-2569-1` and `C-2569-1`; every existing bill reads back with the born-with branch and its `doc_no` unchanged, compared value against value; the branch-scoped principal is refused across branches with the deletion disproof moving exactly that cell; `reconcile.py` exit 0 on live and on a restored copy. It must not touch: prices, sellers, tiers, the payment tables. Size: one migration, `bills.py` and `reports.py`, two mobile store files, two proofs. The disproof: two branches sharing one counter row, or a bill accepted with a `branch_id` from another tenant.
 
+**BUILT 2026-09-03 — this BRANCHES unit, as the FIRST unit built (unanchored; anchor
+next pass). The advisor re-sequenced it ahead of the permission model above:
+branches re-key `doc_no_counters` and touch every operational table at a cost that
+grows with every table and every real row, while permissions cost the same whenever
+done; doing permissions first would have meant sweeping the new permission tables
+again for `branch_id`. Nothing here is renumbered — "Unit 1" above stays the
+permission model and is still to be briefed.** Landed as migration `0018_branches.py`
+with `server/app/branches.py`, `bills.py`, `master.py` (`GET /shop`), `reports.py`,
+`reconcile.py` (T8/T9 per `(branch, year)`, new T17/T18), `provision_shop.py`,
+`seed_dev.py`, `server/scripts/prove_branches.py` and mobile `prove:branch`. What
+this unit DID from the spec above: `branches`, the born-with branch per tenant
+(`MAIN`, the shop's own name, prefix `B`) in the migration and in
+`provision_shop.py`, `branch_id NOT NULL` on `purchase_bills` and `doc_no_counters`
+with the re-keyed primary key and `doc_prefix`, `users.branch_id`, the phone's
+`local_shop.branch_id` with the bill payload carrying it, T8 widened, X1 widened,
+`GET /shop` returning the caller's branch. What it did NOT and why: `branches.all`
+and the 403 across branches are permission work, deferred to the permission model
+by the brief's explicit fence (no handler gained a permission check; branch scope
+is enforced by nothing but the composite FK); `product_prices.branch_id` deferred
+with prices per this unit's own "must not touch". Two things section 9 left open
+were closed by the builder and confirmed by the owner: `UNIQUE (tenant_id,
+doc_prefix)` and `CHECK (doc_prefix ~ '^[A-Z]{1,4}$')` — the reasons are at the
+site in 0018. One thing the brief re-derived for money's sake: `branch_id` is
+OPTIONAL on the wire and the server resolves it, because a bill queued offline
+before 0018 carries none and a required field would refuse it terminally with the
+cash already paid (0018's docstring holds the chain). Proven: `B-2569-1` … `C-2569-1`
+on a scratch, every one of 630 `(id, doc_no)` pairs unchanged value against value,
+Shop A's counter 617 → 617 with the next bill 618, `reconcile.py` exit 0 on live
+and on a restored copy. Record: `PROJECT_STATUS.md § Current phase`.
+
 If the owner declines branches, unit 2 is the generic outbox store: `local_outbox`, `SqliteOutboxStore`, a builder for generic handlers, proven with a synthetic kind in the harness over claim, recovery, the owner predicate and the halt disposition, with the existing three kinds untouched and the `new SyncEngine` site count unchanged when the synthetic kind is added. Its disproof: removing the claim's conditional WHERE lets two passes perform one row.
 
 **Unit 3: the money ledger, schema and degenerate path only.** Builds batch B's tables with `separate_cashier` defaulting false on `branches`, `POST /bills` writing the automatic payment and allocation in its transaction, the dev-only backfill marked `recorded_by_migration`, `GET /bills/{id}` returning `paid_amount` and derived status, `GET /payments` and `POST /payments` under `payments.record` with 424 for an unknown bill, reconcile P1 through P4 and the line arithmetic with `rounding_adjustment`, `prove_backup_restore` round-tripping the new tables. No counter screen, no phone change beyond a schema-tolerant read. It proves: every bill created with the switch off has exactly one payment and one allocation equal to its total, read from Postgres; with the switch flipped on a scratch, a created bill has zero allocations and appears in the unpaid query, and flipping it back leaves that bill unpaid; every pre-existing bill reads `paid` with its backfilled pair marked; `reconcile.py` exit 0 on live and on a restored copy, with each of P1 through P4 fired by an injection in `prove_reconcile.py` that names its row and clears on undo. It must not touch: `local_bills`, any screen, the outbox. Size: one migration, `bills.py`, one new `payments.py`, `reconcile.py`, three proofs. The disproof: a bill in a switch-off tenant whose allocations do not sum to its total, or the P2 injection staying green with the check present.
