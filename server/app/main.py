@@ -18,8 +18,8 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from . import clock_guard, login_guard, version_gate
-from .auth import Principal, get_principal
+from . import clock_guard, login_guard, permissions, version_gate
+from .auth import PRINCIPAL_JOIN, PRINCIPAL_PERMISSIONS, Principal, get_principal
 from .bills import router as bills_router
 from .db import directory_engine, engine, tenant_connection
 from .directory import router as directory_router
@@ -60,6 +60,12 @@ class LoginResponse(BaseModel):
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # THE PERMISSION CATALOGUE MUST EQUAL THE CODE, OR THIS PROCESS DOES NOT
+    # SERVE (migration 0019, STRUCTURE.md invariant 6). Checked FIRST, before the
+    # clock: a RuntimeError here fails uvicorn's startup, the operator reads both
+    # sets in the traceback, and /health never answers -- never a 500 on the
+    # first gated request. app/permissions.py says why this fails closed.
+    await permissions.assert_catalogue()
     # EVALUATED BEFORE THE FIRST REQUEST IS SERVED, not on the first request.
     # A clock that is wrong is wrong for bill number one, and there is no
     # "first request" on a shop's server that is safe to get wrong.
@@ -276,11 +282,20 @@ async def login(body: LoginRequest) -> LoginResponse:
     # (tenant_id, username) it is actually attacking (login_guard, migration 0016).
     async with tenant_connection(body.tenant_id) as conn:
         locked = await login_guard.is_locked_out(conn, body.username)
+        # THE SAME JOIN get_principal runs (auth.PRINCIPAL_JOIN), so the role
+        # code and the grant list minted into the token below are what the
+        # first authenticated request would resolve -- one statement, one
+        # snapshot, and the token's advisory claims cannot say more than the row.
         row = (
             await conn.execute(
                 text(
-                    "SELECT id, tenant_id, username, role, token_version,"
-                    " is_active, password_hash FROM users WHERE username = :u"
+                    "SELECT u.id, u.tenant_id, u.username, r.code AS role,"
+                    " u.token_version, u.is_active, u.password_hash,"
+                    f" {PRINCIPAL_PERMISSIONS}"
+                    f"{PRINCIPAL_JOIN}"
+                    " WHERE u.username = :u"
+                    " GROUP BY u.id, u.tenant_id, u.username, r.code,"
+                    " u.token_version, u.is_active, u.password_hash"
                 ),
                 {"u": body.username},
             )
@@ -362,6 +377,9 @@ async def login(body: LoginRequest) -> LoginResponse:
         tenant_id=row["tenant_id"],
         username=row["username"],
         role=row["role"],
+        # ADVISORY, like `role`: the phone gates its controls on it offline. The
+        # server never reads it back (auth.get_principal).
+        permissions=list(row["permissions"]),
         # Read in the SAME statement as the password hash, so the version minted
         # is the version that existed at the moment the credentials were checked
         # — one read, one snapshot, no second lookup to drift.
@@ -416,10 +434,13 @@ async def whoami(
         "tenant_id": str(principal.tenant_id),
         "user_id": str(principal.user_id),
         "username": principal.username,
-        # The role the SERVER resolved for this request, read from the users row
-        # under tenant context — not the role the token claimed. Those differ
-        # after a demotion, and this is the one that gates.
+        # The role CODE and the PERMISSIONS the SERVER resolved for this request,
+        # read from the users -> roles -> role_permissions join under tenant
+        # context — not what the token claimed. Those differ after a demotion or
+        # a revoked grant, and the permission set is the one that gates. The
+        # phone rewrites its cached_permissions from this answer (0019).
         "role": principal.role,
+        "permissions": sorted(principal.permissions),
         "db_tenant_context": db_tenant,
         "user_visible_under_tenant": user is not None,
         "db_username": user["username"] if user else None,

@@ -326,6 +326,25 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
    ) STRICT`,
 
   /*
+   * WHAT THIS USER MAY DO, as the server last said it (server migration 0019,
+   * STRUCTURE.md section 3.3). One row per (user, permission), written at
+   * sign-in from the token's advisory claim and rewritten from every /whoami;
+   * read on a cold start so the controls gate on the freshest answer the device
+   * holds without a network. KEYED ON THE USER so a crash between a new user's
+   * token landing and their set being written can never show them the previous
+   * user's rights (SqlitePermissionStore.ts says why). Cleared on sign-out.
+   *
+   * Needs no migration list entry: a table that never existed is created by this
+   * statement on an upgraded device exactly as on a fresh one.
+   */
+  `CREATE TABLE IF NOT EXISTS cached_permissions (
+     user_id    TEXT NOT NULL,
+     permission TEXT NOT NULL,
+     updated_at TEXT NOT NULL,
+     PRIMARY KEY (user_id, permission)
+   ) STRICT`,
+
+  /*
    * WHAT THIS INSTALLATION IS — the holder a reserved seller code belongs to.
    *
    * A THIRD one-row table, and the same argument that already separated the two

@@ -63,6 +63,7 @@ import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
 import type { DeviceRole } from "../session/deviceRole.js";
+import { grantsOf } from "./proofGrants.js";
 import {
   billNotice,
   canRequestVoid,
@@ -660,14 +661,14 @@ function n2VoidMatrix(): VoidCell[] {
     "voiding is offered exactly when the bill is live, the server could have it, and the role allows",
     cells,
     (c) =>
-      canRequestVoid(voidInput(c), "admin") === (!c.requested && c.sync_state !== "failed"),
+      canRequestVoid(voidInput(c), grantsOf("admin")) === (!c.requested && c.sync_state !== "failed"),
     describeVoid,
   );
   check(
     "a terminally failed bill is never offered a void — there is nothing to void",
     cells
       .filter((c) => c.sync_state === "failed")
-      .every((c) => !canRequestVoid(voidInput(c), "admin")),
+      .every((c) => !canRequestVoid(voidInput(c), grantsOf("admin"))),
   );
 
   /* ------------------------------------------------- the 2c-9 void states ---- */
@@ -725,15 +726,15 @@ function n2VoidMatrix(): VoidCell[] {
       sync_state: "synced", hasDocNo: true, requested: false, settled: false, refused: false,
     };
     console.log(
-      `  role=${String(role).padEnd(6)} button=${String(canRequestVoid(voidInput(live), role))}` +
-        ` note=${String(voidRoleNote(voidInput(live), role))}`,
+      `  role=${String(role).padEnd(6)} button=${String(canRequestVoid(voidInput(live), grantsOf(role)))}` +
+        ` note=${String(voidRoleNote(voidInput(live), grantsOf(role)))}`,
     );
   }
   const liveCells = cells.filter((c) => !c.requested && c.sync_state !== "failed");
   checkAll(
     "a STAFF device is never offered the void button",
     liveCells,
-    (c) => !canRequestVoid(voidInput(c), "staff"),
+    (c) => !canRequestVoid(voidInput(c), grantsOf("staff")),
     describeVoid,
   );
   /*
@@ -751,13 +752,13 @@ function n2VoidMatrix(): VoidCell[] {
   checkAll(
     "a staff device is told who can do it instead, rather than shown nothing",
     liveCells,
-    (c) => (voidRoleNote(voidInput(c), "staff") ?? "").includes(THE_OWNER),
-    (c) => `${describeVoid(c)} -> ${String(voidRoleNote(voidInput(c), "staff"))}`,
+    (c) => (voidRoleNote(voidInput(c), grantsOf("staff")) ?? "").includes(THE_OWNER),
+    (c) => `${describeVoid(c)} -> ${String(voidRoleNote(voidInput(c), grantsOf("staff")))}`,
   );
   checkAll(
     "and an admin is never shown that note",
     cells,
-    (c) => voidRoleNote(voidInput(c), "admin") === null,
+    (c) => voidRoleNote(voidInput(c), grantsOf("admin")) === null,
     describeVoid,
   );
   check(
@@ -1428,7 +1429,7 @@ async function n5ReachableAndRendered(): Promise<void> {
     );
     check(
       "and the void button is withdrawn — the action does not exist for this bill",
-      !canRequestVoid(row, "admin"),
+      !canRequestVoid(row, grantsOf("admin")),
       "asked as an ADMIN, so it is the bill's state withdrawing it and not the role",
     );
   }

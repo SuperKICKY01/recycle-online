@@ -106,7 +106,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping
-from typing import Annotated, Any, Literal, get_args
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, StringConstraints
@@ -114,15 +114,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from . import login_guard
-from .auth import (
-    ADMIN_ROLE,
-    STAFF_ROLE,
-    Principal,
-    forbidden,
-    get_principal,
-    require_admin,
-)
+from .auth import Principal, forbidden, get_principal, require
 from .db import constraint_name_of, tenant_connection
+from .permissions import Permission
 
 # The refusal vocabulary is master.py's and is IMPORTED rather than restated.
 # An error shape is a CONVENTION, and a second copy of a convention drifts at
@@ -159,7 +153,7 @@ from .db import constraint_name_of, tenant_connection
 # same bound as every other human-typed name in this API. `Username` and
 # `Password` are declared below instead, because their bounds are about a login
 # credential and nothing in master.py means that.
-from .master import Name, _TENANT, _active_filter, _conflict, _not_found
+from .master import Name, _TENANT, _active_filter, _conflict, _invalid, _not_found
 from .security import hash_password, verify_password
 
 router = APIRouter()
@@ -224,20 +218,29 @@ def _user_payload(r: Mapping[str, Any]) -> dict:
         "user_id": str(r["id"]),
         "username": r["username"],
         "full_name": r["full_name"],
+        # The role CODE (roles.code since 0019: owner, admin, staff, or one the
+        # shop minted). The same five keys as before 0019; the value for every
+        # pre-0019 account is the string it held in users.role.
         "role": r["role"],
         "is_active": r["is_active"],
     }
 
 
-_USER_SELECT = "SELECT id, username, full_name, role, is_active FROM users"
+# The roster's SELECT. users.role is gone (0019): the code comes through the
+# join, and `u.is_active` is qualified because roles carries an is_active too.
+_USER_SELECT = (
+    "SELECT u.id, u.username, u.full_name, r.code AS role, u.is_active"
+    " FROM users u JOIN roles r ON r.id = u.role_id"
+)
 
 
 @router.get("/users")
 async def list_users(
     include_inactive: IncludeInactiveUsers = False,
-    principal: Principal = Depends(require_admin),
+    principal: Principal = Depends(require(Permission.USERS_MANAGE)),
 ) -> dict:
-    """The shop's people. ADMIN ONLY — and that BREAKS the convention on purpose.
+    """The shop's people. users.manage ONLY (0019; was ADMIN ONLY) — and that
+    BREAKS the convention on purpose.
 
     Every other list route in this API is Depends(get_principal): uoms,
     product-categories, products, sellers, bills. This one is not, and the
@@ -279,8 +282,8 @@ async def list_users(
         rows = (
             await conn.execute(
                 text(
-                    f"{_USER_SELECT}{_active_filter(include_inactive)}"
-                    f" ORDER BY username"
+                    f"{_USER_SELECT}{_active_filter(include_inactive, column='u.is_active')}"
+                    f" ORDER BY u.username"
                 )
             )
         ).mappings().all()
@@ -342,28 +345,21 @@ Password = Annotated[
     ),
 ]
 
-# READ OFF THE DATABASE'S OWN CHECK, not from memory: migration 0001 creates
-# `role text NOT NULL CHECK (role IN ('admin', 'staff'))`. Declaring it here is
-# master.py's Grade convention — a bad value is a 422 from pydantic, never a
-# CheckViolation 500 from Postgres, and a 500 is `unavailable` to a client rather
-# than `rejected` (lessons/unavailable-is-not-rejected.md).
-Role = Literal["admin", "staff"]
-
-# The two strings now have THREE spellings: the migration's CHECK, auth.py's
-# ADMIN_ROLE/STAFF_ROLE, and the Literal above. auth.py's own comment binds its
-# pair to the migration. This binds the third, and the failure it closes is
-# silent: rename a constant in auth.py and this route would go on minting rows
-# whose role no gate recognises — accounts that authenticate and are refused
-# everything, with nothing anywhere reporting a fault.
-#
-# RuntimeError at import, never `assert`: `python -O` strips asserts, and this is
-# the same fail-closed-at-import shape config.py uses for an empty JWT_SECRET.
-if set(get_args(Role)) != {ADMIN_ROLE, STAFF_ROLE}:  # pragma: no cover
-    raise RuntimeError(
-        "users.Role and auth.ADMIN_ROLE/STAFF_ROLE have diverged:"
-        f" {sorted(get_args(Role))} != {sorted({ADMIN_ROLE, STAFF_ROLE})}."
-        " Both must equal migration 0001's CHECK (role IN ('admin','staff'))."
-    )
+# A ROLE IS A CODE THE SHOP HOLDS, NOT A COMPILE-TIME SET (migration 0019). This
+# read `Role = Literal["admin", "staff"]` bound to 0001's CHECK until 0019
+# replaced the CHECK with a per-tenant `roles` table, exactly as 0015 did for
+# the grade letters — and a set a shop chooses at run time cannot be a Literal.
+# The edge bounds only the SHAPE (the same 1..32 bound ck_roles_code_len holds);
+# create_user resolves the code against the caller's OWN tenant's active roles
+# and answers a readable 422 (`role_unknown`, field=role) for one that is not
+# there, never the FK's 500. The import-time guard that bound the three
+# spellings of admin/staff is gone with the constants it bound; what holds the
+# set equal to the code now is the boot-time catalogue check
+# (app/permissions.py), which is about permissions, not role names — a role
+# name is no longer anything a gate reads.
+RoleCode = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)
+]
 
 
 class UserCreate(BaseModel):
@@ -393,26 +389,41 @@ class UserCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     username: Username
     full_name: Name
-    role: Role
+    role: RoleCode
     password: Password
 
 
 @router.post("/users", status_code=status.HTTP_201_CREATED)
 async def create_user(
-    body: UserCreate, principal: Principal = Depends(require_admin)
+    body: UserCreate, principal: Principal = Depends(require(Permission.USERS_MANAGE))
 ) -> dict:
-    """Bring an account into existence. ADMIN ONLY.
+    """Bring an account into existence. users.manage ONLY (0019; was ADMIN ONLY).
 
     Same tier as every other route in this module, and for once that needs no
     argument of its own: if a yard phone could create an account it could create
     an ADMIN account, and every gate in this API would then be one request away
     from being nobody's.
 
+    THE ESCALATION GUARD (0019, the owner's decision 6). A caller may assign
+    only a role whose permission set is a SUBSET of their own. Without it, the
+    day an owner role exists an admin mints one and takes the shop: the owner's
+    set holds roles.manage and the admin's does not, so the admin cannot. The
+    refusal is 403 `role_exceeds_caller`, naming the role and, in `over_reach`,
+    every permission the caller lacks — so a reader of the log sees WHAT was over-
+    reached, never just that something was. Proven by prove_permissions.py (the
+    admin-mints-owner cell), whose named disproof is deleting the subset check.
+
+    THE ROLE IS RESOLVED UNDER THE CALLER'S OWN TENANT CONTEXT, by code, against
+    ACTIVE roles: RLS makes another shop's roles invisible, so a code that exists
+    only elsewhere is `role_unknown` (422, field=role) exactly like one that
+    exists nowhere. A deactivated role is not assignable either — an account
+    born holding nothing is a thing nothing asked for.
+
     AN ADMIN MAY CREATE ANOTHER ADMIN — ARCHITECTURE.md § 10. The three settled
     decisions D7. That is deliberate and it is the reason `role` is a caller's
     choice rather than a constant. A shop whose single admin loses their handset
     has nobody who can sign in as an admin: /activate, /revoke-sessions and this
-    route are all require_admin, and there is no password reset, no recovery
+    route are all gated on users.manage, and there is no password reset, no recovery
     address and no support path that speaks HTTP — the only way back in today is
     somebody running SQL on site. provision_shop.py is not a way back either: it
     creates a shop's FIRST admin from an installer's shell and refuses a second
@@ -422,13 +433,15 @@ async def create_user(
 
     THE COST, STATED AND NOT ARGUED AWAY, because D7 states it: admin is the tier
     that voids bills and moves prices, so an admin who creates a second admin has
-    handed over every capability they hold, permanently and with NO AUDIT TRAIL —
-    D3's log does not exist. The role is a two-value CHECK, not a permission
-    system, so there is no weaker admin to create instead. The same capability
-    also lets a compromised admin session mint a persistent admin of its own,
-    which is not a new door — such a session can already void every bill and
-    re-price the shop — but it does change how long an intruder keeps access
-    after the original account is locked.
+    handed over every capability they hold, permanently. SUPERSEDED IN TWO
+    CLAUSES since this was written: D3's log EXISTS (migration 0017 audits every
+    users write with its actor), and since 0019 the role is a per-tenant row
+    rather than a two-value CHECK, so a WEAKER role can be created once the role
+    screen exists — and the escalation guard above is what stops the reverse.
+    The same capability also lets a compromised admin session mint a persistent
+    admin of its own, which is not a new door — such a session can already void
+    every bill and re-price the shop — but it does change how long an intruder
+    keeps access after the original account is locked.
 
     THE FIRST PASSWORD IS NOT FORCED TO CHANGE ON FIRST USE, and that absence is
     a DECISION, not an omission — D8, which asks in its own text that a later
@@ -487,19 +500,56 @@ async def create_user(
     password_hash = await hash_password(body.password)
 
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
+        # THE ROLE, by code, among this tenant's ACTIVE roles (RLS scopes the
+        # table). Its grants are read in the same transaction for the subset
+        # check below.
+        role = (
+            await conn.execute(
+                text("SELECT id FROM roles WHERE code = :code AND is_active"),
+                {"code": body.role},
+            )
+        ).mappings().first()
+        if role is None:
+            raise _invalid(
+                "role_unknown",
+                "ไม่พบสิทธิ์การใช้งานนี้ในร้าน",
+                field="role",
+                role=body.role,
+            )
+        granted = set(
+            (
+                await conn.execute(
+                    text("SELECT permission FROM role_permissions WHERE role_id = :r"),
+                    {"r": role["id"]},
+                )
+            )
+            .scalars()
+            .all()
+        )
+        # THE ESCALATION GUARD. Set difference, so the refusal names exactly
+        # what the caller does not hold. DELETE THIS BLOCK and an admin mints an
+        # owner — prove_permissions.py's named disproof.
+        over_reach = sorted(granted - principal.permissions)
+        if over_reach:
+            raise forbidden(
+                "role_exceeds_caller",
+                "ไม่สามารถกำหนดสิทธิ์ที่สูงกว่าสิทธิ์ของตนเองได้",
+                role=body.role,
+                over_reach=over_reach,
+            )
         try:
             row = (
                 await conn.execute(
                     text(
                         f"INSERT INTO users"
-                        f" (tenant_id, username, full_name, role, password_hash)"
-                        f" VALUES ({_TENANT}, :username, :full_name, :role, :ph)"
-                        f" RETURNING id, username, full_name, role, is_active"
+                        f" (tenant_id, username, full_name, role_id, password_hash)"
+                        f" VALUES ({_TENANT}, :username, :full_name, :role_id, :ph)"
+                        f" RETURNING id, username, full_name, is_active"
                     ),
                     {
                         "username": body.username,
                         "full_name": body.full_name,
-                        "role": body.role,
+                        "role_id": role["id"],
                         "ph": password_hash,
                     },
                 )
@@ -516,16 +566,18 @@ async def create_user(
                 raise _conflict("user", body.username) from e
             raise
 
-    return _user_payload(row)
+    # The role code is the one resolved above, in the same transaction the row
+    # was written in -- the roster's five keys, unchanged.
+    return _user_payload({**row, "role": body.role})
 
 
 @router.post("/users/{user_id}/revoke-sessions")
 async def revoke_sessions(
-    user_id: uuid.UUID, principal: Principal = Depends(require_admin)
+    user_id: uuid.UUID, principal: Principal = Depends(require(Permission.USERS_MANAGE))
 ) -> dict:
     """Bump this user's token_version: every token issued to them stops working.
 
-    ADMIN ONLY. Ending another person's session is an act of authority over an
+    users.manage ONLY. Ending another person's session is an act of authority over an
     account, which is the same class of thing as voiding a bill — not something
     every phone on the yard floor may do to any user.
 
@@ -599,12 +651,12 @@ def _user_or_404(row: Mapping[str, Any] | None) -> dict:
 
 @router.post("/users/{user_id}/deactivate")
 async def deactivate_user(
-    user_id: uuid.UUID, principal: Principal = Depends(require_admin)
+    user_id: uuid.UUID, principal: Principal = Depends(require(Permission.USERS_MANAGE))
 ) -> dict:
     """Lock an account: it can no longer sign in, and its live sessions end now.
 
-    ADMIN ONLY — the same class of authority as revoking a session or voiding a
-    bill, and not something a yard phone may do to any user.
+    users.manage ONLY — the same class of authority as revoking a session or
+    voiding a bill, and not something a yard phone may do to any user.
 
     ONE UPDATE, NOT TWO. `is_active` and `token_version` move in the same
     statement, so there is no window — not even a transactional one a reader has
@@ -627,13 +679,16 @@ async def deactivate_user(
     added 2026-09-02. That refusal is reachable ONLY under a concurrent race —
     serially the self-check above already prevents a shop reaching zero admins —
     and the guard body says why a lock, not a plain count, is what makes it real.
+    GENERALISED BY 0019: "admin" here means the last ACTIVE user holding
+    `users.manage` through an ACTIVE role, whatever that role is called; the
+    code and the message keep their names because that is the shop's word for it.
     """
     if user_id == principal.user_id:
         # SELF-DEACTIVATION IS REFUSED, and note this is the OPPOSITE of
         # revoke_sessions above, which allows self-revocation deliberately. The
         # difference is recoverability: ending your own sessions costs you one
         # login, while locking your own account cannot be undone from inside the
-        # system at all — /activate is require_admin, so an admin who locks
+        # system at all — /activate needs users.manage, so an admin who locks
         # itself has no way back, and a shop whose only admin does it has nobody
         # left who can unlock it.
         #
@@ -664,7 +719,7 @@ async def deactivate_user(
         #
         # WHAT THIS DOES *NOT* GUARD, BECAUSE SOMETHING ELSE ALREADY DOES. No
         # SERIAL request can reach zero active admins. The caller passed
-        # require_admin, so IS an active admin this request; a deactivate targets
+        # the users.manage gate, so IS an active holder this request; a deactivate targets
         # one user_id; if it is the caller, cannot_deactivate_self above already
         # refused; if it is anyone else, the caller's own row is untouched and
         # stays an active admin. So `user_id` being the SOLE active admin implies
@@ -701,16 +756,25 @@ async def deactivate_user(
         #
         # NO hand-written `WHERE tenant_id` (hard rule 2): RLS scopes the set to
         # the caller's tenant, so this locks and counts only THIS shop's admins.
+        #
+        # THE SET IS "ACTIVE USERS HOLDING users.manage THROUGH AN ACTIVE ROLE"
+        # (0019) — the generalisation of `role = 'admin'`. `FOR NO KEY UPDATE OF
+        # u` locks the users rows and ONLY them: locking the roles or grant rows
+        # the join walks would serialise this route against an unrelated grant
+        # edit, and the set the race can zero is the set of USERS.
         active_admin_ids = set(
             (
                 await conn.execute(
                     text(
-                        "SELECT id FROM users"
-                        " WHERE role = :admin AND is_active"
-                        " ORDER BY id"
-                        " FOR NO KEY UPDATE"
+                        "SELECT u.id FROM users u"
+                        " JOIN roles r ON r.id = u.role_id AND r.is_active"
+                        " JOIN role_permissions rp ON rp.role_id = r.id"
+                        "  AND rp.permission = :perm"
+                        " WHERE u.is_active"
+                        " ORDER BY u.id"
+                        " FOR NO KEY UPDATE OF u"
                     ),
-                    {"admin": ADMIN_ROLE},
+                    {"perm": Permission.USERS_MANAGE.value},
                 )
             )
             .scalars()
@@ -735,6 +799,7 @@ async def deactivate_user(
                     ),
                     "entity": "user",
                     "active_admins": str(len(active_admin_ids)),
+                    "permission": Permission.USERS_MANAGE.value,
                 },
             )
 
@@ -759,7 +824,7 @@ async def deactivate_user(
 
 @router.post("/users/{user_id}/activate")
 async def activate_user(
-    user_id: uuid.UUID, principal: Principal = Depends(require_admin)
+    user_id: uuid.UUID, principal: Principal = Depends(require(Permission.USERS_MANAGE))
 ) -> dict:
     """Unlock an account. The inverse of deactivate, and it is not optional.
 
@@ -798,9 +863,9 @@ async def activate_user(
 
 @router.post("/users/{user_id}/unlock-login")
 async def unlock_login(
-    user_id: uuid.UUID, principal: Principal = Depends(require_admin)
+    user_id: uuid.UUID, principal: Principal = Depends(require(Permission.USERS_MANAGE))
 ) -> dict:
-    """Clear the temporary LOGIN LOCKOUT on an account. ADMIN ONLY.
+    """Clear the temporary LOGIN LOCKOUT on an account. users.manage ONLY.
 
     NOT the same thing as /activate, and the two must not be confused. /activate
     clears is_active, the DURABLE admin lock; this clears the TRANSIENT lockout
@@ -814,7 +879,7 @@ async def unlock_login(
     only admin locks itself out with nobody to call. This route is the OTHER
     recovery: an admin unlocking a STAFF account NOW, without making them wait out
     the window — the same authority as deactivating or resetting an account, so
-    the same require_admin tier as the rest of this module.
+    the same users.manage tier as the rest of this module.
 
     IT IS ALSO THE AUTHENTICATED DISCLOSURE CHANNEL. POST /auth/login refuses a
     locked account byte-identically to a wrong password on purpose, so nothing the
@@ -1074,9 +1139,9 @@ async def change_own_password(
 async def reset_user_password(
     user_id: uuid.UUID,
     body: AdminPasswordReset,
-    principal: Principal = Depends(require_admin),
+    principal: Principal = Depends(require(Permission.USERS_MANAGE)),
 ) -> dict:
-    """Set another user's password. ADMIN ONLY.
+    """Set another user's password. users.manage ONLY.
 
     D6's route 2, and a SEPARATE ROUTE from the one above rather than a branch
     inside it. D6 argues that at length: the guard differs, the request body

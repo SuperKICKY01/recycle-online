@@ -37,12 +37,17 @@ inferred: C1 waits (bounded, for the EVENT not a fixed tick) until a NOT-granted
 lock appears in pg_locks AND the request has not returned -- that is "waiting on a
 lock", which "slow" is not.
 
-THE DISPROOF, NAMED FIRST AND RUN BY HAND: delete ` FOR NO KEY UPDATE` from the
-guard's SELECT in server/app/users.py::deactivate_user and run this against a fresh
-scratch. C1 still goes green (the route now blocks at its UPDATE instead of its
-SELECT), but C2 flips to 200 and C3 to 0 active admins -- the race zeroes the shop.
-That red is the ONLY direct evidence the lock does anything, because no serial path
-reaches the guard. (A no-guard build reddens C2/C3 identically.)
+THE DISPROOF, NAMED FIRST AND RUN BY HAND: delete ` FOR NO KEY UPDATE OF u` from
+the guard's SELECT in server/app/users.py::deactivate_user and run this against a
+fresh scratch. C1 still goes green (the route now blocks at its UPDATE instead of
+its SELECT), but C2 flips to 200 and C3 to 0 active admins -- the race zeroes the
+shop. That red is the ONLY direct evidence the lock does anything, because no
+serial path reaches the guard. (A no-guard build reddens C2/C3 identically.)
+
+GENERALISED BY MIGRATION 0019: "admin" here means an ACTIVE user holding
+`users.manage` through an ACTIVE role (MANAGERS_SQL below), and the fixture seeds
+the tenant's three system roles before its users. Every cell's assertion is
+unchanged; only the fixture and the set's SQL moved.
 """
 from __future__ import annotations
 
@@ -184,6 +189,7 @@ class Ctx:
 async def provision(ctx: Ctx) -> None:
     from sqlalchemy import text
     from app.db import SYSTEM_ACTOR_ID, tenant_connection
+    from app.permissions import seed_system_roles
     from app.security import hash_password
 
     async with tenant_connection(
@@ -200,13 +206,18 @@ async def provision(ctx: Ctx) -> None:
             text("INSERT INTO branches (tenant_id, code, name, doc_prefix, is_active)"
                  " VALUES (:t, 'MAIN', :n, 'B', true)"),
             {"t": ctx.tenant, "n": f"UA {RUN}"})
+        # THE THREE SYSTEM ROLES (0019): users.role_id is NOT NULL with a
+        # composite FK to roles, so a tenant minted by SQL is provisioned with
+        # its roles exactly as provision_shop.py provisions them -- the same
+        # conscription 0018 applied for the branch above.
+        roles = await seed_system_roles(conn, ctx.tenant)
         for k, role in (("a1", "admin"), ("a2", "admin"), ("staff", "staff")):
             ph = await hash_password(PW[k])
             await conn.execute(
-                text("INSERT INTO users (id, tenant_id, username, full_name, role,"
+                text("INSERT INTO users (id, tenant_id, username, full_name, role_id,"
                      " password_hash) VALUES (:id, :t, :u, :fn, :r, :ph)"),
                 {"id": ctx.ids[k], "t": ctx.tenant, "u": U[k],
-                 "fn": U[k], "r": role, "ph": ph})
+                 "fn": U[k], "r": roles[role], "ph": ph})
 
 
 # ---------------------------------------------------------------------------
@@ -231,15 +242,25 @@ def refusal_code(r: httpx.Response) -> str | None:
     return detail.get("code") if isinstance(detail, dict) else None
 
 
+# THE SET THE GUARD PROTECTS, since 0019: active users holding users.manage
+# through an active role -- restated here by hand, never imported from the route
+# (a-checker-must-not-share-the-code-it-checks). The same SQL shape C0's barrier
+# below takes its lock over, minus the lock.
+MANAGERS_SQL = (
+    "SELECT u.id FROM users u"
+    " JOIN roles r ON r.id = u.role_id AND r.is_active"
+    " JOIN role_permissions rp ON rp.role_id = r.id AND rp.permission = 'users.manage'"
+    " WHERE u.is_active ORDER BY u.id"
+)
+
+
 async def pg_active_admin_count(tenant: uuid.UUID) -> int:
     """Re-derive the count OUT OF POSTGRES, not off a response body
     (a-checker-must-not-share-the-code-it-checks)."""
     from sqlalchemy import text
     from app.db import tenant_connection
     async with tenant_connection(tenant) as conn:
-        return (await conn.execute(
-            text("SELECT count(*) FROM users WHERE role = 'admin' AND is_active"),
-        )).scalar_one()
+        return len((await conn.execute(text(MANAGERS_SQL))).scalars().all())
 
 
 # ---------------------------------------------------------------------------
@@ -315,9 +336,11 @@ async def cell_concurrency(ctx: Ctx, client: httpx.AsyncClient, admin_tok: str) 
             await c0.execute(
                 text("SELECT set_config('app.actor_username', :u, true)"),
                 {"u": "system:prove_user_admin"})
+            # The SAME lock the route takes (users.py::deactivate_user): the users
+            # rows of the manager set, `FOR NO KEY UPDATE OF u` -- the join walks
+            # roles and role_permissions but locks only users.
             locked = (await c0.execute(text(
-                "SELECT id FROM users WHERE role = 'admin' AND is_active"
-                " ORDER BY id FOR NO KEY UPDATE"))).scalars().all()
+                MANAGERS_SQL + " FOR NO KEY UPDATE OF u"))).scalars().all()
             check(len(locked) == 2,
                   f"C0: the barrier holds the two active admins the route contends on"
                   f" (locked {len(locked)})")

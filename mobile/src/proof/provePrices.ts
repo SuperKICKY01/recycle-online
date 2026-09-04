@@ -68,8 +68,9 @@ import {
   tierControlsText,
 } from "../master/priceEdit.js";
 import type { CacheRefresh, PriceProduct, PriceScreen, PriceWrite } from "../master/priceEdit.js";
-import { mayEditPrices } from "../session/deviceRole.js";
+import { may } from "../session/deviceRole.js";
 import type { DeviceRole } from "../session/deviceRole.js";
+import { grantsOf } from "./proofGrants.js";
 
 let failures = 0;
 
@@ -130,7 +131,7 @@ function fixture(): readonly PriceProduct[] {
  * is proved on its own fixture in `pNameIsShown` so nothing here has to move.
  */
 const listFor = (role: DeviceRole): PriceScreen =>
-  priceListScreen({ role, products: fixture(), haveProducts: true, haveGradeTiers: true });
+  priceListScreen({ grants: grantsOf(role), products: fixture(), haveProducts: true, haveGradeTiers: true });
 
 /* -------------------------------------------------------------- P0 bound -- */
 
@@ -335,8 +336,8 @@ function p2TheStaffRefusal(): void {
   console.log(`\n  the STAFF tier controls:\n    ${JSON.stringify(tierControlsText(staff))}`);
   console.log(`  the ADMIN tier controls:\n    ${JSON.stringify(tierControlsText(admin))}`);
 
-  check("the predicate refuses a definite staff", !mayEditPrices("staff"));
-  check("the predicate permits admin", mayEditPrices("admin"));
+  check("the predicate refuses a definite staff", !may(grantsOf("staff"), "prices.write"));
+  check("the predicate permits admin", may(grantsOf("admin"), "prices.write"));
   /*
    * FAILS OPEN, and it is asserted rather than assumed. An unknown role gets
    * the control and lands on the 403 branch if it was wrong — the trade
@@ -344,7 +345,7 @@ function p2TheStaffRefusal(): void {
    * knows config-defaults-must-fail-closed.md would predict, which is exactly
    * why it must be pinned by a cell.
    */
-  check("the predicate FAILS OPEN on an unknown role", mayEditPrices(null));
+  check("the predicate FAILS OPEN on an unknown role", may(grantsOf(null), "prices.write"));
 
   /* ---- the absence, on the rendered string ---- */
 
@@ -588,14 +589,14 @@ function p4EveryOutcomeHasAScreen(): void {
 
   /* the LIST screens, over the THREE absences that are not the same absence */
 
-  const never = priceListScreen({ role: "admin", products: [], haveProducts: false, haveGradeTiers: true });
-  const empty = priceListScreen({ role: "admin", products: [], haveProducts: true, haveGradeTiers: true });
+  const never = priceListScreen({ grants: grantsOf("admin"), products: [], haveProducts: false, haveGradeTiers: true });
+  const empty = priceListScreen({ grants: grantsOf("admin"), products: [], haveProducts: true, haveGradeTiers: true });
   // A THIRD absence (S16 / P1.24): products cached but the tier set never fetched —
   // an upgraded handset before its first refresh. Distinct from the two above, and
   // it says so about the TIERS, not the products; the screen cannot list a tier it
   // has not downloaded, so it draws no rows rather than every product with none.
   const noTiers = priceListScreen({
-    role: "admin",
+    grants: grantsOf("admin"),
     products: fixture(),
     haveProducts: true,
     haveGradeTiers: false,
@@ -797,7 +798,7 @@ function p5NoActionThatCannotHelp(): void {
    */
   const named = priceScreenText(
     priceListScreen({
-      role: "admin",
+      grants: grantsOf("admin"),
       products: [
         { id: "n-1", code: "CU-01", name: "ทองแดง", tiers: [{ grade: "G1", name: "เกรดหนึ่ง", price: "120.00" }] },
       ],

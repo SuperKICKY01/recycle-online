@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlalchemy import text  # noqa: E402
 
 from app.db import SYSTEM_ACTOR_ID, engine, tenant_connection  # noqa: E402
+from app.permissions import seed_system_roles  # noqa: E402
 from app.security import hash_password  # noqa: E402
 from app.seeddata import SEED  # noqa: E402
 
@@ -54,23 +55,29 @@ async def main() -> None:
                     ),
                     {"t": s["tenant_id"], "name": s["tenant_name"]},
                 )
+                # THE THREE SYSTEM ROLES (migration 0019), through the app's own
+                # seeder: idempotent on (tenant_id, code) and on each grant, so a
+                # re-run neither duplicates nor overwrites a grant edited since. A
+                # tenant that predates 0019 already got its rows from the
+                # migration's backfill, so this is a no-op there.
+                roles = await seed_system_roles(conn, s["tenant_id"])
                 for u, pw_hash in user_hashes:
                     await conn.execute(
                         text(
-                            "INSERT INTO users (tenant_id, username, full_name, role,"
-                            " password_hash) VALUES (:t, :u, :fn, :role, :ph)"
+                            "INSERT INTO users (tenant_id, username, full_name, role_id,"
+                            " password_hash) VALUES (:t, :u, :fn, :role_id, :ph)"
                             " ON CONFLICT (tenant_id, username)"
                             " DO UPDATE SET password_hash = EXCLUDED.password_hash,"
                             "               full_name = EXCLUDED.full_name,"
-                            # role is re-asserted on conflict on purpose. Without
+                            # role_id is re-asserted on conflict on purpose. Without
                             # it, re-running the seed would leave a role edited in
                             # the database in place while claiming to have seeded
-                            # a known fixture — and the role gate would then be
-                            # proven against whatever happened to be there.
-                            "               role = EXCLUDED.role"
+                            # a known fixture — and the gate would then be proven
+                            # against whatever happened to be there.
+                            "               role_id = EXCLUDED.role_id"
                         ),
                         {"t": s["tenant_id"], "u": u["username"], "fn": u["full_name"],
-                         "role": u["role"], "ph": pw_hash},
+                         "role_id": roles[u["role"]], "ph": pw_hash},
                     )
                 await conn.execute(
                     text(

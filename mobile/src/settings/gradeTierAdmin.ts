@@ -29,8 +29,8 @@
  * is false for the last active tier. The server remains the authority; this is a
  * usability guard in front of a hole, not a security boundary.
  */
-import { mayEditShopSettings } from "../session/deviceRole.js";
-import type { DeviceRole } from "../session/deviceRole.js";
+import { may } from "../session/deviceRole.js";
+import type { Grants } from "../session/deviceRole.js";
 
 /* ==========================================================================
  * 1. THE WIRE — what GET/POST/PATCH /grade-tiers send, and what we read
@@ -167,9 +167,12 @@ const READ_ONLY_NOTE = "ดูได้อย่างเดียว — กา
  */
 export function tierAdminScreen(
   tiers: readonly AdminGradeTier[],
-  role: DeviceRole,
+  grants: Grants,
 ): TierAdminScreen {
-  const editable = mayEditShopSettings(role);
+  // tiers.manage (server migration 0019) gates the three tier routes. Until
+  // 0019 this borrowed mayEditShopSettings — the drift deviceRole.ts predicted,
+  // now two permissions a shop may grant apart.
+  const editable = may(grants, "tiers.manage");
   const active = tiers.filter((t) => t.is_active);
   const inactive = tiers.filter((t) => !t.is_active);
   const activeCount = active.length;

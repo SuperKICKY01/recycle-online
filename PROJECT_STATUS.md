@@ -75,8 +75,138 @@ not read the green as re-run.**
 
 ## Current phase
 
-**BRANCHES — one shop, many yards, and every shop born with one it never sees. 2026-09-03.** No sha yet (this
-record precedes the commit; anchor next pass). Supersedes the products record below AS THE POINTER ONLY — that
+**THE PERMISSION MODEL — who may do what is a row a shop holds, and the gate reads the row. 2026-09-04.** No sha
+yet (this record precedes the commit; anchor next pass). Supersedes the branches record below AS THE POINTER ONLY —
+that work stands and is committed (`b420e80`). This is `STRUCTURE.md` section 3, unit 1 of its section 12, approved
+by the owner 2026-09-03 ("เอาหมด") and briefed with seven decisions of his on 2026-09-04, built as the SECOND unit
+after branches. `ROADMAP.md`'s D8 supersession is realised: the cashier is a role a shop creates, expressible today.
+**WHAT A SHOP CAN DO TODAY THAT IT COULD NOT YESTERDAY, IN PLAIN TERMS.** Nothing visible moved for any shop that
+exists — every owner, admin and staff account does exactly what it did — and that is the measurement, not the
+absence of one: the three system roles every shop is born with hold exactly what the two old tiers held. What
+changed underneath is that "admin" is no longer a word the code compares; it is a row in `roles` holding twelve
+grants, and every gate on the server names the ONE permission it needs. A shop can now hold a fourth role with any
+subset (the schema and the gates are ready; the SCREEN that creates it is owed), a new shop's first user is its
+OWNER, and a phone gates its controls on the permission set the server last gave it, offline.
+**THE TWO ANSWERS THE S0 STOP EXISTED FOR, MEASURED.** (2) A half-applied migration cannot exist: Alembic runs
+0019 in ONE transaction, every step ends in a read-back that raises, and the scratch was watched roll back to 0018
+TWICE — the first run refused at the users re-key (`audit_capture: no actor in context`), the second at the audit
+row (`new row violates row-level security policy for table "audit_log"`) — with `alembic_version` still `0018`,
+`users.role` still present, FORCE RLS still on, and 20 users still readable after each. What cannot be atomic is
+the code/schema pairing (old code on the new schema selects a column that is gone; new code on the old schema
+REFUSES TO START), so the deploy is stop, migrate, start. (3) A token minted before 0019 carries no `permissions`
+claim and is ACCEPTED: `prove_permissions.py` T2 mints one with the server's own secret and `/whoami` resolves the
+full set from the row; the migration never touches `token_version`, so no operator is signed out and a bill queued
+under an old token lands 201.
+**WHAT WAS BUILT.** Migration `0019_permissions.py`: `permissions` (13 codes, global, no RLS, SELECT-only to the app
+role, CHECKed to lower-case dotted words), `roles` (per tenant; code, name, is_system, is_active; `UNIQUE (tenant_id,
+id)`, `UNIQUE (tenant_id, code)`; a BEFORE UPDATE trigger `roles_system_guard` refuses changing a system role's code,
+its is_system, or deactivating it — the NAME stays the shop's; no DELETE grant), `role_permissions` (composite FK to
+roles, FK to the catalogue; INSERT/DELETE and no UPDATE — a grant is a row); three system roles per tenant with
+13/12/3 grants at birth; `staff_money_visible` FOLDED into the staff role's `money.view_own` wherever it was true
+(nowhere on dev) and DROPPED; `users.role_id NOT NULL` + `fk_users_role`, every user re-keyed value against value
+(the migration refuses on any user whose code or tenant would move) and `users.role` + `users_role_check` dropped;
+RLS+FORCE+policy on the two tenant tables; both audited; the migration DECLARES ITSELF the system writer
+(`system:migration_0019`, 11 audit rows on dev) and re-keys users PER TENANT under `SET LOCAL app.tenant_id`
+(lessons, amended). Downgrade REFUSES on any of four counts (a shop's own role; a renamed or deactivated system
+role; a user holding `owner`; a system role's grants differing from birth), proven on the scratch: pristine down
+0 → `users_role_check` restored, 5 admins/15 staff, toggle false ×6, 9 triggers → up 0 → a custom role and an owner
+staged → downgrade exit 1 naming `1, 0, 1, 0`. Server: `app/permissions.py` (the enumeration, the born-with grant
+sets, `seed_system_roles` for provisioning, `DEFERRED` naming the ten unminted codes, and `assert_catalogue`, run
+FIRST in `main.lifespan`); `auth.py` `require(permission)` — a dependency FACTORY taking an enum member — replacing
+`require_admin` at 29 sites, `Principal.permissions` from the users → roles → role_permissions join in the ONE
+statement `get_principal` already ran, the refusal `403 forbidden permission_required` with `required_permission`;
+FIVE any-principal routes gained a gate (`POST /bills` → `bills.create`, `GET /bills` and `GET /bills/{id}` →
+`bills.read`, `POST /sellers` and the reservation top-up → `sellers.create`) so the cashier is expressible — every
+system role holds them, nothing moved on the wire; the two inline reads became `has(money.view_shop) or
+has(money.view_own)` (seller history, G2 byte-identical) and the summary's three-way branch (shop scope / own scope /
+403 naming `money.view_own`); `POST /users` takes a role CODE (422 `role_unknown`) and holds THE ESCALATION GUARD
+(403 `role_exceeds_caller`, `over_reach` named); the last-active-admin lock generalised to holders of `users.manage`
+through an active role, `FOR NO KEY UPDATE OF u`; login and `/whoami` carry `permissions`; `provision_shop.py`
+seats the first user as OWNER; `seed_dev.py` seeds the roles; `reconcile.py` — `roles`/`role_permissions` in
+TENANT_TABLES, SCOPE and AUDITED_TABLES, `permissions` in a new GLOBAL_TABLES beside the watermark, T10 two new arms,
+X1 the user→role pair, NEW S7 (every tenant keeps an active holder of `users.manage` through an active role).
+Phone: `cached_permissions(user_id, permission)` STRICT, `SqlitePermissionStore` (absent is null, an EMPTY set is a
+sentinel row, keyed on the user — decision 7), `may(grants, permission)` replacing the five predicates AND the three
+same-shape inline reads the design's pin missed, `readTokenPermissions` off the claim, the cache written at sign-in
+from the claim and rewritten from every `/whoami` — including a NEW `/whoami` at boot when online, which costs an
+offline phone nothing (one unanswered fetch, state untouched); the dashboard entry, the daily fetch, the price,
+product, user, settings and tier screens all gate on the set; `permission_required` worded beside `admin_required`,
+which stays as a LEGACY key because `void_refused_code` is persisted on rows refused before this deploy.
+**DESIGN DECISIONS (the owner's, 2026-09-04, each recorded with its reason where it is applied).** The first
+provisioned user is `owner`, existing shops' owner seat stays EMPTY until the role screen; 13 codes not 23, the ten
+deferred by name; the five new gates; one refusal code with the two legacy keys kept; the LG debris pair removed
+from dev (no bills, counts printed first) and `prove_login_guard.py`'s OTHER user made an admin so S7 cannot red on
+its leftovers; the escalation guard; the cache keyed on the user. Two departures from `STRUCTURE.md` section 3.1's
+text beyond those: `roles` carries NO `payment_limit_*` columns (nothing reads them; unit 3), and `roles.manage` is
+the one minted code with no route yet, said so at its line. Everything owed is at `OPEN_ITEMS.md § Decisions open —
+the owner's, not the code's` (the role-management screen) and `§ Code debt found and left in place` (PERMISSIONS).
+**A CORRECTION TO THE DESIGN'S OWN CLAIM, recorded in `STRUCTURE.md` section 12:** "every existing proof green twice
+unchanged in its assertions except the `staff_money_visible` cells" was FALSE — section 12's own disproof forbids
+any route answering `admin_required`, so the 12 server sites asserting it (`prove_master_write.py:315` a 9-route
+loop) and the 2 `actual_role` cells moved to `permission_required` naming the permission, and on the phone the five
+predicate cells and every builder call that handed a role LABEL now hand a permission SET (`src/proof/proofGrants.ts`)
+with the assertion text unchanged. The `staff_money_visible` cells, by name: `prove_reports_summary.py` 3 (the code
+cell, the PATCH → a SQL grant, E0), `prove_seller_history.py` 2 (grant, revoke-and-re-read), `prove_shop_settings.py`
+2 (E0, the exact key set) + 1 new (E8 names `shop.settings.write`), `proveDashboard.ts` 7 → 7 (five E2 gate cells
+re-keyed on the set, two reader cells became two `seesShopMoney` cells) + 1 (`permission_required` renders the same
+owner message), `proveBranch.ts:344` one fixture key. Six SQL-minting proofs conscripted to seed the roles
+(`prove_user_admin`, `prove_grade_tiers`, `prove_login_guard`, `prove_reports_summary`, `prove_seller_history`,
+`prove_rls`); `prove_docno_clock`'s in-process Principal gained its set; `prove_branches` B1 now reads "at or past
+0018" (exactly "0018" expired the day a later migration existed); `prove_seller_code_guards` grew a SCRATCH-ONLY
+`users.role` column for its OLD-COMMIT server, which selects a column 0019 dropped — the lesson's old-server case
+that no GUC can shim, measured red first.
+**READINGS (each command bare, exit read in the same invocation; cp874 box, UTF-8 stdout pinned).** Both mobile
+typechecks GREEN before and after (0/0, 0/0). Scratch (`recycle_perm_scratch`, restored from the pre-0019 dump
+`recycle_20260904T111314Z_pre-0019`): the two refused runs above, then `alembic upgrade head` EXIT=0; read-back:
+`0019`, 13 catalogue rows, 6 tenants × 3 roles at 13/12/3, user distribution identical to before (value against
+value, the migration's own check), `users.role` gone, `role_id NOT NULL`, `staff_money_visible` gone, 12 triggers
+(11 `audit_capture` + the guard), RLS+FORCE on `roles`/`role_permissions` and none on `permissions`, grants exactly
+as designed, 20 audit rows by `system:migration_0019`; the guard trials (code rename REFUSED, deactivation REFUSED,
+name rename ALLOWED with the Thai read back as hex); the down/up/refuse cycle above. THE BOOT REFUSAL, measured, not
+assumed: one extra catalogue row → uvicorn EXIT **3**, `Application startup failed. Exiting.`, the message naming
+`['extra.row']` as in-the-table-but-not-in-code; a 0018 database (no table) → EXIT **3** naming migration 0019 and
+`alembic upgrade head`; the clean catalogue → `/health` 200 on dev and on every proof child. Dev: `alembic upgrade
+head` EXIT=0, `alembic current` `0019 (head)`, read-back as the scratch (4 tenants after the debris removal, 11 users,
+11 audit rows), a live smoke on the running server (token claims carry `permissions`, `/whoami` carries it, staff
+`GET /users` 403 `permission_required` naming `users.manage`, `GET /reports/daily` naming `money.view_shop`,
+`GET /shop` without the toggle, `PATCH /shop {staff_money_visible}` 422, staff `GET /bills` 200). NEW
+`server/scripts/prove_permissions.py` (scratch-only, self-restoring) GREEN TWICE, 116 passes 0 failures: F fifteen
+fixture roles sign in and `/whoami` EQUALS each role's set (the hand-written catalogue as the control); T1 the claim
+equals the set; T2 the claimless token resolves; M the 34-site matrix, all-but-one refused naming the permission and
+the full principal succeeding at every site, with the control that 34 refusals were read and NONE answered
+`admin_required`; S the two inline gates (neither → 403 naming `money.view_own`; own-only → exactly its own row;
+shop → its row and others; history money keys absent/present/present); G the escalation guard (an admin's set
+POST /users role=owner → 403 `role_exceeds_caller` `over_reach == ['roles.manage']`, roster unchanged; an owner's set
+→ 201; nonsense → 422 `role_unknown`); R reconcile on the scratch exit 0 with S7. NEW mobile `prove:permissions`
+GREEN TWICE, 36 cells: the claim reader (absent is null, empty is empty), `may()` (absent offers, present is exact,
+empty hides), the cache keyed on the user with the sentinel, the legacy wording keys, `/whoami` parsing — and its
+first run was RED: the sentinel literal had been written with a NUL byte inside it, so SQLite stored `''`; found by
+the cell, confirmed by `od`, fixed byte-wise, and a NUL sweep over all 62 changed files (with a known-NUL control)
+read zero. Every other server proof GREEN TWICE: the self-restoring eight (`user_admin` with the generalised
+barrier, `login_guard`, `grade_tiers`, `reports_summary`, `seller_history`, `version_gate`, `seller_code_guards`
+after the shim), the dev-targeting thirteen against a uvicorn started from this code on 8099 (`bills`,
+`master_data_gate`, `seller_pricing`, `shop_time`, `daily_report`, `master_write` after its restore read-back moved
+to the join, `audit`, `auth`, `master`, `revocation`, `rls`, `shop_settings`, `backup_restore`), the scratch-bound
+seven (`seller_create`, `seller_code_reservations`, `user_create`, `docno_clock`, `shop_code`, and `year_gate` +
+`clock_guard` against a server bound to the scratch with a 2-second tick — their first sweep runs were my
+invocation, a dev-bound server, not the change), `reconcile --from` the post-0019 dump, and `prove_branches --from`
+a CLEAN pre-0018 dump (the LG debris removed on a restored copy at 0017 and re-dumped, because the reconciler's new
+S7 correctly reds a 0017 fixture that carries a manager-less tenant) — 25 cells, the migration path 0017 → 0018 →
+0019 on real data. Every mobile headless proof GREEN TWICE (the whole `prove:*` list bar `loginscreen`, which needs
+the directory scratch fixture, as every prior record says), `forbidden`/`products`/`users` against a uvicorn bound
+to the 0019 scratch on 8000. `reconcile.py` on dev EXIT=0 — 88 checks, `19 per tenant x 4`, S7 OK `[4 tenants]`, X2
+`roles=12 role_permissions=112`; on the restored post-0019 copy EXIT=0, 88 checks, S7 OK. `build_all_lessons.py`
+`--check` red → `--write` → `--check` 0; `verify_shared_checks.py` 0; `verify_citations.ps1` bare over the canonical
+list `SOURCES=15 CITATIONS=666 BROKEN=6` — a clean worktree at `b420e80` reads `664 / 6` with the same six
+handles (`ROADMAP.md` STAGE 1 and STAGE 3, `RED_TEAM.md`, `CLAUDE.md` Workflow, and the two `PROJECT_STATUS.md`
+"Known" handles), so this unit wrote two citations, both resolve, and it broke none.
+**NOT OBSERVED.** No handset ran this bundle: the phone half is headless-proven only; a real device's cold start
+offline reading `cached_permissions`, a sign-in writing it, and a staff phone with the void button hidden by a READ
+set rather than a role name are owed to the next device pass. No production row exists. The migration ran over dev's
+four tenants and the scratch's six only.
+
+**BRANCHES — one shop, many yards, and every shop born with one it never sees. 2026-09-03.** Committed at
+`b420e80` (anchored 2026-09-04; the record said "no sha yet"). Supersedes the products record below AS THE POINTER ONLY — that
 work stands and is committed (`b25d7b0`). This is `STRUCTURE.md` section 9, the owner's decision of 2026-09-03,
 built as the FIRST unit of the structural design: the advisor re-sequenced it ahead of the permission model
 (section 12 numbers them the other way; the design file carries the dated line), because branches re-key the
@@ -2542,6 +2672,12 @@ CLAUDE.md, where it used to live as "MVP scope"):
 sell flow, stock, other income/expense, checkbox permissions,
 employee master, buyers, profile images, QR codes, scale
 integration, Excel export, reports.
+
+**Superseded 2026-09-04 for "checkbox permissions":** the owner approved the
+structural design on 2026-09-03 ("เอาหมด"), and its section 3 is exactly a
+per-action permission model, built as migration 0019 (`§ Current phase`). The
+word stays in the list above because the list is quoted verbatim from its
+source; the permission model is IN the product now. The rest of the list stands.
 
 **In the product, not yet started**: the entire `desktop/` back
 office — master-data editing, bill viewing, ESC/POS thermal slips

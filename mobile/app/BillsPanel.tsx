@@ -25,7 +25,7 @@ import {
 } from "react-native";
 
 import { pricingProvenanceLine } from "../src/master/freshness";
-import type { DeviceRole } from "../src/session/deviceRole";
+import type { Grants } from "../src/session/deviceRole";
 import {
   billNotice,
   canRequestVoid,
@@ -167,13 +167,15 @@ interface Props {
    */
   account: AccountState;
   /**
-   * The role this device is signed in as, or null when it cannot be read.
+   * The permission set this device is signed in with, or null when it cannot be
+   * read (server migration 0019; the token's role claim until then).
    *
    * Courtesy only — it decides whether the void button is OFFERED and nothing
-   * else. The server re-reads the role on every request and refuses regardless,
-   * which is what makes it safe for this to be a stale claim out of a token.
+   * else. The server re-reads the grants on every request and refuses
+   * regardless, which is what makes it safe for this to be a stale claim out of
+   * a token or a cache.
    */
-  role: DeviceRole;
+  grants: Grants;
   /**
    * The bill currently jamming the send queue (stuck at the head past the alarm
    * threshold), or null. It is called out here so the operator can find the one
@@ -189,7 +191,7 @@ export function BillsPanel({
   busy,
   session,
   account,
-  role,
+  grants,
   blockerId,
   onClose,
   onVoid,
@@ -263,7 +265,7 @@ export function BillsPanel({
           const notice = billNotice(b, session, account);
           const parked = notice.tone === "parked";
           const voidLine = voidProgressLine(b);
-          const roleNote = voidRoleNote(b, role);
+          const roleNote = voidRoleNote(b, grants);
           return (
             <View
               key={b.id}
@@ -382,7 +384,7 @@ export function BillsPanel({
                 <NoticeBox tone={notice.tone} lines={notice.lines} />
               ) : null}
 
-              {canRequestVoid(b, role) && voidingId !== b.id ? (
+              {canRequestVoid(b, grants) && voidingId !== b.id ? (
                 <Touchable
                   style={styles.voidBtn}
                   onPress={() => startVoid(b.id)}

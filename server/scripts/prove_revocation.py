@@ -453,8 +453,10 @@ def main() -> int:  # noqa: C901
         check(r.status_code == 403, "case6: a STAFF caller is refused with 403")
         check(detail_of(r).get("kind") == "forbidden",
               "case6: the staff refusal carries kind=forbidden")
-        check(detail_of(r).get("code") == "admin_required",
-              "case6: the staff refusal carries code=admin_required")
+        check(detail_of(r).get("code") == "permission_required",
+              "case6: the staff refusal carries code=permission_required")
+        check(detail_of(r).get("required_permission") == "users.manage",
+              "case6: and names users.manage as the permission the route needs")
 
         # A REAL user id, in another tenant. RLS makes the row invisible, so the
         # UPDATE matches nothing — there is no WHERE tenant_id anywhere in the
@@ -533,8 +535,10 @@ def main() -> int:  # noqa: C901
               "case6b: a STAFF caller is refused the roster with 403")
         check(detail_of(r_staff_roster).get("kind") == "forbidden",
               "case6b: the staff roster refusal carries kind=forbidden")
-        check(detail_of(r_staff_roster).get("code") == "admin_required",
-              "case6b: the staff roster refusal carries code=admin_required")
+        check(detail_of(r_staff_roster).get("code") == "permission_required",
+              "case6b: the staff roster refusal carries code=permission_required")
+        check(detail_of(r_staff_roster).get("required_permission") == "users.manage",
+              "case6b: and names users.manage")
 
         # THE TENANT CONTROL, and its peer is the sharpest one available for the
         # same reason CASE 7's login control is: tenant B holds a user with the

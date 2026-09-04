@@ -357,9 +357,13 @@ def main() -> int:
 
     banner("B1  alembic upgrade head on the copy")
     rc = run_alembic(args.database, "upgrade", "head")
+    # AT OR PAST 0018, not exactly 0018: `upgrade head` lands wherever the tree's
+    # head is (0019 the day the permission model landed), and every cell below
+    # reads the BRANCH schema, which no later migration has touched. Exactly
+    # "0018" was a cell that expired the day a later migration existed.
     after_version = db.fetchval("SELECT version_num FROM alembic_version")
-    check(rc == 0 and after_version == "0018", "B1: the migration applied",
-          f"alembic exit={rc} version={after_version}")
+    check(rc == 0 and str(after_version) >= "0018", "B1: the migration applied",
+          f"alembic exit={rc} version={after_version} (head is at or past 0018)")
     if rc != 0:
         return 1
 

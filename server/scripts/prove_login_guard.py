@@ -172,16 +172,22 @@ class Ctx:
 async def provision(ctx: Ctx) -> None:
     from sqlalchemy import text
     from app.db import SYSTEM_ACTOR_ID, tenant_connection
+    from app.permissions import seed_system_roles
     from app.security import hash_password
     ACTOR = dict(actor_id=SYSTEM_ACTOR_ID, actor_username="system:prove_login_guard")
+
+    # role -> roles.id for the tenant currently being seeded (0019: users.role_id
+    # is NOT NULL with a composite FK to roles, so the tenant's three system
+    # roles are provisioned first, exactly as provision_shop.py provisions them).
+    roles: dict[str, object] = {}
 
     async def mkuser(conn, uid, username, role, password):
         ph = await hash_password(password)
         await conn.execute(
-            text("INSERT INTO users (id, tenant_id, username, full_name, role,"
+            text("INSERT INTO users (id, tenant_id, username, full_name, role_id,"
                  " password_hash) VALUES (:id, :t, :u, :fn, :r, :ph)"),
             {"id": uid, "t": conn_tenant[0], "u": username,
-             "fn": username, "r": role, "ph": ph})
+             "fn": username, "r": roles[role], "ph": ph})
 
     conn_tenant = [None]
     async with tenant_connection(ctx.main, **ACTOR) as conn:
@@ -196,6 +202,7 @@ async def provision(ctx: Ctx) -> None:
             text("INSERT INTO branches (tenant_id, code, name, doc_prefix, is_active)"
                  " VALUES (:t, 'MAIN', :n, 'B', true)"),
             {"t": ctx.main, "n": f"LG MAIN {RUN}"})
+        roles = await seed_system_roles(conn, ctx.main)
         await mkuser(conn, ctx.ids["admin"], U["admin"], "admin", PW["admin"])
         for k in ("allow", "lock", "expire", "adminlock", "bystander", "nopw", "collide"):
             await mkuser(conn, ctx.ids[k], U[k], "staff", PW[k])
@@ -208,7 +215,15 @@ async def provision(ctx: Ctx) -> None:
             text("INSERT INTO branches (tenant_id, code, name, doc_prefix, is_active)"
                  " VALUES (:t, 'MAIN', :n, 'B', true)"),
             {"t": ctx.other, "n": f"LG OTHER {RUN}"})
-        await mkuser(conn, ctx.collide_other_id, U["collide"], "staff",
+        roles = await seed_system_roles(conn, ctx.other)
+        # ADMIN, not staff, since 0019 (the owner's decision 5, 2026-09-04): the
+        # OTHER tenant exists only to hold the colliding username, and the
+        # lockout cells never read its role -- but reconcile.py's S7 requires
+        # every tenant to keep an active holder of users.manage, and a tenant
+        # this proof leaves behind with a lone staff user would red S7 on every
+        # database it ever ran against. A checker that is red on dev from day
+        # one gets ignored, and an ignored checker is worse than none.
+        await mkuser(conn, ctx.collide_other_id, U["collide"], "admin",
                      PW_COLLIDE_OTHER)
 
 

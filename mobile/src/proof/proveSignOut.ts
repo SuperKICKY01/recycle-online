@@ -285,7 +285,7 @@ async function s2SignedOut(): Promise<void> {
     };
   applyClearedSession({
     token: spy("token") as (v: null) => void,
-    role: spy("role") as (v: null) => void,
+    grants: spy("grants") as (v: null) => void,
     sessionEnded: spy("sessionEnded") as (v: false) => void,
     submitRefused: spy("submitRefused") as (v: false) => void,
     online: spy("online") as (v: null) => void,
@@ -338,9 +338,10 @@ async function s2SignedOut(): Promise<void> {
    */
   const EXPECTED: Omit<ClearedSession, "token" | "online"> = {
     // "a forgotten value here is the previous user's ROLE ... still on screen
-    // under the next user's session" (signOut.ts:107), and null is the
-    // no-readable-role value (session/deviceRole.ts:129). Type: `role: null`.
-    role: null,
+    // under the next user's session" (signOut.ts:107) -- the PERMISSION SET since
+    // server migration 0019, and null is the unknown set that fails open with no
+    // token to request anything (session/deviceRole.ts). Type: `grants: null`.
+    grants: null,
     // PROSE: "signed_out, NEVER expired ... leaving sessionEnded true would be
     // harmless today and would become a contradiction the moment that
     // expression is reordered" (signOut.ts:177-182).

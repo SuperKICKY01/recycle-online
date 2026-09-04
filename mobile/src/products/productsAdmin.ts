@@ -38,8 +38,8 @@
  * (server/app/bills.py — the product join has no is_active predicate), so nothing
  * this screen does can make a product vanish from money already recorded.
  */
-import { mayManageProducts } from "../session/deviceRole.js";
-import type { DeviceRole } from "../session/deviceRole.js";
+import { may } from "../session/deviceRole.js";
+import type { Grants } from "../session/deviceRole.js";
 
 /* ==========================================================================
  * 1. THE WIRE — what GET/POST/PATCH send, and what we read back
@@ -363,8 +363,7 @@ export interface EntityListModel {
   nameMaxLength: number;
 }
 
-export function entityListModel(entities: readonly AdminEntity[], role: DeviceRole): EntityListModel {
-  const editable = mayManageProducts(role);
+export function entityListModel(entities: readonly AdminEntity[], editable: boolean): EntityListModel {
   const toRow = (e: AdminEntity): EntityRow => ({
     id: e.id,
     code: e.code,
@@ -604,7 +603,7 @@ export function productsScreenState(
   productsFetch: ProductFetch,
   categoriesFetch: ProductFetch,
   unitsFetch: ProductFetch,
-  role: DeviceRole,
+  grants: Grants,
 ): ProductsScreenState {
   const products = productsFetch.kind === "ok" ? readProducts(productsFetch.body) : null;
   const categories =
@@ -622,5 +621,6 @@ export function productsScreenState(
   if (products === null || categories === null || units === null) {
     return { kind: "message", message: SERVER_MESSAGE };
   }
-  return { kind: "ready", editable: mayManageProducts(role), products, categories, units };
+  // master.write (server migration 0019) gates every product/category/unit write.
+  return { kind: "ready", editable: may(grants, "master.write"), products, categories, units };
 }

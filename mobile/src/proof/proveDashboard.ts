@@ -62,9 +62,16 @@ import { unsentLine } from "../dashboard/unsentLine.js";
 import {
   dashboardScreen,
   mayShowDashboardEntry,
-  readMoneyVisible,
+  seesShopMoney,
 } from "../dashboard/dashboardView.js";
-import type { DeviceRole } from "../session/deviceRole.js";
+import type { Grants } from "../session/deviceRole.js";
+import {
+  ADMIN_GRANTS,
+  EMPTY_GRANTS,
+  STAFF_GRANTS,
+  STAFF_MONEY_GRANTS,
+  UNKNOWN_GRANTS,
+} from "./proofGrants.js";
 
 let failures = 0;
 
@@ -93,10 +100,18 @@ if (BREAK !== "" && !BREAK_MODES.includes(BREAK)) {
 
 /* ------------------------------------------------------------ the wrappers -- */
 
-/** The header entry gate, or the damaged one that draws it for staff+OFF (E2). */
-function entryGate(role: DeviceRole, moneyVisible: boolean | null): boolean {
-  if (BREAK === "staff_entry_off" && role === "staff" && moneyVisible === false) return true;
-  return mayShowDashboardEntry(role, moneyVisible);
+/** The header entry gate, or the damaged one that draws it for a set holding
+ *  neither money permission (E2; "staff + toggle OFF" before server migration 0019). */
+function entryGate(grants: Grants): boolean {
+  if (
+    BREAK === "staff_entry_off" &&
+    grants !== null &&
+    !grants.has("money.view_shop") &&
+    !grants.has("money.view_own")
+  ) {
+    return true;
+  }
+  return mayShowDashboardEntry(grants);
 }
 
 /** The displayed total, or the damaged one that folds the unsent amount in (E4). */
@@ -441,33 +456,37 @@ function pDashboard(): void {
   const week = selectPreset("week", new Date("2026-08-20T05:00:00Z"));
 
   // E1 — the title NAMES whose money it is.
-  const adminModel = dashboardScreen({ role: "admin", selection: today, summary: okSummary, unsent: null });
-  const staffModel = dashboardScreen({ role: "staff", selection: today, summary: okSummary, unsent: null });
+  const adminModel = dashboardScreen({ grants: ADMIN_GRANTS, selection: today, summary: okSummary, unsent: null });
+  const staffModel = dashboardScreen({ grants: STAFF_MONEY_GRANTS, selection: today, summary: okSummary, unsent: null });
   check("admin -> title ยอดร้าน, whoseMoney shop", adminModel.kind === "dashboard" && adminModel.title === "ยอดร้าน" && adminModel.whoseMoney === "shop");
   check("staff -> title ยอดของฉัน, whoseMoney own", staffModel.kind === "dashboard" && staffModel.title === "ยอดของฉัน" && staffModel.whoseMoney === "own");
 
   // The bill list: admin+today shows it; staff+today gets the unavailable sentence; week hides it.
   if (adminModel.kind === "dashboard") check("admin today -> bill list shown", adminModel.billList.kind === "show");
   if (staffModel.kind === "dashboard") check("staff today -> bill list is a sentence, not other people's bills", staffModel.billList.kind === "staff_unavailable" && staffModel.billList.note.includes("พนักงาน"));
-  const adminWeek = dashboardScreen({ role: "admin", selection: week, summary: okSummary, unsent: null });
+  const adminWeek = dashboardScreen({ grants: ADMIN_GRANTS, selection: week, summary: okSummary, unsent: null });
   if (adminWeek.kind === "dashboard") check("a non-today period hides the bill list", adminWeek.billList.kind === "hidden");
 
   // Offline / refused summary -> the whole dashboard is one calm message.
-  const offline = dashboardScreen({ role: "admin", selection: today, summary: summaryScreen({ kind: "unreachable" }), unsent: null });
+  const offline = dashboardScreen({ grants: ADMIN_GRANTS, selection: today, summary: summaryScreen({ kind: "unreachable" }), unsent: null });
   check("offline -> the dashboard is the calm offline message, no chart, no fields", offline.kind === "message" && offline.tone === "offline");
-  const staffHidden = dashboardScreen({ role: "staff", selection: today, summary: summaryScreen({ kind: "http", status: 403, code: STAFF_MONEY_HIDDEN }), unsent: null });
+  const staffHidden = dashboardScreen({ grants: STAFF_GRANTS, selection: today, summary: summaryScreen({ kind: "http", status: 403, code: STAFF_MONEY_HIDDEN }), unsent: null });
   check("a 403 staff_money_hidden -> a calm message naming the owner, no red", staffHidden.kind === "message" && staffHidden.tone === "forbidden" && staffHidden.lines[0]?.includes("เจ้าของร้าน") === true && staffHidden.action === null);
+  const permHidden = dashboardScreen({ grants: STAFF_GRANTS, selection: today, summary: summaryScreen({ kind: "http", status: 403, code: "permission_required" }), unsent: null });
+  check("a 403 permission_required (the 0019 code) -> the SAME calm message naming the owner", permHidden.kind === "message" && permHidden.tone === "forbidden" && permHidden.lines[0]?.includes("เจ้าของร้าน") === true && permHidden.action === null);
 
-  // E2 — the entry gate (staff_entry_off reddens the staff-off cell only).
-  check("admin: entry drawn regardless of the toggle", entryGate("admin", false) && entryGate("admin", true));
-  check("unknown role: entry drawn (fails open)", entryGate(null, false) && entryGate(null, null));
-  check("staff + toggle ON: entry drawn", entryGate("staff", true));
-  check("staff + toggle OFF: entry NOT drawn (E2)", entryGate("staff", false) === false);
-  check("staff + toggle unknown (offline): entry NOT drawn — treated as OFF", entryGate("staff", null) === false);
+  // E2 — the entry gate over the PERMISSION SET (server migration 0019; the shop's
+  // staff_money_visible toggle until then). staff_entry_off reddens the
+  // neither-permission cells only.
+  check("admin: entry drawn (holds both money permissions)", entryGate(ADMIN_GRANTS));
+  check("unknown set: entry drawn (fails open)", entryGate(UNKNOWN_GRANTS));
+  check("staff + money.view_own (the former toggle ON): entry drawn", entryGate(STAFF_MONEY_GRANTS));
+  check("staff without money.view_own (the former toggle OFF): entry NOT drawn (E2)", entryGate(STAFF_GRANTS) === false);
+  check("an EMPTY set that was READ (a role stripped of everything): entry NOT drawn — read, not absent", entryGate(EMPTY_GRANTS) === false);
 
-  // The toggle reader: a boolean is read, anything else is unknown (null).
-  check("readMoneyVisible reads a boolean off /shop", readMoneyVisible({ staff_money_visible: true }) === true && readMoneyVisible({ staff_money_visible: false }) === false);
-  check("readMoneyVisible is null when the field is absent or not a boolean", readMoneyVisible({}) === null && readMoneyVisible({ staff_money_visible: "yes" }) === null && readMoneyVisible(null) === null);
+  // Whose money: money.view_shop is the shop's; own-only is own; unknown fails open to shop.
+  check("seesShopMoney: money.view_shop -> shop; money.view_own only -> own", seesShopMoney(ADMIN_GRANTS) && !seesShopMoney(STAFF_MONEY_GRANTS));
+  check("seesShopMoney: an unknown set fails open to the shop view; an empty set does not", seesShopMoney(UNKNOWN_GRANTS) && !seesShopMoney(EMPTY_GRANTS));
 }
 
 /* ------------------------------------------------------------------- main -- */

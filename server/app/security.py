@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import uuid
+from collections.abc import Sequence
 
 import jwt
 from argon2 import PasswordHasher
@@ -50,6 +51,7 @@ def create_access_token(
     tenant_id: uuid.UUID,
     username: str,
     role: str,
+    permissions: Sequence[str],
     token_version: int,
 ) -> str:
     """Sign a token. Identity is keyed on the STABLE ids (user_id, tenant_id);
@@ -60,6 +62,12 @@ def create_access_token(
     NOT what the server authorises on — get_principal re-reads the role from the
     database under tenant context on every request, so a token minted before a
     demotion cannot outlive it. See the note there.
+
+    `permissions` (migration 0019) is the SAME kind of claim: the grant set the
+    role held at sign-in, sorted, so the phone can gate its controls offline on a
+    cold start before any /whoami. The server NEVER reads it back
+    (auth.get_principal says so at the site); a token minted before 0019 has no
+    such claim and is still accepted, so the deploy signs nobody out.
 
     `token_version` is NOT advisory, and it is the one claim here the server
     compares against the database rather than merely carrying: a mismatch is a
@@ -76,6 +84,7 @@ def create_access_token(
         "tenant_id": str(tenant_id),
         "username": username,
         "role": role,
+        "permissions": sorted(permissions),
         "token_version": token_version,
         "iat": int(now.timestamp()),
         "exp": int((now + dt.timedelta(seconds=JWT_TTL_SECONDS)).timestamp()),

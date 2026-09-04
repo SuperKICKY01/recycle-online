@@ -49,7 +49,7 @@
  * work is owed it is kept and will send after sign-in.
  */
 import { roleLabelOf } from "./roleLabel.js";
-import type { DeviceRole } from "../session/deviceRole.js";
+import type { DeviceRole, Grants } from "../session/deviceRole.js";
 
 /* ==========================================================================
  * 1. THE WIRE
@@ -59,6 +59,12 @@ import type { DeviceRole } from "../session/deviceRole.js";
 export interface WhoAmI {
   username: string;
   role: DeviceRole;
+  /**
+   * The permission set the SERVER resolved for this request (server migration
+   * 0019), or null when the answer carries none this build can read (a pre-0019
+   * server). App rewrites `cached_permissions` and its gates from it.
+   */
+  permissions: Grants;
 }
 
 export type PasswordFetch =
@@ -82,8 +88,17 @@ export function readWhoAmI(raw: unknown): WhoAmI | null {
   const username = readStr(raw["username"]);
   if (username === null) return null;
   const roleRaw = raw["role"];
-  const role: DeviceRole = roleRaw === "admin" ? "admin" : roleRaw === "staff" ? "staff" : null;
-  return { username, role };
+  const role: DeviceRole =
+    roleRaw === "owner" ? "owner" : roleRaw === "admin" ? "admin" : roleRaw === "staff" ? "staff" : null;
+  // The set, exactly as the server serialised it: an array of strings. Absent or
+  // any other shape is null (unknown), which the gates treat as fail-open; an
+  // EMPTY array is a real, empty set and is kept as one.
+  const permsRaw = raw["permissions"];
+  const permissions: Grants =
+    Array.isArray(permsRaw) && permsRaw.every((p) => typeof p === "string")
+      ? new Set(permsRaw as string[])
+      : null;
+  return { username, role, permissions };
 }
 
 /* ==========================================================================

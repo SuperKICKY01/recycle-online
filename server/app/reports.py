@@ -194,7 +194,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from .auth import ADMIN_ROLE, Principal, forbidden, get_principal, require_admin
+from .auth import Principal, get_principal, permission_required, require
+from .permissions import Permission
 from .bills import _be_year
 from .config import SHOP_TIMEZONE, SHOP_TIMEZONE_NAME
 from .db import tenant_connection
@@ -432,8 +433,9 @@ async def daily_report(
     ),
     limit: int = Query(_DEFAULT_LINE_LIMIT, ge=1, le=_MAX_LINE_LIMIT),
     offset: int = Query(0, ge=0),
-    # ADMIN ONLY — see section 4 of the module docstring.
-    principal: Principal = Depends(require_admin),
+    # money.view_shop (0019; was require_admin) — see section 4 of the module
+    # docstring. The shop's day belongs to whoever the shop lets see its money.
+    principal: Principal = Depends(require(Permission.MONEY_VIEW_SHOP)),
 ) -> dict:
     async with tenant_connection(
         principal.tenant_id, isolation_level="REPEATABLE READ"
@@ -646,6 +648,12 @@ async def daily_report(
 #     bills THEY created (created_by = self), never a shop-wide figure — this is
 #     the ADVISOR'S READING of "when ON", pending the owner's word, and it is
 #     built to here. Admin sees any scope regardless of the toggle.
+#     SUPERSEDED 2026-09-04 (migration 0019): the toggle is gone, folded into the
+#     staff role's grants as `money.view_own`. The three outcomes stand and are
+#     keyed on the caller's permissions: `money.view_shop` sees any scope,
+#     `money.view_own` sees own rows only, neither is 403 `permission_required`
+#     naming money.view_own. The staff role is born WITHOUT it, so a new shop
+#     starts exactly where 0014's DEFAULT false put it.
 #
 #   * D2 — VOIDS ARE A STATE, NOT A FOURTH AXIS. `state` in {live, void, all}
 #     crosses every dimension; a voided bill is not a dimension of its own. And
@@ -893,8 +901,10 @@ async def summary_report(
             " state."
         ),
     ),
-    # get_principal, NOT require_admin: staff are admitted, then gated on the
-    # per-shop money-visibility toggle inside the handler (D1).
+    # get_principal, NOT a route gate: any signed-in caller is admitted, then
+    # gated INSIDE the handler on which of two permissions they hold (0019) --
+    # money.view_shop for any scope, money.view_own for their own rows, neither
+    # for a 403 naming money.view_own.
     principal: Principal = Depends(get_principal),
 ) -> dict:
     """Aggregate purchase bills over a period, broken down by one dimension.
@@ -907,10 +917,12 @@ async def summary_report(
     reads this difference as the override signal (D2) — the reading is the reader's.
     totals carries the same fields with `key`/`label` null.
 
-    Admin sees any scope. A staff caller is refused 403 (`staff_money_hidden`)
-    while the shop's `staff_money_visible` is off; when the owner turns it on, a
-    staff caller sees ONLY their own bills (created_by = self), regardless of
-    `by`. Aggregates on `server_received_at` in shop time; voids are a `state`.
+    A caller holding `money.view_shop` sees any scope. One holding only
+    `money.view_own` sees ONLY their own bills (created_by = self), regardless of
+    `by`. One holding neither is refused 403 `permission_required` naming
+    `money.view_own` (0019; this was the `staff_money_hidden` refusal keyed on
+    tenants.staff_money_visible, which 0019 folded into the staff role's grants).
+    Aggregates on `server_received_at` in shop time; voids are a `state`.
     """
     # ---- validate the range (lessons/edge-must-reject-what-the-column-rounds):
     # a bad range is a terminal, field-named 422, never a 500 the client reads as
@@ -948,34 +960,27 @@ async def summary_report(
     where = "b.server_received_at >= :start AND b.server_received_at < :end"
     where += _STATE_PREDICATES[state]
 
+    # THE MONEY GATE, on the permission set the principal carries (0019). No row
+    # is read for it: the grants were resolved from the users -> roles ->
+    # role_permissions join in get_principal, for THIS request.
+    if not principal.has(Permission.MONEY_VIEW_SHOP):
+        if not principal.has(Permission.MONEY_VIEW_OWN):
+            # 403, pinned to detail.code and naming the permission — not 422
+            # (the request is fine), not 424 (no master data is missing), not 5xx
+            # (retrying changes nothing). Only a human granting money.view_own
+            # or money.view_shop to this caller's role clears it.
+            raise permission_required(Permission.MONEY_VIEW_OWN)
+        # money.view_own only: FORCED to the caller's OWN bills, regardless of
+        # `by`. Such a caller never sees a shop-wide figure; by=user then
+        # returns exactly one row — themselves. This is the ONE hand-written
+        # predicate here, and it is the feature (E1), not tenant isolation
+        # (that is RLS).
+        where += " AND b.created_by = :self_user_id"
+        params["self_user_id"] = principal.user_id
+
     async with tenant_connection(
         principal.tenant_id, isolation_level="REPEATABLE READ"
     ) as conn:
-        # The per-shop switch, read INSIDE the snapshot. RLS scopes it to this
-        # shop's single row.
-        money_visible = (
-            await conn.execute(text("SELECT staff_money_visible FROM tenants"))
-        ).scalar_one()
-
-        if principal.role != ADMIN_ROLE:
-            if not money_visible:
-                # 403, pinned to detail.code, and it NAMES that the shop owner
-                # decides this — not 422 (the request is fine), not 424 (no master
-                # data is missing), not 5xx (retrying changes nothing). Only a
-                # human turning the toggle on clears it.
-                raise forbidden(
-                    "staff_money_hidden",
-                    "ยอดเงินถูกซ่อนไว้สำหรับพนักงาน การเปิดให้เห็นเป็นสิทธิ์ของเจ้าของร้าน",
-                    setting="staff_money_visible",
-                    decided_by="shop_owner",
-                )
-            # ON: FORCED to the caller's OWN bills, regardless of `by`. A staff
-            # caller never sees a shop-wide figure; by=user then returns exactly
-            # one row — themselves. This is the ONE hand-written predicate here,
-            # and it is the feature (D1), not tenant isolation (that is RLS).
-            where += " AND b.created_by = :self_user_id"
-            params["self_user_id"] = principal.user_id
-
         rows = (
             await conn.execute(text(_summary_rows_sql(by, where)), params)
         ).mappings().all()

@@ -58,6 +58,7 @@ import { ownerForNewRow } from "./src/session/rowOwner";
 import { SqliteLocalStore } from "./src/adapters/sqlite/SqliteLocalStore";
 import { SqliteMasterStore } from "./src/adapters/sqlite/SqliteMasterStore";
 import { SqliteShopStore } from "./src/adapters/sqlite/SqliteShopStore";
+import { SqlitePermissionStore } from "./src/adapters/sqlite/SqlitePermissionStore";
 import {
   cartTotal,
   changeSeller,
@@ -112,18 +113,18 @@ import type { DailyScreen as DailyScreenModel } from "./src/reports/dailyView";
 import {
   dashboardScreen,
   mayShowDashboardEntry,
-  readMoneyVisible,
+  seesShopMoney,
 } from "./src/dashboard/dashboardView";
 import { selectCustom, selectPreset } from "./src/dashboard/period";
 import type { PeriodSelection, PresetKind } from "./src/dashboard/period";
-import { STAFF_MONEY_HIDDEN, summaryScreen } from "./src/dashboard/summaryView";
+import { summaryScreen } from "./src/dashboard/summaryView";
 import type { SummaryScreen } from "./src/dashboard/summaryView";
 import { unsentLine } from "./src/dashboard/unsentLine";
 import type { UnsentLine } from "./src/dashboard/unsentLine";
 import { sellerHistoryScreen } from "./src/sellerHistory/sellerHistoryView";
 import type { SellerHistoryScreen } from "./src/sellerHistory/sellerHistoryView";
-import { mayEditPrices, mayManageProducts, mayManageUsers, readTokenRole, readTokenUserId } from "./src/session/deviceRole";
-import type { DeviceRole } from "./src/session/deviceRole";
+import { may, readTokenPermissions, readTokenRole, readTokenUserId } from "./src/session/deviceRole";
+import type { Grants } from "./src/session/deviceRole";
 import {
   formScreen,
   readShopBranch,
@@ -441,9 +442,9 @@ function AppInner() {
    * like "this month" is a range the client must name.
    *
    * `dashDaily` is the /reports/daily result the today view renders as its per-bill
-   * list (admin only); null when not the today view or while loading. `moneyVisible`
-   * is the shop's `staff_money_visible`, read once via GET /shop and updated by the
-   * summary's own answer, used to gate the header entry for staff (E2).
+   * list (shop-money sessions only); null when not the today view or while loading.
+   * The header entry gate (E2) reads the session's PERMISSION SET (`grants`, server
+   * migration 0019) — the shop's `staff_money_visible` toggle it used to read is gone.
    */
   const [dashSummary, setDashSummary] = useState<SummaryScreen | null>(null);
   const [dashUnsent, setDashUnsent] = useState<UnsentLine | null>(null);
@@ -454,7 +455,6 @@ function AppInner() {
   const [dashState, setDashState] = useState<string>("live");
   const [dashDaily, setDashDaily] = useState<DailyScreenModel | null>(null);
   const [dashCustom, setDashCustom] = useState<DashboardCustom>({ from: "", to: "", error: null });
-  const [moneyVisible, setMoneyVisible] = useState<boolean | null>(null);
   /*
    * THE SHOP SETTINGS SCREEN (P1.23). `settingsScreen` is the rendered model, or
    * null while a request is in flight so a spinner is a state and not a guess.
@@ -794,16 +794,19 @@ function AppInner() {
   const account: AccountState = submitRefused ? "submit_refused" : "ok";
 
   /*
-   * THE ROLE THIS DEVICE IS SIGNED IN AS, read out of the token's claims.
+   * THE PERMISSION SET THIS DEVICE IS SIGNED IN WITH (server migration 0019),
+   * read out of the token's claims at boot and sign-in, overridden by the SQLite
+   * cache of the server's last /whoami answer, and rewritten by every /whoami.
    *
-   * Advisory and courtesy-only: it decides whether ยกเลิกบิลนี้ is OFFERED. The
-   * server re-reads the role from the users row on every request and refuses
-   * regardless, so a stale claim here can only cost one refusal — which the 403
-   * path now explains in plain Thai. Null (unreadable, or a token from an older
-   * build) means "unknown", and unknown OFFERS the button; see
-   * src/session/deviceRole.ts on why this one fails open.
+   * Advisory and courtesy-only: it decides which controls are OFFERED — the void
+   * button, the price, product, user and settings entries, the dashboard. The
+   * server re-reads the grants from the row on every request and refuses
+   * regardless, so a stale set here can only cost one refusal — which the 403
+   * path explains in plain Thai. Null (unreadable, or a token from an older
+   * build with no cache) means "unknown", and unknown OFFERS everything; a set
+   * that was read is exact. See src/session/deviceRole.ts on why it fails open.
    */
-  const [role, setRole] = useState<DeviceRole>(null);
+  const [grants, setGrants] = useState<Grants>(null);
 
   /*
    * SIGN-OUT (R1b). The sheet's open flag, and the failure of the LAST attempt.
@@ -884,6 +887,7 @@ function AppInner() {
   const identityStoreRef = useRef<SqliteIdentityStore | null>(null);
   /** Which shop this device belongs to. A different lifetime — see the store. */
   const shopStoreRef = useRef<SqliteShopStore | null>(null);
+  const permissionStoreRef = useRef<SqlitePermissionStore | null>(null);
   const masterStoreRef = useRef<SqliteMasterStore | null>(null);
   /**
    * The SAME `SqliteLocalSellerStore` instance the engine holds, captured so the
@@ -1074,12 +1078,16 @@ function AppInner() {
         // three stores above have already run through this driver.
         const identityStore = new SqliteIdentityStore(driver);
         const shopStore = new SqliteShopStore(driver);
+        // The permission cache (server migration 0019), on the SAME driver: what
+        // the server last said this user may do, read below before any network.
+        const permissionStore = new SqlitePermissionStore(driver);
         if (cancelled) return;
         billStoreRef.current = billStore;
         draftStoreRef.current = draftStore;
         masterStoreRef.current = masterStore;
         identityStoreRef.current = identityStore;
         shopStoreRef.current = shopStore;
+        permissionStoreRef.current = permissionStore;
 
         // Created ONCE, on the SAME driver, and captured so the picker and the
         // bill build read the exact rows the engine's queue drains.
@@ -1186,8 +1194,14 @@ function AppInner() {
         // Read off the RESTORED token, before any network call — the whole point
         // of taking it from the claims rather than asking /whoami is that a cold
         // start with the server unreachable still knows not to offer a button
-        // that cannot work. Unreadable reads as null, which offers it.
-        setRole(readTokenRole(token));
+        // that cannot work. Unreadable reads as null, which offers it. Then the
+        // SQLite cache overrides it when present: that is the server's LAST
+        // answer for this user (fresher than a claim frozen for the token's
+        // hour), keyed on the token's own user id so nobody else's set can land.
+        setGrants(readTokenPermissions(token));
+        const cachedGrants = await permissionStore.read(readTokenUserId(token));
+        if (cancelled) return;
+        if (cachedGrants !== null) setGrants(cachedGrants);
 
         setDraft(restored);
         setDraftsWithheld(loaded.withheld);
@@ -1203,9 +1217,13 @@ function AppInner() {
         // Only NOW does the network get involved, and nothing above depends on
         // it. A failure here leaves the cache exactly as it was and says so.
         if (token !== null) void refreshMaster(token);
-        // Seed the money-visibility toggle for the header entry gate (E2). Offline
-        // it stays null, which hides the dashboard entry for a staff session.
-        if (token !== null) void refreshMoneyVisible();
+        // Cache the caller's branch off GET /shop, and refresh the permission set
+        // from /whoami (0019) so a grant changed in the office reaches this phone
+        // at its next launch rather than its next sign-in. A phone that boots
+        // OFFLINE pays nothing: both fetches return `unreachable`, neither
+        // touches state, and the set above (token claim, then cache) stands.
+        if (token !== null) void refreshShopBranch();
+        if (token !== null) void refreshPermissions();
       } catch (err) {
         setStatus(`เปิดฐานข้อมูลไม่สำเร็จ: ${describe(err)}`);
       }
@@ -1465,12 +1483,12 @@ function AppInner() {
       dashSummary === null
         ? null
         : dashboardScreen({
-            role,
+            grants,
             selection: dashSelection,
             summary: dashSummary,
             unsent: dashUnsent,
           }),
-    [role, dashSelection, dashSummary, dashUnsent],
+    [grants, dashSelection, dashSummary, dashUnsent],
   );
 
   /**
@@ -1490,27 +1508,19 @@ function AppInner() {
   }, []);
 
   /**
-   * Read the shop's `staff_money_visible` once, for the header entry gate (E2). A
-   * failed or absent read leaves it as it was — offline it stays null, which HIDES
-   * the entry for staff (treated as OFF). Nothing is authorised on it: the route
-   * re-checks the toggle on every request; this only decides whether to draw a
-   * control a staff session would otherwise be refused.
+   * THE CALLER'S BRANCH, cached beside the shop row (server migration 0018) from
+   * the one GET /shop every boot and sign-in performs. Keyed on the body's own
+   * shop id, so the store refuses the write if this device belongs to another
+   * shop; an unreadable body writes nothing (readShopBranch says why). A bill
+   * built before this lands simply carries no branch, which the server resolves
+   * for itself. (Until server migration 0019 this read also carried the shop's
+   * `staff_money_visible` toggle for the dashboard gate; that column is gone.)
    */
-  const refreshMoneyVisible = useCallback(async (): Promise<void> => {
+  const refreshShopBranch = useCallback(async (): Promise<void> => {
     const t = tokenRef.current;
-    if (t === null) {
-      setMoneyVisible(null);
-      return;
-    }
+    if (t === null) return;
     const r = await fetchShop(t);
     if (r.kind === "ok") {
-      setMoneyVisible(readMoneyVisible(r.body));
-      // THE CALLER'S BRANCH, cached beside the shop row (server migration 0018)
-      // from the same read: this is the one GET /shop every boot and sign-in
-      // performs. Keyed on the body's own shop id, so the store refuses the
-      // write if this device belongs to another shop; an unreadable body writes
-      // nothing (readShopBranch says why). A bill built before this lands
-      // simply carries no branch, which the server resolves for itself.
       const learned = readShopBranch(r.body);
       if (learned !== null) {
         await shopStoreRef.current?.saveBranch(learned.shop_id, learned.branch_id);
@@ -1519,14 +1529,34 @@ function AppInner() {
   }, []);
 
   /**
+   * REFRESH THE PERMISSION SET from /whoami (server migration 0019): the set the
+   * server resolved for THIS request, written to state and to the SQLite cache
+   * keyed on the token's user id. A failed or absent read leaves both exactly as
+   * they were — offline costs nothing but the one unanswered fetch. Nothing is
+   * authorised on it: every route re-reads the grants; this only decides which
+   * controls are drawn.
+   */
+  const refreshPermissions = useCallback(async (): Promise<void> => {
+    const t = tokenRef.current;
+    if (t === null) return;
+    const r = await fetchWhoAmI(t);
+    if (r.kind !== "ok") return;
+    const who = readWhoAmI(r.body);
+    if (who === null || who.permissions === null) return;
+    setGrants(who.permissions);
+    const uid = readTokenUserId(t);
+    if (uid !== null) await permissionStoreRef.current?.replace(uid, who.permissions);
+  }, []);
+
+  /**
    * READ THE PERIOD SUMMARY AND, ON THE TODAY VIEW, THE DAY'S BILL LIST.
    *
    * The unsent line is LOCAL and available offline; the summary and the bill list
    * are the server's. A 401 ends the session and offline sets `online` false, as the
    * daily read did. `submitRefused` is NOT touched: reading a summary is not
-   * submitting a bill (the 403 lesson). The toggle is learned from the summary's own
-   * answer — a `staff_money_hidden` 403 means OFF (so the entry drops next menu
-   * draw), a successful STAFF summary means the owner turned it ON.
+   * submitting a bill (the 403 lesson). A `permission_required` 403 here is worded
+   * by summaryScreen; the entry gate reads the permission set (0019), which the
+   * next /whoami refreshes — nothing is inferred from the summary's answer.
    */
   const loadDashboard = useCallback(
     async (selection: PeriodSelection, by: string, state: string): Promise<void> => {
@@ -1556,21 +1586,17 @@ function AppInner() {
       setOnline(true);
       if (result.kind === "http" && result.status === 401) setSessionEnded(true);
       else if (result.kind === "ok") setSessionEnded(false);
-      if (result.kind === "http" && result.status === 403 && result.code === STAFF_MONEY_HIDDEN) {
-        setMoneyVisible(false);
-      } else if (result.kind === "ok" && role === "staff") {
-        setMoneyVisible(true);
-      }
 
-      // The today view (admin/unknown) also shows the day's per-bill list, from the
-      // daily route — which has no own-bills variant, so staff never reach here
-      // (dashboardView.billListSlot returns staff_unavailable for them).
-      if (summary.kind === "summary" && selection.isToday && role !== "staff") {
+      // The today view (shop money, or an unknown set) also shows the day's
+      // per-bill list, from the daily route — which has no own-bills variant, so
+      // an own-money session never reaches here (dashboardView.billListSlot
+      // returns staff_unavailable for it).
+      if (summary.kind === "summary" && selection.isToday && seesShopMoney(grants)) {
         const dailyResult = await fetchDailyReport(t, null);
         setDashDaily(dailyScreen(dailyResult));
       }
     },
-    [role, readUnsentAmounts],
+    [grants, readUnsentAmounts],
   );
 
   const openDashboard = useCallback(() => {
@@ -1670,12 +1696,12 @@ function AppInner() {
       })),
     }));
     return priceListScreen({
-      role,
+      grants,
       products: rows,
       haveProducts: freshness.haveProducts,
       haveGradeTiers: gradeTiersFetchedAt !== null,
     });
-  }, [products, gradeTiers, gradeTiersFetchedAt, role, freshness.haveProducts]);
+  }, [products, gradeTiers, gradeTiersFetchedAt, grants, freshness.haveProducts]);
 
   const openPrices = useCallback(() => {
     // Cleared BEFORE the transition, so the list is what the sheet mounts on
@@ -1698,7 +1724,7 @@ function AppInner() {
       setSettingsShop(null);
       setSettingsTiers(null);
       setSettingsTierScreen(null);
-      setSettingsScreen(shopSettingsScreen({ kind: "no_token" }, role, []));
+      setSettingsScreen(shopSettingsScreen({ kind: "no_token" }, grants, []));
       return;
     }
     setSettingsScreen(null);
@@ -1719,8 +1745,8 @@ function AppInner() {
       const active = tiers.filter((x) => x.is_active).map((x) => ({ code: x.code, name: x.name }));
       setSettingsShop(readShopSettings(shopResult.body));
       setSettingsTiers(tiers);
-      setSettingsScreen(shopSettingsScreen(shopResult, role, active));
-      setSettingsTierScreen(tierAdminScreen(tiers, role));
+      setSettingsScreen(shopSettingsScreen(shopResult, grants, active));
+      setSettingsTierScreen(tierAdminScreen(tiers, grants));
       setOnline(true);
       setSessionEnded(false);
       return;
@@ -1742,14 +1768,14 @@ function AppInner() {
         : tierResult.kind === "http"
           ? { kind: "http", status: tierResult.status, code: null }
           : tierResult; // unreachable | no_token (no_token unreachable here — token checked)
-    setSettingsScreen(shopSettingsScreen(governing, role, []));
+    setSettingsScreen(shopSettingsScreen(governing, grants, []));
     if (governing.kind === "unreachable") {
       setOnline(false);
       return;
     }
     setOnline(true);
     if (governing.kind === "http" && governing.status === 401) setSessionEnded(true);
-  }, [role]);
+  }, [grants]);
 
   const openSettings = useCallback(() => {
     setSettingsSaving(false);
@@ -1767,7 +1793,7 @@ function AppInner() {
     async (patch: ShopPatch): Promise<void> => {
       const t = tokenRef.current;
       if (t === null) {
-        setSettingsScreen(shopSettingsScreen({ kind: "no_token" }, role, []));
+        setSettingsScreen(shopSettingsScreen({ kind: "no_token" }, grants, []));
         setSessionEnded(true);
         return;
       }
@@ -1782,7 +1808,7 @@ function AppInner() {
           .filter((x) => x.is_active)
           .map((x) => ({ code: x.code, name: x.name }));
         setSettingsShop(saved.shop);
-        setSettingsScreen(formScreen(saved.shop, role, active));
+        setSettingsScreen(formScreen(saved.shop, grants, active));
         setOnline(true);
         setSessionEnded(false);
         return;
@@ -1794,7 +1820,7 @@ function AppInner() {
         if (result.kind === "http" && result.status === 401) setSessionEnded(true);
       }
     },
-    [role, settingsTiers],
+    [grants, settingsTiers],
   );
 
   /**
@@ -1880,20 +1906,20 @@ function AppInner() {
   const loadUsers = useCallback(async (): Promise<void> => {
     const t = tokenRef.current;
     if (t === null) {
-      setUsersScreen(usersScreenState({ kind: "no_token" }, role, null));
+      setUsersScreen(usersScreenState({ kind: "no_token" }, grants, null));
       return;
     }
     setUsersScreen(null);
     setUsersRefusal(null);
     const result = await fetchUsers(t);
-    setUsersScreen(usersScreenState(result, role, readTokenUserId(t)));
+    setUsersScreen(usersScreenState(result, grants, readTokenUserId(t)));
     if (result.kind === "unreachable") {
       setOnline(false);
       return;
     }
     setOnline(true);
     if (result.kind === "http" && result.status === 401) setSessionEnded(true);
-  }, [role]);
+  }, [grants]);
 
   const openUsers = useCallback(() => {
     setUsersBusy(false);
@@ -1982,7 +2008,7 @@ function AppInner() {
     const t = tokenRef.current;
     if (t === null) {
       setProductsScreen(
-        productsScreenState({ kind: "no_token" }, { kind: "no_token" }, { kind: "no_token" }, role),
+        productsScreenState({ kind: "no_token" }, { kind: "no_token" }, { kind: "no_token" }, grants),
       );
       return;
     }
@@ -1993,7 +2019,7 @@ function AppInner() {
       fetchCategoriesAdmin(t),
       fetchUomsAdmin(t),
     ]);
-    setProductsScreen(productsScreenState(pr, cr, ur, role));
+    setProductsScreen(productsScreenState(pr, cr, ur, grants));
     // The device-global flags follow the FIRST read that failed (products, then
     // categories, then units), the same ranking productsScreenState words the screen by.
     const governing: ProductFetch = pr.kind !== "ok" ? pr : cr.kind !== "ok" ? cr : ur;
@@ -2003,7 +2029,7 @@ function AppInner() {
     }
     setOnline(true);
     if (governing.kind === "http" && governing.status === 401) setSessionEnded(true);
-  }, [role]);
+  }, [grants]);
 
   const openProducts = useCallback(() => {
     setProductsBusy(false);
@@ -2119,8 +2145,19 @@ function AppInner() {
     const who = whoResult.kind === "ok" ? readWhoAmI(whoResult.body) : null;
     const shopRow = shopResult.kind === "ok" ? readShopSettings(shopResult.body) : null;
     setAccountProfile(
-      accountProfile(who ?? { username: "ยังอ่านชื่อผู้ใช้ไม่ได้", role }, shopRow?.name ?? null),
+      accountProfile(
+        who ?? { username: "ยังอ่านชื่อผู้ใช้ไม่ได้", role: readTokenRole(t), permissions: null },
+        shopRow?.name ?? null,
+      ),
     );
+    // EVERY /whoami rewrites the permission set and its cache (0019), this one
+    // included: the account screen is the one place a person goes to ask "what
+    // am I", and the answer should be what the server says now.
+    if (who !== null && who.permissions !== null) {
+      setGrants(who.permissions);
+      const uid = readTokenUserId(t);
+      if (uid !== null) await permissionStoreRef.current?.replace(uid, who.permissions);
+    }
     if (whoResult.kind === "unreachable" || shopResult.kind === "unreachable") setOnline(false);
     else {
       setOnline(true);
@@ -2129,7 +2166,7 @@ function AppInner() {
         (shopResult.kind === "http" && shopResult.status === 401);
       if (unauth) setSessionEnded(true);
     }
-  }, [role]);
+  }, [grants]);
 
   const openAccount = useCallback(() => {
     setPasswordBusy(false);
@@ -2413,7 +2450,16 @@ function AppInner() {
       const t = result.accessToken;
       tokenRef.current = t;
       setToken(t);
-      setRole(readTokenRole(t));
+      // The set from the token's own claim, at once and offline-safe; the cache
+      // is written from it BEFORE anything is offered, keyed on this token's
+      // user id, so a crash after the keystore write cannot leave the previous
+      // user's set in place for the next boot (SqlitePermissionStore says why).
+      const claimed = readTokenPermissions(t);
+      setGrants(claimed);
+      const signedInAs = readTokenUserId(t);
+      if (claimed !== null && signedInAs !== null) {
+        await permissionStoreRef.current?.replace(signedInAs, claimed);
+      }
       // A sign-out (successful or not) may have left the tick paused and a
       // failure notice on the sheet. Both are facts about the session that has
       // just been replaced.
@@ -2435,8 +2481,10 @@ function AppInner() {
       // The SAME path the boot and the picker use. Duplicating the fetch here
       // is how the cache write would come to be missing from one of the three.
       await refreshMaster(t);
-      // Seed the money-visibility toggle for the new session's header entry gate (E2).
-      void refreshMoneyVisible();
+      // Cache the caller's branch, and take the server's own word on the
+      // permission set for the new session (0019) — fresher than the claim.
+      void refreshShopBranch();
+      void refreshPermissions();
       // Every backoff on the queue was computed while there was no usable
       // session, which says nothing about the network. Without this the yard
       // signs in, the sign-in succeeds, and then nothing visibly happens for up
@@ -2571,9 +2619,12 @@ function AppInner() {
       // is supplied for it — which is the point of passing setters rather than
       // writing ten assignments here where one can quietly go missing.
       tokenRef.current = null;
+      // The permission cache goes with the session (0019): the device is
+      // nobody's until the next sign-in writes the next user's set.
+      void permissionStoreRef.current?.clear();
       applyClearedSession({
         token: setToken,
-        role: setRole,
+        grants: setGrants,
         sessionEnded: setSessionEnded,
         submitRefused: setSubmitRefused,
         online: setOnline,
@@ -2660,7 +2711,7 @@ function AppInner() {
   // ── P1.21: seller history at the weighbridge ───────────────────────────────
   // Opened from the cart's seller header (a body control), for the chosen seller.
   // The response's own `money_included` is the authority for whether prices show —
-  // the app never infers it (moneyVisible is unreliable here). ONLINE ONLY: there
+  // the app never infers it (the local permission set is advisory). ONLINE ONLY: there
   // is no local history store, so this simply reads the server each time.
   const [historySeller, setHistorySeller] = useState<Seller | null>(null);
   const [historyScreen, setHistoryScreen] = useState<SellerHistoryScreen | null>(null);
@@ -3184,26 +3235,26 @@ function AppInner() {
   const navGateOpen = (gate: NavGate): boolean => {
     switch (gate) {
       /*
-        DASHBOARD (P1.23 item 4 unit 3). A staff session sees ยอดวันนี้ only when the
-        shop's `staff_money_visible` is on — the money toggle is a per-shop setting the
-        server enforces DETERMINISTICALLY, so a staff+off session WOULD be refused (403
-        staff_money_hidden). It FAILS OPEN on an unknown role (admin and an unparseable
-        token both get it): the server re-reads the role every request and a
-        wrongly-offered READ lands on a calm 403, while failing closed would hide an
-        owner's own takings over a token this build merely failed to parse. Offline
-        `moneyVisible` is null, which hides the entry for staff (treated as OFF).
+        DASHBOARD (P1.23 item 4 unit 3; server migration 0019). A session sees
+        ยอดวันนี้ when its permission set holds money.view_shop or money.view_own —
+        the server enforces the same two DETERMINISTICALLY, so a session holding
+        neither WOULD be refused (403 permission_required). It FAILS OPEN on an
+        absent set (an unparseable token, no cache): the server re-reads the
+        grants every request and a wrongly-offered READ lands on a calm 403, while
+        failing closed would hide an owner's own takings over a set this build
+        merely failed to read. A set that was read and holds neither hides it.
       */
       case "dashboard_entry":
-        return mayShowDashboardEntry(role, moneyVisible);
+        return mayShowDashboardEntry(grants);
       /*
         PRICES (P1.9). The ยกเลิกบิลนี้ rule, not the ยอดวันนี้ one: this opens a screen
-        whose purpose is a WRITE `require_admin` refuses, and a staff session must not
-        learn its account cannot price by watching a save fail. `mayEditPrices` is the
-        SAME predicate the sheet's own render uses, so the button and the screen cannot
-        disagree; it fails OPEN on an unknown role onto priceSaveScreen's calm 403 branch.
+        whose purpose is a WRITE the prices.write gate refuses, and a session must not
+        learn its account cannot price by watching a save fail. `may` over the SAME
+        set the sheet's own render uses, so the button and the screen cannot
+        disagree; it fails OPEN on an absent set onto priceSaveScreen's calm 403 branch.
       */
       case "edit_prices":
-        return token !== null && mayEditPrices(role);
+        return token !== null && may(grants, "prices.write");
       /*
         SETTINGS and ACCOUNT (P1.23). Offered to every signed-in account: GET /shop and
         /whoami are READS a staff session may make, the settings screen renders read-only
@@ -3465,14 +3516,16 @@ function AppInner() {
               onAddTier={addTier}
               onReorderTiers={reorderTiers}
               onTierMenu={openTierMenu}
-              /* ADMIN-ONLY (P3.7): null for a staff session, so the จัดการผู้ใช้งาน
-                 row is not drawn — the dashboard-entry-gate shape. mayManageUsers
-                 fails open, and the server refuses every user route regardless. */
-              onManageUsers={mayManageUsers(role) ? openUsers : null}
-              /* ADMIN-ONLY (P1.15): null for a staff session, so the จัดการสินค้า
-                 row is not drawn — the same entry-gate shape as จัดการผู้ใช้งาน.
-                 mayManageProducts fails open; the server refuses every write regardless. */
-              onManageProducts={mayManageProducts(role) ? openProducts : null}
+              /* users.manage (P3.7; 0019): null for a session without it, so the
+                 จัดการผู้ใช้งาน row is not drawn — the dashboard-entry-gate shape.
+                 `may` fails open on an absent set; the server refuses every user
+                 route regardless. */
+              onManageUsers={may(grants, "users.manage") ? openUsers : null}
+              /* master.write (P1.15; 0019): null for a session without it, so the
+                 จัดการสินค้า row is not drawn — the same entry-gate shape as
+                 จัดการผู้ใช้งาน. Fails open on an absent set; the server refuses
+                 every write regardless. */
+              onManageProducts={may(grants, "master.write") ? openProducts : null}
             />
           ),
         };
@@ -3507,8 +3560,8 @@ function AppInner() {
               session={session}
               account={account}
               // Courtesy only: it decides whether ยกเลิกบิลนี้ is offered. The server
-              // re-reads the role on every request and refuses regardless.
-              role={role}
+              // re-reads the grants on every request and refuses regardless.
+              grants={grants}
               blockerId={health?.blockerId ?? null}
               onClose={closeTopSheet}
               onVoid={voidBill}

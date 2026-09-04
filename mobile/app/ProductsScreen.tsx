@@ -516,7 +516,7 @@ function EntityTab({
 }) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
-  const model = useMemo(() => entityListModel(entities, editable ? "admin" : "staff"), [entities, editable]);
+  const model = useMemo(() => entityListModel(entities, editable), [entities, editable]);
   const word = kind === "category" ? "หมวดหมู่" : "หน่วยนับ";
 
   const [code, setCode] = useState("");

@@ -19,8 +19,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from .auth import Principal, get_principal, require_admin
+from .auth import Principal, require
 from .branches import Branch, branch_payload, read_branch, read_caller_branch
+from .permissions import Permission
 from .config import SHOP_TIMEZONE
 from .db import tenant_connection
 
@@ -355,7 +356,11 @@ async def _read_bill(conn: AsyncConnection, bill_id) -> dict | None:
 async def create_bill(
     body: BillCreate,
     response: Response,
-    principal: Principal = Depends(get_principal),
+    # bills.create (migration 0019). Until 0019 this route took any signed-in
+    # principal; every system role holds bills.create, so no phone's behaviour
+    # moved -- what moved is that a shop can now mint a role WITHOUT it (the
+    # cashier of STRUCTURE.md section 3, who pays and does not weigh).
+    principal: Principal = Depends(require(Permission.BILLS_CREATE)),
 ) -> dict:
     # ---- validate + compute money server-side (exact Decimal arithmetic) ----
     line_nos = [it.line_no for it in body.items]
@@ -746,7 +751,8 @@ async def create_bill(
 @router.get("/bills")
 async def list_bills(
     limit: int = Query(50, ge=1, le=200),
-    principal: Principal = Depends(get_principal),
+    # bills.read (0019): held by every system role, so nothing moved on the wire.
+    principal: Principal = Depends(require(Permission.BILLS_READ)),
 ) -> dict:
     async with tenant_connection(principal.tenant_id) as conn:
         rows = (
@@ -779,7 +785,7 @@ async def list_bills(
 
 @router.get("/bills/{bill_id}")
 async def get_bill(
-    bill_id: uuid.UUID, principal: Principal = Depends(get_principal)
+    bill_id: uuid.UUID, principal: Principal = Depends(require(Permission.BILLS_READ))
 ) -> dict:
     async with tenant_connection(principal.tenant_id) as conn:
         bill = await _read_bill(conn, bill_id)
@@ -792,12 +798,12 @@ async def get_bill(
 async def void_bill(
     bill_id: uuid.UUID,
     body: VoidRequest,
-    # ADMIN ONLY. Voiding is the one destructive act the yard app can perform on
-    # money already recorded — hard rule 5 means it is also the ONLY way to
-    # correct a bill, so it cannot be locked away, but it must not be something
-    # every phone on the floor can do to any bill. Creating bills stays open to
-    # staff; unwinding one does not.
-    principal: Principal = Depends(require_admin),
+    # bills.void (0019; was require_admin). Voiding is the one destructive act
+    # the yard app can perform on money already recorded — hard rule 5 means it
+    # is also the ONLY way to correct a bill, so it cannot be locked away, but it
+    # must not be something every phone on the floor can do to any bill. The
+    # staff role is born without this permission; owner and admin hold it.
+    principal: Principal = Depends(require(Permission.BILLS_VOID)),
 ) -> dict:
     async with tenant_connection(principal.tenant_id) as conn:
         h = (

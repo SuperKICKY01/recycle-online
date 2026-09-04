@@ -195,7 +195,7 @@ unauthenticated surface is small:
 | **any signed-in principal** | `Depends(get_principal)` (`auth.py:91`) | reads, and bill creation |
 | **admin only** | `Depends(require_admin)` (`auth.py:286`) | every master-data write, void, the daily report, session revocation |
 
-**Superseded 2026-09-02 (measured at `98cbc2d`; unanchored, anchor next pass).** Two
+**Superseded 2026-09-02 (measured at `98cbc2d`; landed at `b25d7b0`).** Two
 rows above are no longer exact. The "admin only" row's "every master-data write" is
 FALSE of two routes: `POST /sellers` takes `Depends(get_principal)` at
 `server/app/master.py:1519` — staff create sellers, narrowed on purpose per that
@@ -214,6 +214,41 @@ categories, not two" holds the current membership of all three tiers, read off t
 handlers. What belongs in an architecture file is that the three tiers exist and
 where the gate is implemented — the list is status.
 
+**Superseded 2026-09-04 (migration 0019, `STRUCTURE.md` section 3, unit 1 of its
+section 12; unanchored, anchor next pass). The "admin only" tier no longer exists.
+The middle tier and the gate are now these:**
+
+| tier | dependency | what is on it |
+|---|---|---|
+| **no authentication** | none | health, login, the shop-code lookup (3 routes) |
+| **any signed-in principal** | `Depends(get_principal)` | `/whoami`, the master-data lists (uoms, categories, products, sellers, grade tiers), `GET /shop`, the seller history and the period summary (both admit anyone and gate MONEY inside on the caller's permissions), `POST /users/me/password` |
+| **a PERMISSION** | `Depends(require(Permission.X))` (`server/app/auth.py`, the factory; the enumeration in `server/app/permissions.py`) | 34 routes: `bills.create` (POST /bills), `bills.read` (the two bill reads), `bills.void`, `money.view_shop` (the daily report), `master.write` (12 unit/category/product writes), `prices.write`, `sellers.create` (POST /sellers and the reservation top-up), `sellers.write` (3), `tiers.manage` (3), `shop.settings.write`, `users.manage` (7) |
+
+Five of those 34 took any signed-in principal before 0019 (`POST /bills`, both bill
+reads, `POST /sellers`, the reservation top-up); they gained a gate so that a role
+WITHOUT `bills.create` — section 3's cashier — is expressible, and every system role
+holds them, so no phone's behaviour moved. The refusal is 403, `kind = forbidden`,
+`code = permission_required`, `required_permission` in the body; `admin_required`
+is answered by no route (the phone keeps it as a legacy key for rows it stored
+before the deploy).
+
+Two structural facts about the tiers, restated for the permission model:
+
+- **The permission set is resolved from the database on every request, not from
+  the token.** The token carries `role` (the role CODE) and `permissions` as
+  advisory display data; `get_principal` reads the `users → roles →
+  role_permissions` join under tenant context, so a revoked grant takes effect at
+  once rather than at the next token expiry — and a token minted before 0019, which
+  carries no `permissions` claim, is still accepted.
+- **The SET of permissions is code; the ASSIGNMENT is data (invariant 6).**
+  `permissions` is a global catalogue table the server compares as a set against
+  its enumeration at boot and REFUSES TO START on any difference (uvicorn exit 3,
+  measured); `roles` and `role_permissions` are per-tenant, RLS-bound, audited.
+  Every shop is born with S9's three system roles (`owner`, `admin`, `staff`); a
+  shop may create more once the role-management screen exists (owed,
+  `OPEN_ITEMS.md § Decisions open — the owner's, not the code's`). The earlier
+  "two-value CHECK, not a permission system" fact below is history.
+
 Two structural facts about the tiers:
 
 - **Role is resolved from the database on every request, not from the token.** The
@@ -225,6 +260,9 @@ Two structural facts about the tiers:
   `0001_initial_schema.py:100`. The SRS asks for per-screen checkbox permissions;
   that is on the out-of-MVP list at
   `PROJECT_STATUS.md § What is NOT built` "do not build, do not scaffold".
+  **Superseded 2026-09-04:** the CHECK is gone (`users.role_id`, migration 0019),
+  the out-of-MVP line is superseded by the owner's approval of the structural
+  design, and the permission system above is what stands.
 
 ---
 
@@ -283,7 +321,7 @@ are its own checks.
 
 | table | what it is for | shape worth knowing |
 |---|---|---|
-| `tenants` | one row per shop; the unit a licence would attach to | `(id, name, created_at)` and nothing else — no address, no phone. **No endpoint reads it** <br>**Superseded 2026-08-30 (unanchored; anchor next pass):** re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone)` — `default_grade` (migration 0010), `seller_code_target_holding` (0012), `address`+`phone` (0013). It IS read and written: `GET /shop` returns it (staff-readable) and `PATCH /shop` writes `default_grade`/`address`/`phone` (admin-only), so "no endpoint reads it" went false at `9ad225e`. `name` stays immutable-by-decision (`9ad225e`). <br>**Superseded 2026-08-30 (P1.23 item 4 unit 2; unanchored; anchor next pass):** `staff_money_visible` (boolean NOT NULL DEFAULT false, migration 0014) is added — re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone, staff_money_visible)`, EIGHT columns. It is the per-shop switch the dashboard reads: `GET /shop` returns it (staff-readable), `PATCH /shop` writes it (admin-only), and `GET /reports/summary` refuses a staff caller its money unless it is on (D1). |
+| `tenants` | one row per shop; the unit a licence would attach to | `(id, name, created_at)` and nothing else — no address, no phone. **No endpoint reads it** <br>**Superseded 2026-08-30 (`49f9fd2`):** re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone)` — `default_grade` (migration 0010), `seller_code_target_holding` (0012), `address`+`phone` (0013). It IS read and written: `GET /shop` returns it (staff-readable) and `PATCH /shop` writes `default_grade`/`address`/`phone` (admin-only), so "no endpoint reads it" went false at `9ad225e`. `name` stays immutable-by-decision (`9ad225e`). <br>**Superseded 2026-08-30 (P1.23 item 4 unit 2; `46a18b4`):** `staff_money_visible` (boolean NOT NULL DEFAULT false, migration 0014) is added — re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone, staff_money_visible)`, EIGHT columns. It is the per-shop switch the dashboard reads: `GET /shop` returns it (staff-readable), `PATCH /shop` writes it (admin-only), and `GET /reports/summary` refuses a staff caller its money unless it is on (D1). <br>**Superseded 2026-09-04 (migration 0019; unanchored, anchor next pass):** `staff_money_visible` is DROPPED — folded into the staff role's grants as `money.view_own` (every tenant whose toggle was true; none on dev) — so the row is SEVEN columns again, `(id, name, created_at, default_grade, seller_code_target_holding, address, phone)`. `GET /shop` no longer returns it and `PATCH /shop` refuses the key (422). Three tables joined the model: `permissions` (global, no `tenant_id`), `roles` and `role_permissions` (per tenant); `users.role` became `users.role_id`. |
 | `users` | authentication, not an employee master | `tenant_id NOT NULL`; `role` CHECK 2 values; `token_version` (0005). No `is_active`, so a session can be revoked but an account cannot be locked <br>**Superseded 2026-09-01 (this row was stale; `§ 13` already records it):** `is_active` (0007, `boolean NOT NULL DEFAULT true`) DOES exist — an account CAN be locked, permanently, by an admin. Beside that DURABLE lock there is now a TRANSIENT one: `failed_login_attempts` (0016, the row below) records refused logins and drives a temporary lockout of `/auth/login`. So the per-account auth state is THREE things — `token_version`, `is_active`, and the derived failed-login count — not one. **Superseded 2026-09-03 (0018):** plus `branch_id` (nullable, composite FK to `branches`, MATCH SIMPLE): the yard this user works at, NULL meaning every branch. Read by `POST /bills` to resolve a bill that names no branch and by `GET /shop`; enforced as a SCOPE by nothing yet — the gate arrives with the permission model |
 | `uoms` | units of measure (kg, crate, piece) | `(code, name)` + `is_active` |
 | `product_categories` | paper, steel, copper … | `(code, name)` + `is_active` |

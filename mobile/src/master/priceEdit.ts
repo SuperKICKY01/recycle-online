@@ -41,8 +41,8 @@
  */
 import { MONEY_DP, MONEY_MAX_INT_DIGITS, parseDecimal } from "../money/money.js";
 import type { Parsed } from "../money/money.js";
-import { mayEditPrices } from "../session/deviceRole.js";
-import type { DeviceRole } from "../session/deviceRole.js";
+import { may } from "../session/deviceRole.js";
+import type { Grants } from "../session/deviceRole.js";
 
 /* ------------------------------------------------------------ the tiers -- */
 
@@ -245,8 +245,9 @@ export const editableValue = (tier: TierPrice): string => tier.price ?? "";
 /* ---------------------------------------------------------- the screens -- */
 
 export interface PriceListInput {
-  /** The role claimed by the session token. Advisory and up to an hour stale. */
-  readonly role: DeviceRole;
+  /** The session's permission set (token claim, /whoami or the cache). Advisory;
+   *  null is unknown and fails open. */
+  readonly grants: Grants;
   /** The cached products, already sorted by whatever the caller sorts by. */
   readonly products: readonly PriceProduct[];
   /** False when this device has never successfully downloaded a product list. */
@@ -287,7 +288,7 @@ export interface PriceListInput {
  * instead, in the same value, so the two cannot drift.
  */
 export function priceListScreen(input: PriceListInput): PriceScreen {
-  const editable = mayEditPrices(input.role);
+  const editable = may(input.grants, "prices.write");
 
   if (!input.haveProducts) {
     /*

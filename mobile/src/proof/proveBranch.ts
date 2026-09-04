@@ -341,7 +341,6 @@ function b5Parser(): void {
   const shopId = PROOF_OWNER.tenant_id;
   const full = {
     id: shopId, name: "x", default_grade: null, address: null, phone: null,
-    staff_money_visible: false,
     branch: { id: BRANCH_MAIN, code: "MAIN", name: "x", doc_prefix: "B", is_active: true },
     branch_count: 1,
   };

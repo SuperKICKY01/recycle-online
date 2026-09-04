@@ -6,6 +6,10 @@ this surface, tenants.staff_money_visible, so GET /shop now returns SIX keys and
 the identity gate + E1 exact-key set are widened to include it. Its BEHAVIOUR (the
 dashboard money gate) is proven in prove_reports_summary.py, not here; this file
 only keeps its exact-key assertion honest against the widened row.
+UPDATED 2026-09-04 (migration 0019): that field is GONE again -- folded into the
+staff role's money.view_own grant -- so the identity gate now requires its ABSENCE
+from ShopUpdate and the E1 exact-key set is narrowed back by one (the 0018 branch
+keys stay). The 403 cell E8 reads permission_required naming shop.settings.write.
 
 WHAT THIS TALKS TO, ESTABLISHED BEFORE ANY CELL. It starts its OWN uvicorn on a
 free port (never a fixed one -- lessons/a-proof-must-establish-what-it-is-talking-
@@ -149,16 +153,19 @@ def assert_serving_this_code() -> str:
         .get("ShopUpdate", {})
         .get("properties", {})
     )
-    # staff_money_visible was added by migration 0014 (P1.23 item 4, unit 2): GET
-    # /shop now returns it and PATCH /shop accepts it, so the identity gate requires
-    # it too -- a server that does not declare it is the pre-0014 code and its E1
-    # exact-key assertion below would go red for the wrong reason.
-    missing = [k for k in ("address", "phone", "staff_money_visible") if k not in props]
+    # address and phone were added by migration 0013; staff_money_visible (0014)
+    # was in this gate until migration 0019 folded it into the staff role's grants
+    # and DROPPED it from ShopUpdate -- so a server that still declares it is the
+    # PRE-0019 code, and the E1 exact-key assertion below would go red for the
+    # wrong reason. Both directions gated, by name.
+    missing = [k for k in ("address", "phone") if k not in props]
     if missing:
         return (
             "ShopUpdate does not declare " + ", ".join(missing)
-            + " -- this server predates migration 0013/0014"
+            + " -- this server predates migration 0013"
         )
+    if "staff_money_visible" in props:
+        return "ShopUpdate still declares staff_money_visible -- predates migration 0019"
     return ""
 
 
@@ -244,7 +251,7 @@ async def main() -> int:
             check(False, f"E0: serving THIS code -- {wrong}")
             return 1
         check(True, "E0: /openapi.json declares GET+PATCH /shop and ShopUpdate "
-                    "carries address+phone+staff_money_visible")
+                    "carries address+phone and NOT staff_money_visible (0019)")
 
         baseline = await read_shop()
         print(f"      baseline (from Postgres): address={baseline['address']!r} "
@@ -263,9 +270,11 @@ async def main() -> int:
             # `branch` and `branch_count` since migration 0018: the caller's yard
             # and the derived switch. A branch names no person either -- its
             # object is exactly the branch's own identity, asserted below.
+            # `staff_money_visible` LEFT this set at migration 0019 (folded into
+            # the staff role's grants); the phone gates on its own permissions.
             check(
                 set(body) == {"id", "name", "default_grade", "address", "phone",
-                              "staff_money_visible", "branch", "branch_count"},
+                              "branch", "branch_count"},
                 f"E1: body keys are exactly the shop's and none names a person "
                 f"(keys={sorted(body)})",
             )
@@ -397,8 +406,11 @@ async def main() -> int:
             print(f"      E8 operands: status={r.status_code} code={code!r}")
             check(r.status_code == 403,
                   f"E8: staff PATCH /shop -> 403 (got {r.status_code})")
-            check(code == "admin_required",
+            check(code == "permission_required",
                   f"E8: refusal pinned to detail.code, not the status (code={code!r})")
+            check(detail.get("required_permission") == "shop.settings.write"
+                  if isinstance(detail, dict) else False,
+                  "E8: and it names the permission the route needs (shop.settings.write)")
 
         return 1 if failures else 0
     finally:

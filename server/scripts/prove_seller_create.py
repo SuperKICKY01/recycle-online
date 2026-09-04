@@ -536,17 +536,19 @@ def main() -> int:
                 headers=auth(token_staff), json={"price": "999.00"})
             print(f"  status={r4.status_code} body={r4.text.strip()[:240]}")
             check(r4.status_code == 403, f"cell4: status is 403 (got {r4.status_code})")
-            # THE CODE, NOT ONLY THE STATUS. One require_admin answers
-            # admin_required for every admin path, so a status alone cannot say
-            # WHICH rule refused -- and a 403 from anything else would satisfy a
-            # status-only cell (mechanism 7 of
-            # lessons/a-check-that-never-went-red-was-never-observed.md).
-            check(detail_of(r4).get("code") == "admin_required",
-                  f"cell4: the refusal names admin_required "
+            # THE CODE, NOT ONLY THE STATUS. One gate answers permission_required
+            # for every gated path, so a status alone cannot say WHICH rule
+            # refused -- and a 403 from anything else would satisfy a status-only
+            # cell (mechanism 7 of
+            # lessons/a-check-that-never-went-red-was-never-observed.md). Since
+            # 0019 the body names the PERMISSION the route needs, which is the
+            # discriminating field (this cell read `actual_role` before).
+            check(detail_of(r4).get("code") == "permission_required",
+                  f"cell4: the refusal names permission_required "
                   f"({detail_of(r4).get('code')!r})")
-            check(detail_of(r4).get("actual_role") == "staff",
-                  f"cell4: and it names the role that was refused "
-                  f"({detail_of(r4).get('actual_role')!r})")
+            check(detail_of(r4).get("required_permission") == "prices.write",
+                  f"cell4: and it names the permission the write needs "
+                  f"({detail_of(r4).get('required_permission')!r})")
             price_now = sql("SELECT price FROM product_prices WHERE product_id = :p"
                             " AND grade = 'B'", {"p": PRODUCT_A_ID})
             check(bool(price_now) and str(price_now[0]["price"]) != "999.00",
@@ -573,14 +575,17 @@ def main() -> int:
             print(f"  PATCH      status={r5a.status_code} {r5a.text.strip()[:160]}")
             print(f"  deactivate status={r5b.status_code} {r5b.text.strip()[:160]}")
             check(r5a.status_code == 403 and
-                  detail_of(r5a).get("code") == "admin_required",
-                  f"cell5: PATCH /sellers/{{id}} is refused admin_required "
-                  f"({r5a.status_code}, {detail_of(r5a).get('code')!r}) -- if this "
+                  detail_of(r5a).get("code") == "permission_required" and
+                  detail_of(r5a).get("required_permission") == "sellers.write",
+                  f"cell5: PATCH /sellers/{{id}} is refused permission_required "
+                  f"naming sellers.write ({r5a.status_code}, "
+                  f"{detail_of(r5a).get('code')!r}) -- if this "
                   "now succeeds the gate was OPENED, not narrowed")
             check(r5b.status_code == 403 and
-                  detail_of(r5b).get("code") == "admin_required",
+                  detail_of(r5b).get("code") == "permission_required" and
+                  detail_of(r5b).get("required_permission") == "sellers.write",
                   f"cell5: POST /sellers/{{id}}/deactivate is refused "
-                  f"admin_required ({r5b.status_code}, "
+                  f"permission_required naming sellers.write ({r5b.status_code}, "
                   f"{detail_of(r5b).get('code')!r})")
             after5 = sql("SELECT name, is_active FROM sellers WHERE id = :i",
                          {"i": as_uuid(patch_target)}) if as_uuid(patch_target) else []

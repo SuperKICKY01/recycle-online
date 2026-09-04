@@ -468,10 +468,56 @@ Where this design needs a settled statement moved, and leaves it to the owner: R
 
 **Unit 1: the permission model.** Builds batch A minus branches: `permissions` catalogue with the boot-time equality check, `roles` and `role_permissions` with the three system roles per tenant, `users.role_id` with `users.role` dropped, `staff_money_visible` folded into the staff role and dropped, `require(permission)` at all 29 sites and the two inline reads, the token's `permissions` claim, `cached_permissions` on the phone with `may()` replacing the five predicates, the generalised last-manager guard, the trigger on the two new tables, reconcile S7. It proves: per route, the all-but-one principal reads 403 with `code = permission_required` naming the permission and the full principal reads the route's success; every existing server and mobile proof green twice unchanged in its assertions except the cells that read `staff_money_visible`, which are edited by name; the boot refusal on a catalogue mismatch on a scratch; `prove_user_admin.py`'s race with the generalised guard. It must not touch: `purchase_bills`, any screen beyond the gating predicates, the provisioning script beyond the three role rows it now writes. Size: one migration, about 35 server sites, about 10 client files, two new proofs. The disproof that would show it wrong: a principal holding every permission but one reaching 200 on the route that needs it, or a route that still answers `admin_required`.
 
+**BUILT 2026-09-04 — this PERMISSION MODEL unit, the SECOND built (unanchored;
+anchor next pass), migration `0019_permissions.py`. What it did from the spec above:
+the `permissions` catalogue with the boot-time equality check (`app/permissions.py`;
+uvicorn exit 3 on an extra row and on a missing table, measured); `roles` and
+`role_permissions` with the three system roles per tenant (13/12/3 grants at birth,
+the fold of `staff_money_visible` into `money.view_own` written for every tenant
+whose toggle was true — none on dev); `users.role_id` with `users.role` and its
+CHECK dropped, every user re-keyed value against value; `require(permission)` at
+34 route sites (the 29 `require_admin` sites plus the five any-principal routes
+that section 3.2 leaves ungated and the cashier needs gated: `POST /bills`, both
+bill reads, `POST /sellers`, the reservation top-up) and at the two inline reads;
+the token's `permissions` claim (advisory; a claimless pre-0019 token still
+resolves from the row); `cached_permissions` on the phone with `may()` replacing
+the five predicates AND the three same-shape inline reads the pin at `b25d7b0`
+missed (`dashboardView.ts:54`, `usersAdmin.ts:230`, `App.tsx:1568`); the
+last-manager guard generalised to `users.manage` through an active role
+(`FOR NO KEY UPDATE OF u`); the audit trigger on both new tables; reconcile S7.
+**FOUR DEPARTURES FROM THE TEXT ABOVE, each the owner's decision of 2026-09-04:**
+the catalogue is THIRTEEN codes, not 23 — the ten with no route in this tree are
+recorded by name against their units in `app/permissions.py` `DEFERRED`, and one
+of the thirteen, `roles.manage`, gates no route yet and says so at its line;
+`roles` carries NO `payment_limit_*` columns (nothing reads them; they arrive with
+unit 3); the phone's cache is `cached_permissions(user_id, permission)` keyed on
+the user, not the sketch's one-row table, so a crash between a new token landing
+and its set being written can never show one operator another's rights; and
+`POST /users` gained an ESCALATION GUARD — a caller may assign only a role whose
+grants are a subset of their own (403 `role_exceeds_caller`, `over_reach` named),
+without which an admin mints an owner the day one exists. **AND ONE CORRECTION TO
+THIS DOCUMENT'S OWN CLAIM ABOVE:** "every existing server and mobile proof green
+twice unchanged in its assertions except the cells that read `staff_money_visible`"
+was FALSE as written and section 12's own disproof is why — no route may answer
+`admin_required`, so every proof cell that asserted it had to move too. Edited by
+name: 12 server `check` sites in 6 files (`prove_master_write.py:315` is a 9-route
+loop) plus the 2 `actual_role` cells, and the 7 `staff_money_visible` cells across
+`prove_reports_summary.py`, `prove_seller_history.py`, `prove_shop_settings.py`;
+on the phone the five predicate cells and every builder call that handed a role
+LABEL moved to a permission SET (`src/proof/proofGrants.ts`), the assertions'
+text unchanged, and the mobile proofs that stage `admin_required` stayed green
+unchanged because the phone keeps that code as a LEGACY key for rows persisted
+before the deploy. Six SQL-minting proofs were conscripted to seed the three
+system roles before their users (0018's branch conscription, one table on).
+Record: `PROJECT_STATUS.md § Current phase`. The role-management screen is NOT
+this unit and is filed as owed; until it exists no shop provisioned before 0019
+holds `roles.manage` (its owner seat is empty by design), and a shop provisioned
+after it gets its first user as `owner`.**
+
 **Unit 2: branches.** Conditional on the owner's yes to section 9. Builds `branches`, the born-with branch per tenant in the migration and in `provision_shop.py`, `branch_id NOT NULL` on `purchase_bills` and `doc_no_counters` with the re-keyed primary key and `doc_prefix`, `users.branch_id` with `branches.all`, `local_shop.branch_id` on the phone with the bill payload carrying it, T8 widened, X1 widened, `GET /shop` returning the caller's branch. It proves: on a scratch, two branches mint two independent series `B-2569-1` and `C-2569-1`; every existing bill reads back with the born-with branch and its `doc_no` unchanged, compared value against value; the branch-scoped principal is refused across branches with the deletion disproof moving exactly that cell; `reconcile.py` exit 0 on live and on a restored copy. It must not touch: prices, sellers, tiers, the payment tables. Size: one migration, `bills.py` and `reports.py`, two mobile store files, two proofs. The disproof: two branches sharing one counter row, or a bill accepted with a `branch_id` from another tenant.
 
-**BUILT 2026-09-03 — this BRANCHES unit, as the FIRST unit built (unanchored; anchor
-next pass). The advisor re-sequenced it ahead of the permission model above:
+**BUILT 2026-09-03 — this BRANCHES unit, as the FIRST unit built (`b420e80`). The
+advisor re-sequenced it ahead of the permission model above:
 branches re-key `doc_no_counters` and touch every operational table at a cost that
 grows with every table and every real row, while permissions cost the same whenever
 done; doing permissions first would have meant sweeping the new permission tables

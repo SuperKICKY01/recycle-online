@@ -6,7 +6,8 @@ the per-shop staff-money-visibility toggle (P1.23 item 4, unit 2).
     uv run python scripts/prove_reports_summary.py        (self-restores the scratch)
 
 WHAT DATABASE, AND WHY A SCRATCH. This proof creates purchase bills -- hard-rule-5
-transactions that cannot be deleted -- and it PATCHes tenants.staff_money_visible.
+transactions that cannot be deleted -- and it GRANTS money.view_own to the staff
+role by SQL (what PATCHing tenants.staff_money_visible did before migration 0019).
 Writing those into dev would leave them forever (lessons/a-mutation-on-a-protected-
 write-path-needs-a-scratch-database.md, "DEV IS NOT SCRATCH"). So it RESTORES its
 own scratch from a live dump (backup_db.py -> restore_db.py, the prove_seller_code_
@@ -21,10 +22,12 @@ pattern; the choice is stated here per its "say which you used".
 
 WHAT IT TALKS TO, ESTABLISHED BEFORE ANY CELL. Its OWN uvicorn on a FREE port
 (never a fixed one), watching the child rather than only the clock, and
-/openapi.json must declare /reports/summary with from_date/to_date/by/state AND
-ShopUpdate.staff_money_visible before any cell is read (lessons/a-proof-must-
-establish-what-it-is-talking-to.md): a server that does not declare them is not
-this code, and its careful negative cells would go green over the OLD code.
+/openapi.json must declare /reports/summary with from_date/to_date/by/state and
+ShopUpdate WITHOUT staff_money_visible (dropped by migration 0019, which folded
+the toggle into the staff role's money.view_own grant) before any cell is read
+(lessons/a-proof-must-establish-what-it-is-talking-to.md): a server that does
+not match is not this code, and its careful negative cells would go green over
+the OLD code.
 
 THE HAND-COMPUTED SUMS DUPLICATE THE ARITHMETIC, THEY DO NOT SHARE IT
 (lessons/a-checker-must-not-share-the-code-it-checks.md). The expected figures are
@@ -345,8 +348,8 @@ def wait_for_health(proc: subprocess.Popen, timeout: float = 40.0) -> str:
 
 
 def assert_serving_this_code() -> str:
-    """Identity: /reports/summary with the four params, and ShopUpdate carries
-    staff_money_visible. Either missing => not this code."""
+    """Identity: /reports/summary with the four params, and ShopUpdate WITHOUT
+    staff_money_visible (0019). Either wrong => not this code."""
     try:
         r = httpx.get(f"{BASE}/openapi.json", timeout=5.0)
     except httpx.HTTPError as exc:
@@ -365,8 +368,11 @@ def assert_serving_this_code() -> str:
         doc.get("components", {}).get("schemas", {})
         .get("ShopUpdate", {}).get("properties", {})
     )
-    if "staff_money_visible" not in props:
-        return "ShopUpdate does not declare staff_money_visible -- predates migration 0014"
+    # staff_money_visible LEFT ShopUpdate at migration 0019 (folded into the
+    # staff role's grants): a server still declaring it is the pre-0019 code,
+    # whose S cells below would red for the wrong reason.
+    if "staff_money_visible" in props:
+        return "ShopUpdate still declares staff_money_visible -- predates migration 0019"
     return ""
 
 
@@ -380,11 +386,47 @@ async def login(client: httpx.AsyncClient, tenant: uuid.UUID, username: str, pas
 
 
 # ---------------------------------------------------------------------------
+# the staff money grant (0019): what the staff_money_visible toggle became
+# ---------------------------------------------------------------------------
+async def grant_staff_money(tenant, on: bool) -> None:
+    """Grant (on) or revoke (off) money.view_own on this tenant's STAFF role, by
+    SQL under the tenant context with a declared actor (role_permissions is
+    audited). This is the row migration 0019's fold writes for a tenant whose
+    toggle was true; no route writes it until the role screen exists."""
+    from sqlalchemy import text
+    from app.db import SYSTEM_ACTOR_ID, tenant_connection
+    async with tenant_connection(
+        tenant, actor_id=SYSTEM_ACTOR_ID, actor_username="system:prove_reports_summary",
+    ) as conn:
+        if on:
+            await conn.execute(text(
+                "INSERT INTO role_permissions (tenant_id, role_id, permission)"
+                " SELECT r.tenant_id, r.id, 'money.view_own' FROM roles r"
+                "  WHERE r.code = 'staff' ON CONFLICT DO NOTHING"))
+        else:
+            await conn.execute(text(
+                "DELETE FROM role_permissions rp USING roles r"
+                " WHERE r.id = rp.role_id AND r.code = 'staff'"
+                "   AND rp.permission = 'money.view_own'"))
+
+
+async def staff_money_granted(tenant) -> bool:
+    """Re-read the grant OUT OF POSTGRES, not off a response body."""
+    from sqlalchemy import text
+    from app.db import tenant_connection
+    async with tenant_connection(tenant) as conn:
+        return bool((await conn.execute(text(
+            "SELECT count(*) FROM role_permissions rp JOIN roles r ON r.id = rp.role_id"
+            " WHERE r.code = 'staff' AND rp.permission = 'money.view_own'"))).scalar_one())
+
+
+# ---------------------------------------------------------------------------
 # provisioning: two fresh throwaway tenants, master data, users. No DELETE.
 # ---------------------------------------------------------------------------
 async def provision(ctx: Ctx) -> None:
     from sqlalchemy import text
     from app.db import SYSTEM_ACTOR_ID, tenant_connection
+    from app.permissions import seed_system_roles
     from app.security import hash_password
 
     admin_hash = await hash_password(ADMIN_PW)
@@ -409,11 +451,16 @@ async def provision(ctx: Ctx) -> None:
                      " VALUES (:t, 'MAIN', :n, 'B', true)"),
                 {"t": tid, "n": name},
             )
+            # THE THREE SYSTEM ROLES (0019): users.role_id is NOT NULL with a
+            # composite FK to roles, so the tenant is provisioned with its roles
+            # first, as provision_shop.py provisions them (the 0018 conscription
+            # for the branch above, one table on).
+            roles = await seed_system_roles(conn, tid)
             for uid, un, fn, role, ph in users:
                 await conn.execute(
-                    text("INSERT INTO users (id, tenant_id, username, full_name, role,"
+                    text("INSERT INTO users (id, tenant_id, username, full_name, role_id,"
                          " password_hash) VALUES (:id, :t, :u, :fn, :r, :ph)"),
-                    {"id": uid, "t": tid, "u": un, "fn": fn, "r": role, "ph": ph},
+                    {"id": uid, "t": tid, "u": un, "fn": fn, "r": roles[role], "ph": ph},
                 )
             await conn.execute(
                 text("INSERT INTO uoms (id, tenant_id, code, name)"
@@ -707,26 +754,29 @@ async def run(ctx: Ctx, admin_tok, staff_tok, other_tok, client) -> None:
           "T: the OTHER tenant's OWN admin sees its bill (9500.00) -- so T is not vacuous")
 
     # =====================================================================
-    header("S -- the staff money-visibility toggle (403 off; own-rows only on)")
-    # OFF (default): staff refused 403, pinned to detail.code.
+    header("S -- the staff money permission (403 without; own-rows only with)")
+    # WITHOUT money.view_own (the staff role's born-with state, 0019 -- the
+    # former toggle OFF): staff refused 403, pinned to detail.code and naming
+    # the permission.
     r = await get_summary(client, staff_tok, "user", "live")
     detail = r.json().get("detail", {})
     code = detail.get("code") if isinstance(detail, dict) else None
     print(f"      S-OFF operands: status={r.status_code} code={code!r}")
-    check(r.status_code == 403, f"S-OFF: staff GET -> 403 while toggle off (got {r.status_code})")
-    check(code == "staff_money_hidden",
+    check(r.status_code == 403, f"S-OFF: staff GET -> 403 without money.view_own (got {r.status_code})")
+    check(code == "permission_required",
           f"S-OFF: refusal pinned to detail.code (code={code!r})")
-    check(isinstance(detail, dict) and detail.get("decided_by") == "shop_owner",
-          "S-OFF: the 403 names that the shop owner decides this")
-    # admin scope is UNCHANGED by the toggle being off (it is on for admin already).
+    check(isinstance(detail, dict) and detail.get("required_permission") == "money.view_own",
+          "S-OFF: the 403 names money.view_own as the permission it needs")
+    # admin scope is UNCHANGED by the staff grant being absent.
     check((await get_summary(client, admin_tok, "user", "live")).status_code == 200,
-          "S-OFF: admin is unaffected by the staff toggle")
+          "S-OFF: admin is unaffected by the staff grant")
 
-    # turn it ON (admin PATCH /shop).
-    pr = await client.patch("/shop", headers=auth(admin_tok),
-                            json={"staff_money_visible": True})
-    check(pr.status_code == 200 and pr.json().get("staff_money_visible") is True,
-          f"S: admin PATCH /shop staff_money_visible=true -> 200 (got {pr.status_code})")
+    # GRANT money.view_own to this tenant's staff role -- what PATCH /shop
+    # staff_money_visible=true did before 0019, now a grant row (by SQL: the
+    # role-management route is not built; the migration's fold is the same row).
+    await grant_staff_money(ctx.main_tenant, True)
+    check((await staff_money_granted(ctx.main_tenant)) is True,
+          "S: money.view_own GRANTED to the staff role, re-read from role_permissions")
 
     # ON: staff sees ONLY their own bills. by=user -> exactly one row (themselves).
     exp_staff_user = expected(ctx, "user", "live", only_creator="staff")
@@ -868,7 +918,7 @@ async def main() -> int:
             check(False, f"E0: serving THIS code -- {wrong}")
             return 1
         check(True, "E0: /openapi.json declares /reports/summary (4 params) and "
-                    "ShopUpdate.staff_money_visible")
+                    "ShopUpdate WITHOUT staff_money_visible (0019)")
 
         try:
             await provision(ctx)

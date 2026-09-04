@@ -21,10 +21,20 @@ create a seller. Nothing else moved, and STAFF DID NOT BECOME ADMINS — the
 reason the gate was narrowed rather than opened is at create_seller, and the
 control that proves it is prove_seller_create.py cells 4 and 5.
 
+**Superseded again 2026-09-04 (migration 0019, STRUCTURE.md section 3).** There
+is no `require_admin` any more. Every write here is gated on a PERMISSION the
+caller's role holds: `master.write` (units, categories, products),
+`prices.write` (the price PUT), `sellers.write` (seller PATCH, activate,
+deactivate), `tiers.manage` (the three tier routes), `shop.settings.write`
+(PATCH /shop), and `sellers.create` (POST /sellers and the reservation top-up,
+which took any principal before). The three system roles hold exactly what the
+old tiers gave them, so no phone's behaviour moved; what moved is that a shop
+may now mint a role holding any subset.
+
 The intent behind the old sentence is unchanged and is the thing to preserve: a
 yard phone must not be able to re-price the shop's product list from the
-weighbridge. Every price and product write, `PATCH /sellers/{id}`, and both
-seller activate/deactivate routes keep require_admin.
+weighbridge. The staff role is born without `prices.write`, `master.write` and
+`sellers.write`.
 
 THERE IS NO DELETE ON THIS ROUTER, ANYWHERE, ON PURPOSE
 -------------------------------------------------------
@@ -82,10 +92,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from .auth import ADMIN_ROLE, Principal, get_principal, require_admin
+from .auth import Principal, get_principal, require
 from .branches import branch_payload, read_caller_branch
 from .config import SHOP_TIMEZONE
 from .db import constraint_name_of, tenant_connection
+from .permissions import Permission
 
 router = APIRouter()
 
@@ -428,7 +439,7 @@ async def list_uoms(
 
 @router.post("/uoms", status_code=status.HTTP_201_CREATED)
 async def create_uom(
-    body: UomCreate, principal: Principal = Depends(require_admin)
+    body: UomCreate, principal: Principal = Depends(require(Permission.MASTER_WRITE))
 ) -> dict:
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         try:
@@ -452,7 +463,7 @@ async def create_uom(
 async def update_uom(
     uom_id: uuid.UUID,
     body: UomUpdate,
-    principal: Principal = Depends(require_admin),
+    principal: Principal = Depends(require(Permission.MASTER_WRITE)),
 ) -> dict:
     changes = _changes(body, nullable=frozenset())
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
@@ -463,7 +474,7 @@ async def update_uom(
 
 @router.post("/uoms/{uom_id}/deactivate")
 async def deactivate_uom(
-    uom_id: uuid.UUID, principal: Principal = Depends(require_admin)
+    uom_id: uuid.UUID, principal: Principal = Depends(require(Permission.MASTER_WRITE))
 ) -> dict:
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "uoms", "uom", uom_id, False)
@@ -472,7 +483,7 @@ async def deactivate_uom(
 
 @router.post("/uoms/{uom_id}/activate")
 async def activate_uom(
-    uom_id: uuid.UUID, principal: Principal = Depends(require_admin)
+    uom_id: uuid.UUID, principal: Principal = Depends(require(Permission.MASTER_WRITE))
 ) -> dict:
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "uoms", "uom", uom_id, True)
@@ -532,7 +543,7 @@ async def list_categories(
 
 @router.post("/product-categories", status_code=status.HTTP_201_CREATED)
 async def create_category(
-    body: CategoryCreate, principal: Principal = Depends(require_admin)
+    body: CategoryCreate, principal: Principal = Depends(require(Permission.MASTER_WRITE))
 ) -> dict:
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         try:
@@ -556,7 +567,7 @@ async def create_category(
 async def update_category(
     category_id: uuid.UUID,
     body: CategoryUpdate,
-    principal: Principal = Depends(require_admin),
+    principal: Principal = Depends(require(Permission.MASTER_WRITE)),
 ) -> dict:
     changes = _changes(body, nullable=frozenset())
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
@@ -567,7 +578,7 @@ async def update_category(
 
 @router.post("/product-categories/{category_id}/deactivate")
 async def deactivate_category(
-    category_id: uuid.UUID, principal: Principal = Depends(require_admin)
+    category_id: uuid.UUID, principal: Principal = Depends(require(Permission.MASTER_WRITE))
 ) -> dict:
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "product_categories", "product_category", category_id, False)
@@ -576,7 +587,7 @@ async def deactivate_category(
 
 @router.post("/product-categories/{category_id}/activate")
 async def activate_category(
-    category_id: uuid.UUID, principal: Principal = Depends(require_admin)
+    category_id: uuid.UUID, principal: Principal = Depends(require(Permission.MASTER_WRITE))
 ) -> dict:
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "product_categories", "product_category", category_id, True)
@@ -750,7 +761,7 @@ async def list_products(
 
 @router.post("/products", status_code=status.HTTP_201_CREATED)
 async def create_product(
-    body: ProductCreate, principal: Principal = Depends(require_admin)
+    body: ProductCreate, principal: Principal = Depends(require(Permission.MASTER_WRITE))
 ) -> dict:
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _require_refs(
@@ -786,7 +797,7 @@ async def create_product(
 async def update_product(
     product_id: uuid.UUID,
     body: ProductUpdate,
-    principal: Principal = Depends(require_admin),
+    principal: Principal = Depends(require(Permission.MASTER_WRITE)),
 ) -> dict:
     changes = _changes(body, nullable=frozenset())
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
@@ -798,7 +809,7 @@ async def update_product(
 
 @router.post("/products/{product_id}/deactivate")
 async def deactivate_product(
-    product_id: uuid.UUID, principal: Principal = Depends(require_admin)
+    product_id: uuid.UUID, principal: Principal = Depends(require(Permission.MASTER_WRITE))
 ) -> dict:
     """Retire a product. IT KEEPS ANSWERING FOR EVERY BILL THAT REFERENCES IT.
 
@@ -816,7 +827,7 @@ async def deactivate_product(
 
 @router.post("/products/{product_id}/activate")
 async def activate_product(
-    product_id: uuid.UUID, principal: Principal = Depends(require_admin)
+    product_id: uuid.UUID, principal: Principal = Depends(require(Permission.MASTER_WRITE))
 ) -> dict:
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "products", "product", product_id, True)
@@ -828,7 +839,7 @@ async def set_product_price(
     product_id: uuid.UUID,
     grade: str,
     body: PriceSet,
-    principal: Principal = Depends(require_admin),
+    principal: Principal = Depends(require(Permission.PRICES_WRITE)),
 ) -> dict:
     """Set or replace ONE price tier.
 
@@ -1080,8 +1091,9 @@ SELECT b.id AS bill_id, b.doc_no, b.total_amount, b.server_received_at,
 async def seller_history(
     seller_id: uuid.UUID,
     limit: int = Query(_HISTORY_DEFAULT_LIMIT, ge=1, le=_HISTORY_MAX_LIMIT),
-    # get_principal, NOT require_admin: staff READ history (it is the weighbridge's
-    # purpose); money is gated inside the handler, never by a route refusal.
+    # get_principal, NOT a route gate: any signed-in caller READS history (it is
+    # the weighbridge's purpose); money is gated inside the handler on the
+    # caller's permissions, never by a route refusal.
     principal: Principal = Depends(get_principal),
 ) -> dict:
     """A seller's recent bills at the weighbridge — when, what, how much (P1.21).
@@ -1092,8 +1104,9 @@ async def seller_history(
     ``is_void``, and ``products`` — one entry per bill line with ``product_id``,
     ``product_name`` (null if the product was retired) and ``net_weight`` (the
     weight the stored amount was computed on). ``total_amount`` (per bill) and
-    ``unit_price`` (per line) are present ONLY when ``money_included`` — admin, or
-    staff with the shop's staff_money_visible on; otherwise the KEYS ARE ABSENT
+    ``unit_price`` (per line) are present ONLY when ``money_included`` — a caller
+    holding ``money.view_shop`` or ``money.view_own`` (0019; before it, admin or
+    staff with the shop's staff_money_visible on); otherwise the KEYS ARE ABSENT
     and money_included is false, so the phone says why rather than render a guess.
 
     Voided bills are INCLUDED and marked ``is_void``. A seller with no prior bills
@@ -1110,14 +1123,16 @@ async def seller_history(
         if await _read_seller(conn, seller_id) is None:
             raise _not_found("seller")
 
-        # The per-shop money switch, read inside the snapshot. RLS scopes it to
-        # this shop's single row. Admin always sees money; a staff caller only when
-        # the owner has turned it on (D1). This is the WHOLE money gate here (G2 /
-        # the advisor's reading) — there is no created_by = self scope.
-        money_visible = (
-            await conn.execute(text("SELECT staff_money_visible FROM tenants"))
-        ).scalar_one()
-        money_included = principal.role == ADMIN_ROLE or bool(money_visible)
+        # THE MONEY GATE, on the permission set the principal carries (0019):
+        # money.view_shop (the shop's money) OR money.view_own (the former
+        # staff_money_visible toggle, folded into the staff role's grants). This
+        # is the WHOLE money gate here (G2 / the advisor's reading) — there is no
+        # created_by = self scope on history, exactly as there was none when the
+        # toggle governed it; a holder of money.view_own alone sees money on ALL
+        # of a seller's bills, byte-identical to the toggle-on behaviour.
+        money_included = principal.has(Permission.MONEY_VIEW_SHOP) or principal.has(
+            Permission.MONEY_VIEW_OWN
+        )
 
         rows = (
             await conn.execute(
@@ -1519,10 +1534,12 @@ _RESERVATION_BY_TOKEN = (
 async def create_seller(
     body: SellerCreate,
     response: Response,
-    principal: Principal = Depends(get_principal),
+    # sellers.create (0019). Until 0019 this route took any signed-in principal
+    # (D1); every system role holds sellers.create, so nothing moved on the wire.
+    principal: Principal = Depends(require(Permission.SELLERS_CREATE)),
 ) -> dict:
     """Create a seller. STAFF MAY DO THIS — and this is the ONLY write here that
-    staff may do.
+    the staff role is born holding.
 
     ROADMAP D1. Creating a seller and re-pricing the shop's product list are not
     the same risk, and `require_admin` conflated them. A yard buys from walk-ins,
@@ -1763,7 +1780,7 @@ async def create_seller(
 async def update_seller(
     seller_id: uuid.UUID,
     body: SellerUpdate,
-    principal: Principal = Depends(require_admin),
+    principal: Principal = Depends(require(Permission.SELLERS_WRITE)),
 ) -> dict:
     # These are nullable columns, so an EXPLICIT null clears them — which must be
     # possible: a seller can lose their grade, and the resulting bills are then
@@ -1782,7 +1799,7 @@ async def update_seller(
 
 @router.post("/sellers/{seller_id}/deactivate")
 async def deactivate_seller(
-    seller_id: uuid.UUID, principal: Principal = Depends(require_admin)
+    seller_id: uuid.UUID, principal: Principal = Depends(require(Permission.SELLERS_WRITE))
 ) -> dict:
     """Retire a seller. Their existing bills are untouched and stay readable."""
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
@@ -1792,7 +1809,7 @@ async def deactivate_seller(
 
 @router.post("/sellers/{seller_id}/activate")
 async def activate_seller(
-    seller_id: uuid.UUID, principal: Principal = Depends(require_admin)
+    seller_id: uuid.UUID, principal: Principal = Depends(require(Permission.SELLERS_WRITE))
 ) -> dict:
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "sellers", "seller", seller_id, True)
@@ -1888,7 +1905,7 @@ async def list_grade_tiers(
 
 @router.post("/grade-tiers", status_code=status.HTTP_201_CREATED)
 async def create_grade_tier(
-    body: GradeTierCreate, principal: Principal = Depends(require_admin)
+    body: GradeTierCreate, principal: Principal = Depends(require(Permission.TIERS_MANAGE))
 ) -> dict:
     """Declare a tier. ADMIN ONLY (the gate every standing choice takes). A
     duplicate code is a 409 — the shop already holds that tier. NO product-imposed
@@ -1923,7 +1940,7 @@ async def create_grade_tier(
 async def update_grade_tier(
     tier_id: uuid.UUID,
     body: GradeTierUpdate,
-    principal: Principal = Depends(require_admin),
+    principal: Principal = Depends(require(Permission.TIERS_MANAGE)),
 ) -> dict:
     """Rename, re-order, or (de)activate a tier. ADMIN ONLY. `code` is immutable
     (the FK target). DEACTIVATION IS REFUSED while active sellers still sit in the
@@ -1990,7 +2007,7 @@ async def update_grade_tier(
 
 @router.put("/grade-tiers/order")
 async def reorder_grade_tiers(
-    body: GradeTierOrder, principal: Principal = Depends(require_admin)
+    body: GradeTierOrder, principal: Principal = Depends(require(Permission.TIERS_MANAGE))
 ) -> dict:
     """Rewrite the shop's tier ORDER in ONE transaction. ADMIN ONLY. `order` must
     list every tier the shop holds EXACTLY ONCE; `sort_order` becomes each id's
@@ -2129,7 +2146,11 @@ _HELD_BY_DEVICE = (
 
 @router.post("/seller-code-reservations")
 async def top_up_seller_code_reservations(
-    body: ReservationTopUp, principal: Principal = Depends(get_principal)
+    body: ReservationTopUp,
+    # sellers.create (0019): reserving a code is the first half of creating a
+    # seller offline, so it is gated on the same permission. Every system role
+    # holds it; nothing moved on the wire.
+    principal: Principal = Depends(require(Permission.SELLERS_CREATE)),
 ) -> dict:
     """Make this device hold its shop's target number of reserved seller codes.
 
@@ -2240,18 +2261,15 @@ class ShopUpdate(BaseModel):
     default_grade: GradeCode | None = None
     address: ShopAddress | None = None
     phone: ShopPhone | None = None
-    # Whether STAFF may see money in the dashboard (P1.23 item 4, D1). Admin-only to
-    # set (this route is require_admin) and default false at the column (migration
-    # 0014). A boolean, and NOT in _SHOP_NULLABLE below: the column is NOT NULL, so
-    # an explicit null is a refusal (field_not_nullable), not a clear -- there is no
-    # "unset" state for a policy that is either on or off. Omitted leaves it
-    # untouched (model_dump(exclude_unset=True)); true/false writes it.
-    staff_money_visible: bool | None = None
+    # `staff_money_visible` (0014, P1.23 item 4 D1) was HERE until migration 0019
+    # folded it into the staff role's grants as money.view_own and dropped the
+    # column: whether staff see their own money is now a permission a role holds,
+    # not a shop toggle, and a client still sending the key is refused 422 by
+    # extra="forbid" -- the refusal STRUCTURE.md section 3.2 asks for.
 
 
-# staff_money_visible is deliberately ABSENT: it is NOT NULL (migration 0014), so it
-# cannot be cleared, only set true or false. Its omission here is what makes an
-# explicit null a 422 rather than a silent no-op (see _changes).
+# All three of the shop's settings are nullable: an explicit null CLEARS the
+# field (see ShopUpdate). There is no non-nullable boolean here any more (0019).
 _SHOP_NULLABLE = frozenset({"default_grade", "address", "phone"})
 
 
@@ -2261,10 +2279,7 @@ async def _read_shop(conn: Any, user_id: uuid.UUID) -> dict:
     # this row names a person -- it is the shop's own identity and its own choices.
     row = (
         await conn.execute(
-            text(
-                "SELECT id, name, default_grade, address, phone, staff_money_visible"
-                " FROM tenants"
-            )
+            text("SELECT id, name, default_grade, address, phone FROM tenants")
         )
     ).mappings().one()
     # THE CALLER'S BRANCH (migration 0018): the user's own if scoped, else the
@@ -2278,10 +2293,9 @@ async def _read_shop(conn: Any, user_id: uuid.UUID) -> dict:
         "default_grade": row["default_grade"],
         "address": row["address"],
         "phone": row["phone"],
-        # A boolean, NOT money and NOT a string: it is a policy flag the yard app
-        # reads to know whether to render money at all (P1.23 item 4, D1). Serialised
-        # as a JSON boolean, which is exactly what a flag is.
-        "staff_money_visible": row["staff_money_visible"],
+        # `staff_money_visible` is NO LONGER HERE (0019): the phone gates its
+        # dashboard entry on the caller's own permission set (the token claim,
+        # /whoami, and its cached_permissions), not on a shop toggle.
         "branch": branch_payload(caller.branch),
         "branch_count": caller.active_count,
     }
@@ -2303,11 +2317,13 @@ async def get_shop(principal: Principal = Depends(get_principal)) -> dict:
 
 @router.patch("/shop")
 async def update_shop(
-    body: ShopUpdate, principal: Principal = Depends(require_admin)
+    body: ShopUpdate,
+    principal: Principal = Depends(require(Permission.SHOP_SETTINGS_WRITE)),
 ) -> dict:
     """Set the shop's default grade, address or phone -- or clear any of them.
 
-    ADMIN ONLY, where GET is not: the default grade decides how every ungraded
+    shop.settings.write ONLY (0019; was ADMIN ONLY), where GET is not: the
+    default grade decides how every ungraded
     seller's bill is priced, for the whole shop, and address and phone are the
     shop's printed identity -- exactly the standing choices the yard must not be
     able to make while a load is on the scale. PARTIAL: only the fields sent are
@@ -2316,8 +2332,9 @@ async def update_shop(
     changes = _changes(body, nullable=_SHOP_NULLABLE)
     # Only the fields the caller sent, as a dynamic SET -- the same shape
     # _update_row builds, and the keys are literals from ShopUpdate (extra="forbid"
-    # so model_dump cannot produce a key outside {default_grade, address, phone}),
-    # never caller strings.
+    # so model_dump cannot produce a key outside {default_grade, address, phone};
+    # a `staff_money_visible` key is a 422 since 0019 folded it into the staff
+    # role's grants), never caller strings.
     assignments = ", ".join(f"{col} = :{col}" for col in changes)
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         # A default_grade being SET (not cleared) must be one of the shop's active

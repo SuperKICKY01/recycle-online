@@ -323,6 +323,13 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   to CHANGE it; `src/settings/shopSettings.ts` PATCHes only name / grade / address / phone.
   So the toggle is `PATCH /shop`-only today — an admin sets it server-side, and no phone UI
   does; a mobile control is a later line if the owner wants one on the phone.
+  **Superseded 2026-09-04 (migration 0019):** THE TOGGLE IS GONE. `tenants.staff_money_visible`
+  was folded into the staff role's grant set as the permission `money.view_own` (every
+  tenant whose toggle was true; none on dev) and dropped; `PATCH /shop` refuses the key.
+  G2's reading stands unchanged in permission form: a holder of `money.view_own` sees money
+  on ALL of a seller's history bills and only its OWN rows on the summary. The "mobile
+  control" this entry deferred is now a GRANT on the staff role, which the role-management
+  screen (owed, `§ Decisions open`) will draw; until then it is a row an operator adds by SQL.
 
 - **THE SERVER DOES NOT REFUSE DEACTIVATING THE LAST ACTIVE GRADE TIER — found 2026-08-31
   during P1.24 Phase 2, verified against `server/app/master.py` `update_grade_tier` (the
@@ -1545,6 +1552,31 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   the scratch-database retention entry below.
 
 ## Code debt found and left in place
+
+- **PERMISSIONS (migration 0019, 2026-09-04) — FOUND AND NOT FIXED, named so a later
+  reader does not think they were missed.**
+  - **`prove_login_guard.py` LEAVES ITS TWO TENANTS BEHIND on every run** — its
+    `finally` kills the server child and deletes nothing, which is how the
+    `LG MAIN/OTHER 2c7cdaee` pair came to sit on dev with a manager-less OTHER tenant
+    (removed by hand 2026-09-04, no bills, the counts printed before the delete). Its
+    OTHER user is now an admin so a future leftover cannot red reconcile S7; the
+    teardown itself is still owed. The self-restoring proofs of the same shape
+    (`prove_user_admin.py`, `prove_permissions.py`) restore a scratch and write there.
+  - **An OLD phone bundle after the deploy hides the dashboard entry for a staff
+    session** until it reloads: it reads `staff_money_visible` off `GET /shop`, which no
+    longer carries it, and treats the unknown as OFF. Transitional (every dev tenant
+    had the toggle false, so nothing visible moved); no fix owed.
+  - **`reconcile.py` `REQUIRED_CONSTRAINTS` does not list the 0019 constraints**
+    (`fk_users_role`, the `roles` uniques, `fk_role_permissions_role`) — the
+    0005..0018 decision, restated: a dump taken before 0019 has none of them and S5
+    would red on such a copy for a reason unrelated to money. Wake condition as for
+    its twins: a dump taken AFTER 0019 becoming the oldest anyone restores from.
+  - **The summary's per-user scope still comes from ONE hand-written predicate**
+    (`created_by = self`, `reports.py`), now keyed on `money.view_own`; the daily
+    report has no own-scope variant (the earlier entry stands).
+  - **`GET /users` keeps its five keys; `permissions` per user is not on the wire.**
+    The phone therefore cannot show what a colleague may do; the role screen's route
+    will carry it.
 
 - **BRANCHES (migration 0018, 2026-09-03) — FOUR THINGS FOUND OR DEFERRED AND NOT
   BUILT, named so a later reader does not think they were missed.**
@@ -3413,6 +3445,37 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   that phase. This phase does NOT close P3.7; the ROADMAP P3.7 step carries the dated
   note. NOTHING BELOW THIS SENTENCE IS AUTHORISED — the homing is the advisor's
   recommendation and the owner's to confirm or reverse.
+
+- **THE ROLE-MANAGEMENT SCREEN IS OWED — filed 2026-09-04 with the permission model
+  (migration 0019, `STRUCTURE.md` section 12 unit 1), NOT built in that unit by its
+  brief's fence.** What exists: the catalogue, the three system roles per tenant, the
+  grants, `users.role_id`, every gate, the token claim, the phone's cache and `may()`.
+  What does NOT exist, and what each absence costs today:
+  - **No route creates a role, edits its grants, renames it or deactivates it.** A shop's
+    fourth role (the cashier of section 3) is expressible in the schema and reachable
+    only by SQL. `roles.manage` is minted and gates nothing yet — it is the one code in
+    the catalogue with no route, said so at its line in `server/app/permissions.py`.
+  - **No shop provisioned before 0019 holds `roles.manage`.** The migration maps
+    admin→admin and staff→staff and seats nobody as `owner` (guessing which admin is
+    the owner would invent an identity); the owner seat of every existing shop is EMPTY
+    until this screen exists to fill it. A shop provisioned after 0019 gets its first
+    user as `owner` (`scripts/provision_shop.py`, the owner's decision 1). Correct
+    today, because the surface that would need the seat does not exist.
+  - **The phone's add-user picker offers two codes** (`admin`, `staff`) — the two an
+    admin can always assign under the escalation guard; there is no `GET /roles` to
+    list the shop's own. `roleLabelOf` shows a code this build does not know AS ITSELF
+    (the role's `name`, the shop's own text, does not travel on the roster's five keys).
+  - **The roster's last-manager courtesy counts `owner`/`admin` codes only**
+    (`mobile/src/users/usersAdmin.ts`); a shop-minted role holding `users.manage` is not
+    counted on the phone, so the deactivate button may be offered and the server's 409
+    `last_active_admin` (generalised to `users.manage`) words the refusal.
+  - **`payment_limit_per_bill` / `payment_limit_per_shift` on `roles`** (section 3.1's
+    table) are NOT created: nothing reads them; they arrive with unit 3.
+  - **Ten of section 3.1's 23 codes are not minted** — `app/permissions.py` `DEFERRED`
+    names each against the unit that will gate it, so the names are not reinvented.
+  *Unblocks:* a shop creating its own roles without us; the cashier of section 3.
+  *Not done:* nothing decided about where the screen lives (phone, desktop, provider
+  web) — the same homing question as the two entries above.
 
 - **DOES PRODUCT / CATEGORY / UNIT MASTER DATA ALSO LIVE ON THE DESKTOP (OR THE
   PROVIDER WEB)? Open, raised 2026-09-03 when the screen shipped on the PHONE.** P1.15

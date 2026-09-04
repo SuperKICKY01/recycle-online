@@ -66,6 +66,43 @@ AT THE NEW VERSION."
   reintroduced in the READER. Read money out of jsonb with SQL `->>` (the numeric's
   exact text), never by parsing the object in Python.
 
+## AMENDED (migration 0019, 2026-09-04): a MIGRATION that writes an already-audited table is a writer too — and it is conscripted TWICE
+
+The list above has provisioning, proofs, a restore and an old-commit server. It
+does not have the plainest writer of all: **the next migration.** 0019 fills
+`users.role_id` with one `UPDATE users … FROM roles`, and `users` has carried the
+audit trigger since 0017. Two refusals, both measured on the first scratch runs,
+each rolling the whole migration back to 0018 (which is the atomicity the migration
+claims, observed for free):
+
+1. `audit_capture: no actor in context (app.actor_id unset) for UPDATE on users` —
+   the trigger's own refusal. The migration must DECLARE the system actor for its
+   transaction, exactly as `provision_shop.py` does:
+   `SELECT set_config('app.actor_id', '00000000-…', true)` and a username naming the
+   revision (`system:migration_0019`), so every re-keyed user is recorded under it.
+2. `new row violates row-level security policy for table "audit_log"` — the audit
+   ROW, not the trigger. The trigger writes `tenant_id = app.tenant_id` into a
+   FORCE-RLS table whose `tenant_id` is NOT NULL and whose WITH CHECK compares it,
+   and a migration sets NO tenant context; one cross-tenant statement can never
+   satisfy it. So a migration that writes an audited table must run that write
+   **PER TENANT under `SET LOCAL app.tenant_id`**, the shape every request and every
+   provisioner already uses, and reset the GUC afterwards.
+
+**The rule the amendment adds.** "Enumerate every path that writes it" includes the
+migrations NOT YET WRITTEN. A table that is audited (or FORCE-RLS with a tenant
+WITH CHECK, or NOT NULL on a context column) has a write contract that a later
+migration's backfill must meet: declare the actor, iterate tenants, restore FORCE.
+0018 did not meet it and did not need to — it wrote `branches` before attaching the
+trigger and touched `users` only by `ADD COLUMN` (DDL fires no row trigger). The
+difference between 0018 and 0019 is one `UPDATE`, and it is the difference between
+a green first run and two refused ones.
+
+**Where proven (this amendment).** `0019_permissions.py` upgrade() and downgrade()
+(the actor block and the per-tenant loop, each commented with the refusal it
+answers); the two scratch runs of 2026-09-04 whose tracebacks are quoted above,
+the schema at 0018 read back intact after each (the atomicity cell of the
+permission-model record in `PROJECT_STATUS.md § Current phase`).
+
 **Where proven.** Migration `0017_audit_log.py`; the mechanism measured on dev
 `recycle` 2026-09-02 (a `SECURITY DEFINER` owner trigger writes into a FORCE-RLS
 `audit_log` under the app role's context, while the app role holds no INSERT).

@@ -1,42 +1,56 @@
 /**
- * WHAT ROLE THIS DEVICE IS SIGNED IN AS — read out of the session token.
+ * WHAT THIS DEVICE MAY OFFER — the permission set of the session, and the role
+ * code beside it, read out of the token and (since migration 0019) out of the
+ * device's own cache of the server's last answer.
  *
  * PURE TypeScript: no React Native, no Expo, no node, no atob. Everything here
- * is arithmetic over the token string, so the headless proof exercises exactly
- * what the phone runs.
+ * is arithmetic over the token string and a Set, so the headless proof
+ * exercises exactly what the phone runs.
  *
  * ---------------------------------------------------------------------------
  * WHY THE CLIENT MAY READ THIS AT ALL, AND WHAT IT IS NOT
  * ---------------------------------------------------------------------------
- * The server puts a `role` claim in the JWT for exactly one purpose, and says so
- * in server/app/security.py: ADVISORY, so a client can render with it. It is NOT
- * what the server authorises on — get_principal re-reads the role from the users
- * row under tenant context on every single request, precisely so that an admin
- * demoted in the back office stops being an admin immediately instead of at the
- * end of their token's hour.
+ * The server puts a `role` claim and a `permissions` claim in the JWT for
+ * exactly one purpose, and says so in server/app/security.py: ADVISORY, so a
+ * client can render with them. Neither is what the server authorises on —
+ * get_principal reads the users -> roles -> role_permissions join under tenant
+ * context on every single request, precisely so that a grant revoked in the
+ * office stops working immediately instead of at the end of the token's hour.
  *
- * So this value is one hour stale at worst and the server is the authority,
- * always. It is used here for ONE thing: not offering a button that cannot work.
- * Every consequence of being wrong is absorbed by the 403 path — the sync engine
- * classifies the refusal, the void stops being owed, and the card explains it.
+ * So the set here is one hour stale at worst (fresher after a /whoami, which
+ * rewrites the cache) and the server is the authority, always. It is used for
+ * ONE thing: not offering a button that cannot work. Every consequence of being
+ * wrong is absorbed by the 403 path — the sync engine classifies the refusal, the
+ * void stops being owed, and the card explains it.
  *
- * IT FAILS OPEN. An unparseable token, a missing claim, an unrecognised value:
- * all of them read as "unknown", and unknown offers the button. That is the
- * opposite of the rule in lessons/config-defaults-must-fail-closed.md, and the
- * difference is which side of the wire the decision is on. That lesson is about
- * a SERVER accepting an identity it never verified — there, a default is a
- * default identity. Here the enforcement is elsewhere and untouched by anything
- * in this file; failing closed would only mean a real admin whose token we merely
- * failed to parse is locked out of the one action that corrects a wrong bill,
- * with no way to appeal. A staff user who is wrongly offered the button gets a
- * plain sentence back. Those costs are not close.
+ * IT FAILS OPEN ON AN ABSENT SET, AND CLOSED ON A PRESENT ONE. `may(null, x)` is
+ * true: an unparseable token, a token from an older build with no permissions
+ * claim, an empty cache on a cold start — all read as "unknown", and unknown
+ * OFFERS the control. That is the opposite of the rule in
+ * lessons/config-defaults-must-fail-closed.md, and the difference is which side
+ * of the wire the decision is on. That lesson is about a SERVER accepting an
+ * identity it never verified — there, a default is a default identity. Here the
+ * enforcement is elsewhere and untouched by anything in this file; failing
+ * closed would only mean a real owner whose set we merely failed to read is
+ * locked out of the one action that corrects a wrong bill, with no way to
+ * appeal. A user who is wrongly offered a button gets a plain sentence back.
+ * Those costs are not close.
+ *
+ * THE NARROWING, deliberate (STRUCTURE.md section 3.3). Before 0019 the five
+ * predicates this file held read `role !== "staff"`: only a DEFINITE staff hid
+ * a control, and an unrecognised role string fell open. Now a set that WAS read
+ * is exact — a set lacking `bills.void` hides the void button even though the
+ * role code beside it is one this build has never heard of. Only an ABSENT set
+ * fails open. A role the shop minted with three permissions therefore sees
+ * three controls, not every control.
  *
  * WHY NOT ASK /whoami INSTEAD. That answer is fresher — it is the same read the
- * gate performs. But it needs a network round trip, and the case this has to
- * survive is the cold start with the server unreachable (Phase 2c-8): the token
- * comes back from the keystore, the yard opens the app, and there is nobody to
- * ask. A claim already in hand answers offline. Nothing stops /whoami being used
- * as well later; it would refine this, not replace it.
+ * gate performs — and the app DOES ask it, at boot when online and whenever the
+ * account screen opens, rewriting `cached_permissions` each time. But the case
+ * this has to survive is the cold start with the server unreachable (Phase
+ * 2c-8): the token comes back from the keystore, the cache comes back from
+ * SQLite, the yard opens the app, and there is nobody to ask. A claim already in
+ * hand answers offline; the cache answers with whatever the server last said.
  *
  * WHY A HAND-WRITTEN DECODER. `atob` and `TextDecoder` under Hermes are
  * unverified here, in the same family as crypto.randomUUID and Intl's timeZone
@@ -46,14 +60,44 @@
  */
 
 /** "unknown" is `null`, and it is a first-class answer, not an error. */
-export type DeviceRole = "admin" | "staff" | null;
+export type DeviceRole = "owner" | "admin" | "staff" | null;
 
 /**
- * The only two roles there are. users.role carries a CHECK constraint to exactly
- * these (migration 0001), so anything else in a token is a token we do not
- * understand, and the honest reading of that is "unknown" rather than a guess.
+ * The three SYSTEM role codes every shop is born with (server migration 0019,
+ * S9). A shop may mint more; a code this build does not recognise reads as
+ * unknown for DISPLAY (the label), and nothing is gated on it — gating is
+ * `may()` over the permission set, whatever the role is called.
  */
-const ROLES: readonly string[] = ["admin", "staff"];
+const ROLES: readonly string[] = ["owner", "admin", "staff"];
+
+/**
+ * The permission catalogue, MIRRORED from server/app/permissions.py (13 codes).
+ * A courtesy list for the call sites, so a typo at a gate is a compile error;
+ * the SERVER's boot check is what keeps its catalogue equal to its code, and a
+ * code the server adds later simply lands in the Set unnamed here until this
+ * list is widened.
+ */
+export type Permission =
+  | "bills.create"
+  | "bills.read"
+  | "bills.void"
+  | "money.view_own"
+  | "money.view_shop"
+  | "master.write"
+  | "prices.write"
+  | "sellers.create"
+  | "sellers.write"
+  | "tiers.manage"
+  | "users.manage"
+  | "shop.settings.write"
+  | "roles.manage";
+
+/**
+ * The session's permission set, or null when it is UNKNOWN (no readable claim,
+ * no cache). Never an empty Set for "unknown": an empty Set is a real answer —
+ * a role holding nothing — and it hides everything.
+ */
+export type Grants = ReadonlySet<string> | null;
 
 const B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
@@ -126,18 +170,16 @@ function utf8ToString(bytes: Uint8Array): string | null {
 }
 
 /**
- * The role claimed by this session token, or null when it cannot be read.
- *
- * NEVER THROWS. It is called on the boot path, on a token restored from the OS
- * keystore that may be anything at all — including a value written by an older
- * build. A launch must not fail on it.
+ * The claims of a session token, or null when they cannot be read. NEVER
+ * THROWS: called on the boot path over a token restored from the OS keystore
+ * that may be anything at all, including a value written by an older build.
  *
  * The SIGNATURE IS NOT CHECKED and cannot be: the client has no secret, by
- * design. That is not a hole, because nothing is authorised on this value —
- * forging a role here only changes whether a button is drawn, and pressing it
+ * design. That is not a hole, because nothing is authorised on these values —
+ * forging a claim here only changes whether a button is drawn, and pressing it
  * gets the same 403 the server would have given anyway.
  */
-export function readTokenRole(token: string | null): DeviceRole {
+function readClaims(token: string | null): Record<string, unknown> | null {
   if (token === null) return null;
   const parts = token.split(".");
   // header.payload.signature. Not two, not four.
@@ -150,165 +192,74 @@ export function readTokenRole(token: string | null): DeviceRole {
     const json = utf8ToString(bytes);
     if (json === null) return null;
     const claims: unknown = JSON.parse(json);
-    if (typeof claims !== "object" || claims === null || !("role" in claims)) return null;
-    const role = (claims as { role: unknown }).role;
-    return typeof role === "string" && ROLES.includes(role) ? (role as DeviceRole) : null;
+    if (typeof claims !== "object" || claims === null || Array.isArray(claims)) return null;
+    return claims as Record<string, unknown>;
   } catch {
     return null;
   }
+}
+
+/**
+ * The role CODE claimed by this session token, or null when it cannot be read
+ * or is not one of the three system codes. DISPLAY ONLY (the account screen's
+ * label and the roster's fallback); nothing is gated on it since 0019.
+ */
+export function readTokenRole(token: string | null): DeviceRole {
+  const claims = readClaims(token);
+  if (claims === null || !("role" in claims)) return null;
+  const role = claims["role"];
+  return typeof role === "string" && ROLES.includes(role) ? (role as DeviceRole) : null;
 }
 
 /**
  * The user id (`sub`) this session token was minted for, or null when it cannot be
  * read. Same decode as readTokenRole and the same NEVER-THROWS contract. It is a
  * COURTESY only — the roster uses it to mark the signed-in row and to keep its own
- * destructive actions off that row — so a null (a token this build cannot parse)
- * simply marks no row as self, which the server still backs: self-deactivation is
- * refused (cannot_deactivate_self) whatever the client believes.
+ * destructive actions off that row, and the permission cache is keyed on it — so a
+ * null (a token this build cannot parse) simply marks no row as self, which the
+ * server still backs: self-deactivation is refused (cannot_deactivate_self)
+ * whatever the client believes.
  */
 export function readTokenUserId(token: string | null): string | null {
-  if (token === null) return null;
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const payload = parts[1];
-  if (payload === undefined || payload.length === 0) return null;
-  try {
-    const bytes = base64UrlToBytes(payload);
-    if (bytes === null) return null;
-    const json = utf8ToString(bytes);
-    if (json === null) return null;
-    const claims: unknown = JSON.parse(json);
-    if (typeof claims !== "object" || claims === null || !("sub" in claims)) return null;
-    const sub = (claims as { sub: unknown }).sub;
-    return typeof sub === "string" ? sub : null;
-  } catch {
-    return null;
-  }
+  const claims = readClaims(token);
+  if (claims === null || !("sub" in claims)) return null;
+  const sub = claims["sub"];
+  return typeof sub === "string" ? sub : null;
 }
 
 /**
- * May this device OFFER the void button?
- *
- * Only a definite "staff" hides it. Unknown shows it — see the header on why
- * this fails open — and so does "admin", obviously.
- *
- * The rule lives here, next to the reasoning, rather than as a `!== "staff"` in
- * a view: it is consumed by canRequestVoid (sync/parkedReason.ts) so the button
- * and the sentence explaining its absence cannot drift apart, and so a proof can
- * hold them together.
+ * The permission set claimed by this session token (server migration 0019), or
+ * null when there is none to read: a token from before 0019 carries no
+ * `permissions` claim at all, and a value that is not an array of strings is a
+ * claim this build does not understand. Null is "unknown" and fails OPEN
+ * (see the header); an EMPTY array is a real, empty set and fails closed.
  */
-export function mayVoid(role: DeviceRole): boolean {
-  return role !== "staff";
+export function readTokenPermissions(token: string | null): Grants {
+  const claims = readClaims(token);
+  if (claims === null || !("permissions" in claims)) return null;
+  const raw = claims["permissions"];
+  if (!Array.isArray(raw) || !raw.every((p) => typeof p === "string")) return null;
+  return new Set(raw as string[]);
 }
 
 /**
- * May this device OFFER to change a price?
+ * May this device OFFER the control that `permission` gates?
  *
- * P1.9. The same rule as `mayVoid` and, deliberately, a SEPARATE function
- * rather than a shared `isNotStaff`: these are two product decisions that
- * happen to agree today, and collapsing them would mean the day one moves the
- * other moves silently with it. The server gates them on two different
- * dependencies and could diverge without anyone editing this file.
+ * THE ONE GATE on the client, replacing the five role predicates this file
+ * carried until 0019 (mayVoid, mayEditPrices, mayEditShopSettings,
+ * mayManageUsers, mayManageProducts — "the map of what to convert", in its
+ * own words). An ABSENT set offers everything (fails open, the header's
+ * argument); a PRESENT set is exact.
  *
- * WHY IT MATCHES `mayVoid` RATHER THAN THE ยอดวันนี้ BUTTON, which is the other
- * precedent in this app and points the other way. That button is offered to
- * everybody because opening a read-only report costs one refused GET and one
- * plain sentence. A price WRITE is an ACTION: a staff session pressing save
- * gets a 403 from `require_admin`, and finding out that way is finding out
- * after deciding a price was changed. So the control is not drawn.
+ * The rule lives here, next to the reasoning, rather than as a `.has()` in a
+ * view: it is consumed by canRequestVoid (sync/parkedReason.ts), the settings
+ * entries, the price and product and user screens and the dashboard gate, so a
+ * button and the sentence explaining its absence cannot drift apart, and so a
+ * proof can hold them together.
  *
- * IT FAILS OPEN, exactly as the header of this file argues and for the same
- * reason: only a DEFINITE "staff" hides the control. An unparseable token, an
- * absent claim, or a role this build does not recognise all read as unknown,
- * and unknown offers it. The claim is up to an hour stale while the server
- * re-reads the role from the users row on every request — so an owner promoted
- * this morning is admin to the server and still `staff` in their token, and
- * failing closed would lock a real shop owner out of their own prices, with a
- * metal market moving, until the token expired. The cost the other way is one
- * refused write and one plain sentence, which `priceSaveScreen`'s 403 branch
- * draws.
- *
- * NOTHING IS AUTHORISED ON THIS VALUE. `require_admin` is, on every request,
- * against the database row.
+ * NOTHING IS AUTHORISED ON THIS VALUE. `require(permission)` is, on every
+ * request, against the database row (server/app/auth.py).
  */
-export function mayEditPrices(role: DeviceRole): boolean {
-  return role !== "staff";
-}
-
-/**
- * May this device OFFER to edit the shop's settings?
- *
- * P1.23. A SEPARATE function from `mayEditPrices` and `mayVoid`, deliberately, and
- * for the reason `mayEditPrices` already gives: these are distinct product
- * decisions that happen to agree today. The server gates PATCH /shop on
- * `require_admin` and GET /shop on nothing — the same asymmetry the price routes
- * have — but they are two different endpoints and could diverge without anyone
- * editing this file, so collapsing them into one `isNotStaff` would move one the
- * day the other moved.
- *
- * IT FAILS OPEN, exactly as the two above and for the same reason (see this
- * file's header): only a DEFINITE "staff" hides the edit controls. An unparseable
- * token, an absent claim, or a role this build does not recognise all read as
- * unknown, and unknown OFFERS the controls. The claim is up to an hour stale
- * while the server re-reads the role every request, so an owner promoted this
- * morning is admin to the server and still `staff` in their token; failing closed
- * would lock a real owner out of their own shop settings until the token expired.
- * The cost the other way is one refused PATCH and one plain sentence, which the
- * settings screen's 403 branch draws (src/settings/shopSettings.ts).
- *
- * NOTHING IS AUTHORISED ON THIS VALUE. `require_admin` is, on every PATCH /shop,
- * against the database row. Staff read the screen; only admin may write it.
- */
-export function mayEditShopSettings(role: DeviceRole): boolean {
-  return role !== "staff";
-}
-
-/**
- * May this device OFFER the "จัดการผู้ใช้งาน" entry inside settings (P3.7)?
- *
- * A SEPARATE function from the three above, deliberately, and for the same reason
- * mayEditPrices gives: these are distinct product decisions that happen to agree
- * today. Every user route is `require_admin` on the server; this only decides
- * whether the ENTRY is drawn, so a staff session does not see a screen whose every
- * action the server refuses (the P1.9 rule, the same shape as the dashboard entry
- * gate).
- *
- * IT FAILS OPEN, exactly as the three above and for the same reason (see this
- * file's header): only a DEFINITE "staff" hides the entry. An unparseable token, an
- * absent claim, or an unrecognised role all read as unknown, and unknown OFFERS the
- * entry. The claim is up to an hour stale while the server re-reads the role every
- * request, so an owner promoted this morning is admin to the server and still
- * `staff` in their token; failing closed would hide the one screen that manages the
- * shop's people. The cost the other way is a 403 the roster words, never a lockout.
- *
- * NOTHING IS AUTHORISED ON THIS VALUE. `require_admin` is, on GET /users and every
- * write, against the database row.
- */
-export function mayManageUsers(role: DeviceRole): boolean {
-  return role !== "staff";
-}
-
-/**
- * May this device OFFER the "จัดการสินค้า" entry inside settings (P1.15, homed on
- * the phone)?
- *
- * A SEPARATE function again, deliberately, and for the reason this file has repeated
- * five times: managing products, editing prices, editing shop settings, voiding a
- * bill and managing users are five product decisions that happen to agree TODAY
- * (all admin-only). Collapsing them into one `isNotStaff` would mean the day one
- * moves — when the permission model lands (blueprint 8.3), where these predicates
- * become the map of what to convert into a real per-account permission — the others
- * move silently with it, and a permission that should have existed is hidden.
- *
- * IT FAILS OPEN, exactly as the others (see this file's header): only a DEFINITE
- * "staff" hides the entry; an unparseable/absent/unrecognised role OFFERS it. Every
- * product/category/unit WRITE route is `require_admin` on the server, re-read from
- * the row each request, so a stale claim costs at worst a 403 the screen words —
- * never a lockout, and never a way to change the shop's product list.
- *
- * NOTHING IS AUTHORISED ON THIS VALUE. `require_admin` is, on every write in
- * server/app/master.py, against the database row.
- */
-export function mayManageProducts(role: DeviceRole): boolean {
-  return role !== "staff";
+export function may(grants: Grants, permission: Permission): boolean {
+  return grants === null ? true : grants.has(permission);
 }

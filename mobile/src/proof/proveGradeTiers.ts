@@ -48,6 +48,7 @@ import type {
 import { gradePrice, tierName } from "../cart/sellers.js";
 import { saveConfirmNotice } from "../master/saveConfirmNotice.js";
 import type { DeviceRole } from "../session/deviceRole.js";
+import { grantsOf } from "./proofGrants.js";
 
 let failures = 0;
 
@@ -74,7 +75,8 @@ if (BREAK !== "" && !BREAK_MODES.includes(BREAK)) {
 
 /** The tier list, or the OLD/wrong design's answer under a break. */
 function adminScreen(tiers: readonly AdminGradeTier[], role: DeviceRole): TierAdminScreen {
-  const screen = tierAdminScreen(tiers, role);
+  // The role LABEL stands for its born-with permission set (server migration 0019).
+  const screen = tierAdminScreen(tiers, grantsOf(role));
   if (BREAK === "deactivate_last") {
     // The defect: every active tier is deactivatable, including the last one —
     // which would let a shop deactivate its way to ZERO active tiers, where every
@@ -273,7 +275,7 @@ function g6OfflineOneTier(): void {
 
 function g7Reorder(): void {
   header("G7 — reorder (commit 3): the full order, the edges, and the move flags");
-  const rows = tierAdminScreen(TIERS_MANY, "admin").rows;
+  const rows = tierAdminScreen(TIERS_MANY, grantsOf("admin")).rows;
   const byCode = (c: string): (typeof rows)[number] => {
     const r = rows.find((x) => x.code === c);
     if (r === undefined) throw new Error(`the fixture has no tier ${c}`);

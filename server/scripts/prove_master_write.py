@@ -68,6 +68,14 @@ load_dotenv()
 
 BASE = os.environ.get("API_BASE_URL", "http://127.0.0.1:8099")
 RUN = uuid.uuid4().hex[:8]
+
+# The demotion and the promotion back, since 0019: users.role is gone, so the row
+# is pointed at one of its OWN tenant's system roles by code ($2), in the same
+# tenant. Positional binds: `db` is an asyncpg connection.
+DEMOTE_SQL = (
+    "UPDATE users u SET role_id = r.id FROM roles r"
+    " WHERE r.tenant_id = u.tenant_id AND r.code = $2 AND u.username = $1"
+)
 SEEDED_GRADE = "B"  # seller A's seeded grade
 VOID_REASON = "proof fixture: prove_master_write.py, not a real correction"
 
@@ -311,8 +319,9 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
         for method, path, body in refusals:
             resp = client.request(method, f"{BASE}{path}", headers=staff, json=body)
             d = detail_of(resp)
-            named = isinstance(d, dict) and d.get("kind") == "forbidden" \
-                and d.get("code") == "admin_required" and d.get("actual_role") == "staff"
+            named = (isinstance(d, dict) and d.get("kind") == "forbidden"
+                     and d.get("code") == "permission_required"
+                     and isinstance(d.get("required_permission"), str))
             check(f"{method} {path} -> 403, naming its kind",
                   resp.status_code == 403 and named,
                   f"status={resp.status_code} detail={d!r}")
@@ -836,7 +845,8 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
               f"status={r.status_code}")
         created["uom_pre"] = r.json().get("id", "")
 
-        await db.execute("UPDATE users SET role = 'staff' WHERE username = $1", ADMIN_USERNAME)
+        # The demotion, since 0019: point the row at the tenant's STAFF role.
+        await db.execute(DEMOTE_SQL, ADMIN_USERNAME, "staff")
         demoted = True
 
         # The SAME token, unchanged and unexpired — it still claims role=admin.
@@ -847,7 +857,7 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
         check("and /whoami reports the role the server RESOLVED, not the one claimed",
               who.get("role") == "staff", f"role={who.get('role')}")
 
-        await db.execute("UPDATE users SET role = 'admin' WHERE username = $1", ADMIN_USERNAME)
+        await db.execute(DEMOTE_SQL, ADMIN_USERNAME, "admin")
         demoted = False
         r = client.post(f"{BASE}/uoms", headers=admin, json={"code": f"BACK-{RUN}", "name": "x"})
         check("promoted back, the same token works again — no re-login needed",
@@ -857,8 +867,7 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
     finally:
         # ---- restore exactly what was borrowed, whatever happened above ----
         if demoted:
-            await db.execute("UPDATE users SET role = 'admin' WHERE username = $1",
-                             ADMIN_USERNAME)
+            await db.execute(DEMOTE_SQL, ADMIN_USERNAME, "admin")
         # Unconditional, not `if product_a_retired`: if V2 died between the
         # deactivate and the flag being cleared, the seeded product would stay
         # retired and every later proof would measure THAT instead of the fixture.
@@ -907,8 +916,10 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
             "SELECT price FROM product_prices WHERE product_id = $1 AND grade = $2",
             PRODUCT_A_ID, SEEDED_GRADE,
         )
+        # The role CODE through the join (0019): users.role is gone.
         restored_role = await db.fetchval(
-            "SELECT role FROM users WHERE username = $1", ADMIN_USERNAME
+            "SELECT r.code FROM users u JOIN roles r ON r.id = u.role_id"
+            " WHERE u.username = $1", ADMIN_USERNAME
         )
         restored_active = await db.fetchval(
             "SELECT is_active FROM products WHERE id = $1", PRODUCT_A_ID

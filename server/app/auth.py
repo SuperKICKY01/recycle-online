@@ -1,12 +1,21 @@
-"""Authentication dependency: resolve the caller's tenant + user from the JWT.
+"""Authentication dependency: resolve the caller's tenant, user and PERMISSIONS
+from the JWT and the row.
 
 Tenant scoping for data routes comes ONLY from the token. tenant_id is never
 read from the URL or body for scoping (login is the sole exception: there the
 submitted tenant_id is an identity claim, not a data filter).
+
+Since migration 0019 the gate is a PERMISSION, not a role name (STRUCTURE.md
+section 3, invariant 6): `require(Permission.X)` replaces `require_admin`, the
+Principal carries the frozenset the users -> roles -> role_permissions join
+returns for THIS request, and no handler compares a role name. The role CODE
+still rides on the Principal for display (/whoami, the roster) and for nothing
+else.
 """
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 
 import jwt
@@ -15,6 +24,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 
 from .db import tenant_connection
+from .permissions import Permission
 from .security import decode_access_token
 
 # auto_error=False -> a missing/blank Authorization header yields None here so we
@@ -81,20 +91,40 @@ _INACTIVE = unauthenticated(
 )
 
 
-# The only two roles there are. users.role is CHECK-constrained to exactly these
-# in migration 0001, so nothing else can be in the database to begin with.
-ADMIN_ROLE = "admin"
-STAFF_ROLE = "staff"
-
-
 @dataclass(frozen=True)
 class Principal:
     user_id: uuid.UUID
     tenant_id: uuid.UUID
     username: str
-    # ALWAYS the role read back from the database for THIS request — never the
-    # role the token claimed. See the note in get_principal.
+    # The CODE of the role read back from the database for THIS request (owner,
+    # admin, staff, or a code the shop minted) — never the code the token
+    # claimed. DISPLAY ONLY: /whoami and the roster echo it; no gate reads it
+    # (invariant 6, "no handler compares a role name").
     role: str
+    # The permission set the users -> roles -> role_permissions join returned
+    # for THIS request. EMPTY for a user whose role is deactivated (fail closed:
+    # the account still resolves, every gate refuses). The gate is `has`.
+    permissions: frozenset[str]
+
+    def has(self, permission: Permission) -> bool:
+        return permission.value in self.permissions
+
+
+# ONE query, the same join for get_principal and for login (main.py imports the
+# fragment): the user row, the role's code and activity, and the grants as an
+# array. LEFT JOIN on the grants so a role with none still resolves (to an empty
+# set), and r.is_active folded into the aggregate so a DEACTIVATED role grants
+# nothing while the role code is still readable for display. All three tables
+# are RLS-scoped, so the join can only ever see the token's tenant.
+PRINCIPAL_JOIN = (
+    " FROM users u"
+    " JOIN roles r ON r.id = u.role_id"
+    " LEFT JOIN role_permissions rp ON rp.role_id = r.id AND r.is_active"
+)
+PRINCIPAL_PERMISSIONS = (
+    "coalesce(array_agg(rp.permission) FILTER (WHERE rp.permission IS NOT NULL),"
+    " '{}'::text[]) AS permissions"
+)
 
 
 async def get_principal(
@@ -126,6 +156,9 @@ async def get_principal(
     the very request they are trying to stop. Any issue-then-check scheme has
     this window somewhere; moving it is not removing it. Recorded here so the
     next reader knows it was measured and accepted rather than missed.
+
+    THE SAME WINDOW APPLIES TO A GRANT REVOKED MID-REQUEST, one field along, and
+    is accepted for the same reason.
     """
     if creds is None or not creds.credentials:
         raise _UNAUTHENTICATED
@@ -142,6 +175,12 @@ async def get_principal(
             # Defaulting it to anything would be a default IDENTITY, which is
             # what lessons/config-defaults-must-fail-closed.md is about.
             role=claims["role"],
+            # THE TOKEN'S `permissions` CLAIM IS NEVER READ HERE. It exists for
+            # the phone to render with offline (advisory, exactly as `role`
+            # is), and a token minted before 0019 has none -- which must not
+            # be a 401, or every operator is signed out by the deploy. The set
+            # below comes from the row, on every request, and from nowhere else.
+            permissions=frozenset(),
         )
     except (jwt.PyJWTError, KeyError, ValueError):
         # Tampered signature, expired, malformed, or missing claims -> all 401.
@@ -188,18 +227,18 @@ async def get_principal(
     # tenant A with tenant_id B finds nothing and is rejected.
     #
     # Cost is one short read transaction per authenticated request. That is the
-    # honest price of not trusting a bearer token about who exists.
+    # honest price of not trusting a bearer token about who exists — and since
+    # 0019 the same statement joins the role and its grants, so the permission
+    # set costs no second read either.
     async with tenant_connection(claimed.tenant_id) as conn:
         row = (
             await conn.execute(
-                # token_version and is_active ride along on the query that was
-                # ALREADY here. No second read per request: that is a design
-                # constraint of this work, not an optimisation. The lookup that
-                # proves the user exists is on this path regardless, and it now
-                # returns three columns instead of one.
                 text(
-                    "SELECT role, is_active, token_version"
-                    " FROM users WHERE id = :uid"
+                    "SELECT u.is_active, u.token_version, r.code AS role,"
+                    f" {PRINCIPAL_PERMISSIONS}"
+                    f"{PRINCIPAL_JOIN}"
+                    " WHERE u.id = :uid"
+                    " GROUP BY u.is_active, u.token_version, r.code"
                 ),
                 {"uid": claimed.user_id},
             )
@@ -216,18 +255,18 @@ async def get_principal(
     # disproof scripts/prove_revocation.py performs (CASE 7).
     _require_live_session(token_version, row["token_version"])
 
-    # THE DATABASE IS THE AUTHORITY ON ROLE, NOT THE CLAIM.
+    # THE DATABASE IS THE AUTHORITY ON WHAT THE CALLER MAY DO, NOT THE CLAIM.
     #
-    # The token carries a role so a client can render with it, but authorisation
-    # reads the row. The two differ in exactly the case that matters: an admin
-    # demoted to staff in the back office still holds a token CLAIMING admin
-    # until it expires (JWT_TTL_SECONDS, an hour by default). Gating on the claim
-    # would let that phone keep voiding bills for the rest of the hour — the same
-    # "a valid signature is not proof" failure as above, one field along.
-    #
-    # This costs nothing: the lookup that proves the user still exists is already
-    # on this path, and it now returns a column instead of a constant.
-    return replace(claimed, role=row["role"])
+    # The token carries a role code and a permissions list so a client can render
+    # with them, but authorisation reads the row. The two differ in exactly the
+    # case that matters: an admin demoted in the back office still holds a token
+    # CLAIMING admin until it expires (JWT_TTL_SECONDS, an hour by default).
+    # Gating on the claim would let that phone keep voiding bills for the rest of
+    # the hour — the same "a valid signature is not proof" failure as above, one
+    # field along.
+    return replace(
+        claimed, role=row["role"], permissions=frozenset(row["permissions"])
+    )
 
 
 def _require_active_account(is_active: bool) -> None:
@@ -300,12 +339,13 @@ def _require_live_session(claimed_version: int, current_version: int) -> None:
 # A 403 is NONE of those. The payload is fine (not 422). The master data is fine
 # (not 424). The caller IS someone (not 401). The server answered definitively,
 # so retrying changes nothing (not 5xx). It says: this caller may not do this
-# until a HUMAN changes their role — no action by the device can clear it.
+# until a HUMAN changes their role's grants — no action by the device can clear
+# it.
 #
 # Being mistaken for either rejection species would be actively wrong:
 #   - as PERMANENT, a void request is discarded and the owner is told the bill is
-#     broken, when the bill is fine and the phone simply is not an admin;
-#   - as RESOLVABLE, it is parked and retried forever against a role that will
+#     broken, when the bill is fine and the phone simply lacks the permission;
+#   - as RESOLVABLE, it is parked and retried forever against a grant that will
 #     never change by itself, and the yard is told to go fix master data.
 #
 # So it is distinguishable on TWO INDEPENDENT axes, and a client needs only one:
@@ -316,13 +356,22 @@ def _require_live_session(claimed_version: int, current_version: int) -> None:
 #     carries. Nothing string-matches a message — that is the whole point of the
 #     server naming its own kind.
 #
-# 403 AND NOT 404, deliberately. A 404 would make "you lack the role"
+# 403 AND NOT 404, deliberately. A 404 would make "you lack the permission"
 # indistinguishable from "no such endpoint" AND from "that row is not in your
 # tenant" — and the last of those is a REAL 404 the master-data writes return.
 # Collapsing them means a staff phone reports the server as broken and an admin
 # in the wrong tenant reports a permissions bug. There is no secret being kept:
 # the endpoint list is not confidential, and the caller already knows their own
-# role — it is in the token they sent.
+# grants — they are in the token they sent.
+#
+# ONE CODE FOR EVERY PERMISSION REFUSAL: `permission_required`, with the
+# permission named in `required_permission`. A client's wording stays a function
+# of the code and the call site, exactly as it was for `admin_required`; the body
+# key says WHICH rule refused, which a status alone cannot (mechanism 7 of
+# lessons/a-check-that-never-went-red-was-never-observed.md). `admin_required`
+# and `staff_money_hidden` are no longer answered by any route (section 12's own
+# disproof), and the phone keeps them only as LEGACY keys for rows it stored
+# before this deploy.
 # ---------------------------------------------------------------------------
 
 
@@ -334,17 +383,38 @@ def forbidden(code: str, message: str, **context: object) -> HTTPException:
     )
 
 
-async def require_admin(principal: Principal = Depends(get_principal)) -> Principal:
-    """Gate an endpoint on the ADMIN role. Drop-in replacement for get_principal.
+PERMISSION_REQUIRED = "permission_required"
 
-    FastAPI caches get_principal within a request, so depending on this does NOT
-    buy a second user lookup — the same resolved Principal comes back.
+
+def permission_required(permission: Permission) -> HTTPException:
+    """The one 403 every permission gate raises. The message is the same Thai
+    sentence for every permission -- the client owns the wording per call site
+    and keys it on `code` and `required_permission`, never on this text."""
+    return forbidden(
+        PERMISSION_REQUIRED,
+        "บัญชีนี้ไม่มีสิทธิ์ทำรายการนี้",
+        required_permission=permission.value,
+    )
+
+
+def require(
+    permission: Permission,
+) -> Callable[..., Awaitable[Principal]]:
+    """Gate an endpoint on ONE permission. `Depends(require(Permission.X))` is a
+    drop-in for `Depends(get_principal)` that also refuses.
+
+    A dependency FACTORY: the permission is a member of the closed enumeration,
+    so a gate naming a permission that does not exist is a type error at the
+    call site rather than a string nothing checks (section 3.4). FastAPI caches
+    get_principal within a request, so depending on this does NOT buy a second
+    user lookup — the same resolved Principal comes back, and the check is one
+    set membership.
     """
-    if principal.role != ADMIN_ROLE:
-        raise forbidden(
-            "admin_required",
-            "ต้องมีสิทธิ์ผู้ดูแลระบบจึงจะทำรายการนี้ได้",
-            required_role=ADMIN_ROLE,
-            actual_role=principal.role,
-        )
-    return principal
+
+    async def _gate(principal: Principal = Depends(get_principal)) -> Principal:
+        if not principal.has(permission):
+            raise permission_required(permission)
+        return principal
+
+    _gate.__name__ = f"require_{permission.name.lower()}"
+    return _gate

@@ -30,6 +30,14 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 load_dotenv()
 
+# app.permissions.seed_system_roles is the application's OWN provisioning of a
+# tenant's three system roles (migration 0019), imported so this fixture cannot
+# drift from provision_shop.py. server/ (the parent directory) holds `app`.
+import sys  # noqa: E402
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from app.permissions import seed_system_roles  # noqa: E402
+
 APP_URL = os.environ["APP_DATABASE_URL"]
 
 # tenants is keyed on `id`; the others on `tenant_id`. grade_tiers (0015) is
@@ -40,6 +48,9 @@ ALL_TABLES = [
     "tenants", "users", "uoms", "product_categories", "products",
     "product_prices", "sellers", "grade_tiers", "branches",
     "purchase_bills", "purchase_bill_items",
+    # roles and role_permissions (0019): the three system roles and their grants
+    # this proof seeds are rows of the tenant's graph.
+    "roles", "role_permissions",
 ]
 
 
@@ -51,7 +62,10 @@ _TEARDOWN_ORDER = [
     "sellers", "grade_tiers", "product_categories", "uoms", "users",
     # branches (0018) AFTER purchase_bills and users (both FK to it) and BEFORE
     # tenants (it FKs to tenants).
-    "branches", "tenants",
+    "branches",
+    # role_permissions then roles (0019): AFTER users (users.role_id FKs to
+    # roles) and BEFORE tenants. roles is deleted by the OWNER, like a tier.
+    "role_permissions", "roles", "tenants",
 ]
 
 
@@ -102,10 +116,15 @@ async def seed_tenant(conn, tid, label: str) -> dict:
         text("INSERT INTO branches (id, tenant_id, code, name, doc_prefix, is_active)"
              " VALUES (:id, :t, 'MAIN', :name, 'B', true)"),
         {"id": ids["branch"], "t": tid, "name": f"Shop {label}"})
+    # THE THREE SYSTEM ROLES (0019): users.role_id is NOT NULL with a composite
+    # FK to roles, so the tenant is provisioned with its roles first, as
+    # provision_shop.py provisions them. app.tenant_id == tid, so this exercises
+    # the RLS WITH CHECK on roles and role_permissions too.
+    roles = await seed_system_roles(conn, tid)
     await conn.execute(
-        text("INSERT INTO users (id, tenant_id, username, full_name, role, password_hash)"
-             " VALUES (:id, :t, 'admin', :fn, 'admin', 'x')"),
-        {"id": ids["user"], "t": tid, "fn": f"Admin {label}"})
+        text("INSERT INTO users (id, tenant_id, username, full_name, role_id, password_hash)"
+             " VALUES (:id, :t, 'admin', :fn, :role_id, 'x')"),
+        {"id": ids["user"], "t": tid, "fn": f"Admin {label}", "role_id": roles["admin"]})
     await conn.execute(
         text("INSERT INTO uoms (id, tenant_id, code, name)"
              " VALUES (:id, :t, 'KG', 'Kilogram')"),
@@ -182,7 +201,8 @@ async def drop_tenant(conn, owner_conn, tid) -> tuple[int, list[str]]:
         # tenant -- the same isolation, one privileged role over. branches
         # (0018) is the same case: a branch is deactivated, never deleted, so
         # the app role holds no DELETE on it either.
-        dc = owner_conn if table in ("grade_tiers", "branches") else conn
+        # roles (0019) is the same case again: deactivated, never deleted.
+        dc = owner_conn if table in ("grade_tiers", "branches", "roles") else conn
         try:
             async with tenant_tx(dc, tid):
                 removed += (await dc.execute(text(f"DELETE FROM {table}"))).rowcount

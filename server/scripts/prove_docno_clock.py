@@ -129,6 +129,7 @@ async def main() -> int:
 
     import app.bills as bills  # noqa: E402
     from app.auth import Principal  # noqa: E402
+    from app.permissions import Permission  # noqa: E402
     from app.bills import BillCreate, BillItemIn, _be_year, create_bill  # noqa: E402
     from app.config import SHOP_TIMEZONE  # noqa: E402
     from app.db import tenant_connection  # noqa: E402
@@ -165,14 +166,18 @@ async def main() -> int:
     # ---------------------------------------------------------------- fixtures
     async with tenant_connection(TENANT_A_ID) as conn:
         user_id = (await conn.execute(text(
-            "SELECT id FROM users WHERE role = 'admin' ORDER BY username LIMIT 1"
+            "SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id"
+            " WHERE r.code = 'admin' ORDER BY u.username LIMIT 1"
         ))).scalar_one()
         price = (await conn.execute(text(
             "SELECT p.price FROM product_prices p JOIN sellers s ON s.grade = p.grade"
             " WHERE p.product_id = :p AND s.id = :s"), {"p": PRODUCT_A_ID, "s": SELLER_A_ID}
         )).scalar_one()
+    # An in-process principal (this proof calls create_bill directly, no HTTP):
+    # since 0019 it carries the grant set, and this one holds every permission.
     principal = Principal(user_id=user_id, tenant_id=TENANT_A_ID,
-                          username="admin", role="admin")
+                          username="admin", role="admin",
+                          permissions=frozenset(p.value for p in Permission))
     print(f"\n  tenant {TENANT_A_ID}, admin {user_id}, list price {price}")
 
     async def make_bill(tag: str) -> dict:

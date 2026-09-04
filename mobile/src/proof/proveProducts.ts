@@ -49,7 +49,8 @@ import {
   type ProductFilter,
   type ProductsMessage,
 } from "../products/productsAdmin.js";
-import { mayManageProducts } from "../session/deviceRole.js";
+import { may } from "../session/deviceRole.js";
+import { grantsOf } from "./proofGrants.js";
 import { withClientVersion } from "../net/clientVersion.js";
 
 let failures = 0;
@@ -167,12 +168,12 @@ const flatRows = (sections: ReturnType<typeof productListModel>["sections"]) =>
 // ---------------------------------------------------------------------------
 function h1EntryGate(): void {
   header("H1 the จัดการสินค้า entry is admin-only (staff sees nothing)");
-  check("a definite STAFF role is NOT offered the entry", mayManageProducts("staff") === false,
-    "mayManageProducts('staff') === false");
+  check("a definite STAFF role is NOT offered the entry", may(grantsOf("staff"), "master.write") === false,
+    "may(STAFF, 'master.write') === false");
   check("PRESENCE SIBLING: an ADMIN role IS offered it — the absence above is a gate, not a broken function",
-    mayManageProducts("admin") === true, "mayManageProducts('admin') === true");
-  check("an unknown role (null) fails OPEN and is offered it too", mayManageProducts(null) === true,
-    "the server's require_admin is the authority");
+    may(grantsOf("admin"), "master.write") === true, "may(ADMIN, 'master.write') === true");
+  check("an unknown role (null) fails OPEN and is offered it too", may(grantsOf(null), "master.write") === true,
+    "the server's master.write gate is the authority");
 }
 
 // ---------------------------------------------------------------------------
@@ -360,7 +361,7 @@ function h5Validation(): void {
     ["unreadable-200", okBody({}), okBody({ product_categories: [] }), okBody({ uoms: [] }), "ลองอีกครั้ง"],
   ];
   for (const [name, pf, cf, uf, sibling] of cases) {
-    const st = productsScreenState(pf, cf, uf, "admin");
+    const st = productsScreenState(pf, cf, uf, grantsOf("admin"));
     if (st.kind !== "message") {
       check(`${name}: is a message screen`, false);
       continue;
@@ -370,13 +371,13 @@ function h5Validation(): void {
       leaks(whole) === null && whole.includes(sibling), whole);
   }
   // The offline message says WHY it is online-only (the retired rows the cache lacks).
-  const offlineState = productsScreenState({ kind: "unreachable" }, { kind: "unreachable" }, { kind: "unreachable" }, "admin");
+  const offlineState = productsScreenState({ kind: "unreachable" }, { kind: "unreachable" }, { kind: "unreachable" }, grantsOf("admin"));
   check("the offline message explains it needs the network (retired rows the cache excludes)",
     offlineState.kind === "message" && offlineState.message.lines.join(" ").includes("ปิดใช้งาน"));
 
   // All three reads must land: a good products read with a failed categories read is
   // still a MESSAGE, never a half screen.
-  const partial = productsScreenState(okBody({ products: [] }), { kind: "unreachable" }, okBody({ uoms: [] }), "admin");
+  const partial = productsScreenState(okBody({ products: [] }), { kind: "unreachable" }, okBody({ uoms: [] }), grantsOf("admin"));
   check("a partial read (categories offline) is a MESSAGE, never a half screen", partial.kind === "message");
 }
 
@@ -385,16 +386,17 @@ function h5Validation(): void {
 // ---------------------------------------------------------------------------
 function h6Entities(): void {
   header("H6 the category/unit model, and the screens carry no console diagnostic");
-  const m = entityListModel(CATEGORIES, "admin");
+  // entityListModel takes the screen's `editable` (0019); "admin" is editable, "staff" is not.
+  const m = entityListModel(CATEGORIES, true);
   check("active categories are one group, the retired one apart",
     m.activeRows.length === CAT_COUNT && m.inactiveRows.length === 1);
   check("an active category may be deactivated; a retired one may be reactivated (not deactivated)",
     m.activeRows.every((r) => r.mayDeactivate && !r.mayReactivate) &&
       m.inactiveRows.every((r) => r.mayReactivate && !r.mayDeactivate));
-  const staffModel = entityListModel(CATEGORIES, "staff");
+  const staffModel = entityListModel(CATEGORIES, false);
   check("PRESENCE SIBLING: a staff model offers no management (editable false) — the gate, not a dead model",
     staffModel.editable === false && staffModel.activeRows.every((r) => !r.mayDeactivate));
-  const um = entityListModel(UNITS, "admin");
+  const um = entityListModel(UNITS, true);
   check("the unit model separates active and retired the same way", um.activeRows.length === 2 && um.inactiveRows.length === 1);
 
   const screenSrc = readFileSync(join(process.cwd(), "app", "ProductsScreen.tsx"), "utf8");

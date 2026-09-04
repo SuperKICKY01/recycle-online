@@ -228,6 +228,7 @@ async def provision(ctx: Ctx) -> None:
     and NO sellers: those are built through the routes under test."""
     from sqlalchemy import text
     from app.db import SYSTEM_ACTOR_ID, tenant_connection
+    from app.permissions import seed_system_roles
     from app.security import hash_password
 
     admin_hash = await hash_password(ADMIN_PW)
@@ -252,11 +253,15 @@ async def provision(ctx: Ctx) -> None:
                 text("INSERT INTO branches (tenant_id, code, name, doc_prefix, is_active)"
                      " VALUES (:t, 'MAIN', :n, 'B', true)"),
                 {"t": tid, "n": name})
+            # THE THREE SYSTEM ROLES (0019): users.role_id is NOT NULL with a
+            # composite FK to roles, so the tenant is provisioned with its roles
+            # first, as provision_shop.py provisions them.
+            roles = await seed_system_roles(conn, tid)
             for uid, un, fn, role, ph in users:
                 await conn.execute(
-                    text("INSERT INTO users (id, tenant_id, username, full_name, role,"
+                    text("INSERT INTO users (id, tenant_id, username, full_name, role_id,"
                          " password_hash) VALUES (:id, :t, :u, :fn, :r, :ph)"),
-                    {"id": uid, "t": tid, "u": un, "fn": fn, "r": role, "ph": ph})
+                    {"id": uid, "t": tid, "u": un, "fn": fn, "r": roles[role], "ph": ph})
             await conn.execute(
                 text("INSERT INTO uoms (id, tenant_id, code, name)"
                      " VALUES (:id, :t, 'KG', 'Kilogram')"),
@@ -470,7 +475,10 @@ async def run(ctx: Ctx, client, admin, staff, one_admin, other_admin) -> None:
     codej = djs.get("code") if isinstance(djs, dict) else None
     print(f"      staff POST status={rps.status_code} code={codej!r}")
     check(rps.status_code == 403, f"J: staff POST /grade-tiers -> 403 (got {rps.status_code})")
-    check(codej == "admin_required", f"J: the 403 is pinned to admin_required (got {codej!r})")
+    check(codej == "permission_required",
+          f"J: the 403 is pinned to permission_required (got {codej!r})")
+    check(isinstance(djs, dict) and djs.get("required_permission") == "tiers.manage",
+          "J: and it names tiers.manage as the permission the route needs")
 
     # =====================================================================
     header("K -- PATCH /shop default_grade is validated against the tiers (disproof c)")

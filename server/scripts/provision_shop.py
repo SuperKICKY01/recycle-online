@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-"""Provision ONE shop: a tenant, its first admin user, and its shop code.
+"""Provision ONE shop: a tenant, its three system roles, its first user (the
+OWNER, since migration 0019), and its shop code.
 
     python scripts/provision_shop.py --database <db> --name "Shop Name" \
         --admin-username admin
@@ -201,6 +202,7 @@ async def run(args: argparse.Namespace) -> int:
         constraint_name_of,
         tenant_connection,
     )
+    from app.permissions import OWNER_ROLE, seed_system_roles  # noqa: E402
     from app.security import hash_password  # noqa: E402
 
     owner_engine = create_async_engine(
@@ -320,15 +322,29 @@ async def run(args: argparse.Namespace) -> int:
                     ),
                     {"t": tenant_id, "name": args.name},
                 )
+                # THE THREE SYSTEM ROLES every shop is born with (migration 0019,
+                # STRUCTURE.md section 3): owner, admin, staff, with their
+                # born-with grants, written by the application's OWN seeder so
+                # this script cannot drift from what the migration gives a
+                # pre-0019 shop. Roles and grants are audited: the system actor
+                # declared above covers them.
+                roles = await seed_system_roles(conn, tenant_id)
+                # THE FIRST USER IS THE OWNER (the owner's decision 1, 2026-09-04).
+                # This wrote role 'admin' until 0019. The person a shop is
+                # provisioned for is its owner: the one seat holding
+                # roles.manage, which nothing gates yet and which the
+                # role-management screen (owed) will. A shop provisioned BEFORE
+                # 0019 has its owner seat EMPTY -- the migration maps admin to
+                # admin and invents nobody -- until that screen exists.
                 await conn.execute(
                     text(
                         "INSERT INTO public.users"
-                        " (tenant_id, username, full_name, role, password_hash)"
-                        " VALUES (:t, :u, :fn, 'admin', :ph)"
+                        " (tenant_id, username, full_name, role_id, password_hash)"
+                        " VALUES (:t, :u, :fn, :role_id, :ph)"
                     ),
                     {"t": tenant_id, "u": args.admin_username,
                      "fn": args.admin_full_name or args.admin_username,
-                     "ph": pw_hash},
+                     "role_id": roles[OWNER_ROLE], "ph": pw_hash},
                 )
                 # A NEW SHOP IS A ONE-TIER SHOP (F2, P1.24). grade_tiers backs
                 # every grade since migration 0015, so a shop needs at least one
@@ -349,7 +365,8 @@ async def run(args: argparse.Namespace) -> int:
                     {"t": tenant_id},
                 )
             print(f"  tenant         : {tenant_id} (created, {args.name!r})")
-            print(f"  admin user     : {args.admin_username} (created)")
+            print(f"  owner user     : {args.admin_username} (created; role owner)")
+            print("  roles          : owner, admin, staff (born-with, migration 0019)")
             print("  branch         : MAIN (born-with; prefix B; a one-yard shop until a second is added)")
             print("  grade tier     : A (starter; a one-tier shop until configured)")
 

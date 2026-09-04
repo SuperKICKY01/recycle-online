@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 31 across 16 files, counted from the source headings and
+**Amendments:** 32 across 17 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -45,7 +45,7 @@ line instead of by heading depth.
 - `a-defaulted-getattr-is-a-silent-dead-branch.md` *(1 amendment)* -- A defaulted `getattr` is a silent dead branch
 - `a-differential-control-is-only-as-good-as-its-weaker-side.md` -- A differential control is only as good as its weaker side
 - `a-docstring-that-states-a-filter-is-a-claim-about-its-caller.md` *(1 amendment)* -- A docstring that states a FILTER is a claim about its CALLER, and nothing checks it
-- `a-fail-closed-trigger-conscripts-every-writer-of-its-table.md` -- A trigger that REFUSES a write without new context conscripts every writer of that table
+- `a-fail-closed-trigger-conscripts-every-writer-of-its-table.md` *(1 amendment)* -- A trigger that REFUSES a write without new context conscripts every writer of that table
 - `a-gate-that-matches-a-keyword-misses-its-aliases.md` -- A gate that matches a keyword misses the engine's aliases for it
 - `a-grant-boundary-belongs-to-a-database-not-a-role.md` -- A grant boundary belongs to a DATABASE, not to a role
 - `a-green-cell-is-evidence-about-the-assertion-not-the-claim.md` *(2 amendments)* -- A green cell is evidence about the assertion, not about the claim
@@ -3089,6 +3089,43 @@ AT THE NEW VERSION."
   `7.55` the FLOAT, which `== '7.55'` is False — the reformatting hard rule 1 forbids,
   reintroduced in the READER. Read money out of jsonb with SQL `->>` (the numeric's
   exact text), never by parsing the object in Python.
+
+## AMENDED (migration 0019, 2026-09-04): a MIGRATION that writes an already-audited table is a writer too — and it is conscripted TWICE
+
+The list above has provisioning, proofs, a restore and an old-commit server. It
+does not have the plainest writer of all: **the next migration.** 0019 fills
+`users.role_id` with one `UPDATE users … FROM roles`, and `users` has carried the
+audit trigger since 0017. Two refusals, both measured on the first scratch runs,
+each rolling the whole migration back to 0018 (which is the atomicity the migration
+claims, observed for free):
+
+1. `audit_capture: no actor in context (app.actor_id unset) for UPDATE on users` —
+   the trigger's own refusal. The migration must DECLARE the system actor for its
+   transaction, exactly as `provision_shop.py` does:
+   `SELECT set_config('app.actor_id', '00000000-…', true)` and a username naming the
+   revision (`system:migration_0019`), so every re-keyed user is recorded under it.
+2. `new row violates row-level security policy for table "audit_log"` — the audit
+   ROW, not the trigger. The trigger writes `tenant_id = app.tenant_id` into a
+   FORCE-RLS table whose `tenant_id` is NOT NULL and whose WITH CHECK compares it,
+   and a migration sets NO tenant context; one cross-tenant statement can never
+   satisfy it. So a migration that writes an audited table must run that write
+   **PER TENANT under `SET LOCAL app.tenant_id`**, the shape every request and every
+   provisioner already uses, and reset the GUC afterwards.
+
+**The rule the amendment adds.** "Enumerate every path that writes it" includes the
+migrations NOT YET WRITTEN. A table that is audited (or FORCE-RLS with a tenant
+WITH CHECK, or NOT NULL on a context column) has a write contract that a later
+migration's backfill must meet: declare the actor, iterate tenants, restore FORCE.
+0018 did not meet it and did not need to — it wrote `branches` before attaching the
+trigger and touched `users` only by `ADD COLUMN` (DDL fires no row trigger). The
+difference between 0018 and 0019 is one `UPDATE`, and it is the difference between
+a green first run and two refused ones.
+
+**Where proven (this amendment).** `0019_permissions.py` upgrade() and downgrade()
+(the actor block and the per-tenant loop, each commented with the refusal it
+answers); the two scratch runs of 2026-09-04 whose tracebacks are quoted above,
+the schema at 0018 read back intact after each (the atomicity cell of the
+permission-model record in `PROJECT_STATUS.md § Current phase`).
 
 **Where proven.** Migration `0017_audit_log.py`; the mechanism measured on dev
 `recycle` 2026-09-02 (a `SECURITY DEFINER` owner trigger writes into a FORCE-RLS

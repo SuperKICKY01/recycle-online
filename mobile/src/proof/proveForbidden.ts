@@ -38,6 +38,7 @@ import { HttpTransport } from "../adapters/httpTransport.js";
 import { NodeSqliteDriver } from "../adapters/sqlite/nodeDriver.js";
 import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { readTokenRole } from "../session/deviceRole.js";
+import { grantsOf } from "./proofGrants.js";
 import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
 import { billNotice, canRequestVoid, voidProgressLine } from "../sync/parkedReason.js";
@@ -534,11 +535,11 @@ function f4RoleGate(): void {
 
   for (const role of ["admin", "staff", null] as const) {
     console.log(
-      `  role=${String(role).padEnd(6)} offered=${String(canRequestVoid(live, role))}`,
+      `  role=${String(role).padEnd(6)} offered=${String(canRequestVoid(live, grantsOf(role)))}`,
     );
   }
-  check("an admin is offered it", canRequestVoid(live, "admin"));
-  check("a staff device is not", !canRequestVoid(live, "staff"));
+  check("an admin is offered it", canRequestVoid(live, grantsOf("admin")));
+  check("a staff device is not", !canRequestVoid(live, grantsOf("staff")));
   check(
     "an UNREADABLE token still is — the client gate fails open",
     canRequestVoid(live, null),
@@ -855,9 +856,12 @@ async function f6LiveServer(): Promise<void> {
   if (refused.kind === "forbidden") {
     console.log(`  code: ${refused.code}`);
     console.log(`  reason (developer-only, never rendered): ${refused.reason}`);
+    // `permission_required` since server migration 0019 (one code for every
+    // permission refusal; `admin_required` is answered by no route any more and
+    // survives on the phone only as a legacy key for rows persisted before).
     check(
       "carrying the server's own code, which is what the Thai wording is derived from",
-      refused.code === "admin_required",
+      refused.code === "permission_required",
       `code=${refused.code}`,
     );
     check(

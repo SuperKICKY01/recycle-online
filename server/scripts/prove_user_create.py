@@ -623,10 +623,11 @@ def main() -> int:  # noqa: C901
                 print(f"  GET /users as the CREATED staff  status={r3c.status_code}"
                       f"  code={detail_of(r3c).get('code')!r}")
                 check(r3c.status_code == 403
-                      and detail_of(r3c).get("code") == "admin_required",
+                      and detail_of(r3c).get("code") == "permission_required"
+                      and detail_of(r3c).get("required_permission") == "users.manage",
                       "p3: the created STAFF is refused that same gate (403"
-                      " admin_required) -- the pair is what makes 'role' mean"
-                      " something")
+                      " permission_required naming users.manage) -- the pair is"
+                      " what makes 'role' mean something")
 
             # ==============================================================
             banner("P4 - CONTROL: a STAFF caller may not create an account")
@@ -643,8 +644,10 @@ def main() -> int:  # noqa: C901
                   "p4: a STAFF caller is refused with 403")
             check(detail_of(r4).get("kind") == "forbidden",
                   "p4: the refusal carries kind=forbidden")
-            check(detail_of(r4).get("code") == "admin_required",
-                  "p4: the refusal carries code=admin_required")
+            check(detail_of(r4).get("code") == "permission_required",
+                  "p4: the refusal carries code=permission_required")
+            check(detail_of(r4).get("required_permission") == "users.manage",
+                  "p4: and names users.manage as the permission the route needs")
             after_p4 = roster(client, admin_token)
             check(len(after_p4) == len(before_p4),
                   f"p4: the roster is unchanged ({len(before_p4)} ->"
@@ -1097,8 +1100,10 @@ def main() -> int:  # noqa: C901
                   " different fact and the wrong one about a caller who may not")
             check(detail_of(r7).get("kind") == "forbidden",
                   "s7: the refusal carries kind=forbidden")
-            check(detail_of(r7).get("code") == "admin_required",
-                  "s7: and code=admin_required")
+            check(detail_of(r7).get("code") == "permission_required",
+                  "s7: and code=permission_required")
+            check(detail_of(r7).get("required_permission") == "users.manage",
+                  "s7: naming users.manage")
             check(bool(login(client, TENANT_A_ID, RESET_NEW, RESET_PW)),
                   "s7: the refused reset changed nothing -- the target's password"
                   " still signs in")

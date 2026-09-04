@@ -360,7 +360,22 @@ TENANT_TABLES = [
     # reason unrelated to money. Wake condition, as for its twins: a dump taken
     # AFTER 0018 becoming the oldest one anyone restores from.
     "branches",
+    # Migration 0019: the permission model. roles and role_permissions are
+    # per-tenant master data (RLS+FORCE, audited); `permissions` is NOT here --
+    # it is the GLOBAL catalogue with no tenant_id and no RLS, listed in
+    # GLOBAL_TABLES below beside server_clock_watermark. Their constraints are
+    # DELIBERATELY NOT in REQUIRED_CONSTRAINTS, the 0005..0018 decision: a dump
+    # taken before 0019 has none of them.
+    "roles", "role_permissions",
 ]
+
+# Tables that hold NO shop data and carry NO tenant_id, by design: alembic's
+# bookkeeping, the clock watermark (0008), and the permission catalogue (0019 --
+# the SET of permissions is code and this table must equal the enumeration in
+# app/permissions.py or the server refuses to start; reconcile does not restate
+# that check). S1 exempts them from tenant_id and S2 knows them by name; they
+# are not RLS tables and are not blind-read.
+GLOBAL_TABLES = ["alembic_version", "server_clock_watermark", "permissions"]
 # audit_log (migration 0017) is in ALL_RLS_TABLES but DELIBERATELY NOT in
 # TENANT_TABLES, so it is NOT in X2's per-tenant completeness sum. WHY, and it was
 # MEASURED, not reasoned: it is a FORENSIC log that retains a record after the tenant
@@ -395,6 +410,9 @@ AUDITED_TABLES = frozenset({
     # Migration 0018: branches is master data a shop edits (name, address,
     # phone, activation), so it carries the trigger and S6 requires it.
     "branches",
+    # Migration 0019: a role's name and every grant/revoke are a shop's own
+    # master-data writes, each naming its actor.
+    "roles", "role_permissions",
 })
 
 # Named constraints and indexes the row checks lean on. If one is missing, the
@@ -479,6 +497,10 @@ CROSS_TENANT_PAIRS = [
     # That pair is covered by T10's 'counter -> branch' arm under RLS instead.
     ("purchase_bills.branch_id -> branches", "purchase_bills", "branches", "branch_id"),
     ("users.branch_id -> branches", "users", "branches", "branch_id"),
+    # Migration 0019. role_permissions.role_id -> roles is NOT here for the
+    # doc_no_counters reason: the grant row has no `id`. T10's 'grant -> role'
+    # arm covers it under RLS.
+    ("users.role_id -> roles", "users", "roles", "role_id"),
 ]
 
 
@@ -651,6 +673,22 @@ SQL_CHECKS: list[SqlCheck] = [
           FROM doc_no_counters c
           LEFT JOIN branches br ON br.id = c.branch_id
          WHERE br.id IS NULL
+        UNION ALL
+        -- roles references (0019). Under this tenant's RLS context roles holds
+        -- only this tenant's rows, so "resolves" and "in the same tenant" are
+        -- one condition. The GRANT arm is the only lens on
+        -- role_permissions.role_id: the grant row has no `id`, so X1 cannot
+        -- name it. The permission -> catalogue FK is global and not RLS-bound,
+        -- so it is not checked here; the boot check owns the catalogue.
+        SELECT 'user -> role', u.username, u.role_id::text
+          FROM users u
+          LEFT JOIN roles ro ON ro.id = u.role_id
+         WHERE ro.id IS NULL
+        UNION ALL
+        SELECT 'grant -> role', rp.permission, rp.role_id::text
+          FROM role_permissions rp
+          LEFT JOIN roles ro ON ro.id = rp.role_id
+         WHERE ro.id IS NULL
         """,
     ),
     SqlCheck(
@@ -781,7 +819,9 @@ SELECT (SELECT count(*) FROM purchase_bills)                              AS bil
        (SELECT count(*) FROM seller_code_reservations)                    AS reservations,
        (SELECT count(*) FROM grade_tiers)                                  AS grade_tiers,
        (SELECT count(*) FROM failed_login_attempts)                        AS failed_logins,
-       (SELECT count(*) FROM branches)                                     AS branches
+       (SELECT count(*) FROM branches)                                     AS branches,
+       (SELECT count(*) FROM roles)                                        AS roles,
+       (SELECT count(*) FROM role_permissions)                             AS role_permissions
 """
 
 # Which SCOPE_SQL column feeds each table's running total for X2.
@@ -800,6 +840,8 @@ SCOPE_COLUMN = {
     "grade_tiers": "grade_tiers",
     "failed_login_attempts": "failed_logins",
     "branches": "branches",
+    "roles": "roles",
+    "role_permissions": "role_permissions",
 }
 
 CHECKS_PER_TENANT = len(SQL_CHECKS) + 4      # T0 + the SQL checks + T7/T8/T9
@@ -1091,13 +1133,15 @@ async def structure_checks(rep: Report, admin: asyncpg.Connection) -> None:
            -- no shop data at all, so it has no tenant_id and cannot have one.
            -- Excluded for the same reason as alembic_version. See 0008 and the
            -- CANNOT_SEE entry, which carries the prohibition that makes it safe.
-           AND c.relname NOT IN ('alembic_version', 'tenants',
-                                 'server_clock_watermark')
+           -- permissions (0019) is the global catalogue: no shop data, no
+           -- tenant_id, equal to the code's enumeration or the server does not
+           -- start. The three are GLOBAL_TABLES; the list is bound below.
+           AND c.relname <> 'tenants' AND NOT (c.relname = ANY($1::text[]))
            AND NOT EXISTS (SELECT 1 FROM pg_attribute a
                             WHERE a.attrelid = c.oid AND a.attname = 'tenant_id'
                               AND NOT a.attisdropped)
          ORDER BY 1
-        """)
+        """, GLOBAL_TABLES)
     r.total = len(rows)
     r.rows = [f"table={x['table_name']}  HAS NO tenant_id COLUMN" for x in rows]
     rep.add("global", r)
@@ -1106,8 +1150,7 @@ async def structure_checks(rep: Report, admin: asyncpg.Connection) -> None:
     r = Result("S2", "no table exists that this checker does not know about",
                examined=f"{len(present)} tables")
     unknown = [t for t in present
-               if t not in [*ALL_RLS_TABLES, "alembic_version",
-                            "server_clock_watermark"]]
+               if t not in [*ALL_RLS_TABLES, *GLOBAL_TABLES]]
     r.total = len(unknown)
     r.rows = [f"table={t}  — add it to ALL_RLS_TABLES and give it checks" for t in unknown]
     rep.add("global", r)
@@ -1275,6 +1318,46 @@ async def structure_checks(rep: Report, admin: asyncpg.Connection) -> None:
         r.examined = f"{len(have)} of {len(AUDITED_TABLES)} audited tables have the trigger"
         r.total = len(problems)
         r.rows = problems
+        rep.add("global", r)
+
+    # S7 — every tenant keeps at least one ACTIVE user holding users.manage
+    # through an ACTIVE role (migration 0019, STRUCTURE.md section 3.4). A shop
+    # with nobody who can manage users cannot unlock, reset or add an account
+    # from inside the product; the only recovery is SQL on site -- the lockout
+    # users.deactivate_user's last-active-admin guard exists to prevent, and this
+    # is where production notices it if anything else reaches that state (a
+    # deactivated role, a revoked grant, a restore). Read WITHOUT RLS: the
+    # question is about every tenant at once. Gated on roles' existence so a
+    # pre-0019 restored copy skips rather than reds. The permission name is
+    # restated by hand, never imported (a-checker-must-not-share-the-code).
+    r = Result("S7", "every tenant has at least one active user holding users.manage"
+                     " through an active role")
+    if "roles" not in present:
+        r.skipped = ("roles is absent (a database from before migration 0019);"
+                     " the permission model does not exist here yet")
+        rep.add("global", r)
+    else:
+        rows = await admin.fetch(
+            """
+            SELECT t.id AS tenant_id, t.name,
+                   (SELECT count(*) FROM users u WHERE u.tenant_id = t.id AND u.is_active)
+                       AS active_users
+              FROM tenants t
+             WHERE NOT EXISTS (
+                   SELECT 1 FROM users u
+                     JOIN roles ro ON ro.id = u.role_id AND ro.is_active
+                     JOIN role_permissions rp ON rp.role_id = ro.id
+                                             AND rp.permission = 'users.manage'
+                    WHERE u.tenant_id = t.id AND u.is_active)
+             ORDER BY t.created_at, t.id
+            """)
+        tenants_n = await admin.fetchval("SELECT count(*) FROM tenants")
+        r.examined = f"{tenants_n} tenants"
+        r.total = len(rows)
+        r.rows = [f"tenant={x['tenant_id']}  name={x['name']!r}"
+                  f"  active_users={x['active_users']}"
+                  "  NO ACTIVE USER HOLDS users.manage -- the shop cannot manage"
+                  " its own accounts" for x in rows]
         rep.add("global", r)
 
 

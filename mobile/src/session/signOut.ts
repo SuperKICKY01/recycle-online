@@ -224,7 +224,14 @@ export type SignOutOutcome =
  */
 export interface ClearedSession {
   token: null;
-  role: null;
+  /**
+   * The permission set (server migration 0019; this was `role` until then, the
+   * token's role claim). Null is "unknown", which fails OPEN — but with the
+   * token also null nothing can be requested, and the next sign-in writes the
+   * new user's set before any control is offered. The SQLite cache is cleared
+   * beside it by App.tsx's sign-out handler (SqlitePermissionStore.clear).
+   */
+  grants: null;
   sessionEnded: false;
   submitRefused: false;
   online: null;
@@ -263,7 +270,7 @@ export type SessionSetters = {
  */
 export function applyClearedSession(setters: SessionSetters): void {
   setters.token(CLEARED_SESSION.token);
-  setters.role(CLEARED_SESSION.role);
+  setters.grants(CLEARED_SESSION.grants);
   setters.sessionEnded(CLEARED_SESSION.sessionEnded);
   setters.submitRefused(CLEARED_SESSION.submitRefused);
   setters.online(CLEARED_SESSION.online);
@@ -276,7 +283,7 @@ export function applyClearedSession(setters: SessionSetters): void {
 
 export const CLEARED_SESSION: ClearedSession = {
   token: null,
-  role: null,
+  grants: null,
   // signed_out, NEVER expired. App derives `session` as
   // token === null ? "signed_out" : sessionEnded ? "expired" : "active",
   // so leaving sessionEnded true would be harmless today and would become a

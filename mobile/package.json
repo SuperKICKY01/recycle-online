@@ -61,7 +61,8 @@
     "prove:tapaudit": "npm run build && node dist/proof/proveTapAudit.js",
     "prove:sellerhistory": "npm run build && node dist/proof/proveSellerHistory.js",
     "prove:noticeStack": "npm run build && node dist/proof/proveNoticeStack.js",
-    "prove:branch": "npm run build && node dist/proof/proveBranch.js"
+    "prove:branch": "npm run build && node dist/proof/proveBranch.js",
+    "prove:permissions": "npm run build && node dist/proof/provePermissions.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

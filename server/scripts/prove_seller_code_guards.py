@@ -371,10 +371,51 @@ def restore_scratch(live_name: str, scratch: str) -> None:
     if cp.returncode != 0:
         raise RuntimeError(f"restore_db.py -> {scratch} failed: {cp.stderr.strip()[:600]}")
     _give_scratch_a_default_actor(scratch)
+    _give_scratch_a_role_column(scratch)
     # The dump is consumed by the restore above; remove it so it does not
     # accumulate per run (~325 KB each). A restore FAILURE raises before this
     # line and leaves the dump for post-mortem -- only a success reaches here.
     shutil.rmtree(out, ignore_errors=True)
+
+
+def _give_scratch_a_role_column(scratch: str) -> None:
+    """Migration 0019 DROPPED `users.role` (a role is a row in `roles` since then,
+    and the gate reads the join), and the OLD worktree server -- code from before
+    the guards, so before 0019 -- still selects `role` on login and on every
+    authenticated request. On a scratch copied from a 0019 database it answered
+    500 on login (measured 2026-09-04: B1 red, "the OLD server accepts this staff
+    session" never reached). It cannot be edited (it is history), so the SCRATCH
+    grows a plain `users.role` column filled from `roles.code` -- the same shape
+    the migration's downgrade restores -- for the legacy server to read. The
+    current server never selects `users.role` (it aliases `r.code AS role` off the
+    join and INSERTs `role_id`), so the extra nullable column changes nothing it
+    does; a user the new server creates during the run simply has NULL there.
+    Same family as the actor GUC below: a scratch-only shim for a server that
+    predates the schema, never a change to the migration. The audit trigger is
+    disabled around the backfill because a scratch shim has no actor and no
+    tenant context, and this write is not a fact about the shop
+    (lessons/a-fail-closed-trigger-conscripts-every-writer-of-its-table.md, the
+    2026-09-04 amendment: an old-commit server is a reader the schema can outrun)."""
+    u = make_url(os.environ["MIGRATION_DATABASE_URL"])
+    dsn = f"postgresql://postgres:postgres@{u.host}:{u.port}/{scratch}"
+
+    async def _go() -> None:
+        conn = await asyncpg.connect(dsn)
+        try:
+            has_roles = await conn.fetchval("SELECT to_regclass('public.roles')")
+            if has_roles is None:
+                return  # a pre-0019 copy: users.role is still real
+            await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role text")
+            await conn.execute("ALTER TABLE users DISABLE TRIGGER audit_capture")
+            try:
+                await conn.execute(
+                    "UPDATE users u SET role = r.code FROM roles r WHERE r.id = u.role_id")
+            finally:
+                await conn.execute("ALTER TABLE users ENABLE TRIGGER audit_capture")
+        finally:
+            await conn.close()
+
+    asyncio.run(_go())
 
 
 def _give_scratch_a_default_actor(scratch: str) -> None:

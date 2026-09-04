@@ -41,7 +41,8 @@ import {
   type UserFetch,
   type UsersMessage,
 } from "../users/usersAdmin.js";
-import { mayManageUsers } from "../session/deviceRole.js";
+import { may } from "../session/deviceRole.js";
+import { grantsOf } from "./proofGrants.js";
 import { withClientVersion } from "../net/clientVersion.js";
 
 let failures = 0;
@@ -86,18 +87,18 @@ function h1EntryGate(): void {
   header("H1 the จัดการผู้ใช้งาน entry is admin-only (staff sees nothing)");
   check(
     "a definite STAFF role is NOT offered the entry",
-    mayManageUsers("staff") === false,
-    "mayManageUsers('staff') === false",
+    may(grantsOf("staff"), "users.manage") === false,
+    "may(STAFF, 'users.manage') === false",
   );
   check(
     "PRESENCE SIBLING: an ADMIN role IS offered it — the absence above is a gate, not a broken function",
-    mayManageUsers("admin") === true,
-    "mayManageUsers('admin') === true",
+    may(grantsOf("admin"), "users.manage") === true,
+    "may(ADMIN, 'users.manage') === true",
   );
   check(
     "an unknown role (null) fails OPEN and is offered it too",
-    mayManageUsers(null) === true,
-    "mayManageUsers(null) === true — the server's require_admin is the authority",
+    may(grantsOf(null), "users.manage") === true,
+    "may(null, 'users.manage') === true — the server's users.manage gate is the authority",
   );
 }
 
@@ -116,7 +117,7 @@ function h2Roster(): void {
 
   // Two active admins: neither is the last, so each OTHER admin is deactivatable,
   // and the self row never is.
-  const twoAdmins = usersScreenState({ kind: "ok", body: { users: roster } }, "admin", SELF);
+  const twoAdmins = usersScreenState({ kind: "ok", body: { users: roster } }, grantsOf("admin"), SELF);
   check("a well-formed roster yields the roster screen (not a message)", twoAdmins.kind === "roster");
   if (twoAdmins.kind !== "roster") return;
   const s = twoAdmins.screen;
@@ -149,7 +150,7 @@ function h2Roster(): void {
     { user_id: "sole-admin", username: "onlyowner", full_name: "เจ้าของ เดียว", role: "admin", is_active: true },
     { user_id: "a-staff", username: "clerk", full_name: "เสมียน หนึ่ง", role: "staff", is_active: true },
   ];
-  const lone = usersScreenState({ kind: "ok", body: { users: oneAdmin } }, "admin", "a-staff");
+  const lone = usersScreenState({ kind: "ok", body: { users: oneAdmin } }, grantsOf("admin"), "a-staff");
   if (lone.kind !== "roster") {
     check("the one-admin roster builds", false);
     return;
@@ -167,7 +168,7 @@ function h2Roster(): void {
 
   // A malformed body is FATAL, not a partial roster (which would hide an admin and
   // miscount the guard).
-  const bad = usersScreenState({ kind: "ok", body: { users: [{ user_id: "x" }] } }, "admin", null);
+  const bad = usersScreenState({ kind: "ok", body: { users: [{ user_id: "x" }] } }, grantsOf("admin"), null);
   check("a malformed roster row is a MESSAGE, never a partial list", bad.kind === "message");
 }
 
@@ -232,7 +233,7 @@ function h3Refusals(): void {
     ["unreadable-200", { kind: "ok", body: {} }, "ลองอีกครั้ง"],
   ];
   for (const [name, fetch, sibling] of cases) {
-    const st = usersScreenState(fetch, "admin", null);
+    const st = usersScreenState(fetch, grantsOf("admin"), null);
     if (st.kind !== "message") {
       check(`${name}: is a message screen`, false);
       continue;

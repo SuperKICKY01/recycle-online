@@ -31,8 +31,8 @@
  * stop". See billNotice below: `last_error` is not a parameter of anything in
  * this file any more.
  */
-import { mayVoid } from "../session/deviceRole.js";
-import type { DeviceRole } from "../session/deviceRole.js";
+import { may } from "../session/deviceRole.js";
+import type { Grants } from "../session/deviceRole.js";
 import { VOID_REJECTED_CODE } from "./types.js";
 import type { SyncState } from "./types.js";
 
@@ -254,7 +254,18 @@ export function localSellerParkReason(): ParkedReason {
  * either. The operator would be sent to the wrong person about a problem that
  * does not exist, on a bill the server still holds as live money.
  */
-export const FORBIDDEN_CODES = ["admin_required", VOID_REJECTED_CODE] as const;
+/*
+ * `permission_required` is what every gated route answers since server migration
+ * 0019 (one code for every permission refusal; the permission itself rides in
+ * the body's `required_permission`, which nothing here reads -- the ACTION names
+ * the sentence). `admin_required` is what those routes answered BEFORE 0019 and
+ * NO ROUTE ANSWERS IT ANY MORE. IT STAYS IN THIS LIST ON PURPOSE AND MUST NOT BE
+ * DELETED AS DEAD: `void_refused_code` is PERSISTED on the bill row
+ * (sync/types.ts), so a bill refused before that deploy still carries the old
+ * code on this device and must still render its sentence rather than fall to
+ * the unknown wording. The two share one entry per action below.
+ */
+export const FORBIDDEN_CODES = ["permission_required", "admin_required", VOID_REJECTED_CODE] as const;
 
 export type ForbiddenCode = (typeof FORBIDDEN_CODES)[number];
 
@@ -337,6 +348,11 @@ const FORBIDDEN_BY_ACTION: Record<
 > = {
   void_bill: {
     known: {
+      permission_required: {
+        badge: "ไม่มีสิทธิ์ยกเลิกบิล",
+        what: `บัญชีนี้ไม่มีสิทธิ์ยกเลิกบิล ระบบจึงยังไม่ได้ยกเลิกบิลใบนี้ — ${ASK_THE_OWNER}`,
+      },
+      // LEGACY: the pre-0019 code, still on rows refused before that deploy.
       admin_required: {
         badge: "ไม่มีสิทธิ์ยกเลิกบิล",
         what: `บัญชีนี้ไม่มีสิทธิ์ยกเลิกบิล ระบบจึงยังไม่ได้ยกเลิกบิลใบนี้ — ${ASK_THE_OWNER}`,
@@ -368,6 +384,11 @@ const FORBIDDEN_BY_ACTION: Record<
    */
   daily_report: {
     known: {
+      permission_required: {
+        badge: "ไม่มีสิทธิ์ดูยอดประจำวัน",
+        what: `บัญชีนี้ดูยอดเงินประจำวันของร้านไม่ได้ — ${ASK_THE_OWNER}`,
+      },
+      // LEGACY: the pre-0019 code (see FORBIDDEN_CODES).
       admin_required: {
         badge: "ไม่มีสิทธิ์ดูยอดประจำวัน",
         what: `บัญชีนี้ดูยอดเงินประจำวันของร้านไม่ได้ — ${ASK_THE_OWNER}`,
@@ -767,25 +788,29 @@ export function voidProgressLine(bill: VoidProgressInput): string | null {
  * What replaces it is not silence: the card says the bill never reached the
  * system and that the office must be told (FAILED_LINES above).
  *
- * And no for a device signed in as STAFF, which is the courtesy half of this
- * phase: the server refuses the void with a 403 (server/app/auth.py
- * require_admin), so offering the button only produces a refusal the operator
- * then has to be talked out of. `mayVoid` FAILS OPEN on an unreadable or
- * unknown token — see src/session/deviceRole.ts for why that is the right
- * direction here: hiding the button from an admin whose token we merely failed
- * to parse would remove the only way to correct a wrong bill, while offering it
- * to a staff user costs one refused request and one plain sentence.
+ * And no for a session whose permission set LACKS `bills.void`, which is the
+ * courtesy half of this phase: the server refuses the void with a 403
+ * (server/app/auth.py require(Permission.BILLS_VOID)), so offering the button
+ * only produces a refusal the operator then has to be talked out of. `may`
+ * FAILS OPEN on an ABSENT set — see src/session/deviceRole.ts for why that is
+ * the right direction here: hiding the button from an owner whose set we merely
+ * failed to read would remove the only way to correct a wrong bill, while
+ * offering it to a staff user costs one refused request and one plain sentence.
+ * A set that WAS read is exact (the 0019 narrowing, deliberate).
  *
- * The SERVER REMAINS THE AUTHORITY in both directions. It re-reads the role from
- * the users row on every request, so a demoted admin is refused here whatever
- * their token still claims — which is precisely why the 403 path exists and is
- * proven, rather than this gate being trusted to prevent anything.
+ * The SERVER REMAINS THE AUTHORITY in both directions. It re-reads the grants
+ * from the users -> roles -> role_permissions join on every request, so a revoked
+ * grant is refused here whatever the token still claims — which is precisely why
+ * the 403 path exists and is proven, rather than this gate being trusted to
+ * prevent anything.
  *
  * Here rather than in the view so the rule and the sentence explaining it cannot
  * drift apart, and so a proof can hold them together.
  */
-export function canRequestVoid(bill: VoidProgressInput, role: DeviceRole): boolean {
-  return bill.void_requested_at === null && bill.sync_state !== "failed" && mayVoid(role);
+export function canRequestVoid(bill: VoidProgressInput, grants: Grants): boolean {
+  return (
+    bill.void_requested_at === null && bill.sync_state !== "failed" && may(grants, "bills.void")
+  );
 }
 
 /**
@@ -798,8 +823,8 @@ export function canRequestVoid(bill: VoidProgressInput, role: DeviceRole): boole
  * the button can be absent (a terminally failed bill), which has three sentences
  * of its own in FAILED_LINES and does not need a fourth contradicting them.
  */
-export function voidRoleNote(bill: VoidProgressInput, role: DeviceRole): string | null {
-  if (mayVoid(role)) return null;
+export function voidRoleNote(bill: VoidProgressInput, grants: Grants): string | null {
+  if (may(grants, "bills.void")) return null;
   // Only where the button would otherwise have been offered. On a failed or
   // already-voided bill nobody is being denied anything.
   if (bill.void_requested_at !== null || bill.sync_state === "failed") return null;

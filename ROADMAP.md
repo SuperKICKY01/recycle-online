@@ -1647,6 +1647,13 @@ may not weigh", differently in the shop next door. Recorded with its sibling
 decision (branches adopted) at
 `OPEN_ITEMS.md § Decisions open — the owner's, not the code's`. S9's three roles
 are not reopened: they become the three system roles every shop is born with.
+**REALISED 2026-09-04 (migration 0019, `STRUCTURE.md` section 12 unit 1; unanchored,
+anchor next pass):** the permission model is BUILT — a role is a per-tenant row, a
+grant is a `role_permissions` row, every gate names a permission, and the cashier
+of the supersession above is EXPRESSIBLE today (a role holding `money.view_shop`
+and not `bills.create`; `payments.record` itself arrives with unit 3). What is NOT
+built is the screen that would let a shop CREATE such a role — filed as owed at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's`.
 
 **D10 — the pilot runs on the production database, and no rebuild of the
 2026-08-03 kind is available after the first real bill.** That rebuild is recorded
@@ -4686,7 +4693,7 @@ decides between them nowhere.
 master-data refresh, and a price changed on the desktop is the one the next bill
 quotes — both read back, not assumed.
 
-**PARTLY MET ON THE PHONE — 2026-09-03 (unanchored; anchor next pass). P1.15 IS NOT
+**PARTLY MET ON THE PHONE — 2026-09-03 (`b25d7b0`). P1.15 IS NOT
 CLOSED.** Product / category / unit master data — add, edit, deactivate, reactivate,
 and find (search by name and code, filter by category and by active/inactive) — now
 ships on the PHONE, homed there by the advisor for the reason `P1.8`/`P1.9`/`P3.7`
@@ -7880,6 +7887,16 @@ management ALSO lives on the provider web later is the owner's open call, filed 
 last-active-admin guard shipped first (its own sub-phase); its lock is P1.4's,
 which now has its first client.
 
+**WHAT EXISTS UNDER THE PERMISSION MODEL — 2026-09-04 (migration 0019; unanchored,
+anchor next pass).** Every user route is gated on `users.manage`, not on a role name;
+`POST /users` takes a role CODE among the shop's own roles and refuses a role whose
+grants exceed the caller's (`role_exceeds_caller`) and a code the shop does not hold
+(`role_unknown`); the last-active-admin guard now protects the last active holder of
+`users.manage` through an active role, whatever the role is called. The phone's
+add-user picker still offers the two codes an admin can always assign (`admin`,
+`staff`); listing the shop's roles, creating one, editing its grants and seating an
+owner are the ROLE-MANAGEMENT SCREEN, owed and NOT this step.
+
 ### P3.8 — Backup, restore and retention, per shop
 
 **What it is.** A retention rule, and a restore that can be scoped to one shop.
@@ -8197,7 +8214,7 @@ already has a home:
 - **Price-history** (blueprint 7.4; inventory 1.9) → P1.20.
 - **Anomaly detection** (blueprint 6.5) → P1.22.
 - **Product master data** (blueprint 7.1; inventory 2) → P1.15 — plus the A1
-  mobile-reach collision. **Superseded 2026-09-03 (unanchored; anchor next pass):**
+  mobile-reach collision. **Superseded 2026-09-03 (`b25d7b0`):**
   the mobile-reach half of A1 is now BUILT and shipped on the phone (add/edit/
   deactivate/find products, categories and units; blueprint 4.8's on-yard product
   search rides the same device-side search). So "master data = desktop" is

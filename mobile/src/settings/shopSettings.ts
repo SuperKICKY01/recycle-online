@@ -20,7 +20,7 @@
  * draw a control a staff session would only be refused — the same rule
  * `mayEditPrices` states for the price list. STAFF sees the values, read-only,
  * with no edit control drawn at all; ADMIN sees editable fields and a save button.
- * The role gate is `mayEditShopSettings` (src/session/deviceRole.ts), which FAILS
+ * The gate is `may(grants, "shop.settings.write")` (src/session/deviceRole.ts), which FAILS
  * OPEN on an unknown token for the reason that file gives, and the server's
  * require_admin is the authority regardless — a wrongly-offered save gets a 403
  * this screen words (never a sign-in, never support).
@@ -61,8 +61,8 @@
  * screen reports a state the server witnessed). `shopSaveResult` parses the
  * RESPONSE and hands the form that; the request is never rendered.
  */
-import { mayEditShopSettings } from "../session/deviceRole.js";
-import type { DeviceRole } from "../session/deviceRole.js";
+import { may } from "../session/deviceRole.js";
+import type { Grants } from "../session/deviceRole.js";
 
 /**
  * The two fields of an active tier this screen needs to build the default-grade
@@ -370,7 +370,7 @@ function shopMessage(fetch: Exclude<ShopFetch, { kind: "ok" }>): ShopMessageScre
  */
 export function shopSettingsScreen(
   fetch: ShopFetch,
-  role: DeviceRole,
+  grants: Grants,
   activeTiers: readonly ActiveTier[],
 ): ShopSettingsScreen {
   if (fetch.kind !== "ok") return shopMessage(fetch);
@@ -381,7 +381,7 @@ export function shopSettingsScreen(
     return unreadableSettingsScreen();
   }
 
-  return formScreen(shop, role, activeTiers);
+  return formScreen(shop, grants, activeTiers);
 }
 
 /**
@@ -404,10 +404,12 @@ export function unreadableSettingsScreen(): ShopMessageScreen {
  *  read and by a save's re-read. */
 export function formScreen(
   shop: ShopSettings,
-  role: DeviceRole,
+  grants: Grants,
   activeTiers: readonly ActiveTier[],
 ): ShopFormScreen {
-  const readOnly = !mayEditShopSettings(role);
+  // shop.settings.write (server migration 0019) gates PATCH /shop; a set that
+  // lacks it renders read-only, an absent set fails open onto the 403 branch.
+  const readOnly = !may(grants, "shop.settings.write");
   return {
     kind: "form",
     title: "ตั้งค่าร้าน",

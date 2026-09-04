@@ -17,7 +17,8 @@
  * and a lockout.
  */
 import { roleLabelOf } from "../settings/roleLabel.js";
-import type { DeviceRole } from "../session/deviceRole.js";
+import { may } from "../session/deviceRole.js";
+import type { Grants } from "../session/deviceRole.js";
 
 /* ==========================================================================
  * 1. THE TRANSPORT SHAPE AND THE REQUEST BODIES
@@ -36,6 +37,14 @@ export type UserFetch =
   | { kind: "unreachable" }
   | { kind: "no_token" };
 
+/**
+ * The two role CODES the add-user form OFFERS. Since server migration 0019 a role
+ * is a code among the shop's own roles (owner, admin, staff at birth, plus any it
+ * mints), and the server refuses a code above the caller's own grants
+ * (`role_exceeds_caller`). This form still offers the two an admin can always
+ * assign; listing the shop's roles needs a route this unit does not build
+ * (filed with the role-management screen in OPEN_ITEMS).
+ */
 export type UserRole = "admin" | "staff";
 
 /** POST /users body. The server assigns the id and token_version; the tenant is
@@ -46,6 +55,11 @@ export interface UserCreateBody {
   role: UserRole;
   password: string;
 }
+
+/** The system role codes the roster's last-manager courtesy counts. A shop's own
+ *  role holding users.manage is not counted here — the server's guard is the
+ *  authority and words the refusal; this only decides whether to OFFER the button. */
+const MANAGER_CODES: readonly string[] = ["owner", "admin"];
 
 /** POST /users/{id}/password body (an admin resetting somebody else's). */
 export interface UserResetBody {
@@ -139,7 +153,8 @@ export interface RosterUser {
   user_id: string;
   username: string;
   full_name: string;
-  role: UserRole;
+  /** The role CODE (server migration 0019): owner, admin, staff, or one the shop minted. */
+  role: string;
   is_active: boolean;
 }
 
@@ -149,7 +164,7 @@ export interface RosterUser {
  * and let the client's last-active-admin guard read the wrong count, which is
  * exactly the lockout the server guard exists to prevent. The five keys are
  * `_user_payload`'s (server/app/users.py): user_id, username, full_name, role,
- * is_active; role must be one of the two the CHECK constraint admits.
+ * is_active; role is any non-empty code since 0019 (a shop may mint its own).
  */
 export function readUsers(raw: unknown): RosterUser[] | null {
   if (!isObj(raw)) return null;
@@ -167,7 +182,8 @@ export function readUsers(raw: unknown): RosterUser[] | null {
       user_id === null ||
       username === null ||
       full_name === null ||
-      (roleRaw !== "admin" && roleRaw !== "staff") ||
+      roleRaw === null ||
+      roleRaw.length === 0 ||
       typeof is_active !== "boolean"
     ) {
       return null;
@@ -185,7 +201,7 @@ export interface UserRow {
   user_id: string;
   username: string;
   full_name: string;
-  role: UserRole;
+  role: string;
   roleLabel: string;
   is_active: boolean;
   /** The signed-in account. Its row offers NO destructive action — it points at
@@ -204,8 +220,8 @@ export interface UserRow {
 
 export interface UsersScreen {
   title: string;
-  /** Admin only. A staff session (which cannot reach the entry) would see the list
-   *  read-only — fail-open, the same shape as mayEditShopSettings. */
+  /** users.manage only. A session lacking it (which cannot reach the entry) would
+   *  see the list read-only — fail-open on an absent set, like every may() gate. */
   editable: boolean;
   activeHeading: string;
   inactiveHeading: string;
@@ -216,24 +232,26 @@ export interface UsersScreen {
 }
 
 /**
- * Build the roster screen. `selfUserId` marks the signed-in row; `role` decides
- * whether the screen is editable (fail-open, so only a DEFINITE staff is read-only).
- * The server returns ORDER BY username; this keeps that order within each group and
- * shows active accounts first, deactivated ones in their own group below — visible,
- * never hidden, and visibly separate.
+ * Build the roster screen. `selfUserId` marks the signed-in row; `grants` decides
+ * whether the screen is editable (users.manage; fail-open on an absent set, exact
+ * on a present one). The server returns ORDER BY username; this keeps that order
+ * within each group and shows active accounts first, deactivated ones in their own
+ * group below — visible, never hidden, and visibly separate.
  */
 export function usersAdminScreen(
   users: readonly RosterUser[],
-  role: DeviceRole,
+  grants: Grants,
   selfUserId: string | null,
 ): UsersScreen {
-  const editable = role !== "staff";
-  const activeAdmins = users.filter((u) => u.role === "admin" && u.is_active).length;
+  const editable = may(grants, "users.manage");
+  const isManager = (u: RosterUser): boolean => MANAGER_CODES.includes(u.role);
+  const activeAdmins = users.filter((u) => isManager(u) && u.is_active).length;
   const toRow = (u: RosterUser): UserRow => {
     const isSelf = u.user_id === selfUserId;
-    // The last active admin: this account is an active admin AND it is the only
-    // one. Deactivating it would leave zero, which the server refuses; not offered.
-    const isLastActiveAdmin = u.role === "admin" && u.is_active && activeAdmins <= 1;
+    // The last active manager (owner or admin): this account is one AND it is
+    // the only one. Deactivating it would leave zero, which the server refuses
+    // (last_active_admin, generalised to users.manage by 0019); not offered.
+    const isLastActiveAdmin = isManager(u) && u.is_active && activeAdmins <= 1;
     return {
       user_id: u.user_id,
       username: u.username,
@@ -394,13 +412,13 @@ const SERVER_MESSAGE: UsersMessage = {
  */
 export function usersScreenState(
   fetch: UserFetch,
-  role: DeviceRole,
+  grants: Grants,
   selfUserId: string | null,
 ): UsersScreenState {
   if (fetch.kind === "ok") {
     const users = readUsers(fetch.body);
     if (users === null) return { kind: "message", message: SERVER_MESSAGE };
-    return { kind: "roster", screen: usersAdminScreen(users, role, selfUserId) };
+    return { kind: "roster", screen: usersAdminScreen(users, grants, selfUserId) };
   }
   if (fetch.kind === "no_token") return { kind: "message", message: SESSION_MESSAGE };
   if (fetch.kind === "unreachable") return { kind: "message", message: OFFLINE_MESSAGE };

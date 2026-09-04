@@ -50,9 +50,14 @@ import { MONEY_DP, WEIGHT_DP } from "../money/money.js";
 // Idempotent — a global on the Decimal class, set once by whichever loads first.
 Decimal.set({ rounding: Decimal.ROUND_HALF_UP, precision: 50 });
 
-/** The 403 detail.code that means "staff, and the shop has not opened money to
- *  staff". App reads it off the raw fetch to drop the entry on the next menu draw;
- *  exported so there is no magic string at the call site. */
+/** The 403 detail.code the summary answers since server migration 0019: this
+ *  session holds neither money permission (`required_permission` in the body
+ *  names money.view_own; nothing here reads it — the call site names the
+ *  sentence). Exported so there is no magic string at the call site. */
+export const PERMISSION_REQUIRED = "permission_required";
+/** LEGACY: the pre-0019 code for the same refusal ("staff, and the shop has not
+ *  opened money to staff"). No route answers it any more; kept so a message keyed
+ *  on it still renders the same calm sentence, never the unknown wording. */
 export const STAFF_MONEY_HIDDEN = "staff_money_hidden";
 
 /** The four dimensions and three states, each with the Thai that says what it
@@ -248,7 +253,7 @@ const DIFF_EXPLAIN =
   "ส่วนต่าง = ยอดตามราคาประกาศ ลบ ยอดที่จ่ายจริง — ค่าติดลบคือจ่ายสูงกว่าราคาประกาศ ไม่ได้แปลว่ามีอะไรผิด";
 
 function forbiddenMessage(code: string | null): SummaryMessage {
-  if (code === STAFF_MONEY_HIDDEN) {
+  if (code === PERMISSION_REQUIRED || code === STAFF_MONEY_HIDDEN) {
     // NAMED the shop OWNER as the decider, never a sign-in (the same account
     // returns with the same role) and never support (who cannot grant it). No
     // action button: the only move is a conversation. Same three rules as

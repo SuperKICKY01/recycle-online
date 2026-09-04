@@ -49,6 +49,7 @@ import type {
   ShopSettingsScreen,
 } from "../settings/shopSettings.js";
 import type { DeviceRole } from "../session/deviceRole.js";
+import { grantsOf } from "./proofGrants.js";
 
 let failures = 0;
 
@@ -80,7 +81,8 @@ function renderSettings(
   role: DeviceRole,
   tiers: readonly ActiveTier[] = TIERS,
 ): ShopSettingsScreen {
-  const screen = shopSettingsScreen(fetch, role, tiers);
+  // The role LABEL stands for its born-with permission set (server migration 0019).
+  const screen = shopSettingsScreen(fetch, grantsOf(role), tiers);
   if (BREAK === "staff_save" && screen.kind === "form" && screen.readOnly) {
     // The defect: draw the save control (and mark editable) for a session that is
     // meant to be read-only. A staff phone would then be offered a write the
