@@ -275,6 +275,21 @@ async def main() -> int:
                 " WHERE id = $3",
                 arrives, weighed, bill_id,
             )
+            # AND ITS AUTOMATIC PAYMENT WITH IT (migration 0020). POST /bills wrote
+            # one cash payment in the same transaction carrying the same two
+            # stamps; a bill moved to January beside a payment still stamped
+            # today is a row the product could not produce
+            # (lessons/a-proof-fixture-must-be-a-row-the-product-could-produce.md),
+            # and for the two fixtures voided below it is exactly P4's shape -- a
+            # LIVE payment recorded AFTER the void. Measured 2026-09-05: 8 P4
+            # violations on a copy, 40 mis-stamped pairs on dev after four runs.
+            # The allocation's created_at is left as written: the app role holds
+            # no UPDATE on payment_allocations and no check reads that column.
+            await db.execute(
+                "UPDATE payments SET server_received_at = $1, device_created_at = $2"
+                " WHERE idempotency_key = $3",
+                arrives, weighed, f"auto:{bill_id}",
+            )
 
         # voided: void through the real admin path, then move the void onto the
         # fixture day too (it is the day's own bill, voided the same day).
@@ -331,6 +346,11 @@ async def main() -> int:
             "UPDATE purchase_bills SET server_received_at = $1 WHERE id = $2",
             at(DAY, 13, 0), b_id,
         )
+        # Its automatic payment moves with it (0020), as for tenant A's above.
+        await db.execute(
+            "UPDATE payments SET server_received_at = $1 WHERE idempotency_key = $2",
+            at(DAY, 13, 0), f"auto:{b_id}",
+        )
         await db.execute("SELECT set_config('app.tenant_id', $1, false)", str(TENANT_A_ID))
 
         # ---- the report under test --------------------------------------
@@ -338,6 +358,14 @@ async def main() -> int:
         rep = resp.json()
         doc_of = {n: created[n]["doc_no"] for n in created}
         listed = {ln["doc_no"] for ln in rep["bills"]["lines"]}
+        # BY ID FOR THE CROSS-TENANT CELLS. doc_no is unique per TENANT only
+        # (uq_bills_tenant_docno), so tenant B's `B-2569-17` and tenant A's
+        # `B-2569-17` are two bills wearing one string; comparing doc_no across
+        # tenants read a collision as a leak on 2026-09-05, the day B's counter
+        # reached a number A's fixture day already held. Within ONE tenant
+        # (doc_of, listed) the string is a fine key and those cells stand.
+        id_of = {n: created[n]["id"] for n in created}
+        listed_ids = {ln["id"] for ln in rep["bills"]["lines"]}
 
         # ================================================================
         header("D - the day boundary, both edges, in shop time")
@@ -506,12 +534,12 @@ async def main() -> int:
 
         # ================================================================
         header("T - tenant isolation")
-        check("tenant B's bill is invisible in A's day", b_bill["doc_no"] not in listed)
+        check("tenant B's bill is invisible in A's day", b_bill["id"] not in listed_ids)
         b_rep = (await daily(admin_b, date=DAY.isoformat())).json()
-        b_listed = {ln["doc_no"] for ln in b_rep["bills"]["lines"]}
-        check("tenant B sees its OWN bill on that day", b_bill["doc_no"] in b_listed)
+        b_listed_ids = {ln["id"] for ln in b_rep["bills"]["lines"]}
+        check("tenant B sees its OWN bill on that day", b_bill["id"] in b_listed_ids)
         check("none of A's fixtures appear in B's day",
-              not (set(doc_of.values()) & b_listed))
+              not (set(id_of.values()) & b_listed_ids))
         check("A's day total does not contain B's money",
               money(b_bill["total_amount"]) > 0 and got_active == expected_active)
 

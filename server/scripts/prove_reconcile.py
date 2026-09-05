@@ -370,6 +370,20 @@ async def normalise(conn: asyncpg.Connection, database: str, *, restored: bool) 
     # purchase_bills (scripts/prove_rls.py:96) and supplies no doc_no, because it
     # is proving row-level security and never calls create_bill. One per run,
     # never cleaned up (hard rule 5). In the COPY they are simply removed.
+    #
+    # THE LEDGER'S ROWS ON THOSE BILLS GO FIRST (migration 0020): the backfill
+    # gave every live bill a payment and an allocation, doc_no-NULL debris
+    # included, and fk_allocations_bill would refuse the bill DELETE below while
+    # they stand. Gated on the table's existence so a pre-0020 copy still
+    # normalises. This connection is the superuser; the app role could not.
+    if await conn.fetchval("SELECT to_regclass('public.payment_allocations') IS NOT NULL"):
+        allocs = await conn.execute(
+            "DELETE FROM payment_allocations WHERE bill_id IN"
+            " (SELECT id FROM purchase_bills WHERE doc_no IS NULL)")
+        pays = await conn.execute(
+            "DELETE FROM payments WHERE idempotency_key IN"
+            " (SELECT 'auto:' || id::text FROM purchase_bills WHERE doc_no IS NULL)")
+        print(f"  cause 1, the ledger rows on those bills : {pays}, {allocs}")
     items = await conn.execute(
         "DELETE FROM purchase_bill_items WHERE bill_id IN"
         " (SELECT id FROM purchase_bills WHERE doc_no IS NULL)")
@@ -437,6 +451,10 @@ class Fx:
     voided: Any         # a voided bill
     audit_present: bool  # the copy is a 0017+ database (audit_log + triggers exist)
     branches_present: bool  # the copy is a 0018+ database (branches, T17/T18 exist)
+    payments_present: bool  # the copy is a 0020+ database (the ledger, P1..P4 exist)
+    mid_payment: Any    # mid's automatic payment (0020's backfilled pair), or None
+    mid_alloc: Any      # its allocation to mid, or None
+    same_tenant_seller: uuidlib.UUID | None  # a seller of fx.tenant other than mid's
 
 
 async def fixtures(conn: asyncpg.Connection) -> Fx:
@@ -485,7 +503,7 @@ async def fixtures(conn: asyncpg.Connection) -> Fx:
         """
         SELECT b.id, b.doc_no, split_part(b.doc_no, '-', 3)::int AS seq,
                split_part(b.doc_no, '-', 2)::int AS be_year,
-               b.total_amount, b.seller_id, b.idempotency_key,
+               b.total_amount, b.seller_id, b.branch_id, b.idempotency_key,
                b.voided_at, b.void_reason, b.voided_at IS NOT NULL AS voided,
                (SELECT count(*) FROM purchase_bill_items i WHERE i.bill_id = b.id) AS lines
           FROM purchase_bills b
@@ -496,8 +514,16 @@ async def fixtures(conn: asyncpg.Connection) -> Fx:
         raise Unfit(f"tenant {tenant} holds no NUMBERED bills, so the doc_no series the"
                     " injections aim at does not exist in this copy.")
     top = bills[-1]
-    singles = [b for b in bills if not b["voided"] and b["lines"] == 1 and b["id"] != top["id"]]
-    voided = [b for b in bills if b["voided"]]
+    # A total ABOVE 0.01 on the single-line fixtures: 0020's automatic pair is
+    # skipped for a zero-total bill, the P injections aim at mid's pair, and
+    # P1 lowers the payment by 0.01 -- on a 0.01 payment that would hit
+    # ck_payments_amount and measure the CHECK instead of the check
+    # (lessons/a-green-cell-is-evidence-about-the-assertion-not-the-claim.md).
+    singles = [b for b in bills if not b["voided"] and b["lines"] == 1
+               and b["id"] != top["id"] and b["total_amount"] > Decimal("0.01")]
+    # A positive total on the voided fixture too: P4's injection allocates
+    # 0.01 to it, and P2 must stay silent over that (0.01 <= total).
+    voided = [b for b in bills if b["voided"] and b["total_amount"] > 0]
     if len(singles) < 2 or not voided:
         raise Unfit("the copy does not hold the fixtures this proof needs:"
                     f" {len(singles)} active single-line bills below the top of the series"
@@ -513,11 +539,37 @@ async def fixtures(conn: asyncpg.Connection) -> Fx:
         "SELECT to_regclass('public.audit_log') IS NOT NULL")
     branches_present = await conn.fetchval(
         "SELECT to_regclass('public.branches') IS NOT NULL")
+    payments_present = await conn.fetchval(
+        "SELECT to_regclass('public.payments') IS NOT NULL")
+    mid_payment = mid_alloc = None
+    same_tenant_seller = None
+    if payments_present:
+        # mid's pair, by the automatic key 0020 mints ('auto:' || bill id). Every
+        # live positive bill has exactly one after the backfill; a copy where
+        # mid has none is a backfill defect, and Unfit says so rather than
+        # letting four injections skip quietly.
+        mid_payment = await conn.fetchrow(
+            "SELECT * FROM payments WHERE tenant_id = $1 AND idempotency_key = $2",
+            tenant, f"auto:{mid['id']}")
+        if mid_payment is None:
+            raise Unfit(f"bill {mid['doc_no']} ({mid['id']}) carries no automatic payment"
+                        " on this 0020+ copy, so the ledger injections have no pair to aim at.")
+        mid_alloc = await conn.fetchrow(
+            "SELECT * FROM payment_allocations WHERE payment_id = $1 AND bill_id = $2",
+            mid_payment["id"], mid["id"])
+        if mid_alloc is None:
+            raise Unfit(f"payment {mid_payment['id']} has no allocation to its bill"
+                        f" {mid['doc_no']} on this copy.")
+        same_tenant_seller = await conn.fetchval(
+            "SELECT id FROM sellers WHERE tenant_id = $1 AND id <> $2 ORDER BY code LIMIT 1",
+            tenant, mid["seller_id"])
     fx = Fx(tenant=tenant, other_tenant=other, other_seller=other_seller,
             tenants=len(tenant_ids), tenant_ids=tenant_ids,
             be_year=top["be_year"], max_seq=top["seq"], max_bill=top["id"],
             mid=mid, mid2=mid2, mid_item=item, voided=voided[0],
-            audit_present=audit_present, branches_present=branches_present)
+            audit_present=audit_present, branches_present=branches_present,
+            payments_present=payments_present, mid_payment=mid_payment,
+            mid_alloc=mid_alloc, same_tenant_seller=same_tenant_seller)
     print(f"  tenants in copy   : {fx.tenants}  (every expectation about a tenant count"
           " below is derived from this number, at runtime)")
     print(f"  tenant under test : {tenant}  ({len(bills)} numbered bills,"
@@ -532,6 +584,10 @@ async def fixtures(conn: asyncpg.Connection) -> Fx:
     print(f"  another 1-line    : {mid2['doc_no']} {mid2['id']}")
     print(f"  highest doc_no    : {top['doc_no']} {top['id']}")
     print(f"  a voided bill     : {fx.voided['doc_no']} {fx.voided['id']}")
+    if payments_present:
+        print(f"  mid's payment     : {mid_payment['id']} amount {mid_payment['amount']}"
+              f" (allocation {mid_alloc['amount']} to {mid['doc_no']})")
+        print(f"  same-tenant seller: {same_tenant_seller or 'NONE -- P3 is SKIPPED'}")
     return fx
 
 
@@ -591,8 +647,12 @@ def build(fx: Fx) -> list[Injection]:
             expect_rows=[f"doc_no={mid['doc_no']}", "constraint=ck_items_net  MISSING"],
         ),
         Injection(
+            # Since 0020 the bill's backfilled allocation (its old total) now
+            # exceeds the zeroed total, so P2 speaks beside T4 on a 0020+ copy:
+            # the ledger check working, measured on the first run.
             "T4", "a bill with no lines at all — a receipt for money with nothing"
-                  " bought. Its total is zeroed too, so T1 stays silent and T4 alone speaks",
+                  " bought. Its total is zeroed too, so T1 stays silent and T4 speaks"
+                  " (with P2 on a 0020+ copy: its allocation now exceeds the total)",
             apply=[("DELETE FROM purchase_bill_items WHERE bill_id = $1", (mid["id"],)),
                    ("UPDATE purchase_bills SET total_amount = 0 WHERE id = $1", (mid["id"],))],
             undo=[("""INSERT INTO purchase_bill_items (id, tenant_id, bill_id, product_id,
@@ -605,7 +665,7 @@ def build(fx: Fx) -> list[Injection]:
                     item["amount"])),
                   ("UPDATE purchase_bills SET total_amount = $2 WHERE id = $1",
                    (mid["id"], mid["total_amount"]))],
-            expect={"T4": 1},
+            expect={"T4": 1, **({"P2": 1} if fx.payments_present else {})},
             expect_rows=[f"doc_no={mid['doc_no']}", f"bill_id={mid['id']}"],
         ),
         Injection(
@@ -670,16 +730,18 @@ def build(fx: Fx) -> list[Injection]:
                          f"highest_doc_no={fx.max_seq}", "difference=5"],
         ),
         Injection(
+            # Since 0020 the bill's payment still names the first seller, so P3
+            # speaks beside T10/X1/S5 on a 0020+ copy: the ledger check working.
             "T10", "a bill is pointed at ANOTHER SHOP'S seller. The composite FK"
                    " forbids it, so it must be dropped first — three checks see it,"
-                   " each from a different lens",
+                   " each from a different lens (four with P3 on a 0020+ copy)",
             apply=[("ALTER TABLE purchase_bills DROP CONSTRAINT fk_bills_seller", ()),
                    ("UPDATE purchase_bills SET seller_id = $2 WHERE id = $1",
                     (mid["id"], fx.other_seller))],
             undo=[("UPDATE purchase_bills SET seller_id = $2 WHERE id = $1",
                    (mid["id"], mid["seller_id"])),
                   (FK_SELLER, ())],
-            expect={"T10": 1, "X1": 1, "S5": 1},
+            expect={"T10": 1, "X1": 1, "S5": 1, **({"P3": 1} if fx.payments_present else {})},
             expect_rows=["bill -> seller", f"holder={mid['doc_no']}",
                          f"pointed_at_tenant={fx.other_tenant}",
                          "constraint=fk_bills_seller  MISSING"],
@@ -874,6 +936,90 @@ def build(fx: Fx) -> list[Injection]:
                   ("SELECT set_config('app.actor_username', '', false)", ())],
             expect={"T18": 1},
             expect_rows=[f"tenant_id={fx.tenant}", "active_branches=0"],
+        ))
+    # THE LEDGER (migration 0020) exists only on a 0020+ copy: P1..P4, and the
+    # payment arms of T10 and X1. Gated on payments_present so an older copy
+    # simply omits them. Each aims at mid's backfilled pair so exactly ONE
+    # check moves and names its row; the second UPDATE in P2 is what keeps P1
+    # silent there, and a P4 row is a fresh payment so P1/P2/P3 stay silent.
+    if fx.payments_present:
+        pay, alloc = fx.mid_payment, fx.mid_alloc
+        injs.append(Injection(
+            "P1", "a payment's recorded amount drops below what it allocated -- the"
+                  " ledger says more was applied than was paid",
+            apply=[("UPDATE payments SET amount = amount - 0.01 WHERE id = $1", (pay["id"],))],
+            undo=[("UPDATE payments SET amount = $2 WHERE id = $1", (pay["id"], pay["amount"]))],
+            expect={"P1": 1},
+            expect_rows=[f"payment_id={pay['id']}", "over_by=0.01"],
+        ))
+        injs.append(Injection(
+            # SECTION 12's OWN DISPROOF: "the P2 injection staying green with the
+            # check present". The payment's amount is moved with the allocation
+            # so P1 stays silent and ONLY the bill-side arithmetic can see it.
+            "P2", "a bill's live allocation exceeds its total by 0.01 -- and the payment"
+                  " is moved with it, so ONLY the bill-side check can see it",
+            apply=[("UPDATE payment_allocations SET amount = amount + 0.01"
+                    " WHERE payment_id = $1 AND bill_id = $2", (pay["id"], mid["id"])),
+                   ("UPDATE payments SET amount = amount + 0.01 WHERE id = $1", (pay["id"],))],
+            undo=[("UPDATE payment_allocations SET amount = $3"
+                   " WHERE payment_id = $1 AND bill_id = $2",
+                   (pay["id"], mid["id"], alloc["amount"])),
+                  ("UPDATE payments SET amount = $2 WHERE id = $1", (pay["id"], pay["amount"]))],
+            expect={"P2": 1},
+            expect_rows=[f"doc_no={mid['doc_no']}", "over_by=0.01"],
+        ))
+        injs.append(Injection(
+            "P3", "a payment is re-pointed at ANOTHER seller of the same shop while"
+                  " its allocation still names the first seller's bill",
+            apply=[("UPDATE payments SET seller_id = $2 WHERE id = $1",
+                    (pay["id"], fx.same_tenant_seller))],
+            undo=[("UPDATE payments SET seller_id = $2 WHERE id = $1",
+                   (pay["id"], pay["seller_id"]))],
+            expect={"P3": 1},
+            expect_rows=[f"doc_no={mid['doc_no']}", f"payment_id={pay['id']}",
+                         f"payment_seller={fx.same_tenant_seller}",
+                         f"bill_seller={mid['seller_id']}"],
+            skip=("" if fx.same_tenant_seller is not None else
+                  "the tenant under test holds only one seller, so there is no second"
+                  " seller of the same shop to re-point the payment at. P3 is NOT"
+                  " exercised on this copy."),
+        ))
+        p4_id = uuidlib.uuid4()
+        injs.append(Injection(
+            "P4", "a LIVE payment recorded now allocates 0.01 to a bill voided long"
+                  " before -- money sent to a debt that no longer exists",
+            apply=[("INSERT INTO payments (id, tenant_id, branch_id, seller_id, method,"
+                    " amount, idempotency_key, device_created_at, server_received_at,"
+                    " paid_by, recorded_by_migration)"
+                    " VALUES ($1, $2, $3, $4, 'cash', 0.01, $5, now(), now(), NULL, true)",
+                    (p4_id, fx.tenant, fx.voided["branch_id"], fx.voided["seller_id"],
+                     f"inject:p4:{p4_id}")),
+                   ("INSERT INTO payment_allocations (tenant_id, payment_id, bill_id, amount)"
+                    " VALUES ($1, $2, $3, 0.01)", (fx.tenant, p4_id, fx.voided["id"]))],
+            undo=[("DELETE FROM payment_allocations WHERE payment_id = $1", (p4_id,)),
+                  ("DELETE FROM payments WHERE id = $1", (p4_id,))],
+            expect={"P4": 1},
+            expect_rows=[f"doc_no={fx.voided['doc_no']}", f"payment_id={p4_id}"],
+        ))
+        injs.append(Injection(
+            "T10/payment", "a payment is pointed at ANOTHER SHOP'S seller. The composite"
+                           " FK forbids it, so it must be dropped first -- T10's payment"
+                           " arm, X1's payments pair and P3 each see it from their lens",
+            apply=[("ALTER TABLE payments DROP CONSTRAINT fk_payments_seller", ()),
+                   ("UPDATE payments SET seller_id = $2 WHERE id = $1",
+                    (pay["id"], fx.other_seller))],
+            undo=[("UPDATE payments SET seller_id = $2 WHERE id = $1",
+                   (pay["id"], pay["seller_id"])),
+                  ("ALTER TABLE payments ADD CONSTRAINT fk_payments_seller"
+                   " FOREIGN KEY (tenant_id, seller_id) REFERENCES sellers (tenant_id, id)", ())],
+            expect={"T10": 1, "X1": 1, "P3": 1},
+            expect_rows=["payment -> seller", f"holder={pay['id']}",
+                         f"pointed_at_tenant={fx.other_tenant}",
+                         f"payment_seller={fx.other_seller}"],
+            skip=("" if fx.other_seller is not None else
+                  "there is no second tenant with a seller in this copy, so there is no"
+                  " cross-tenant reference to make. T10's payment arm and X1's payments"
+                  " pair are NOT exercised here."),
         ))
     return injs
 

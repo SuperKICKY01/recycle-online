@@ -12,11 +12,11 @@ lesson file; anything written here is destroyed by the next run.
 byte for byte, with line endings normalised to LF on both sides first. It exits
 1 on any difference. That is how a lesson edited without regenerating is caught.
 
-**Sources:** 66 lesson files, `lessons/*.md`, ASCII filename order.
+**Sources:** 67 lesson files, `lessons/*.md`, ASCII filename order.
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 32 across 17 files, counted from the source headings and
+**Amendments:** 33 across 18 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -57,7 +57,7 @@ line instead of by heading depth.
 - `a-narrowing-type-is-not-a-barrier-to-the-object.md` -- A narrowing type stops the FIELD being named, not the OBJECT being passed
 - `a-new-required-field-refuses-every-queued-payload.md` -- A new required field on a write route refuses every payload already queued offline
 - `a-platform-can-refuse-an-effect-and-record-it-as-done.md` -- A platform can refuse an effect and record it as done
-- `a-proof-fixture-must-be-a-row-the-product-could-produce.md` -- A proof fixture must be a row the product could have produced
+- `a-proof-fixture-must-be-a-row-the-product-could-produce.md` *(1 amendment)* -- A proof fixture must be a row the product could have produced
 - `a-proof-must-establish-what-it-is-talking-to.md` -- A proof must establish WHAT IT IS TALKING TO before it asserts anything about the answers
 - `a-quantified-sentence-names-no-member.md` *(2 amendments)* -- A sentence that quantifies over a set names no member of it
 - `a-refusal-hands-back-what-it-refused.md` *(1 amendment)* -- A 422 is a MIRROR — the framework hands back the value it refused, and one of those values is a password
@@ -67,6 +67,7 @@ line instead of by heading depth.
 - `a-scratch-proof-imports-the-app-only-after-it-rebinds-the-database.md` -- A scratch proof must not import the app before it rebinds the database URL
 - `a-sticky-device-global-state-needs-a-clearing-rule.md` -- A sticky device-global state is a wedge when its fact can go false without a new process
 - `a-stored-future-instant-is-a-promise-about-a-clock.md` -- A stored future instant is a promise about a clock you do not control
+- `a-sum-over-nothing-has-no-scale.md` -- A sum over nothing has no scale
 - `a-value-comparison-cannot-prove-a-path.md` *(1 amendment)* -- A value comparison cannot prove a PATH
 - `a-warning-in-one-file-does-not-protect-the-next.md` -- A warning written in one file does not protect the file beside it
 - `an-error-is-one-branch-not-the-defects-shape.md` -- An error you observed is one branch, not the defect's shape
@@ -4584,6 +4585,40 @@ And the two compound. A fixture that is impossible AND undeletable is a
 permanent false statement about the product, sitting in the one place — the
 database — that every future instrument will read as ground truth.
 
+## AMENDED (migration 0020, 2026-09-05): a fixture written THROUGH the real path can be made impossible AFTERWARDS, by editing one of the rows the path wrote together
+
+The list above is about rows a proof WRITES. A third way in: the proof goes
+through the real path (way 1, done right), then backdates ONE row by direct
+UPDATE while the same transaction wrote a SIBLING it never touches. Migration
+0020 made `POST /bills` write a `payments` row beside every bill, carrying the
+bill's own `server_received_at`; `prove_daily_report.py` had for months moved
+its bills' `server_received_at` and `voided_at` onto a fixture day in January by
+direct UPDATE, and from 0020 on that left the bill in January beside a payment
+stamped today — for the two fixtures it voids, exactly the shape the new P4
+check names: a LIVE payment recorded AFTER the void. Measured: 8 P4 violations
+on a scratch restored after the sweep, 40 mis-stamped pairs on dev after four
+runs of that proof, every one green at the proof's own exit line, because the
+proof asserts the report and the checker asserts the ledger and nothing asserted
+the pair.
+
+**The rule the amendment adds.** When a proof edits a row the product wrote,
+ask what ELSE the product wrote in that transaction and whether the edit
+leaves the set consistent — and re-ask it at every migration that widens the
+transaction, because the proof's UPDATE was correct the day it was written and
+went wrong the day the path grew a sibling. The repair is the same as way 2:
+move the sibling with the row (`prove_daily_report` now backdates the automatic
+payment's stamps beside the bill's). What is NOT the repair: teaching P4 to
+excuse a payment that predates its bill's void by less than a fixture's shift.
+Sibling of [[a-fail-closed-trigger-conscripts-every-writer-of-its-table]] —
+there a new obligation conscripts every WRITER of a table; here a new sibling
+row conscripts every proof that EDITS what the path wrote.
+
+**Where measured.** `scripts/reconcile.py` P4 on `recycle_payments_scratch`
+after the removed-pair disproof run, 2026-09-05, rows naming
+`doc_no=B-2569-768 … voided_at=2026-01-06T11:00:00+07:00
+payment_received_at=2026-09-05T11:17:41…`; dev repaired by aligning each
+automatic pair's two stamps to its bill's (40 rows, then 0), reconcile 0 after.
+
 ---
 
 **SOURCE:** `a-proof-must-establish-what-it-is-talking-to.md`
@@ -5868,6 +5903,88 @@ A guard in `SyncEngine`'s constructor **throws** if `backoffMaxMs` or
 never write schedules its own reader would discard as clock damage. A comment
 would have been forgotten; a throw fires on every path that builds an engine,
 proofs included.
+
+---
+
+**SOURCE:** `a-sum-over-nothing-has-no-scale.md`
+
+# A sum over nothing has no scale
+
+**Applies to** every money or weight value SERIALISED from an aggregate — a
+`sum()`, a `coalesce(sum(), 0)`, a `count(*) * price`, any expression a
+query computes rather than a column it reads — and hardest where the wire
+contract is "a decimal STRING with exactly two places" and the reader is a
+screen that prints whatever string arrives.
+
+**The rule.** The scale of a NUMERIC column does NOT travel through an
+aggregate over zero rows. `coalesce(sum(a.amount), 0)` over no allocations is
+the integer-shaped `Decimal('0')`, not `Decimal('0.00')`; Python's `str()`
+renders it `"0"`, and a wire that promised `"0.00"` has broken its promise on
+the one row that most needs to be read correctly — the unpaid one. Quantize at
+the serialisation site, every time, the way `reports._money` already does
+("Money is returned as STRINGS, everywhere, including zero"); never trust the
+column's declared scale to arrive through a query that may have summed
+nothing.
+
+## Measured, not reasoned
+
+Migration 0020 (the money ledger) added `paid_amount` to every bill read-back,
+derived as the sum of allocations from live payments. The first run of
+`server/scripts/prove_payments.py` (2026-09-05) went red on two cells and green
+on the fifty-six around them:
+
+```
+[RED ] Z1: total 0.00, zero payments, zero allocations, status paid (got 201 total=0.00 status=paid)
+[RED ] S2: the 201 derives unpaid / 0.00 (got unpaid / 0)
+```
+
+Both cells compared the wire string against `"0.00"`. Both bills had NO
+allocation — a zero-total bill (no payment is written for it) and a bill
+created with the counter separated (no payment yet) — so the SQL summed nothing,
+`coalesce` supplied a bare `0`, asyncpg handed back `Decimal('0')`, and
+`str()` wrote `0`. Every bill WITH an allocation read `"1.00"`, `"20.00"`,
+`"0.30"` correctly, because a sum over at least one `numeric(14, 2)` value
+carries that value's scale. The defect is invisible on every paid bill and
+appears exactly on the unpaid one.
+
+`payment_status` was right on both cells (`unpaid`, `paid`): the DERIVATION
+compared Decimals, where `0 == 0.00`, and only the SERIALISATION was wrong. A
+proof that asserted the status and not the string would have been green.
+
+## Why the reader would not have caught it
+
+The phone's money readers (`dailyView.ts` `readMoney`, `sellerHistoryView.ts`)
+refuse a JSON NUMBER and accept any STRING. `"0"` is a string. It would have
+rendered as `0` beside totals rendered as `1,234.50`, on a screen where the
+operator reads a column, and `proveMoney` M5's `stripSeparators(display(x))
+=== x` would have held for it. Nothing downstream can tell a
+one-decimal-short string from a correct one; the contract has to be kept at
+the point where the value is made.
+
+## How to apply
+
+1. Every money value that leaves the server passes through ONE quantizing
+   serialiser (`Decimal(v).quantize(Decimal("0.01"))`, weights to three
+   places), whether it came from a column or from an aggregate — and
+   especially from an aggregate, which is where the scale is lost.
+2. A proof of a money endpoint asserts the STRING (`== "0.00"`), never only the
+   status or the number the string parses to; and it stages the EMPTY case on
+   purpose — the row with nothing to sum — because that is the only row that
+   can show this.
+3. Ask of any `coalesce(sum(...), 0)`: what does the zero look like on the
+   wire? If the answer is "whatever `str()` makes of it", the site is missing
+   its quantize.
+
+Sibling of `edge-must-reject-what-the-column-rounds.md` — that one is the
+INPUT side of NUMERIC scale (Postgres rounds an over-scale value instead of
+refusing it), this is the OUTPUT side (an aggregate drops the scale instead of
+carrying it) — and of `decimal-precision-for-domain-scale.md`, where the
+library's precision was the thing that did not travel.
+
+**Where measured.** `server/scripts/prove_payments.py` Z1 and S2, first run
+2026-09-05 against a scratch restored from the post-0020 dev dump; fixed at
+`server/app/bills.py` `_paid_amount` and the bill-list row (both quantize),
+after which the same two cells read `"0.00"` and the suite went 59/59 twice.
 
 ---
 

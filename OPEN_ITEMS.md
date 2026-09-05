@@ -769,6 +769,18 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   GREEN, so the built tree genuinely lacks the guard. Green TWICE bare (49 checks,
   failures 0 both), `git worktree list` ONE entry before AND after both runs (no
   leak); `--database`/`--old-tree` remain as optional overrides.
+  **THE OLD-COMMIT SERVER IS A READER THE SCHEMA OUTRUNS, and 0019/0020 have each
+  paid for it once** (2026-09-04: the scratch grew a `users.role` column for it;
+  2026-09-05: it selects five branch columns and never sees `separate_cashier`, so it
+  ran green by luck of an additive column). Recorded here VERBATIM, the advisor's, so
+  the next session that opens this proof for any reason carries it out:
+  "ADVISOR'S DECISION, 2026-09-03: `prove_seller_code_guards`'s old-commit worktree
+  pin is replaced by a proof-owned ASGI wrapper that imports the current app and
+  overrides the two guard functions in-process, preserving the ADMITTED-then-REFUSED
+  differential without pinning to a schema the tree has moved past. NOT AUTHORISED AS
+  ITS OWN PHASE — it rides the next session that touches that proof for another
+  reason. The override switch lives in proof code and never in `app/` as an
+  environment flag, because that would be a runtime knob disabling a money guard."
 
 - **TWO THINGS THE P1.8a DEVICE PASS DID NOT OBSERVE, 2026-08-17 — and both
   are about the SAME card, which is why they are one entry rather than two.**
@@ -1553,6 +1565,83 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Code debt found and left in place
 
+- **THE MONEY LEDGER (migration 0020, 2026-09-05) — FOUND AND NOT FIXED, and one
+  CONDITION the next unit invalidates.**
+  - **THE DEFERRED READERS OF `total_amount` ARE SAFE UNDER ONE CONDITION, AND THE
+    COUNTER UNIT IS WHAT REMOVES IT.** Every reader below treats a bill's total as
+    money that left the drawer. That is TRUE TODAY because no route writes
+    `branches.separate_cashier` (measured 2026-09-05: the only SQL against `branches`
+    in `server/app` is three SELECTs in `branches.py`), so every bill on every shop
+    carries its automatic pair and purchase total EQUALS cash out on every row. The
+    day a route flips that column, EVERY reader here becomes wrong at once, and this
+    list is what that unit must work through: `reports.py` `active_total` and
+    `voided_total` (the day headline the phone captions `"ยอดซื้อวันนี้"` at
+    `mobile/src/reports/dailyView.ts:816` — a caption that stays true as a PURCHASE
+    figure and stops being the drawer's), the per-bill totals in the daily lines and
+    void lists, `GET /reports/summary` (item grain, the same question by another
+    column), `GET /sellers/{id}/history` (a seller's balance is live bills minus live
+    payments, section 2.1, not a list of totals), and the phone's `BillsPanel.tsx`,
+    `App.tsx` latest-bill line, `dailyView.ts` and `SellerHistorySheet.tsx` renders,
+    which draw the local row's total with no paid state beside it. The readers that
+    changed IN 0020 are the bill read-backs and list (`paid_amount`,
+    `payment_status`, `?unpaid=true`); the integrity checks (T1, `verify_backup.py`)
+    needed nothing. *Owner of the condition:* the counter unit — the one that builds
+    `PATCH /branches` or any writer of `separate_cashier`.
+  - **`payments.shift_id` IS OWED TO THE SHIFTS UNIT.** Section 2.1 sketches it as
+    a nullable composite FK to `shifts`; 0020 omitted it because the target table
+    does not exist and a column nothing reads becomes load-bearing the day later
+    code trusts it (the 0019 precedent). Add it in the migration that creates
+    `shifts`, nullable, MATCH SIMPLE, and backfill nothing.
+  - **`prove_user_create.py` HAS BEEN RED SINCE 0019 AND WAS REPORTED GREEN — a finding
+    about the REPORTING, not only the proof.** Measured 2026-09-05 on a scratch restored
+    from the post-0020 dump: both runs exit 1 at the proof's FIRST gate ("the server
+    answering is reading THIS database") on
+    `asyncpg.exceptions.UndefinedColumnError: column "role" does not exist` from
+    `_db_users` at `prove_user_create.py:284-296` (`SELECT id, username, role, is_active,
+    token_version FROM users ORDER BY username`) — `users.role` was dropped by 0019, so
+    no cell of this proof has run since. What `1887054` CLAIMED: its record lists
+    `user_create` among "the scratch-bound seven" under "Every other server proof GREEN
+    TWICE", and that same commit EDITED this file (three cells moved from
+    `admin_required` to `permission_required`, `git show 1887054 --
+    server/scripts/prove_user_create.py`, 12 insertions, 7 deletions) without touching
+    the SELECT. What is TRUE: the file as committed cannot pass its own gate on any 0019+
+    database, so it was either not run or its traceback was read as something else. A
+    suite is only as honest as the run that says it passed. The repair — the `roles`
+    join `auth.PRINCIPAL_JOIN` already spells — is the users step's; this entry is the
+    accurate filing.
+  - **`prove:login` IS A PROOF WHOSE RESULT IS UNREADABLE under `proof-must-run-twice`,
+    a standing rule of this project.** Measured 2026-09-05 against a uvicorn bound to a
+    scratch: with no server on its default 8211 it is red twice (`status=0`); pointed by
+    `RECYCLE_API_BASE` it reads ALL GREEN once and 7 FAILED on its second run at
+    `it is ok — refused` with the wrong-password sentence
+    `ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง — ลองพิมพ์อีกครั้ง`, because 0016's login guard locks the
+    seeded admin after run 1's own wrong-password cells (10 `failed` rows for `admin` on
+    that scratch, read back). A proof that reddens ITSELF on its second run cannot be told
+    from one that found a defect, so its green carries no information. *What it would
+    take:* a fixture that resets the failed-attempt rows it writes (the admin unlock
+    route `POST /users/{id}/unlock-login` exists for exactly that state, or a fresh
+    scratch per run as the self-restoring server proofs do), or a DISTINCT account per
+    run. Not this unit's; every record before this one listed the mobile sweep green
+    twice without naming this proof's second run.
+  - **THE CITATION FLOOR ROSE FROM 6 TO 8 AT `1887054` AND NOBODY NOTICED** — measured
+    2026-09-05 on clean worktrees: `b420e80` `664 / 6`, `1887054` `668 / 8` where its
+    record and commit body say `666 / 6`. Both extra breaks sit in the 0019 record's own
+    READINGS paragraph (a section citation into OPEN_ITEMS.md wrapped across a line end at
+    the em-dash of its heading, and a sentence naming PROJECT_STATUS.md in backticks right
+    before the quoted word Known, parsed as an ambiguous handle citation): the check ran
+    BEFORE the sentence reporting it was written. Repaired in the 0020 commit (both are
+    in `PROJECT_STATUS.md`); the six older handles belong to their documents' owners.
+    The rule the finding adds to the boundary checklist: run the citation checker AFTER
+    the last doc edit, including the edit that reports the checker's reading — a
+    reading pasted into a document is one more line the checker parses.
+  - **`payments.void`, `POST /payments/{id}/void` and any client of `POST /payments`
+    are the counter unit's.** In 0020 a payment can be voided only by SQL; the proofs
+    that need a voided payment (P4's injection) write one that way.
+  - **`prove_daily_report.py` COMPARED doc_no STRINGS ACROSS TENANTS** and reddened
+    on 2026-09-05 when tenant B's counter reached `B-2569-17`, a string tenant A's
+    fixture day also holds; fixed IN THIS COMMIT to compare bill ids (doc_no is
+    unique per tenant only), recorded here because the defect predates the ledger
+    and could have fired on any day B's counter crossed one of A's fixture numbers.
 - **PERMISSIONS (migration 0019, 2026-09-04) — FOUND AND NOT FIXED, named so a later
   reader does not think they were missed.**
   - **`prove_login_guard.py` LEAVES ITS TWO TENANTS BEHIND on every run** — its
@@ -4831,6 +4920,18 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   1. **Payment status + method + payer + time** (3.1, 3.3) · `purchase_bills` + NEW
      `payments` · rewrites every bill · how shops actually pay (cash/transfer/credit,
      who pays, part-payment) — shop visits.
+     **BUILT 2026-09-05 (migration `0020_payments.py`; unanchored, anchor next pass):**
+     `payments` and `payment_allocations` under `STRUCTURE.md` section 2's shape —
+     status is DERIVED from allocations and stored nowhere, so `purchase_bills` was
+     NOT rewritten (the row says "rewrites every bill"; the measured cost was one
+     backfilled pair per live bill and no column on the bill); method, payer and time
+     are columns on the payment; part-payment is an allocation. The field question
+     the row names is answered by the owner's own principle instead of a shop visit:
+     every shop has the ledger and `branches.separate_cashier` decides who writes it.
+     The record is `PROJECT_STATUS.md § Current phase`. **THE ADVISOR'S BRIEF PLACED
+     THIS QUEUE IN `ROADMAP.md` FOR THE SECOND TIME** (the 0018 brief did too, and
+     the tree corrected it the same day, three entries up); it is here and nowhere
+     else, and a correction made twice is carried as a habit, not an accident.
   2. **Per-piece / lump-sum price** (4.6) · `purchase_bill_items` · rewrites every
      bill line; `reconcile.py` must learn the mode or flag every lump-sum line · which
      goods are per-piece/lump — shop visits.

@@ -75,8 +75,190 @@ not read the green as re-run.**
 
 ## Current phase
 
-**THE PERMISSION MODEL — who may do what is a row a shop holds, and the gate reads the row. 2026-09-04.** No sha
-yet (this record precedes the commit; anchor next pass). Supersedes the branches record below AS THE POINTER ONLY —
+**THE MONEY LEDGER — money leaving the shop is a row, every shop has it, and a bill's paid status is derived and
+stored nowhere. 2026-09-05.** No sha yet (this record precedes the commit; anchor next pass). Supersedes the
+permission-model record below AS THE POINTER ONLY — that work stands and is committed (`1887054`). This is
+`STRUCTURE.md` section 2, unit 3 of its section 12 ("schema and the degenerate path ONLY"), built as the THIRD unit,
+under eight decisions of the owner's taken at the S0 stop on 2026-09-05 and recorded where each is applied.
+**WHAT A SHOP CAN DO TODAY THAT IT COULD NOT YESTERDAY, IN PLAIN TERMS.** Nothing visible moved for any shop that
+exists — every bill is still paid in cash at the weighbridge and no screen changed — and that is the measurement: for
+every shop the counter switch is off and no route can turn it on, so purchase total still equals cash out on every
+row. What changed underneath is that the shop is now RECORDED as having paid: every bill carries one cash payment and
+one allocation, written by the server inside the bill's own transaction, and the 619 bills that predate the ledger
+carry a reconstructed pair marked as such. A shop that separates its counter tomorrow flips one column and its bills
+go unpaid until a cashier records the payment from a screen that is the next unit's; the ledger, the queue and the
+two routes are already there.
+**THE THREE ANSWERS THE S0 STOP EXISTED FOR, MEASURED.** (2) THE QUEUED BILL DRAINS PAID: the phone posts its stored
+body verbatim and reads only `doc_no` back (`httpTransport.ts:102,127`), and the pair is written from the server's
+computed total, principal and arrival instant, from nothing on the wire — `prove_payments.py` Q1 drains the SEVEN-FIELD
+pre-0018 body (no `branch_id`, nothing about payments) to a 201 with its pair, sum `20.00` == total. (3) THE REPLAY
+WRITES NO SECOND PAIR: the idempotency short-circuit at `bills.py:389-397` precedes every write, and the automatic key
+`auto:<bill id>` is `UNIQUE (tenant_id, idempotency_key)` as the structural backstop — `prove_bills.py` case 2 reads one
+payment and one allocation after the replay, and a new case 8 submits ONE body from two threads and reads `[200, 201]`,
+one id, one pair (`prove_payments.py` R1/R2 the same on a scratch). (6) `payments.record` DID NOT EXIST — `Permission`
+had 13 members, 0019's catalogue 13 rows, `DEFERRED` named it for unit 3 — and is minted here as the fourteenth, granted
+to owner and admin (staff weighs; the cashier is a role a shop creates), gating both `GET /payments` and
+`POST /payments`; `payments.void` stays deferred with the counter screen.
+**WHAT WAS BUILT.** Migration `0020_payments.py`: `payments` (15 columns: client-minted `id` with no default, tenant,
+branch, seller, `method` CHECKed to four values, `amount > 0`, `idempotency_key` UNIQUE per tenant, `reference` ≤ 200,
+both timestamps, `paid_by`, `recorded_by_migration`, the three void columns under the bill's all-or-none CHECK; composite
+FKs to `branches`, `sellers`, `users` ×2), `payment_allocations` (`PRIMARY KEY (tenant_id, payment_id, bill_id)`,
+composite FKs to both parents, `amount > 0`), two indexes (`(tenant_id, bill_id)` for the derived read, `(tenant_id,
+server_received_at)` for the listing), `branches.separate_cashier boolean NOT NULL DEFAULT false`, the catalogue row and
+the per-tenant grants written under the declared actor `system:migration_0020` (8 audit rows on dev). RLS+FORCE+policy
+on both; the app role holds `INSERT,SELECT,UPDATE` on `payments` (voided, never deleted) and `INSERT,SELECT` on
+`payment_allocations` (append-only). NOT AUDITED — the owner's decision 1: the brief's S2 asked for `_AUDITED_TABLES`,
+section 2 is silent, 0017 excludes the transactional ledger by design, `reconcile.py` prints that boundary, and the
+trigger would have conscripted `POST /bills`, which declares no actor (`bills.py:387`); the phase record says so so the
+next reader sees the boundary HELD, not bent. The backfill: one pair per live positive-total bill (619 on dev; none for
+134 voided, none for zero totals — `ck_payments_amount` forbids a zero row and a zero-total bill reads `paid` because
+0 = 0), `paid_by` copied from `created_by` (71 NULL, the pre-0006 bills), both timestamps copied value against value
+(0 mismatches), `recorded_by_migration = true` on every one. Server: `bills._record_automatic_payment` inside the bill's
+transaction after the item inserts, called only when `branch.separate_cashier` is false and the total is positive (a
+READ of the policy, never a test — no `if not policy: raise` on any write path, invariant 1); `_read_bill` and the list
+derive `paid_amount` (quantized — see the lesson) and `payment_status` (unpaid / partial / paid) from the sum of
+allocations from LIVE payments at every read; `GET /bills?unpaid=true` is the cashier queue (an anti-join, filed under
+the seq-scan note); `branches.Branch` carries the column, `branch_payload` does NOT (`prove_shop_settings.py:284`'s
+exact key-set cell stays green); NEW `app/payments.py` with `POST /payments` (replay 200; unknown bill 424
+`dependency_missing`/`bill_unknown`, the reasoning in the route docstring per decision 4; voided bill, seller mismatch,
+over-allocation naming `remaining`, allocations past the amount and a duplicated bill all 422; the bill row locked
+`FOR NO KEY UPDATE` so two counters cannot over-allocate one bill under READ COMMITTED; an empty allocation list is an
+advance) and `GET /payments` (newest first, voided rows included and marked, allocations with their `doc_no`);
+`permissions.py` gains the member and loses it from `DEFERRED`; `main.py` mounts the router. `reconcile.py`: both tables
+in `TENANT_TABLES`, `SCOPE_SQL`/`SCOPE_COLUMN` and X2; four X1 pairs (`payments` → sellers, branches, users ×2); six T10
+arms (payment → seller / branch / paid_by / voided_by; allocation → payment / bill); P1–P4 as `SqlCheck`s with the
+arithmetic duplicated in NUMERIC and nothing imported; `CANNOT_SEE` widened (the ledger is not audited either; "WHETHER A
+BILL SHOULD BE PAID" — an unpaid bill is legitimate under a separated counter, so a server that silently stopped writing
+the pair reconciles green and `prove_payments.py` is what watches that path); the summary line's stale "6 structural"
+corrected to 7. Phone: NOTHING — measured, not assumed: the transport casts the bill body and reads `doc_no` alone,
+no production code calls `GET /bills` or `GET /bills/{id}`, no schema library, no key enumeration over a response
+(the survey's controls: `idempotency_key` hit `types.ts:35`, the `/bills` pattern hit both POST sites).
+**DESIGN DECISIONS (the owner's, 2026-09-05, each with its reason at the site).** Not audited (above); `paid_by` NULLABLE
+under `CHECK (paid_by IS NOT NULL OR recorded_by_migration)` — a record always names its payer, a reconstruction may not,
+and inventing one for 71 authorless bills would put a made-up name beside real money; `shift_id` OMITTED until `shifts`
+exists and section 2.3's `rounding_adjustment` fenced to the unit after (the 0019 precedent); the 424/422 split;
+the schema queue marked where it IS (`OPEN_ITEMS.md § Decisions open`, entry 1) with the advisor's second mislocation
+carried as a habit; the three FK-reached proofs edited by name (below); the ASGI-wrapper decision for
+`prove_seller_code_guards` recorded VERBATIM under its `OPEN_ITEMS.md` entry; the rollback observed, not argued; and
+the deferred readers of `total_amount` stated as a CONDITION — true while no route writes `separate_cashier`, invalidated
+by the counter unit — with the list filed at `OPEN_ITEMS.md § Code debt found and left in place`.
+**READINGS (each command bare, exit read in the same invocation; cp874 box, UTF-8 stdout pinned where a proof prints
+Thai).** Scratch (`recycle_pay_scratch`, restored from the pre-0020 dump `recycle_20260905T035307Z_pre-0020`): the
+migration REFUSED TWICE and rolled back to 0019 intact both times — first at a `COMMENT ON TABLE` (an apostrophe in a
+comment literal, the migrations' own ASCII rule broken by this author; `alembic_version` `0019`, no table, no column,
+FORCE still on, 13 rows), then, with a ROLE-LESS TENANT STAGED, at the grant read-back: `REFUSING 0020: 8 payments.record
+grant(s) over 8 owner/admin role(s) across 5 tenant(s); expected 10 of each`, after which `0019`, `f|f`, no column, 13
+rows, 0 grants, FORCE `t` on all four lifted tables, 0 audit rows by the migration, 5 tenants — the eight grant INSERTs
+and their audit rows rolled back with it. Unstaged, `upgrade head` EXIT=0, read back field by field against section 2
+(the schema-audit lesson): 22 relations in `public`, the 15 + 5 columns above, the 13 + 5 constraints by name, the two
+indexes, `separate_cashier` `false` ×4, RLS+FORCE `t|t` on both, the two `tenant_isolation` policies, the narrowed
+grants, 12 triggers UNCHANGED (11 `audit_capture` + the guard: the ledger carries none), catalogue 14 with
+`payments.record`, grants `admin 4 / owner 4`, backfill `619|619|71|619|619` (payments, marked, payer-less, cash,
+distinct keys), 619 allocations, the disproof query 0 (no live positive bill whose allocations miss its total), 0
+voided bills with an allocation, 0 timestamp/payer/branch/seller/amount mismatches value against value, 8 audit rows on
+`role_permissions` by `system:migration_0020`. The downgrade cycle: pristine `downgrade 0019` EXIT=0 (`0019`, no tables,
+no column, 13 rows, 0 grants, FORCE on, 12 triggers), `upgrade head` EXIT=0 (`0020`, 619/619, 8 grants); a RECORD and a
+SWITCHED BRANCH staged → downgrade EXIT=1 `REFUSING to downgrade 0020 … 1 / 0 / 1 / 0`, schema still `0020` with 620
+payments and FORCE on all six; unstaged. DEV: `alembic upgrade head` EXIT=0, `alembic current` `0020 (head)`, and its
+read-back is BYTE-IDENTICAL to the scratch's (`diff` empty over the same 30 queries). `reconcile.py` on dev EXIT=0 —
+104 checks, `23 per tenant x 4, plus 7 structural, 2 blind, 3 global`, X2 `payment_allocations=619 payments=619`; on
+the scratch EXIT=0 the same; on dev again EXIT=0 after the sweep and the fixture repair below. Both mobile typechecks
+EXIT=0. NEW `scripts/prove_payments.py` (scratch-only, self-restoring, a child uvicorn) GREEN TWICE, 59 cells: B the
+backfill read from Postgres (every live positive bill balanced, the marked pairs each one allocation equal to amount and
+total, payer NULL exactly where `created_by` is, a pre-existing bill reading `paid` over HTTP); D the degenerate pair
+with SECTION 12's DISPROOF as D2 — measured RED FIRST by deleting the `_record_automatic_payment` call: 15 of 59 red,
+D1–D9, Q1, R1, R2, S3's control, S8, X1, D2 reading `sum=0.00, total=1.00`, the file restored byte-identical (`cmp`
+exit 0); Q the seven-field body; R the replay and the race; Z the zero-total bill; S the switch flipped by SQL under an
+actor — ON: zero payments, `unpaid / 0.00`, in the queue; OFF again: still unpaid, still queued; a bill created after
+the flip gets its pair again; `POST /payments` in full → `paid`, out of the queue; a second bill in halves → `partial`
+at `20.00`, `20.01` against `20.00` remaining → 422 `allocation_exceeds_bill` naming `remaining=20.00`, the rest → `paid`
+at `40.00`; P the five refusals (424 `bill_unknown` naming the id; 422 `bill_voided`, `seller_mismatch` naming the
+bill's seller, `allocations_exceed_amount`, `duplicate_allocation`), staff 403 `permission_required` naming
+`payments.record` on both routes, an advance 201 with `unallocated_amount == amount`, its replay 200 with one row, a
+same-body race `[200, 201]` one row; G the listing newest first with this run's rows, their `doc_no`s and a marked
+reconstruction present; X `reconcile.py --verbose` on the scratch EXIT=0 with `[OK] P1..P4` present. Its FIRST run was
+red on Z1/S2 (`got unpaid / 0`: `coalesce(sum(), 0)` over no rows carries no scale — the lesson) and on X2 (a presence
+control over a report that collapses clean tenants unless `--verbose` — the ninth never-went-red mechanism, an empty
+haystack). `prove_reconcile.py --from` the post-0020 dump GREEN TWICE: 27 injections (22 + P1, P2, P3, P4 and
+`T10/payment` — the payment re-pointed at another shop's seller, firing T10's arm, X1's pair and P3 together), 0
+failures, the one pre-existing skip (the copy arrives clean); its first run reddened on T4 and T10, both now ALSO
+firing P2 (a zeroed total under a standing allocation) and P3 (a re-pointed bill under a standing payment) — the
+checker working, and the expectations moved by name. P2's DISPROOF, run by hand: its HAVING blinded to `false` →
+exactly the four P2 cells and T4's P2 expectation red (5), nothing else, file restored byte-identical. Green twice each:
+`prove_permissions` (122 passes; F sixteen roles, M 36 sites, `payments.record` refused and admitted on both routes),
+`prove_rls` (15 tables; a ledger pair seeded per throwaway tenant as the app role under its context, visible 1/1 to
+its owner and 0/0 to the other, owner-deleted; its first run red at `A saw 0 rows in some table it should own` on the
+two empty tables), `prove_bills` against a uvicorn on 8099 serving this code (+15 cells: the pair in Postgres with the
+payer, the key and the bill's own instant; the replay's one pair; the void leaving the payment standing and the bill
+reading `paid`; the staff bill's payment naming the staff session; case 8's race; its first run crashed at the second
+Postgres read on `Event loop is closed` — `asyncio.run` per call against a pooled engine — fixed by disposing the pool
+per read), `prove_year_gate` and `prove_clock_guard` against a scratch-bound server (a 2-second tick for the guard),
+`prove_docno_clock` (in-process `create_bill` → the pair), `prove_backup_restore` (`payments 632 / 632 / 632` dump, live,
+restored, table for table, with no edit — its lists are catalogue-derived — after a first run that died in the cp874
+console because I ran it without the UTF-8 pin), `prove_branches --from` a CLEAN 0017 dump rebuilt from the 2026-09-02
+backup (restored, upgraded 0016 → 0017, the two `LG` debris tenants removed under an actor, re-dumped): the full
+0017 → 0018 → 0019 → 0020 path on real data, 0 skips; the self-restoring seven (`user_admin`, `login_guard`,
+`grade_tiers`, `reports_summary`, `seller_history`, `version_gate`, `seller_code_guards` — its old-commit server selects
+five branch columns and never sees the new one); the dev-targeting ten against 8099 (`master_data_gate`,
+`seller_pricing`, `shop_time`, `daily_report`, `master_write`, `audit`, `auth`, `master`, `revocation`, `shop_settings`);
+`seller_create`, `seller_code_reservations` and `shop_code` (with its own directory scratch) on scratches. Every mobile
+headless proof GREEN TWICE, the whole `prove:*` list bar `loginscreen` (the directory fixture, as every record says),
+`forbidden`/`products`/`users` against a uvicorn bound to a scratch on 8000 — EXCEPT `prove:login`, which defaults to a
+server on 8211 (red twice with none, `status=0`), then pointed at the 8000 scratch by `RECYCLE_API_BASE` read ALL GREEN
+once and 7 FAILED on its second run at `it is ok — refused` with the wrong-password sentence: the 0016 login guard's
+lockout of the seeded admin, which run 1's wrong-password cells had loaded to 10 `failed` rows on that scratch. Green
+twice needs a fresh scratch per run, which that proof does not restore for itself; the reading is the proof's and the
+guard's, not this unit's, and is recorded, not repaired. `build_all_lessons.py --check` red → `--write` → `--check` 0; `verify_shared_checks.py`
+0; `verify_citations.ps1` bare over the canonical list, run AFTER the last doc edit including this paragraph:
+SOURCES=15 CITATIONS=672 BROKEN=6, the six being the pre-existing six.
+**THE CITATION FLOOR ROSE FROM 6 TO 8 AT `1887054` AND NOBODY NOTICED — measured 2026-09-05 on clean worktrees, not
+inferred.** `b420e80` reads `664 / 6`, exactly what the 0019 record claims for it. `1887054` reads `668 / 8`, where the
+0019 record and its commit body claim `666 / 6`. The two extra breaks are BOTH in the 0019 record's own closing
+READINGS paragraph — the paragraph that reports BROKEN=6: a section citation into OPEN_ITEMS.md whose heading text
+("Decisions open — the owner's, not the code's") was WRAPPED across a line end at the em-dash (line 141 of that file at
+that commit), and a sentence naming PROJECT_STATUS.md in backticks immediately followed by the quoted word Known, which
+the checker reads as a handle citation into this file (39 hits, AMBIGUOUS). So of the owner's three candidates it is the
+second: the breaks arrived in `1887054`
+itself, and its check ran BEFORE the last doc edit — the sentence reporting the reading is what broke the floor, which
+no re-run after the edit was there to see. The same class as the "22 cells" estimate and the BROKEN=7 that rode into
+`ad2806e`: a number measured, then written down, then the writing moving the number. Repairable HERE, and repaired in
+this commit: both sentences are in `PROJECT_STATUS.md`, the wrap joined and the prose rephrased so no filename precedes a
+quoted handle. The six older handles (`ROADMAP.md` STAGE 1 and STAGE 3, `RED_TEAM.md`, `CLAUDE.md` Workflow, SRS_MAP's
+wrapped `Known stale` at `SRS_MAP.md:533`, nemesis's `Known`) belong to those documents' owners and are left, as every
+record since M6 c3 has left them. This unit wrote FIVE citations, all resolve.
+**TWO PROOF DEFECTS FOUND BY THE SWEEP, ONE OLD AND ONE MADE BY THIS UNIT, both fixed by name.** `prove_daily_report`
+reddened at `tenant B's bill is invisible in A's day` because it compared doc_no STRINGS across tenants and tenant B's
+counter reached `B-2569-17`, a string tenant A's fixture day holds (`doc_no` is unique per tenant only); the three
+cross-tenant cells now compare bill ids. And the same proof's backdating — bills created over HTTP today, then moved to
+a January fixture day by direct UPDATE — left each bill beside an automatic payment still stamped TODAY, which for its
+two voided fixtures is exactly P4's shape: 8 violations on the scratch the removed-pair disproof left behind, 40
+mis-stamped pairs on dev after four runs, every run green at its own exit line. The proof now moves the payment's two
+stamps with the bill's at both sites (the allocation's `created_at` stays: the app role holds no UPDATE there and no
+check reads it); dev's 40 pairs were realigned to their bills (40 → 0) and reconcile read 0 after; the lesson is the
+amendment to `a-proof-fixture-must-be-a-row-the-product-could-produce.md`.
+**NOT OBSERVED.** No handset ran this bundle, and none needed to: no mobile file changed. No production row exists. The
+migration ran over dev's four tenants and the scratches' six. The counter screen, PromptPay, slip verification,
+shifts, `PATCH /branches` and a client of `POST /payments` are all the next units'.
+**TWO FINDINGS ABOUT REPORTING, filed with their weight.** (1) `prove_user_create` HAS BEEN RED SINCE 0019 AND WAS
+REPORTED GREEN. It dies at its FIRST gate ("the server answering is reading THIS database"): `_db_users` at
+`prove_user_create.py:284-296` runs `SELECT id, username, role, is_active, token_version FROM users`, and `users.role` was
+dropped by 0019 — `UndefinedColumnError: column "role" does not exist`, both runs, before a single cell. `1887054`
+EDITED this very file (three cells moved from `admin_required` to `permission_required`, and nothing else) and its record
+says "the scratch-bound seven (`seller_create`, `seller_code_reservations`, `user_create`, …)" among "Every other server
+proof GREEN TWICE". A file that cannot pass its own gate on a 0019 database was edited by the 0019 unit and reported
+green twice: either it was not run, or its traceback was read as something else. A suite is only as honest as the run
+that says it passed. Fixing the proof is the users step's (the repair is the `roles` join `auth.PRINCIPAL_JOIN` already
+spells); filing it accurately is this unit's. (2) `prove:login` IS A PROOF WHOSE RESULT IS UNREADABLE under
+`lessons/proof-must-run-twice.md`, a standing rule: green once, then 7 FAILED on the second run against the same scratch
+at `it is ok — refused` with the wrong-password sentence, because 0016's login guard locks the seeded admin after run 1's
+own wrong-password cells (10 `failed` rows on that scratch, read back). A proof that reddens ITSELF on its second run
+cannot be told from one that found a defect, so its green carries no information until it either resets the
+failed-attempt rows it writes (the admin unlock route `POST /users/{id}/unlock-login` exists for exactly that state, or a
+fresh scratch per run as the self-restoring proofs do) or signs in a DISTINCT account per run. Not this unit's; filed at
+`OPEN_ITEMS.md § Code debt found and left in place`.
+
+**THE PERMISSION MODEL — who may do what is a row a shop holds, and the gate reads the row. 2026-09-04.** Committed at
+`1887054` (anchored 2026-09-05; the record said "no sha yet"). Supersedes the branches record below AS THE POINTER ONLY —
 that work stands and is committed (`b420e80`). This is `STRUCTURE.md` section 3, unit 1 of its section 12, approved
 by the owner 2026-09-03 ("เอาหมด") and briefed with seven decisions of his on 2026-09-04, built as the SECOND unit
 after branches. `ROADMAP.md`'s D8 supersession is realised: the cashier is a role a shop creates, expressible today.
@@ -138,8 +320,9 @@ deferred by name; the five new gates; one refusal code with the two legacy keys 
 from dev (no bills, counts printed first) and `prove_login_guard.py`'s OTHER user made an admin so S7 cannot red on
 its leftovers; the escalation guard; the cache keyed on the user. Two departures from `STRUCTURE.md` section 3.1's
 text beyond those: `roles` carries NO `payment_limit_*` columns (nothing reads them; unit 3), and `roles.manage` is
-the one minted code with no route yet, said so at its line. Everything owed is at `OPEN_ITEMS.md § Decisions open —
-the owner's, not the code's` (the role-management screen) and `§ Code debt found and left in place` (PERMISSIONS).
+the one minted code with no route yet, said so at its line. Everything owed is at
+`OPEN_ITEMS.md § Decisions open — the owner's, not the code's` (the role-management screen) and
+`§ Code debt found and left in place` (PERMISSIONS).
 **A CORRECTION TO THE DESIGN'S OWN CLAIM, recorded in `STRUCTURE.md` section 12:** "every existing proof green twice
 unchanged in its assertions except the `staff_money_visible` cells" was FALSE — section 12's own disproof forbids
 any route answering `admin_required`, so the 12 server sites asserting it (`prove_master_write.py:315` a 9-route
@@ -198,8 +381,11 @@ to the 0019 scratch on 8000. `reconcile.py` on dev EXIT=0 — 88 checks, `19 per
 `roles=12 role_permissions=112`; on the restored post-0019 copy EXIT=0, 88 checks, S7 OK. `build_all_lessons.py`
 `--check` red → `--write` → `--check` 0; `verify_shared_checks.py` 0; `verify_citations.ps1` bare over the canonical
 list `SOURCES=15 CITATIONS=666 BROKEN=6` — a clean worktree at `b420e80` reads `664 / 6` with the same six
-handles (`ROADMAP.md` STAGE 1 and STAGE 3, `RED_TEAM.md`, `CLAUDE.md` Workflow, and the two `PROJECT_STATUS.md`
-"Known" handles), so this unit wrote two citations, both resolve, and it broke none.
+handles (`ROADMAP.md` STAGE 1 and STAGE 3, `RED_TEAM.md`, `CLAUDE.md` Workflow, and the two handles into
+PROJECT_STATUS.md whose text is the word Known), so this unit wrote two citations, both resolve, and it broke none.
+**Superseded 2026-09-05:** that reading was taken BEFORE this paragraph was written, and this paragraph broke the
+floor — a clean worktree at `1887054` reads `668 / 8`; the two extra were this paragraph's own wrapped section citation
+and its filename-then-quoted-word phrasing, both repaired in the 0020 commit. The 0020 record carries the finding.
 **NOT OBSERVED.** No handset ran this bundle: the phone half is headless-proven only; a real device's cold start
 offline reading `cached_permissions`, a sign-in writing it, and a staff phone with the void button hidden by a READ
 set rather than a role name are owed to the next device pass. No production row exists. The migration ran over dev's

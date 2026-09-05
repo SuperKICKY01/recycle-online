@@ -319,6 +319,21 @@ pre-existing gap 0008..0017 sit in). `reconcile.py` S1/S2/S3/B1/X2 cover it, S6 
 its trigger, X1 holds the bill and user pairs, T10 the three resolve arms, and T17/T18
 are its own checks.
 
+**Superseded 2026-09-05 (migration 0020, the money ledger; unanchored, anchor next
+pass).** Re-derived from `information_schema` on dev: `public` now holds TWENTY-TWO
+relations — the seventeen the 0018 block counts PLUS 0019's three (`permissions`,
+`roles`, `role_permissions`, which the 0019 block on the `tenants` row names but this
+count never absorbed) PLUS `payments` and `payment_allocations` (0020), both added as
+rows below, so the business-table count read literally is TWENTY. ONE existing table
+changed shape: `branches.separate_cashier` (boolean NOT NULL DEFAULT false, the first
+declared counter policy of `STRUCTURE.md` section 1.2). The rule the change adds is
+point 6 below (STRUCTURE.md invariants 3 and 5). NEITHER new table is audited, on
+purpose: they are the transactional ledger's species, which 0017 excludes by design,
+and the owner held that boundary on 2026-09-05 against a brief that asked for the
+trigger. `§ 8.2`'s RLS-policy enumeration is not updated for them (the same
+pre-existing gap 0008..0019 sit in). `reconcile.py` S1/S2/S3/B1/X2 cover them, X1
+holds the four `payments` pairs, T10 gains six arms, and P1–P4 are their own checks.
+
 | table | what it is for | shape worth knowing |
 |---|---|---|
 | `tenants` | one row per shop; the unit a licence would attach to | `(id, name, created_at)` and nothing else — no address, no phone. **No endpoint reads it** <br>**Superseded 2026-08-30 (`49f9fd2`):** re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone)` — `default_grade` (migration 0010), `seller_code_target_holding` (0012), `address`+`phone` (0013). It IS read and written: `GET /shop` returns it (staff-readable) and `PATCH /shop` writes `default_grade`/`address`/`phone` (admin-only), so "no endpoint reads it" went false at `9ad225e`. `name` stays immutable-by-decision (`9ad225e`). <br>**Superseded 2026-08-30 (P1.23 item 4 unit 2; `46a18b4`):** `staff_money_visible` (boolean NOT NULL DEFAULT false, migration 0014) is added — re-derived from `information_schema.columns`, the row is now `(id, name, created_at, default_grade, seller_code_target_holding, address, phone, staff_money_visible)`, EIGHT columns. It is the per-shop switch the dashboard reads: `GET /shop` returns it (staff-readable), `PATCH /shop` writes it (admin-only), and `GET /reports/summary` refuses a staff caller its money unless it is on (D1). <br>**Superseded 2026-09-04 (migration 0019; unanchored, anchor next pass):** `staff_money_visible` is DROPPED — folded into the staff role's grants as `money.view_own` (every tenant whose toggle was true; none on dev) — so the row is SEVEN columns again, `(id, name, created_at, default_grade, seller_code_target_holding, address, phone)`. `GET /shop` no longer returns it and `PATCH /shop` refuses the key (422). Three tables joined the model: `permissions` (global, no `tenant_id`), `roles` and `role_permissions` (per tenant); `users.role` became `users.role_id`. |
@@ -334,7 +349,9 @@ are its own checks.
 | `grade_tiers` | the per-tenant grade tiers a shop declares (P1.24 / S16) | `UNIQUE (tenant_id, code)` and `(tenant_id, id)`; columns `code`/`name`/`sort_order`/`is_active`; `product_prices.grade` and `sellers.grade` reference it by composite FK on `code`. A tier is DEACTIVATED, never deleted (no DELETE grant). Added 0015 |
 | `failed_login_attempts` | the append-only record of a REFUSED login, and the counter a temporary lockout is derived from (0016) | `(id, tenant_id, username, outcome, created_at)`, `outcome` CHECK `failed`/`unlocked_by_admin`. THE ONE TABLE THAT DEPARTS FROM POINT 1: `tenant_id` is the UNVERIFIED submitted login claim and `username` the string as typed, so NEITHER carries a foreign key — a guesser may name a shop or user that does not exist and the attempt must record, not raise. RLS+FORCE keyed on the submitted tenant like the rest; APPEND-ONLY at the grant level (`recycle_app` holds SELECT+INSERT, UPDATE/DELETE revoked). Holds NO password material. Added 0016 |
 | `audit_log` | the append-only record of every master-data write, with its author (0017 / D3) | `(id, tenant_id, table_name, action, actor_user_id, actor_username, old_data, new_data, created_at)`. Written ONLY by the `audit_capture` SECURITY DEFINER trigger on 8 master-data tables (uoms, product_categories, products, product_prices, sellers, grade_tiers, users, tenants). The actor rides in the `app.actor_id`/`app.actor_username` GUCs (`tenant_connection`), and a write with NO actor is REFUSED. Whole row before/after as `jsonb`; money exact; `users.password_hash` redacted. RLS+FORCE keyed on `app.tenant_id`. APPEND-ONLY at the grant level: `recycle_app` holds SELECT only. NO FK — a forensic record outlives the rows it names. Added 0017 |
-| `branches` | a yard of a shop — one shop, many yards (0018 / STRUCTURE.md section 9) | `(id, tenant_id, code, name, address, phone, doc_prefix, is_active, created_at)`; `UNIQUE (tenant_id, id)`, `UNIQUE (tenant_id, code)`, `UNIQUE (tenant_id, doc_prefix)`, `doc_prefix` CHECKed to `^[A-Z]{1,4}$`. A ROW INSIDE THE TENANT, never a second GUC and never a separate tenant; every tenant is born with one (code `MAIN`, name = the shop's own name, prefix `B`), written by the 0018 backfill, `provision_shop.py` and `seed_dev.py`. The derived switch is the COUNT: `GET /shop` reports the caller's branch and `branch_count`, and a one-branch shop shows no branch control. `purchase_bills.branch_id` and `doc_no_counters.branch_id` are NOT NULL composite FKs to it; `users.branch_id` is nullable (NULL = every branch). DEACTIVATED, never deleted (no DELETE grant); audited by the 0017 trigger. Branch SCOPE is enforced by nothing but the composite FK until the permission model lands. Added 0018 |
+| `branches` | a yard of a shop — one shop, many yards (0018 / STRUCTURE.md section 9) | `(id, tenant_id, code, name, address, phone, doc_prefix, is_active, created_at)`; `UNIQUE (tenant_id, id)`, `UNIQUE (tenant_id, code)`, `UNIQUE (tenant_id, doc_prefix)`, `doc_prefix` CHECKed to `^[A-Z]{1,4}$`. A ROW INSIDE THE TENANT, never a second GUC and never a separate tenant; every tenant is born with one (code `MAIN`, name = the shop's own name, prefix `B`), written by the 0018 backfill, `provision_shop.py` and `seed_dev.py`. The derived switch is the COUNT: `GET /shop` reports the caller's branch and `branch_count`, and a one-branch shop shows no branch control. `purchase_bills.branch_id` and `doc_no_counters.branch_id` are NOT NULL composite FKs to it; `users.branch_id` is nullable (NULL = every branch). DEACTIVATED, never deleted (no DELETE grant); audited by the 0017 trigger. Branch SCOPE is enforced by nothing but the composite FK until the permission model lands. Added 0018. **Superseded 2026-09-05 (0020):** plus `separate_cashier` (boolean NOT NULL DEFAULT false), the declared counter policy — OFF, `POST /bills` writes the bill's payment itself; ON, the cashier records it later and a bill may be unpaid. NOT on the wire (`GET /shop`'s branch object keeps its five keys) and written by NO route in 0020; the proof flips it by SQL on a scratch |
+| `payments` | money leaving the shop — one row per payment, for EVERY shop (0020 / STRUCTURE.md section 2, invariant 5) | `(id, tenant_id, branch_id, seller_id, method, amount, idempotency_key, reference, device_created_at, server_received_at, paid_by, recorded_by_migration, voided_at, voided_by, void_reason)`. `id` is CLIENT-MINTED with no default (a counter can be offline, hard rule 3's shape); `UNIQUE (tenant_id, id)`, `UNIQUE (tenant_id, idempotency_key)`; composite FKs to `branches`, `sellers`, `users` (×2); `method` CHECKed to cash / promptpay / transfer / write_off; `amount > 0`; the three void columns under the bill's all-or-none CHECK. `paid_by` is NULLABLE ONLY on a reconstruction — `CHECK (paid_by IS NOT NULL OR recorded_by_migration)` — because 71 dev bills predate `created_by` and a record always names its payer while a reconstruction may not. With `separate_cashier` off the SERVER writes one cash payment per bill inside the bill's transaction, keyed `auto:<bill id>` so the unique key structurally refuses a second automatic payment for one bill. VOIDED never deleted (no DELETE grant); NOT audited (the ledger's species). `shift_id` is OWED to the shifts unit. Added 0020 |
+| `payment_allocations` | the many-to-many link between a payment and a bill, with the amount applied — one payment across several bills, several across one, or none (an advance) | `(tenant_id, payment_id, bill_id, amount, created_at)`, `PRIMARY KEY (tenant_id, payment_id, bill_id)`, composite FKs to both parents, `amount > 0`. APPEND-ONLY at the grant level: the app role holds SELECT + INSERT and nothing else; a wrong allocation is corrected by voiding its payment and reissuing (hard rule 5 read across two tables). Carries no void of its own — it moves with its payment. A bill's paid amount is the SUM of allocations from LIVE payments, read at the moment of the read; its status (unpaid / partial / paid) is derived from that sum against `total_amount` and STORED NOWHERE. Invariants P1–P4 in `reconcile.py`. Added 0020 |
 
 **Why the shape is this shape**, in four points that are not obvious from the
 column list:
@@ -395,6 +412,29 @@ column list:
    branches can never mint one string. A bill that names no branch is resolved by
    the server from the caller, never refused for the omission — the reason is in
    migration 0018's docstring and it is about money already paid.
+
+6. **Money leaving the shop is a row, every shop has it, and a bill's paid status is
+   derived from it and stored nowhere** (added 2026-09-05 with migration 0020;
+   STRUCTURE.md invariants 3 and 5, stated here as the rule). Three clauses. (a) A
+   `payments` row is client-minted, idempotent per tenant, voided never deleted, and
+   exists for a cash-only shop exactly as for one with a separated counter — the
+   difference is WHO writes it: with `branches.separate_cashier` off, `POST /bills`
+   writes one cash payment and one allocation inside the bill's own transaction,
+   from the server's computed total, the principal and the arrival instant it
+   already used, and from nothing on the wire — which is why a bill queued on a
+   phone before the ledger existed drains paid. (b) The switch is read to select
+   who performs that transition and is NEVER an acceptance test: no line of the
+   shape `if not policy: raise` sits on `POST /bills` or `POST /payments`
+   (invariant 1), so turning it off leaves unpaid bills unpaid and turning it on
+   leaves paid bills paid. (c) Paid amount is `sum(allocations from live payments)`
+   and status is its comparison with `total_amount`, derived at every read and held
+   by the two arithmetic invariants `sum(allocations of a payment) <= amount` (P1)
+   and `sum(live allocations to a bill) <= total_amount` (P2); a stored status would
+   be a second copy of a derivable fact, which this codebase exists to refuse. The
+   reconciler duplicates that arithmetic and imports nothing. What it deliberately
+   does NOT say: that a bill IS paid — an unpaid bill is a legitimate state under a
+   separated counter, and one left unpaid in a switch-off yard is a debt a person
+   settles, never a violation.
 
 **Retirement, not deletion.** Four master-data tables carry `is_active` (0004).
 A row referenced by a bill can never be removed, so retirement is what "take it out

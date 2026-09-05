@@ -367,6 +367,16 @@ TENANT_TABLES = [
     # DELIBERATELY NOT in REQUIRED_CONSTRAINTS, the 0005..0018 decision: a dump
     # taken before 0019 has none of them.
     "roles", "role_permissions",
+    # Migration 0020: the money ledger. Both are TRANSACTIONAL tables, the
+    # species purchase_bills belongs to, so they are here (S1/S3/B1/X2 -- a
+    # payment cannot outlive its tenant, the FK forbids it) and DELIBERATELY
+    # NOT in AUDITED_TABLES below: 0017 excludes the ledger from the audit
+    # trigger by design and the owner held that boundary on 2026-09-05. Their
+    # per-tenant checks are P1..P4; their references are X1 pairs (payments)
+    # and T10 arms (allocations, which have no `id` for X1 to name). Their
+    # constraints are DELIBERATELY NOT in REQUIRED_CONSTRAINTS, the 0005..0019
+    # decision: a dump taken before 0020 has none of them.
+    "payments", "payment_allocations",
 ]
 
 # Tables that hold NO shop data and carry NO tenant_id, by design: alembic's
@@ -413,6 +423,9 @@ AUDITED_TABLES = frozenset({
     # Migration 0019: a role's name and every grant/revoke are a shop's own
     # master-data writes, each naming its actor.
     "roles", "role_permissions",
+    # payments and payment_allocations (0020) are NOT here, on purpose: S6
+    # requires EQUALITY with pg_trigger, so listing them would demand a
+    # trigger the ledger must not carry (see TENANT_TABLES above).
 })
 
 # Named constraints and indexes the row checks lean on. If one is missing, the
@@ -501,6 +514,13 @@ CROSS_TENANT_PAIRS = [
     # doc_no_counters reason: the grant row has no `id`. T10's 'grant -> role'
     # arm covers it under RLS.
     ("users.role_id -> roles", "users", "roles", "role_id"),
+    # Migration 0020. payments has an `id`, so its four references are X1
+    # pairs; payment_allocations has none (its key is the triple), so its two
+    # references are T10 arms only.
+    ("payments.seller_id -> sellers", "payments", "sellers", "seller_id"),
+    ("payments.branch_id -> branches", "payments", "branches", "branch_id"),
+    ("payments.paid_by -> users", "payments", "users", "paid_by"),
+    ("payments.voided_by -> users", "payments", "users", "voided_by"),
 ]
 
 
@@ -689,6 +709,41 @@ SQL_CHECKS: list[SqlCheck] = [
           FROM role_permissions rp
           LEFT JOIN roles ro ON ro.id = rp.role_id
          WHERE ro.id IS NULL
+        UNION ALL
+        -- the ledger (0020). Under this tenant's RLS context every parent table
+        -- holds only this tenant's rows, so "resolves" and "in the same
+        -- tenant" are one condition. The two ALLOCATION arms are the only lens
+        -- on payment_allocations' references: the row has no `id`, so X1
+        -- cannot name it. X1 also holds the four payments pairs.
+        SELECT 'payment -> seller', pm.id::text, pm.seller_id::text
+          FROM payments pm
+          LEFT JOIN sellers s2 ON s2.id = pm.seller_id
+         WHERE s2.id IS NULL
+        UNION ALL
+        SELECT 'payment -> branch', pm.id::text, pm.branch_id::text
+          FROM payments pm
+          LEFT JOIN branches br2 ON br2.id = pm.branch_id
+         WHERE br2.id IS NULL
+        UNION ALL
+        SELECT 'payment -> paid_by user', pm.id::text, pm.paid_by::text
+          FROM payments pm
+          LEFT JOIN users u2 ON u2.id = pm.paid_by
+         WHERE pm.paid_by IS NOT NULL AND u2.id IS NULL
+        UNION ALL
+        SELECT 'payment -> voided_by user', pm.id::text, pm.voided_by::text
+          FROM payments pm
+          LEFT JOIN users u3 ON u3.id = pm.voided_by
+         WHERE pm.voided_by IS NOT NULL AND u3.id IS NULL
+        UNION ALL
+        SELECT 'allocation -> payment', pa.bill_id::text, pa.payment_id::text
+          FROM payment_allocations pa
+          LEFT JOIN payments pm2 ON pm2.id = pa.payment_id
+         WHERE pm2.id IS NULL
+        UNION ALL
+        SELECT 'allocation -> bill', pa.payment_id::text, pa.bill_id::text
+          FROM payment_allocations pa
+          LEFT JOIN purchase_bills b2 ON b2.id = pa.bill_id
+         WHERE b2.id IS NULL
         """,
     ),
     SqlCheck(
@@ -803,6 +858,84 @@ SQL_CHECKS: list[SqlCheck] = [
          WHERE NOT EXISTS (SELECT 1 FROM branches WHERE is_active)
         """,
     ),
+    # -----------------------------------------------------------------------
+    # THE LEDGER (migration 0020, STRUCTURE.md 2.1). Four invariants, each with
+    # named row output. The arithmetic is DUPLICATED here in Postgres NUMERIC
+    # and nothing is imported from app/bills.py or app/payments.py -- a checker
+    # that shared the code would agree with its bug
+    # (lessons/a-checker-must-not-share-the-code-it-checks.md). What these do
+    # NOT say: whether a bill SHOULD be paid. An unpaid bill is a legitimate
+    # state under separate_cashier, and a bill unpaid in a switch-off yard is
+    # a debt a person settles, never a violation (CANNOT_SEE below).
+    # -----------------------------------------------------------------------
+    SqlCheck(
+        # Every allocation of a payment, voided or live, counts here: a voided
+        # payment's allocations are void with it, but they still may not have
+        # exceeded the amount that was recorded.
+        "P1", "a payment's allocations sum to at most its amount", "payments",
+        """
+        SELECT pm.id AS payment_id, pm.amount, coalesce(sum(pa.amount), 0) AS allocated,
+               coalesce(sum(pa.amount), 0) - pm.amount AS over_by
+          FROM payments pm
+          LEFT JOIN payment_allocations pa ON pa.payment_id = pm.id
+         GROUP BY pm.id, pm.amount
+        HAVING coalesce(sum(pa.amount), 0) > pm.amount
+         ORDER BY pm.id
+        """,
+    ),
+    SqlCheck(
+        # LIVE allocations only: those from payments not voided. A voided
+        # payment's allocations move with it (2.1), so they do not count
+        # against the bill -- that is what lets a paid bill be voided, its
+        # payment stand as an advance, and the reissue be allocated from it.
+        "P2", "a bill's live allocations sum to at most its total_amount", "bills",
+        """
+        SELECT b.doc_no, b.id AS bill_id, b.total_amount,
+               coalesce(sum(pa.amount), 0) AS paid,
+               coalesce(sum(pa.amount), 0) - b.total_amount AS over_by
+          FROM purchase_bills b
+          JOIN payment_allocations pa ON pa.bill_id = b.id
+          JOIN payments pm ON pm.id = pa.payment_id AND pm.voided_at IS NULL
+         GROUP BY b.id, b.doc_no, b.total_amount
+        HAVING coalesce(sum(pa.amount), 0) > b.total_amount
+         ORDER BY b.doc_no
+        """,
+    ),
+    SqlCheck(
+        # tenant_id equality is the composite FKs' (and this sweep runs under
+        # one tenant's context, so a cross-tenant row is invisible here and X1's
+        # business); seller equality is the checker's, and nothing in the
+        # schema enforces it.
+        "P3", "an allocation's payment and bill name the same seller", "payments",
+        """
+        SELECT b.doc_no, pa.payment_id::text AS payment_id, pa.bill_id::text AS bill_id,
+               pm.seller_id::text AS payment_seller, b.seller_id::text AS bill_seller
+          FROM payment_allocations pa
+          JOIN payments pm ON pm.id = pa.payment_id
+          JOIN purchase_bills b ON b.id = pa.bill_id
+         WHERE pm.seller_id <> b.seller_id
+         ORDER BY b.doc_no
+        """,
+    ),
+    SqlCheck(
+        # A payment recorded BEFORE the void may stand against the bill (the
+        # seller then holds an advance); a LIVE payment recorded AFTER the void
+        # that still allocates to it is money sent to a bill that no longer
+        # exists as a debt. Both stamps are the server's own clock.
+        "P4", "no live payment recorded after a bill's void allocates to that bill", "payments",
+        """
+        SELECT b.doc_no, pa.payment_id::text AS payment_id, b.voided_at,
+               pm.server_received_at AS payment_received_at,
+               pm.server_received_at - b.voided_at AS recorded_after_void
+          FROM payment_allocations pa
+          JOIN payments pm ON pm.id = pa.payment_id
+          JOIN purchase_bills b ON b.id = pa.bill_id
+         WHERE b.voided_at IS NOT NULL
+           AND pm.voided_at IS NULL
+           AND pm.server_received_at > b.voided_at
+         ORDER BY b.doc_no
+        """,
+    ),
 ]
 
 SCOPE_SQL = """
@@ -821,7 +954,9 @@ SELECT (SELECT count(*) FROM purchase_bills)                              AS bil
        (SELECT count(*) FROM failed_login_attempts)                        AS failed_logins,
        (SELECT count(*) FROM branches)                                     AS branches,
        (SELECT count(*) FROM roles)                                        AS roles,
-       (SELECT count(*) FROM role_permissions)                             AS role_permissions
+       (SELECT count(*) FROM role_permissions)                             AS role_permissions,
+       (SELECT count(*) FROM payments)                                     AS payments,
+       (SELECT count(*) FROM payment_allocations)                          AS allocations
 """
 
 # Which SCOPE_SQL column feeds each table's running total for X2.
@@ -842,6 +977,8 @@ SCOPE_COLUMN = {
     "branches": "branches",
     "roles": "roles",
     "role_permissions": "role_permissions",
+    "payments": "payments",
+    "payment_allocations": "allocations",
 }
 
 CHECKS_PER_TENANT = len(SQL_CHECKS) + 4      # T0 + the SQL checks + T7/T8/T9
@@ -1413,7 +1550,8 @@ async def sweep(rep: Report, tenants: Sequence[uuidlib.UUID],
                       f" {scope['products']} products, {scope['prices']} prices,"
                       f" {scope['counters']} counter rows, {scope['users']} users,"
                       f" {scope['reservations']} code reservations,"
-                      f" {scope['branches']} branches")
+                      f" {scope['branches']} branches,"
+                      f" {scope['payments']} payments, {scope['allocations']} allocations")
             for r in results:
                 rep.add(str(tid), r, quiet=True)
             if (verbose or has_rows or failed) and not failed and not verbose:
@@ -1583,12 +1721,23 @@ CANNOT_SEE = [
     " facts are true.",
 
     "HISTORY. audit_log (0017) records every master-data write, but NOT the"
-    " transactional tables (purchase_bills / purchase_bill_items are deliberately"
+    " transactional tables (purchase_bills / purchase_bill_items, and since 0020"
+    " payments / payment_allocations, are deliberately"
     " not audited), so a total_amount edited by hand with its items edited to match"
-    " reconciles perfectly. What actually defends against that is that nothing but"
-    " create_bill and void_bill writes these"
-    " tables — an assumption this checker cannot verify from inside the"
+    " reconciles perfectly, and so would a payment amount edited with its allocation."
+    " What actually defends against that is that nothing but"
+    " create_bill, void_bill and create_payment writes these"
+    " tables, and that the app role cannot UPDATE or DELETE an allocation at all"
+    " — assumptions this checker cannot verify from inside the"
     " database.",
+
+    "WHETHER A BILL SHOULD BE PAID. P2 says a bill is never paid MORE than its"
+    " total; nothing here says it is paid AT ALL. An unpaid or partly paid bill is"
+    " a legitimate state where the counter is separated (branches.separate_cashier),"
+    " and a bill left unpaid in a yard whose switch is off is a debt a person"
+    " settles, never a violation. So a shop whose server silently stopped writing"
+    " the automatic pair would reconcile green here; the proof that watches that"
+    " path is scripts/prove_payments.py, not this checker.",
 
     "WHETHER doc_no ORDER MATCHES ARRIVAL ORDER. It legitimately does not."
     " server_received_at defaults to now(), which is TRANSACTION START, while"
@@ -1707,7 +1856,10 @@ def summarise(rep: Report, tenants: Sequence[uuidlib.UUID], started: dt.datetime
     print(f"  tenants swept   : {len(tenants)}")
     print(f"  checks run      : {rep.ran}"
           f"  ({CHECKS_PER_TENANT} per tenant x {len(tenants)},"
-          f" plus 6 structural, 2 blind, 3 global)")
+          # 7 structural since S7 (0019); this literal read 6 for one phase and
+          # nothing counted it -- a hand-written breakdown beside a derived
+          # total. Corrected 2026-09-05 while P1..P4 moved the per-tenant figure.
+          f" plus 7 structural, 2 blind, 3 global)")
     print(f"  skipped         : {rep.skips}")
     print(f"  could not run   : {rep.errors}")
     print(f"  VIOLATIONS      : {rep.violations}")

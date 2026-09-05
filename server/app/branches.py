@@ -32,6 +32,13 @@ class Branch:
     name: str
     doc_prefix: str
     is_active: bool
+    # The declared counter policy (migration 0020, STRUCTURE.md 1.2 and 1.6).
+    # READ by POST /bills to decide WHO writes the payment -- the server, inside
+    # the bill's transaction, when this is false; the cashier, later, when it is
+    # true. Never an acceptance test (invariant 1). NOT on the wire: branch_payload
+    # below keeps the five identity keys, because no phone screen reads a policy
+    # in this unit and the policy cache of section 1.4 is a later unit's.
+    separate_cashier: bool
 
 
 @dataclass(frozen=True)
@@ -58,6 +65,7 @@ def _row_to_branch(row) -> Branch:
         name=row["name"],
         doc_prefix=row["doc_prefix"],
         is_active=bool(row["is_active"]),
+        separate_cashier=bool(row["separate_cashier"]),
     )
 
 
@@ -68,7 +76,7 @@ async def read_branch(conn: AsyncConnection, branch_id: uuid.UUID) -> Branch | N
     row = (
         await conn.execute(
             text(
-                "SELECT id, code, name, doc_prefix, is_active"
+                "SELECT id, code, name, doc_prefix, is_active, separate_cashier"
                 " FROM branches WHERE id = :b"
             ),
             {"b": branch_id},
@@ -105,7 +113,7 @@ async def read_caller_branch(conn: AsyncConnection, user_id: uuid.UUID) -> Calle
         row = (
             await conn.execute(
                 text(
-                    "SELECT id, code, name, doc_prefix, is_active"
+                    "SELECT id, code, name, doc_prefix, is_active, separate_cashier"
                     " FROM branches WHERE is_active"
                 )
             )
@@ -115,7 +123,13 @@ async def read_caller_branch(conn: AsyncConnection, user_id: uuid.UUID) -> Calle
 
 
 def branch_payload(b: Branch | None) -> dict | None:
-    """The wire shape, shared by GET /shop and the bill read-back."""
+    """The wire shape, shared by GET /shop and the bill read-back.
+
+    separate_cashier is DELIBERATELY NOT here (0020): the five keys are the
+    yard's identity, and prove_shop_settings.py E1 asserts exactly that set. A
+    policy reaches the phone through section 1.4's cached_shop_policy, which is
+    the counter unit's, not this one's.
+    """
     if b is None:
         return None
     return {

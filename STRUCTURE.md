@@ -550,4 +550,48 @@ If the owner declines branches, unit 2 is the generic outbox store: `local_outbo
 
 **Unit 3: the money ledger, schema and degenerate path only.** Builds batch B's tables with `separate_cashier` defaulting false on `branches`, `POST /bills` writing the automatic payment and allocation in its transaction, the dev-only backfill marked `recorded_by_migration`, `GET /bills/{id}` returning `paid_amount` and derived status, `GET /payments` and `POST /payments` under `payments.record` with 424 for an unknown bill, reconcile P1 through P4 and the line arithmetic with `rounding_adjustment`, `prove_backup_restore` round-tripping the new tables. No counter screen, no phone change beyond a schema-tolerant read. It proves: every bill created with the switch off has exactly one payment and one allocation equal to its total, read from Postgres; with the switch flipped on a scratch, a created bill has zero allocations and appears in the unpaid query, and flipping it back leaves that bill unpaid; every pre-existing bill reads `paid` with its backfilled pair marked; `reconcile.py` exit 0 on live and on a restored copy, with each of P1 through P4 fired by an injection in `prove_reconcile.py` that names its row and clears on undo. It must not touch: `local_bills`, any screen, the outbox. Size: one migration, `bills.py`, one new `payments.py`, `reconcile.py`, three proofs. The disproof: a bill in a switch-off tenant whose allocations do not sum to its total, or the P2 injection staying green with the check present.
 
+**BUILT 2026-09-05 — this MONEY LEDGER unit, the THIRD built (unanchored; anchor next
+pass), migration `0020_payments.py`. What it did from the spec above: `payments` and
+`payment_allocations` as section 2.1 sketches them plus `branch_id` per section 9;
+`branches.separate_cashier` (the first declared counter policy of 1.2, DEFAULT false,
+written by no route — PATCH /branches is section 9's second-yard work); `POST /bills`
+writing the automatic cash payment and its allocation inside the bill's transaction
+(`bills._record_automatic_payment`), from the server's own values and nothing on the
+wire, so a bill queued on a phone before the ledger existed drains paid and a replay
+writes no second pair (the automatic key `auto:<bill id>` is UNIQUE per tenant, the
+structural backstop behind the idempotency short-circuit); the dev-only backfill, 619
+pairs marked `recorded_by_migration` (one per live positive-total bill; a voided or
+zero-total bill gets none); `GET /bills/{id}` and the bill list returning `paid_amount`
+and `payment_status` (unpaid / partial / paid, derived at every read, stored nowhere)
+with `GET /bills?unpaid=true` as the cashier queue; `POST /payments` and `GET /payments`
+under `payments.record`, the FOURTEENTH catalogue code, minted here and granted to
+owner and admin (staff weighs; the cashier is a role a shop creates), with 424
+`bill_unknown` for a bill still in a device's queue and 422 for a voided bill, a seller
+mismatch, an over-allocation or a duplicated bill; `reconcile.py` P1–P4 with six T10
+arms and four X1 pairs; `prove_reconcile.py` five new injections (P1–P4 and the
+payment-side T10/X1/P3 cross-tenant one) beside two older injections that now ALSO
+trip P2 and P3, which is the checker working; `prove_backup_restore` round-tripping
+both tables with no edit, its lists being catalogue-derived; NEW
+`scripts/prove_payments.py`; NO phone change at all — the phone reads only `doc_no` off
+a bill response, so the two new keys moved nothing on any handset.
+**FIVE DEPARTURES FROM THE TEXT ABOVE, each the owner's decision of 2026-09-05, with
+its reason at the site in 0020:** the two tables are NOT audited (the brief asked for
+the trigger; section 2 is silent; 0017 excludes the transactional ledger by design and
+auditing them would have conscripted `POST /bills`, which declares no actor);
+`paid_by` is NULLABLE under `CHECK (paid_by IS NOT NULL OR recorded_by_migration)`
+because 71 live dev bills predate `created_by` and inventing a payer would be
+`fallback-default-is-a-wrong-number` beside real money; `shift_id` is OMITTED until
+`shifts` exists (the 0019 precedent: no column nothing reads) and is filed as owed;
+section 2.3's line rewrite and `rounding_adjustment`, which this unit's paragraph names
+under "the line arithmetic", are the unit AFTER this one and T1/T2 stand unchanged;
+and the bill LIST rows carry the two derived keys too, because a queue whose rows do
+not say what is outstanding is not a queue. **ONE CORRECTION TO SECTION 2.5 ABOVE:**
+the 424-versus-422 line it draws for an unknown bill is now the route docstring in
+`app/payments.py`, and the same reasoning puts a VOIDED bill, a seller mismatch and an
+over-allocation on the 422 side — facts about the payload against the ledger as it
+stands, whose repair is a reissued payment. Record: `PROJECT_STATUS.md § Current
+phase`. The readers of `total_amount` that gain a second question the day a route
+flips the switch are listed at `OPEN_ITEMS.md § Code debt found and left in place`
+as a CONDITION the counter unit invalidates.**
+
 Two observations before the advisor turns these into briefs. The bill-line rewrite in 2.3 is in batch B and not in unit 3 on purpose: unit 3 is the ledger, and the line's new columns land with the containers and pricing-basis feature that pulls them, per S17, in the unit after. And the whole of this document is UNMEASURED as to whether a real yard wants any of it; what is measured is that the structure holds the shop that uses everything and costs the shop that uses nothing one automatic row per bill, which is the owner's principle written as a schema.

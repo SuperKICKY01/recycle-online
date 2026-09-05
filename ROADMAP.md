@@ -6930,6 +6930,23 @@ is negative and when it is zero. **The zero case is required, not decorative:** 
 day that reconciles exactly is the state most easily produced by a difference
 that was never computed.
 
+**Superseded 2026-09-05 (unanchored; anchor next pass): THIS STEP IS SUBSUMED BY
+`shifts`, per `STRUCTURE.md` section 2.4, and its schema dependency has half
+landed.** The structural design's `shifts` table carries `opening_float`,
+`counted_cash`, `expected_cash` and `variance`, with `expected_cash` computed by the
+server at close from the float, the cash payments and the cash movements inside the
+shift and then FROZEN on the row — hard rule 6 applied to a drawer. A shop without
+shifts closes its day exactly as this step describes, and the server materialises
+one shift spanning the day at the moment of the count; that is the automation the
+`branches.shifts_enabled` switch selects. This step's DONE WHEN, its required zero
+case included, is met by that table and nothing else is needed for it. What migration
+`0020_payments.py` (the money ledger, unit 3 of the design) landed is the OTHER side
+of the drawer's arithmetic: `payments` is the row that says cash left, so "what the
+system says went out that day" is no longer only a sum of bill totals. The counted
+figure, the difference and the shift itself remain unbuilt; `payments.shift_id` is
+OWED to that unit (`OPEN_ITEMS.md § Code debt found and left in place`). The
+dependency chain and the desktop surface above stand as written.
+
 ### P1.20 — Price history: what a price was, when it changed, and who changed it
 
 **What it is.** For each product and grade tier: the price over time, the moment

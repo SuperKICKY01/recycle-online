@@ -51,6 +51,12 @@ ALL_TABLES = [
     # roles and role_permissions (0019): the three system roles and their grants
     # this proof seeds are rows of the tenant's graph.
     "roles", "role_permissions",
+    # payments and payment_allocations (0020): the ledger. This proof seeds no
+    # payment (its bills are direct INSERTs that bypass POST /bills, so no
+    # automatic pair is written), so both count 0 for the throwaway tenants --
+    # they are listed so the cross-tenant scan, the straggler check and the
+    # teardown reach them, and so a later fixture that does write one is covered.
+    "payments", "payment_allocations",
 ]
 
 
@@ -58,6 +64,10 @@ ALL_TABLES = [
 # grade_tiers sits AFTER product_prices and sellers (both FK to it) and BEFORE
 # tenants (it FKs to tenants) -- migration 0015.
 _TEARDOWN_ORDER = [
+    # payment_allocations then payments (0020) FIRST: allocations FK to bills and
+    # payments, payments FK to sellers, users and branches. Both are deleted by
+    # the OWNER (the app role holds no DELETE on either).
+    "payment_allocations", "payments",
     "purchase_bill_items", "purchase_bills", "product_prices", "products",
     "sellers", "grade_tiers", "product_categories", "uoms", "users",
     # branches (0018) AFTER purchase_bills and users (both FK to it) and BEFORE
@@ -103,7 +113,8 @@ async def seed_tenant(conn, tid, label: str) -> dict:
     """Insert one complete tenant graph. app.tenant_id is already == tid, so
     this ALSO exercises the RLS WITH CHECK on every INSERT."""
     ids = {k: uuid.uuid4() for k in
-           ("user", "uom", "cat", "product", "price", "seller", "bill", "item", "branch")}
+           ("user", "uom", "cat", "product", "price", "seller", "bill", "item", "branch",
+            "payment")}
     await conn.execute(
         text("INSERT INTO tenants (id, name) VALUES (:id, :name)"),
         {"id": tid, "name": f"Shop {label}"})
@@ -168,6 +179,22 @@ async def seed_tenant(conn, tid, label: str) -> dict:
         {"id": ids["item"], "t": tid, "b": ids["bill"], "p": ids["product"],
          "gw": Decimal("10.500"), "tw": Decimal("0.500"), "nw": Decimal("10.000"),
          "up": Decimal("10.50"), "lp": Decimal("10.50"), "amt": Decimal("105.00")})
+    # THE LEDGER (0020): one cash payment for the bill and its allocation, the
+    # pair POST /bills would have written -- this bill is a direct INSERT, so
+    # the pair is written here by hand, as the app role under this tenant's
+    # context, which exercises the RLS WITH CHECK on both new tables. Without a
+    # row in each, step 2's "A saw 0 rows in some table it should own" reds on
+    # the empty tables (measured on the first run after 0020).
+    await conn.execute(
+        text("INSERT INTO payments (id, tenant_id, branch_id, seller_id, method, amount,"
+             " idempotency_key, device_created_at, paid_by)"
+             " VALUES (:id, :t, :br, :s, 'cash', :amt, :idem, now(), :by)"),
+        {"id": ids["payment"], "t": tid, "br": ids["branch"], "s": ids["seller"],
+         "amt": Decimal("105.00"), "idem": f"auto:{ids['bill']}", "by": ids["user"]})
+    await conn.execute(
+        text("INSERT INTO payment_allocations (tenant_id, payment_id, bill_id, amount)"
+             " VALUES (:t, :p, :b, :amt)"),
+        {"t": tid, "p": ids["payment"], "b": ids["bill"], "amt": Decimal("105.00")})
     return ids
 
 
@@ -202,7 +229,11 @@ async def drop_tenant(conn, owner_conn, tid) -> tuple[int, list[str]]:
         # (0018) is the same case: a branch is deactivated, never deleted, so
         # the app role holds no DELETE on it either.
         # roles (0019) is the same case again: deactivated, never deleted.
-        dc = owner_conn if table in ("grade_tiers", "branches", "roles") else conn
+        # payments and payment_allocations (0020): voided never deleted, and an
+        # allocation is append-only -- the app role holds no DELETE on either.
+        dc = owner_conn if table in (
+            "grade_tiers", "branches", "roles", "payments", "payment_allocations",
+        ) else conn
         try:
             async with tenant_tx(dc, tid):
                 removed += (await dc.execute(text(f"DELETE FROM {table}"))).rowcount

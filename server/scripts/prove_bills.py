@@ -14,6 +14,7 @@ import re
 import threading
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -127,6 +128,57 @@ def seq_of(doc_no: str) -> int:
     return int(doc_no.rsplit("-", 1)[1])
 
 
+def ledger_of(bill_id: str) -> dict:
+    """The bill's ledger rows, read from POSTGRES under tenant A's context as
+    the app role (migration 0020) -- not off the HTTP response, which is the
+    thing under test. Returns the payments allocated to this bill and their
+    allocations; a bill with no pair returns two empty lists.
+
+    Opened per call and closed: this proof is otherwise pure HTTP, and one
+    read transaction per cell is the honest price of comparing the response
+    against the row (lessons/a-value-comparison-cannot-prove-a-path.md is
+    about the reverse direction; here the row is the authority).
+    """
+    import asyncio
+
+    from sqlalchemy import text
+
+    from app.db import engine, tenant_connection
+
+    async def go() -> dict:
+        try:
+            return await _read()
+        finally:
+            # asyncio.run() closes its loop on return, and app.db's engine pools
+            # a connection bound to THAT loop; the next call's pre-ping then
+            # writes to a transport whose loop is gone ("Event loop is closed",
+            # measured on the first run at case 2). Dispose the pool per call so
+            # every call opens on its own loop.
+            await engine.dispose()
+
+    async def _read() -> dict:
+        async with tenant_connection(TENANT_A_ID) as conn:
+            pays = (await conn.execute(text(
+                "SELECT p.id, p.amount, p.method, p.paid_by, p.recorded_by_migration,"
+                " p.idempotency_key, p.server_received_at, p.voided_at"
+                " FROM payments p JOIN payment_allocations a ON a.payment_id = p.id"
+                " WHERE a.bill_id = :b ORDER BY p.server_received_at"), {"b": bill_id}
+            )).mappings().all()
+            allocs = (await conn.execute(text(
+                "SELECT payment_id, amount, created_at FROM payment_allocations"
+                " WHERE bill_id = :b"), {"b": bill_id})).mappings().all()
+            head = (await conn.execute(text(
+                "SELECT server_received_at FROM purchase_bills WHERE id = :b"),
+                {"b": bill_id})).mappings().first()
+        return {
+            "payments": [dict(p) for p in pays],
+            "allocations": [dict(a) for a in allocs],
+            "bill_received_at": head["server_received_at"] if head else None,
+        }
+
+    return asyncio.run(go())
+
+
 def main() -> int:
     with httpx.Client(timeout=15.0) as client:
         token_a = login(client, TENANT_A_ID, TENANT_A_PASSWORD)
@@ -170,6 +222,44 @@ def main() -> int:
               f"case1: created_by is not the submitting user"
               f" (bill says {b1.get('created_by')}, whoami says {admin_user_id})")
 
+        # ---- THE AUTOMATIC PAIR (migration 0020, STRUCTURE.md 2.2) -----------
+        # With separate_cashier off (every shop today) the bill's transaction
+        # also wrote ONE cash payment for the whole total and ONE allocation of
+        # it to this bill. Read from POSTGRES, not off the response: the
+        # response's paid_amount is the thing under test. THE DISPROOF SECTION
+        # 12 NAMES IS THIS CELL: a bill in a switch-off tenant whose allocations
+        # do not sum to its total. Measured red first by deleting the
+        # _record_automatic_payment call (the record has the reading).
+        led = ledger_of(id1)
+        pays, allocs = led["payments"], led["allocations"]
+        alloc_sum = str(sum((a["amount"] for a in allocs), Decimal("0.00")).quantize(Decimal("0.01")))
+        print(f"  ledger: payments={len(pays)} allocations={len(allocs)} sum={alloc_sum}")
+        check(len(pays) == 1 and len(allocs) == 1,
+              f"case1/0020: exactly one payment and one allocation (got {len(pays)}/{len(allocs)})")
+        check(alloc_sum == b1.get("total_amount"),
+              f"case1/0020: the allocations sum to the bill's total"
+              f" (sum={alloc_sum}, total={b1.get('total_amount')})")
+        p0 = pays[0] if pays else {}
+        check(str(p0.get("amount")) == b1.get("total_amount") and p0.get("method") == "cash",
+              f"case1/0020: the payment is cash for the whole total"
+              f" (amount={p0.get('amount')}, method={p0.get('method')})")
+        check(str(p0.get("paid_by")) == admin_user_id,
+              f"case1/0020: paid_by is the submitting session (paid_by={p0.get('paid_by')})")
+        check(p0.get("recorded_by_migration") is False,
+              "case1/0020: a bill written through the real path is a RECORD, not marked")
+        check(p0.get("idempotency_key") == f"auto:{id1}",
+              f"case1/0020: the automatic key is deterministic auto:<bill id>"
+              f" (got {p0.get('idempotency_key')})")
+        check(p0.get("server_received_at") == led["bill_received_at"],
+              "case1/0020: the payment takes the bill's own arrival instant")
+        check(b1.get("paid_amount") == b1.get("total_amount")
+              and b1.get("payment_status") == "paid",
+              f"case1/0020: the response derives paid_amount == total and status paid"
+              f" (paid_amount={b1.get('paid_amount')}, status={b1.get('payment_status')})")
+        r = client.get(f"{BASE}/bills?unpaid=true", headers=auth(token_a))
+        check(r.status_code == 200 and id1 not in [b["id"] for b in r.json().get("bills", [])],
+              "case1/0020: a paid bill is NOT in the unpaid queue")
+
         # The STAFF half of this property is CASE 7, not here. It has to create
         # a bill, and cases 4 and 5 both assert doc_no ADJACENCY against case 1's
         # bill (seq_of(doc1) + 1, then prev_max + 1/+2) — so a bill minted
@@ -187,6 +277,15 @@ def main() -> int:
         r = client.get(f"{BASE}/bills", headers=auth(token_a))
         n_with_doc1 = sum(1 for b in r.json().get("bills", []) if b["doc_no"] == doc1)
         check(n_with_doc1 == 1, "case2: duplicate created more than one bill")
+        # THE REPLAY WRITES NO SECOND PAIR (0020; the S0 stop's question 3). The
+        # idempotency short-circuit returns before any write, and the automatic
+        # key's uniqueness is the structural backstop behind it.
+        led2 = ledger_of(id1)
+        check(len(led2["payments"]) == 1 and len(led2["allocations"]) == 1,
+              f"case2/0020: the replay left exactly one payment and one allocation"
+              f" (got {len(led2['payments'])}/{len(led2['allocations'])})")
+        check(b2.get("paid_amount") == b1.get("paid_amount"),
+              "case2/0020: the replayed bill reads the same paid_amount")
 
         # ---------------------------------------------------------------- CASE 3
         banner("CASE 3 - cross-tenant reference rejected (RLS + composite FK), atomic")
@@ -222,6 +321,15 @@ def main() -> int:
         r = client.get(f"{BASE}/bills/{id1}", headers=auth(token_a))
         check(r.status_code == 200 and r.json().get("status") == "voided",
               "case4: voided bill not readable")
+        # VOIDING A PAID BILL LEAVES THE PAYMENT STANDING (0020, STRUCTURE.md
+        # 2.1): the cash left; the seller now holds an advance equal to it, and
+        # the reissued bill is allocated from that. Nothing is edited.
+        led4 = ledger_of(id1)
+        check(len(led4["payments"]) == 1 and led4["payments"][0]["voided_at"] is None,
+              "case4/0020: the void left the bill's payment standing, live")
+        check(r.json().get("payment_status") == "paid",
+              f"case4/0020: the voided bill still reads paid"
+              f" (status={r.json().get('payment_status')})")
         # excluded from active list
         r = client.get(f"{BASE}/bills", headers=auth(token_a))
         check(doc1 not in [b["doc_no"] for b in r.json().get("bills", [])],
@@ -301,6 +409,46 @@ def main() -> int:
         check(bs.get("created_by") == staff_user_id,
               f"case7: staff bill's created_by is not the staff user"
               f" (bill says {bs.get('created_by')})")
+        # The staff bill's payment names the STAFF session as payer (0020):
+        # the automatic pair is written under bills.create, and staff holds no
+        # payments.record -- the switch selects who performs the transition.
+        led7 = ledger_of(bs.get("id", "")) if bs.get("id") else {"payments": [], "allocations": []}
+        check(len(led7["payments"]) == 1
+              and str(led7["payments"][0].get("paid_by")) == staff_user_id,
+              f"case7/0020: the staff bill's automatic payment names the staff session"
+              f" (paid_by={led7['payments'][0].get('paid_by') if led7['payments'] else None})")
+
+        # ---------------------------------------------------------------- CASE 8
+        banner("CASE 8 - the SAME body submitted concurrently -> one bill, ONE pair (0020)")
+        # Two threads, one body, released together. Whichever loses the race
+        # takes the IntegrityError path and re-reads the key; the winner's
+        # transaction wrote the pair. A race is a coin (the lock lesson), so
+        # this is not a proof of the interleaving -- it is a count that must
+        # hold under EVERY interleaving, sequential included.
+        body8 = bill_body(SELLER_A_ID, f"bill-A-{RUN}-same-body",
+                          [item(PRODUCT_A_ID, 1, "3.000")])
+        barrier8 = threading.Barrier(2)
+        results8: list[httpx.Response | None] = [None, None]
+
+        def worker8(i: int) -> None:
+            with httpx.Client(timeout=15.0) as c:
+                barrier8.wait()
+                results8[i] = c.post(f"{BASE}/bills", headers=auth(token_a), json=body8)
+
+        threads8 = [threading.Thread(target=worker8, args=(i,)) for i in range(2)]
+        for t in threads8:
+            t.start()
+        for t in threads8:
+            t.join()
+        codes8 = sorted(r.status_code for r in results8)
+        ids8 = {r.json().get("id") for r in results8 if r.status_code in (200, 201)}
+        print(f"  statuses={codes8}  ids={ids8}")
+        check(codes8 == [200, 201], f"case8: expected one 201 and one 200 (got {codes8})")
+        check(len(ids8) == 1, f"case8: both answers name ONE bill (got {ids8})")
+        led8 = ledger_of(body8["id"])
+        check(len(led8["payments"]) == 1 and len(led8["allocations"]) == 1,
+              f"case8/0020: exactly one payment and one allocation after the race"
+              f" (got {len(led8['payments'])}/{len(led8['allocations'])})")
 
     banner("RESULT")
     if failures:

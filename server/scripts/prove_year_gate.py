@@ -161,6 +161,15 @@ def clear_bills() -> None:
     restored for the purpose. Without this, resetting a counter regenerates a
     doc_no that already exists and the unique index raises a 500 that looks
     exactly like a gate failure."""
+    # The ledger first (migration 0020): every bill this tenant wrote through
+    # the real path carries one payment and one allocation, and the allocation
+    # FKs to the bill, so the bill DELETE below is refused while they stand.
+    # OWNER role, so the app role's missing DELETE grant on both tables does
+    # not apply here. Guarded, so a scratch restored from a pre-0020 dump still
+    # clears (to_regclass is NULL where the table does not exist).
+    if sql("SELECT to_regclass('public.payment_allocations') IS NOT NULL") == "t":
+        sql(f"DELETE FROM payment_allocations WHERE tenant_id = '{TENANT_A_ID}'")
+        sql(f"DELETE FROM payments WHERE tenant_id = '{TENANT_A_ID}'")
     sql(f"DELETE FROM purchase_bill_items WHERE tenant_id = '{TENANT_A_ID}'")
     sql(f"DELETE FROM purchase_bills WHERE tenant_id = '{TENANT_A_ID}'")
 

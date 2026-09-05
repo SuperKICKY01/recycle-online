@@ -154,6 +154,107 @@ def _line_amount(net_weight: Decimal, unit_price: Decimal) -> Decimal:
     return (net_weight * unit_price).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+# ---------------------------------------------------------------------------
+# THE LEDGER'S VIEW OF A BILL (migration 0020, STRUCTURE.md section 2)
+#
+# A bill carries NO payment status column. Paid amount is the sum of allocations
+# from LIVE payments, read at the moment of the read; status is derived from it
+# by comparison with total_amount and stored nowhere (invariant 3). A stored
+# status would be a second copy of a derivable fact, and this codebase exists to
+# refuse that. reconcile.py duplicates the arithmetic (P2) and imports nothing
+# from here (lessons/a-checker-must-not-share-the-code-it-checks.md).
+# ---------------------------------------------------------------------------
+_PAID_SQL = (
+    "SELECT coalesce(sum(a.amount), 0) FROM payment_allocations a"
+    " JOIN payments p ON p.id = a.payment_id"
+    " WHERE a.bill_id = :id AND p.voided_at IS NULL"
+)
+# The automatic pair's key is DETERMINISTIC: uq_payments_tenant_idem then refuses
+# a second automatic payment for one bill even if the path that writes it were
+# ever reached twice, and the allocation's primary key refuses a second
+# allocation from it. The replay path in create_bill returns before any write;
+# this is the structural backstop behind that (migration 0020's docstring).
+_AUTO_KEY_PREFIX = "auto:"
+
+
+def payment_status(paid: Decimal, total: Decimal) -> str:
+    """unpaid / partial / paid, derived, never stored.
+
+    A zero-total bill reads `paid` (0 = 0): nothing left the drawer and nothing
+    is owed, which is also why the automatic pair is skipped for it
+    (ck_payments_amount forbids a zero payment). `paid` on paid >= total rather
+    than ==, so a row P2 would already have named still reads as settled here
+    rather than throwing on a state the reconciler owns.
+    """
+    if paid >= total:
+        return "paid"
+    if paid == 0:
+        return "unpaid"
+    return "partial"
+
+
+async def _paid_amount(conn: AsyncConnection, bill_id) -> Decimal:
+    # Quantized to the column's scale: coalesce(sum(), 0) over NO rows comes
+    # back as the integer-shaped Decimal('0'), which str() renders "0" -- and a
+    # money string on this wire is always two decimals (reports._money does the
+    # same). Measured by prove_payments Z1/S2 on the first run.
+    return Decimal(
+        (await conn.execute(text(_PAID_SQL), {"id": bill_id})).scalar_one()
+    ).quantize(Decimal("0.01"))
+
+
+async def _record_automatic_payment(
+    conn: AsyncConnection,
+    principal: Principal,
+    body: "BillCreate",
+    branch: Branch,
+    server_total: Decimal,
+    received_at: datetime,
+) -> None:
+    """The degenerate case, which is every shop today (STRUCTURE.md 2.2).
+
+    With branches.separate_cashier OFF the server writes, in the bill's own
+    transaction, one cash payment for the whole total and one allocation of it
+    to this bill. The shop never sees either; a cash-only shop is the case of
+    one payment per bill and was never a special case in the schema (invariant
+    5). Everything here is derived from values the bill insert already used --
+    the server's computed total, the principal, the branch resolved above, and
+    the arrival instant read once -- and NOTHING from the wire, which is why a
+    bill queued on a phone before this ledger existed drains paid.
+
+    THE SWITCH SELECTS WHO PERFORMS THE TRANSITION, NEVER WHETHER IT EXISTS
+    (invariant 1): the caller reads branch.separate_cashier to decide whether to
+    call this, and there is no `if not policy: raise` anywhere on this path.
+    """
+    await conn.execute(
+        text(
+            "INSERT INTO payments (id, tenant_id, branch_id, seller_id, method, amount,"
+            " idempotency_key, device_created_at, server_received_at, paid_by)"
+            " VALUES (:id, :t, :br, :s, 'cash', :amt, :k, :dca, :sra, :by)"
+        ),
+        {
+            "id": uuid.uuid4(), "t": principal.tenant_id, "br": branch.id,
+            "s": body.seller_id, "amt": server_total,
+            "k": f"{_AUTO_KEY_PREFIX}{body.id}",
+            "dca": body.device_created_at, "sra": received_at,
+            # The session that submitted the bill: the same principal created_by
+            # names, and for the same reason (never a field from the body).
+            "by": principal.user_id,
+        },
+    )
+    await conn.execute(
+        text(
+            "INSERT INTO payment_allocations (tenant_id, payment_id, bill_id, amount, created_at)"
+            " SELECT :t, p.id, :b, :amt, :at FROM payments p"
+            " WHERE p.tenant_id = :t AND p.idempotency_key = :k"
+        ),
+        {
+            "t": principal.tenant_id, "b": body.id, "amt": server_total,
+            "at": received_at, "k": f"{_AUTO_KEY_PREFIX}{body.id}",
+        },
+    )
+
+
 class BillItemIn(BaseModel):
     """The wire contract for one line.
 
@@ -311,6 +412,7 @@ async def _read_bill(conn: AsyncConnection, bill_id) -> dict | None:
             {"id": bill_id},
         )
     ).mappings().all()
+    paid = await _paid_amount(conn, bill_id)
     return {
         "id": str(h["id"]),
         "doc_no": h["doc_no"],
@@ -318,6 +420,12 @@ async def _read_bill(conn: AsyncConnection, bill_id) -> dict | None:
         "vehicle_no": h["vehicle_no"],
         "idempotency_key": h["idempotency_key"],
         "total_amount": str(h["total_amount"]),
+        # DERIVED from the ledger at this read (migration 0020): the sum of
+        # allocations from live payments, and the status that sum implies. Two
+        # keys the phone does not read (its transport takes doc_no alone), so
+        # adding them moved nothing on any handset.
+        "paid_amount": str(paid),
+        "payment_status": payment_status(paid, h["total_amount"]),
         "device_created_at": h["device_created_at"].isoformat(),
         "server_received_at": h["server_received_at"].isoformat(),
         # Who SYNCED the bill, not necessarily who weighed the load. The bound
@@ -705,6 +813,20 @@ async def create_bill(
                         "up": it.unit_price, "lp": lp, "amt": amt,
                     },
                 )
+
+            # THE AUTOMATIC PAYMENT (migration 0020). Same transaction as the
+            # bill and its lines: a bill without its payment row is a bill the
+            # shop is recorded as never having paid for, and a payment without
+            # its bill is money that left for nothing -- so the two land or
+            # roll back together with the rest. Read of the policy, not a test
+            # of it: with the counter separated the cashier writes this later
+            # from a screen, and the bill is simply unpaid until then. A
+            # zero-total bill gets no payment (nothing left the drawer;
+            # ck_payments_amount forbids a zero row) and reads `paid`.
+            if not branch.separate_cashier and server_total > 0:
+                await _record_automatic_payment(
+                    conn, principal, body, branch, server_total, received_at
+                )
             return await _read_bill(conn, body.id)
     except IntegrityError as e:
         # A concurrent submit of the SAME bill lost the race. ASK THE DATABASE
@@ -751,6 +873,13 @@ async def create_bill(
 @router.get("/bills")
 async def list_bills(
     limit: int = Query(50, ge=1, le=200),
+    # THE CASHIER QUEUE (migration 0020, STRUCTURE.md 2.1): the live bills whose
+    # allocations from live payments sum to less than their total. An anti-join
+    # over one shop's bills, fine at a shop's daily volume and filed under the
+    # same future-volume note as the two seq-scans already recorded. With
+    # separate_cashier off it is empty by construction, and the switch has no
+    # route yet, so on every shop that exists today it is empty.
+    unpaid: bool = Query(False),
     # bills.read (0019): held by every system role, so nothing moved on the wire.
     principal: Principal = Depends(require(Permission.BILLS_READ)),
 ) -> dict:
@@ -758,10 +887,17 @@ async def list_bills(
         rows = (
             await conn.execute(
                 text(
-                    "SELECT id, doc_no, seller_id, vehicle_no, total_amount,"
-                    " device_created_at, server_received_at, branch_id"
-                    " FROM purchase_bills WHERE voided_at IS NULL"
-                    " ORDER BY server_received_at DESC, id DESC LIMIT :lim"
+                    "SELECT b.id, b.doc_no, b.seller_id, b.vehicle_no, b.total_amount,"
+                    " b.device_created_at, b.server_received_at, b.branch_id,"
+                    " coalesce(pd.paid, 0) AS paid_amount"
+                    " FROM purchase_bills b"
+                    " LEFT JOIN LATERAL ("
+                    "   SELECT sum(a.amount) AS paid FROM payment_allocations a"
+                    "   JOIN payments p ON p.id = a.payment_id"
+                    "   WHERE a.bill_id = b.id AND p.voided_at IS NULL) pd ON true"
+                    " WHERE b.voided_at IS NULL"
+                    + (" AND coalesce(pd.paid, 0) < b.total_amount" if unpaid else "")
+                    + " ORDER BY b.server_received_at DESC, b.id DESC LIMIT :lim"
                 ),
                 {"lim": limit},
             )
@@ -775,6 +911,10 @@ async def list_bills(
                 "seller_id": str(r["seller_id"]),
                 "vehicle_no": r["vehicle_no"],
                 "total_amount": str(r["total_amount"]),
+                # Derived per row from the ledger (0020), as on the single read;
+                # quantized for the same reason _paid_amount is.
+                "paid_amount": str(Decimal(r["paid_amount"]).quantize(Decimal("0.01"))),
+                "payment_status": payment_status(r["paid_amount"], r["total_amount"]),
                 "device_created_at": r["device_created_at"].isoformat(),
                 "server_received_at": r["server_received_at"].isoformat(),
             }

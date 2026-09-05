@@ -24,6 +24,7 @@ from .bills import router as bills_router
 from .db import directory_engine, engine, tenant_connection
 from .directory import router as directory_router
 from .master import router as master_router
+from .payments import router as payments_router
 from .reports import router as reports_router
 from .security import DUMMY_HASH, create_access_token, verify_password
 from .users import router as users_router
@@ -250,6 +251,7 @@ async def _refuse_outdated_client(request, call_next):
 app.include_router(bills_router)
 app.include_router(directory_router)
 app.include_router(master_router)
+app.include_router(payments_router)
 app.include_router(reports_router)
 app.include_router(users_router)
 

@@ -15,9 +15,10 @@ THE CELLS, and the disproof each stands against:
 
   E0  the child serves THIS code: /openapi.json's ShopUpdate carries NO
       staff_money_visible (0019 dropped it) and /whoami carries `permissions`.
-  F   the fixture: FIFTEEN roles in Shop A by SQL -- one per catalogue
+  F   the fixture: SIXTEEN roles in Shop A by SQL (fifteen before 0020 minted
+      payments.record) -- one per catalogue
       permission holding EVERY permission BUT that one (nb-<code>), one holding
-      all but BOTH money permissions (nomoney), one holding all thirteen (all)
+      all but BOTH money permissions (nomoney), one holding all fourteen (all)
       -- and a user in each. Every user signs in, and /whoami's `permissions`
       EQUALS the role's grant set (set equality, both directions), so the
       catalogue this proof restates BY HAND is the catalogue the server serves.
@@ -28,7 +29,8 @@ THE CELLS, and the disproof each stands against:
   T2  THE TOKEN IN FLIGHT: a token minted WITHOUT the claim (the pre-0019
       shape, signed with the server's own secret) is ACCEPTED and /whoami
       resolves the full set from the ROW. The deploy signs nobody out.
-  M   THE MATRIX, 34 route gates: for each (route, permission) the principal
+  M   THE MATRIX, 36 route gates (34 before 0020 added GET and POST /payments):
+      for each (route, permission) the principal
       holding every permission BUT that one reads 403 kind=forbidden
       code=permission_required required_permission=<that one>, and the all
       principal reads the route's own success status. Section 12's two
@@ -97,6 +99,8 @@ PERMS: tuple[str, ...] = (
     "bills.create", "bills.read", "bills.void", "money.view_own", "money.view_shop",
     "master.write", "prices.write", "sellers.create", "sellers.write", "tiers.manage",
     "users.manage", "shop.settings.write", "roles.manage",
+    # Migration 0020 (the money ledger): the fourteenth code.
+    "payments.record",
 )
 
 BASE = ""
@@ -180,6 +184,8 @@ def assert_serving_this_code() -> str:
         return "ShopUpdate still declares staff_money_visible -- predates migration 0019"
     if "post" not in doc.get("paths", {}).get("/bills", {}):
         return "the server does not declare POST /bills"
+    if "post" not in doc.get("paths", {}).get("/payments", {}):
+        return "the server does not declare POST /payments -- predates migration 0020"
     return ""
 
 
@@ -354,7 +360,7 @@ async def run(ctx: Ctx, client: httpx.AsyncClient, scratch: str) -> None:
           f" /whoami resolves the full set from the ROW (got {r.status_code})")
 
     # ---------------------------------------------------------------- M
-    header("M  the matrix: 34 route gates, all-but-one refused naming it, all succeeds")
+    header("M  the matrix: 36 route gates, all-but-one refused naming it, all succeeds")
     m = Matrix(client, ctx)
     # bills
     created = await m.site("bills.create", "POST", "/bills", bill_body("m-create"))
@@ -362,6 +368,14 @@ async def run(ctx: Ctx, client: httpx.AsyncClient, scratch: str) -> None:
     await m.site("bills.read", "GET", "/bills")
     await m.site("bills.read", "GET", f"/bills/{bill_id}")
     await m.site("bills.void", "POST", f"/bills/{bill_id}/void", {"reason": f"perm {RUN}"})
+    # payments.record -- 2 (migration 0020). The POST is an ADVANCE (no
+    # allocations), so it depends on no bill this matrix voided above.
+    await m.site("payments.record", "GET", "/payments")
+    await m.site("payments.record", "POST", "/payments", {
+        "id": str(uuid.uuid4()), "seller_id": str(SELLER_A_ID), "method": "cash",
+        "amount": "1.00", "idempotency_key": f"pay-{RUN}-matrix",
+        "device_created_at": dt.datetime.now(tz=dt.timezone.utc).isoformat(),
+        "allocations": []})
     # money
     await m.site("money.view_shop", "GET", "/reports/daily")
     # master.write -- 12
@@ -416,8 +430,9 @@ async def run(ctx: Ctx, client: httpx.AsyncClient, scratch: str) -> None:
     await m.site("users.manage", "POST", f"/users/{tgt_id}/unlock-login")
     await m.site("users.manage", "POST", f"/users/{tgt_id}/password",
                  {"new_password": f"pw-{RUN}-target2"})
-    check(m.sites == 34, f"M: the matrix visited 34 route gates (control; visited {m.sites})")
-    check(refusal_codes_seen.count("admin_required") == 0 and len(refusal_codes_seen) == 34,
+    # 36 since 0020 (34 + GET /payments + POST /payments), edited by name.
+    check(m.sites == 36, f"M: the matrix visited 36 route gates (control; visited {m.sites})")
+    check(refusal_codes_seen.count("admin_required") == 0 and len(refusal_codes_seen) == 36,
           f"M: NO refusal in this run answered admin_required, over {len(refusal_codes_seen)}"
           " refusals read (section 12's disproof)")
 

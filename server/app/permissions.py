@@ -25,12 +25,13 @@ equal. That is duplicate arithmetic, not a duplicated convention
 (lessons/a-checker-must-not-share-the-code-it-checks.md).
 
 WHAT IS MINTED, AND WHAT IS DELIBERATELY NOT. Section 3.1 lists 23 codes; THIRTEEN
-are minted here, the ones a route gates on in this tree (the owner's decision
+were minted by unit 1, the ones a route gates on in this tree (the owner's decision
 2026-09-04: a permission nobody checks means nothing, and ten unchecked rows would
 be ten meanings a later session must guess). One of the thirteen is the exception
-and says so at its line: `roles.manage` gates no route yet. The other ten are
-recorded in DEFERRED against the unit that will gate them, so nobody re-invents a
-name later.
+and says so at its line: `roles.manage` gates no route yet. Unit 3 (the money
+ledger, migration 0020) minted the FOURTEENTH, `payments.record`, the day
+POST /payments and GET /payments gated on it. The other nine are recorded in
+DEFERRED against the unit that will gate them, so nobody re-invents a name later.
 
 THE THREE SYSTEM ROLES every shop is born with are S9's owner/admin/staff, as rows
 (SYSTEM_ROLE_GRANTS is what each holds at birth). A shop may create a fourth once
@@ -70,6 +71,12 @@ class Permission(StrEnum):
     USERS_MANAGE = "users.manage"
     SHOP_SETTINGS_WRITE = "shop.settings.write"
     ROLES_MANAGE = "roles.manage"
+    # Migration 0020 (STRUCTURE.md section 2, unit 3): money leaving the shop.
+    # Owner and admin hold it at birth; staff does not (section 3.1's staff set:
+    # the weigher weighs, and with separate_cashier off the SERVER writes the
+    # payment inside POST /bills under bills.create, so a cash-only shop's staff
+    # never needs this). The cashier is a role a shop creates.
+    PAYMENTS_RECORD = "payments.record"
 
 
 # What each permission gates, by route. ASCII, because migration 0019 restates the
@@ -120,14 +127,18 @@ DESCRIPTIONS: Mapping[Permission, str] = {
         "create and edit a shop's own roles (the role-management screen, owed;"
         " no route gates on this yet)"
     ),
+    Permission.PAYMENTS_RECORD: (
+        "record money leaving the shop and read the ledger: POST /payments, GET /payments"
+    ),
 }
 
 # Section 3.1's codes NOT minted by unit 1, each against the unit that gates it.
 # Recorded so a later unit reuses the name rather than inventing a neighbour.
 DEFERRED: Mapping[str, str] = {
     "bills.read_all_users": "the per-user bill list, if a route for it is ever built",
-    "payments.record": "unit 3, the money ledger (POST /payments)",
-    "payments.void": "unit 3, the money ledger",
+    # payments.record left this map with migration 0020. payments.void stays: no
+    # route voids a payment in unit 3 (the counter screen is the unit that does).
+    "payments.void": "the counter unit, when POST /payments/{id}/void exists",
     "shifts.manage": "batch B, shifts and the drawer",
     "sellers.read_personal": "batch C, files and personal data (a seller's id document)",
     "audit.read": "the audit-log read route, when one exists (D3 wrote the log only)",
@@ -152,7 +163,9 @@ SYSTEM_ROLE_CODES: tuple[str, ...] = (OWNER_ROLE, ADMIN_ROLE, STAFF_ROLE)
 # any-principal routes, now gated on these three). money.view_own is NOT here: the
 # migration grants it to a tenant's staff role only where that tenant had
 # staff_money_visible = true, and a new shop starts with money hidden from staff
-# exactly as 0014's DEFAULT false did.
+# exactly as 0014's DEFAULT false did. payments.record (0020) rides the two
+# frozenset(Permission) expressions below, so a shop provisioned after 0020 holds
+# it on owner and admin with no edit here; 0020 granted it to every existing one.
 SYSTEM_ROLE_GRANTS: Mapping[str, frozenset[Permission]] = {
     OWNER_ROLE: frozenset(Permission),
     ADMIN_ROLE: frozenset(Permission) - {Permission.ROLES_MANAGE},
