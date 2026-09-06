@@ -45,7 +45,10 @@ It REFUSES LOUDLY -- exit 2, no proof run, the reason printed -- when: --runs is
 below 1 or --only names nothing; docker `recycle_pg` is not `(healthy)`;
 server/.env lacks the three URLs or JWT_SECRET; `uv`, `node` or `npm` is not on
 PATH; the pre-0018 (alembic 0017) backup that prove_branches --from needs is
-absent; the node program does not COMPILE (`npm run build` in mobile/, run once,
+absent; a NATIVE PACKAGE THE SDK BUNDLES is installed at two versions, or at a major
+the SDK's own bundledNativeModules.json does not expect (the owner's 2026-09-06
+decision: the version gate in every run, the emulator build before a release --
+see native_versions_gate); the node program does not COMPILE (`npm run build` in mobile/, run once,
 its first `error TS` line quoted -- otherwise fifty proofs would each report exit
 2 and the compile error would appear nowhere); the live dump or a restore fails; a
 server does not come up or fails its discrimination. A refusal after the dump step
@@ -223,6 +226,106 @@ def kill_tree(proc: subprocess.Popen) -> None:
 
 
 # ---------------------------------------------------------------------------
+# the native-version gate (the owner's decision, 2026-09-06: the cheap check, every run)
+# ---------------------------------------------------------------------------
+NATIVE_PREFIXES = ("expo-", "@expo/")
+
+
+def _walk_node_modules(root: Path, found: dict[str, dict[str, list[str]]], depth: int = 0) -> None:
+    """Every package.json under node_modules, nested copies included: name -> version -> paths."""
+    if depth > 6 or not root.is_dir():
+        return
+    for entry in root.iterdir():
+        if entry.name.startswith(".") or not entry.is_dir():
+            continue
+        pkgs = [entry] if not entry.name.startswith("@") else [p for p in entry.iterdir() if p.is_dir()]
+        for pkg in pkgs:
+            pj = pkg / "package.json"
+            if pj.is_file():
+                try:
+                    meta = json.loads(pj.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                name, version = meta.get("name"), meta.get("version")
+                if isinstance(name, str) and isinstance(version, str) and \
+                        (name.startswith(NATIVE_PREFIXES) or name == "expo"):
+                    found.setdefault(name, {}).setdefault(version, []).append(str(pkg.relative_to(MOBILE)))
+            nested = pkg / "node_modules"
+            if nested.is_dir():
+                _walk_node_modules(nested, found, depth + 1)
+
+
+def _major(version_or_range: str) -> int | None:
+    m = re.search(r"(\d+)", version_or_range)
+    return int(m.group(1)) if m else None
+
+
+def native_versions_gate() -> None:
+    """REFUSE when the installed Expo native packages cannot be the ones the SDK expects.
+
+    WHY THIS SHAPE AND NOT `expo install --check` ALONE. The 2026-09-06 regression was
+    `@expo/vector-icons` hoisting `expo-font@57.0.2` above the `14.0.12` that `expo`
+    kept nested: two versions of one native package, the autolinker compiling the
+    hoisted one, the app dead at startup. `npx expo install --check` looks only at
+    the packages DECLARED in package.json -- expo-font was not declared then, so it
+    said nothing about it -- and it exits 1 today for a patch-level drift of `expo`
+    itself (54.0.36 vs ~54.0.37), which is not a native conflict and which this tree
+    runs fine under. So the gate is built from what the SDK itself ships:
+
+      A. ONE VERSION PER NATIVE PACKAGE anywhere under node_modules (hoisted and
+         nested alike). Two versions is the regression's exact shape.
+      B. THE TOP-LEVEL MAJOR MUST MATCH `node_modules/expo/bundledNativeModules.json`,
+         the SDK's own table of expected versions (119 entries for SDK 54), for
+         every expo-*/@expo/* package that table names. 57 against ~14 refuses;
+         14.0.12 against ~14.0.12 passes; a patch behind passes.
+
+    `npx expo install --check` is then RUN and its verdict PRINTED as information --
+    a patch-level drift is worth the reader's eye, not a refusal.
+
+    WHAT THIS DOES NOT COVER, so nobody reads it as complete: a native module that is
+    correctly versioned and still fails to link or crashes at startup, an ABI or NDK
+    mismatch, a config plugin that changed the native project. Only a build that
+    installs and launches sees those, and the owner placed that before a release,
+    not in every suite run (OPEN_ITEMS.md, Verification gaps).
+    """
+    # SCOPE: the packages the SDK's own table names. `@expo/*` also holds pure-JS tooling
+    # (`@expo/json-file`, `@expo/config-plugins`, `@expo/package-manager`) that legitimately
+    # sits at several nested versions -- measured 2026-09-06: `@expo/json-file` at 10.0.16,
+    # 10.2.0 and 11.0.1 on a tree that builds and runs. Those never reach the autolinker.
+    table_path = MOBILE / "node_modules" / "expo" / "bundledNativeModules.json"
+    if not table_path.is_file():
+        raise Refused(f"native-version gate needs {table_path} (the SDK's own expected-version table) and it is absent")
+    table = json.loads(table_path.read_text(encoding="utf-8"))
+    walked: dict[str, dict[str, list[str]]] = {}
+    _walk_node_modules(MOBILE / "node_modules", walked)
+    found = {n: v for n, v in walked.items() if isinstance(table.get(n), str)}
+    if not found:
+        raise Refused("native-version gate found none of the SDK's native packages under mobile/node_modules -- is the tree installed?")
+    duplicates = {n: v for n, v in found.items() if len(v) > 1}
+    if duplicates:
+        lines = [f"{n}: " + "; ".join(f"{ver} at {', '.join(paths)}" for ver, paths in sorted(v.items()))
+                 for n, v in sorted(duplicates.items())]
+        raise Refused("native-version gate A: a native package is installed at MORE THAN ONE version, and the "
+                      "autolinker compiles whichever is hoisted -- " + " | ".join(lines))
+    mismatched = []
+    for name, versions in sorted(found.items()):
+        (installed,) = versions.keys()
+        if _major(installed) != _major(table[name]):
+            mismatched.append(f"{name}: installed {installed}, the SDK expects {table[name]}")
+    if mismatched:
+        raise Refused("native-version gate B: an installed native package is a different MAJOR from what "
+                      "bundledNativeModules.json expects -- " + " | ".join(mismatched))
+    say(f"  native versions: {len(found)} of the SDK's {len(table)} bundled native packages installed, one version "
+        f"each, every major matching bundledNativeModules.json ({len(walked) - len(found)} other expo/@expo "
+        f"tooling packages not judged)")
+    cp = subprocess.run(["npx.cmd" if os.name == "nt" else "npx", "expo", "install", "--check"], cwd=str(MOBILE),
+                        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    report = [l.strip() for l in (cp.stdout + cp.stderr).splitlines() if " - expected version:" in l]
+    say(f"  `npx expo install --check` exit {cp.returncode} (information, not a gate): "
+        + ("; ".join(report) if report else "nothing outdated"))
+
+
+# ---------------------------------------------------------------------------
 # preflight
 # ---------------------------------------------------------------------------
 def preflight(args) -> dict[str, str]:
@@ -251,6 +354,7 @@ def preflight(args) -> dict[str, str]:
     say(f"  pre-0018 backup for prove_branches: {args.pre0018}")
     if not (MOBILE / "node_modules").exists():
         raise Refused("mobile/node_modules is absent -- run `npm install` in mobile/ first")
+    native_versions_gate()
     # The node program must compile ONCE here: every prove:* script begins with
     # `npm run build`, so a single type error would otherwise surface as fifty
     # exit-2 "could not run" rows with the compiler's message quoted nowhere.

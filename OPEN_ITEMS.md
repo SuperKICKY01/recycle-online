@@ -720,6 +720,35 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   under a single version. (b) belongs in `prove:all` regardless; whether (a) does is the
   trade-off. The lesson is the 2026-09-06 amendment to
   `lessons/two-green-proofs-do-not-cover-the-seam.md`.
+  **DECIDED BY THE OWNER, 2026-09-06: (b), the version gate, in every run; (a), the emulator
+  build, belongs BEFORE A RELEASE, not in every suite run.** The reasoning as he gave it: a
+  version gate runs every time and catches version mismatch, which is what actually happened;
+  a full emulator build catches more but costs minutes and a running AVD. BUILT the same day
+  in `tools/prove_all.py`'s preflight, before the dump, as two refusals: (A) every
+  `expo-*` / `@expo/*` native package must resolve to ONE version anywhere under
+  `node_modules`, hoisted and nested alike — two versions is the regression's exact shape;
+  (B) the top-level MAJOR of every such package named in the SDK's own
+  `node_modules/expo/bundledNativeModules.json` must equal the expected major. `npx expo
+  install --check` was measured, not assumed: it exists, it exits 1 on today's tree for a
+  PATCH drift of `expo` itself (54.0.36 against ~54.0.37), and it looks only at DECLARED
+  packages — `expo-font` was undeclared when it was hoisted, so `--check` said nothing about
+  it then and would refuse the tree for the wrong reason now. It is therefore RUN and its
+  verdict PRINTED as information, not used as the gate. PROVEN BOTH WAYS, 2026-09-06: on today's tree the preflight prints `native versions: 14 of the SDK's 119 bundled
+native packages installed, one version each, every major matching bundledNativeModules.json (25 other expo/@expo
+tooling packages not judged)` and `npx expo install --check exit 1 (information, not a gate): expo@54.0.36 -
+expected version: ~54.0.37; expo-constants@18.0.13 - expected version: ~18.0.14`, then runs (`--only prove:money`:
+GREEN 1, `PROVE_ALL_EXIT=0`). With the exact regression STAGED — `npm install expo-font@57.0.2 --no-save`, so
+`npm ls` showed `expo-font@57.0.2` hoisted and `expo-font@14.0.12` nested under `expo` — the preflight printed
+`REFUSED: native-version gate A: a native package is installed at MORE THAN ONE version, and the autolinker compiles
+whichever is hoisted -- expo-font: 14.0.12 at node_modules\expo\node_modules\expo-font; 57.0.2 at
+node_modules\expo-font` and exited 2 with no dump taken and no proof run; `npm install` then restored one
+`expo-font@14.0.12`, `package.json` and the lock untouched. The gate's first draft judged every `@expo/*` package
+and refused today's tree on `@expo/json-file` at three nested versions — pure-JS tooling the autolinker never sees
+— which is why the scope is the SDK's table and not the prefix.
+  WHAT THE GATE DOES NOT COVER, so no later reader takes it as complete: a native module
+  that is correctly versioned and still fails to link or dies at startup; an ABI, NDK or
+  CMake mismatch; a config plugin that changed the native project; anything that only a
+  build that installs and LAUNCHES can see. That remains (a), before a release.
 - **FOURTEEN PROOFS REPORT GREEN BY EXIT CODE ALONE — no self-printed `<NAME>_EXIT=`
   line — measured 2026-09-06 by the suite survey over all 81 proofs, and NOT fixed.**
   Server: `prove_auth`, `prove_bills`, `prove_clock_guard`, `prove_daily_report`,

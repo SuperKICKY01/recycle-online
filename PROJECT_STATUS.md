@@ -228,6 +228,28 @@ before these last edits: ten non-lesson paths (`CLAUDE.md`, `EVIDENCE.md`, `OPEN
 `server/scripts/prove_user_create.py`, `tools/prove_all.py`), then the lesson question answered yes and the set
 extended by two (`lessons/two-green-proofs-do-not-cover-the-seam.md`, `lessons/all-lessons.md`); the staged set
 must EQUAL those twelve.
+**THE OWNER'S TWO DECISIONS, 2026-09-06, RECORDED AND THE CHEAP ONE BUILT.** (1) `C:` HYGIENE: the user Temp
+folder (3.3 GB) is his to clear and he will; THE ORIGINAL SDK ON `C:` STAYS
+(`C:\Users\PC\AppData\Local\Android\Sdk`) — the emulator's SDK root `E:\android\sdk` reaches `platform-tools`,
+`platforms`, `build-tools`, `ndk`, `emulator` and `cmake` through NTFS junctions INTO it, so deleting the `C:` copy
+breaks the emulator and the build. (2) THE NATIVE-CONFLICT GATE: the version gate, every run; the emulator build
+before a release, not in every suite run. Built into `tools/prove_all.py`'s preflight, before the dump: (A) one
+version per `expo-*`/`@expo/*` package anywhere under `node_modules`, (B) the top-level major must match the SDK's
+own `bundledNativeModules.json`. `npx expo install --check` was measured first: exit 1 today for a patch drift of
+`expo` itself, and blind to the undeclared `expo-font` that was hoisted — so it is printed, not obeyed. PROVEN BOTH WAYS, 2026-09-06: on today's tree the preflight prints `native versions: 14 of the SDK's 119 bundled
+native packages installed, one version each, every major matching bundledNativeModules.json (25 other expo/@expo
+tooling packages not judged)` and `npx expo install --check exit 1 (information, not a gate): expo@54.0.36 -
+expected version: ~54.0.37; expo-constants@18.0.13 - expected version: ~18.0.14`, then runs (`--only prove:money`:
+GREEN 1, `PROVE_ALL_EXIT=0`). With the exact regression STAGED — `npm install expo-font@57.0.2 --no-save`, so
+`npm ls` showed `expo-font@57.0.2` hoisted and `expo-font@14.0.12` nested under `expo` — the preflight printed
+`REFUSED: native-version gate A: a native package is installed at MORE THAN ONE version, and the autolinker compiles
+whichever is hoisted -- expo-font: 14.0.12 at node_modules\expo\node_modules\expo-font; 57.0.2 at
+node_modules\expo-font` and exited 2 with no dump taken and no proof run; `npm install` then restored one
+`expo-font@14.0.12`, `package.json` and the lock untouched. The gate's first draft judged every `@expo/*` package
+and refused today's tree on `@expo/json-file` at three nested versions — pure-JS tooling the autolinker never sees
+— which is why the scope is the SDK's table and not the prefix.
+What the gate cannot see — a correctly versioned module that fails to link or launch — is written beside it in
+`OPEN_ITEMS.md § Verification gaps — built, not proven`.
 **NOT OBSERVED.** No real handset ran this bundle: haptics, real-light legibility, wet or gloved fingers, the OEM
 Thai font, iOS metrics and the refusing keystore stay where the handset list leaves them. No production row exists;
 the dev-targeting proofs wrote their usual permanent debris to dev, twice more. The fourteen exit-code-only proofs
@@ -239,7 +261,7 @@ on a clean scratch, exits 0, 0, 1 (7 FAILED; 5 `failed` rows). Repairs: `prove_u
 `tools/prove_all.py`: exit 0, `TOTAL 81 GREEN 67 GREEN-EXIT-CODE-ONLY 14 RED 0 COULD-NOT-RUN 0`, 950 s; its two
 disproofs exit 1 (RED 1) and exit 2 (REFUSED). Doc checkers, run after the last edit: `verify_shared_checks.py`
 exit 0 (IDENTICAL, 4 items); `build_all_lessons.py --check` exit 0 (67 files); `verify_citations.ps1` bare over
-the canonical list, run AFTER this sentence was written: SOURCES=15 CITATIONS=680 BROKEN=6, the six being the pre-existing six
+the canonical list, run AFTER this sentence was written: SOURCES=15 CITATIONS=681 BROKEN=6, the six being the pre-existing six
 (`ROADMAP.md` STAGE 1 and STAGE 3, `RED_TEAM.md`, `CLAUDE.md` Workflow, SRS_MAP's wrapped Known stale, nemesis's
 Known), so this unit's citations all resolve and none of the floor moved. THE TOOLCHAIN, every step observed: the
 system drive had 2.8 GB free, so everything went to `E:\android\`. Temurin JDK 21.0.12.1 (zip, per-user) at
