@@ -35,6 +35,45 @@
  * NOT PROVEN HERE: that `App.tsx` routes these four kinds to four screens. That
  * file is outside this program; what is proven is the classification and the
  * sentence, which is where the defect was.
+ *
+ * ---------------------------------------------------------------------------
+ * THE FIXTURE, AND WHY IT EXISTS (2026-09-06)
+ * ---------------------------------------------------------------------------
+ * Every wrong-password cell below is a REAL failed login, and the server
+ * (migration 0016, app/login_guard.py) counts those: FAILURE_THRESHOLD=5 within
+ * LOCKOUT_WINDOW=15 minutes per (tenant, username), derived from the append-only
+ * failed_login_attempts table. This proof makes exactly TWO per run (L1, L3).
+ * MEASURED 2026-09-06 against a clean scratch with the fixture absent: run 1
+ * green, run 2 green, run 3 red — 7 FAILED, every correct-password cell refused
+ * with the wrong-password sentence, the table holding 5 `failed` rows. So a
+ * proof that survives exactly two runs and fails the third is what stood here,
+ * and lessons/proof-must-run-twice.md is satisfied by accident, not by design.
+ *
+ * THE RESET IS THE PRODUCT'S OWN PATH, not a DELETE: POST /users/{id}/unlock-login
+ * appends an `unlocked_by_admin` marker and the count ignores everything at or
+ * before it. Two accounts are used ON PURPOSE. STAFF takes every failure this
+ * proof causes; ADMIN never sends a wrong password here and performs the reset —
+ * so the account that can unlock is never the account that is locked, and the
+ * fixture recovers from any LOCKOUT state a previous run left, a crash mid-run
+ * included (not from a deactivated staff row -- that is is_active, a different lock).
+ * Had admin taken the failures and reset itself, a locked admin could not sign
+ * in to perform its own unlock, and the proof would wait out the window.
+ *
+ * The reset runs at the START (the precondition is CREATED, not trusted to the
+ * previous run's cleanup — proof-must-run-twice's fourth amendment) and again
+ * at the END (the scratch is left with a zero budget for whatever runs next).
+ * Each reset is a cell, so a fixture that could not be established reddens
+ * visibly instead of letting the credential cells fail for an unrelated reason.
+ * BOUND: if some OTHER actor has locked the admin itself, the start fixture
+ * reddens at its sign-in cell — named, not hidden — and nothing here can clear
+ * that; the admin unlock route exists to unlock STAFF, never its own caller.
+ *
+ * THIS IS NEITHER OF THE TWO OPTIONS THE BRIEF OFFERED, AND IT IS BETTER THAN BOTH
+ * (the advisor said so, 2026-09-06). "Reset the failed-attempt rows" by the same
+ * account cannot recover an account that is already locked; "a distinct account per
+ * run" leaves a permanent user row per run and drives POST /users, which this proof
+ * is not about. Splitting the roles — the unlocking account is never the locked one —
+ * keeps the reset AND the recovery.
  */
 import { createServer } from "node:net";
 
@@ -46,6 +85,12 @@ import {
 import type { LoginHttpResponse, SignInResult } from "../session/signInIdentity.js";
 
 let failures = 0;
+/** Every wrong-password login this run makes, counted where it is made, so the END
+ *  reset can assert the unlock's EFFECT: it must report exactly this many cleared.
+ *  A 200 with a number is not evidence the counter was reset (a deleted
+ *  clear_lockout would still answer 200); "cleared == what THIS run caused" is,
+ *  because with no reset at the start the count would carry the previous runs. */
+let wrongAttempts = 0;
 
 function check(label: string, ok: boolean, detail = ""): void {
   console.log(`  [${ok ? "OK  " : "FAIL"}] ${label}${detail ? ` — ${detail}` : ""}`);
@@ -60,12 +105,17 @@ const API = process.env.RECYCLE_API_BASE ?? "http://127.0.0.1:8211";
 
 /** Seeded tenant A, from server/app/seeddata.py. */
 const TENANT_A = "11111111-1111-1111-1111-111111111111";
+/** ADMIN performs the fixture's reset and never sends a wrong password here. */
 const ADMIN = "admin";
-const GOOD_PASSWORD = "tenantA-pw-123";
-const WRONG_PASSWORD = "tenantA-pw-123-WRONG";
+const ADMIN_PASSWORD = "tenantA-pw-123";
+/** STAFF takes every failed login this proof causes (server/app/seeddata.py). */
+const STAFF = "staff";
+const GOOD_PASSWORD = "tenantA-staff-789";
+const WRONG_PASSWORD = "tenantA-staff-789-WRONG";
 
 /** The real login call, exactly as app/api.ts composes it. */
 function realLogin(username: string, password: string, base = API) {
+  if (password === WRONG_PASSWORD) wrongAttempts += 1;
   return (): Promise<LoginHttpResponse> =>
     fetch(`${base}/auth/login`, {
       method: "POST",
@@ -137,13 +187,13 @@ async function l0Reachable(): Promise<void> {
 async function l1RefusedVersusUnreachable(): Promise<void> {
   header("L1 (3a + 3b) — a refused password and an unreachable server, in one run");
 
-  const refused = await attemptLogin(realLogin(ADMIN, WRONG_PASSWORD));
+  const refused = await attemptLogin(realLogin(STAFF, WRONG_PASSWORD));
   show("wrong password, server running", refused);
 
   const port = await deadPort();
   const dead = `http://127.0.0.1:${String(port)}`;
   console.log(`  dead address: ${dead} (bound to obtain the port, then closed)`);
-  const unreachable = await attemptLogin(realLogin(ADMIN, GOOD_PASSWORD, dead));
+  const unreachable = await attemptLogin(realLogin(STAFF, GOOD_PASSWORD, dead));
   show("correct password, nothing listening", unreachable);
 
   // DIRECTION, not difference. "They differ" is satisfied by getting both of
@@ -251,7 +301,7 @@ async function l3NothingRecordedOnFailure(): Promise<void> {
 
   const onRefusal = recorder();
   const r1 = await signInAndRecord(
-    () => attemptLogin(realLogin(ADMIN, WRONG_PASSWORD)),
+    () => attemptLogin(realLogin(STAFF, WRONG_PASSWORD)),
     TENANT_A,
     onRefusal,
   );
@@ -276,7 +326,7 @@ async function l3NothingRecordedOnFailure(): Promise<void> {
   // above passes against a store that silently drops everything.
   const onSuccess = recorder();
   const r3 = await signInAndRecord(
-    () => attemptLogin(realLogin(ADMIN, GOOD_PASSWORD)),
+    () => attemptLogin(realLogin(STAFF, GOOD_PASSWORD)),
     TENANT_A,
     onSuccess,
   );
@@ -298,7 +348,7 @@ async function l3NothingRecordedOnFailure(): Promise<void> {
 /** 3e — the whole path, end to end, against the real server. */
 async function l4EndToEnd(): Promise<void> {
   header("L4 (3e) — a correct password against the running server succeeds");
-  const result = await attemptLogin(realLogin(ADMIN, GOOD_PASSWORD));
+  const result = await attemptLogin(realLogin(STAFF, GOOD_PASSWORD));
   show("correct password, server running", result);
   check("it is ok", result.kind === "ok", result.kind);
   check(
@@ -318,15 +368,77 @@ async function l4EndToEnd(): Promise<void> {
   );
 }
 
+/* --------------------------------------------------------------- fixture -- */
+
+/**
+ * Reset the STAFF account's failed-attempt budget through the product's own
+ * admin route (see the header). Three cells, so a fixture that could not be
+ * established is a named red rather than a credential cell failing for an
+ * unrelated reason.
+ */
+async function resetStaffFailureBudget(when: "start" | "end"): Promise<void> {
+  header(`FIXTURE (${when}) — the staff failed-attempt budget is reset by the admin`);
+  const admin = await attemptLogin(realLogin(ADMIN, ADMIN_PASSWORD));
+  check(
+    "fixture: the ADMIN signs in to perform the reset (red = the admin itself is locked, or the seed is absent)",
+    admin.kind === "ok",
+    admin.kind,
+  );
+  if (admin.kind !== "ok") return;
+  const headers = { authorization: `Bearer ${admin.accessToken}` };
+
+  const rosterRes = await fetch(`${API}/users`, { headers });
+  const roster = (await rosterRes.json()) as { users?: { user_id: string; username: string }[] };
+  const staffRow = roster.users?.find((u) => u.username === STAFF);
+  check(
+    "fixture: GET /users names the staff account",
+    rosterRes.status === 200 && staffRow !== undefined,
+    `status=${String(rosterRes.status)} staff=${staffRow === undefined ? "absent" : staffRow.user_id}`,
+  );
+  if (staffRow === undefined) return;
+
+  const unlockRes = await fetch(`${API}/users/${staffRow.user_id}/unlock-login`, {
+    method: "POST",
+    headers,
+  });
+  const unlock = (await unlockRes.json()) as {
+    failed_attempts_cleared?: number;
+    was_locked?: boolean;
+  };
+  console.log(
+    `  unlock-login -> ${String(unlockRes.status)} cleared=${String(unlock.failed_attempts_cleared)}` +
+      ` was_locked=${String(unlock.was_locked)}`,
+  );
+  check(
+    "fixture: POST /users/{id}/unlock-login answers 200 and reports the count it cleared",
+    unlockRes.status === 200 && typeof unlock.failed_attempts_cleared === "number",
+    `status=${String(unlockRes.status)}`,
+  );
+  if (when === "end") {
+    // THE EFFECT, not the response: exactly the failures THIS run caused were
+    // counted, which holds only if the start reset really moved the floor.
+    check(
+      "fixture: the END reset cleared exactly the wrong-password logins this run made",
+      unlock.failed_attempts_cleared === wrongAttempts,
+      `cleared=${String(unlock.failed_attempts_cleared)} made=${String(wrongAttempts)}`,
+    );
+  }
+}
+
 /* ------------------------------------------------------------------ main -- */
 
 async function main(): Promise<number> {
   console.log(`P1.7 — the login path answers four questions, not one   (API=${API})`);
   await l0Reachable();
-  await l1RefusedVersusUnreachable();
-  await l2TokenRequired();
-  await l3NothingRecordedOnFailure();
-  await l4EndToEnd();
+  await resetStaffFailureBudget("start");
+  try {
+    await l1RefusedVersusUnreachable();
+    await l2TokenRequired();
+    await l3NothingRecordedOnFailure();
+    await l4EndToEnd();
+  } finally {
+    await resetStaffFailureBudget("end");
+  }
   console.log(`\n${failures === 0 ? "ALL GREEN" : `${String(failures)} FAILED`}`);
   return failures === 0 ? 0 : 1;
 }

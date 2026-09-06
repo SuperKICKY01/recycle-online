@@ -75,8 +75,210 @@ not read the green as re-run.**
 
 ## Current phase
 
+**THE SUITE'S HONESTY — every proof run twice by one instrument, the two misreported proofs repaired, and the
+app on an emulator the owner can look at. 2026-09-06.** No sha yet (this record precedes the commit; anchor next
+pass). Supersedes the money-ledger record below AS THE POINTER ONLY — that work stands and is committed
+(`cabd5b2`). Not a STRUCTURE.md unit: a measurement of the instrument every unit relies on, ordered because
+`1887054`'s record listed `prove_user_create` under `Every other server proof GREEN TWICE:` while that file had been
+dying at its first gate since 0019, and because the advisor carried a second proof's verdict from a prior report without the
+mechanism ever being measured.
+**THE SURVEY, RAW (part 1A, reported to the advisor before anything was fixed).** Every `prove_*.py` in
+`server/scripts/` (31) and every `prove:*` in `mobile/package.json` (50), each run TWICE, serially, by a driver
+that ran each as one `subprocess.run` — no shell, no pipe, no chain — and read the child's own return code in
+the same invocation; `PYTHONUTF8=1` pinned on every child. Servers, each discriminated by a shop code only its
+database holds: dev on 8099 for the ten dev-targeting proofs; a scratch on 8210 with `CLOCK_GUARD_TICK_SECONDS=2`
+for `prove_clock_guard` and `prove_year_gate`; a scratch on 8000, carrying `K7M2P9QB` for `prove:loginscreen`,
+for the five live-server mobile proofs. Eight scratches restored from a pre-survey dump
+(`recycle_20260905T131624Z_survey-pre`). READING: **81 proofs, 80 GREEN TWICE, 1 RED (`prove_user_create`,
+both runs, `UndefinedColumnError: column "role" does not exist` at its identity gate, 0 cells), 0 COULD NOT RUN.**
+`prove:loginscreen` — green twice for the first time in any record, because the code it hardcodes was seeded on
+the scratch it drove. The whole pass: about 25 minutes.
+**TWO CORRECTIONS TO THE ADVISOR, RECORDED AT THE ADVISOR'S REQUEST.** (1) The suite is healthier than assumed:
+80 of 81 green twice, not "we do not know what is green". (2) `prove:login` is NOT "unreadable". The MECHANISM,
+measured: each run writes exactly two `failed` rows (L1, L3) against `FAILURE_THRESHOLD=5` in
+`LOCKOUT_WINDOW=15 min`, so two consecutive runs pass and a THIRD fails — the unedited file against a clean
+scratch read green, green, then exit 1 with 7 FAILED and 5 `failed` rows. The 2026-09-05 second-run red came from
+a scratch whose inherited dev rows were still inside the window. The advisor repeated a prior report's conclusion
+without anyone measuring the mechanism; the conclusion was wrong in both directions and the mechanism was a trap
+for `prove:all`, where a third run is one re-run away.
+**THE TWO REPAIRS (part B).** `prove_user_create.py`: `_db_users` now reads
+`SELECT u.id, u.username, r.code AS role, u.is_active, u.token_version FROM users u JOIN roles r ON r.id = u.role_id`,
+spelled in the proof rather than imported from `auth.PRINCIPAL_JOIN` — these reads are the gate's INDEPENDENT side
+(a-checker-must-not-share-the-code-it-checks). Before: 0 cells, exit 1, both runs. After: `cells: 135 OK, 0 FAIL`,
+exit 0, both runs, on `recycle_users_scratch`. `prove:login`: the wrong-password cells now hit the seeded STAFF
+account and the ADMIN resets staff's failed-attempt budget through the product's own `POST /users/{id}/unlock-login`
+at the START (the precondition is created, not trusted) and the END (the scratch is left clean) of every run —
+six fixture cells. Two accounts ON PURPOSE: the account that can unlock is never the account that is locked, so
+the fixture recovers from anything a previous run left, a crash included; a distinct account per run would have
+left a permanent user row per run and driven `POST /users`, which this proof is not about. Proven by THREE
+consecutive runs: `ALL GREEN`, 30 cells each; the table shows per run one `unlocked_by_admin` marker, two `failed`
+rows, one marker. Both TypeScript programs exit 0 after the edit.
+**THE INSTRUMENT (part C): `tools/prove_all.py`, also `npm run prove:all` from `mobile/`.** One command, every
+proof, N runs (default 2). It STANDS UP what the suite needs, by construction rather than trust: a fresh dump of the
+live database (a read), eight scratches restored from it, the login-screen shop code seeded on the mobile scratch
+and nowhere else, three uvicorn children bound by ENVIRONMENT DICT on free ports (dev; scratch with the 2-second
+tick; mobile scratch), each DISCRIMINATED before any proof runs — the mobile server must resolve `K7M2P9QB` and the
+other two must refuse it, or the run refuses. It REFUSES LOUDLY, exit 2 and nothing run, without: a healthy
+`recycle_pg`, the three URLs and `JWT_SECRET` in `server/.env`, `uv`/`node`/`npm` on PATH, the 0017 backup
+`prove_branches --from` needs, a dump or restore that fails, a server that fails its discrimination. FOUR CLASSES in
+its summary, by name: GREEN (exit 0 every run AND the proof's own `<NAME>_EXIT=` line present); GREEN,
+EXIT-CODE-ONLY (exit 0 but no self-printed exit line — the fourteen the survey found, named so the reader knows which
+greens rest on a printed verdict and which on a status alone; not fixed here, filed); RED (any exit 1, first failure
+line quoted); COULD NOT RUN (exit 2 — the proofs' own refused/incomplete code, `--offline` included — a timeout, or a
+command that could not start; never a pass). Exit 0 only when RED and COULD NOT RUN are both empty; 1 otherwise; 2
+on a preflight refusal; `PROVE_ALL_EXIT=<n>` last, its absence a failure. Logs carry NO colon (`prove_login.run1.log`)
+— the survey's own `prove:login.run1.log` had become an NTFS alternate data stream on a file named `prove`, now
+`CLAUDE.md § Machine footguns` "A COLON IN A FILE NAME DOES NOT FAIL ON THIS BOX" with its evidence section.
+**THE INSTRUMENT'S OWN READING AND ITS DISPROOFS.** `python tools/prove_all.py` bare over the whole tree:
+preflight held (docker healthy, `.env` complete, the 0017 backup present, 81 proofs enumerated: 31 server, 50
+mobile); a fresh dump `recycle_20260905T181213Z_prove-all`; eight scratches restored; the three servers on free
+ports each discriminated as expected (`dev` 404, `scratch` 404, `mobile` 200 for `K7M2P9QB`); then
+**TOTAL 81, GREEN 67, GREEN-EXIT-CODE-ONLY 14, RED 0, COULD-NOT-RUN 0**, 950 seconds, `PROVE_ALL_EXIT=0`, logs
+under `E:\recycle-online-backups\_prove_all\20260905T181212Z`. The fourteen it names: server `prove_auth`,
+`prove_bills`, `prove_clock_guard`, `prove_daily_report`, `prove_revocation`, `prove_rls`, `prove_year_gate`;
+mobile `prove:signout`, `prove:cachetenant`, `prove:draftowner`, `prove:login`, `prove:loginscreen`,
+`prove:statuscounts`, `prove:branch` — filed at `OPEN_ITEMS.md § Verification gaps — built, not proven`.
+DISPROVED IN BOTH DIRECTIONS IT MUST FAIL: with the committed (pre-repair) `prove_user_create.py` swapped into the
+tree, `--only prove_user_create --runs 1` read `RED 1`, quoted its traceback, `PROVE_ALL_EXIT=1`; the repaired
+file restored byte-identical (`cmp` exit 0). With `--pre0018 E:\does-not-exist`, the preflight printed
+`REFUSED: prove_branches needs a 0017 (pre-0018) backup dir; not found` and exited 2 with nothing run. NOT
+DISPROVED BY A RUN: the COULD-NOT-RUN class (a proof exiting 2) — no proof in the tree exits 2 without a flag the
+instrument does not pass, so that branch is read from the source, not from a run.
+**THE DUMP THE 0020 RECORD NAMES.** `recycle_20260905T035307Z_pre-0020` was not in the backups tree because it was
+never written there: the hook log (`gate.log`, 2026-09-05T03:53:05Z) shows `backup_db.py --out` pointed at that
+session's TEMP scratchpad, where it still sits beside a post-0020 dump and a clean-0017 dump. Taken, and parked
+where nothing else looks — a name cited without its root, the same class as a citation to a heading that does not
+exist. Both 0020 dumps were COPIED into `E:\recycle-online-backups\` (originals untouched), every file verifying
+against `checksums.sha256`, so the record's name resolves there now. Filed under `OPEN_ITEMS.md § Documentation`.
+**THE EMULATOR (part D) — the app is on a screen on this box, signed in as admin, and it talks to the server.**
+The owner said install what is missing, so it was installed — all of it on `E:\android\`, because the system drive
+had 2.8 GB free (a machine fact the owner should know: Windows on `C:` is at 99%). Present now: Temurin JDK 21 and
+Android Studio 2026.1.4 (ZIP, no installer, SHA-256 verified against the studio page), the command-line tools, an
+SDK root on `E:` whose existing components are NTFS junctions to the untouched `C:` SDK, the API 36 Google-APIs
+x86_64 system image, the AVD `recycle_api36` (Pixel 7, Android 16), and WHPX acceleration measured usable.
+`npx expo run:android` built the debug app in 4m19s against the August Gradle cache and installed it — and the app
+DIED AT STARTUP, twice, once more after a Gradle clean: `NoSuchMethodError … getDirectConverter …` inside
+`expo-font`'s module registration. NOT a stale build: `npm ls expo-font` showed `@expo/vector-icons@15.1.1` (added
+2026-09-01) pulling `expo-font@57.0.2` to the TOP of `node_modules` while `expo@54.0.36` kept its own
+`expo-font@14.0.12` nested — Expo's autolinker compiles the top one, which targets a newer `expo-modules-core` than
+the 3.0.30 installed. EVERY build from this tree since 2026-09-01 would have crashed at startup on a handset too;
+none had been made, which is why nobody saw it. `npx expo install expo-font` pinned `"expo-font": "~14.0.12"` in
+`mobile/package.json` (the lock deduped to one copy; the plugin line it also added to `app.json` was reverted —
+this app bundles no font); both TypeScript programs exit 0 after it; the rebuild took 7 s and the process stayed
+alive. THIS IS THE ONE CHANGE BEYOND THE BRIEF'S LETTER: a dependency pin in `package.json` and `package-lock.json`,
+made because the brief's goal — the app on the owner's screen — was unreachable without it; it is two files, the
+owner can reject it at the stop. Then the login was DRIVEN through adb + uiautomator, one character at a time
+(Gboard's first-run "Try out your stylus" sheet had been swallowing the keystrokes; Gboard was disabled for the run
+and re-enabled after): shop code `53R42Z7S` → `ตั้งค่า` → `admin` / the seeded password → `เข้าสู่ระบบ`. The screen
+then read `เข้าสู่ระบบแล้ว` with `ยอดวันนี้`, `ราคารับซื้อ`, `ตั้งค่าร้าน`, `บัญชีของฉัน`, `ออกจากระบบ` and
+`เลือกผู้ขาย เพื่อเริ่มบิลใหม่`; the server's log, from the emulator's address `192.168.1.238`, carried
+`POST /auth/shop-code 200`, `POST /auth/login 200`, `GET /products`, `GET /sellers`, `GET /grade-tiers`, `GET /shop`,
+`GET /whoami`, then eleven `POST /seller-code-reservations` as the phone topped up its code reserve — the app
+reached the server, not merely launched; dev's bill count did not move. The server is
+bound to `recycle_emulator_scratch` (restored from the pre-survey dump), so the owner's taps land on a copy; the
+emulator, Metro (`expo start -c --dev-client`, port 8081) and that server were LEFT RUNNING for him. The reading
+list, in fastest-fail order and marked emulator-or-handset, went to the owner with this record; the device-gaps
+section below now carries the emulator's coverage as a dated paragraph.
+**A RED-TEAM PASS BEFORE THE COMMIT, AND WHAT IT FOUND.** Three reviewers were given the diff and RED_TEAM.md's four
+inputs and nothing else, then one refuter per finding: seven findings survived refutation, all in this unit's own
+files, all fixed here and re-proven. In `tools/prove_all.py`: `--runs 0` (or a negative) classified every proof GREEN
+on nothing and exited 0 — now REFUSED (exit 2, measured); a TIMEOUT or a command that could not start was filed under
+RED against the file's own definition — now COULD NOT RUN (measured with `--timeout 1` on `prove:money`: `exit=TIMEOUT`,
+`COULD-NOT-RUN 1`, `PROVE_ALL_EXIT=1`, and the node process count read 12 before and 12 after, so nothing leaked);
+the per-proof timeout killed only `uv`/`npm.cmd` and
+left the python or node grandchild writing — now the whole tree is killed (`taskkill /T`); one TypeScript error would
+have surfaced as fifty exit-2 rows with the compiler's message quoted nowhere — now `npm run build` runs once in the
+preflight and a compile error is a refusal quoting its first `error TS` line; the quoted "first failure" matched the
+words REFUSED/FAILED inside PASSING cells — now the first `[FAIL]` cell, else the compiler's error, else the LAST
+exception line (the pre-repair `prove_user_create` now reads
+`sqlalchemy.exc.ProgrammingError … column "role" does not exist`, measured); the docker health test passed
+`(unhealthy)` because `healthy` is its substring — now `(healthy)` exactly; GREEN tested the exit line's presence,
+not its value — now the value must read 0, and a printed non-zero under process exit 0 is RED; and the two-way
+discrimination could not tell dev from the clock scratch — now each server must resolve ITS database's fixture code
+and refuse the other two (nine readings, all `ok`, measured). In the texts: OPEN_ITEMS said five of the seven
+exit-code-only mobile proofs preset red — six do, only `prove:branch` does not, counted by `grep -c` per file; the
+`1887054` sentence is now quoted verbatim; START_HERE's exit-2 wording now says the dump and the scratch restores may
+already have run. In `prove:login`: the fixture asserted the unlock's RESPONSE — a deleted `clear_lockout` would still
+answer 200 — and now asserts its EFFECT: the END reset must report exactly the wrong-password logins this run made
+(a 31st cell), which a no-op reset fails from the second run on; its "recovers from any state" claim is bounded to
+lockout state. Re-proven: `prove:login` three consecutive runs `ALL GREEN`, 31 cells; `prove_user_create` 135 OK
+once more; both TypeScript programs exit 0. One finding was refuted (a citation count read from an earlier tree). The
+reviewers did not RUN the instrument, by rule; what they could not check is in the workflow transcript.
+**THE DISK, MEASURED FIRST BECAUSE IT OUTRANKED THE COMMIT.** During the build the system drive fell from 2.8 GB
+free to 0.5 GB: a 1.48 GB Android Studio installer that a `winget show` query had dropped into `%TEMP%` (found by
+its creation time, removed), and Docker's data disk on `C:` growing with every scratch restore. At 04:14 UTC the
+owner moved that disk to `E:\DockerDesktopWSL\disk\docker_data.vhdx` (5.11 GB; Docker Desktop's
+`CustomWslDistroDir`); Postgres logged `received fast shutdown request`, `checkpoint complete`, `database system is
+shut down` BEFORE the copy, and on `docker compose up -d` afterwards `database system was shut down at 2026-09-06
+04:14:20 UTC` — a clean start, no recovery — with `recycle` reading 980 bills and `0020`, unchanged. Had `C:` filled
+DURING a write instead, the database could have been damaged: Postgres's crash safety holds only where the storage
+layer reports a failed write honestly, and a dynamically expanding virtual disk on a full host disk is exactly where
+that promise is weakest. The most recent full dump before the move is `recycle_20260905T181213Z_prove-all` on `E:`;
+`recycle_20260906T042042Z_pre-commit-disk-guard` was taken after the restart. `C:` reads 7.2 GB free at this writing.
+**THE FINDING THE EMULATOR PRODUCED, FILED WITH ITS TRADE-OFF.** Eighty-one green proofs and an app that could not
+open: the headless suite cannot see a native dependency conflict, so a green suite is not evidence the app starts.
+What would catch it next time — an emulator smoke run inside `prove:all` (minutes, a running AVD, the only check
+that sees the runtime link) against a seconds-long static gate that every `expo-*` package resolves to one version —
+is at `OPEN_ITEMS.md § Verification gaps — built, not proven`, decision left to the owner; the lesson is the
+2026-09-06 amendment to `lessons/two-green-proofs-do-not-cover-the-seam.md`. The `prove:login` fixture design —
+the unlocking account is never the locked one, so a crashed run cannot poison the next — stands in the proof's
+header as better than either option the brief offered, where the next reader meets it. COMMIT FILE SET, declared
+before these last edits: ten non-lesson paths (`CLAUDE.md`, `EVIDENCE.md`, `OPEN_ITEMS.md`, `PROJECT_STATUS.md`,
+`START_HERE.md`, `mobile/package-lock.json`, `mobile/package.json`, `mobile/src/proof/proveLogin.ts`,
+`server/scripts/prove_user_create.py`, `tools/prove_all.py`), then the lesson question answered yes and the set
+extended by two (`lessons/two-green-proofs-do-not-cover-the-seam.md`, `lessons/all-lessons.md`); the staged set
+must EQUAL those twelve.
+**NOT OBSERVED.** No real handset ran this bundle: haptics, real-light legibility, wet or gloved fingers, the OEM
+Thai font, iOS metrics and the refusing keystore stay where the handset list leaves them. No production row exists;
+the dev-targeting proofs wrote their usual permanent debris to dev, twice more. The fourteen exit-code-only proofs
+were named, not repaired.
+**READINGS (each command bare, exit read in the same invocation).** The survey: 81 proofs, 162 runs, 80 green
+twice, `prove_user_create` red twice, none unrunnable. Disproof of the login mechanism: unedited `prove:login` ×3
+on a clean scratch, exits 0, 0, 1 (7 FAILED; 5 `failed` rows). Repairs: `prove_user_create` exit 0 ×2, 135 cells;
+`prove:login` exit 0 ×3, 30 cells. `npm run typecheck` exit 0; `npm run typecheck:app` exit 0.
+`tools/prove_all.py`: exit 0, `TOTAL 81 GREEN 67 GREEN-EXIT-CODE-ONLY 14 RED 0 COULD-NOT-RUN 0`, 950 s; its two
+disproofs exit 1 (RED 1) and exit 2 (REFUSED). Doc checkers, run after the last edit: `verify_shared_checks.py`
+exit 0 (IDENTICAL, 4 items); `build_all_lessons.py --check` exit 0 (67 files); `verify_citations.ps1` bare over
+the canonical list, run AFTER this sentence was written: SOURCES=15 CITATIONS=680 BROKEN=6, the six being the pre-existing six
+(`ROADMAP.md` STAGE 1 and STAGE 3, `RED_TEAM.md`, `CLAUDE.md` Workflow, SRS_MAP's wrapped Known stale, nemesis's
+Known), so this unit's citations all resolve and none of the floor moved. THE TOOLCHAIN, every step observed: the
+system drive had 2.8 GB free, so everything went to `E:\android\`. Temurin JDK 21.0.12.1 (zip, per-user) at
+`E:\android\jdk\`; Android Studio 2026.1.4 (build AI-261.26222.65) from the ZIP the studio page links
+(`ide-zips/2026.1.4.7/android-studio-quail4-windows.zip`, SHA-256 `fabc8850…e04e` matching the page) at
+`E:\android\android-studio\`, its bundled JBR being OpenJDK 25 — the `.exe` needs a UAC click nobody was there to
+give, and two zip URLs guessed by pattern 404'd first; command-line tools 23.0 into a NEW SDK root
+`E:\android\sdk\` whose `platform-tools`, `platforms`, `build-tools`, `ndk`, `emulator`, `cmake` are NTFS
+JUNCTIONS to the existing C: SDK (nothing on C: touched, nothing duplicated); the system image
+`system-images;android-36;google_apis;x86_64` r7 (4.4 GB; the new "Android CLI" behind `sdkmanager` crashes on
+exit with `0xC0000409` after a successful unzip — the package landed; the same CLI splits the package path on `;`
+unless it arrives through a `.cmd` wrapper); the AVD `recycle_api36` (Pixel 7) with `ANDROID_AVD_HOME=E:\android\avd`;
+`emulator -accel-check` `WHPX … is installed and usable`; boot to `sys.boot_completed=1` in under a minute,
+`ro.build.version.sdk=36`, `wm size 1080x2400`. THE SERVER FOR THE EMULATOR: uvicorn on `0.0.0.0:8000` bound to
+`recycle_emulator_scratch` (restored from the pre-survey dump — the owner's taps land there, not on dev; one
+argument, `--db recycle`, points it at dev instead). ADDRESS: the app's baked `extra.apiBaseUrl` is
+`http://192.168.1.238:8000`, this box's Ethernet address, which the emulator reaches through its NAT exactly as a
+handset on the LAN does — chosen over the host alias `10.0.2.2` because it needs no `app.json` edit and stays true
+for a real phone; both were exercised from the guest's browser and both hit `/health` on the server's log
+(`192.168.1.238:49537` and `127.0.0.1:49677`). THE BUILD: `npx expo run:android --no-bundler` with
+`GRADLE_USER_HOME=E:\gradle-home` (the 2026-08-12 build's cache, JDK 17 inside it) — `BUILD SUCCESSFUL in 4m 19s`,
+installed and opened; then the app DIED AT STARTUP on
+`java.lang.NoSuchMethodError: No static method getDirectConverter(...) in class expo.modules.kotlin.types.ReturnTypeKt`
+from `expo.modules.font.FontLoaderModule.definition`. First hypothesis, a stale August intermediate
+(`node_modules/expo-font/android/build` dated 2026-08-12): `gradlew clean` (exit 1 on a CMake sub-step, the module
+`build` dirs gone) and a `--no-build-cache` rebuild in 2m58s — SAME crash, hypothesis refuted. Second, measured:
+`npm ls expo-font` — `@expo/vector-icons@15.1.1 → expo-font@57.0.2` hoisted to the top, `expo@54.0.36 →
+expo-font@14.0.12` nested; `getDirectConverter` exists in neither current source. `npx expo install expo-font`
+pinned `~14.0.12`, `npm ls` then shows ONE deduped copy; rebuild 7 s; the process stayed alive and focused;
+`logcat -b crash` gained no new `FATAL EXCEPTION`. Metro: `npx expo start -c --dev-client` on 8081,
+`adb reverse tcp:8081`, `Android Bundled … index.ts (1217 modules)` — the bundle the emulator ran is the one Metro
+built after clearing its cache, which is the boot check's observable. THE SIGN-IN, driven by adb: shop code read
+back `53R42Z7S` before `ตั้งค่า` was pressed, `admin` read back before `เข้าสู่ระบบ`; the dashboard then carried
+`เข้าสู่ระบบแล้ว`; the server log, from `192.168.1.238`, `POST /auth/login 200` followed by `/products`, `/sellers`,
+`/grade-tiers`, `/shop`, `/whoami` and eleven `POST /seller-code-reservations` — all against
+`recycle_emulator_scratch`; dev's `purchase_bills` count was unchanged by the emulator.
+
 **THE MONEY LEDGER — money leaving the shop is a row, every shop has it, and a bill's paid status is derived and
-stored nowhere. 2026-09-05.** No sha yet (this record precedes the commit; anchor next pass). Supersedes the
+stored nowhere. 2026-09-05.** Committed at `cabd5b2` (anchored 2026-09-06; the record said "no sha yet"). Supersedes the
 permission-model record below AS THE POINTER ONLY — that work stands and is committed (`1887054`). This is
 `STRUCTURE.md` section 2, unit 3 of its section 12 ("schema and the degenerate path ONLY"), built as the THIRD unit,
 under eight decisions of the owner's taken at the S0 stop on 2026-09-05 and recorded where each is applied.
@@ -3020,6 +3222,28 @@ not a new feature:
 
 Everything here is unverified, not broken. It is listed so no one
 reports it as proven.
+
+**AN EMULATOR NOW EXISTS ON THIS BOX — 2026-09-06 — and this is what it can and cannot judge on the list
+below.** `recycle_api36`: Android 16 (API 36), Google APIs x86_64 system image, Pixel 7 profile, 1080×2400, WHPX,
+AVD and SDK on `E:\android\` (see the suite-survey record under § Current phase). Read every item below against
+two facts first: the emulator runs the **x86_64** build of the native code — `expo-sqlite`, reanimated, worklets —
+while every handset runs **arm64**, so a native green here is not the yard's artefact; and its Thai font is
+Google's own, not an OEM's. THE EMULATOR CAN JUDGE: the login screen and the sign-in flow end to end against a real
+server (driven 2026-09-06, admin, Shop A on a restored scratch); every screen's layout, wrapping and Thai rendering
+as "renders with no bundled font", not as "renders on the yard's phone"; weighing, saving and the sync state
+(pending → synced, the `doc_no` arriving); the void flow, including the staff 403 refusal, by signing in as `staff`;
+the whole OFFLINE list through the emulator's own network switch (extended controls → cellular/Wi-Fi off, or
+airplane mode): queue-health amber/red, backoff, parked bills, save-offline-then-reconnect; force-quit draft
+recovery via `adb shell am force-stop dev.chutipon.recycle` mid-draft; the expired-session and poison-alarm paths
+given a server one can stop; the stale-cache price gate given a master-data edit on the server; the daily money
+screen on Android for the first time; Hermes `Intl` with a `timeZone` option and `crypto.randomUUID`, because
+Hermes is what runs. THE EMULATOR CANNOT JUDGE, and a real handset is still owed for: haptics (`expo-haptics` is
+a no-op on it); legibility in real light and at the yard's viewing distance; wet or gloved fingers and the real
+size of every touch target; the OEM Thai font and the spread of screen sizes; the REFUSING keystore — a locked
+device, a restore from backup, a `deleteItemAsync` that throws; sync while backgrounded under a real OEM's battery
+policy (the emulator's Doze is not a vivo's); two devices RACING on real radios; the arm64 native paths named
+above; and the entire iOS column — Thai metrics, the Keychain, the daily screen's iOS-only history — for which
+this box has neither a Mac nor an iPhone.
 
 - **Android: ONE pass, 2026-07-29, on a borrowed handset.** No longer
   "never run", and nowhere near covered. What was actually exercised:

@@ -278,6 +278,19 @@ def named(rows: list[dict], username: str) -> dict | None:
 # a convention. `users` carries FORCE RLS, so a read with no context returns zero
 # rows for every role -- that is not a hypothetical, provision_shop.py was
 # already bitten by it on `tenants`.
+#
+# THE ROLE IS A JOIN, NOT A COLUMN, since migration 0019: `users.role` was
+# dropped and `users.role_id` points at the tenant's `roles` row, whose `code`
+# is what the API calls `role`. (The cells below compare ids, token_versions and
+# row COUNTS from these rows; every `role` a cell asserts comes from an API body.
+# The column is kept so a row read here stays the shape a reader expects.) This SELECT
+# spells the join itself rather than importing auth.PRINCIPAL_JOIN: these reads
+# are the INDEPENDENT side of every cell (the gate asks whether the server is
+# reading THIS database; the no-write counts ask what the server left behind),
+# and a gate that borrowed the server's own SQL would agree with the server by
+# construction (lessons/a-checker-must-not-share-the-code-it-checks.md). The
+# 0019 unit edited this file and never ran it: the old SELECT died here with
+# `column "role" does not exist`, before any cell, on every 0019+ database.
 # ---------------------------------------------------------------------------
 async def _db_users(tenant_id) -> list[dict]:
     from app.db import engine, tenant_connection
@@ -286,8 +299,10 @@ async def _db_users(tenant_id) -> list[dict]:
         async with tenant_connection(tenant_id) as conn:
             rows = (
                 await conn.execute(
-                    text("SELECT id, username, role, is_active, token_version"
-                         " FROM users ORDER BY username")
+                    text("SELECT u.id, u.username, r.code AS role, u.is_active,"
+                         " u.token_version"
+                         " FROM users u JOIN roles r ON r.id = u.role_id"
+                         " ORDER BY u.username")
                 )
             ).mappings().all()
         return [dict(r) for r in rows]

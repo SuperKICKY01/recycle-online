@@ -126,7 +126,11 @@ on 2026-08-28 — nothing weakened, only relocated.
   (`python -c` → false `SyntaxError`) or pathspec/truncation (`git commit -m`), and
   the mechanism DIFFERS BY COMMAND, so "it worked last time" measures only the last
   command. Instead: write it to a file — `git commit -F <file>`, a `.py` script
-  rather than `python -c`.
+  rather than `python -c`. AND NOT THROUGH A HEREDOC: a quoted heredoc body loses one
+  level of backslash escaping on its way to the file (measured 2026-09-06: a Python
+  patch typed with `E:\\recycle` landed as `E:\recycle`, whose `\r` Python then read
+  as a carriage return and mangled the line; an `echo` line did the same). Write the
+  file with the Write tool and run it by path.
 - **`core.autocrlf` is `true` here, and it does NOT decide the line endings** —
   `.gitattributes` `eol=lf` beats it at checkout, and working tree and blob are two
   objects with a filter between. Instead: measure the one you mean — working tree
@@ -182,6 +186,18 @@ on 2026-08-28 — nothing weakened, only relocated.
   (`Select-String`, the Read tool); a content grep on the explicit path still prints
   `binary file matches (found "\0" byte around offset N)`, which is the tell.
   → `EVIDENCE.md § ripgrep NUL-skip: the silent directory undercount`
+- **A COLON IN A FILE NAME DOES NOT FAIL ON THIS BOX — NTFS writes an ALTERNATE DATA
+  STREAM of the file named by the part BEFORE the colon, and the write reports
+  success.** `results\prove:login.run1.log` produced a file `prove` carrying a stream
+  `login.run1.log`; a hundred such logs became a hundred streams on ONE file, a
+  directory listing shows one name, Git Bash cannot open them by the name they were
+  written under (`No such file or directory`), and a copy of the directory drops them
+  all. The writer that produced them can still read them back by the same path, so
+  its own checks stay green. Instead: never let a `:` into a path this box writes
+  (`prove:login` → `prove_login`), and when a file "written a moment ago" is missing,
+  list the streams before concluding it was never written —
+  `Get-Item <file> -Stream *` and `Get-Content <file> -Stream <name>`.
+  → `EVIDENCE.md § NTFS colon: the hundred logs on one file`
 
 ### Boot check — name the observable, don't assume the environment
 

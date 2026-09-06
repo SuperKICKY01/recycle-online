@@ -267,6 +267,31 @@ directory grep the same silent way, so a decision-bearing count is cross-checked
 against an explicit file list or a NUL-tolerant reader, and every zero carries a
 positive control.
 
+## NTFS colon: the hundred logs on one file
+
+Backs `CLAUDE.md § Machine footguns` "A COLON IN A FILE NAME DOES NOT FAIL ON THIS BOX".
+
+Measured 2026-09-06, during the suite survey that preceded `tools/prove_all.py`. The
+survey driver named each log after its proof, so the fifty mobile proofs wrote
+`results\prove:login.run1.log`, `results\prove:sync.run2.log` and so on — a hundred
+files by intent. NTFS read every `<name>:<rest>` as `<file>:<stream>`: the directory
+held ONE file named `prove`, and `Get-Item results\prove -Stream *` counted 101
+streams (the hundred logs plus the unnamed default `:$DATA`). Nothing failed at write
+time; Python's `Path.read_bytes()` on the colon path read each stream back, so the
+driver's own cell scan saw every log's content and reported it. The tell came only
+from a second reader: `tail results/prove:login.run1.log` under Git Bash answered
+`No such file or directory` for a file the driver had just summarised.
+
+Two consequences, both silent. (1) A directory copy (`cp -r`, an archive, a
+git add) carries the file `prove` and drops every stream, so the evidence would have
+survived only on this disk. (2) A reader looking for the log by name concludes it was
+never written — the same shape as the exit-line-absence footgun, arriving from the
+file system rather than the shell. `tools/prove_all.py` therefore names its logs with
+the colon replaced (`prove_login.run1.log`) and says so in its docstring; the survey's
+own logs were read back for the record through `Get-Content -Stream`. Two-homes test:
+this is a property of NTFS on the box the proofs run on, not something the project
+would relearn about its own code — a footgun, not a lesson.
+
 ## Boot check: the incidents behind three observables
 
 Backs `CLAUDE.md § Boot check`. Three fragments, one per bullet — the two
@@ -350,6 +375,22 @@ recorded above" in the third piece refers to it), and the four claims of
   same files and nothing requires it to open one before it answers. So the rule
   was applied to the role that was not making the error — which is why three
   instances were recorded here and the rate did not change.
+
+  TWO MORE, 2026-09-06, both about PROOFS and both caught by running the whole
+  suite under one instrument instead of reading the last report of it. (1)
+  `1887054`'s record listed `prove_user_create` under `Every other server proof GREEN
+  TWICE:`; the file had been dying at its first gate since 0019 dropped
+  `users.role`, and the same commit had EDITED it. The survey read exit 1 twice, 0
+  cells. (2) The 0020 record called `prove:login` "a proof whose result is
+  UNREADABLE" from one observation of a second-run red, and the advisor carried
+  that verdict into the next brief. The mechanism, measured: two `failed` rows per
+  run against a threshold of five in fifteen minutes — green, green, red on the
+  THIRD run (7 FAILED, five rows), and the 2026-09-05 red came from a scratch whose
+  inherited rows were still inside the window. The conclusion was wrong in both
+  directions: the proof WAS readable twice, and it WAS a trap for any instrument
+  that runs it a third time. `tools/prove_all.py` is the standing answer to the
+  promotion mechanism for proofs: the report of the suite is now produced by the
+  run, not remembered from it.
 
 ## Skills are paths: the paraphrase and the tripwire firing
 

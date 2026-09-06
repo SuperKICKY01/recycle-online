@@ -141,3 +141,34 @@ unhappy path at once?** Proof coverage is measured per file and defects are not.
 Every subsystem boundary in this project — transport/store, store/health,
 health/screen, gate/sheet — is a place where two correct halves can compose into
 a screen that lies, and no amount of proving either half harder will reach it.
+
+## AMENDED 2026-09-06: eighty-one green proofs, and an app that could not open
+
+The seam can sit BELOW every proof file. On 2026-09-06 every proof in this
+repository — 31 server, 50 mobile — ran green twice under one instrument
+(`tools/prove_all.py`), and the debug build of the app died at startup on every
+launch: `java.lang.NoSuchMethodError … getDirectConverter` inside `expo-font`'s
+native module registration. Cause: `@expo/vector-icons@15.1.1`, added
+2026-09-01, hoisted `expo-font@57.0.2` to the top of `node_modules` while
+`expo@54.0.36` kept the `expo-font@14.0.12` it needs nested underneath; Expo's
+autolinker compiles the top one, against an `expo-modules-core` API the installed
+3.0.30 does not have. Every device build from that tree since 2026-09-01 would
+have crashed identically. None had been made, so nothing saw it.
+
+Why no proof could: the headless suite runs node against `dist/` and Python
+against Postgres. Not one of the 81 links a native module, resolves the Android
+dependency graph, or starts the app. The two proven sides are "the JS and the
+server behave" and "the native project builds"; the seam is the RUNTIME LINK
+between the compiled native modules, which no file owns. The green count went UP
+across 0019 and 0020 while the app was unopenable — the same shape as the
+sign-out instance above, one layer down, where the components are not two proof
+files but two toolchains.
+
+The instance was caught only because an emulator was stood up for another
+reason. What would catch it next time is filed with its trade-off in
+`OPEN_ITEMS.md § Verification gaps — built, not proven` (the entry on the
+headless suite and native dependencies): the cheap half — `npm ls` must show ONE
+resolved version of every `expo-*` package — is seconds and would have caught
+this conflict; the honest half — the app STARTS on an emulator — is minutes and a
+running AVD, and is the only check that sees the runtime link. Which of them
+`prove:all` carries is the owner's decision, and this amendment does not make it.

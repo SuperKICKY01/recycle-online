@@ -698,6 +698,43 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Verification gaps — built, not proven
 
+- **THE HEADLESS SUITE CANNOT SEE A NATIVE DEPENDENCY CONFLICT — a green suite is not
+  evidence the app STARTS. Filed 2026-09-06.** Eighty-one proofs green twice that day, and
+  the debug build died at startup on every launch (`NoSuchMethodError … getDirectConverter`
+  in `expo-font`): `@expo/vector-icons@15.1.1`, added 2026-09-01, had hoisted
+  `expo-font@57.0.2` over the `expo-font@14.0.12` that `expo@54.0.36` needs, and the
+  autolinker compiles the hoisted one. Every device build from this tree since 2026-09-01
+  would have crashed identically; none was made, so 81 green proofs said nothing about it.
+  Fixed in the suite-survey unit by pinning `expo-font ~14.0.12` in `mobile/package.json`.
+  WHAT WOULD CATCH IT NEXT TIME — two answers with opposite costs, THE DECISION LEFT TO THE
+  OWNER, nothing built here. (a) An emulator smoke run inside `tools/prove_all.py`: build
+  the debug APK, install it on a running AVD, launch, and assert the process is alive and a
+  `POST /auth/login` reached the server. It is the only check that sees the runtime link.
+  It costs a Gradle build (three to five minutes warm, twenty cold), a booted emulator (a
+  minute, plus about 10 GB of image and AVD on disk) and a box that can run one, so
+  `prove:all` would go from sixteen minutes to twenty-five or more and would have to REFUSE
+  on any machine without the toolchain rather than skip. (b) A static gate, seconds, no
+  device: `npm ls --json` must resolve exactly ONE version of every `expo-*` package and
+  `npx expo install --check` must report nothing outdated. It would have caught THIS
+  conflict (two `expo-font` versions) and cannot catch one that manifests only at runtime
+  under a single version. (b) belongs in `prove:all` regardless; whether (a) does is the
+  trade-off. The lesson is the 2026-09-06 amendment to
+  `lessons/two-green-proofs-do-not-cover-the-seam.md`.
+- **FOURTEEN PROOFS REPORT GREEN BY EXIT CODE ALONE — no self-printed `<NAME>_EXIT=`
+  line — measured 2026-09-06 by the suite survey over all 81 proofs, and NOT fixed.**
+  Server: `prove_auth`, `prove_bills`, `prove_clock_guard`, `prove_daily_report`,
+  `prove_revocation`, `prove_rls`, `prove_year_gate`. Mobile: `prove:signout`,
+  `prove:cachetenant`, `prove:draftowner`, `prove:login`, `prove:loginscreen`,
+  `prove:statuscounts`, `prove:branch`. Every one of them WAS green twice, and each
+  tallies its own failures — but the status a reader gets is the process's, which on
+  node defaults to 0 for a run that ends before its tally
+  (`lessons/a-default-exit-code-is-a-default-verdict.md`; six of the seven mobile ones preset
+  red at top level, counted by `grep -c '^process.exitCode = 1;'` per file on 2026-09-06 --
+  only `prove:branch` does not). `tools/prove_all.py`
+  reports this set as its own class, GREEN-EXIT-CODE-ONLY, by name on every run, so
+  the reader knows which greens rest on a printed verdict and which on a status alone.
+  Naming the class is this unit's deliverable; adding the exit line to fourteen files
+  is a sweep for a unit that owns them.
 - **THE GRADE ROUTES' EXTERNAL-SERVER PROOFS HAVE NOT BEEN RUN AGAINST THE TIER MODEL
   — recorded 2026-08-31 (P1.24 commit 1b).** `prove_master_write`,
   `prove_master_data_gate`, `prove_seller_pricing`, `prove_master` and
@@ -710,6 +747,11 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   same refusal those cover. A green not run today is not written as green. THE FIRST
   PHASE THAT STANDS UP A LIVE API FOR ANOTHER REASON SHOULD RUN THEM against the tier
   model.
+  **RUN 2026-09-06, the suite survey:** all five (`prove_master_write` 131 cells,
+  `prove_master_data_gate` 15, `prove_seller_pricing` 27, `prove_master` 18,
+  `prove_daily_report` 74) exit 0 twice against a uvicorn bound to dev at 0020, and
+  `tools/prove_all.py` now runs them on every invocation. Closed as a gap; the debris
+  they write to dev is the standing cost, unchanged.
 - **THE PHONE'S DASHBOARD (P1.23 item 4 unit 3) IS HEADLESS-PROVEN, THE HANDSET HALF
   IS UNOBSERVED.** `prove:dashboard` (49 cells) and the real-HTTP client run against a
   fresh uvicorn cover the builders and the request/parse path, but NO screen was drawn
@@ -1609,6 +1651,14 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
     suite is only as honest as the run that says it passed. The repair — the `roles`
     join `auth.PRINCIPAL_JOIN` already spells — is the users step's; this entry is the
     accurate filing.
+    **CLOSED 2026-09-06 (the suite-survey unit; no sha yet, anchor next pass).** The
+    survey confirmed the red first — both runs exit 1, 0 cells, at the gate — then
+    `_db_users` was rewritten as `SELECT u.id, u.username, r.code AS role, u.is_active,
+    u.token_version FROM users u JOIN roles r ON r.id = u.role_id`, spelled in the proof
+    rather than imported from `auth.PRINCIPAL_JOIN` because these reads are the gate's
+    INDEPENDENT side. Read back: `prove_user_create.py --database recycle_users_scratch`
+    exit 0 twice, `cells: 135 OK, 0 FAIL` both runs, where the file had run 0 cells
+    since 0019.
   - **`prove:login` IS A PROOF WHOSE RESULT IS UNREADABLE under `proof-must-run-twice`,
     a standing rule of this project.** Measured 2026-09-05 against a uvicorn bound to a
     scratch: with no server on its default 8211 it is red twice (`status=0`); pointed by
@@ -1623,6 +1673,20 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
     scratch per run as the self-restoring server proofs do), or a DISTINCT account per
     run. Not this unit's; every record before this one listed the mobile sweep green
     twice without naming this proof's second run.
+    **CORRECTED AND CLOSED 2026-09-06 (the suite-survey unit).** "Unreadable" was a
+    conclusion carried from one observation; the MECHANISM, measured: each run writes
+    exactly TWO `failed` rows for the account (L1, L3) against `FAILURE_THRESHOLD=5` in
+    `LOCKOUT_WINDOW=15 min`, so two consecutive runs pass and a THIRD fails — measured
+    on a clean scratch with the unedited file: run 1 green, run 2 green, run 3 exit 1
+    with 7 FAILED and 5 `failed` rows in the table. The 2026-09-05 second-run red came
+    from a scratch whose inherited dev rows were still inside the window, not from the
+    proof's two rows alone. FIXED: the wrong-password cells now hit the seeded STAFF
+    account and the ADMIN resets staff's budget through `POST /users/{id}/unlock-login`
+    at the start and the end of every run (six fixture cells; the resetting account is
+    never the failing one, so a crashed run cannot poison the next). Read back: three
+    consecutive runs, `ALL GREEN`, 30 cells each; the table shows per run one
+    `unlocked_by_admin` marker, two `failed` rows, one marker. The advisor's
+    2026-09-05 verdict is superseded by this measurement, and the phase record says so.
   - **THE CITATION FLOOR ROSE FROM 6 TO 8 AT `1887054` AND NOBODY NOTICED** — measured
     2026-09-05 on clean worktrees: `b420e80` `664 / 6`, `1887054` `668 / 8` where its
     record and commit body say `666 / 6`. Both extra breaks sit in the 0019 record's own
@@ -5085,6 +5149,20 @@ with no feature of its own.
 
 ## Documentation
 
+- **THE 0020 RECORD NAMES A DUMP THAT IS NOT IN THE BACKUPS TREE — filed 2026-09-06,
+  RESOLVED THE SAME DAY.** `PROJECT_STATUS.md § Current phase` (the money-ledger record)
+  cites `recycle_20260905T035307Z_pre-0020` as the scratch's source; a `find` over
+  `E:\recycle-online-backups` and `server/` returned only the migration file. The hook
+  log (`.claude/hooks/gate.log`, 2026-09-05T03:53:05Z) shows WHY: the dump was TAKEN,
+  with `backup_db.py --out` pointed at that session's temporary scratchpad
+  (`%TEMP%\claude\...\770d3bdd-...\scratchpad\dumps`), alongside a post-0020 dump and
+  a clean-0017 dump — so the record named an artefact by its directory name with no
+  path, and the path was a temp directory nothing else knows. Same class as a citation
+  to a heading that does not exist: a name the reader cannot resolve. Both 0020 dumps
+  were COPIED (originals untouched) into `E:\recycle-online-backups\` on 2026-09-06 and
+  every file verifies against its `checksums.sha256`; the record's name now resolves
+  there. The rule this adds: a dump a record will cite is written under the backups
+  root (`RECYCLE_BACKUP_DIR`), never under a scratchpad, and cited WITH its root.
 - **THE WHAT-IS-BUILT SECTION IS SUPERSEDED PAST READABILITY — measured 2026-09-02 at
   `98cbc2d`, superseded in place in this commit, and its replacement is PROPOSED here,
   not performed.** Twenty-one claims in `PROJECT_STATUS.md § What is built` were

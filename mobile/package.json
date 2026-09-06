@@ -62,7 +62,8 @@
     "prove:sellerhistory": "npm run build && node dist/proof/proveSellerHistory.js",
     "prove:noticeStack": "npm run build && node dist/proof/proveNoticeStack.js",
     "prove:branch": "npm run build && node dist/proof/proveBranch.js",
-    "prove:permissions": "npm run build && node dist/proof/provePermissions.js"
+    "prove:permissions": "npm run build && node dist/proof/provePermissions.js",
+    "prove:all": "python ../tools/prove_all.py"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -70,6 +71,7 @@
     "expo": "~54.0.0",
     "expo-constants": "~18.0.13",
     "expo-crypto": "~15.0.9",
+    "expo-font": "~14.0.12",
     "expo-haptics": "~15.0.8",
     "expo-secure-store": "~15.0.8",
     "expo-sqlite": "~16.0.10",
