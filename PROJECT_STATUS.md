@@ -75,9 +75,75 @@ not read the green as re-run.**
 
 ## Current phase
 
+**THE FIRST DEVICE OBSERVATION SINCE PHASE E — a person looked at the app, found one defect, and the defect is
+repaired. 2026-09-06.** No sha yet (this record precedes the commit; anchor next pass). Supersedes the suite-survey
+record below AS THE POINTER ONLY — that work stands and is committed (`c1de5ac`, then the native-version gate at
+`6c02295`).
+**OBSERVED — by the owner, by eye, on Android 16 in the emulator, light theme. OBSERVED, NOT PROVEN.** A bill was
+created, weighed, saved and synced, receiving `B-2569-835`. `ยอดร้าน` showed `880.00` paid against `880.00` list
+with `0.00` difference, `20.000 กก.`, 1 bill; then `1,144.00` over 2 bills with the thousands separator correct. The
+product breakdown, the day's bill list, the period and dimension chips, the settings screen with its `เครื่องนี้` and
+`ข้อมูลร้าน` groups, the `จัดการผู้ใช้งาน` and `จัดการสินค้า` rows, the theme segmented control, the grade-tier rows
+with their `⋯`, and the add-grade form all rendered. That is the phase-C/D/E interface, the branch series, the money
+path and the report, confirmed by a person for the first time since phase E. Recorded as what a person saw; no cell
+asserts any of it.
+**THE DEFECT, RE-DERIVED AT THE TREE BEFORE IT WAS TOUCHED (`mobile/app/SettingsScreen.tsx` at `c1de5ac`).** The
+owner saw `บันทึก` mid-screen over the grade-tier list and content scrolling behind the `จัดการสินค้า` row. Cause,
+with the lines at that commit: the root `View` (137–195) stacked FIXED children — the `เครื่องนี้` heading (140), the
+theme control (141), the server line (142), the two entry rows (148–172, with the comment "Fixed above the scrolling
+shop form", 146–147) — above the form's OWN `ScrollView` (`FormBody`, 297), which received only the height left: on
+1080×2400 about four-tenths of the screen. The shop form, its save control (417–425) and the whole tier admin
+scrolled inside that short window, whose top edge sat flush under the `จัดการสินค้า` row (`entryRow` 668–673 has a
+top margin and no bottom one), so content clipped at the row's edge and read as sliding behind it, and `บันทึก` sat
+mid-screen. Nothing was `position: absolute`, nothing sticky, no child escaped its parent: the fixed header block
+consumed the screen. Reproduced on the emulator before the edit (screenshot: the fixed block to y≈1160, the scroll
+window below it cut at the row's edge).
+**THE REPAIR AND THE DECISION.** The save control SCROLLS WITH THE FORM. The survey behind that: `AccountScreen`
+(save inside its `ScrollView`), `AddSellerSheet` (inside, under a `KeyboardAvoidingView`), `UsersScreen` (the add-user
+button inside), `ProductsScreen` (both form buttons inside) all scroll their save with the form; the ONE pinned control
+in the app is `CartScreen`'s `บันทึกบิล`, a screen-level primary action in a bar the scroll body is padded to clear;
+`PricesSheet`'s save sits in an editor that replaces the list, and the action sheets are short. A settings sheet has
+no primary action — its save applies to one of four sections — so pinning it would pin a control for a quarter of the
+screen and hide content under it. Now the header stays a sibling above ONE `ScrollView` whose children are, in order,
+the device section, the server line, the entry rows, the form (a `View`, no longer its own scroll), the tier admin;
+the content is padded by `t.layout.scrollGutter` so the last control clears the home indicator; the loading state is
+a padded box (flex centring means nothing inside a scroll). Both TypeScript programs exit 0.
+**PROVEN AS FAR AS HEADLESS CAN, AND WHERE THAT STOPS.** `npm run prove:settings` gains S7, the one cell that reads
+`app/SettingsScreen.tsx` as text: exactly one `<ScrollView` opens and one closes; the six named controls
+(`จัดการผู้ใช้งาน`, `จัดการสินค้า`, `form.saveLabel`, `ยืนยันบันทึก`, `เพิ่มเกรด`, the message action) each sit inside
+the scroll region — between the tags, or inside a component the scroll renders, transitively (`FormBody` renders
+`TierAdminBody`); no `position: "absolute"`; the scroll gutter on the content style; the header outside the scroll.
+Its first run reddened four cells on a CORRECT layout because the child components are defined textually AFTER the
+root's close tag — the between-the-tags model was wrong, and the transitive model replaced it. 46 cells, exit 0
+twice. DISPROOF by hand: the `จัดการสินค้า` row moved above the `ScrollView` reddened exactly its own cell
+(`at=7271 open=7572`), the file restored byte-identical, green again. WHERE IT STOPS: S7 pins the layout MODEL; what
+the screen renders at a scroll position is still the eye's, and the device list below names it as a thing to re-check.
+By eye on the emulator after the repair, at the top, after one swipe and after two: one continuous scroll, the header
+fixed, `บันทึก` between the phone field and the tier list, `เพิ่มเกรด` at the end above the home indicator, nothing
+overlapping at any position (screenshots kept under `E:\android\downloads\shots_p2\form\`).
+**THE REST OF THE READING LIST — walked as far as the device allowed, then STOPPED.** Two more observations before
+the walk was interrupted: (1) the settings screen, opened after the sign-in had aged past the token's hour, drew the
+session card `ต้องเข้าสู่ระบบใหม่ — หมดเวลาเข้าใช้งาน ต้องเข้าสู่ระบบใหม่ก่อนจึงจะดูหรือแก้ไขการตั้งค่าร้านได้` with a
+working `เข้าสู่ระบบ`, inside the one scroll, below the entry rows — the 401 lesson's shape, rendered; (2) with the
+emulator's airplane mode on, the cart drew `ออฟไลน์ — บันทึกได้ตามปกติ` with `ส่งล่าสุด 13:01`, a seller was chosen
+from the picker, a product selected, and the numpad took `20` for `น้ำหนักรวม` — the offline path up to the line. Then,
+between two automated taps, the emulator's airplane mode was OFF, the app was signed out (`ออกจากระบบแล้ว`, the
+sign-out path's own status line) and signed back in with a typed password — none of which the automation does, all
+of which a person at the keyboard does. Two hands on one emulator make every further reading ambiguous, so the walk
+stopped there, by the brief's rule, with nothing repaired. NOT YET JUDGED, owed to the next pass on a free device:
+the offline save → reconnect → `doc_no` arriving; force-quit mid-draft and reopen; a staff sign-in and the void
+refusal's wording.
+**READINGS.** `npm run prove:settings` exit 0 twice, 46 cells (S7 disproof: exit 1, one red, restored, exit 0);
+`npm run typecheck` exit 0; `npm run typecheck:app` exit 0; `verify_shared_checks.py` exit 0;
+`build_all_lessons.py --check` exit 0; `verify_citations.ps1` bare over the canonical list, run AFTER this sentence:
+SOURCES=15 CITATIONS=681 BROKEN=6, the pre-existing six. Also observed while bringing the box back after its reboot
+earlier this day: Postgres logged `database system was not properly shut down; automatic recovery in progress` and
+recovered (`redo done`, `0020`, 980 bills) — a reboot with Docker running is an unclean stop for the database, which
+survived it this time; the disk paragraph in the suite-survey record is the one that says what would not survive.
+
 **THE SUITE'S HONESTY — every proof run twice by one instrument, the two misreported proofs repaired, and the
-app on an emulator the owner can look at. 2026-09-06.** No sha yet (this record precedes the commit; anchor next
-pass). Supersedes the money-ledger record below AS THE POINTER ONLY — that work stands and is committed
+app on an emulator the owner can look at. 2026-09-06.** Committed at `c1de5ac` (anchored the same day; the record said
+"no sha yet"); the native-version gate that followed is `6c02295`. Supersedes the money-ledger record below AS THE POINTER ONLY — that work stands and is committed
 (`cabd5b2`). Not a STRUCTURE.md unit: a measurement of the instrument every unit relies on, ordered because
 `1887054`'s record listed `prove_user_create` under `Every other server proof GREEN TWICE:` while that file had been
 dying at its first gate since 0019, and because the advisor carried a second proof's verdict from a prior report without the
@@ -3265,7 +3331,12 @@ size of every touch target; the OEM Thai font and the spread of screen sizes; th
 device, a restore from backup, a `deleteItemAsync` that throws; sync while backgrounded under a real OEM's battery
 policy (the emulator's Doze is not a vivo's); two devices RACING on real radios; the arm64 native paths named
 above; and the entire iOS column — Thai metrics, the Keychain, the daily screen's iOS-only history — for which
-this box has neither a Mac nor an iPhone.
+this box has neither a Mac nor an iPhone. **JUDGED ON THE EMULATOR, 2026-09-06, SECOND PASS:** the settings screen after
+its one-scroll repair, at the top, after one swipe and after two — nothing overlapping (a headless cell, S7, pins the
+layout model; the RENDER at a scroll position is a thing to re-check by eye on a handset, listed here for that
+reason); the session-expired card on the settings screen after the token's hour; the cart's offline strip and the
+numpad under airplane mode. **STILL OWED ON A FREE DEVICE** (the walk was interrupted by a second pair of hands):
+offline save → reconnect → `doc_no`; force-quit mid-draft and reopen; a staff sign-in and the void refusal's wording.
 
 - **Android: ONE pass, 2026-07-29, on a borrowed handset.** No longer
   "never run", and nowhere near covered. What was actually exercised:

@@ -25,6 +25,18 @@
  * codepage 874 (lessons/console-is-not-the-observation.md). Every assertion
  * compares JavaScript strings, never console bytes.
  *
+ * S7 IS THE ONE CELL THAT READS `app/SettingsScreen.tsx` AS TEXT (2026-09-06). The
+ * first person to open that screen since phase E saw บันทึก mid-screen over the
+ * tier list and content sliding behind the จัดการสินค้า row: the device section and
+ * the entry rows were FIXED above the form's own ScrollView, which got the height
+ * that was left. The repair is one scroll region with every control inside it, and
+ * S7 pins that LAYOUT MODEL — exactly one ScrollView, every named control between
+ * its open and close tags, no absolute position, the scroll gutter on its content —
+ * so the shape cannot silently return. It is a source-text assertion: what the
+ * screen RENDERS at a given scroll position is still the eye's to judge, and the
+ * consolidated device list says so. Disproof, by hand, 2026-09-06: moving the
+ * จัดการสินค้า row above the ScrollView reddened S7's "inside" cell; restored.
+ *
  * THE EXIT LINE. main() prints `SETTINGS_EXIT=<n>` from the same integer it
  * returns. That line is ABSENT if the script dies before the summary, and THE
  * ABSENCE IS THE SIGNAL.
@@ -50,6 +62,8 @@ import type {
 } from "../settings/shopSettings.js";
 import type { DeviceRole } from "../session/deviceRole.js";
 import { grantsOf } from "./proofGrants.js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 let failures = 0;
 
@@ -392,6 +406,108 @@ function s5PatchAndConfirm(): void {
   }
 }
 
+/* ---------------------------------------------------------------- S7 --- */
+
+const SETTINGS_SCREEN_TSX = fileURLToPath(new URL("../../app/SettingsScreen.tsx", import.meta.url));
+
+/** The controls that must sit INSIDE the scroll region, by the accessibilityLabel
+ *  each carries in the source (a label is a string the file cannot render without). */
+const SCROLLED_CONTROLS: readonly string[] = [
+  'accessibilityLabel="จัดการผู้ใช้งาน"',
+  'accessibilityLabel="จัดการสินค้า"',
+  "accessibilityLabel={form.saveLabel}",
+  'accessibilityLabel="ยืนยันบันทึก"',
+  'accessibilityLabel="เพิ่มเกรด"',
+  "accessibilityLabel={screen.action.label}",
+];
+
+/**
+ * The text spans of the file's top-level components: name -> [start, end). A
+ * control "sits inside the scroll region" when its label lies between the root
+ * ScrollView's tags, OR inside the body of a component whose element is rendered
+ * there (transitively: FormBody renders TierAdminBody). The components are defined
+ * AFTER the root component in the file, so a plain between-the-tags test would
+ * redden every control the scroll draws through a child — measured on the first
+ * run of this cell, 2026-09-06, four reds on a correct layout.
+ */
+function componentSpans(src: string): Map<string, readonly [number, number]> {
+  const heads = [...src.matchAll(/^(?:export )?function (\w+)\(/gm)];
+  const spans = new Map<string, readonly [number, number]>();
+  heads.forEach((m, i) => {
+    const start = m.index ?? 0;
+    const end = i + 1 < heads.length ? (heads[i + 1]?.index ?? src.length) : src.length;
+    spans.set(m[1] ?? "", [start, end] as const);
+  });
+  return spans;
+}
+
+/** Component names whose ELEMENT (`<Name`) appears inside [from, to), transitively. */
+function scrolledComponents(src: string, spans: Map<string, readonly [number, number]>, from: number, to: number): Set<string> {
+  const out = new Set<string>();
+  const frontier: [number, number][] = [[from, to]];
+  while (frontier.length > 0) {
+    const [a, b] = frontier.pop() as [number, number];
+    for (const [name, [s, e]] of spans) {
+      if (out.has(name)) continue;
+      const tag = `<${name}`;
+      let at = src.indexOf(tag, a);
+      let rendered = false;
+      while (at >= 0 && at < b) {
+        const next = src[at + tag.length] ?? "";
+        if (next === " " || next === "\n" || next === "/" || next === ">") { rendered = true; break; }
+        at = src.indexOf(tag, at + 1);
+      }
+      if (rendered) { out.add(name); frontier.push([s, e]); }
+    }
+  }
+  return out;
+}
+
+function s7OneScrollRegion(): void {
+  header("S7 — the settings sheet is ONE scroll region and every control is inside it");
+  const src = readFileSync(SETTINGS_SCREEN_TSX, { encoding: "utf8" });
+  // CONTROL: the file is the one meant, and the labels it is judged by exist in it.
+  check("control: the source names the sheet's own title", src.includes('title="ตั้งค่าร้าน"'));
+  const opens = src.split("<ScrollView").length - 1;
+  const closes = src.split("</ScrollView>").length - 1;
+  check("exactly ONE <ScrollView opens in the file (a second one is a nested scroll window)", opens === 1, `opens=${String(opens)}`);
+  check("and exactly one closes", closes === 1, `closes=${String(closes)}`);
+  const open = src.indexOf("<ScrollView");
+  const close = src.indexOf("</ScrollView>");
+  check("the open tag precedes the close tag", open >= 0 && close > open);
+  const spans = componentSpans(src);
+  const scrolled = scrolledComponents(src, spans, open, close);
+  check(
+    "the scroll renders the form, the message and the tier admin through child components (presence)",
+    ["FormBody", "MessageBody", "TierAdminBody"].every((n) => scrolled.has(n)),
+    [...scrolled].sort().join(","),
+  );
+  const inside = (at: number): boolean => {
+    if (at > open && at < close) return true;
+    for (const name of scrolled) {
+      const span = spans.get(name);
+      if (span && at > span[0] && at < span[1]) return true;
+    }
+    return false;
+  };
+  let present = 0;
+  for (const label of SCROLLED_CONTROLS) {
+    const at = src.indexOf(label);
+    if (at >= 0) present += 1;
+    check(
+      `${label} sits INSIDE the scroll region`,
+      at >= 0 && inside(at),
+      at < 0 ? "label absent from the file" : `at=${String(at)} open=${String(open)} close=${String(close)}`,
+    );
+  }
+  check("presence: every judged control label exists in the file", present === SCROLLED_CONTROLS.length, `${String(present)}/${String(SCROLLED_CONTROLS.length)}`);
+  check('no control is taken out of the flow: the file carries no position: "absolute"', !src.includes('position: "absolute"'));
+  check("the scroll content is padded by the scroll gutter, so the last control clears the home indicator",
+    src.includes("scroll: { paddingBottom: t.layout.scrollGutter }"));
+  check("the header stays a sibling ABOVE the scroll, not inside it (it is not content)",
+    src.indexOf('<SheetHeader title="ตั้งค่าร้าน"') < open);
+}
+
 /* ------------------------------------------------------------------ main -- */
 
 function main(): number {
@@ -409,6 +525,7 @@ function main(): number {
   s4WitnessedState();
   s5PatchAndConfirm();
   s6F2SingleTier();
+  s7OneScrollRegion();
 
   console.log("");
   console.log(failures === 0 ? "ALL CELLS PASSED" : `FAILED — ${String(failures)} check(s)`);

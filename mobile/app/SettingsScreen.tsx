@@ -133,65 +133,89 @@ export function SettingsScreen({
 }: Props) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
+  /*
+   * ONE SCROLL REGION, AND EVERY CONTROL IS INSIDE IT (2026-09-06, the first thing a
+   * person saw on this screen since phase E). Until then the device section, the
+   * server line and the two entry rows were FIXED children of this View, stacked
+   * ABOVE the form's own ScrollView, which received only what height was left —
+   * on a 1080x2400 emulator about four-tenths of the screen. The shop form, its
+   * save control and the whole tier admin scrolled inside that short window, whose
+   * top edge sat flush under the จัดการสินค้า row (that row has a top margin and no
+   * bottom one), so content clipped at the row's edge and read as sliding BEHIND it,
+   * and บันทึก sat mid-screen beside the tier list. Nothing was absolute and nothing
+   * was sticky: the header block simply consumed the screen.
+   *
+   * The decision: the save control SCROLLS WITH THE FORM, as every other form
+   * screen's does (AccountScreen, AddSellerSheet, UsersScreen, the ProductsScreen
+   * forms). A pinned bar is reserved for a screen's single primary action over a
+   * scroll body padded to clear it — CartScreen's บันทึกบิล — and a settings sheet
+   * has no such action: its save applies to one of four sections. So the header,
+   * the device section, the entry rows, the form and the tier admin are the
+   * children of ONE ScrollView, in that order, and the body is padded by the scroll
+   * gutter so the last control clears the home indicator. `npm run prove:settings`
+   * S7 reads this file and reddens on a second ScrollView, a control outside it,
+   * or an absolute position. The rendered result stays the eye's.
+   */
   return (
     <View style={styles.fill}>
       <SheetHeader title="ตั้งค่าร้าน" onClose={onClose} />
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <Text style={styles.deviceHead}>เครื่องนี้</Text>
+        <ThemeControl />
+        <ServerDiagnostics />
 
-      <Text style={styles.deviceHead}>เครื่องนี้</Text>
-      <ThemeControl />
-      <ServerDiagnostics />
+        {/* USER MANAGEMENT (P3.7). Admin-only: onManageUsers is null for a staff
+            session, so the row is not drawn at all — a staff account does not learn
+            the screen exists, the P1.9 entry-gate shape. Above the shop form and
+            independent of its read, so it is reachable whatever state that read is in. */}
+        {onManageUsers !== null ? (
+          <Touchable
+            style={styles.entryRow}
+            onPress={onManageUsers}
+            accessibilityLabel="จัดการผู้ใช้งาน"
+          >
+            <Icon name="account" size={20} color={t.color.primary} />
+            <Text style={styles.entryLabel}>จัดการผู้ใช้งาน</Text>
+            <Icon name="chevron" size={18} color={t.color.textSubtle} />
+          </Touchable>
+        ) : null}
 
-      {/* USER MANAGEMENT (P3.7). Admin-only: onManageUsers is null for a staff
-          session, so the row is not drawn at all — a staff account does not learn
-          the screen exists, the P1.9 entry-gate shape. Fixed above the scrolling
-          shop form so it is reachable whatever state that read is in. */}
-      {onManageUsers !== null ? (
-        <Touchable
-          style={styles.entryRow}
-          onPress={onManageUsers}
-          accessibilityLabel="จัดการผู้ใช้งาน"
-        >
-          <Icon name="account" size={20} color={t.color.primary} />
-          <Text style={styles.entryLabel}>จัดการผู้ใช้งาน</Text>
-          <Icon name="chevron" size={18} color={t.color.textSubtle} />
-        </Touchable>
-      ) : null}
+        {/* PRODUCT MASTER DATA (P1.15). Admin-only, the same shape: onManageProducts
+            is null for a staff session, so the row is not drawn at all. */}
+        {onManageProducts !== null ? (
+          <Touchable
+            style={styles.entryRow}
+            onPress={onManageProducts}
+            accessibilityLabel="จัดการสินค้า"
+          >
+            <Icon name="products" size={20} color={t.color.primary} />
+            <Text style={styles.entryLabel}>จัดการสินค้า</Text>
+            <Icon name="chevron" size={18} color={t.color.textSubtle} />
+          </Touchable>
+        ) : null}
 
-      {/* PRODUCT MASTER DATA (P1.15). Admin-only, the same shape: onManageProducts
-          is null for a staff session, so the row is not drawn at all. */}
-      {onManageProducts !== null ? (
-        <Touchable
-          style={styles.entryRow}
-          onPress={onManageProducts}
-          accessibilityLabel="จัดการสินค้า"
-        >
-          <Icon name="products" size={20} color={t.color.primary} />
-          <Text style={styles.entryLabel}>จัดการสินค้า</Text>
-          <Icon name="chevron" size={18} color={t.color.textSubtle} />
-        </Touchable>
-      ) : null}
-
-      {screen === null ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" />
-          <Text style={styles.loading}>กำลังอ่านการตั้งค่าจากระบบ…</Text>
-        </View>
-      ) : screen.kind === "message" ? (
-        <MessageBody screen={screen} onRetry={onRetry} onSignIn={onSignIn} />
-      ) : (
-        <FormBody
-          form={screen}
-          shop={shop}
-          saving={saving}
-          onSave={onSave}
-          tierScreen={tierScreen}
-          tierRefusal={tierRefusal}
-          tierBusy={tierBusy}
-          onAddTier={onAddTier}
-          onReorderTiers={onReorderTiers}
-          onTierMenu={onTierMenu}
-        />
-      )}
+        {screen === null ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" />
+            <Text style={styles.loading}>กำลังอ่านการตั้งค่าจากระบบ…</Text>
+          </View>
+        ) : screen.kind === "message" ? (
+          <MessageBody screen={screen} onRetry={onRetry} onSignIn={onSignIn} />
+        ) : (
+          <FormBody
+            form={screen}
+            shop={shop}
+            saving={saving}
+            onSave={onSave}
+            tierScreen={tierScreen}
+            tierRefusal={tierRefusal}
+            tierBusy={tierBusy}
+            onAddTier={onAddTier}
+            onReorderTiers={onReorderTiers}
+            onTierMenu={onTierMenu}
+          />
+        )}
+      </ScrollView>
     </View>
   );
 }
@@ -213,7 +237,7 @@ function MessageBody({
   const handler =
     screen.action === null ? undefined : screen.action.kind === "sign_in" ? onSignIn : onRetry;
   return (
-    <ScrollView contentContainerStyle={styles.body}>
+    <View style={styles.body}>
       <View style={[styles.messageCard, { backgroundColor: tone.bg }]}>
         <Text style={[styles.messageBadge, { backgroundColor: tone.badge }]}>{screen.badge}</Text>
         {screen.lines.map((line, i) => (
@@ -230,7 +254,7 @@ function MessageBody({
           </Touchable>
         ) : null}
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -294,7 +318,7 @@ function FormBody({
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.body}>
+    <View style={styles.body}>
       <Text style={styles.formHead}>ข้อมูลร้าน</Text>
       {/* NAME — read-only for both roles: it is on printed slips (D4). */}
       <View style={styles.card}>
@@ -444,7 +468,7 @@ function FormBody({
           onTierMenu={onTierMenu}
         />
       ) : null}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -647,8 +671,11 @@ function ServerDiagnostics() {
 function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     fill: { flex: 1, backgroundColor: t.color.background },
-    body: { padding: t.space.x3, paddingBottom: t.layout.scrollGutter },
-    center: { flex: 1, alignItems: "center", justifyContent: "center", gap: t.space.xl },
+    // THE ONE SCROLL REGION. Its bottom gutter is what keeps the last control (the
+    // add-grade button, or the read-only note) clear of the home indicator.
+    scroll: { paddingBottom: t.layout.scrollGutter },
+    body: { padding: t.space.x3 },
+    loadingBox: { alignItems: "center", paddingVertical: t.space.x5, gap: t.space.xl },
     loading: { fontSize: t.type.bodyLg, color: t.color.textSubtle, fontWeight: "700" },
 
     themeCard: {
