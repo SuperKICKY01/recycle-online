@@ -858,7 +858,11 @@ def _summary_figures(r: Any) -> dict:
     return {
         "bill_count": int(r["bill_count"]),
         "net_weight": _weight(r["net_weight"]),
-        # unit_price basis: what the shop PAID (the stored amount).
+        # unit_price basis: the purchase value at the price agreed per unit (the
+        # stored amount), NOT cash disbursed. It stays a purchase figure when a bill
+        # is UNPAID (separate_cashier on, 0020): the drawer is the ledger's, never
+        # this route's -- "nothing here counts a drawer" (D2 above). The client
+        # labels it as a price, not as "จ่ายจริง" (cash), for exactly this reason.
         "paid_total": _money(paid),
         # list_price basis: a separately-labelled comparison, NOT what was paid.
         "list_total": _money(listed),

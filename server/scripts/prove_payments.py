@@ -56,6 +56,16 @@ THE CELLS, and the disproof each stands against:
       allocations) is 201 with unallocated_amount == amount.
   G   GET /payments lists newest first, this run's rows with their doc_nos,
       and at least one marked reconstruction (presence).
+  W   THE SWITCH WRITER over HTTP (PATCH /branches, master.py, the writer 0020
+      shipped without): staff is 403 permission_required naming shop.settings.write;
+      an unknown branch is 404 branch_not_found; an unknown key is 422; admin flips
+      it true and reads it back, Postgres agrees, a bill created after is UNPAID with
+      no pair, the flip is in audit_log as a branches UPDATE by the admin actor, and
+      admin flips it back false. The route causing the effect, not only SQL.
+  MB  ONE PAYMENT ACROSS TWO DISTINCT BILLS -- section 2.1's first many-to-many
+      case and the gap 0020 left (no prior cell paid two distinct bills at once):
+      two unpaid bills settled by one payment with two allocations, read back OUT OF
+      POSTGRES as one payment against both, both bills paid and off the queue.
   X   reconcile.py on the scratch, AFTER every write above, exits 0 and its
       report carries P1..P4 (presence control: the four ids in the output).
 """
@@ -190,6 +200,8 @@ def assert_serving_this_code() -> str:
     params = [p.get("name") for p in paths.get("/bills", {}).get("get", {}).get("parameters", [])]
     if "unpaid" not in params:
         return "GET /bills declares no `unpaid` query -- predates 0020"
+    if "patch" not in paths.get("/branches/{branch_id}", {}):
+        return "the server declares no PATCH /branches/{branch_id} -- predates the counter unit's switch writer"
     return ""
 
 
@@ -648,6 +660,105 @@ async def run(client: httpx.AsyncClient, db: Db, scratch: str) -> None:
     check(all(x.get("status") in ("active", "voided") for x in rows) and len(rows) > 0,
           "G5: every row carries a status (control)")
 
+    # ---------------------------------------------------------------- W
+    # THE WRITER 0020 SHIPPED WITHOUT. Until now the switch was flipped only by SQL
+    # (db.set_switch); every S cell above proves the EFFECT, none proved a real
+    # route can cause it. PATCH /branches is that route (master.py), gated on
+    # shop.settings.write, audited. Here it drives the switch over HTTP and the
+    # effect is read from the ledger, so applied != verified is satisfied for the
+    # one thing that makes the counter usable.
+    header("W  the switch WRITER: PATCH /branches turns the counter on over HTTP")
+    branch_id = str(await db.fetchval(
+        "SELECT id FROM branches WHERE tenant_id = $1", TENANT_A_ID))
+    r = await client.patch(f"/branches/{branch_id}", headers=auth(staff),
+                           json={"separate_cashier": True})
+    d = detail_of(r)
+    check(r.status_code == 403 and d.get("code") == "permission_required"
+          and d.get("required_permission") == "shop.settings.write",
+          f"W1: staff PATCH /branches -> 403 permission_required naming shop.settings.write"
+          f" (got {r.status_code} {d.get('code')!r} {d.get('required_permission')!r})")
+    r = await client.patch(f"/branches/{uuid.uuid4()}", headers=auth(admin),
+                           json={"separate_cashier": True})
+    d = detail_of(r)
+    check(r.status_code == 404 and d.get("code") == "branch_not_found",
+          f"W2: an unknown branch -> 404 branch_not_found (got {r.status_code} {d.get('code')!r})")
+    r = await client.patch(f"/branches/{branch_id}", headers=auth(admin),
+                           json={"separate_cashier": True, "doc_prefix": "Z"})
+    check(r.status_code == 422,
+          f"W3: an unknown key -> 422 (extra=forbid) (got {r.status_code})")
+    r = await client.patch(f"/branches/{branch_id}", headers=auth(admin),
+                           json={"separate_cashier": True})
+    body = r.json() if r.status_code == 200 else {}
+    check(r.status_code == 200 and body.get("separate_cashier") is True,
+          f"W4: admin PATCH separate_cashier=true -> 200, reads back true"
+          f" (got {r.status_code} {body.get('separate_cashier')!r})")
+    sw = await db.fetchval(
+        "SELECT separate_cashier FROM branches WHERE tenant_id = $1", TENANT_A_ID)
+    check(sw is True, "W5: Postgres shows separate_cashier true (control, read from the column)")
+    body_w = bill_body("writer-on", "3.000", "10.00")
+    r = await client.post("/bills", headers=auth(admin), json=body_w)
+    bw = r.json() if r.status_code == 201 else {}
+    ledw = await db.ledger(body_w["id"])
+    check(r.status_code == 201 and len(ledw["payments"]) == 0
+          and bw.get("payment_status") == "unpaid",
+          f"W6: with the switch flipped ON BY THE ROUTE a new bill is UNPAID, no pair"
+          f" (got {r.status_code} status={bw.get('payment_status')} pays={len(ledw['payments'])})")
+    audited = await db.fetchval(
+        "SELECT count(*) FROM audit_log WHERE tenant_id = $1 AND table_name = 'branches'"
+        " AND action = 'UPDATE' AND actor_user_id = $2", TENANT_A_ID, uuid.UUID(admin_id))
+    check(audited >= 1,
+          f"W7: the flip is in audit_log as a branches UPDATE by the admin actor (got {audited})")
+    r = await client.patch(f"/branches/{branch_id}", headers=auth(admin),
+                           json={"separate_cashier": False})
+    check(r.status_code == 200 and r.json().get("separate_cashier") is False,
+          f"W8: admin PATCH separate_cashier=false -> 200, reads back false (got {r.status_code})")
+
+    # ---------------------------------------------------------------- MB
+    # ONE PAYMENT ACROSS SEVERAL DISTINCT BILLS -- section 2.1's first many-to-many
+    # case (a regular seller, several loads, one bundle of cash) and the gap 0020
+    # LEFT: every S cell above pays ONE bill, P5 puts the SAME bill twice in one
+    # payment (a refusal), and none proves the accepted case of two DISTINCT bills
+    # in one payment. Read back OUT OF POSTGRES, both bills from the SAME payment.
+    header("MB  one payment across two DISTINCT bills (the gap 0020 left)")
+    await db.set_switch(True)
+    body_m1 = bill_body("mb-1", "2.000", "10.00")   # 20.00
+    body_m2 = bill_body("mb-2", "3.000", "10.00")   # 30.00
+    r1 = await client.post("/bills", headers=auth(admin), json=body_m1)
+    r2 = await client.post("/bills", headers=auth(admin), json=body_m2)
+    t1 = r1.json().get("total_amount")
+    t2 = r2.json().get("total_amount")
+    check(r1.status_code == 201 and r2.status_code == 201
+          and r1.json().get("payment_status") == "unpaid"
+          and r2.json().get("payment_status") == "unpaid",
+          f"MB0: two fresh bills, both unpaid ({t1}/{t2})")
+    pay = payment_body("mb", "50.00", [
+        {"bill_id": body_m1["id"], "amount": t1},
+        {"bill_id": body_m2["id"], "amount": t2}])
+    r = await client.post("/payments", headers=auth(admin), json=pay)
+    pr = r.json() if r.status_code == 201 else {}
+    check(r.status_code == 201 and pr.get("allocated_amount") == "50.00"
+          and pr.get("unallocated_amount") == "0.00" and len(pr.get("allocations", [])) == 2,
+          f"MB1: one payment with TWO distinct allocations -> 201, allocated 50.00, 2 allocations"
+          f" (got {r.status_code} allocs={len(pr.get('allocations', []))} {detail_of(r).get('code')!r})")
+    led1 = await db.ledger(body_m1["id"])
+    led2 = await db.ledger(body_m2["id"])
+    same_payment = (len(led1["payments"]) == 1 and len(led2["payments"]) == 1
+                    and led1["payments"][0]["id"] == led2["payments"][0]["id"])
+    check(len(led1["allocations"]) == 1 and len(led2["allocations"]) == 1 and same_payment,
+          f"MB2 (from Postgres): each bill has ONE allocation, both from the SAME payment"
+          f" ({len(led1['allocations'])}/{len(led2['allocations'])} same={same_payment})")
+    b1 = (await client.get(f"/bills/{body_m1['id']}", headers=auth(admin))).json()
+    b2 = (await client.get(f"/bills/{body_m2['id']}", headers=auth(admin))).json()
+    check(b1.get("payment_status") == "paid" and b2.get("payment_status") == "paid"
+          and b1.get("paid_amount") == t1 and b2.get("paid_amount") == t2,
+          f"MB3: both bills read paid with paid_amount == total"
+          f" ({b1.get('payment_status')}/{b2.get('payment_status')})")
+    r = await client.get("/bills?unpaid=true", headers=auth(admin))
+    queued_ids = [x["id"] for x in r.json().get("bills", [])]
+    check(body_m1["id"] not in queued_ids and body_m2["id"] not in queued_ids,
+          "MB4: both bills left the unpaid queue")
+    await db.set_switch(False)
+
     # ---------------------------------------------------------------- X
     header("X  reconcile.py on the scratch after every write above")
     env = dict(os.environ)
@@ -721,7 +832,7 @@ async def main() -> int:
         if wrong:
             check(False, f"E0: serving THIS code -- {wrong}")
             return 1
-        check(True, "E0: /openapi.json declares POST and GET /payments and GET /bills?unpaid")
+        check(True, "E0: /openapi.json declares POST/GET /payments, GET /bills?unpaid, PATCH /branches")
         async with httpx.AsyncClient(base_url=BASE, timeout=20.0) as client:
             try:
                 await run(client, db, scratch)

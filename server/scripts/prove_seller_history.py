@@ -322,9 +322,20 @@ def bill_ok(ctx: Ctx, got: dict, name: str, with_money: bool) -> tuple[bool, str
     if with_money:
         if got.get("total_amount") != expected_total(ctx, name):
             return False, f"total_amount {got.get('total_amount')} != {expected_total(ctx, name)}"
+        # The ledger's settlement (0020), money-gated with the total. Every fixture
+        # bill was created with the counter NOT separated, so its automatic pair
+        # makes it fully paid -- paid_amount equals the total and status is "paid",
+        # for the voided bill too (a void leaves its payment standing, STRUCTURE 2.1).
+        # The unpaid/partial derivation itself is proven over the real routes by
+        # prove_payments; here the point is that seller-history CARRIES it, gated.
+        if got.get("paid_amount") != expected_total(ctx, name):
+            return False, f"paid_amount {got.get('paid_amount')} != {expected_total(ctx, name)}"
+        if got.get("payment_status") != "paid":
+            return False, f"payment_status {got.get('payment_status')!r} != 'paid'"
     else:
-        if "total_amount" in got:
-            return False, "total_amount PRESENT with money excluded"
+        for k in ("total_amount", "paid_amount", "payment_status"):
+            if k in got:
+                return False, f"{k} PRESENT with money excluded"
     return True, ""
 
 
@@ -728,8 +739,9 @@ async def run(ctx: Ctx, admin_tok, staff_tok, other_tok, client) -> None:
     print(f"      S-OFF: status={rs.status_code} money_included={staff_off.get('money_included')}")
     check(rs.status_code == 200, f"S-OFF: staff GET history -> 200, NOT 403 (got {rs.status_code})")
     check(staff_off.get("money_included") is False, "S-OFF: money_included is false")
-    check("total_amount" not in raw_off and "unit_price" not in raw_off,
-          "S-OFF: the serialised body contains NEITHER 'total_amount' NOR 'unit_price'")
+    check("total_amount" not in raw_off and "unit_price" not in raw_off
+          and "paid_amount" not in raw_off and "payment_status" not in raw_off,
+          "S-OFF: the serialised body carries NONE of total_amount / unit_price / paid_amount / payment_status")
     # the absence is money-ONLY: the non-money facts are still there.
     check(len(staff_off["bills"]) == 5
           and all(len(b["products"]) >= 1 and "net_weight" in b["products"][0]
@@ -738,8 +750,9 @@ async def run(ctx: Ctx, admin_tok, staff_tok, other_tok, client) -> None:
     # POSITIVE CONTROL SIBLING: the SAME string-search FIRES on the admin body, so
     # "found nothing" above is not an instrument that never looked.
     raw_admin = json.dumps(admin_body, ensure_ascii=False)
-    check("total_amount" in raw_admin and "unit_price" in raw_admin,
-          "S-OFF (control): the admin body DOES contain 'total_amount' and 'unit_price'")
+    check("total_amount" in raw_admin and "unit_price" in raw_admin
+          and "paid_amount" in raw_admin and "payment_status" in raw_admin,
+          "S-OFF (control): the admin body DOES contain total_amount / unit_price / paid_amount / payment_status")
 
     # GRANT money.view_own to this tenant's staff role -- what PATCH /shop
     # staff_money_visible=true did before 0019, now a grant row (by SQL: the
@@ -766,14 +779,16 @@ async def run(ctx: Ctx, admin_tok, staff_tok, other_tok, client) -> None:
           "S: money.view_own REVOKED from the staff role and RE-READ absent (fixture restored)")
     # and the staff money is gone again -- the toggle, not a one-way door.
     raw_off2 = json.dumps((await get_history(client, staff_tok, s1)).json(), ensure_ascii=False)
-    check("total_amount" not in raw_off2,
-          "S: with the toggle off again, the staff money keys are ABSENT once more")
+    check("total_amount" not in raw_off2 and "paid_amount" not in raw_off2
+          and "payment_status" not in raw_off2,
+          "S: with the toggle off again, the staff money keys (total/paid/status) are ABSENT once more")
 
     # =====================================================================
     header("M -- every money/weight value is a STRING, never a JSON number")
     vals = []
     for b in admin_body["bills"]:
         vals.append(b["total_amount"])
+        vals.append(b["paid_amount"])  # the settlement money string (0020)
         for p in b["products"]:
             vals.append(p["net_weight"])
             vals.append(p["unit_price"])

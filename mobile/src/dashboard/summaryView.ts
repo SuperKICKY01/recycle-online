@@ -250,7 +250,7 @@ export type SummaryScreen = SummaryReport | SummaryMessage;
 const ASK_THE_OWNER = "ต้องแจ้งเจ้าของร้าน";
 const NO_BILLS_LINE = "ไม่มีบิลในช่วงนี้";
 const DIFF_EXPLAIN =
-  "ส่วนต่าง = ยอดตามราคาประกาศ ลบ ยอดที่จ่ายจริง — ค่าติดลบคือจ่ายสูงกว่าราคาประกาศ ไม่ได้แปลว่ามีอะไรผิด";
+  "ส่วนต่าง = ยอดตามราคาประกาศ ลบ ยอดซื้อตามราคาที่ตกลง — ค่าติดลบคือจ่ายสูงกว่าราคาประกาศ ไม่ได้แปลว่ามีอะไรผิด";
 
 function forbiddenMessage(code: string | null): SummaryMessage {
   if (code === PERMISSION_REQUIRED || code === STAFF_MONEY_HIDDEN) {
@@ -449,7 +449,17 @@ export function summaryScreen(fetch: SummaryFetch): SummaryScreen {
     rows,
     totals: body.totals,
     figureLabels: {
-      paid: "ยอดที่จ่ายจริง",
+      // A PRICE basis, not a drawer. paid_total is sum(net * unit_price) -- the
+      // PURCHASE value at the price the shop and seller AGREED per unit, the sibling
+      // of ยอดตามราคาประกาศ (the value at the announced price); their difference is
+      // the variance below. It carried a settlement word ("ยอดที่จ่ายจริง", then
+      // "ยอดตามราคาจ่ายจริง") until the money ledger made a bill unpayable-at-sync
+      // (separate_cashier, 0020): ANY จ่าย/"paid" wording read as cash out of the
+      // drawer, and once a shop separates its cashier a bill can carry this value
+      // while the money is still in the till. This label names the PURCHASE and the
+      // AGREED PRICE and no act of paying, so it cannot be read as the drawer --
+      // which is the counter's own figure, not this one.
+      paid: "ยอดซื้อตามราคาที่ตกลง",
       list: "ยอดตามราคาประกาศ",
       diff: "ส่วนต่างจากราคาประกาศ",
       weight: "น้ำหนักรวม",

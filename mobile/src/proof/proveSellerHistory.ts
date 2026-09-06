@@ -83,9 +83,16 @@ function billOf(
   is_void: boolean,
   products: Obj[],
   total_amount?: string,
+  paid_amount?: string,
+  payment_status?: string,
 ): Obj {
   const b: Obj = { bill_id, doc_no, server_received_at, is_void, products };
   if (total_amount !== undefined) b["total_amount"] = total_amount;
+  // The ledger's settlement rides the money gate with the total (0020). When money
+  // is shown they are present; the reader refuses the whole response without them,
+  // exactly as it does without the total, so a money-true fixture must carry them.
+  if (paid_amount !== undefined) b["paid_amount"] = paid_amount;
+  if (payment_status !== undefined) b["payment_status"] = payment_status;
   return b;
 }
 
@@ -128,13 +135,16 @@ function main(): number {
   // =====================================================================
   header("A — money_included TRUE: date, product, weight AND money, byte-for-byte");
   const onBody = bodyOf("s1", true, [
-    billOf("bm", "B-2569-9", ISO_MIDNIGHT, false, [lineOf("p1", "เหล็ก", "1.000", "20.00")], "20.00"),
+    // bm fully paid, b1 partial, bv voided (its automatic payment stands as the
+    // seller's advance) — three distinct settlements, so section S below is a real
+    // differential, not one repeated case.
+    billOf("bm", "B-2569-9", ISO_MIDNIGHT, false, [lineOf("p1", "เหล็ก", "1.000", "20.00")], "20.00", "20.00", "paid"),
     billOf("b1", "B-2569-1", ISO_DAY, false, [
       lineOf("p1", "เหล็ก", "10.000", "16.00"),
       lineOf("p2", "อลูมิเนียม", "2.000", "45.00"),
-    ], "250.00"),
+    ], "250.00", "100.00", "partial"),
     // a voided bill, a null doc_no, and a null product_name — the awkward rows.
-    billOf("bv", null, ISO_DAY, true, [lineOf("p3", null, "3.000", "14.00")], "42.00"),
+    billOf("bv", null, ISO_DAY, true, [lineOf("p3", null, "3.000", "14.00")], "42.00", "42.00", "paid"),
   ]);
   const on = sellerHistoryScreen({ kind: "ok", body: onBody });
   const onH = asHistory(on);
@@ -179,19 +189,49 @@ function main(): number {
   }
 
   // =====================================================================
+  header("S — the settlement badge (0020): unpaid/partial earn a marker, paid and voided none");
+  {
+    // A fresh, always-money-true unpaid fixture, so this section owns its unpaid
+    // case and no break above can reach it.
+    const unpaidBody = bodyOf("s1", true, [
+      billOf("bu", "B-2569-7", ISO_DAY, false, [lineOf("p1", "เหล็ก", "8.000", "10.00")], "80.00", "0.00", "unpaid"),
+    ]);
+    const uH = asHistory(sellerHistoryScreen({ kind: "ok", body: unpaidBody }));
+    check("an UNPAID bill shows ค้างจ่าย",
+      uH?.bills[0]?.paymentLabel === "ค้างจ่าย", uH?.bills[0]?.paymentLabel ?? "null");
+    if (onH !== null) {
+      const bm = onH.bills.find((b) => b.bill_id === "bm");
+      const b1 = onH.bills.find((b) => b.bill_id === "b1");
+      const bv = onH.bills.find((b) => b.bill_id === "bv");
+      check("a PARTIAL bill shows จ่ายบางส่วน",
+        b1?.paymentLabel === "จ่ายบางส่วน", b1?.paymentLabel ?? "null");
+      check("a fully PAID bill shows NO settlement badge (the unremarkable case)",
+        bm?.paymentLabel === null, bm?.paymentLabel ?? "null");
+      check("a VOIDED bill shows NO settlement badge — its void label stands and its payment is an advance",
+        bv?.paymentLabel === null, bv?.paymentLabel ?? "null");
+    }
+  }
+
+  // =====================================================================
   header("M — money_included FALSE: no total, no price, one calm note (money_when_hidden reddens this)");
   const showMoney = BREAK === "money_when_hidden"; // normally false = hidden
   const hiddenBody = bodyOf("s1", showMoney, [
     billOf("b1", "B-2569-1", ISO_DAY, false,
       [lineOf("p1", "เหล็ก", "10.000", showMoney ? "16.00" : undefined)],
-      showMoney ? "160.00" : undefined),
+      // Under money_when_hidden the whole money set appears (total AND the 0020
+      // settlement), so the body READS and only the "should be hidden" cell
+      // reddens -- not a parse failure that would redden two.
+      showMoney ? "160.00" : undefined,
+      showMoney ? "160.00" : undefined,
+      showMoney ? "paid" : undefined),
   ]);
   const hidden = sellerHistoryScreen({ kind: "ok", body: hiddenBody });
   const hiddenH = asHistory(hidden);
   check(
-    "money_included false: moneyIncluded false, a note is shown, and NO bill total and NO line price",
+    "money_included false: moneyIncluded false, a note is shown, and NO bill total, NO line price, NO settlement badge",
     hiddenH !== null && hiddenH.moneyIncluded === false && hiddenH.moneyNote !== null &&
-      hiddenH.bills.every((b) => b.total === null && b.lines.every((l) => l.unit_price === null)),
+      hiddenH.bills.every((b) => b.total === null && b.paymentLabel === null &&
+        b.lines.every((l) => l.unit_price === null)),
     hiddenH === null ? `kind=${hidden.kind}` :
       `moneyIncluded=${String(hiddenH.moneyIncluded)} note=${hiddenH.moneyNote !== null ? "set" : "null"}`,
   );
@@ -238,7 +278,7 @@ function main(): number {
   // =====================================================================
   header("R — a money field arriving as a JSON NUMBER refuses the whole response (accept_number reddens this)");
   const numericBody = maybeStringifyMoney(bodyOf("s1", true, [
-    billOf("bn", "B-2569-2", ISO_DAY, false, [lineNumber("p1", "เหล็ก", "1.000", 16)], "16.00"),
+    billOf("bn", "B-2569-2", ISO_DAY, false, [lineNumber("p1", "เหล็ก", "1.000", 16)], "16.00", "16.00", "paid"),
   ]));
   const refused = sellerHistoryScreen({ kind: "ok", body: numericBody });
   check("a JSON-number unit_price refuses the WHOLE response — the calm 'cannot read' message, no number in it",

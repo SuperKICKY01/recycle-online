@@ -594,4 +594,34 @@ phase`. The readers of `total_amount` that gain a second question the day a rout
 flips the switch are listed at `OPEN_ITEMS.md § Code debt found and left in place`
 as a CONDITION the counter unit invalidates.**
 
+**Unit 4 (unnumbered here; section 12 named the first three): THE CASHIER COUNTER,
+server commit — BUILT 2026-09-06 (unanchored; anchor next pass).** The unit the
+owner has asked for since QR payment first came up, whose boundary the build
+re-drew: not server-versus-screen but THE SWITCH AND EVERY FIGURE THE SWITCH MAKES
+FALSE. **What the tree forced as corrections to the brief, and to this document's
+own picture of what unit 3 left:** most of the counter's server surface ALREADY
+SHIPPED at `0020` and the advisor briefed a unit half of which existed — the cashier
+QUEUE is `GET /bills?unpaid=true` (`bills.py`), and the many-to-many payment
+(`POST /payments`, an allocation list) settles several bills in one payment, a
+deposit-then-rest, or an advance with no bill; all were built and proven at `0020`.
+And `packages/` is NOT empty — `@recycle/shop-time` is the pure-shared-TS precedent
+(so PromptPay in `packages/` is a pattern, not scaffolding). **What this commit
+BUILT:** `PATCH /branches/{id}` (`app/master.py`), the minimal one-column writer of
+`separate_cashier` 0020 shipped without, gated on `shop.settings.write` (NOT a new
+`branches.manage` — a permission no route checks means nothing, 0019; section 9
+mints and re-gates its own), audited, no migration; the deferred-reader condition
+above WORKED THROUGH and re-filed at `OPEN_ITEMS.md`; `GET /sellers/{id}/history`
+now carries `paid_amount`/`payment_status` per bill (money-gated), rendered as a
+settlement badge; the dashboard hero relabelled off a cash claim onto its true
+price basis. **Proven:** `prove_payments.py` gained W (the switch WRITER over HTTP:
+staff 403, unknown branch 404, admin flips it and a bill goes unpaid, the flip in
+`audit_log`) and MB (ONE PAYMENT ACROSS TWO DISTINCT BILLS, the gap 0020 left, read
+back out of Postgres); `prove_seller_history.py` asserts the settlement keys under
+the money gate; the mobile `proveSellerHistory`/`proveDashboard` cover the display.
+**DEFERRED to commit 2 (the SCREEN) or beyond, each recorded:** PromptPay QR (a
+`packages/` pure function beside the screen that renders it, per 2.4, its
+known-vector proof with it); `payments.void` and a client of `POST /payments`; the
+phone's offline `cached_shop_policy` read (1.4). Record: `PROJECT_STATUS.md §
+Current phase`.
+
 Two observations before the advisor turns these into briefs. The bill-line rewrite in 2.3 is in batch B and not in unit 3 on purpose: unit 3 is the ledger, and the line's new columns land with the containers and pricing-basis feature that pulls them, per S17, in the unit after. And the whole of this document is UNMEASURED as to whether a real yard wants any of it; what is measured is that the structure holds the shop that uses everything and costs the shop that uses nothing one automatic row per bill, which is the owner's principle written as a schema.

@@ -93,7 +93,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from .auth import Principal, get_principal, require
-from .branches import branch_payload, read_caller_branch
+from .bills import payment_status
+from .branches import branch_payload, read_branch, read_caller_branch
 from .config import SHOP_TIMEZONE
 from .db import constraint_name_of, tenant_connection
 from .permissions import Permission
@@ -1069,15 +1070,33 @@ _HISTORY_MAX_LIMIT = 20
 # NEVER device_created_at and NEVER doc_no as the sort key
 # (lessons/doc-no-is-arrival-order-not-event-time.md): arrival order is what a
 # report keys on, and doc_no is text so its order is not even numeric.
+# paid_amount PER BILL is the sum of allocations from LIVE payments (migration
+# 0020), the SAME derivation bills._read_bill and the bill list run, spelled here
+# rather than imported because a checker must not share the code it checks and this
+# is a fourth reader, not the ledger's authority. It is on the CTE so it is summed
+# once per bill, not once per line, and coalesce keeps a bill with no payment at 0.
+# WHY IT IS HERE AT ALL: until the counter is separable every bill carried its
+# automatic pair and total EQUALLED cash out, so a list of totals told the whole
+# story; the day a shop turns separate_cashier on, a bill can be unpaid, and a
+# seller's history that showed only totals would state a load as settled when the
+# money is still in the drawer (OPEN_ITEMS, the deferred-reader condition this unit
+# removes). paid_amount is money-gated exactly as total_amount is (below).
 _SELLER_HISTORY_SQL = """
 WITH b AS (
-    SELECT id, doc_no, total_amount, server_received_at, voided_at
-      FROM purchase_bills
-     WHERE seller_id = :seller_id
-     ORDER BY server_received_at DESC, id DESC
+    SELECT pb.id, pb.doc_no, pb.total_amount, pb.server_received_at, pb.voided_at,
+           coalesce(pd.paid, 0) AS paid_amount
+      FROM purchase_bills pb
+      LEFT JOIN LATERAL (
+            SELECT sum(a.amount) AS paid
+              FROM payment_allocations a
+              JOIN payments p ON p.id = a.payment_id
+             WHERE a.bill_id = pb.id AND p.voided_at IS NULL
+          ) pd ON true
+     WHERE pb.seller_id = :seller_id
+     ORDER BY pb.server_received_at DESC, pb.id DESC
      LIMIT :limit
 )
-SELECT b.id AS bill_id, b.doc_no, b.total_amount, b.server_received_at,
+SELECT b.id AS bill_id, b.doc_no, b.total_amount, b.paid_amount, b.server_received_at,
        b.voided_at, i.line_no, i.product_id, i.net_weight, i.unit_price,
        p.name AS product_name
   FROM b
@@ -1103,10 +1122,11 @@ async def seller_history(
     syncs), ``server_received_at`` and the shop-local ``received_date``,
     ``is_void``, and ``products`` — one entry per bill line with ``product_id``,
     ``product_name`` (null if the product was retired) and ``net_weight`` (the
-    weight the stored amount was computed on). ``total_amount`` (per bill) and
-    ``unit_price`` (per line) are present ONLY when ``money_included`` — a caller
-    holding ``money.view_shop`` or ``money.view_own`` (0019; before it, admin or
-    staff with the shop's staff_money_visible on); otherwise the KEYS ARE ABSENT
+    weight the stored amount was computed on). ``total_amount`` (per bill),
+    ``unit_price`` (per line), and ``paid_amount``/``payment_status`` (per bill, the
+    ledger's derived settlement — 0020) are present ONLY when ``money_included`` — a
+    caller holding ``money.view_shop`` or ``money.view_own`` (0019; before it, admin
+    or staff with the shop's staff_money_visible on); otherwise the KEYS ARE ABSENT
     and money_included is false, so the phone says why rather than render a guess.
 
     Voided bills are INCLUDED and marked ``is_void``. A seller with no prior bills
@@ -1164,6 +1184,16 @@ async def seller_history(
                 # The bill's stored total, straight from NUMERIC(14,2) as a string
                 # (bills._read_bill), never recomputed from today's prices.
                 bill["total_amount"] = str(r["total_amount"])
+                # And what has actually been PAID against it (migration 0020).
+                # Quantized at the serialisation site because a sum over no
+                # allocations comes back scale-less (a-sum-over-nothing-has-no-
+                # scale); payment_status is the ledger's pure classifier (bills.py),
+                # so a seller's history shows what is OUTSTANDING and not only what
+                # was bought. Both keys ride the SAME money gate as total_amount --
+                # absent, not zero, when money is hidden.
+                paid = Decimal(r["paid_amount"]).quantize(Decimal("0.01"))
+                bill["paid_amount"] = str(paid)
+                bill["payment_status"] = payment_status(paid, r["total_amount"])
             by_id[bill_id] = bill
             bills.append(bill)
         # A line-less bill cannot occur (POST /bills requires items), but the LEFT
@@ -2357,3 +2387,79 @@ async def update_shop(
                 rowcount=str(result.rowcount),
             )
         return await _read_shop(conn, principal.user_id)
+
+
+# The counter policy the money ledger (0020) shipped WITHOUT a writer -- "PATCH
+# /branches arrives with section 9's second yard" was 0020's note, but the counter
+# is unusable until a shop can turn it on, and OPEN_ITEMS files the writer of
+# separate_cashier as THIS unit's (the owner of the deferred-reader condition).
+# This is the MINIMAL writer -- one policy column -- not section 9's full branch
+# management. It is a shop-settings write in everything but its path, so it reuses
+# shop.settings.write rather than minting branches.manage: a permission no route
+# checks means nothing (0019), and section 9 mints and re-gates its own when it
+# builds the rest of the branch surface. Recorded as the EXPECTED path, not the
+# final answer.
+class BranchPolicyUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # separate_cashier is NOT NULL on the column (0020, DEFAULT false), so there is
+    # no "clear" state and the field is REQUIRED: an absent or null value is a 422,
+    # never a silent no-op that returns the old value as if it were written. A
+    # partial write over every branch field is section 9's; this unit writes
+    # exactly this column, and extra="forbid" refuses any other key today.
+    separate_cashier: bool
+
+
+@router.patch("/branches/{branch_id}")
+async def update_branch(
+    branch_id: uuid.UUID,
+    body: BranchPolicyUpdate,
+    # shop.settings.write, exactly as PATCH /shop: turning the counter on decides,
+    # for a whole branch, whether a bill leaves the weighbridge unpaid -- a standing
+    # policy the yard must not flip while a load is on the scale, not a per-bill act.
+    principal: Principal = Depends(require(Permission.SHOP_SETTINGS_WRITE)),
+) -> dict:
+    """Set a branch's counter policy (separate_cashier). shop.settings.write.
+
+    The writer the money ledger (0020) shipped without. With separate_cashier true,
+    POST /bills stops writing the automatic cash payment and a bill leaves the
+    weighbridge UNPAID until the cashier records it (STRUCTURE.md 2.2, invariant 1).
+    Turning it on leaves every past bill paid; turning it off leaves unpaid bills
+    unpaid -- the switch selects WHO performs the transition, never whether it
+    exists, so no bill is rewritten here and there is no backfill.
+
+    404 branch_not_found for an id not in this tenant -- RLS makes another tenant's
+    branch invisible, exactly as a seller. branches is audited (0018), so the change
+    records the actor the request carries, from the same GUCs PATCH /shop sets.
+    """
+    async with tenant_connection(
+        principal.tenant_id,
+        actor_id=principal.user_id,
+        actor_username=principal.username,
+    ) as conn:
+        # Existence FIRST, under the caller's tenant context, so an unknown or
+        # cross-tenant branch is a 404 the caller can tell apart from a policy that
+        # was already the value sent.
+        if await read_branch(conn, branch_id) is None:
+            raise _not_found("branch")
+        # UPDATE scoped by RLS to this tenant; the id predicate is the subject, not
+        # tenant isolation. Asserting rowcount == 1 turns "the policy is doing its
+        # job" into a check: 0 means no tenant context, 2 means the policy is gone
+        # -- the same assertion PATCH /shop makes on tenants.
+        result = await conn.execute(
+            text("UPDATE branches SET separate_cashier = :v WHERE id = :id"),
+            {"v": body.separate_cashier, "id": branch_id},
+        )
+        if result.rowcount != 1:
+            raise _invalid(
+                "branch_not_scoped",
+                "ไม่พบสาขาของผู้ใช้นี้",
+                rowcount=str(result.rowcount),
+            )
+        updated = await read_branch(conn, branch_id)
+        # The five identity keys branch_payload carries, PLUS the policy just
+        # written, so the caller reads back what it set. branch_payload itself
+        # still omits separate_cashier (GET /shop's five-key branch is unchanged,
+        # prove_shop_settings E1); the policy reaches the phone through section
+        # 1.4's cached_shop_policy, which is the counter SCREEN's unit, not this
+        # write route's response.
+        return {**branch_payload(updated), "separate_cashier": updated.separate_cashier}

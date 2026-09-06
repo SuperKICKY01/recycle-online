@@ -136,6 +136,9 @@ function ReportBody({ report }: { report: Extract<SellerHistoryScreen, { kind: "
                 <Text style={styles.totalValue}>{display(b.total)}</Text>
               </View>
             ) : null}
+            {b.paymentLabel !== null ? (
+              <Text style={styles.paymentBadge}>{b.paymentLabel}</Text>
+            ) : null}
           </View>
         ))
       )}
@@ -189,6 +192,15 @@ function makeStyles(t: ThemeTokens) {
     },
     totalLabel: { fontSize: t.type.subhead, fontWeight: "700", color: t.color.textMuted },
     totalValue: { fontSize: t.type.subhead, fontWeight: "900", color: t.color.text },
+    // An outstanding/partial bill is a "watch this" state, the same warning tone the
+    // void label carries. Only ever drawn for a LIVE, money-shown, not-fully-paid
+    // bill (sellerHistoryView.paymentLabelFor).
+    paymentBadge: {
+      fontSize: t.type.body,
+      fontWeight: "800",
+      color: t.color.warningFg,
+      alignSelf: "flex-start",
+    },
     messageCard: { borderRadius: t.radius.lg, padding: t.space.x3, gap: t.space.xl },
     messageBadge: {
       alignSelf: "flex-start",

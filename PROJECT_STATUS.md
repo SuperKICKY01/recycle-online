@@ -75,6 +75,36 @@ not read the green as re-run.**
 
 ## Current phase
 
+**THE CASHIER COUNTER, SERVER COMMIT — the switch, and every figure the switch makes false. 2026-09-06.** No sha
+yet (this record precedes the commit; anchor next pass). Supersedes the device-observation record below AS THE POINTER
+ONLY — that work stands (unanchored still) and the suite-survey work before it is committed (`c1de5ac`, `6c02295`,
+`5671a8e`).
+**WHAT THE TREE FORCED FIRST — the brief described a unit half of which existed.** The cashier QUEUE
+(`GET /bills?unpaid=true`, `bills.py`) and the many-to-many payment (`POST /payments` across several bills, a deposit,
+or an advance with no bill) ALREADY shipped at `0020` and are proven there; and `packages/` is NOT empty
+(`@recycle/shop-time`). So the server commit is not "build the payments server" but the switch made writable and every
+reader the switch would make false kept honest. Re-derived against the tree, not carried from the paste-set marks.
+**BUILT.** `PATCH /branches/{branch_id}` (`app/master.py`) — the minimal one-column writer of
+`branches.separate_cashier` that `0020` shipped without, gated on `shop.settings.write` (reused, NOT a new
+`branches.manage`: a permission no route checks means nothing, 0019; section 9 mints and re-gates its own), audited,
+NO migration; refuses staff 403 `permission_required` naming `shop.settings.write`, an unknown branch 404
+`branch_not_found`, an unknown key 422. `GET /sellers/{seller_id}/history` gained `paid_amount`/`payment_status` per
+bill (money-gated, the ledger's derivation, quantized at the edge), drawn as a `ค้างจ่าย`/`จ่ายบางส่วน` badge
+(`SellerHistorySheet.tsx`). The dashboard hero label `ยอดที่จ่ายจริง` → `ยอดซื้อตามราคาที่ตกลง` (`summaryView.ts`): the
+number is a PURCHASE value at the agreed price, not the drawer; the new label carries no word for paying (it pairs with
+`ยอดตามราคาประกาศ`, the announced price), so it cannot read as cash — the old label did, the moment a bill can be unpaid. The deferred-reader condition (`OPEN_ITEMS.md § Code debt found and left in place`) worked through and re-filed.
+**PROVEN — each observed, not argued.** `scripts/prove_payments.py` exit 0, `72 passes / 0 failures` on the last run,
+with NEW cells **W** (the switch WRITER over REAL HTTP: `W1` staff 403 naming `shop.settings.write`, `W2` unknown
+branch 404, `W4/W5` admin flips it and Postgres agrees, `W6` a bill created after is UNPAID with no pair, `W7` the flip
+in `audit_log` as a `branches` UPDATE by the admin actor, `W8` flip back) and **MB** (ONE PAYMENT ACROSS TWO DISTINCT
+BILLS — the yard's most common case, never proven at `0020` — read back out of Postgres as one payment against both,
+both bills paid and off the queue). `scripts/prove_seller_history.py` exit 0, 38 cells, the settlement keys asserted
+present-with-money and absent-without. `npm run prove:sellerhistory` (settlement badge cells) and `prove:dashboard`
+green; both mobile typecheck programs exit 0. The full-suite gate `prove:all` is reported at the STOP.
+**DEFERRED, RECORDED:** PromptPay QR (a `packages/` pure function beside the screen that renders it, 2.4, its
+known-vector proof with it); `payments.void` and a client of `POST /payments`; the phone's offline `cached_shop_policy`
+read (1.4) — all the counter SCREEN's (commit 2) or beyond.
+
 **THE FIRST DEVICE OBSERVATION SINCE PHASE E — a person looked at the app, found one defect, and the defect is
 repaired. 2026-09-06.** No sha yet (this record precedes the commit; anchor next pass). Supersedes the suite-survey
 record below AS THE POINTER ONLY — that work stands and is committed (`c1de5ac`, then the native-version gate at

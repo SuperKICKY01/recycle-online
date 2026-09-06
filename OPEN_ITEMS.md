@@ -1658,6 +1658,32 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
     `payment_status`, `?unpaid=true`); the integrity checks (T1, `verify_backup.py`)
     needed nothing. *Owner of the condition:* the counter unit — the one that builds
     `PATCH /branches` or any writer of `separate_cashier`.
+  - **RESOLVED / RE-FILED 2026-09-06 by the CASHIER COUNTER unit (server commit;
+    unanchored, anchor next pass).** The writer now EXISTS — `PATCH /branches/{id}`
+    (`server/app/master.py`, `shop.settings.write`, audited, the MINIMAL one-column
+    form; section 9's full branch management mints its own permission and re-gates
+    when it lands) — so the condition above is INVALIDATED, and its readers were
+    worked through in the SAME commit that shipped the writer:
+    - **Fixed (a figure that CLAIMED cash):** the dashboard hero label
+      `"ยอดที่จ่ายจริง"` → `"ยอดซื้อตามราคาที่ตกลง"` (`mobile/src/dashboard/summaryView.ts`)
+      — the number is `sum(net*unit_price)`, a PURCHASE value at the agreed price and
+      not the drawer; the label names the purchase and the agreed price and NO act of
+      paying (it pairs with `ยอดตามราคาประกาศ`, the announced price), so it cannot read
+      as cash; `reports.py`
+      `paid_total`'s comment says the same. `GET /sellers/{id}/history` now carries
+      `paid_amount`/`payment_status` per bill (money-gated), and `SellerHistorySheet.tsx`
+      draws a `ค้างจ่าย`/`จ่ายบางส่วน` badge, so it is no longer "a list of totals" with
+      no paid state.
+    - **Reviewed and LEFT (honest as a PURCHASE figure, this entry's own note):**
+      `active_total`/`"ยอดซื้อวันนี้"`, the per-bill daily/void line totals, the unsent
+      `"ยอด"` line, `App.tsx`'s latest-bill line — all bill VALUE, true whether or not a
+      bill is paid; and the generic `"ยอดร้าน"`/`"ยอดวันนี้"` titles, which name no cash.
+    - **Still owed (NOT this commit's, filed forward):** the phone does not yet READ
+      the policy offline (`cached_shop_policy`, STRUCTURE 1.4) — the counter SCREEN's
+      unit; a dedicated "paid out today" DRAWER figure is the counter/shifts surface
+      (P1.19), not a relabel; and `GET /reports/summary` keeps its price-basis
+      `paid_total` wire key by design (a rename is churn, not honesty — the comment and
+      the client label carry the meaning).
   - **`payments.shift_id` IS OWED TO THE SHIFTS UNIT.** Section 2.1 sketches it as
     a nullable composite FK to `shifts`; 0020 omitted it because the target table
     does not exist and a column nothing reads becomes load-bearing the day later

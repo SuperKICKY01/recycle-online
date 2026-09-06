@@ -79,6 +79,8 @@ interface WireBill {
   is_void: boolean;
   products: WireLine[];
   total_amount: string | null; // read only when money_included; null otherwise
+  paid_amount: string | null; // read only when money_included; null otherwise (0020)
+  payment_status: PaymentStatus | null; // read only when money_included; null otherwise (0020)
 }
 
 interface HistoryBody {
@@ -99,6 +101,18 @@ const readBool = (v: unknown): boolean | null => (typeof v === "boolean" ? v : n
 // refusing costs a visible "could not read", the right outcome for a number nobody
 // can vouch for. Identical to summaryView.ts:120 (re-stated; that copy is private).
 const readMoney = (v: unknown): string | null => (typeof v === "string" ? v : null);
+
+// The bill's derived settlement (migration 0020, gated behind money like the total):
+// what has actually been PAID against it. Until a shop separates its cashier every
+// bill carried its automatic pair and a list of totals told the whole story; once
+// it can, a total ALONE is a claim about cash the ledger has not made, so history
+// carries the settlement beside the total (OPEN_ITEMS, the deferred-reader condition).
+export type PaymentStatus = "unpaid" | "partial" | "paid";
+const PAYMENT_STATUSES: readonly PaymentStatus[] = ["unpaid", "partial", "paid"];
+const readPaymentStatus = (v: unknown): PaymentStatus | null =>
+  typeof v === "string" && (PAYMENT_STATUSES as readonly string[]).includes(v)
+    ? (v as PaymentStatus)
+    : null;
 
 function readLine(v: unknown, moneyIncluded: boolean): WireLine | null {
   if (!isObj(v)) return null;
@@ -136,11 +150,24 @@ function readBill(v: unknown, moneyIncluded: boolean): WireBill | null {
     products.push(line);
   }
   let total_amount: string | null = null;
+  let paid_amount: string | null = null;
+  let payment_status: PaymentStatus | null = null;
   if (moneyIncluded) {
     total_amount = readMoney(v["total_amount"]);
     if (total_amount === null) return null;
+    // The settlement rides the SAME money gate as the total (0020): present and a
+    // string/known-status when money is shown, absent when it is hidden. A number
+    // for paid_amount, or a status outside the three, is a malformed money field
+    // and refuses the whole response exactly as an unreadable total does.
+    paid_amount = readMoney(v["paid_amount"]);
+    if (paid_amount === null) return null;
+    payment_status = readPaymentStatus(v["payment_status"]);
+    if (payment_status === null) return null;
   }
-  return { bill_id, doc_no, server_received_at, is_void, products, total_amount };
+  return {
+    bill_id, doc_no, server_received_at, is_void, products,
+    total_amount, paid_amount, payment_status,
+  };
 }
 
 /**
@@ -205,6 +232,11 @@ export interface HistoryBillView {
   lines: HistoryLineView[];
   /** total_amount VERBATIM, or null when money is not included. */
   total: string | null;
+  /** A settlement badge for a LIVE, money-shown bill that is not fully paid —
+   *  outstanding or partial — else null (a paid bill and a voided bill get none,
+   *  and money hidden shows nothing). So a total is never read as cash the ledger
+   *  has not recorded. */
+  paymentLabel: string | null;
 }
 
 export interface HistoryReport {
@@ -229,6 +261,11 @@ const ASK_THE_OWNER = "ต้องแจ้งเจ้าของร้าน
 const NO_DOC_NO = "ยังไม่มีเลขที่บิล";
 const VOID_LABEL = "บิลที่ถูกยกเลิก";
 const WEIGHT_UNIT = "กก.";
+/** A LIVE bill the ledger has not fully settled (separate_cashier on, 0020). Two
+ *  states, so a total is never read as money already handed over. A paid or voided
+ *  bill earns neither. */
+const OUTSTANDING_LABEL = "ค้างจ่าย";
+const PARTIAL_LABEL = "จ่ายบางส่วน";
 /** When money_included is false. Names the shop OWNER as the decider (B1), never a
  *  sign-in and never ขอสิทธิ์ — the same rule summaryView's staff_money_hidden line
  *  follows (lessons/403-is-about-what-the-caller-may-do.md). */
@@ -304,6 +341,17 @@ function messageFor(fetch: Exclude<SellerHistoryFetch, { kind: "ok" }>): History
  * 4. THE ONLY ENTRY POINT
  * ========================================================================== */
 
+/** The settlement badge, or null. Only a LIVE bill with money shown and not fully
+ *  paid earns one: a paid bill is the unremarkable case; a VOIDED bill shows its
+ *  void label and any payment on it stands as the seller's advance (STRUCTURE 2.1),
+ *  so a badge there would fight the void label; money hidden means no key at all. */
+function paymentLabelFor(bill: WireBill): string | null {
+  if (bill.is_void || bill.payment_status === null) return null;
+  if (bill.payment_status === "unpaid") return OUTSTANDING_LABEL;
+  if (bill.payment_status === "partial") return PARTIAL_LABEL;
+  return null; // "paid" — no badge
+}
+
 function billView(bill: WireBill): HistoryBillView {
   return {
     bill_id: bill.bill_id,
@@ -317,6 +365,7 @@ function billView(bill: WireBill): HistoryBillView {
       unit_price: p.unit_price,
     })),
     total: bill.total_amount,
+    paymentLabel: paymentLabelFor(bill),
   };
 }
 

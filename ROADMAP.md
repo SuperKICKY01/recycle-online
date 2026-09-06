@@ -6902,6 +6902,17 @@ counted number, and it records no difference** — it totals rows that already
 exist, and a counted drawer is not a row that exists. This step is the other side
 of that sentence.
 
+**RELATIONSHIP TO THE CASHIER COUNTER (2026-09-06, the counter unit's server commit).** That unit did NOT build
+any of P1.19 — no counted-cash storage, no drawer, no shift; those stay here (STRUCTURE § 2.4 folds the drawer and
+shifts into this close: "Shifts subsume P1.19"). What it CHANGED is the figure this close balances AGAINST once a
+shop separates its cashier. `GET /reports/daily`'s `active_total` (the phone's `ยอดซื้อวันนี้`) is PURCHASES — bill
+value — and with `branches.separate_cashier` on (now writable via `PATCH /branches`) a bill can be bought and not
+yet paid, so PURCHASES is no longer "what went out of the drawer." The day's true cash-out is then the LEDGER: the
+sum of live `payments` on that shop day (migration 0020), which this unit made writable through `PATCH /branches`
+and the existing `POST /payments`. So when P1.19 is built, its "what the system says went out" should come from the
+ledger, not from bill totals; the counter unit is what makes that ledger a thing a shop actually writes to. This
+mints no P-number and reopens nothing.
+
 **Depends on — the reading half:** nothing that is not already built. The
 system's own figure for the day is what `GET /reports/daily` already computes,
 over the shop-time day window applied to `server_received_at`.
