@@ -29,6 +29,7 @@ export type IconName =
   | "more"
   | "warn"
   | "check"
+  | "cash"
   | "clock"
   | "bills"
   | "sun"
@@ -60,6 +61,7 @@ const MAP: Record<IconName, FeatherName> = {
   more: "more-horizontal",
   warn: "alert-triangle",
   check: "check",
+  cash: "dollar-sign",
   clock: "clock",
   bills: "file-text",
   sun: "sun",

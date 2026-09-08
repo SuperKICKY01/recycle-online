@@ -345,6 +345,40 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
    ) STRICT`,
 
   /*
+   * THE SHOP'S COUNTER POLICY (STRUCTURE.md 1.4, the cashier-counter unit). One
+   * row, refreshed from GET /shop/policy in the same refreshMaster pass that
+   * refreshes products, sellers and tiers, so the counter entry can decide
+   * OFFLINE whether to draw itself. Today it carries one policy, separate_cashier;
+   * a future switch is another column, which is the whole reason a POLICY TABLE
+   * was chosen over widening GET /shop's branch payload (the owner's ruling 1).
+   *
+   * DISPLAY-ONLY, READ AT ANY AGE, FAILS OPEN. separate_cashier supplies no value
+   * the yard pays against -- it only decides WHO writes the payment row (the
+   * server, or the cashier from this screen; invariant 1) -- so it is NOT a price
+   * claim under the 12-hour rule (STRUCTURE.md 1.4, the owner's ruling 2). There
+   * is deliberately no freshness gate on it: with the switch OFF the unpaid queue
+   * is empty by construction (bills.py list_bills), so a stale "on" costs an empty
+   * list and a stale "off" costs a cashier who cannot pay a seller standing at the
+   * counter -- both directions favour showing, so an absent or stale row reads as
+   * UNKNOWN and the entry is drawn.
+   *
+   * separate_cashier is INTEGER (SQLite has no boolean): 0/1, or NULL when the
+   * caller has no single branch (an unscoped owner) -- which the reader treats as
+   * unknown, exactly as an absent row.
+   *
+   * TENANT-STAMPED, and the read predicate carries it: a tenant MISMATCH reads as
+   * UNKNOWN, never as another shop's policy -- the master_cache rule, one table on.
+   * Born with tenant_id in its CREATE, so it needs no CACHE_TABLES entry and no
+   * migration list entry (cached_grade_tiers' reason).
+   */
+  `CREATE TABLE IF NOT EXISTS cached_shop_policy (
+     only_row         INTEGER NOT NULL PRIMARY KEY CHECK (only_row = 1),
+     tenant_id        TEXT    NOT NULL,
+     separate_cashier INTEGER,
+     fetched_at       TEXT    NOT NULL
+   ) STRICT`,
+
+  /*
    * WHAT THIS INSTALLATION IS — the holder a reserved seller code belongs to.
    *
    * A THIRD one-row table, and the same argument that already separated the two

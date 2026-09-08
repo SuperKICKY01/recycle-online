@@ -63,6 +63,7 @@
     "prove:noticeStack": "npm run build && node dist/proof/proveNoticeStack.js",
     "prove:branch": "npm run build && node dist/proof/proveBranch.js",
     "prove:permissions": "npm run build && node dist/proof/provePermissions.js",
+    "prove:counter": "npm run build && node dist/proof/proveCounter.js",
     "prove:all": "python ../tools/prove_all.py"
   },
   "dependencies": {

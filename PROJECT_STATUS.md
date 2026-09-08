@@ -75,6 +75,48 @@ not read the green as re-run.**
 
 ## Current phase
 
+**THE CASHIER COUNTER, SCREEN (commit 2 of the unit) — the queue, the payment form, and paying. 2026-09-08.**
+No sha yet (this record precedes the commit; anchor next pass). Supersedes the server-commit record below AS THE
+POINTER ONLY — that work stands. **THE SPLIT (S6, the owner's):** this commit is the QUEUE + the PAYMENT FORM +
+PAYING (cash/transfer); PromptPay QR is commit 3, quarantined so its real-bank verification uncertainty does not
+mix into the commit that claims paying is proven; `payments.void` stays deferred (a correction, not part of
+finishing a payment). **BUILT.** Server: `GET /shop/policy` (`app/master.py`), the READ sibling of `PATCH
+/branches/{id}` — the phone learns `separate_cashier` from here and NOT from `branch_payload`'s five pinned keys
+(the owner's ruling 1), a dedicated policy endpoint every future switch is added to; any authenticated principal,
+NO migration. Phone: `cached_shop_policy` + `SqliteShopPolicyStore` (display-only, fails OPEN, tenant-stamped,
+refreshed beside the branch in `refreshShopBranch`, read on boot); `src/counter/counterView.ts` (pure: queue parse
++ grouping by seller oldest-wait-first, the payment-form arithmetic refusing P1/P2/duplicate/over-amount BEFORE the
+request in DECIMAL — `subtractMoney`/`compareMoney` added to `money.ts` — refusal wording from `(status, code)`,
+`mayShowCounterEntry` with the fail-open reasoning at the site per ruling 2, the labels); `app/CounterScreen.tsx`
+(queue → inline pay panel); the `counter` sheet + the `รับชำระเงิน` nav entry ($ icon); `payments.record` in the
+phone `Permission` union and `proofGrants`. ONLINE-ONLY (ruling 3): `POST /payments` reconciles against the live
+ledger under a lock, so an unreachable read is a calm amber state and the queue refreshes on return; an offline
+payment kind is a future outbox kind at the measured per-kind cost (STRUCTURE 2.5), not built.
+**PROVEN — each observed, not argued.** `prove:counter` (NEW) GREEN twice: 61 headless cells (the gate both ways,
+the queue derivation, the P1/P2/dup arithmetic each with a presence sibling, every refusal asserted negatively over
+its render with a no-leak scan, the labels) AND a LIVE round against a real server — flip the switch ON, read `GET
+/shop/policy`, create two bills, watch them arrive UNPAID, pay BOTH in ONE payment (the multi-bill case), watch them
+leave, drive 424 `bill_unknown`/422 over-allocation/403 staff, restore the switch. `prove:all` GREEN:
+`PROVE_ALL_EXIT=0`, `TOTAL 82 GREEN 68 GREEN-EXIT-CODE-ONLY 14 RED 0 COULD-NOT-RUN 0`, twice each. Native gate held
+(preflight, verbatim): "native versions: 14 of the SDK's 119 bundled native packages installed, one version each,
+every major matching bundledNativeModules.json". Both mobile typechecks exit 0.
+**A PRE-EXISTING RED FIXED OUT OF FENCE, ON THE OWNER'S INSTRUCTION (ruling 1):** `prove_payments` G4 was RED at
+`cfd7136` and recorded green (the server-commit record's "72 passes / 0 failures" is contradicted) — a presence scan
+of `GET /payments`' newest-first, no-paging window that a mature live-dev database (892 bills, ~289 records newer
+than every backdated reconstruction) had already emptied of reconstructions. Repaired to assert the
+`recorded_by_migration` flag on a RECORD the endpoint can return; the reconstruction side stays B2/B3 over Postgres.
+The ledger's missing paging, and the THREE-INSTANCE "reported-green-that-reddens" pattern (after `prove_user_create`
+and `prove:login`) with what `prove:all` catches that a hand-run report does not, are filed at
+`OPEN_ITEMS.md § Code debt found and left in place`.
+**SHOWN — on the emulator (`recycle_api36`), the owner's standing ask.** `separate_cashier` flipped ON for Shop A
+via the real `PATCH /branches` route (audited); a bill created from the yard side arrived UNPAID in the counter
+queue (`ค้างจ่าย 195.00 บาท`, grouped under `สมชาย ใจดี`, B-2569-1135/1136); the pay panel showed `ยอดที่จะจ่าย`
+and `เงินสด`/`โอนเงิน` before committing; `ยืนยันจ่าย 195.00 บาท ให้ สมชาย ใจดี` left the bills (`ไม่มีบิลค้างจ่าย`),
+the queue refreshing to the next two. **Left running for the owner with the switch ON** (flipped back only when he
+says he is done); the demo bills are on dev.
+**DEFERRED, RECORDED:** PromptPay QR (commit 3); `payments.void`; the queue's "how long waited" badge (the model
+carries `waitingSince`; `CounterScreen` does not yet render a duration); the phone's offline recording of a payment.
+
 **THE CASHIER COUNTER, SERVER COMMIT — the switch, and every figure the switch makes false. 2026-09-06.** No sha
 yet (this record precedes the commit; anchor next pass). Supersedes the device-observation record below AS THE POINTER
 ONLY — that work stands (unanchored still) and the suite-survey work before it is committed (`c1de5ac`, `6c02295`,

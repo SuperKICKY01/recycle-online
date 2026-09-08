@@ -81,6 +81,7 @@ export type Permission =
   | "bills.create"
   | "bills.read"
   | "bills.void"
+  | "payments.record"
   | "money.view_own"
   | "money.view_shop"
   | "master.write"

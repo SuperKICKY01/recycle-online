@@ -105,3 +105,25 @@ export function sumAmounts(amounts: readonly string[]): string {
     .reduce((acc, a) => acc.plus(new Decimal(a)), new Decimal("0"))
     .toFixed(MONEY_DP);
 }
+
+/**
+ * a - b, exact, at money scale. The counter derives a bill's REMAINING from the
+ * server's total and paid strings (`remaining = total - paid`, the exact
+ * subtraction payments.py does at bills.py:298), and the ADVANCE a payment leaves
+ * a seller (`amount - allocated`). Decimal, never a float — hard rule 1 reaches
+ * the client's own arithmetic, not only the wire.
+ */
+export function subtractMoney(a: string, b: string): string {
+  return new Decimal(a).minus(new Decimal(b)).toFixed(MONEY_DP);
+}
+
+/**
+ * Compare two money strings by VALUE, not lexically: `-1` if a<b, `0` if equal,
+ * `1` if a>b (`"9.00" < "10.00"`, which a string compare gets wrong). The counter
+ * refuses an over-allocation BEFORE the request with this — the same comparisons
+ * POST /payments makes against the ledger (P1: allocated ≤ amount; P2: allocation
+ * ≤ remaining), so the screen never sends a request the server would refuse.
+ */
+export function compareMoney(a: string, b: string): number {
+  return new Decimal(a).comparedTo(new Decimal(b));
+}

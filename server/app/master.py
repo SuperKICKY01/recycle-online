@@ -2463,3 +2463,36 @@ async def update_branch(
         # 1.4's cached_shop_policy, which is the counter SCREEN's unit, not this
         # write route's response.
         return {**branch_payload(updated), "separate_cashier": updated.separate_cashier}
+
+
+@router.get("/shop/policy")
+async def get_shop_policy(principal: Principal = Depends(get_principal)) -> dict:
+    """The caller's branch counter policy, for the phone's cached_shop_policy (1.4).
+
+    The READ sibling of PATCH /branches/{id}: the phone learns separate_cashier from
+    HERE and not from GET /shop's branch payload, whose five identity keys
+    prove_shop_settings E1 pins (branch_payload deliberately omits the policy,
+    branches.py). A dedicated policy endpoint is the shape every future switch is
+    added to -- widening a payload buys one field now and pays for it at every switch
+    after (the owner's ruling 1, 2026-09-07).
+
+    ANY authenticated principal, exactly as GET /shop, and for the same reason:
+    nothing here is sensitive and nothing names a person -- it is one boolean about
+    how the shop's counter works. The counter ENTRY is gated on payments.record on
+    the client, and the server enforces payments.record on POST /payments; a staff
+    phone that reads this boolean learns only that the yard's bills are auto-paid.
+
+    branch is null when the caller has no single branch (an unscoped owner of a
+    multi-yard shop); the phone reads a null policy as UNKNOWN and fails OPEN
+    (STRUCTURE.md 1.4, ruling 2), which for this switch costs at most an empty queue.
+    """
+    async with tenant_connection(
+        principal.tenant_id,
+        actor_id=principal.user_id,
+        actor_username=principal.username,
+    ) as conn:
+        branch = (await read_caller_branch(conn, principal.user_id)).branch
+        return {
+            "branch_id": str(branch.id) if branch is not None else None,
+            "separate_cashier": branch.separate_cashier if branch is not None else None,
+        }

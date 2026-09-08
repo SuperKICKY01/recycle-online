@@ -20,14 +20,14 @@
  */
 import { type SheetTransition } from "./sheetStack.js";
 
-/** The four navigation destinations the header offers. */
-export type NavDest = "dashboard" | "prices" | "settings" | "account";
+/** The navigation destinations the header offers. */
+export type NavDest = "dashboard" | "counter" | "prices" | "settings" | "account";
 
 /**
  * Which condition must hold for a destination to be drawn. A key, not a predicate, so
  * this module stays pure — App.tsx maps each key to the real gate (role/token).
  */
-export type NavGate = "dashboard_entry" | "edit_prices" | "signed_in";
+export type NavGate = "dashboard_entry" | "counter_entry" | "edit_prices" | "signed_in";
 
 export interface NavItem {
   readonly dest: NavDest;
@@ -41,6 +41,11 @@ export interface NavItem {
 /** The destinations, in scroll-row order (most-used first). */
 export const NAV_ITEMS: readonly NavItem[] = [
   { dest: "dashboard", label: "ยอดวันนี้", transition: "open_dashboard", gate: "dashboard_entry" },
+  // The cashier counter (STRUCTURE.md 2.1). Second, near the front, because at a
+  // shop with a separated counter it is the cashier's most-used destination; its
+  // gate (counter_entry) hides it for a session without payments.record or a branch
+  // whose separate_cashier is known-off, so an ordinary yard never sees it.
+  { dest: "counter", label: "รับชำระเงิน", transition: "open_counter", gate: "counter_entry" },
   { dest: "prices", label: "ราคารับซื้อ", transition: "open_prices", gate: "edit_prices" },
   { dest: "settings", label: "ตั้งค่าร้าน", transition: "open_settings", gate: "signed_in" },
   { dest: "account", label: "บัญชีของฉัน", transition: "open_account", gate: "signed_in" },
@@ -48,4 +53,4 @@ export const NAV_ITEMS: readonly NavItem[] = [
 
 /** The complete destination set, written by hand so a proof can catch a drop in
  *  either this or NAV_ITEMS — none may be lost to the new layout. */
-export const NAV_DESTS: readonly NavDest[] = ["dashboard", "prices", "settings", "account"] as const;
+export const NAV_DESTS: readonly NavDest[] = ["dashboard", "counter", "prices", "settings", "account"] as const;

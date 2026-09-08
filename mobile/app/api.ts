@@ -18,6 +18,7 @@ import type {
   GradeTierPatchBody,
 } from "../src/settings/gradeTierAdmin";
 import type { UserCreateBody, UserFetch, UserResetBody } from "../src/users/usersAdmin";
+import type { PaymentCreateBody, PaymentFetch } from "../src/counter/counterView";
 import type {
   EntityCreateBody,
   EntityRenameBody,
@@ -542,6 +543,56 @@ export function fetchSellerHistory(token: string, sellerId: string): Promise<Sel
       signal,
     }),
   );
+}
+
+/* -------------------------------------------------- the cashier counter (2.1) ---- */
+
+type PaymentFetchNoToken = Exclude<PaymentFetch, { kind: "no_token" }>;
+
+/**
+ * GET /bills?unpaid=true — the cashier's unpaid queue (bills.py list_bills).
+ * TRANSPORT ONLY; counterScreenState (src/counter/counterView.ts) classifies it,
+ * where a headless proof reaches the classification. Body-keeping so the shape is
+ * the counter's PaymentFetch; `no_token` is App's case (it checks the token first,
+ * the counter being online-only). Returns a value, never throws.
+ */
+export function fetchUnpaidBills(token: string): Promise<PaymentFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/bills?unpaid=true`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal,
+    }),
+  );
+}
+
+/**
+ * POST /payments — record money leaving the drawer (payments.py). TRANSPORT ONLY;
+ * paymentOutcome classifies it and NEEDS the body kept, because the 424/422 split
+ * turns on the refusal's `code`. The amount and every allocation are STRINGS placed
+ * on the wire exactly as the model produced them (hard rule 1); this file parses no
+ * money. Returns a value, never throws.
+ */
+export function postPayment(token: string, body: PaymentCreateBody): Promise<PaymentFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/payments`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      signal,
+    }),
+  );
+}
+
+/**
+ * GET /shop/policy — the caller's branch counter policy (master.py, the counter
+ * unit's read route). THROWS on a non-2xx like fetchProducts, so refreshMaster's
+ * 401 handling ends the session; a 200 gives {separate_cashier, branch_id}, which
+ * SqliteShopPolicyStore caches for the offline entry gate (STRUCTURE.md 1.4).
+ */
+export function fetchShopPolicy(
+  token: string,
+): Promise<{ separate_cashier: boolean | null; branch_id: string | null }> {
+  return getJson<{ separate_cashier: boolean | null; branch_id: string | null }>("/shop/policy", token);
 }
 
 /** PATCH /shop — admin-only on the server. `patch` carries ONLY the changed

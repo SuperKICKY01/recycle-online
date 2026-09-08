@@ -54,8 +54,11 @@ THE CELLS, and the disproof each stands against:
       duplicate_allocation; staff (no payments.record) is 403
       permission_required naming it on both routes; an advance (no
       allocations) is 201 with unallocated_amount == amount.
-  G   GET /payments lists newest first, this run's rows with their doc_nos,
-      and at least one marked reconstruction (presence).
+  G   GET /payments lists newest first, this run's rows with their doc_nos, and a
+      RECORD this run made carries recorded_by_migration=False -- the flag surfaced on
+      the wire. The TRUE side (a reconstruction) is B2/B3's, over Postgres: the
+      endpoint is newest-first with no paging (limit 200), so on a mature database a
+      backdated reconstruction sits below the window and cannot be listed.
   W   THE SWITCH WRITER over HTTP (PATCH /branches, master.py, the writer 0020
       shipped without): staff is 403 permission_required naming shop.settings.write;
       an unknown branch is 404 branch_not_found; an unknown key is 422; admin flips
@@ -641,7 +644,7 @@ async def run(client: httpx.AsyncClient, db: Db, scratch: str) -> None:
           f"P10: two concurrent submits of one payment -> {codes}, one row ({n_race})")
 
     # ---------------------------------------------------------------- G
-    header("G  GET /payments: newest first, this run's rows, a reconstruction present")
+    header("G  GET /payments: newest first, this run's rows, the record flag on the wire")
     r = await client.get("/payments?limit=200", headers=auth(admin))
     rows = r.json().get("payments", []) if r.status_code == 200 else []
     ids = [x["id"] for x in rows]
@@ -655,8 +658,23 @@ async def run(client: httpx.AsyncClient, db: Db, scratch: str) -> None:
           and mine.get("allocations", [{}])[0].get("amount") == bs.get("total_amount"),
           f"G3: the full payment's allocation names the bill's doc_no and amount"
           f" (got {mine.get('allocations')})")
-    check(any(x.get("recorded_by_migration") for x in rows),
-          "G4: at least one marked reconstruction is listed (presence)")
+    # G4: the recorded_by_migration flag is SURFACED ON THE WIRE and tells a record
+    # from a reconstruction. This run's own payment (a RECORD) is listed with the flag
+    # False. The TRUE side -- a reconstruction -- is proven in B2/B3 over Postgres,
+    # which is the ONLY reader that reaches it: GET /payments is newest-first with NO
+    # PAGING (limit 200), and this scratch is a live dump of a mature database (B1
+    # counts 892 bills, ~289 of them post-0020 RECORDS stamped now, newer than every
+    # backdated reconstruction), so an old reconstruction sits BELOW the window and
+    # cannot be listed. THAT is what the pre-existing G4 could not see: it scanned the
+    # newest window for a reconstruction a growing dev database had already pushed out
+    # of it (RED at cfd7136, doomed to flip as dev grew), instead of asserting the flag
+    # on a payment the endpoint can actually return. Filed at OPEN_ITEMS as a ledger
+    # paging limit; here the achievable, robust claim is the flag on this run's record.
+    check(mine.get("recorded_by_migration") is False,
+          f"G4: a RECORD this run made is listed with recorded_by_migration=False --"
+          f" the flag that distinguishes it from a reconstruction, surfaced on the wire"
+          f" (B2/B3 prove the TRUE side over Postgres; GET /payments has no paging to"
+          f" reach a backdated reconstruction) (got {mine.get('recorded_by_migration')})")
     check(all(x.get("status") in ("active", "voided") for x in rows) and len(rows) > 0,
           "G5: every row carries a status (control)")
 

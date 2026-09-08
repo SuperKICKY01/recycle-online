@@ -1654,6 +1654,19 @@ of the supersession above is EXPRESSIBLE today (a role holding `money.view_shop`
 and not `bills.create`; `payments.record` itself arrives with unit 3). What is NOT
 built is the screen that would let a shop CREATE such a role — filed as owed at
 `OPEN_ITEMS.md § Decisions open — the owner's, not the code's`.
+**EXTENDED 2026-09-08 — the cashier now has a SURFACE (STRUCTURE.md § 12 unit 4).**
+The money ledger (migration `0020`, unit 3) and the counter SCREEN (commit 2) are
+built: with `separate_cashier` ON a bill leaves the weighbridge UNPAID, and a cashier
+holding `payments.record` opens `รับชำระเงิน` on the phone, sees the unpaid queue
+grouped by seller, and settles one or several bills in one payment (cash or transfer),
+shown working on the emulator. The switch is writable (`PATCH /branches/{id}`) and
+readable offline by the phone (`GET /shop/policy` → `cached_shop_policy`). WHAT THE
+COUNTER STILL OWES, each its own unit: **PromptPay QR** (commit 3, a `packages/` pure
+function beside the screen); **`payments.void`** (correcting a wrong payment is a
+reissue until then); **shifts and the drawer** (P1.19 / STRUCTURE § 2.4 — a "paid out
+today" figure, opening float, close and variance); **cash movements / expenses** and
+**approvals** (STRUCTURE § 2.4); and the **role-creation screen** above, without which
+no shop can mint the dedicated cashier the model already expresses.
 
 **D10 — the pilot runs on the production database, and no rebuild of the
 2026-08-03 kind is available after the first real bill.** That rebuild is recorded

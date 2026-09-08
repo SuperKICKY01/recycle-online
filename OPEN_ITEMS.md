@@ -1678,12 +1678,16 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
       `active_total`/`"ยอดซื้อวันนี้"`, the per-bill daily/void line totals, the unsent
       `"ยอด"` line, `App.tsx`'s latest-bill line — all bill VALUE, true whether or not a
       bill is paid; and the generic `"ยอดร้าน"`/`"ยอดวันนี้"` titles, which name no cash.
-    - **Still owed (NOT this commit's, filed forward):** the phone does not yet READ
-      the policy offline (`cached_shop_policy`, STRUCTURE 1.4) — the counter SCREEN's
-      unit; a dedicated "paid out today" DRAWER figure is the counter/shifts surface
-      (P1.19), not a relabel; and `GET /reports/summary` keeps its price-basis
-      `paid_total` wire key by design (a rename is churn, not honesty — the comment and
-      the client label carry the meaning).
+    - **Still owed (NOT the server commit's, filed forward):** ~~the phone does not yet
+      READ the policy offline (`cached_shop_policy`, STRUCTURE 1.4) — the counter
+      SCREEN's unit~~ **DONE 2026-09-08 by the counter SCREEN commit:** the phone reads
+      the branch policy through `GET /shop/policy` into `cached_shop_policy`
+      (`SqliteShopPolicyStore`), refreshed beside the branch and read on boot, and the
+      counter entry gates itself offline on it (`mayShowCounterEntry`, display-only,
+      fails open). A dedicated "paid out today" DRAWER figure is still the
+      counter/shifts surface (P1.19), not a relabel; and `GET /reports/summary` keeps
+      its price-basis `paid_total` wire key by design (a rename is churn, not honesty —
+      the comment and the client label carry the meaning).
   - **`payments.shift_id` IS OWED TO THE SHIFTS UNIT.** Section 2.1 sketches it as
     a nullable composite FK to `shifts`; 0020 omitted it because the target table
     does not exist and a column nothing reads becomes load-bearing the day later
@@ -1753,9 +1757,106 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
     The rule the finding adds to the boundary checklist: run the citation checker AFTER
     the last doc edit, including the edit that reports the checker's reading — a
     reading pasted into a document is one more line the checker parses.
+  - **`prove_payments.py` G4 WAS RED AT `cfd7136` AND RECORDED GREEN — FIXED here,
+    out of fence, deliberately (measured and repaired 2026-09-08, the counter SCREEN
+    commit).** The old G4 asserted "at least one marked reconstruction is listed" by
+    fetching `GET /payments?limit=200` (newest first) and scanning for a
+    `recorded_by_migration` row. It cannot fire on a mature database, and the reason
+    is deeper than a self-flood: **the scratch is restored from a LIVE dump of
+    `recycle`** (the run's own header prints `restoring scratch … from a live dump of
+    'recycle'`), and that database has grown — `B1: 892 live positive bills`, of which
+    `B2: 603` carry a backfilled reconstruction and the other ~289 carry a post-0020
+    RECORD payment written by `POST /bills` on dev, stamped when that bill was created.
+    Those ~289 records are already NEWER than every backdated reconstruction (whose
+    `server_received_at` is its bill's original arrival), so `GET /payments` — newest
+    first, `limit` capped at 200, **NO cursor or offset** — returns 200 rows that hold
+    no reconstruction *before this run adds a single payment of its own*. The run then
+    creates 200+ more records on top. So the cell was doomed to flip red the day dev
+    accumulated ~200 record payments, and it did. The DATA IS CORRECT: `B2`/`B3` read
+    603 marked pairs over Postgres, each allocation equal to its amount and its bill's
+    total and payer-less exactly where the bill lacks `created_by`; `B4` a
+    reconstruction reads `paid` over HTTP — all green. **Pre-existing, my change
+    exonerated:** with `server/app/master.py` checked out to `cfd7136` (my
+    `GET /shop/policy`, which creates no payment, removed) and nothing else changed,
+    `prove_payments.py` standalone still exits 1 at G4 (`G1: 200, 200 rows`); both
+    `prove:all` runs at HEAD showed the identical `[RED] G4`. **THE FIX (G4
+    before/after), applied out of this unit's fence ON THE OWNER'S EXPLICIT
+    INSTRUCTION (ruling 1, 2026-09-08), recorded here so the conduct rule
+    "record-don't-fix" is not read as loosened — the exception is narrow: a proof, not
+    product code, and `prove:all` exists precisely to answer "is the suite green", so a
+    tolerated red teaches everyone to skim past red (which is how the two findings
+    above stayed broken):** the old body was `any(x.get("recorded_by_migration") for x
+    in rows)` — a scan of the newest window for a reconstruction a growing database has
+    pushed out of it. The new body is `mine.get("recorded_by_migration") is False` —
+    the flag on a RECORD this run made and `G2` already found in the listing, so the
+    achievable claim is that the flag is SURFACED ON THE WIRE and tells a record from a
+    reconstruction; the TRUE side stays `B2`/`B3` over Postgres, the only reader that
+    reaches an old reconstruction. An intermediate `B5` (fetch the listing EARLY,
+    before the run, and find the sample reconstruction) was written and REJECTED by
+    measurement: the live-dev records are newer than the reconstructions even at `B`
+    time, so `found=False` there too — the endpoint cannot surface a backdated
+    reconstruction at any point in the run. Read back: `PROVE_PAYMENTS_EXIT=0` twice
+    standalone, G4 green (`got False`).
+  - **THE LEDGER HAS NO PAGING, AND THAT IS A REAL GAP — filed for the money-ledger /
+    reports unit, not the counter screen's.** `GET /payments` is newest-first, `limit`
+    ≤ 200, with no cursor or offset, so on a mature shop an OLD payment (a
+    reconstruction, or any settled bill's payment from weeks back) cannot be reached
+    through the API at all — only over Postgres. A ledger a shop cannot page back
+    through is a ledger it cannot audit; when the reconciliation/reports surface is
+    built it owes `GET /payments` a cursor (and the same question applies to
+    `GET /bills`). Recorded, not built.
+  - **THREE PROOFS REPORTED GREEN WHOSE RUN REDDENS IS A PATTERN, NOT AN ACCIDENT
+    (2026-09-08).** `prove_user_create` (RED since 0019, reported among "green twice"),
+    `prove:login` (green on run 1, red on run 3 by its own lockout — "unreadable"), and
+    now `prove_payments` G4 (RED at `cfd7136`, the server commit's record claiming "72
+    passes, 0 failures"). The pattern is the one this repo already names in
+    `a-report-is-a-clue`: **a report of a proof's result is a claim like any other**,
+    true only of the run that produced it, and a hand-run "it passed" rots exactly as a
+    measured number does. *What `prove:all` catches that a hand-run report does not:* it
+    ENUMERATES the proofs from the tree (so one cannot be silently dropped from the
+    list a human remembers to run), runs each TWICE with no reseed (so `prove:login`'s
+    self-lockout and any run-1-only green reddens), reads each proof's OWN self-printed
+    exit line AND independently scans its output for `[RED]`/`error TS`/a Python
+    traceback (so a proof that prints RED while exiting 0, or crashes before its exit
+    line, is caught), and REFUSES on a failed preflight rather than running a
+    half-environment. It is the invocation, recorded, not a memory of one. *What can
+    STILL let a false green through, so this is not "solved":* a proof in the
+    `GREEN, EXIT-CODE-ONLY` bucket (14 this run) prints no exit line, so `prove:all`
+    trusts its process status alone — a `0` from a proof that asserted nothing reads as
+    green; and `prove:all` judges whether a proof was RUN and came back clean, never
+    whether each CELL could have gone red — that still rests on the per-cell disproof
+    discipline (`a-check-that-never-went-red-was-never-observed`), which no runner
+    enforces. `prove:all` closes the "was it run, twice, did it exit or print red" hole;
+    the "is each cell meaningful" hole is the author's, every cell, still.
+  - **NO PROOF ASSERTS THE DASHBOARD'S MONEY LABELS (measured at `cfd7136`, with a
+    positive control).** `mobile/src/dashboard/dashboardView.ts:131` sets the hero
+    title (`"ยอดร้าน"` / `"ยอดของฉัน"`) and `summaryView.ts` labels what each figure
+    MEANS, but `prove:dashboard` asserts `mayShowDashboardEntry` and `seesShopMoney`
+    and never the rendered label STRINGS (searched `proveDashboard.ts` for the label
+    literals: not found with those words). A label that tells the operator what a
+    number means — and the dashboard's name a PURCHASE figure that the counter unit
+    just relabelled off a cash claim — is guarded by nothing. Positive control that
+    the instrument CAN assert a label: the counter screen's own `prove:counter` H5
+    asserts `ค้างจ่าย`, `จ่ายแล้ว`, `รับชำระเงิน`, `เงินสด`, `โอนเงิน` by value with a
+    no-leak scan and checks the screen renders them — so the gap is the dashboard's,
+    not the harness's. *Whose:* the dashboard unit's; the counter unit records it
+    because its own labels would have shared the gap and now do not.
   - **`payments.void`, `POST /payments/{id}/void` and any client of `POST /payments`
     are the counter unit's.** In 0020 a payment can be voided only by SQL; the proofs
     that need a voided payment (P4's injection) write one that way.
+    **STILL DEFERRED after the counter SCREEN commit (2026-09-08): `payments.void`
+    is commit 3 or beyond with PromptPay; the screen ships a client of `POST
+    /payments` (the pay panel) but records a wrong payment's correction as a
+    reissue, not a void, until the void surface is briefed.**
+  - **THE COUNTER QUEUE DOES NOT YET SHOW "HOW LONG WAITED" (observed on the emulator,
+    2026-09-08).** The brief for the queue was "who / how much / how long they have
+    waited". The SCREEN shows who (`สมชาย ใจดี`, the seller header) and how much
+    (`ค้างจ่าย` outstanding plus each bill's remaining), but not a wait duration. The
+    DATA is already in the model — `counterView.QueueSeller.waitingSince` carries the
+    oldest unpaid bill's `server_received_at` — so this is a render-only follow-up:
+    `CounterScreen` formats `waitingSince` into a "รอมา …" badge through
+    `@recycle/shop-time` (never the device clock; render-in-shop-time-not-device-time).
+    Filed for the counter screen's next pass, not built now.
   - **`prove_daily_report.py` COMPARED doc_no STRINGS ACROSS TENANTS** and reddened
     on 2026-09-05 when tenant B's counter reached `B-2569-17`, a string tenant A's
     fixture day also holds; fixed IN THIS COMMIT to compare bill ids (doc_no is

@@ -58,6 +58,7 @@ import { ownerForNewRow } from "./src/session/rowOwner";
 import { SqliteLocalStore } from "./src/adapters/sqlite/SqliteLocalStore";
 import { SqliteMasterStore } from "./src/adapters/sqlite/SqliteMasterStore";
 import { SqliteShopStore } from "./src/adapters/sqlite/SqliteShopStore";
+import { SqliteShopPolicyStore } from "./src/adapters/sqlite/SqliteShopPolicyStore";
 import { SqlitePermissionStore } from "./src/adapters/sqlite/SqlitePermissionStore";
 import {
   cartTotal,
@@ -147,6 +148,14 @@ import type {
   TierAdminScreen,
 } from "./src/settings/gradeTierAdmin";
 import { userWriteOutcome, usersScreenState } from "./src/users/usersAdmin";
+import {
+  buildPaymentBody,
+  counterScreenState,
+  mayShowCounterEntry,
+  paymentOutcome,
+  type CounterScreenState,
+  type PaymentPlan,
+} from "./src/counter/counterView";
 import type {
   UserCreateBody,
   UserFetch,
@@ -198,7 +207,10 @@ import {
   fetchSellerHistory,
   fetchSellers,
   fetchShop,
+  fetchShopPolicy,
   fetchSummary,
+  fetchUnpaidBills,
+  postPayment,
   patchGradeTier,
   reorderGradeTiers,
   fetchUsers,
@@ -238,6 +250,7 @@ import { AccountScreen } from "./app/AccountScreen";
 import { SellerHistorySheet } from "./app/SellerHistorySheet";
 import { TierActionsSheet } from "./app/TierActionsSheet";
 import { UsersScreen } from "./app/UsersScreen";
+import { CounterScreen } from "./app/CounterScreen";
 import { UserActionsSheet } from "./app/UserActionsSheet";
 import { ProductsScreen } from "./app/ProductsScreen";
 import { ProductActionsSheet } from "./app/ProductActionsSheet";
@@ -500,6 +513,20 @@ function AppInner() {
   const [usersRefusal, setUsersRefusal] = useState<string | null>(null);
   const [usersBusy, setUsersBusy] = useState(false);
   const [userMenuTarget, setUserMenuTarget] = useState<UserRow | null>(null);
+  /*
+   * THE CASHIER COUNTER (STRUCTURE.md 2.1, commit 2). `counterScreen` is the
+   * queue-or-message the read produced; `counterRefusal` is the last payment's
+   * readable refusal (worded by counterView from the server's code), cleared on
+   * the next read; `counterBusy` disables confirm during a POST. Online-only, so
+   * not cached and not an outbox kind. `separateCashier` is the branch's counter
+   * policy (STRUCTURE.md 1.4): null=UNKNOWN draws the entry (fail open), false
+   * hides it, true draws it — loaded from the cache on boot, refreshed beside the
+   * branch (refreshShopBranch).
+   */
+  const [counterScreen, setCounterScreen] = useState<CounterScreenState | null>(null);
+  const [counterRefusal, setCounterRefusal] = useState<string | null>(null);
+  const [counterBusy, setCounterBusy] = useState(false);
+  const [separateCashier, setSeparateCashier] = useState<boolean | null>(null);
   /*
    * PRODUCT MASTER DATA (P1.15, homed on the phone), opened from an admin-only row
    * inside settings. `productsScreen` is the three-list-or-message the read produced;
@@ -887,6 +914,8 @@ function AppInner() {
   const identityStoreRef = useRef<SqliteIdentityStore | null>(null);
   /** Which shop this device belongs to. A different lifetime — see the store. */
   const shopStoreRef = useRef<SqliteShopStore | null>(null);
+  /** The shop's counter policy (STRUCTURE.md 1.4), refreshed beside the branch. */
+  const shopPolicyStoreRef = useRef<SqliteShopPolicyStore | null>(null);
   const permissionStoreRef = useRef<SqlitePermissionStore | null>(null);
   const masterStoreRef = useRef<SqliteMasterStore | null>(null);
   /**
@@ -1078,6 +1107,10 @@ function AppInner() {
         // three stores above have already run through this driver.
         const identityStore = new SqliteIdentityStore(driver);
         const shopStore = new SqliteShopStore(driver);
+        // The counter policy cache (STRUCTURE.md 1.4), on the SAME driver: the
+        // branch's separate_cashier as GET /shop/policy last reported it, read on
+        // boot so the counter entry can gate itself before any network.
+        const shopPolicyStore = new SqliteShopPolicyStore(driver);
         // The permission cache (server migration 0019), on the SAME driver: what
         // the server last said this user may do, read below before any network.
         const permissionStore = new SqlitePermissionStore(driver);
@@ -1087,6 +1120,7 @@ function AppInner() {
         masterStoreRef.current = masterStore;
         identityStoreRef.current = identityStore;
         shopStoreRef.current = shopStore;
+        shopPolicyStoreRef.current = shopPolicyStore;
         permissionStoreRef.current = permissionStore;
 
         // Created ONCE, on the SAME driver, and captured so the picker and the
@@ -1188,7 +1222,16 @@ function AppInner() {
         // Which shop this device is. Read before the token, because with no
         // shop there is nothing to sign in TO and the setup screen is what the
         // operator must be shown.
-        setShop((await shopStore.load())?.tenant_id ?? null);
+        const deviceShop = (await shopStore.load())?.tenant_id ?? null;
+        setShop(deviceShop);
+        // The branch's counter policy, as the cache last held it (STRUCTURE.md
+        // 1.4). null when never learned / another tenant / no single branch — the
+        // counter entry fails OPEN on that, so a cold offline start still offers
+        // the counter to a permitted cashier; refreshShopBranch overrides it when
+        // the server answers.
+        if (deviceShop !== null) {
+          setSeparateCashier((await shopPolicyStore.read(deviceShop))?.separate_cashier ?? null);
+        }
         tokenRef.current = token;
         setToken(token);
         // Read off the RESTORED token, before any network call — the whole point
@@ -1524,6 +1567,19 @@ function AppInner() {
       const learned = readShopBranch(r.body);
       if (learned !== null) {
         await shopStoreRef.current?.saveBranch(learned.shop_id, learned.branch_id);
+        // The branch's counter policy (STRUCTURE.md 1.4), fetched beside the
+        // branch and cached keyed on the same shop id, so the counter entry gates
+        // itself offline next boot. DISPLAY-ONLY, FAILS OPEN: fetchShopPolicy
+        // throws on a non-2xx, so a 401 or outage lands in this catch and leaves
+        // the cached value untouched — an unknown policy draws the entry, and the
+        // server refuses payments.record if the caller lacks it.
+        try {
+          const pol = await fetchShopPolicy(t);
+          await shopPolicyStoreRef.current?.save(learned.shop_id, pol.separate_cashier);
+          setSeparateCashier(pol.separate_cashier);
+        } catch {
+          /* leave the cached policy; the entry fails open on unknown */
+        }
       }
     }
   }, []);
@@ -1981,6 +2037,81 @@ function AppInner() {
     (id: string, newPassword: string) =>
       void runUserAction((t) => resetUserPassword(t, id, { new_password: newPassword })),
     [runUserAction],
+  );
+
+  /* ---------------------------------------------- the cashier counter (2.1) -- */
+
+  /**
+   * READ THE UNPAID QUEUE. Online only (the owner's ruling 3): POST /payments
+   * reconciles against the LIVE ledger under a lock, which no stale cache can do,
+   * so with no network the counter says so and draws no list. The master `sellers`
+   * cache resolves each row's name (the queue carries only seller_id). A 401 ends
+   * the session; an outage is the calm amber message, and the queue refreshes when
+   * the line returns.
+   */
+  const loadCounter = useCallback(async (): Promise<void> => {
+    const t = tokenRef.current;
+    if (t === null) {
+      setCounterScreen(counterScreenState({ kind: "no_token" }, new Map()));
+      return;
+    }
+    setCounterScreen(null);
+    const byId = new Map(sellers.map((s) => [s.id, { name: s.name, phone: s.phone }]));
+    const result = await fetchUnpaidBills(t);
+    setCounterScreen(counterScreenState(result, byId));
+    if (result.kind === "unreachable") {
+      setOnline(false);
+      return;
+    }
+    setOnline(true);
+    if (result.kind === "http" && result.status === 401) setSessionEnded(true);
+  }, [sellers]);
+
+  const openCounter = useCallback(() => {
+    setCounterBusy(false);
+    setCounterRefusal(null);
+    sheet("open_counter");
+    void loadCounter();
+  }, [loadCounter, sheet]);
+
+  /**
+   * RECORD ONE PAYMENT. `plan` is the validated model (checkPayment, in the pay
+   * panel); this mints the id/key/stamp (buildPaymentBody) and POSTs. branch_id is
+   * omitted — the server resolves it from the caller, the pre-0018 wire shape. On
+   * success the queue is re-read, because the ledger is authoritative: a paid bill
+   * leaves the queue. A refusal is worded by paymentOutcome; a 424 or a voided bill
+   * means the ledger moved under the cashier, so the queue is reloaded; a 401 ends
+   * the session. NOTHING queues — the counter is online-only.
+   */
+  const payAt = useCallback(
+    async (plan: PaymentPlan): Promise<void> => {
+      const t = tokenRef.current;
+      if (t === null) {
+        setSessionEnded(true);
+        return;
+      }
+      setCounterBusy(true);
+      setCounterRefusal(null);
+      const body = buildPaymentBody({ clock: systemClock, ids: deviceIds }, plan);
+      const result = await postPayment(t, body);
+      const outcome = paymentOutcome(result);
+      setCounterBusy(false);
+      if (outcome.kind === "ok") {
+        setOnline(true);
+        setSessionEnded(false);
+        await loadCounter();
+        return;
+      }
+      if (outcome.kind === "session") {
+        setSessionEnded(true);
+        return;
+      }
+      if (result.kind === "unreachable") setOnline(false);
+      else setOnline(true);
+      setCounterRefusal(outcome.message);
+      if (outcome.reloadQueue) await loadCounter();
+    },
+    [loadCounter],
   );
   /**
    * OPEN THE ⋯ MENU for a roster row (P3.7). The ONE writer of `userMenuTarget`,
@@ -3247,6 +3378,19 @@ function AppInner() {
       case "dashboard_entry":
         return mayShowDashboardEntry(grants);
       /*
+        COUNTER (STRUCTURE.md 2.1, commit 2; the owner's rulings 1-3). Drawn for a
+        session holding payments.record whose branch is not known-OFF. FAILS OPEN
+        on both unknowns: an absent grant set (the server refuses the POST with a
+        calm 403 if wrong) and an unknown policy (null) — because with the switch
+        off the unpaid queue is empty by construction (bills.py list_bills), so
+        wrongly showing costs an empty list while wrongly hiding costs a cashier
+        who cannot pay a seller standing at the counter. Only a set that was read
+        and lacks payments.record, or a branch known to have the switch off, hides
+        it. The reasoning lives in mayShowCounterEntry; this only names the gate.
+      */
+      case "counter_entry":
+        return mayShowCounterEntry(grants, separateCashier);
+      /*
         PRICES (P1.9). The ยกเลิกบิลนี้ rule, not the ยอดวันนี้ one: this opens a screen
         whose purpose is a WRITE the prices.write gate refuses, and a session must not
         learn its account cannot price by watching a save fail. `may` over the SAME
@@ -3273,6 +3417,8 @@ function AppInner() {
     switch (dest) {
       case "dashboard":
         return openDashboard;
+      case "counter":
+        return openCounter;
       case "prices":
         return openPrices;
       case "settings":
@@ -3638,6 +3784,27 @@ function AppInner() {
                 />
               ),
             };
+
+      /* The cashier counter (STRUCTURE.md 2.1, commit 2) — the unpaid queue and the
+         payment form, over the app's own screen (reachable only from null, like the
+         dashboard). Online-only: no offline cache and no outbox, so a stale queue is
+         never shown; onRetry re-READS, a payment never replays on its own. */
+      case "counter":
+        return {
+          animation: "slide",
+          back: closeTopSheet,
+          content: (
+            <CounterScreen
+              state={counterScreen}
+              refusal={counterRefusal}
+              busy={counterBusy}
+              onClose={closeTopSheet}
+              onRetry={() => void loadCounter()}
+              onSignIn={closeTopSheet}
+              onPay={(plan) => void payAt(plan)}
+            />
+          ),
+        };
 
       /* P3.7. The shop's people — the roster, add-a-user, and the row that opens the
          actions sheet. OVER the settings sheet (the stack settings>users), reached
@@ -4006,6 +4173,8 @@ function navIcon(dest: NavDest): IconName {
   switch (dest) {
     case "dashboard":
       return "dashboard";
+    case "counter":
+      return "cash";
     case "prices":
       return "prices";
     case "settings":

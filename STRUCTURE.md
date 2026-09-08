@@ -624,4 +624,45 @@ known-vector proof with it); `payments.void` and a client of `POST /payments`; t
 phone's offline `cached_shop_policy` read (1.4). Record: `PROJECT_STATUS.md §
 Current phase`.
 
+**Unit 4, commit 2 — THE CASHIER SCREEN — BUILT 2026-09-08 (unanchored; anchor next
+pass), NO migration.** The split the owner took (S6): this commit is the QUEUE + the
+PAYMENT FORM + PAYING (cash/transfer); PromptPay QR is commit 3, quarantined so its
+real-bank verification uncertainty never mixes into the commit that claims paying is
+proven, and `payments.void` stays deferred (a correction workflow, not part of
+finishing a payment). **Built.** Server: `GET /shop/policy` (`app/master.py`), the
+READ sibling of `PATCH /branches/{id}` and the way the phone learns `separate_cashier`
+WITHOUT widening `branch_payload`'s five keys (the owner's ruling 1) — a dedicated
+policy endpoint, the shape every future switch is added to. Phone: `cached_shop_policy`
++ `SqliteShopPolicyStore` (display-only, fails OPEN, tenant-stamped; refreshed beside
+the branch, read on boot), `src/counter/counterView.ts` (the pure model — queue parse
+and grouping by seller oldest-wait-first, the payment-form arithmetic refusing P1/P2/
+duplicate/over-amount BEFORE the request in DECIMAL, refusal wording from `(status,
+code)`, `mayShowCounterEntry` with the fail-open reasoning AT THE SITE per ruling 2,
+the labels), `subtractMoney`/`compareMoney` added to `money.ts`, `app/CounterScreen.tsx`
+(queue → inline pay panel), the `counter` sheet, the `รับชำระเงิน` nav entry,
+`payments.record` in the phone's `Permission` union and the proof grants. ONLINE-ONLY
+(ruling 3): `POST /payments` reconciles against the live ledger under a lock, which no
+stale cache can do, so an unreachable read is a calm amber message and the queue
+refreshes on return; an offline payment kind is a future outbox kind at the measured
+per-kind cost (2.5), not built. **Proven:** `prove:counter` (NEW) GREEN twice, headless
+(61 cells: the gate both ways, the queue derivation, the P1/P2/dup arithmetic each with
+a presence sibling, every refusal negatively over its render with a no-leak scan, the
+labels) AND a LIVE round against a real server (flip the switch on, read `GET
+/shop/policy`, create two bills, watch them arrive UNPAID, pay BOTH in ONE payment,
+watch them leave, drive 424/422/403, restore the switch). `prove:all` GREEN
+(`PROVE_ALL_EXIT=0`, RED 0), native gate quoted at the STOP. **A pre-existing red fixed
+out of fence on the owner's instruction:** `prove_payments` G4 was RED at `cfd7136` and
+recorded green — a presence scan of `GET /payments`' newest-first window that a mature
+live-dev database (no ledger paging) had already pushed every reconstruction out of;
+repaired to assert the `recorded_by_migration` flag on a RECORD the endpoint can return,
+the TRUE side left to B2/B3 over Postgres. The ledger's missing paging and the
+three-instance "reported-green-that-reddens" pattern are filed at `OPEN_ITEMS.md`.
+**Shown:** on the emulator with `separate_cashier` ON for Shop A — a bill created from
+the yard side arrived unpaid in the queue (`ค้างจ่าย`, grouped under `สมชาย ใจดี`), the
+pay panel showed `ยอดที่จะจ่าย` before committing, and on `ยืนยันจ่าย` the bills left
+(`ไม่มีบิลค้างจ่าย`), the queue refreshing to the next. **Deferred, recorded:** PromptPay
+(commit 3); `payments.void`; the queue's "how long waited" badge (the model carries
+`waitingSince`; the screen does not yet render a duration). Record: `PROJECT_STATUS.md §
+Current phase`.
+
 Two observations before the advisor turns these into briefs. The bill-line rewrite in 2.3 is in batch B and not in unit 3 on purpose: unit 3 is the ledger, and the line's new columns land with the containers and pricing-basis feature that pulls them, per S17, in the unit after. And the whole of this document is UNMEASURED as to whether a real yard wants any of it; what is measured is that the structure holds the shop that uses everything and costs the shop that uses nothing one automatic row per bill, which is the owner's principle written as a schema.

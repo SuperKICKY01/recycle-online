@@ -71,6 +71,15 @@ export const SHEET_KINDS = [
    */
   "dashboard",
   "bills",
+  /**
+   * The cashier counter (STRUCTURE.md 2.1, commit 2). The unpaid queue and the
+   * payment form, opened from a HEADER entry on the app's own screen — so a sheet
+   * covers it and it is reachable only from `null`, like ยอดวันนี้ beside it. The
+   * entry is drawn only for a session holding payments.record whose branch is not
+   * known-off (mayShowCounterEntry), which is about who may open it, not which
+   * sheet is on screen. A leaf: nothing opens over it.
+   */
+  "counter",
   /** P1.9. The shop's own price list, and the one screen that MOVES it. */
   "prices",
   /** P1.23. The shop's own settings, and the account this device is signed in as. */
@@ -262,6 +271,20 @@ export const SHEET_TRANSITIONS = {
     action: { kind: "open", sheet: "bills" },
     from: [null],
     site: "App.tsx the latest-bill Pressable",
+  },
+  /**
+   * Header รับชำระเงิน (STRUCTURE.md 2.1, commit 2). In the body's header like
+   * ยอดวันนี้, so a sheet covers it and it is reachable only from the app's own
+   * screen. The control is NOT always drawn — hidden from a session without
+   * payments.record and from a branch whose separate_cashier is known-off
+   * (mayShowCounterEntry) — which is about who may press it and not which sheet is
+   * on screen, so `from` is `[null]`, exactly as open_prices records for its own
+   * role gate.
+   */
+  open_counter: {
+    action: { kind: "open", sheet: "counter" },
+    from: [null],
+    site: "App.tsx header, the รับชำระเงิน Pressable",
   },
   /**
    * Header ราคารับซื้อ (P1.9). In the BODY's header, so it is reachable only

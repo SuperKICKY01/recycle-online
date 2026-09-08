@@ -259,6 +259,7 @@ const EXPECTED_REACHABLE: readonly string[] = [
   "bills",
   "confirm_save",
   "confirm_seller_change",
+  "counter", // the รับชำระเงิน header button opens the cashier counter (STRUCTURE.md 2.1, commit 2)
   "dashboard", // the ยอดวันนี้ button opens the dashboard (P1.23 item 4 unit 3; it absorbed the daily screen)
   "notices", // the notice-count control on the main screen opens the collapsed notices (P1.23 item 3 phase C)
   "prices",
@@ -279,6 +280,7 @@ const EXPECTED_CLOSE: readonly (readonly [string, string, string])[] = [
   ["-", "-", "closing nothing is not an error: a stale handler after a close is normal"],
   ["bills", "-", "back to the cart"],
   ["confirm_save", "-", "back to the cart with the bill unsaved"],
+  ["counter", "-", "back to the app's own screen. The counter stands on its own — a cashier who has finished receiving payments is finished, and there is nothing underneath it to return to (STRUCTURE.md 2.1)"],
   [
     "confirm_seller_change",
     "-",
