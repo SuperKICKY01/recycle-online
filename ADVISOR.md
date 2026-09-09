@@ -1,5 +1,16 @@
 # Advisor
 
+**This file is the RULEBOOK, and it is IN THE PASTE SET — the advisor READS and
+QUOTES it.** Its compact companion `ADVISOR_CHAT_INSTRUCTIONS.md` is the system
+prompt that rides every turn: the advisor is GOVERNED by it but cannot read it as
+a file, because it is deliberately NOT in the set (a second copy of the system
+prompt inside the set is the drift the one-authority rule exists to prevent, and
+this file already serves the readable-reference need — decided 2026-09-09, not to
+be reopened). Where the two overlap, THIS rulebook wins on a RULE, and the reminder
+carries the CURRENT-TREE FACT that postdates the rulebook's last revision. A rule
+that lives here is quoted from here; a fact the reminder states and this file is
+SILENT on is confirmed against the pasted file it names, never invented.
+
 ## 0. The boundary
 
 **SUPERSEDED 2026-08-28 — SHAPE B IS THE DELIVERY NOW: the advising role runs as
@@ -142,6 +153,30 @@ chat, their copies in the paste set.
    five required parts and the done-observables are what the coding
    session will hold the brief to, and § 4 item 1 of this file
    requires the brief's own read-list to name that file anyway.
+8. **`STRUCTURE.md`, when the work in flight is one of its units** —
+   the PLAN OF RECORD for the current build: the shape every capability
+   is built into, its fifteen invariants, the build order, and the
+   units. Approved in full by the owner 2026-09-03 ("เอาหมด"). The rule
+   you plan under: **sections beyond the CURRENT unit are DESIGN, not
+   authorisation** — brief the next unit, never one the owner has not
+   yet said yes to. Its measurements are pinned to `b25d7b0`; order a
+   re-derivation before resting a decision on a number.
+9. **`PRODUCT_BLUEPRINT.md`, when a question turns on WHAT the product
+   must do** — the product plan of record (owner-approved 2026-09-01)
+   and its fourteen schema-decision queue. `SYSTEM_INVENTORY.md` beside
+   it is a superseded predecessor, kept as the record, not a planning
+   input.
+
+**Added 2026-09-09: the set is THIRTEEN files, and these nine are the
+priority read.** The full `SET_FILES` (`tools/build_paste_set.py`) also
+holds `BRIEFING.md`, `ARCHITECTURE.md` and `RED_TEAM.md`, read on demand
+when a question reaches them. What is DELIBERATELY NOT in the set —
+`docs/SRS.md` (the requirements document; **a month was lost in part
+because an advisor did not know it existed** — ask for it when a question
+turns on what the product must do), `SRS_MAP.md`, `EVIDENCE.md`, the lesson
+BODIES (you hold the index), `archive/`, `research/` — is excluded by a
+recorded decision in that tool's `EXCLUDED`, never an oversight. You never
+assume an excluded file does not exist; you ASK for it by name.
 
 **What this file is for: the rules the advising role follows, which until
 now lived only in a pasted opening prompt and vanished whenever a fresh
@@ -269,6 +304,13 @@ here for the first time:
 
 - `SEND TO:` — which session runs the brief (e.g. "a NEW session"), so no
   context from an older conversation is assumed.
+- `EFFORT:` — **added 2026-09-09; the "three-field" count above is SUPERSEDED
+  to FIVE and left as written.** The reasoning/effort level the coding session
+  runs at (e.g. `maximum`, `xhigh`, `low`). The CLI level is a SLASH COMMAND the
+  owner sets BY HAND at the head of a session, and the coding session cannot infer
+  what he intended; a brief that does not name it spends whatever happens to be set
+  — MAXIMUM burned on a read-only survey, or too LITTLE on a money path that cannot
+  afford it. So every brief names the level the work deserves.
 - `RUNS COMMANDS:` — whether that session may execute anything, and the
   bound on it (e.g. "yes, reads only").
 - `WRITES TO A DATABASE:` — whether any database may be touched. This
@@ -338,6 +380,16 @@ one day, not reasoned out.
     as a fact. That is the same distinction
     `CLAUDE.md § Shared checks` "Is a measurement being carried as a fact?"
     already draws.
+    **AMENDED 2026-09-09 — the pattern held again, and it binds the ADVISOR'S OWN
+    figures, not only a brief the owner writes.** A dispatch named "the
+    twenty-one-commits-unpushed incident" as a reason; the implementing session
+    searched the tree and corrected it — the recorded incident is 233 commits on
+    the E: drive with an EMPTY remote (2026-08-28), not twenty-one unpushed. A
+    number carried from memory against a number in the tree: the TREE wins, every
+    time. The owner counts this the fifth brief this month whose figure was wrong
+    where the artefact was right — which is the whole reason this item exists, now
+    turned on the advisor: never write your own remembered number as a premise,
+    mark it and order the re-derivation.
 11. **THE SAME RULE APPLIES TO SYNTHESISED CLAIMS AND NOT ONLY TO
     NUMBERS.** A sentence assembled from reading three reports is a
     claim with no measurement behind it, and it is the harder case
@@ -358,6 +410,24 @@ one day, not reasoned out.
     behaviour and should not have been necessary.** The remedy is one
     clause in every OUT OF BOUNDS block: `lessons/` is in bounds if a
     lesson is owed.
+13. **NAME THE SKILL, LOAD IT, ATTRIBUTE IT — added 2026-09-09, the
+    owner's; the "TWELVE" count above is SUPERSEDED to THIRTEEN and left
+    as written.** His words: "เรามี skills เตรียมไว้เยอะ ที่สามารถช่วยทำงานได้ดีในบางอย่างหยิบยกมาใช้ได้"
+    (verbatim, never translated). Under `.claude/skills/` this box holds
+    many skills he installed deliberately — design and UI, motion, and
+    method — and sessions STOP reaching for them the moment nobody
+    insists. So when a unit touches DESIGN, MOTION, WORDING, or anything
+    where a documented METHOD beats a session's instinct, the brief NAMES
+    the skill, ORDERS it loaded, and REQUIRES attribution in the report as
+    `skill · section · quoted line` — proof it was FOLLOWED, not merely
+    opened. `CLAUDE.md § Workflow` already mandates two by name
+    (`debug-mantra` for debugging, `buddhist-method` before asserting what
+    a device or server did); this generalises them, it does not copy them.
+    AND a skill is CHECKED FOR FIT before it is trusted — one of them once
+    answered a design question with FlatList performance tips, so a skill
+    loaded is not a skill that fits. Recorded so it is not relearned: the
+    phase-D and phase-E UI work only stopped being rejected once this was
+    enforced.
 
 ## 5. Shared checks — mirrored from CLAUDE.md
 
@@ -417,6 +487,41 @@ sends, not an occasional discipline. A number that IS the finding — a baseline
 run must not exceed, a count a checker must meet — still goes in the brief,
 marked as a measurement to re-derive, never as a fact
 (`CLAUDE.md § Shared checks` "Is a measurement being carried as a fact?").
+
+## 7.1 The suite is `prove_all`, and a green suite is not a working app
+
+**Added 2026-09-09.** The `Prove:` block a brief writes leans on the suite the coding
+session runs — `tools/prove_all.py` (`prove:all`), which ENUMERATES every proof from
+the tree, refuses on a failed preflight, runs each TWICE with no reseed, and judges each
+on BOTH its own printed exit line AND a scan for `[RED]` / `error TS` / a traceback. So
+it catches a proof silently dropped, a proof green on run 1 and red on run 2 (a
+self-lockout), a proof that prints RED while exiting 0, a proof that crashes before its
+exit line. What it CANNOT catch, and a brief must not let a green stand for: a proof in
+the GREEN-EXIT-CODE-ONLY bucket prints no exit line, so a `0` from a proof that ASSERTS
+NOTHING reads as green; and whether each CELL is meaningful — a negative check with a
+positive control, a disproof that reddens the NAMED cell — is the AUTHOR's, and no
+runner enforces it (`lessons/a-check-that-never-went-red-was-never-observed.md`). This
+is why a `Prove:` names a COMMAND AND ITS EXIT, a file and a line, or a request and its
+response — never "the suite is green."
+
+**A report of a proof's result is a claim like any other — measured THREE times:**
+`prove_user_create` (red since migration 0019, reported among "green twice"),
+`prove:login` (green run 1, red run 3 by its own lockout), `prove_payments` G4 (red at
+`cfd7136`, a commit's record claiming "72 passes / 0 failures"). When a brief rests on
+"proof X is green," it orders the session to RUN it and read the exit, not to trust a
+prior report.
+
+**AND A GREEN SUITE IS NOT AN OPENABLE APP.** `prove:all`'s preflight carries a
+native-version gate the owner chose: it checks each installed native package against the
+SDK's own `bundledNativeModules.json` table and REFUSES when a package is at more than
+one version, because the Expo autolinker compiles whichever copy is hoisted. It is built
+from that table and NOT from `npx expo install --check`, which validates against
+`expo`'s declared deps and is BLIND to a hoisted transitive. The incident:
+`@expo/vector-icons@15.1.1` hoisted `expo-font@57.0.2` above `expo@54.0.36`'s nested
+`14.0.12`, and the app was UNOPENABLE ON EVERY DEVICE for five days (2026-09-01 →
+`c1de5ac`) while EIGHTY-ONE proofs stayed green. When a unit touches a native dependency
+or the Expo/native surface, the brief's `Prove:` names the gate AND a real device or
+emulator open, never the suite alone.
 
 ## 8. The conduct charter applies to this role
 

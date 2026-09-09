@@ -75,8 +75,37 @@ not read the green as re-run.**
 
 ## Current phase
 
+**MAINTENANCE — the counter demo CLOSED, and the advising chat's standing instructions brought to HEAD. 2026-09-09.**
+No sha yet (precedes the commit; anchor next pass). Supersedes the counter-screen record below AS THE POINTER ONLY —
+that work stands, committed at `2001c4f`. Not a product phase; no product code, no migration, no proof changed.
+- **THE DEMO CLOSED.** `separate_cashier` restored to false for Shop A through the audited `PATCH /branches/{id}`
+  (HTTP 200; both flips are in `audit_log`, admin actor: `false→true` 2026-09-08 11:09, `true→false` 2026-09-09 09:58).
+  The demo bills `B-2569-1135…1138` and their two payments STAY — real rows a bill is never deleted (hard rule 5):
+  1135/1136 paid by the demo (one CASH payment, 195.00), 1137/1138 paid by the OWNER during his own review (one
+  TRANSFER payment, 195.00, method `โอนเงิน`, which the session did not use — evidence he drove the counter himself).
+  The emulator, Metro (8081) and the dev server (8000, which the session had restarted on the committed code for the
+  demo) were all stopped.
+- **BOTH ADVISING FILES REVISED** — the reminder `ADVISOR_CHAT_INSTRUCTIONS.md` (the advising chat's system prompt)
+  AND the rulebook `ADVISOR.md` (in the paste set, which the advisor reads and quotes). The reminder had not moved
+  since 2026-08-29 and the rulebook was SILENT on all of the below — an advisor governed by rules it cannot quote
+  drifts to what it can see, so the owner authorised folding them into `ADVISOR.md` too (its voice and numbered rules
+  preserved, superseded in place and dated: the `EFFORT:` field at § 3, the skills rule at § 4 item 13, `prove_all`
+  and the native gate as § 7.1, STRUCTURE.md/PRODUCT_BLUEPRINT.md in the § 0.1 read-list, the 233-not-21 correction at
+  § 4 item 10). Both now head with the rulebook-vs-reminder relationship, and both record the decision NOT to add the
+  reminder to the paste set (a second copy of the system prompt is the drift the one-authority rule prevents). Brought
+  to the tree at HEAD: the paste set is now THIRTEEN files
+  (`STRUCTURE.md`, `PRODUCT_BLUEPRINT.md`, `SYSTEM_INVENTORY.md` added), each named with its purpose and which is the
+  plan of record (`PRODUCT_BLUEPRINT` the product WHAT; `STRUCTURE` the structural HOW and the current build order;
+  `SYSTEM_INVENTORY` a superseded predecessor); what the advisor is BLIND to and that the exclusions are recorded
+  decisions; `STRUCTURE.md` as the plan of record for the work in flight (approved 2026-09-03, "design beyond the
+  current unit is not authorisation"); `tools/prove_all.py` and what it does and does NOT catch; the native-version
+  gate and green≠openable (the `expo-font` regression — 81 proofs green over an app unopenable five days,
+  2026-09-01→`c1de5ac`); the `EFFORT:` brief-header field; push-and-rebuild after every commit; and THE SKILLS RULE
+  (name the skill, load it, attribute it `skill · section · quoted line`, check it for fit — the owner's, quoting his
+  words verbatim). Two findings the revision could not fix here are filed at `OPEN_ITEMS.md`.
+
 **THE CASHIER COUNTER, SCREEN (commit 2 of the unit) — the queue, the payment form, and paying. 2026-09-08.**
-No sha yet (this record precedes the commit; anchor next pass). Supersedes the server-commit record below AS THE
+Committed `2001c4f` (2026-09-08). Supersedes the server-commit record below AS THE
 POINTER ONLY — that work stands. **THE SPLIT (S6, the owner's):** this commit is the QUEUE + the PAYMENT FORM +
 PAYING (cash/transfer); PromptPay QR is commit 3, quarantined so its real-bank verification uncertainty does not
 mix into the commit that claims paying is proven; `payments.void` stays deferred (a correction, not part of

@@ -1857,6 +1857,34 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
     `CounterScreen` formats `waitingSince` into a "รอมา …" badge through
     `@recycle/shop-time` (never the device clock; render-in-shop-time-not-device-time).
     Filed for the counter screen's next pass, not built now.
+  - **THE "TWENTY-ONE-COMMITS-UNPUSHED" INCIDENT COULD NOT BE FOUND; the tree records a
+    DIFFERENT and larger one (measured 2026-09-09, revising `ADVISOR_CHAT_INSTRUCTIONS.md`).**
+    The dispatch that ordered the push-and-rebuild reminder named "the twenty-one-commits-
+    unpushed incident" as its reason. Searched `PROJECT_STATUS.md`, `ROADMAP.md`,
+    `OPEN_ITEMS.md`, `START_HERE.md`, `CLAUDE.md`, `ADVISOR.md` and `archive/` for
+    `unpushed | 21 commit | twenty-one | ahead of origin | remote was empty`: the only
+    backup-related incident is `PROJECT_STATUS.md:2442` — on 2026-08-28 `git remote -v`
+    was EMPTY and all **233** commits (two branches) lived on the E: drive alone, resolved
+    by a `git bundle` on C: and a private GitHub remote. No "21 commits unpushed" incident
+    is recorded with those words. The revised reminder is grounded in the 233/empty-remote
+    figure, not the unverified 21. If a separate 21-commit incident is real it is the
+    owner's memory and belongs in a document; recorded here so the figure is not carried as
+    a fact.
+  - **`ADVISOR.md` IS SILENT ON THE FACTS THE ADVISING REMINDER NOW CARRIES (measured
+    2026-09-09).** `rg -i 'STRUCTURE\.md|prove_all|prove:all|native|EFFORT|skill' ADVISOR.md`
+    returned nothing: the fuller advising rulebook — which IS in the paste set, so the
+    advisor reads and QUOTES it — did not mention `STRUCTURE.md` as the plan of record,
+    `prove_all`, the native-version gate, the `EFFORT:` brief field, or the skills rule.
+    An advisor governed by rules it cannot quote drifts back to whatever it can see.
+    **FIXED 2026-09-09, on the owner's authorisation:** the facts and the two new rules
+    (the `EFFORT:` field, § 3; the skills rule, § 4 item 13) were folded into `ADVISOR.md`
+    itself — `STRUCTURE.md` and `PRODUCT_BLUEPRINT.md` added to the § 0.1 read-list with
+    the plan-of-record note and the blind spots; `prove_all` and the native gate as new
+    § 7.1; the 233-not-21 correction as an amendment to § 4 item 10 — in the owner's voice,
+    superseded in place and dated, nothing invented. Both files now carry the head
+    statement of their relationship (rulebook vs reminder), and the decision NOT to add
+    `ADVISOR_CHAT_INSTRUCTIONS.md` to the paste set is recorded in both so it is not
+    reopened.
   - **`prove_daily_report.py` COMPARED doc_no STRINGS ACROSS TENANTS** and reddened
     on 2026-09-05 when tenant B's counter reached `B-2569-17`, a string tenant A's
     fixture day also holds; fixed IN THIS COMMIT to compare bill ids (doc_no is
