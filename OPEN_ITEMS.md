@@ -698,6 +698,32 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Verification gaps — built, not proven
 
+- **THE PromptPay QR PAYLOAD IS SELF-CONSISTENT, NOT VERIFIED AGAINST A REAL BANK. Filed
+  2026-09-10 (unit 4 commit 3).** `@recycle/promptpay`'s `promptPayPhonePayload` is built and
+  `prove:promptpay` is green twice, but a headless proof can only establish SELF-CONSISTENCY (the
+  payload parses by an independent parser and its CRC recomputes) — never CORRECTNESS of the payee
+  or the amount, because a checksum binds a payload to ITSELF, not to the truth
+  (`lessons/a-self-consistent-payload-is-not-a-correct-one.md`). VERIFIED: the CRC ALGORITHM
+  against its published check value (`0x29B1` over `"123456789"`, CRC RevEng catalogue). NOT
+  verified: that the EMVCo/PromptPay FORMAT (the tag numbers, the AID `A000000677010111`, the
+  mobile-proxy shape, currency 764, country TH, that the CRC covers the payload including `6304`)
+  is what a Thai bank actually accepts — it is DERIVED from the standard, not confirmed against a
+  bank-issued vector. THE VERIFICATION IS EXTERNAL BY NATURE: the owner scans a sample with his
+  own banking app and reads the payee NAME and AMOUNT it shows. Until then every payload is
+  unverified, and the package header and `§ Current phase` say so.
+- **THE QR'S PAYEE IDENTIFIER — the owner's 2026-09-10 decision, and what it still owes.** The
+  payee proxy AVAILABLE today is the seller's PHONE: `sellers.phone` exists at HEAD (`text`,
+  nullable) and is cached in `cached_sellers (id, code, name, phone, grade, owner_tenant_id)`;
+  `id_number` is deliberately NOT cached on the device (a security narrowing — `GET /sellers`
+  carries it and the device drops it at the fixed cache-column write, `mobile/app/api.ts`); and
+  the DESIGNED source `seller_bank_accounts.promptpay_id` (STRUCTURE.md § 2.4, batch D) does not
+  exist yet — the tree at HEAD holds only `sellers` and `seller_code_reservations`. So commit 3
+  builds a MOBILE-NUMBER payload only. WHAT THE QR STILL OWES, each its own later unit: WIRING the
+  payload to the payment form (`mobile/src/counter/counterView.ts`, `app/CounterScreen.tsx`) —
+  nothing renders it today; the batch-D `seller_bank_accounts` source (a national-id or e-wallet
+  proxy is tag 29 sub-tags 02/03, and a bank-account payee rather than a phone); SLIP VERIFICATION
+  against an external verifier (STRUCTURE.md § 2.4); and the real-bank verification above.
+- **`npx expo install --check` REPORTS A PATCH DRIFT, NOT A NATIVE CONFLICT — noted, not to act on. MEASURED 2026-09-11 (unit 4 commit 3, in `prove_all`'s preflight):** exit 1 with `expo@54.0.36 - expected version: ~54.0.37` and `expo-constants@18.0.13 - expected version: ~18.0.14`; the native-version gate (which reads the SDK's own `bundledNativeModules.json` and is what this project trusts) HELD — this is a patch lag behind the SDK's expected patch, not the two-versions-of-one-package shape the gate exists to catch.
 - **THE HEADLESS SUITE CANNOT SEE A NATIVE DEPENDENCY CONFLICT — a green suite is not
   evidence the app STARTS. Filed 2026-09-06.** Eighty-one proofs green twice that day, and
   the debug build died at startup on every launch (`NoSuchMethodError … getDirectConverter`
@@ -5333,6 +5359,24 @@ with no feature of its own.
 
 ## Documentation
 
+- **THE `lessons/README.md` LINE-ENDING DESCRIPTOR IS STALE — the file is BOM + LF on BOTH
+  objects. Filed 2026-09-11 (unit 4 commit 3 closing turn).** `CLAUDE.md § Machine footguns`
+  (the core.autocrlf bullet) and `START_HERE.md` both describe this file as the one CRLF+BOM
+  file in the repository. That footgun's own rule is to measure the object you mean — working
+  tree and blob are two objects with a filter between — so BOTH were measured with one
+  non-stripping instrument (Python read_bytes byte-count, and subprocess capturing `git
+  cat-file` as raw bytes; not a line-splitting reader): the WORKING TREE reads CR=0, LF=77,
+  first bytes EF-BB-BF, and the HEAD BLOB reads CR=0, LF=75, first bytes EF-BB-BF (the two LF
+  counts differ only by this commit's two un-committed added lines). `git check-attr eol`
+  returns eol=lf and `.gitattributes` carries no README-specific rule. The two objects AGREE:
+  BOM + LF, no CR byte anywhere — so the CRLF half of the descriptor has rotted on both, a
+  measurement once true and now carried as a fact. The BOM is intact, and it is the BOM — not
+  the line ending — that is the real reason this file is EXCLUDED from `all-lessons.md`, so
+  that exclusion still holds. NOT corrected here: `CLAUDE.md` and `START_HERE.md` are outside
+  this commit's fence, and whether they are edited at all is the owner's OPEN call, not a
+  scheduled fix — the accurate descriptor drops CRLF and says BOM. Recorded so a future
+  session that measures this file, finds LF, and recalls the CRLF descriptor does not read the
+  LF as corruption and rewrite it back to CRLF.
 - **THE 0020 RECORD NAMES A DUMP THAT IS NOT IN THE BACKUPS TREE — filed 2026-09-06,
   RESOLVED THE SAME DAY.** `PROJECT_STATUS.md § Current phase` (the money-ledger record)
   cites `recycle_20260905T035307Z_pre-0020` as the scratch's source; a `find` over

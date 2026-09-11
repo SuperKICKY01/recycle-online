@@ -1,0 +1,21 @@
+{
+  "name": "@recycle/promptpay",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The PromptPay QR payload for every Recycle Online client. ONE pure builder with its CRC - shared so no client grows a second implementation. NOT yet verified against a real banking application; see src/promptPay.ts.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}

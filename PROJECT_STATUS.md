@@ -75,6 +75,60 @@ not read the green as re-run.**
 
 ## Current phase
 
+**THE CASHIER COUNTER, PromptPay QR PAYLOAD (commit 3 of the unit) — a pure `packages/` function with its CRC, and its proof. 2026-09-10.**
+No sha yet (precedes the commit; anchor next pass). Supersedes the MAINTENANCE record below AS THE
+POINTER ONLY — that work stands, committed at `0ca834f`. **THE SPLIT (S6, the owner's):** commit 3 is
+quarantined so its real-bank verification uncertainty does not mix into commit 2's claim that paying is
+proven. It touches NO screen, NO server, and does NOT wire the payload to the payment form; the counter
+keeps paying by cash and transfer exactly as it does today.
+- **BUILT.** A new workspace package `@recycle/promptpay` (`packages/promptpay/`, mirroring
+  `@recycle/shop-time` exactly: `package.json`/`tsconfig.json` the same shape, built to `dist/` by
+  `mobile`'s `build:shared`, consumed as the built package, resolved through the `node_modules/@recycle`
+  workspace link) holding ONE pure function, `promptPayPhonePayload`. It takes a Thai mobile number and
+  the ledger's already-quantized amount STRING and returns EITHER a complete EMVCo/PromptPay TLV payload
+  with its CRC-16/CCITT-FALSE already in place, OR a typed refusal. The amount is NEVER computed —
+  embedded verbatim, no float (hard rule 1); a thousands separator is REFUSED, not stripped; a zero
+  amount, a non-canonical phone and a missing payee are FOUR DISTINCT refusal codes (`payee_missing`,
+  `bad_phone`, `bad_amount_shape`, `amount_not_positive`), each carrying NO payload fragment. THE PAYEE
+  PROXY IS THE SELLER'S PHONE — the only proxy the device holds today (§ What is built, the owner's
+  2026-09-10 decision). `mobile/package.json` gained `prove:promptpay` and its `build:shared` now builds
+  the new package; nothing else moved in `mobile/`, nothing in `server/`. The workspace
+  member is registered in the root `package-lock.json` (two entries mirroring shop-time's,
+  `git diff --numstat` `8 0`, no other package's version/resolved/integrity moved), so a clone
+  or `npm ci` links it — a hand-made junction alone would leave the package unreachable from a
+  clone though the suite reads green (`lessons/a-lockfile-not-node-modules-is-what-a-clone-installs.md`).
+- **PROVEN — each observed, not argued.** `npm run prove:promptpay` GREEN TWICE (55 headless cells,
+  `PROVE_PROMPTPAY_EXIT=0`, no reseed — it is PURE, so there is no fixture to normalise): the CRC
+  ALGORITHM against its own published check value (CRC-16/CCITT-FALSE, check `0x29B1` over `"123456789"`,
+  the CRC RevEng catalogue) computed by an INDEPENDENT CRC in the proof; a structural round trip parsed
+  by an INDEPENDENT parser (every declared length matches its value, the whole string consumed, the CRC
+  recomputes) with a corrupted-length control that names the fault position; the payee proxy asserted
+  VALUE-by-VALUE against a spec-derived expectation (`"0066"` + national number, 13 digits); every refusal
+  asserted by CODE with a no-leak scan that has a positive control; the four-digit amount carrying no
+  separator. THREE manual disproofs each reddened EXACTLY the named cell(s) and were restored
+  byte-identical (sha256 verified equal): a broken proxy reddened only the proxy cells while the CRC cell
+  STAYED GREEN (self-consistent is not correct — `lessons/a-self-consistent-payload-is-not-a-correct-one.md`); a
+  broken CRC init reddened only the CRC cell while the published-check cell stayed green (the proof's CRC
+  is independent of the function's); a disabled zero-refusal reddened only `amount_not_positive`. Both
+  mobile typechecks exit 0. `prove:all` GREEN: `PROVE_ALL_EXIT=0`, `TOTAL 83 GREEN 69
+  GREEN-EXIT-CODE-ONLY 14 RED 0 COULD-NOT-RUN 0`, twice each; `prove:promptpay` is enumerated (the
+  83rd proof) and lands in GREEN — not GREEN-EXIT-CODE-ONLY — because it prints its own verdict
+  line. The native-version gate held its preflight (verbatim): "native versions: 14 of the SDK's
+  119 bundled native packages installed, one version each, every major matching
+  bundledNativeModules.json" — this commit adds no native package.
+- **NOT VERIFIED AGAINST A REAL BANK — stated as the owner required.** The CRC ALGORITHM is verified
+  against its published check value; the payload FORMAT (the tag numbers, the PromptPay AID
+  `A000000677010111`, the mobile-proxy shape, currency 764, country TH, that the CRC covers the payload
+  including `6304`) is DERIVED from the EMVCo / Bank of Thailand QR standard as understood here and is
+  SELF-CONSISTENT, NOT confirmed against a bank-issued vector. The last verification layer is the OWNER
+  scanning a sample with his own banking application; the samples are generated from HIS PromptPay number,
+  supplied at the STOP — NO seed row's phone was used or will be (a scanned-and-confirmed QR built on a
+  real allocated number would move real money to a stranger).
+- **DEFERRED, RECORDED at `OPEN_ITEMS.md`:** wiring the payload to the payment form
+  (`mobile/src/counter/counterView.ts`, `app/CounterScreen.tsx`); the designed payee source
+  `seller_bank_accounts.promptpay_id` (STRUCTURE.md § 2.4 batch D); slip verification against an external
+  verifier; `payments.void`.
+
 **MAINTENANCE — the counter demo CLOSED, and the advising chat's standing instructions brought to HEAD. 2026-09-09.**
 No sha yet (precedes the commit; anchor next pass). Supersedes the counter-screen record below AS THE POINTER ONLY —
 that work stands, committed at `2001c4f`. Not a product phase; no product code, no migration, no proof changed.
@@ -3047,6 +3101,27 @@ many claims moved.
 | proofs: FOURTEEN headless `npm run prove:*` scripts | **47** | `node -e` over `mobile/package.json` `scripts`, keys with the `prove:` prefix |
 | "`prove:forbidden` is the first mobile proof that REQUIRES the live API" | **FOUR** require it: `proveForbidden`, `proveLogin`, `proveLoginScreen`, `proveUsers` | `grep -l "RECYCLE_API_BASE" mobile/src/proof/*.ts` |
 | desktop: "Empty but for `.gitkeep`" | UNCHANGED | `git ls-files desktop` |
+
+**Superseded 2026-09-10 — THE TABLE ITSELF NOW ROTS THE WAY THE BULLETS DID.** It is
+pinned to `98cbc2d` (2026-09-02) and PREDATES migrations 0017 (audit), 0018 (branches),
+0019 (permissions) and 0020 (payments), and the whole cashier counter unit built after
+them (the server commit, the SCREEN at `2001c4f`, and commit 3, the PromptPay payload).
+So its counts are low — 16 migrations is now more, 27 `prove_*.py` and 47 mobile
+`prove:*` are now more (`prove:promptpay` is the 48th mobile proof), 28 `.tsx` is
+unchanged by commit 3 because the payload renders no screen. The table was written to
+correct the bullets beneath it and has begun to rot exactly as they did: a third layer
+of the same shape, and the argument for the restructure PROPOSED at
+`OPEN_ITEMS.md § Documentation`. Where this table and `§ Current phase` disagree,
+`§ Current phase` is the authority. **THE OWNER'S DECISION OF 2026-09-10**, recorded
+because a chat is invisible to the tree until a commit records it: the QR payload's payee
+proxy today is the seller's PHONE — `sellers.phone` EXISTS at HEAD (`text`, nullable;
+read from `information_schema.columns` on the live `recycle` database, 2026-09-10) and is
+cached in `cached_sellers (id, code, name, phone, grade, owner_tenant_id)`; `id_number` is
+deliberately NOT cached on the device (a security narrowing, `mobile/app/api.ts`, though
+the `GET /sellers` wire carries it and the device drops it at the fixed cache-column
+write); and `seller_bank_accounts` (the designed `promptpay_id` home, STRUCTURE.md § 2.4
+batch D) does NOT exist yet — only `sellers` and `seller_code_reservations` do. Do not
+restructure this section here; that is proposed and unbuilt.
 
 **THIS SECTION HAS CROSSED THE LINE WHERE SUPERSEDING IN PLACE STOPS WORKING.** Its
 first bullet's first sentence is false, and a reader meets the correction only at that

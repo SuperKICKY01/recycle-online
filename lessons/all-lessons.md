@@ -12,7 +12,7 @@ lesson file; anything written here is destroyed by the next run.
 byte for byte, with line endings normalised to LF on both sides first. It exits
 1 on any difference. That is how a lesson edited without regenerating is caught.
 
-**Sources:** 68 lesson files, `lessons/*.md`, ASCII filename order.
+**Sources:** 70 lesson files, `lessons/*.md`, ASCII filename order.
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
@@ -52,6 +52,7 @@ line instead of by heading depth.
 - `a-green-cell-is-evidence-about-the-assertion-not-the-claim.md` *(2 amendments)* -- A green cell is evidence about the assertion, not about the claim
 - `a-label-is-a-reference-with-no-checker.md` -- A label is a reference, and nothing in this repository checks one
 - `a-lock-is-proven-by-what-waits-not-by-a-race.md` -- A lock is proven by what waits, not by a race
+- `a-lockfile-not-node-modules-is-what-a-clone-installs.md` -- A green suite runs against the node_modules you HAVE, not the lockfile a clone installs from
 - `a-migration-reads-zero-under-force-rls.md` -- A migration reading tenant data sees zero rows under FORCE RLS
 - `a-migration-stack-is-a-log-not-a-schema.md` -- A migration stack is a log, not a schema
 - `a-mutation-on-a-protected-write-path-needs-a-scratch-database.md` -- A mutation on a protected write path needs a scratch database
@@ -66,6 +67,7 @@ line instead of by heading depth.
 - `a-round-trip-must-agree-on-its-key-space.md` -- A round trip must agree on its key space
 - `a-rule-outside-the-repo-cannot-be-seen-to-drift.md` -- A rule outside the repo cannot be seen to drift
 - `a-scratch-proof-imports-the-app-only-after-it-rebinds-the-database.md` -- A scratch proof must not import the app before it rebinds the database URL
+- `a-self-consistent-payload-is-not-a-correct-one.md` -- A self-consistent payload is not a correct one — a checksum binds it to itself, not to the truth
 - `a-sticky-device-global-state-needs-a-clearing-rule.md` -- A sticky device-global state is a wedge when its fact can go false without a new process
 - `a-stored-future-instant-is-a-promise-about-a-clock.md` -- A stored future instant is a promise about a clock you do not control
 - `a-sum-over-nothing-has-no-scale.md` -- A sum over nothing has no scale
@@ -4001,6 +4003,78 @@ fire), [[a-proof-must-establish-what-it-is-talking-to]].
 
 ---
 
+**SOURCE:** `a-lockfile-not-node-modules-is-what-a-clone-installs.md`
+
+# A green suite runs against the node_modules you HAVE, not the lockfile a clone installs from
+
+**Applies to** adding a workspace member, a local `file:` dependency, or anything
+present in your `node_modules` by a means the lockfile does not record — a hand-made
+symlink or junction, a leftover from a past install, a manual `npm link`. A proof
+suite resolves modules from the `node_modules` you HAVE. `npm ci` and a fresh clone
+build `node_modules` from the LOCKFILE. When the two disagree, a green suite proves
+the code works on THIS box and says nothing about whether a clone can even resolve
+the package.
+
+**The rule.** A new workspace member — or any locally-linked dependency — is not done
+until the LOCKFILE records it. Register it with `npm install` (which writes the
+lockfile), never a hand-made link alone, and read `git diff -- <lockfile>` to confirm
+exactly that member's entries appeared and NOTHING else moved. The lockfile, not
+`node_modules`, is what a clone and CI reproduce; the question "does a clone resolve
+this?" is answered by the lockfile, and grepping it needs a positive control (an
+existing member) in the same invocation so a zero is distinguishable from an
+instrument that never looked.
+
+**Measured 2026-09-10/11** (STRUCTURE.md § 12 unit 4 commit 3, the PromptPay payload).
+Commit 3's first turn created the package `@recycle/promptpay` and linked it into
+`node_modules/@recycle` with a HAND-MADE junction — to avoid a lockfile edit that a
+self-contradicting brief forbade (the brief ordered a new `packages/` member and
+fenced the lockfile in one document). `prove_all` then ran GREEN over 83 proofs and
+both typechecks were green — every one resolving the package through that junction.
+But the lockfile did not record it: `grep "shop-time\|promptpay" package-lock.json`
+returned the four `shop-time` entries (the positive control) and NOTHING for
+`promptpay`. So `npm ci` or a fresh clone would not have linked `@recycle/promptpay`,
+and the mobile build — which imports it — would have failed to resolve it. The green
+suite had measured this box's `node_modules`, not a clone's. The closing turn ran
+`npm install` at the root, which added exactly two lockfile entries (a
+`node_modules/@recycle/promptpay` link and a `packages/promptpay` member, mirroring
+`shop-time`); `git diff --numstat` read `8 0`, and no other package's `version`,
+`resolved` or `integrity` moved.
+
+**Why the existing lessons do not quite reach it.**
+
+- [[two-green-proofs-do-not-cover-the-seam]]'s native-dependency amendment is the
+  nearest — "a green suite is not evidence the app STARTS." Same family (a green suite
+  over a state that does not deploy), but a different mechanism: there a wrong native
+  version was PRESENT and linked at runtime; here the package is ABSENT from a clone's
+  tree entirely, and the failure is at build/import, not startup.
+- [[a-check-that-never-went-red-was-never-observed]]'s fifth mechanism is "the right
+  instrument pointed at the wrong object." That is the shape here — a correct suite ran
+  against the wrong `node_modules` (this box's, with the hand-made link). But its
+  remedy is "point the instrument at every source"; here the remedy is to make the
+  OBJECT the one a clone builds — record the member in the lockfile so `node_modules`
+  is reproducible.
+
+**How to apply.**
+
+1. Register a workspace member or local link with `npm install`, which writes the
+   lockfile — never a hand-made symlink or junction on its own.
+2. Read `git diff -- <lockfile>` and confirm ONLY the new member's entries appeared (a
+   link entry plus a member entry, mirroring an existing member). Any other package's
+   `version`/`resolved`/`integrity` moving is a separate change to revert.
+3. To ask whether a clone resolves the package, grep the LOCKFILE, not your
+   `node_modules`, with a known-present member as a positive control in the same
+   invocation.
+
+**Two homes, one test.** A LESSON, not a machine footgun: `npm ci` installing strictly
+from the lockfile is npm's documented behaviour on every machine, and a session on any
+box would relearn it. Nothing here is a property of this box.
+
+**Bounds.** Measured once, on one workspace member, in this repository. The mechanism —
+a suite green over a `node_modules` the lockfile does not reproduce — is general and
+carries the lesson.
+
+---
+
 **SOURCE:** `a-migration-reads-zero-under-force-rls.md`
 
 # A migration reading tenant data sees zero rows under FORCE RLS
@@ -5680,6 +5754,80 @@ DATABASE than the one under test, and the same discipline applies: name what eac
 side is talking to before trusting any answer. Also of [[proof-must-run-twice]]
 (the harness, not the code, decides a green) and [[config-defaults-must-fail-closed]]
 (a value bound at import, before anything can correct it).
+
+---
+
+**SOURCE:** `a-self-consistent-payload-is-not-a-correct-one.md`
+
+# A self-consistent payload is not a correct one — a checksum binds it to itself, not to the truth
+
+**Applies to** every artefact that carries its own checksum or is validated by
+parsing its own structure — a QR payload with a CRC, a self-describing TLV record,
+a barcode, a message with an embedded digest, a file that ends in a hash of itself.
+Two claims look identical and are not: that the artefact is SELF-CONSISTENT (it
+parses cleanly and its checksum recomputes) and that it is CORRECT (its content —
+the payee, the amount, the account — is what it should be). A proof in this
+repository can establish the first. Only an external authority can establish the
+second.
+
+**The rule.** A checksum binds a payload to ITSELF, not to the truth. Recomputing
+it proves the bytes were not corrupted after they were written; it says nothing
+about whether the RIGHT bytes were written. So for any checksummed or
+self-describing payload: (1) assert the CONTENT VALUES — payee, amount — against an
+INDEPENDENT source of truth (the spec, a hand-derived expectation), never against
+the payload's own structural validity or its checksum; and (2) know that
+correctness of the FORMAT against the real world is verified OUTSIDE the repository
+(a bank scan, the receiving system's own answer), and mark the artefact UNVERIFIED
+until that has happened. "It parses and the CRC checks out" is the most convincing
+green available, and it is not a claim about correctness.
+
+**Measured 2026-09-10** (STRUCTURE.md § 12 unit 4 commit 3, the PromptPay payload).
+`provePromptPay` was re-run with `mobileProxy` deliberately broken — `"0066" + …`
+changed to `"66" + …`, producing a WRONG payee proxy (11 digits, the wrong
+international form). The two cells asserting the proxy VALUE went red
+(`66812345678`, and "not 13 digits"), and **the CRC cell STAYED GREEN**: the
+function had computed a perfectly valid CRC over its own wrong body, and an
+independent parser consumed the payload cleanly and fully. A proof that asserted
+only "the payload parses and the CRC recomputes" would have been entirely green
+over a QR that pays the wrong person. The owner's own framing of why this is the
+worst outcome, VERBATIM: "QR ที่แอปธนาคารปฏิเสธคือเสมียนที่จ่ายเงินไม่ได้ QR ที่แอปธนาคารรับแต่จ่ายผิดคนแย่กว่านั้น".
+
+**Why the existing lessons do not reach it.**
+
+- [[a-checker-must-not-share-the-code-it-checks]] is about the CHECKER sharing the
+  code under test. Here the checker shares nothing — the proof's CRC and parser are
+  independent implementations — and the trap is one level out: the ARTEFACT
+  validates ITSELF, so a correct, independent structural check still says nothing
+  about the content.
+- [[a-value-comparison-cannot-prove-a-path]] is about a value proving a ROUTE. Here
+  a value (the CRC) proving CONSISTENCY does not prove CORRECTNESS — the same shape,
+  one axis over.
+- The never-went-red family ([[a-check-that-never-went-red-was-never-observed]]) is
+  about assertions that cannot fire. These CAN fire — the disproof proved the value
+  cells move. The lesson is not that a cell is vacuous but that a STRUCTURAL /
+  CHECKSUM instrument was asked a CONTENT question it cannot answer.
+
+**How to apply.**
+
+1. For any checksummed or self-describing payload, assert the content VALUES
+   (payee, amount, id) against a spec-derived expectation, in their own cells. A
+   structural or checksum cell is never a substitute — break the content on purpose
+   and confirm a CONTENT cell, not the checksum cell, is what reddens.
+2. Verify FORMAT correctness against the real receiving authority (the bank, the
+   downstream system), never against your own parser. Mark the artefact UNVERIFIED
+   in the code and the phase record until that has happened.
+3. When you break something to disprove a cell, name which cell you expect to move
+   and check THAT cell: a wrong-content break that leaves the checksum cell green is
+   the finding, not a failure of the break ([[a-check-that-never-went-red-was-never-observed]],
+   its "name the cell you expect to move BEFORE running the break").
+
+**Two homes, one test.** A LESSON, not a machine footgun: a checksum binding a
+payload to itself is true of CRCs, HMACs and digests on every machine, and a
+session on any box would relearn it. Nothing here is a property of this box.
+
+**Bounds.** Measured once, on one payload, with one deliberate break. The mechanism
+— a valid checksum over wrong content, indistinguishable from correct by any
+structural test — is general, and carries the lesson.
 
 ---
 
