@@ -1668,6 +1668,16 @@ today" figure, opening float, close and variance); **cash movements / expenses**
 **approvals** (STRUCTURE § 2.4); and the **role-creation screen** above, without which
 no shop can mint the dedicated cashier the model already expresses.
 
+**Superseded 2026-09-12 — two of the items this paragraph lists as owed have moved.**
+**PromptPay QR** landed at `df906ac` (commit 3: the `packages/promptpay` pure function,
+self-consistent, the real-bank scan from the owner's own number still owed). **Shifts and
+the drawer** and **cash movements / expenses** now have their SCHEMA (migration `0021`, the
+shifts unit's commit 1 — `shifts`, `cash_movements`, `branch_payment_methods`,
+`shop_payment_channels`, `branches.shifts_enabled`, `payments.shift_id`); their ROUTES and
+screens are commit 2 and still owed. **`payments.void`**, **approvals** and the
+**role-creation screen** are unchanged and still owed. (STRUCTURE.md § 12 unit 5 records the
+schema commit; `OPEN_ITEMS.md` records what commit 2 still owes.)
+
 **D10 — the pilot runs on the production database, and no rebuild of the
 2026-08-03 kind is available after the first real bill.** That rebuild is recorded
 at `archive/PROJECT_STATUS_through_2026_08_28_f7ab2e0.md § What the rebuild cost — stated, not glossed` "Also gone:

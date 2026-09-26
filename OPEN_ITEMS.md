@@ -1719,6 +1719,73 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
     does not exist and a column nothing reads becomes load-bearing the day later
     code trusts it (the 0019 precedent). Add it in the migration that creates
     `shifts`, nullable, MATCH SIMPLE, and backfill nothing.
+    **ADDRESSED 2026-09-12 (migration `0021`, the shifts unit's commit 1):** shipped exactly
+    so — `payments.shift_id uuid NULL`, composite FK `(tenant_id, shift_id) -> shifts
+    (tenant_id, id)` MATCH SIMPLE, no backfill, nothing writes it. `prove_shifts.py` cells
+    XT prove NULL accepted, a same-tenant shift accepted, a cross-tenant shift REFUSED.
+  - **THE SHIFTS-AND-CASH-DRAWER UNIT — commit 1 (SCHEMA) landed 2026-09-12 (migration
+    `0021`: `shifts`, `cash_movements`, `branch_payment_methods`, `shop_payment_channels`,
+    `branches.shifts_enabled`, `payments.shift_id`). Commit 2 (routes and screens) OWES,
+    each its own line:**
+    - **Every ROUTE.** No route writes any of the four tables or the two columns in commit
+      1: `POST /shifts` and the close route, the cash-movement route, and the settings
+      writers for `shifts_enabled`, `branch_payment_methods` and `shop_payment_channels`.
+      Online-only first (the counter commit-2 precedent).
+    - **`expected_cash`'s COMPUTATION and freezing at close (hard rule 6).** The column
+      exists; nothing computes or writes it. A reconcile check `variance = counted_cash -
+      expected_cash` on closed shifts (and a `cash_movements` void-consistency / a `shifts`
+      close-consistency arm) arrives with the close route, not now — nothing writes these
+      values in commit 1.
+    - **THE FROZEN-CLOSE HOLE — close it BY MECHANISM when the close route lands.**
+      `recycle_app` holds UPDATE on `shifts` (the CLOSE is an UPDATE of the four close
+      columns), so nothing in the SCHEMA stops a SECOND update rewriting `counted_cash`,
+      `expected_cash` or `variance` after a shift is closed. Hard rule 6 says a frozen figure
+      stays frozen; TODAY only prose (this line and the docstrings) says it. The close route
+      (commit 2) must add a trigger that REFUSES any modification of a row whose `closed_at`
+      is already set, proven against that route (not a bare INSERT). UNTIL THEN, the `shifts`
+      audit trigger added in this commit (the 2026-09-18 split) is the ONLY thing that would
+      RECORD such a rewrite — which is part of why `shifts` is audited.
+    - **THE AUDIT SPLIT, recorded (the owner's 2026-09-18 decision, MECHANISM).** `shifts`
+      IS audited, `cash_movements` is NOT. Why they split: 0020's reason for not auditing the
+      ledger is that it "would have conscripted POST /bills, which declares no actor" — that
+      transfers COMPLETELY to `cash_movements` (insert-plus-void, the payments species) and
+      NOT to `shifts` (every write is a user action carrying a principal, and it is the only
+      new table UPDATED IN PLACE on money columns, so recording who changed what is the
+      trigger's purpose). Invariant 14 is a FLOOR (master-data tables MUST be audited), not a
+      ceiling. Applied in `0021` and in `reconcile.py` AUDITED_TABLES/S6; a chat decision is
+      invisible to the repo until a commit records it.
+    - **The born-with cash row for a branch created AFTER `0021` is SERVER CODE**
+      (`provision_shop.py` creates the born-with `MAIN` branch; the future add-branch
+      route). A branch with no `branch_payment_methods` cash row refuses every payment once
+      a route reads that table. Commit 2 (or the add-branch unit).
+    - **The OFFLINE kinds and the generic `local_outbox` store (STRUCTURE § 2.5).** Each of
+      `shifts` / `cash_movements` is written offline first, so each is an outbox kind. The
+      per-kind cost was re-measured 2026-09-12 at **76 `new SyncEngine(` constructor sites**
+      (75 in `mobile/src/proof/*.ts`, 1 in production `App.tsx`) plus the per-kind SQLite
+      table and store. The § 11 trap: building a counter SCREEN before the generic store
+      pays that cost again.
+    - **The LATE-ARRIVAL POLICY is the OWNER's open decision, not settled now.** The server
+      cannot know an offline device holds unsynced cash while `user_devices` (batch E) is
+      unbuilt; `payments.shift_id` stamped at record time is unambiguous online-only, so
+      the late-arrival question does not arise yet.
+    - **`cash_movements.receipt_file_id`'s FK awaits batch C** (`files`). The column is
+      nullable with NO FK today; a dangling reference is worse than none.
+    - **`payments.verification_status` / `verified_at` / `verifier_ref` and
+      `tenant_slip_verifiers` await slip verification** (STRUCTURE § 2.4). NOT built here;
+      § 2.1's printed row listing `verification_status` is design-only (corrected in place).
+    - **`approvals` and its threshold columns are deferred, with the reason:** its point is
+      an owner notification that lives in batch E, and § 2.4 makes an approval "a state on a
+      subject, not a column on the subject", so adding it later touches no existing table.
+    - **THE `branch_payment_methods` BUILD-ORDER GAP — FOUND AND ANSWERED.** It was named
+      once, in STRUCTURE § 1.6, and in no batch of § 11 and no line of `PRODUCT_BLUEPRINT`
+      § 17's pre-first-bill queue. Migration `0021` answers it: `branch_payment_methods`
+      created, born with one active `cash` row per branch, `method` CHECKed against the same
+      set as `payments.method`, audited.
+    - **THE SHOP'S-OWN-CHANNELS GAP — FOUND AND ANSWERED.** The owner's 2026-09-11 gap
+      ("upload payment channels ... add QR bank payment") is absent from `PRODUCT_BLUEPRINT`
+      § 17's fourteen-item queue (titled ต้องตัดสินก่อนบิลจริงใบแรก) and from § 11. Migration
+      `0021` answers it: `shop_payment_channels`, per tenant, nullable branch scope, coherent
+      per kind, audited. Its ROUTE and screen are commit 2.
   - **`prove_user_create.py` HAS BEEN RED SINCE 0019 AND WAS REPORTED GREEN — a finding
     about the REPORTING, not only the proof.** Measured 2026-09-05 on a scratch restored
     from the post-0020 dump: both runs exit 1 at the proof's FIRST gate ("the server
@@ -3834,11 +3901,31 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
     `last_active_admin` (generalised to `users.manage`) words the refusal.
   - **`payment_limit_per_bill` / `payment_limit_per_shift` on `roles`** (section 3.1's
     table) are NOT created: nothing reads them; they arrive with unit 3.
+    **Noted 2026-09-12 (the shifts unit, commit 1) — a COLLISION the owner must settle, and
+    a stale forward-pointer.** `PRODUCT_BLUEPRINT` § 3.5 asks for a cashier limit "ต่อกะ /
+    ต่อบิล" — per SHIFT **and** per BILL, two limits — while `STRUCTURE.md` § 1.6 prints ONE
+    column `roles.payment_limit`. The two disagree on the shape (one column or two), and
+    which it is is the owner's call. And "they arrive with unit 3" is now stale: unit 3
+    (`0020`) shipped WITHOUT them and the shifts unit's commit 1 (`0021`) added no limit
+    column either, so the limit belongs with the cashier-limit / approval work of a later
+    commit, not unit 3.
   - **Ten of section 3.1's 23 codes are not minted** — `app/permissions.py` `DEFERRED`
     names each against the unit that will gate it, so the names are not reinvented.
   *Unblocks:* a shop creating its own roles without us; the cashier of section 3.
   *Not done:* nothing decided about where the screen lives (phone, desktop, provider
   web) — the same homing question as the two entries above.
+
+- **SHOULD A SHOP PAYMENT CHANNEL'S PromptPay PROXY BE ACCESS-LIMITED WHEN IT IS THE
+  OWNER'S OWN MOBILE OR NATIONAL ID? Open, raised 2026-09-12 (the shifts unit, commit
+  1).** `shop_payment_channels` (migration `0021`) holds the shop's own channels and is
+  DELIBERATELY NOT personal-data machinery — no encryption at rest, no retention purge —
+  because § 4.1 / § 4.4's rules govern data held about OTHERS (a seller's id number, a
+  face), and a shop's own business account is the tenant's own. The one edge is the
+  owner's to decide: a `promptpay` channel's `promptpay_proxy` MAY be the owner's personal
+  mobile number or national id — the same kinds of value § 5's rules protect for a seller.
+  Whether a channel of that kind should be read-limited (to whom, and audited how) is his
+  call, not the code's. Nothing limits it today; the table IS audited (every write
+  recorded, actor named) and RLS-scoped to the tenant.
 
 - **DOES PRODUCT / CATEGORY / UNIT MASTER DATA ALSO LIVE ON THE DESKTOP (OR THE
   PROVIDER WEB)? Open, raised 2026-09-03 when the screen shipped on the PHONE.** P1.15
@@ -5358,6 +5445,19 @@ with no feature of its own.
   already landed.
 
 ## Documentation
+
+- **ARCHITECTURE.md's SCHEMA TABLE IS BEHIND HEAD AFTER MIGRATION 0021 — found by this
+  commit's member sweep, RECORDED not fixed (ARCHITECTURE.md was outside this commit's
+  brief). Filed 2026-09-12 (the shifts unit, commit 1).** `ARCHITECTURE.md:353` (the
+  `payments` row) still reads "`shift_id` is OWED to the shifts unit" — FALSE as of migration
+  `0021`, which shipped `payments.shift_id` (`uuid NULL`, composite FK to `shifts`). And the
+  schema table lists none of the shifts-unit tables: `shifts`, `cash_movements`,
+  `branch_payment_methods`, `shop_payment_channels`, and the `branches.shifts_enabled` column
+  are all absent from it. ARCHITECTURE.md is kept current per migration (its `branches` and
+  `payments` rows carry 0020/counter-unit supersedes), so a documentation pass owes it the
+  four new table rows and the `shift_id` correction. This commit's brief scoped its doc edits
+  to STRUCTURE / PROJECT_STATUS / ROADMAP / OPEN_ITEMS and did not name ARCHITECTURE.md, so
+  this is filed rather than edited in passing (a discovery outside the fence is recorded).
 
 - **THE `lessons/README.md` LINE-ENDING DESCRIPTOR IS STALE — the file is BOM + LF on BOTH
   objects. Filed 2026-09-11 (unit 4 commit 3 closing turn).** `CLAUDE.md § Machine footguns`

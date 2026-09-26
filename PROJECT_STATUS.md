@@ -75,6 +75,69 @@ not read the green as re-run.**
 
 ## Current phase
 
+**THE SHIFTS AND CASH-DRAWER UNIT, COMMIT 1 — the migration and nothing else: four tables, two columns, a born-with backfill, and a proof the schema REFUSES what it must. 2026-09-12.**
+No sha yet (precedes the commit; anchor next pass). Migration `0021_shifts_and_cash.py`. NO route, NO handler,
+NO screen, NO client code — `mobile/` is untouched (both typechecks exit 0, run to show it). The irreversible
+half of the shifts unit (batch B), split on the counter unit's own precedent (schema is commit 1, routes commit 2).
+- **BUILT.** Four tables from STRUCTURE.md § 2.4 / § 1.6: `shifts` (open/close, the close columns all-NULL-or-all-
+  present, AT MOST ONE OPEN shift per branch by the partial unique index `uq_shifts_one_open_per_branch` in the
+  SCHEMA); `cash_movements` (the payments species — `amount > 0`, one idempotency key per tenant, voided never
+  deleted); `branch_payment_methods` (PK `(tenant_id, branch_id, method)`, born with one active `cash` row per
+  branch, `method` CHECKed against the SAME set as `payments.method`); `shop_payment_channels` (the owner's own-
+  channels gap of 2026-09-11 — per tenant, nullable branch, coherent-for-its-kind). Two columns:
+  `branches.shifts_enabled boolean NOT NULL DEFAULT false` and `payments.shift_id uuid NULL` composite-FK to
+  `shifts` (the column 0020 filed as owed; nothing writes it here). RLS+FORCE+policy on all four; grants
+  `SELECT, INSERT, UPDATE` with DELETE revoked; a downgrade that REFUSES past the born-with state (a shift, a cash
+  movement, a non-cash method, a channel, or a `shifts_enabled` branch — each a named count); self-measuring
+  read-backs (one cash row per branch, all pristine, and the two method sets read EQUAL out of `pg_constraint`,
+  never restated on both sides).
+- **FIVE DEPARTURES / CONSEQUENCE-FIXES, each stated, three not named by the dispatch brief.** (1) **Audit — the
+  owner's 2026-09-18 SPLIT, applied in the closing turn.** `shifts`, `branch_payment_methods` and
+  `shop_payment_channels` carry the 0017 trigger; `cash_movements` ALONE does NOT. `shifts` is audited although
+  transactional because it is the only new table UPDATED IN PLACE on money columns (`counted_cash`, `expected_cash`,
+  `variance`) and its writers always carry a principal, so 0020's "conscripts POST /bills, which declares no actor"
+  reason does not transfer; it transfers COMPLETELY to `cash_movements` (insert-plus-void, the payments species).
+  Invariant 14 is a FLOOR, not a ceiling. (Commit 1 first audited only the two config tables against T8's "all
+  four"; the owner resolved the split, and 0021 was downgraded and re-upgraded on dev to apply it.) (2)
+  **`reconcile.py` updated** (not named by the brief but required by invariant 14 and by P10): the four tables into
+  TENANT_TABLES / SCOPE_SQL / SCOPE_COLUMN / X2, and the three audited tables (`shifts` + the two config) into
+  AUDITED_TABLES / S6 — the S2 (4 unknown tables) and S6 (unexpected triggers) red was OBSERVED on dev then cleared,
+  the checker working. (3)
+  **`prove_payments.py` E0 fixed** (not named by the brief but required by P10): it hardcoded the head `== "0020"`
+  and reddened under 0021 (`proof-must-run-twice`: an absolute head is an environment fact); changed to "at or past
+  0020" (the `prove_branches` "at or past 0018" precedent), a semantics-preserving fix — 0021 added only a nullable
+  `payments.shift_id` and four tables it does not read. (4) The `shifts` close CHECK covers FIVE columns (the four
+  § 2.4 names plus `variance` — a closed shift with a null variance is a hole hard rule 6 forbids). (5)
+  `variance_reason` is separately nullable (a reason for a non-zero variance is a close-route policy, § 3.5).
+- **PROVEN — each observed, not argued.** `alembic upgrade head` on dev exit 0; applied head read back `0021` from
+  `alembic_version`; the four tables and two columns read back out of `information_schema` (not the migration file);
+  4 born-with cash rows over 4 branches. NEW `scripts/prove_shifts.py`: **59 cells GREEN TWICE**,
+  `PROVE_SHIFTS_EXIT=0`, in the GREEN bucket (its own verdict line), every negative cell with a positive sibling in
+  the same run. The DISPROOF: 14 `--break` runs, each dropping (or, for the split, ADDING) one object, EACH reddened
+  exactly the cell(s) testing it and no other (`close_consistency`→SC1; `one_open_index`→OI1;
+  `cash_kind`/`cash_amount`(2)/`cash_idem`/`cash_void`; `method_check`→the 6 method-set cells; `channel_coherent`(2);
+  `shifts_fk_branch`→XT; `payments_shift_fk`→XT; `shifts_delete_grant`→GR; `audit_bpm`→AU-bpm;
+  `audit_shifts`→AU-shifts; `audit_cm_add`→AU-cash). The upgrade→downgrade→upgrade round trip and the refusal (a real
+  shift makes the downgrade REFUSE, read as an error) on a scratch. `reconcile.py` exit 0 on dev (S2 26 tables, S6
+  14/14 with `shifts` now audited, X2 with `shifts=0 cash_movements=0 branch_payment_methods=4 shop_payment_channels=0`)
+  and on a restored copy
+  (`prove_reconcile` GREEN twice in `prove_all`). Both mobile typechecks exit 0; `verify_shared_checks` exit 0.
+  `prove_all` (every proof twice, its own servers and scratches) reported `TOTAL 84 GREEN 70
+  GREEN-EXIT-CODE-ONLY 14 RED 0 COULD-NOT-RUN 0` and `PROVE_ALL_EXIT=0`; `prove_shifts` is enumerated (one of
+  the 84 = 32 server + 52 mobile) and landed in GREEN, not GREEN-EXIT-CODE-ONLY (it prints its own verdict
+  line). The native-version gate held its preflight (verbatim): "native versions: 14 of the SDK's 119 bundled
+  native packages installed, one version each, every major matching bundledNativeModules.json" — this commit
+  adds no native package (`npx expo install --check` reports only informational patch drifts on `expo` and
+  `expo-constants`, not a native conflict). The FIRST `prove_all` run was RED 1 on `prove_payments` (its E0
+  hardcoded the head `== "0020"`); after the fix the re-run is RED 0.
+- **DEFERRED, RECORDED at `OPEN_ITEMS.md`:** every route (commit 2); `expected_cash`'s computation and freezing;
+  the born-with cash row for a branch created AFTER `0021` (server code, `provision_shop.py`); the offline kinds and
+  the generic `local_outbox` store (§ 2.5, per-kind cost re-measured 76 constructor sites, 75 proof + 1 production);
+  the LATE-ARRIVAL policy (the owner's, unsettled while `user_devices` is unbuilt); `receipt_file_id`'s FK (batch C);
+  `payments.verification_status` (slip verification); `approvals` and its threshold columns; and the § 3.5-vs-§ 1.6
+  collision on the cashier limit. The owner's open question — whether a `shop_payment_channels` PromptPay proxy that
+  is his own mobile/national id should be access-limited — is filed under `OPEN_ITEMS.md § Decisions open`.
+
 **THE CASHIER COUNTER, PromptPay QR PAYLOAD (commit 3 of the unit) — a pure `packages/` function with its CRC, and its proof. 2026-09-10.**
 No sha yet (precedes the commit; anchor next pass). Supersedes the MAINTENANCE record below AS THE
 POINTER ONLY — that work stands, committed at `0ca834f`. **THE SPLIT (S6, the owner's):** commit 3 is
@@ -121,9 +184,22 @@ keeps paying by cash and transfer exactly as it does today.
   `A000000677010111`, the mobile-proxy shape, currency 764, country TH, that the CRC covers the payload
   including `6304`) is DERIVED from the EMVCo / Bank of Thailand QR standard as understood here and is
   SELF-CONSISTENT, NOT confirmed against a bank-issued vector. The last verification layer is the OWNER
-  scanning a sample with his own banking application; the samples are generated from HIS PromptPay number,
-  supplied at the STOP — NO seed row's phone was used or will be (a scanned-and-confirmed QR built on a
-  real allocated number would move real money to a stranger).
+  scanning a sample with his own banking application.
+  **Superseded 2026-09-19 — an intention was written here as an observation (the failure this project has
+  paid for most often), and the first correction (2026-09-12) was itself a WRONG-OBJECT error, now reversed.**
+  The clause "the samples are generated from HIS PromptPay number, supplied at the STOP" DID NOT HAPPEN: no
+  number was supplied at the commit-3 STOP. The three samples were generated from the PLACEHOLDER phone
+  `0000000000` — DERIVED, not copied, by parsing the sample payload quoted in commit 3's STOP report
+  (`00020101021229370016A00000067701011101130066000000000530376454041.005802TH6304BAEF`): its tag-29 sub-01
+  proxy is `0066000000000` = `0066` + the national number `000000000`, i.e. the mobile `0000000000`, amount
+  `1.00`. The owner's own PromptPay number has NOT been supplied and no real allocated number is anywhere in
+  the tree, so the real-bank scan from his number remains OWED — the one verification layer still open.
+  **TWO DIFFERENT OBJECTS, and the 2026-09-12 correction conflated them:** the SAMPLE payloads use
+  `0000000000`, generated by `gen_samples.mjs`, which lives OUTSIDE the repository tree by design — so a repo
+  grep cannot see what the samples used and returns ONLY the proof's fixture; the PROOF fixture is
+  `0812345678` (`provePromptPay.ts:147`, proxy `0066812345678`), a clearly-marked test number and a separate
+  object. No seed row's phone was used: a QR built on a real allocated number would move real money to a
+  stranger.
 - **DEFERRED, RECORDED at `OPEN_ITEMS.md`:** wiring the payload to the payment form
   (`mobile/src/counter/counterView.ts`, `app/CounterScreen.tsx`); the designed payee source
   `seller_bank_accounts.promptpay_id` (STRUCTURE.md § 2.4 batch D); slip verification against an external
@@ -3107,7 +3183,7 @@ pinned to `98cbc2d` (2026-09-02) and PREDATES migrations 0017 (audit), 0018 (bra
 0019 (permissions) and 0020 (payments), and the whole cashier counter unit built after
 them (the server commit, the SCREEN at `2001c4f`, and commit 3, the PromptPay payload).
 So its counts are low — 16 migrations is now more, 27 `prove_*.py` and 47 mobile
-`prove:*` are now more (`prove:promptpay` is the 48th mobile proof), 28 `.tsx` is
+`prove:*` are now more (`prove:promptpay` is the **52nd** mobile proof — **corrected 2026-09-12**: the "48th" was 47+1, but this commit's own `prove_all` enumerated 84 proofs = 32 server + 52 mobile, so `prove:promptpay` is the 52nd and last mobile proof; migration 0021 adds a SERVER proof (`prove_shifts`), not a mobile one, so the mobile figure is unchanged), 28 `.tsx` is
 unchanged by commit 3 because the payload renders no screen. The table was written to
 correct the bullets beneath it and has begun to rot exactly as they did: a third layer
 of the same shape, and the argument for the restructure PROPOSED at

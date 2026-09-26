@@ -377,6 +377,24 @@ TENANT_TABLES = [
     # constraints are DELIBERATELY NOT in REQUIRED_CONSTRAINTS, the 0005..0019
     # decision: a dump taken before 0020 has none of them.
     "payments", "payment_allocations",
+    # Migration 0021: the shifts-and-cash-drawer unit. All four are here for
+    # S1/S3/B1/X2. THE AUDIT SET SPLITS (the owner's 2026-09-18 decision, see
+    # AUDITED_TABLES below): shifts, branch_payment_methods and shop_payment_channels
+    # ARE audited; cash_movements ALONE is NOT -- it is the payments/purchase_bills
+    # species (insert-plus-void, author on the row, no in-place rewrite), the boundary
+    # STRUCTURE.md invariant 14 draws for the transactional ledger. shifts IS audited
+    # although transactional, because it is the only new table UPDATED IN PLACE on
+    # money columns (counted_cash, expected_cash, variance) and its writers always
+    # carry a principal -- invariant 14 sets a floor, not a ceiling. None carries a
+    # per-tenant SQL check yet: nothing writes shifts, cash_movements or
+    # shop_payment_channels in commit 1, and branch_payment_methods holds only the
+    # born-with cash row per branch. The referential arms (X1/T10) for their new FKs
+    # and the tables' own invariants (a shift's close-consistency, a movement's
+    # void-consistency, variance = counted - expected, and the frozen-close guard)
+    # arrive with the routes that write them (commit 2), recorded in OPEN_ITEMS. Their
+    # constraints are DELIBERATELY NOT in REQUIRED_CONSTRAINTS, the 0005..0020
+    # decision: a dump taken before 0021 has none of them.
+    "shifts", "cash_movements", "branch_payment_methods", "shop_payment_channels",
 ]
 
 # Tables that hold NO shop data and carry NO tenant_id, by design: alembic's
@@ -426,6 +444,14 @@ AUDITED_TABLES = frozenset({
     # payments and payment_allocations (0020) are NOT here, on purpose: S6
     # requires EQUALITY with pg_trigger, so listing them would demand a
     # trigger the ledger must not carry (see TENANT_TABLES above).
+    # Migration 0021 (the owner's 2026-09-18 split): shifts,
+    # branch_payment_methods and shop_payment_channels carry the trigger and S6
+    # requires it -- the two config tables are master data a shop edits, and shifts
+    # is audited despite being transactional because it is UPDATED IN PLACE on money
+    # columns and its writers always carry a principal. cash_movements ALONE is NOT
+    # here: the payments species (insert-plus-void, no in-place rewrite), so listing
+    # it would demand a trigger it must not carry.
+    "shifts", "branch_payment_methods", "shop_payment_channels",
 })
 
 # Named constraints and indexes the row checks lean on. If one is missing, the
@@ -956,7 +982,11 @@ SELECT (SELECT count(*) FROM purchase_bills)                              AS bil
        (SELECT count(*) FROM roles)                                        AS roles,
        (SELECT count(*) FROM role_permissions)                             AS role_permissions,
        (SELECT count(*) FROM payments)                                     AS payments,
-       (SELECT count(*) FROM payment_allocations)                          AS allocations
+       (SELECT count(*) FROM payment_allocations)                          AS allocations,
+       (SELECT count(*) FROM shifts)                                       AS shifts,
+       (SELECT count(*) FROM cash_movements)                               AS cash_movements,
+       (SELECT count(*) FROM branch_payment_methods)                       AS branch_payment_methods,
+       (SELECT count(*) FROM shop_payment_channels)                        AS shop_payment_channels
 """
 
 # Which SCOPE_SQL column feeds each table's running total for X2.
@@ -979,6 +1009,10 @@ SCOPE_COLUMN = {
     "role_permissions": "role_permissions",
     "payments": "payments",
     "payment_allocations": "allocations",
+    "shifts": "shifts",
+    "cash_movements": "cash_movements",
+    "branch_payment_methods": "branch_payment_methods",
+    "shop_payment_channels": "shop_payment_channels",
 }
 
 CHECKS_PER_TENANT = len(SQL_CHECKS) + 4      # T0 + the SQL checks + T7/T8/T9

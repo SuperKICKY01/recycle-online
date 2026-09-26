@@ -280,3 +280,34 @@ This sits alongside the other lessons about a green result that proves nothing:
 shape: **a passing result is only evidence if you know what would have made it
 fail.** Here, nothing would have — on a fresh database it could not fail, and
 on a used one it could not pass.
+
+## AMENDED A SIXTH TIME (the shifts unit, migration 0021, 2026-09-12): the alembic HEAD is a value the environment owns, and the NEXT migration bumps it
+
+The fifth amendment is *a count the ENVIRONMENT owns expires when the environment is
+rebuilt*. **This is the same axis with the migration STACK as the environment**: a proof
+written for migration N that asserts `head == "00NN"` reddens the day migration 00NN+1
+lands — in an UNRELATED commit, with the proof and the code it tests BOTH UNCHANGED.
+
+**Measured.** `prove_payments.py` (the 0020 ledger proof) asserted `version == "0020"` at
+its E0 gate and `return 1` otherwise. Landing migration `0021` — which added a NULLABLE
+`payments.shift_id` and four tables `prove_payments` never reads — turned E0 red,
+`the scratch is at alembic 0020 (got 0021)`, and `prove_all` reported **RED 1** on it, on a
+commit that changed nothing `prove_payments` exercises. `prove_payments` restores its scratch
+from a live dump, and the live database is now at 0021, so the absolute assertion could only
+be true for exactly one migration's lifetime.
+
+**The fix is the one `prove_branches` used from the start**: assert AT OR PAST
+(`version >= "0020"`), or assert the FEATURES the proof needs (the routes, the columns) —
+never the head as a fact. The features migration N adds persist through N+1, which is the
+whole reason the proof still means something at the later head.
+
+**And the sweep is the part that stings.** This same session, landing 0021, first wrote
+`head == "0021"` in its OWN new proof (`prove_shifts`) and used `downgrade -1` / `upgrade
+head` for the round trip — the identical brittleness, in the very proof that ships the
+migration — and had to correct it to `>= "0021"` with EXPLICIT `downgrade 0020` / `upgrade
+0021` targets so migration 0022 cannot move what the round trip isolates. So the rule has a
+search attached: **before finishing a migration, grep every proof for `== "00` (and `!= "00`,
+and `downgrade -1` / `upgrade head` in a round trip) — the proof you just wrote is the most
+likely offender, and the proof of the PREVIOUS unit is the second.** A proof that pins the
+head is [[a-migration-stack-is-a-log-not-a-schema]] pointed at a test: the stack is a log, and
+its head is a value that moves.

@@ -198,6 +198,32 @@ on 2026-08-28 — nothing weakened, only relocated.
   list the streams before concluding it was never written —
   `Get-Item <file> -Stream *` and `Get-Content <file> -Stream <name>`.
   → `EVIDENCE.md § NTFS colon: the hundred logs on one file`
+- **`tools/prove_all.py` STANDS UP THREE uvicorn SERVERS AT ONCE, and under memory
+  pressure the HARNESS KILLS THE BACKGROUND TASK MID-RUN — every proof GREEN up to the
+  kill, no RED, and NO `PROVE_ALL_EXIT` line.** Measured 2026-09-19: with ~4.5 GB free
+  of 32 GB (against the user's OWN foreground apps — RobloxPlayerBeta ~2.0 GB, Discord
+  ~2.1 GB, Opera ~4 GB — plus the WSL/Docker VM), two runs were stopped with the harness
+  message "system running low on memory", reaching proof 5/84 then 9/84, both all-green
+  as far as they got. That reads like a hang, a flake, or — worst — a run that "passed as
+  far as it got". Instead: MEASURE FREE MEMORY before concluding anything about the suite
+  (`Get-CimInstance Win32_OperatingSystem`, FreePhysicalMemory), and NEVER read an
+  incomplete enumeration as a pass — the pass is `PROVE_ALL_EXIT=0` on its own last line
+  over all 84x2, and its ABSENCE is the signal, exactly as for a single proof. Do not
+  retry under unchanged memory (a second identical kill is not new evidence), and do not
+  split or filter the suite to get a green (a filtered run cannot catch a proof dropped
+  from the enumeration, which is one of the four things the runner exists for). The apps
+  are the user's; read the figure and report it, never close them.
+  **Amended 2026-09-26 — A PRE-LAUNCH READING IS NOT SUFFICIENT; the free-memory figure
+  must HOLD FOR THE WHOLE RUN.** A third run started from ~8.0 GB free — materially above
+  the ~4.5 GB that failed — and was still killed, IN PREFLIGHT, before the first proof
+  index, because a second RobloxPlayerBeta instance started during the run and consumed
+  the headroom (free fell to ~3.85 GB). The three kill points are now 5/84, 9/84 and
+  preflight, all with no RED and no exit line. So: have the consumers CLOSED, and kept
+  closed, for the duration; do not measure and start. And one consumer is neither the
+  user's app nor a command a session ran: Claude Desktop's own git integration running
+  `git ls-files --others --exclude-standard` as two `git.exe` processes, ~2.3 GB combined
+  (measured). It belongs to the desktop app — a session must not kill it, and must not
+  mistake it for its own leftover.
 
 ### Boot check — name the observable, don't assume the environment
 

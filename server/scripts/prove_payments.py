@@ -826,8 +826,15 @@ async def main() -> int:
     os.environ["DIRECTORY_DATABASE_URL"] = dir_live.set(database=scratch).render_as_string(hide_password=False)
     db = Db(f"postgresql://postgres:postgres@{app_live.host}:{app_live.port}/{scratch}")
     version = await db.fetchval("SELECT version_num FROM alembic_version")
-    check(version == "0020", f"E0: the scratch is at alembic 0020 (got {version})")
-    if version != "0020":
+    # AT OR PAST 0020, not EXACTLY 0020 (the prove_branches B1 precedent, "at or past
+    # 0018"). The ledger schema this proof exercises lands at 0020 and persists through
+    # later migrations; 0021 added shifts and a NULLABLE payments.shift_id, touching
+    # nothing this proof reads. A migration must not redden a proof of a feature it did
+    # not change -- proof-must-run-twice: assert what the proof needs, never the head as
+    # a fact. The FEATURES are checked by assert_serving_this_code below.
+    check(version is not None and version >= "0020",
+          f"E0: the scratch is at alembic 0020 or later (got {version})")
+    if version is None or version < "0020":
         return 1
 
     port = free_port()
