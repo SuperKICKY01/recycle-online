@@ -101,6 +101,8 @@ PERMS: tuple[str, ...] = (
     "users.manage", "shop.settings.write", "roles.manage",
     # Migration 0020 (the money ledger): the fourteenth code.
     "payments.record",
+    # Migration 0022 (the shifts unit, commit 2): the fifteenth code.
+    "shifts.manage",
 )
 
 BASE = ""

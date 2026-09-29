@@ -57,6 +57,10 @@ ALL_TABLES = [
     # they are listed so the cross-tenant scan, the straggler check and the
     # teardown reach them, and so a later fixture that does write one is covered.
     "payments", "payment_allocations",
+    # branch_payment_methods (0021; its born-with cash row written by 0022's
+    # branches_born_with_cash trigger when this proof seeds a branch): a row of the
+    # tenant's graph, so the straggler check and the teardown reach it.
+    "branch_payment_methods",
 ]
 
 
@@ -70,9 +74,10 @@ _TEARDOWN_ORDER = [
     "payment_allocations", "payments",
     "purchase_bill_items", "purchase_bills", "product_prices", "products",
     "sellers", "grade_tiers", "product_categories", "uoms", "users",
+    # branch_payment_methods (0021/0022) BEFORE branches (it FKs to the branch).
     # branches (0018) AFTER purchase_bills and users (both FK to it) and BEFORE
     # tenants (it FKs to tenants).
-    "branches",
+    "branch_payment_methods", "branches",
     # role_permissions then roles (0019): AFTER users (users.role_id FKs to
     # roles) and BEFORE tenants. roles is deleted by the OWNER, like a tier.
     "role_permissions", "roles", "tenants",
@@ -231,8 +236,12 @@ async def drop_tenant(conn, owner_conn, tid) -> tuple[int, list[str]]:
         # roles (0019) is the same case again: deactivated, never deleted.
         # payments and payment_allocations (0020): voided never deleted, and an
         # allocation is append-only -- the app role holds no DELETE on either.
+        # purchase_bills and purchase_bill_items (0022): hard rule 5 moved from
+        # code to grant, the app role holds no DELETE on a bill any more; and
+        # branch_payment_methods (0021) was born without one.
         dc = owner_conn if table in (
             "grade_tiers", "branches", "roles", "payments", "payment_allocations",
+            "purchase_bills", "purchase_bill_items", "branch_payment_methods",
         ) else conn
         try:
             async with tenant_tx(dc, tid):

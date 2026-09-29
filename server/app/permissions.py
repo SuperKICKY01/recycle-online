@@ -30,8 +30,10 @@ were minted by unit 1, the ones a route gates on in this tree (the owner's decis
 be ten meanings a later session must guess). One of the thirteen is the exception
 and says so at its line: `roles.manage` gates no route yet. Unit 3 (the money
 ledger, migration 0020) minted the FOURTEENTH, `payments.record`, the day
-POST /payments and GET /payments gated on it. The other nine are recorded in
-DEFERRED against the unit that will gate them, so nobody re-invents a name later.
+POST /payments and GET /payments gated on it. The shifts unit (migration 0022)
+minted the FIFTEENTH, `shifts.manage`, the day the drawer routes gated on it. The
+other eight are recorded in DEFERRED against the unit that will gate them, so nobody
+re-invents a name later.
 
 THE THREE SYSTEM ROLES every shop is born with are S9's owner/admin/staff, as rows
 (SYSTEM_ROLE_GRANTS is what each holds at birth). A shop may create a fourth once
@@ -77,6 +79,13 @@ class Permission(StrEnum):
     # payment inside POST /bills under bills.create, so a cash-only shop's staff
     # never needs this). The cashier is a role a shop creates.
     PAYMENTS_RECORD = "payments.record"
+    # Migration 0022 (the shifts unit, commit 2): the cash drawer. Opening and
+    # closing a shift and recording a cash movement. Owner and admin hold it at
+    # birth; staff does not (staff weighs; a shop's cashier is a role it creates).
+    # It gates WHO may act on the drawer, never whether a payment is accepted:
+    # POST /payments and POST /bills stamp a shift and refuse nothing for a missing
+    # one (STRUCTURE.md invariant 1).
+    SHIFTS_MANAGE = "shifts.manage"
 
 
 # What each permission gates, by route. ASCII, because migration 0019 restates the
@@ -130,6 +139,11 @@ DESCRIPTIONS: Mapping[Permission, str] = {
     Permission.PAYMENTS_RECORD: (
         "record money leaving the shop and read the ledger: POST /payments, GET /payments"
     ),
+    Permission.SHIFTS_MANAGE: (
+        "open and close a cash-drawer shift and record a cash movement: POST /shifts,"
+        " GET /shifts/current, POST /shifts/id/close, PATCH /shifts/id,"
+        " POST /cash-movements, GET /cash-movements"
+    ),
 }
 
 # Section 3.1's codes NOT minted by unit 1, each against the unit that gates it.
@@ -139,7 +153,7 @@ DEFERRED: Mapping[str, str] = {
     # payments.record left this map with migration 0020. payments.void stays: no
     # route voids a payment in unit 3 (the counter screen is the unit that does).
     "payments.void": "the counter unit, when POST /payments/{id}/void exists",
-    "shifts.manage": "batch B, shifts and the drawer",
+    # shifts.manage left this map with migration 0022 (the shifts unit, commit 2).
     "sellers.read_personal": "batch C, files and personal data (a seller's id document)",
     "audit.read": "the audit-log read route, when one exists (D3 wrote the log only)",
     "reports.export": "the export step (Excel is out of MVP today)",

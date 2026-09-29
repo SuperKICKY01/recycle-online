@@ -962,6 +962,94 @@ SQL_CHECKS: list[SqlCheck] = [
          ORDER BY b.doc_no
         """,
     ),
+    # -----------------------------------------------------------------------
+    # THE DRAWER (migration 0021's tables, their routes in the shifts unit's
+    # commit 2). The arithmetic of expected_cash is DUPLICATED here in Postgres
+    # NUMERIC and nothing is imported from app/shifts.py -- a second author given
+    # only STRUCTURE.md 2.4 reaches the same sum, so a disagreement is a defect in
+    # one of the two (lessons/a-checker-must-not-share-the-code-it-checks.md).
+    # -----------------------------------------------------------------------
+    SqlCheck(
+        # The frozen figure against an independent recomputation from the shift's
+        # STAMPED LIVE rows, and the variance against counted - expected. BOUND,
+        # stated so a later unit does not trip over it: no route voids a payment or
+        # a cash movement yet; the day one can be voided AFTER its shift closed,
+        # this arm reads that void as a changed figure, and the void unit must say
+        # whether the frozen figure or the live set is the truth (OPEN_ITEMS.md).
+        "H1", "a closed shift's expected_cash equals its recomputation, and"
+              " variance = counted_cash - expected_cash", "shifts",
+        """
+        SELECT s.id AS shift_id, s.expected_cash AS stored_expected, r.recomputed,
+               s.counted_cash, s.variance AS stored_variance,
+               s.counted_cash - s.expected_cash AS expected_variance
+          FROM shifts s
+          CROSS JOIN LATERAL (
+            SELECT s.opening_float
+                 + coalesce((SELECT sum(m.amount) FROM cash_movements m
+                              WHERE m.shift_id = s.id AND m.voided_at IS NULL
+                                AND m.kind = 'float_in'), 0)
+                 - coalesce((SELECT sum(m.amount) FROM cash_movements m
+                              WHERE m.shift_id = s.id AND m.voided_at IS NULL
+                                AND m.kind IN ('float_out', 'expense', 'deposit_to_bank')), 0)
+                 - coalesce((SELECT sum(p.amount) FROM payments p
+                              WHERE p.shift_id = s.id AND p.voided_at IS NULL
+                                AND p.method = 'cash'), 0) AS recomputed
+          ) r
+         WHERE s.closed_at IS NOT NULL
+           AND (s.expected_cash <> r.recomputed
+                OR s.variance <> s.counted_cash - s.expected_cash)
+         ORDER BY s.closed_at
+        """,
+    ),
+    SqlCheck(
+        # A row stamped with a shift was received INSIDE that shift -- at or after
+        # opened_at, and at or before closed_at when it is closed -- and in the
+        # shift's own branch. The stamping helper guarantees the window by ORDERING
+        # (opened_at <= received_at at the stamp; closed_at read after the close's
+        # lock), so a row outside it is a stamp no route could have written.
+        "H2", "a payment or cash movement stamped with a shift was received inside"
+              " that shift's window and branch", "shifts",
+        """
+        SELECT 'payment' AS row_kind, pm.id::text AS row_id, sh.id::text AS shift_id,
+               pm.server_received_at, sh.opened_at, sh.closed_at,
+               (pm.branch_id = sh.branch_id) AS same_branch
+          FROM payments pm
+          JOIN shifts sh ON sh.id = pm.shift_id
+         WHERE pm.server_received_at < sh.opened_at
+            OR (sh.closed_at IS NOT NULL AND pm.server_received_at > sh.closed_at)
+            OR pm.branch_id <> sh.branch_id
+        UNION ALL
+        SELECT 'cash movement', cm.id::text, sh.id::text,
+               cm.server_received_at, sh.opened_at, sh.closed_at,
+               (cm.branch_id = sh.branch_id)
+          FROM cash_movements cm
+          JOIN shifts sh ON sh.id = cm.shift_id
+         WHERE cm.server_received_at < sh.opened_at
+            OR (sh.closed_at IS NOT NULL AND cm.server_received_at > sh.closed_at)
+            OR cm.branch_id <> sh.branch_id
+        """,
+    ),
+    SqlCheck(
+        # Every branch holds its born-with cash row (0021's backfill, 0022's
+        # trigger and backfill), and no branch holds two rows for one method. The
+        # second half cannot fire while the primary key stands; it is here so a
+        # dropped key is a named red rather than a silent duplicate.
+        "H3", "every branch holds its born-with cash method row, and one row per"
+              " method", "branches",
+        """
+        SELECT 'no cash row' AS problem, b.code AS branch_code, b.id::text AS branch_id,
+               NULL::text AS method, 0::bigint AS rows_for_method
+          FROM branches b
+         WHERE NOT EXISTS (SELECT 1 FROM branch_payment_methods m
+                            WHERE m.branch_id = b.id AND m.method = 'cash')
+        UNION ALL
+        SELECT 'duplicate method row', b.code, m.branch_id::text, m.method, count(*)
+          FROM branch_payment_methods m
+          JOIN branches b ON b.id = m.branch_id
+         GROUP BY b.code, m.branch_id, m.method
+        HAVING count(*) > 1
+        """,
+    ),
 ]
 
 SCOPE_SQL = """
@@ -1839,7 +1927,15 @@ CANNOT_SEE = [
     " hand-written statement as the app role CAN lower it, and nothing in the"
     " database refuses. Only INSERT and DELETE are refused at the grant level."
     " Forward-only is an application property, not a schema one. Closing it"
-    " needs a BEFORE UPDATE trigger, which this schema does not have anywhere.",
+    " needs a BEFORE UPDATE trigger on server_clock_watermark, and that table has"
+    " none (the schema's BEFORE UPDATE triggers are 0019's roles_system_guard and"
+    " 0022's shifts_freeze_closed, on other tables).",
+
+    "WHETHER A CASH PAYMENT WITH NO SHIFT BELONGED IN A DRAWER. A payment or cash"
+    " movement recorded while its branch had no open shift is stamped NULL by"
+    " design (a shift is a stamp, never a gate), so it sits outside every drawer"
+    " figure H1 recomputes. Whether the cash physically left a drawer that was"
+    " simply never opened is a fact about the counter, not the rows.",
 
     "WHETHER A doc_no's BE YEAR IS THE YEAR IT SHOULD HAVE BEEN. The year gate"
     " in create_bill refuses a NEW (tenant_id, be_year) counter that is not"

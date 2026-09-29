@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 35 across 19 files, counted from the source headings and
+**Amendments:** 37 across 20 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -51,7 +51,7 @@ line instead of by heading depth.
 - `a-grant-boundary-belongs-to-a-database-not-a-role.md` -- A grant boundary belongs to a DATABASE, not to a role
 - `a-green-cell-is-evidence-about-the-assertion-not-the-claim.md` *(2 amendments)* -- A green cell is evidence about the assertion, not about the claim
 - `a-label-is-a-reference-with-no-checker.md` -- A label is a reference, and nothing in this repository checks one
-- `a-lock-is-proven-by-what-waits-not-by-a-race.md` -- A lock is proven by what waits, not by a race
+- `a-lock-is-proven-by-what-waits-not-by-a-race.md` *(1 amendment)* -- A lock is proven by what waits, not by a race
 - `a-lockfile-not-node-modules-is-what-a-clone-installs.md` -- A green suite runs against the node_modules you HAVE, not the lockfile a clone installs from
 - `a-migration-reads-zero-under-force-rls.md` -- A migration reading tenant data sees zero rows under FORCE RLS
 - `a-migration-stack-is-a-log-not-a-schema.md` -- A migration stack is a log, not a schema
@@ -61,7 +61,7 @@ line instead of by heading depth.
 - `a-platform-can-refuse-an-effect-and-record-it-as-done.md` -- A platform can refuse an effect and record it as done
 - `a-proof-fixture-must-be-a-row-the-product-could-produce.md` *(1 amendment)* -- A proof fixture must be a row the product could have produced
 - `a-proof-must-establish-what-it-is-talking-to.md` -- A proof must establish WHAT IT IS TALKING TO before it asserts anything about the answers
-- `a-quantified-sentence-names-no-member.md` *(2 amendments)* -- A sentence that quantifies over a set names no member of it
+- `a-quantified-sentence-names-no-member.md` *(3 amendments)* -- A sentence that quantifies over a set names no member of it
 - `a-refusal-hands-back-what-it-refused.md` *(1 amendment)* -- A 422 is a MIRROR — the framework hands back the value it refused, and one of those values is a password
 - `a-report-is-many-reads-that-must-agree.md` -- A report is many reads; under READ COMMITTED they are many moments
 - `a-round-trip-must-agree-on-its-key-space.md` -- A round trip must agree on its key space
@@ -4002,6 +4002,59 @@ Related: [[concurrency-tests-need-a-barrier]] (the barrier this extends),
 [[a-check-that-never-went-red-was-never-observed]] (an instrument that cannot
 fire), [[a-proof-must-establish-what-it-is-talking-to]].
 
+## AMENDED (the shifts unit, commit 2, 2026-09-26): holding the lock is not enough if the stopwatch measures the holder
+
+`prove_drawer.py` followed this file: it HOLDS the shift row in the close's mode
+(`FOR NO KEY UPDATE`), fires `POST /payments` as a task, sleeps, releases, and
+asserts the payment "waited" at least 1.0 s. **With the stamp's `FOR SHARE`
+deleted from the route, that cell stayed GREEN at 1.55 s.** The request had
+finished in about 30 ms; the proof measured `t0` to the line after
+`await task`, and that line only runs after the proof's OWN 1.5 s hold. Every
+request "took" the hold, waited or not. The same shape sat in two sibling cells.
+
+What caught it was the pair this file already asks for: the cell's sibling read
+`pg_stat_activity` mid-hold, found NO backend waiting on a lock, and went red --
+the timing cell and the evidence cell disagreed, and the evidence was right.
+After the fix (each task records its OWN completion instant) the same mutation
+reads **0.03 s** and the cell reddens, and a `pg_stat_activity` reading and a
+timing now agree in both directions.
+
+**The rule this adds.** When the proof holds the lock, time the request against
+the instant IT completed, never against the instant the proof next looks -- in
+an async harness the proof's own `sleep` sits between the two. And keep the
+`pg_stat_activity` reading beside every timing cell: a duration is a claim about
+a wait, the waiting backend's query is the wait.
+
+**Two more from the same proof, bounds on the rules above.** (1) The race the
+dispatching brief asked for could not show one of its two outcomes on this box:
+released together, the close won the row lock in every overlapping round (30+
+rounds, five runs), and delayed starts produced the other outcome only in rounds
+that no longer overlapped; asyncio timings here quantise at ~15.6 ms, so no finer
+offset is schedulable. That is "a race is a coin" measured, and the other outcome
+was proven by holding the lock (RH2). The race stays as a smoke test with a
+sequential POSITIVE CONTROL that its classifier can report the outcome it never
+saw -- otherwise "always B" is indistinguishable from a classifier that cannot say
+A. (2) One disproof run read GREEN because the mutated file had been restored
+between turns by something other than the session (its hash matched the
+pre-mutation value); the run was an unmutated green, discovered only by reading
+the file back. A disproof's mutation must be verified PRESENT at run time, not
+remembered -- the seventeenth mechanism of
+[[a-check-that-never-went-red-was-never-observed]], met again.
+**THE WRITER IS UNEXPLAINED** (closing turn, 2026-09-27). The process listing
+found no other `claude`, `node`, `python` or `git` process and no desktop-app
+scanner; it found VS Code running with this repository open and
+`files.autoSave: "afterDelay"`, and this CLI session running inside VS Code's own
+terminal. VS Code's Local History holds NO save of `server/app/bills.py` -- and it
+does record this repository's editor saves (five files, the latest 2026-08-10), so
+the zero is not an instrument that never looks; it does not see writes by
+extensions or other tools. A session rewind is argued against by the tree itself:
+the proof edits made AFTER the mutation survived. No reading names the writer.
+Until one does, an editor open on the repository is a writer to the tree, and a
+disproof reads its mutation back before it trusts a run.
+
+Where proven: `server/scripts/prove_drawer.py` `timed()` and cells RH1/RH1b,
+RH2/RH2b/RH2c, RH3, RB1-RB4; the phase record in `PROJECT_STATUS.md § Current phase`.
+
 ---
 
 **SOURCE:** `a-lockfile-not-node-modules-is-what-a-clone-installs.md`
@@ -5197,6 +5250,47 @@ step 3 and is untouched here.
   neither of which a checker can enforce. **The only mechanical defence found here
   is the WRITING rule** — enumerate at run time — which removes the site instead
   of detecting it.
+
+## AMENDED (the shifts unit, commit 2, 2026-09-29) — MINTING A PERMISSION CONSCRIPTS EVERY HAND-KEPT FULL COPY OF THE CATALOGUE, AND THE SWEEP TERM IS THE LAST CODE MINTED
+
+The permission catalogue is a set this project quantifies over BY HAND on purpose:
+proofs restate it rather than import it, so a fixture cannot agree with the server by
+construction (`a-checker-must-not-share-the-code-it-checks.md`). Every such copy is a
+sentence of the form "these are ALL the codes", and it names no future member.
+
+**Measured.** Migration `0022` minted `shifts.manage`. The unit's own proof sweep looked
+for absolute alembic heads and not for catalogue copies, and `prove_all` came back RED 1
+on `prove_permissions` cell G: its "all-but-roles.manage" principal, built from a
+hand-kept 14-code `PERMS`, now also lacked `shifts.manage`, and the server -- correctly --
+answered `over_reach ['roles.manage', 'shifts.manage']` where the cell expected
+`['roles.manage']`. The server was right; the copy was stale. The SAME list had been
+conscripted once before: `0020`'s mint of `payments.record` added its line there. Two
+instances, one list, and nothing but a full suite run noticed either.
+
+**The sweep term is the MOST RECENTLY MINTED code**, not the quantifier and not the new
+code. A list that claims to be every code MUST contain the last one minted; a list that
+is one role's grant or one gate's code NEED NOT. So searching for the last-minted code
+(both quote styles, explicit paths, bytes) returns every FULL copy plus some SUBSETS --
+it cannot miss a FULL one that was ever current. Measured 2026-09-29 over 204 files
+(`server/scripts`, `server/app`, `mobile/src`): 8 hits in 6 files, with `app/permissions.py`'s
+own enum line as the control.
+
+**Classification decides the edit, not the hit.** FULL (a mirror, an "everything"
+builder, an all-but-one builder) gains the new code; SUBSET (a role's intended grant, a
+single gate's `required_permission`) is NOT edited -- adding the code there would be a
+new grant, a product decision, dressed as a sweep. Of the 8 hits: FULL and edited,
+`server/scripts/prove_permissions.py` `PERMS` and `mobile/src/proof/proofGrants.ts` `ALL`;
+SUBSET and left, `prove_permissions.py` two gate sites, `prove_payments.py` one
+`required_permission`, `mobile/src/counter/counterView.ts` one production gate; FULL but
+PRODUCTION and left by that brief's fence, the phone's `Permission` union in
+`mobile/src/session/deviceRole.ts`, whose own comment says an unknown code "simply lands in
+the Set unnamed" (measured at the unit's Task 0(h)). Note the mobile FULL copy was STALE
+AND GREEN: no screen gates on `shifts.manage` yet, so nothing read the missing member --
+a stale FULL copy fails only where some cell reads the new code.
+
+**How to apply.** In the commit that mints a permission, before the gate: sweep for the
+PREVIOUS last-minted code, classify every hit FULL or SUBSET with its reason, and add the
+new code to every FULL copy with a comment naming the migration.
 
 ---
 

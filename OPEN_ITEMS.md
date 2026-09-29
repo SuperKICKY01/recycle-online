@@ -995,8 +995,11 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   reproduction, which is cheap to stage — revoke a session, or just let
   a token expire while a bill is queued.
 - **~~`prove_reconcile.py` is RED, and has been since the 2026-08-03
-  rebuild~~ — CLOSED 2026-08-07 by `ROADMAP.md § STAGE 1`
-  "prove_reconcile.py back to green".** It exits 0 twice bare against a
+  rebuild~~ — CLOSED 2026-08-07 by
+  `ROADMAP.md § Steps met and archived` "back to green | MET 2026-08-07".**
+  (Citation repaired 2026-09-26: it named `§ STAGE 1` with a handle the target writes
+  with backticks round the file name, and the P1.10 line sits under "Steps met and
+  archived", above STAGE 1 -- two reasons the checker found no hit.) It exits 0 twice bare against a
   scratch copy with no reseed between. **The record is the dated entry in
   `PROJECT_STATUS.md`'s Baseline observations (2026-08-07, P1.10) and is
   deliberately NOT restated here:** two copies drift, and a new session
@@ -1731,11 +1734,22 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
       1: `POST /shifts` and the close route, the cash-movement route, and the settings
       writers for `shifts_enabled`, `branch_payment_methods` and `shop_payment_channels`.
       Online-only first (the counter commit-2 precedent).
+      **ADDRESSED 2026-09-26 (commit 2, unanchored; anchor next pass):** `app/shifts.py`
+      (POST /shifts, GET /shifts/current, POST /shifts/{id}/close, PATCH /shifts/{id},
+      POST and GET /cash-movements, all under `shifts.manage`) and `app/channels.py`
+      (PUT /branches/{id}/payment-methods/{method}, POST/PATCH/GET
+      /shop/payment-channels); PATCH /branches widened to `shifts_enabled`; GET
+      /shop/policy widened. Online only.
     - **`expected_cash`'s COMPUTATION and freezing at close (hard rule 6).** The column
       exists; nothing computes or writes it. A reconcile check `variance = counted_cash -
       expected_cash` on closed shifts (and a `cash_movements` void-consistency / a `shifts`
       close-consistency arm) arrives with the close route, not now — nothing writes these
       values in commit 1.
+      **ADDRESSED 2026-09-26 (commit 2):** computed under the shift's row lock and frozen
+      in one UPDATE; `reconcile.py` H1 (frozen figure = its stamped live rows, variance =
+      counted - expected), H2 (a stamped row received inside its shift's window and
+      branch), H3 (every branch holds its cash row), each with a `prove_reconcile`
+      injection that names its row and clears.
     - **THE FROZEN-CLOSE HOLE — close it BY MECHANISM when the close route lands.**
       `recycle_app` holds UPDATE on `shifts` (the CLOSE is an UPDATE of the four close
       columns), so nothing in the SCHEMA stops a SECOND update rewriting `counted_cash`,
@@ -1745,6 +1759,10 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
       is already set, proven against that route (not a bare INSERT). UNTIL THEN, the `shifts`
       audit trigger added in this commit (the 2026-09-18 split) is the ONLY thing that would
       RECORD such a rewrite — which is part of why `shifts` is audited.
+      **CLOSED 2026-09-26 by migration `0022`'s `shifts_freeze_closed`** (BEFORE UPDATE;
+      the one permitted change is `variance_reason` NULL -> non-blank text), proven
+      against the route AND as `recycle_app` (`prove_drawer` FR1-FR6; dropping the
+      trigger reddens exactly FR1, FR3, FR4).
     - **THE AUDIT SPLIT, recorded (the owner's 2026-09-18 decision, MECHANISM).** `shifts`
       IS audited, `cash_movements` is NOT. Why they split: 0020's reason for not auditing the
       ledger is that it "would have conscripted POST /bills, which declares no actor" — that
@@ -1758,6 +1776,12 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
       (`provision_shop.py` creates the born-with `MAIN` branch; the future add-branch
       route). A branch with no `branch_payment_methods` cash row refuses every payment once
       a route reads that table. Commit 2 (or the add-branch unit).
+      **ADDRESSED 2026-09-26 by a SCHEMA guarantee, not server code:** migration `0022`'s
+      AFTER INSERT trigger `branches_born_with_cash` gives every new branch its cash row
+      by whatever path inserts it, and `0022` backfilled any branch created between 0021
+      and 0022 (none on dev). And the premise "refuses every payment once a route reads
+      that table" is now FALSE BY DESIGN: no write path reads it (invariant 1,
+      `prove_drawer` G and INV).
     - **The OFFLINE kinds and the generic `local_outbox` store (STRUCTURE § 2.5).** Each of
       `shifts` / `cash_movements` is written offline first, so each is an outbox kind. The
       per-kind cost was re-measured 2026-09-12 at **76 `new SyncEngine(` constructor sites**
@@ -1768,6 +1792,8 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
       cannot know an offline device holds unsynced cash while `user_devices` (batch E) is
       unbuilt; `payments.shift_id` stamped at record time is unambiguous online-only, so
       the late-arrival question does not arise yet.
+      **DECIDED 2026-09-26 by the advisor under delegation**, still not built -- the
+      late-arrival entry under `OPEN_ITEMS.md § Decisions open` holds the policy.
     - **`cash_movements.receipt_file_id`'s FK awaits batch C** (`files`). The column is
       nullable with NO FK today; a dangling reference is worse than none.
     - **`payments.verification_status` / `verified_at` / `verifier_ref` and
@@ -1786,6 +1812,55 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
       § 17's fourteen-item queue (titled ต้องตัดสินก่อนบิลจริงใบแรก) and from § 11. Migration
       `0021` answers it: `shop_payment_channels`, per tenant, nullable branch scope, coherent
       per kind, audited. Its ROUTE and screen are commit 2.
+      **ROUTE ADDRESSED 2026-09-26 (commit 2); the SCREEN is commit 3.**
+  - **THE SHIFTS-AND-CASH-DRAWER UNIT — commit 2 (SERVER) landed 2026-09-26 (migration
+    `0022`, unanchored; anchor next pass). COMMIT 3 OWES, each its own line:**
+    - **The counter's SHIFT and DRAWER screens** (open, the running figure for
+      `money.view_shop`, the count, the reason after the variance is shown), read from
+      `GET /shop/policy`'s `shifts_enabled` and `payment_methods` -- DISPLAY rules only.
+    - **The channel picker on the payment form, and the masked display**
+      (`identifier_last4` for a principal without `shop.settings.write`).
+    - **Cash-movement VOID** (a route and its screen). When it lands, `reconcile.py` H1
+      reads a movement voided AFTER its shift closed as a changed figure -- the void unit
+      decides whether the frozen figure or the live set is the truth, in the same commit.
+      The same applies to `payments.void`.
+    - **The day-close for a shifts-OFF shop** (`STRUCTURE.md § 2.4`'s materialised day
+      shift, P1.19). Today a shifts-off shop's cash payments are stamped NULL and sit in
+      no drawer figure (reconcile.py's CANNOT_SEE line says so).
+    - **The owner notification on a variance** (batch E, notifications).
+    - **THE UNSTAMPED-CASH GAP -- ADVISOR-DECIDED 2026-09-27 as a commit-3 obligation.**
+      When a close wins the race, or whenever no shift is open, a cash payment in a
+      branch with `shifts_enabled = true` is stamped NULL and belongs to no drawer
+      figure. The server must NOT refuse it (invariant 1; the cash has left). The repair
+      is two-sided and both halves are commit 3: (a) the counter screen, when
+      `shifts_enabled` is on, requires an open shift BEFORE it offers payment -- a
+      display rule, not a server refusal; (b) a report / reconciler arm surfaces every
+      live `method='cash'` payment with `shift_id IS NULL` in a branch whose
+      `shifts_enabled` was true at the payment's `server_received_at`, so the owner sees
+      cash that no drawer counted. (Note for (b): `branches.shifts_enabled` holds only
+      its CURRENT value; its value at a past instant must be read from the `branches`
+      audit trail, since `branches` is audited.)
+  - **FOUND OUTSIDE THE FENCE by commit 2, RECORDED, not fixed (not now):**
+    - **`reconcile.py` has no T10/X1 arm for the drawer's references**:
+      `payments.shift_id`, `payments.channel_id`, `cash_movements` -> `shifts`/`branches`/
+      `users`, `shifts` -> `branches`/`users`. MEASURED: with `fk_payments_channel`
+      dropped on a scratch and a payment pointed at ANOTHER tenant's channel,
+      `prove_drawer` CH7 reddened (the route) and `reconcile.py` stayed exit 0 -- the
+      checker cannot see a cross-tenant drawer reference. The composite FKs are the
+      guard today; the reconciler's second lens on them is owed.
+    - **0021's `COMMENT ON TABLE shifts` still says "NOT audited"** -- false since the
+      owner's 2026-09-18 split audited it (0021 as committed). A catalogue comment is
+      read by whoever inspects the schema; the NEXT migration restates it.
+    - **`reconcile.py`'s CANNOT_SEE line claimed the schema had no BEFORE UPDATE trigger
+      "anywhere"** -- false since 0019's `roles_system_guard`, and again with 0022's
+      `shifts_freeze_closed`. CORRECTED in this commit (the file was already in it): it
+      now says `server_clock_watermark` has none and names the two that exist.
+    - **The barrier race cannot exhibit outcome A on this box.** Released together, the
+      close won the shift lock in every overlapping round measured (B, 30+ rounds over
+      five runs); delayed starts produced A only in NON-overlapping rounds, and asyncio
+      timings here quantise at ~15.6 ms. Outcome A under concurrency is proven by
+      HOLDING the lock (`prove_drawer` RH2), which is the lock lesson's rule; RB keeps
+      the race as a smoke test with a sequential positive control (RB4).
   - **`prove_user_create.py` HAS BEEN RED SINCE 0019 AND WAS REPORTED GREEN — a finding
     about the REPORTING, not only the proof.** Measured 2026-09-05 on a scratch restored
     from the post-0020 dump: both runs exit 1 at the proof's FIRST gate ("the server
@@ -3778,6 +3853,19 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   Control for the measurement: the same query over `branches` read
   `INSERT,SELECT,UPDATE` — the revoke this unit did make is visible to the
   instrument.
+  **DECIDED 2026-09-26 BY THE ADVISOR UNDER DELEGATION — REVOKED in migration
+  `0022`** (the delegation: `ADVISOR.md § 1. Role bounds`). Reason: hard rule 5 moved from code to
+  grant, the 0015-0020 precedent. Re-measured before the write on dev `recycle`
+  at 0021: all three tables read `DELETE,INSERT,SELECT,UPDATE`; nothing in
+  `server/app` deletes from any of them (searched for `DELETE FROM` / `.delete(` /
+  `TRUNCATE`, the same search finding the known proof-script deletes as its
+  control). After `0022`: all three read `INSERT,SELECT,UPDATE`, and
+  `prove_drawer` RV shows a DELETE as `recycle_app` refused on each with a SELECT
+  control. ONE proof was conscripted, not two: `prove_rls.py`'s teardown moved its
+  bill deletes to the owner connection; `prove_year_gate.py` already deletes as the
+  owner (psql `-U` owner) and `prove_reconcile.py` as the superuser. The pre-0022
+  grant is RECORDED per table in its COMMENT (`pre0022_app_delete=held`) and the
+  downgrade restores exactly that (`prove_drawer` RT2).
 - **THE SRS REMAINDER IS DEFERRED TO THE END OF THE ROADMAP AS A MEMORY LIST — the
   owner's decision, 2026-09-03, in his words: "เราอ่ะทำตาม แบบแผนหลักก่อนดิ แค่จดไว้จำไว้ไม่ลืม
   ขี้เกียจตาม ก็อยู่ท้ายๆroadmap ไป".** The main plan proceeds unchanged. Everything
@@ -3909,6 +3997,11 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
     (`0020`) shipped WITHOUT them and the shifts unit's commit 1 (`0021`) added no limit
     column either, so the limit belongs with the cashier-limit / approval work of a later
     commit, not unit 3.
+    **DECIDED 2026-09-26 BY THE ADVISOR UNDER DELEGATION — TWO COLUMNS,** per bill and
+    per shift, as `STRUCTURE.md § 3.1` and `PRODUCT_BLUEPRINT` § 3.5 both say; § 1.6's
+    single `roles.payment_limit` was the summary's compression (superseded in place).
+    Built with the approvals unit, not before -- nothing reads a limit until an approval
+    can be requested.
   - **Ten of section 3.1's 23 codes are not minted** — `app/permissions.py` `DEFERRED`
     names each against the unit that will gate it, so the names are not reinvented.
   *Unblocks:* a shop creating its own roles without us; the cashier of section 3.
@@ -3926,6 +4019,44 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   Whether a channel of that kind should be read-limited (to whom, and audited how) is his
   call, not the code's. Nothing limits it today; the table IS audited (every write
   recorded, actor named) and RLS-scoped to the tenant.
+  **DECIDED 2026-09-26 BY THE ADVISOR UNDER DELEGATION — MASKED.** `GET
+  /shop/payment-channels` returns the full `account_no` / `promptpay_proxy` only to a
+  principal holding `shop.settings.write` (those who can write the channel anyway);
+  everyone else gets label, kind, bank_code, account_name and `identifier_last4`,
+  and for an identifier of four characters or fewer not even that. Done in the
+  handler's serialisation (`server/app/channels.py`), so the full value never leaves
+  the server for that principal. Reason: a cashier must pick the account a transfer
+  left from, and needs no more than the last four to do it. Proven by `prove_drawer`
+  MK (a no-leak 5-gram scan of the staff response, with the admin response as the
+  scanner's positive control). RESIDUAL, not closable in code: the channel's LABEL is
+  the shop's own free text and is not masked -- a shop that types the full number
+  into the label shows it to everyone.
+
+- **THE LATE-ARRIVAL POLICY FOR DRAWER MONEY. DECIDED 2026-09-26 BY THE ADVISOR UNDER
+  DELEGATION; built with the offline kinds, NOT now.** A cash payment or cash movement
+  that reaches the server AFTER its shift closed is ACCEPTED, attached to its ORIGINAL
+  shift, flagged as post-close, and NEVER changes that shift's frozen figure; the
+  difference is surfaced to the owner separately. Reason: refusing money already
+  handed over hides it from the books (`lessons/unavailable-is-not-rejected.md`).
+  Consequence recorded for the builder: `reconcile.py` H1 (frozen figure = its stamped
+  live rows) and H2 (received inside the shift's window) are both written for the
+  online-only world of the shifts unit's commit 2 and WILL read a post-close row as a
+  violation; the offline-kinds unit must teach both arms the post-close flag in the
+  same commit that writes it. Online today, the question does not arise: a row is
+  stamped with the shift that is open when it arrives, or NULL.
+
+- **PAYMENT VERIFICATION: THE GOAL RESTATED. DECIDED 2026-09-26 BY THE ADVISOR UNDER
+  DELEGATION; research owed, nothing built.** `PRODUCT_BLUEPRINT` § 3.4's slip check is
+  restated as "confirm the money left without anyone attaching anything". The owner's
+  words, verbatim (line-wrapped in the dispatching brief; rejoined here at the wraps
+  with single spaces): "จ่ายเงินไม่ใช่เราควรทำระบบ อัตโนมัติหรอ เหมือนบอทเช็คเงิน เช็ค QR ว่าตรงไหม อ่ะ เพราะส่วนมากคน แสกน qr จ่ายเงินกัน และไม่อยากมานั่งแนบสลิปหรอก อันนี้เรื่องจริง เสียเวลา".
+  Order of preference: (1) the shop's OWN bank statement matched to payments -- no
+  slip at all; availability UNKNOWN, a read-only research turn is owed; (2) a
+  one-share slip read from the banking app into ours. In this flow the SHOP pays, so
+  what is verified is money LEAVING the shop's account; a verification service built
+  for RECEIVING merchants does not by itself fit. `payments.channel_id` (migration
+  `0022`) is the join key either path needs -- which of the shop's accounts a payment
+  left from.
 
 - **DOES PRODUCT / CATEGORY / UNIT MASTER DATA ALSO LIVE ON THE DESKTOP (OR THE
   PROVIDER WEB)? Open, raised 2026-09-03 when the screen shipped on the PHONE.** P1.15
@@ -4685,8 +4816,8 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   is what the code does and is proven to be so — `prove_revocation.py` CASE
   6b has three cells on it, and swapping in `get_principal` fires exactly
   those three and nothing else. What is open is whether it is what the OWNER
-  wants. *Unblocks:* the owner's answer, which `ROADMAP.md § STAGE 3` "User
-  management inside a shop" needs before it draws a screen — a roster the
+  wants. *Unblocks:* the owner's answer, which
+  `ROADMAP.md § STAGE 3` "User management inside a shop" needs before it draws a screen — a roster the
   yard cannot open is a different screen from one it can.
 - **Whether `GET /shop` should stay STAFF-READABLE while `PATCH /shop` stays
   ADMIN-ONLY — SETTLED in code by `9ad225e` and recorded here as the owner's to
@@ -4850,8 +4981,9 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   UNRECONCILED** and are not covered by "two of nine": two of their
   lines fed the Pahāna amendment, the rest was read only for its
   preload cost.
-  **OWNER RULING 2026-08-08: Nemesis preloads nothing.** `RED_TEAM.md`
-  "and nothing else" wins; a preloaded body is a fifth input to a pass
+  **OWNER RULING 2026-08-08: Nemesis preloads nothing.**
+  `RED_TEAM.md` "Give a session the diff and these four things" (and nothing else)
+  wins; a preloaded body is a fifth input to a pass
   whose value is the narrowness of its four. The general rule drawn
   from it: **preloading a general skill beside a stronger
   role-specific rule licenses the looser reading, so prefer writing
@@ -4971,8 +5103,8 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   says nothing commits until the owner confirms. Both are in force —
   FOUND 2026-08-08.** Three of its 51 grants are `Bash(git add *)`,
   `Bash(git commit *)` and `PowerShell(git *)`. The rule they sit
-  against is `CLAUDE.md § Workflow` "Do not commit until the owner
-  confirms", restated in `START_HERE.md § 2` as the owner being "the
+  against is
+  `CLAUDE.md § Workflow` "Do not commit until the owner confirms", restated in `START_HERE.md § 2` as the owner being "the
   only one who confirms a commit" and a third time in that file's
   done-checklist. **Neither mechanism is wrong on its own, and they
   disagree about what happens next.** The grant removes the permission
@@ -5458,6 +5590,10 @@ with no feature of its own.
   four new table rows and the `shift_id` correction. This commit's brief scoped its doc edits
   to STRUCTURE / PROJECT_STATUS / ROADMAP / OPEN_ITEMS and did not name ARCHITECTURE.md, so
   this is filed rather than edited in passing (a discovery outside the fence is recorded).
+  **WIDENED 2026-09-26 by migration `0022`** (ARCHITECTURE.md again outside the brief):
+  the same pass now also owes `payments.channel_id`, `uq_shop_channels_tenant_id`, the two
+  triggers `shifts_freeze_closed` / `branches_born_with_cash`, the fifteenth permission
+  `shifts.manage`, and the REVOKE of DELETE on the three bill tables.
 
 - **THE `lessons/README.md` LINE-ENDING DESCRIPTOR IS STALE — the file is BOM + LF on BOTH
   objects. Filed 2026-09-11 (unit 4 commit 3 closing turn).** `CLAUDE.md § Machine footguns`
@@ -5477,6 +5613,13 @@ with no feature of its own.
   scheduled fix — the accurate descriptor drops CRLF and says BOM. Recorded so a future
   session that measures this file, finds LF, and recalls the CRLF descriptor does not read the
   LF as corruption and rewrite it back to CRLF.
+  **ADDRESSED 2026-09-26 (the shifts unit's commit 2) in `CLAUDE.md` ONLY, and this entry was
+  half wrong.** `CLAUDE.md`'s core.autocrlf bullet now says "the one BOM file". `START_HERE.md`
+  was NOT edited because it never carried the descriptor: a case-insensitive search of it for
+  `crlf` and for `BOM` returns nothing (the same search returns three `CRLF` lines in
+  `CLAUDE.md`, the control), and `git log -S"CRLF" -- START_HERE.md` returns no commit at all
+  (the same command on `CLAUDE.md` returns `0841d8e`). "and `START_HERE.md` both describe this
+  file" above was never true.
 - **THE 0020 RECORD NAMES A DUMP THAT IS NOT IN THE BACKUPS TREE — filed 2026-09-06,
   RESOLVED THE SAME DAY.** `PROJECT_STATUS.md § Current phase` (the money-ledger record)
   cites `recycle_20260905T035307Z_pre-0020` as the scratch's source; a `find` over

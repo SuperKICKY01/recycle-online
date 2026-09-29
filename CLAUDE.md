@@ -136,7 +136,7 @@ on 2026-08-28 — nothing weakened, only relocated.
   objects with a filter between. Instead: measure the one you mean — working tree
   reads the file's bytes; blob is `git cat-file blob <sha>` counted as BYTES, never
   through PowerShell (which strips endings into an array). `lessons/README.md` is
-  the one CRLF+BOM file, hence excluded from `all-lessons.md`; never let git's
+  the one BOM file, hence excluded from `all-lessons.md`; never let git's
   `git add` warning (it means a future CHECKOUT) be the observation.
   → `EVIDENCE.md § core.autocrlf: the measured table and its history`
 - **`Measure-Object -Line` does not count blank lines, so it UNDERCOUNTS** — and

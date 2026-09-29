@@ -2401,12 +2401,14 @@ async def update_shop(
 # final answer.
 class BranchPolicyUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    # separate_cashier is NOT NULL on the column (0020, DEFAULT false), so there is
-    # no "clear" state and the field is REQUIRED: an absent or null value is a 422,
-    # never a silent no-op that returns the old value as if it were written. A
-    # partial write over every branch field is section 9's; this unit writes
-    # exactly this column, and extra="forbid" refuses any other key today.
-    separate_cashier: bool
+    # Both columns are NOT NULL (0020, 0021; DEFAULT false), so there is no "clear"
+    # state: a key sent as null is a 422, and a body naming NEITHER is a 422 too --
+    # never a silent no-op that returns the old values as if they were written.
+    # WIDENED by the shifts unit's commit 2 to shifts_enabled (STRUCTURE.md 1.6, the
+    # declared shift switch). A partial write over every branch field is section
+    # 9's; extra="forbid" refuses any other key today.
+    separate_cashier: bool | None = None
+    shifts_enabled: bool | None = None
 
 
 @router.patch("/branches/{branch_id}")
@@ -2418,7 +2420,13 @@ async def update_branch(
     # policy the yard must not flip while a load is on the scale, not a per-bill act.
     principal: Principal = Depends(require(Permission.SHOP_SETTINGS_WRITE)),
 ) -> dict:
-    """Set a branch's counter policy (separate_cashier). shop.settings.write.
+    """Set a branch's counter policy (separate_cashier, shifts_enabled).
+    shop.settings.write.
+
+    shifts_enabled (0021) is the declared shift switch: a DISPLAY rule for the
+    counter's shift screens. Nothing on a write path reads it -- POST /payments and
+    POST /bills stamp the open shift whatever it says, and a shift opens on a
+    shifts-off branch (invariant 1).
 
     The writer the money ledger (0020) shipped without. With separate_cashier true,
     POST /bills stops writing the automatic cash payment and a bill leaves the
@@ -2441,13 +2449,21 @@ async def update_branch(
         # was already the value sent.
         if await read_branch(conn, branch_id) is None:
             raise _not_found("branch")
+        changes = body.model_dump(exclude_unset=True)
+        if not changes or any(v is None for v in changes.values()):
+            raise _invalid(
+                "no_change",
+                "ต้องระบุนโยบายอย่างน้อยหนึ่งค่า และค่าต้องไม่ว่าง",
+            )
+        # Column names come from the model's two declared fields, never the wire.
+        assignments = ", ".join(f"{k} = :{k}" for k in sorted(changes))
         # UPDATE scoped by RLS to this tenant; the id predicate is the subject, not
         # tenant isolation. Asserting rowcount == 1 turns "the policy is doing its
         # job" into a check: 0 means no tenant context, 2 means the policy is gone
         # -- the same assertion PATCH /shop makes on tenants.
         result = await conn.execute(
-            text("UPDATE branches SET separate_cashier = :v WHERE id = :id"),
-            {"v": body.separate_cashier, "id": branch_id},
+            text(f"UPDATE branches SET {assignments} WHERE id = :id"),
+            {**changes, "id": branch_id},
         )
         if result.rowcount != 1:
             raise _invalid(
@@ -2456,13 +2472,20 @@ async def update_branch(
                 rowcount=str(result.rowcount),
             )
         updated = await read_branch(conn, branch_id)
-        # The five identity keys branch_payload carries, PLUS the policy just
-        # written, so the caller reads back what it set. branch_payload itself
-        # still omits separate_cashier (GET /shop's five-key branch is unchanged,
-        # prove_shop_settings E1); the policy reaches the phone through section
-        # 1.4's cached_shop_policy, which is the counter SCREEN's unit, not this
-        # write route's response.
-        return {**branch_payload(updated), "separate_cashier": updated.separate_cashier}
+        shifts_enabled = (
+            await conn.execute(
+                text("SELECT shifts_enabled FROM branches WHERE id = :id"), {"id": branch_id}
+            )
+        ).scalar_one()
+        # The five identity keys branch_payload carries, PLUS the policies, so the
+        # caller reads back what it set. branch_payload itself still omits them
+        # (GET /shop's five-key branch is unchanged, prove_shop_settings E1); the
+        # policy reaches the phone through GET /shop/policy.
+        return {
+            **branch_payload(updated),
+            "separate_cashier": updated.separate_cashier,
+            "shifts_enabled": bool(shifts_enabled),
+        }
 
 
 @router.get("/shop/policy")
@@ -2485,6 +2508,12 @@ async def get_shop_policy(principal: Principal = Depends(get_principal)) -> dict
     branch is null when the caller has no single branch (an unscoped owner of a
     multi-yard shop); the phone reads a null policy as UNKNOWN and fails OPEN
     (STRUCTURE.md 1.4, ruling 2), which for this switch costs at most an empty queue.
+
+    WIDENED by the shifts unit's commit 2 so the counter reads ONE endpoint:
+    shifts_enabled (the declared shift switch) and payment_methods (the branch's
+    ACTIVE methods, the derived switch of STRUCTURE.md 1.6, sorted). Both are
+    display-only; the server accepts a payment of any method and refuses nothing on
+    either (invariant 1). Null, like separate_cashier, when no branch resolves.
     """
     async with tenant_connection(
         principal.tenant_id,
@@ -2492,7 +2521,29 @@ async def get_shop_policy(principal: Principal = Depends(get_principal)) -> dict
         actor_username=principal.username,
     ) as conn:
         branch = (await read_caller_branch(conn, principal.user_id)).branch
+        shifts_enabled: bool | None = None
+        methods: list[str] | None = None
+        if branch is not None:
+            shifts_enabled = bool(
+                (
+                    await conn.execute(
+                        text("SELECT shifts_enabled FROM branches WHERE id = :id"),
+                        {"id": branch.id},
+                    )
+                ).scalar_one()
+            )
+            methods = list(
+                (
+                    await conn.execute(
+                        text("SELECT method FROM branch_payment_methods"
+                             " WHERE branch_id = :id AND is_active ORDER BY method"),
+                        {"id": branch.id},
+                    )
+                ).scalars().all()
+            )
         return {
             "branch_id": str(branch.id) if branch is not None else None,
             "separate_cashier": branch.separate_cashier if branch is not None else None,
+            "shifts_enabled": shifts_enabled,
+            "payment_methods": methods,
         }

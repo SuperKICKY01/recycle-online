@@ -342,3 +342,44 @@ step 3 and is untouched here.
   neither of which a checker can enforce. **The only mechanical defence found here
   is the WRITING rule** — enumerate at run time — which removes the site instead
   of detecting it.
+
+## AMENDED (the shifts unit, commit 2, 2026-09-29) — MINTING A PERMISSION CONSCRIPTS EVERY HAND-KEPT FULL COPY OF THE CATALOGUE, AND THE SWEEP TERM IS THE LAST CODE MINTED
+
+The permission catalogue is a set this project quantifies over BY HAND on purpose:
+proofs restate it rather than import it, so a fixture cannot agree with the server by
+construction (`a-checker-must-not-share-the-code-it-checks.md`). Every such copy is a
+sentence of the form "these are ALL the codes", and it names no future member.
+
+**Measured.** Migration `0022` minted `shifts.manage`. The unit's own proof sweep looked
+for absolute alembic heads and not for catalogue copies, and `prove_all` came back RED 1
+on `prove_permissions` cell G: its "all-but-roles.manage" principal, built from a
+hand-kept 14-code `PERMS`, now also lacked `shifts.manage`, and the server -- correctly --
+answered `over_reach ['roles.manage', 'shifts.manage']` where the cell expected
+`['roles.manage']`. The server was right; the copy was stale. The SAME list had been
+conscripted once before: `0020`'s mint of `payments.record` added its line there. Two
+instances, one list, and nothing but a full suite run noticed either.
+
+**The sweep term is the MOST RECENTLY MINTED code**, not the quantifier and not the new
+code. A list that claims to be every code MUST contain the last one minted; a list that
+is one role's grant or one gate's code NEED NOT. So searching for the last-minted code
+(both quote styles, explicit paths, bytes) returns every FULL copy plus some SUBSETS --
+it cannot miss a FULL one that was ever current. Measured 2026-09-29 over 204 files
+(`server/scripts`, `server/app`, `mobile/src`): 8 hits in 6 files, with `app/permissions.py`'s
+own enum line as the control.
+
+**Classification decides the edit, not the hit.** FULL (a mirror, an "everything"
+builder, an all-but-one builder) gains the new code; SUBSET (a role's intended grant, a
+single gate's `required_permission`) is NOT edited -- adding the code there would be a
+new grant, a product decision, dressed as a sweep. Of the 8 hits: FULL and edited,
+`server/scripts/prove_permissions.py` `PERMS` and `mobile/src/proof/proofGrants.ts` `ALL`;
+SUBSET and left, `prove_permissions.py` two gate sites, `prove_payments.py` one
+`required_permission`, `mobile/src/counter/counterView.ts` one production gate; FULL but
+PRODUCTION and left by that brief's fence, the phone's `Permission` union in
+`mobile/src/session/deviceRole.ts`, whose own comment says an unknown code "simply lands in
+the Set unnamed" (measured at the unit's Task 0(h)). Note the mobile FULL copy was STALE
+AND GREEN: no screen gates on `shifts.manage` yet, so nothing read the missing member --
+a stale FULL copy fails only where some cell reads the new code.
+
+**How to apply.** In the commit that mints a permission, before the gate: sweep for the
+PREVIOUS last-minted code, classify every hit FULL or SUBSET with its reason, and add the
+new code to every FULL copy with a comment naming the migration.

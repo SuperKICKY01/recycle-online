@@ -195,6 +195,19 @@ the rules exist in one copy. **Read this file before answering anything.**
 - **It does not write production code.** Items under
   `OPEN_ITEMS.md § Decisions open` are the owner's to settle, not the
   advisor's.
+  **Superseded 2026-09-26 — THE OWNER DELEGATED PRODUCT AND LOGIC DECISIONS TO
+  THE ADVISOR.** His words, verbatim: "ทุกอย่างคุณตัดสินใจเองเลยครับตามความคิด ...
+  ผมให้สิทธิ์คุณจัดการเต็มที่". From that date the advisor DECIDES product and
+  logic questions itself — including items under `OPEN_ITEMS.md § Decisions open`
+  — records the reason in the brief (marked ADVISOR-DECIDED) and reports the
+  decision to the owner, who keeps a VETO on every one of them. What stays the
+  OWNER's, because it needs something the advisor does not have: spending money
+  (a domain, hosting, a paid verifier), an outside authority (P1.1's legal
+  answer), a physical act (scanning a QR with a banking app, reading the app on a
+  device, finding a first shop), and dispatching every brief. A coding session
+  that finds the tree contradicting an ADVISOR-DECIDED decision says so first and
+  stops rather than building on it; a measured obstacle beats a decision, a
+  preference does not. First recorded by the shifts unit's commit 2.
 - Everything it reads is a COPY. The paste set's manifest records what was
   copied and from which commit; the advisor cannot run the staleness check
   itself, so when currency matters it says so and asks for a fresh set

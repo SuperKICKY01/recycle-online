@@ -170,3 +170,56 @@ somebody who has not run it.
 Related: [[concurrency-tests-need-a-barrier]] (the barrier this extends),
 [[a-check-that-never-went-red-was-never-observed]] (an instrument that cannot
 fire), [[a-proof-must-establish-what-it-is-talking-to]].
+
+## AMENDED (the shifts unit, commit 2, 2026-09-26): holding the lock is not enough if the stopwatch measures the holder
+
+`prove_drawer.py` followed this file: it HOLDS the shift row in the close's mode
+(`FOR NO KEY UPDATE`), fires `POST /payments` as a task, sleeps, releases, and
+asserts the payment "waited" at least 1.0 s. **With the stamp's `FOR SHARE`
+deleted from the route, that cell stayed GREEN at 1.55 s.** The request had
+finished in about 30 ms; the proof measured `t0` to the line after
+`await task`, and that line only runs after the proof's OWN 1.5 s hold. Every
+request "took" the hold, waited or not. The same shape sat in two sibling cells.
+
+What caught it was the pair this file already asks for: the cell's sibling read
+`pg_stat_activity` mid-hold, found NO backend waiting on a lock, and went red --
+the timing cell and the evidence cell disagreed, and the evidence was right.
+After the fix (each task records its OWN completion instant) the same mutation
+reads **0.03 s** and the cell reddens, and a `pg_stat_activity` reading and a
+timing now agree in both directions.
+
+**The rule this adds.** When the proof holds the lock, time the request against
+the instant IT completed, never against the instant the proof next looks -- in
+an async harness the proof's own `sleep` sits between the two. And keep the
+`pg_stat_activity` reading beside every timing cell: a duration is a claim about
+a wait, the waiting backend's query is the wait.
+
+**Two more from the same proof, bounds on the rules above.** (1) The race the
+dispatching brief asked for could not show one of its two outcomes on this box:
+released together, the close won the row lock in every overlapping round (30+
+rounds, five runs), and delayed starts produced the other outcome only in rounds
+that no longer overlapped; asyncio timings here quantise at ~15.6 ms, so no finer
+offset is schedulable. That is "a race is a coin" measured, and the other outcome
+was proven by holding the lock (RH2). The race stays as a smoke test with a
+sequential POSITIVE CONTROL that its classifier can report the outcome it never
+saw -- otherwise "always B" is indistinguishable from a classifier that cannot say
+A. (2) One disproof run read GREEN because the mutated file had been restored
+between turns by something other than the session (its hash matched the
+pre-mutation value); the run was an unmutated green, discovered only by reading
+the file back. A disproof's mutation must be verified PRESENT at run time, not
+remembered -- the seventeenth mechanism of
+[[a-check-that-never-went-red-was-never-observed]], met again.
+**THE WRITER IS UNEXPLAINED** (closing turn, 2026-09-27). The process listing
+found no other `claude`, `node`, `python` or `git` process and no desktop-app
+scanner; it found VS Code running with this repository open and
+`files.autoSave: "afterDelay"`, and this CLI session running inside VS Code's own
+terminal. VS Code's Local History holds NO save of `server/app/bills.py` -- and it
+does record this repository's editor saves (five files, the latest 2026-08-10), so
+the zero is not an instrument that never looks; it does not see writes by
+extensions or other tools. A session rewind is argued against by the tree itself:
+the proof edits made AFTER the mutation survived. No reading names the writer.
+Until one does, an editor open on the repository is a writer to the tree, and a
+disproof reads its mutation back before it trusts a run.
+
+Where proven: `server/scripts/prove_drawer.py` `timed()` and cells RH1/RH1b,
+RH2/RH2b/RH2c, RH3, RB1-RB4; the phase record in `PROJECT_STATUS.md § Current phase`.

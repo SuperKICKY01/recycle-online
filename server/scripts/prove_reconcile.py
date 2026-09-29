@@ -455,6 +455,9 @@ class Fx:
     mid_payment: Any    # mid's automatic payment (0020's backfilled pair), or None
     mid_alloc: Any      # its allocation to mid, or None
     same_tenant_seller: uuidlib.UUID | None  # a seller of fx.tenant other than mid's
+    drawer_present: bool = False  # the copy is a 0021+ database (shifts, H1..H3 exist)
+    tenant_user: uuidlib.UUID | None = None  # a user of fx.tenant, to open/close a shift
+    mid_cash_row: Any = None  # the branch_payment_methods cash row of mid's branch
 
 
 async def fixtures(conn: asyncpg.Connection) -> Fx:
@@ -563,13 +566,28 @@ async def fixtures(conn: asyncpg.Connection) -> Fx:
         same_tenant_seller = await conn.fetchval(
             "SELECT id FROM sellers WHERE tenant_id = $1 AND id <> $2 ORDER BY code LIMIT 1",
             tenant, mid["seller_id"])
+    # THE DRAWER (0021+): H1..H3 aim at rows captured here, before anything breaks.
+    drawer_present = await conn.fetchval("SELECT to_regclass('public.shifts') IS NOT NULL")
+    tenant_user = mid_cash_row = None
+    if drawer_present:
+        tenant_user = await conn.fetchval(
+            "SELECT id FROM users WHERE tenant_id = $1 ORDER BY username LIMIT 1", tenant)
+        mid_cash_row = await conn.fetchrow(
+            "SELECT * FROM branch_payment_methods WHERE tenant_id = $1 AND branch_id = $2"
+            " AND method = 'cash'", tenant, mid["branch_id"])
+        if tenant_user is None or mid_cash_row is None:
+            raise Unfit(f"the 0021+ copy lacks a user ({tenant_user}) or the born-with cash"
+                        f" row ({mid_cash_row}) of tenant {tenant}, so H1..H3 have nothing"
+                        " to aim at.")
     fx = Fx(tenant=tenant, other_tenant=other, other_seller=other_seller,
             tenants=len(tenant_ids), tenant_ids=tenant_ids,
             be_year=top["be_year"], max_seq=top["seq"], max_bill=top["id"],
             mid=mid, mid2=mid2, mid_item=item, voided=voided[0],
             audit_present=audit_present, branches_present=branches_present,
             payments_present=payments_present, mid_payment=mid_payment,
-            mid_alloc=mid_alloc, same_tenant_seller=same_tenant_seller)
+            mid_alloc=mid_alloc, same_tenant_seller=same_tenant_seller,
+            drawer_present=drawer_present, tenant_user=tenant_user,
+            mid_cash_row=mid_cash_row)
     print(f"  tenants in copy   : {fx.tenants}  (every expectation about a tenant count"
           " below is derived from this number, at runtime)")
     print(f"  tenant under test : {tenant}  ({len(bills)} numbered bills,"
@@ -1020,6 +1038,73 @@ def build(fx: Fx) -> list[Injection]:
                   "there is no second tenant with a seller in this copy, so there is no"
                   " cross-tenant reference to make. T10's payment arm and X1's payments"
                   " pair are NOT exercised here."),
+        ))
+    # THE DRAWER (0021+, routes 0022): H1..H3. shifts and branch_payment_methods are
+    # AUDITED, so each injection declares the tenant and the system actor
+    # session-level first and clears them on undo (T18's shape). Each is built so
+    # exactly ONE check moves: H1's shift is closed with nothing stamped to it (H2
+    # has no row to judge), H2's shift is OPEN (H1 judges closed shifts only), and
+    # H3 touches no shift at all.
+    if fx.drawer_present and fx.payments_present:
+        gucs = [("SELECT set_config('app.tenant_id', $1, false)", (str(fx.tenant),)),
+                ("SELECT set_config('app.actor_id', $1, false)",
+                 ("00000000-0000-0000-0000-000000000000",)),
+                ("SELECT set_config('app.actor_username', $1, false)",
+                 ("system:prove_reconcile",))]
+        clear = [("SELECT set_config('app.tenant_id', '', false)", ()),
+                 ("SELECT set_config('app.actor_id', '', false)", ()),
+                 ("SELECT set_config('app.actor_username', '', false)", ())]
+        h1_id = uuidlib.uuid4()
+        injs.append(Injection(
+            # A closed shift whose frozen figure is 1.00 above what its stamped
+            # rows (none) recompute to -- opening 100.00, expected 101.00. The
+            # variance is written consistently (counted 101.00 - 101.00 = 0.00),
+            # so the ONLY disagreement is the figure against its rows. INSERTed,
+            # not UPDATEd: 0022's freeze trigger refuses any rewrite of a closed
+            # row, even as the superuser.
+            "H1", "a closed shift's frozen expected_cash is 1.00 more than its stamped"
+                  " rows recompute to -- the drawer figure the owner reads is wrong",
+            apply=[*gucs,
+                   ("INSERT INTO shifts (id, tenant_id, branch_id, opened_at, opened_by,"
+                    " opening_float, closed_at, closed_by, counted_cash, expected_cash,"
+                    " variance) VALUES ($1, $2, $3, now(), $4, 100.00, now(), $4, 101.00,"
+                    " 101.00, 0.00)",
+                    (h1_id, fx.tenant, mid["branch_id"], fx.tenant_user))],
+            undo=[("DELETE FROM shifts WHERE id = $1", (h1_id,)), *clear],
+            expect={"H1": 1},
+            expect_rows=[f"shift_id={h1_id}", "stored_expected=101.00", "recomputed=100.00"],
+        ))
+        h2_id = uuidlib.uuid4()
+        pay = fx.mid_payment
+        injs.append(Injection(
+            # An OPEN shift opened NOW, and mid's payment -- received long before --
+            # stamped to it: a stamp no route could write, because the stamping
+            # helper only stamps a row received at or after the shift opened.
+            "H2", "a payment received BEFORE its shift was opened is stamped to it",
+            apply=[*gucs,
+                   ("INSERT INTO shifts (id, tenant_id, branch_id, opened_at, opened_by,"
+                    " opening_float) VALUES ($1, $2, $3, now(), $4, 0.00)",
+                    (h2_id, fx.tenant, mid["branch_id"], fx.tenant_user)),
+                   ("UPDATE payments SET shift_id = $2 WHERE id = $1", (pay["id"], h2_id))],
+            undo=[("UPDATE payments SET shift_id = $2 WHERE id = $1",
+                   (pay["id"], pay["shift_id"])),
+                  ("DELETE FROM shifts WHERE id = $1", (h2_id,)), *clear],
+            expect={"H2": 1},
+            expect_rows=["row_kind=payment", f"row_id={pay['id']}", f"shift_id={h2_id}"],
+        ))
+        cash = fx.mid_cash_row
+        injs.append(Injection(
+            "H3", "a branch loses its born-with cash method row -- the one method every"
+                  " branch is guaranteed",
+            apply=[*gucs,
+                   ("DELETE FROM branch_payment_methods WHERE tenant_id = $1"
+                    " AND branch_id = $2 AND method = 'cash'", (fx.tenant, mid["branch_id"]))],
+            undo=[("INSERT INTO branch_payment_methods (tenant_id, branch_id, method,"
+                   " is_active, created_at) VALUES ($1, $2, 'cash', $3, $4)",
+                   (fx.tenant, mid["branch_id"], cash["is_active"], cash["created_at"])),
+                  *clear],
+            expect={"H3": 1},
+            expect_rows=["problem=no cash row", f"branch_id={mid['branch_id']}"],
         ))
     return injs
 

@@ -18,6 +18,8 @@ const ALL: readonly string[] = [
   "bills.read",
   "bills.void",
   "payments.record",
+  // Migration 0022 (the shifts unit, commit 2): the fifteenth code.
+  "shifts.manage",
   "money.view_own",
   "money.view_shop",
   "master.write",

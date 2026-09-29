@@ -68,8 +68,8 @@ from .auth import Principal, require
 # active branch; unknown 422, inactive 424, unresolved 424) -- one resolver, so
 # a payment can never land in a yard a bill could not. Imported by its private
 # name on purpose rather than duplicated: two resolvers would be two answers.
-from .bills import _master_data_missing, _resolve_bill_branch
-from .db import tenant_connection
+from .bills import _master_data_missing, _open_shift_stamp, _resolve_bill_branch
+from .db import constraint_name_of, tenant_connection
 from .permissions import Permission
 
 router = APIRouter()
@@ -141,6 +141,13 @@ class PaymentCreate(BaseModel):
     # resolves it from the caller, and a queued payload must never be refused
     # for a field its bundle did not know.
     branch_id: uuid.UUID | None = None
+    # Which of the SHOP's own accounts (shop_payment_channels, migration 0022) a
+    # transfer or PromptPay payment left from. Optional and never required: a
+    # cash payment has none. A DEACTIVATED channel is ACCEPTED -- the money has
+    # already moved, and a channel retired since is a fact about the channel list,
+    # not about this payment (invariant 1). Another tenant's channel is
+    # unrepresentable (composite FK) and reads as 422 channel_unknown.
+    channel_id: uuid.UUID | None = None
 
 
 def _money(v: Any) -> str:
@@ -153,7 +160,8 @@ async def _read_payment(conn: AsyncConnection, payment_id: uuid.UUID) -> dict | 
             text(
                 "SELECT id, branch_id, seller_id, method, amount, idempotency_key,"
                 " reference, device_created_at, server_received_at, paid_by,"
-                " recorded_by_migration, voided_at, voided_by, void_reason"
+                " recorded_by_migration, voided_at, voided_by, void_reason,"
+                " shift_id, channel_id"
                 " FROM payments WHERE id = :id"
             ),
             {"id": payment_id},
@@ -193,6 +201,10 @@ def _payment_payload(h: Any, allocations: list) -> dict:
         "voided_at": h["voided_at"].isoformat() if h["voided_at"] else None,
         "voided_by": str(h["voided_by"]) if h["voided_by"] else None,
         "void_reason": h["void_reason"],
+        # The shift this payment was recorded in (stamped at record time, NULL when
+        # no drawer was open) and the shop account it left from, if one was named.
+        "shift_id": str(h["shift_id"]) if h["shift_id"] else None,
+        "channel_id": str(h["channel_id"]) if h["channel_id"] else None,
         "allocations": [
             {"bill_id": str(a["bill_id"]), "doc_no": a["doc_no"], "amount": _money(a["amount"])}
             for a in allocations
@@ -310,12 +322,19 @@ async def create_payment(
 
             # The arrival instant, read once and used for every row below.
             received_at = (await conn.execute(text("SELECT now()"))).scalar_one()
+            # The shift it was recorded in: the branch's open shift, or NULL --
+            # every method is stamped, only cash enters a drawer figure, and
+            # NOTHING refuses for a missing shift (bills._open_shift_stamp holds
+            # the lock argument). Read AFTER every refusal above, so a refused
+            # payment never holds a share lock a close would wait on.
+            shift_id = await _open_shift_stamp(conn, branch.id, received_at)
             await conn.execute(
                 text(
                     "INSERT INTO payments (id, tenant_id, branch_id, seller_id, method,"
                     " amount, idempotency_key, reference, device_created_at,"
-                    " server_received_at, paid_by)"
-                    " VALUES (:id, :t, :br, :s, :m, :amt, :k, :ref, :dca, :sra, :by)"
+                    " server_received_at, paid_by, shift_id, channel_id)"
+                    " VALUES (:id, :t, :br, :s, :m, :amt, :k, :ref, :dca, :sra, :by,"
+                    " :sh, :ch)"
                 ),
                 {
                     "id": body.id, "t": principal.tenant_id, "br": branch.id,
@@ -324,6 +343,7 @@ async def create_payment(
                     "dca": body.device_created_at, "sra": received_at,
                     # The session that recorded it, never a field from the body.
                     "by": principal.user_id,
+                    "sh": shift_id, "ch": body.channel_id,
                 },
             )
             for a in body.allocations:
@@ -352,6 +372,17 @@ async def create_payment(
             if existing is not None:
                 response.status_code = status.HTTP_200_OK
                 return await _read_payment(conn, existing)
+        # A channel this tenant does not hold: the composite FK refused it, and
+        # nothing in front of the INSERT pre-reads the channel, so the FK is the
+        # one mechanism that decides (a pre-read would make this branch
+        # unreachable). The name is read through the documented helper
+        # (db.constraint_name_of); PERMANENT, because the device got channel ids
+        # from this tenant's own GET /shop/payment-channels.
+        if constraint_name_of(e) == "fk_payments_channel":
+            raise _invalid(
+                "channel_unknown", "ไม่พบช่องทางชำระเงินนี้ในร้าน",
+                channel_id=str(body.channel_id),
+            ) from e
         _log_poison_candidate(principal, body, e)
         raise
     except SQLAlchemyError as e:
@@ -372,7 +403,8 @@ async def list_payments(
                 text(
                     "SELECT id, branch_id, seller_id, method, amount, idempotency_key,"
                     " reference, device_created_at, server_received_at, paid_by,"
-                    " recorded_by_migration, voided_at, voided_by, void_reason"
+                    " recorded_by_migration, voided_at, voided_by, void_reason,"
+                    " shift_id, channel_id"
                     " FROM payments ORDER BY server_received_at DESC, id DESC LIMIT :lim"
                 ),
                 {"lim": limit},

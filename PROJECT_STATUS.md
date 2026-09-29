@@ -75,6 +75,66 @@ not read the green as re-run.**
 
 ## Current phase
 
+**THE SHIFTS AND CASH-DRAWER UNIT, COMMIT 2 — THE SERVER: shifts open and close, cash moves, the drawer figure is computed and FROZEN, payments are stamped with their shift, and a shop configures its methods and its own accounts. 2026-09-26.**
+No sha yet (precedes the commit; anchor next pass). Migration `0022_drawer_routes.py`, `server/app/shifts.py`,
+`server/app/channels.py`. ONLINE ONLY. NO screen, NO client code -- `mobile/` is untouched: the phone's claim parser
+passes an unknown permission code into a `Set<string>` (`mobile/src/session/deviceRole.ts:242`) and its cache column is
+plain TEXT, so `shifts.manage` needed no phone edit (Task 0(h), measured). The first unit built under the owner's
+2026-09-26 DELEGATION of product and logic decisions to the advisor (`ADVISOR.md § 1. Role bounds`, his words verbatim).
+- **BUILT.** `0022`: `shifts.manage` (15th code; owner+admin of every tenant, 8 grants on dev); `shifts_freeze_closed`
+  (BEFORE UPDATE: a closed shift is frozen except `variance_reason` NULL -> non-blank, once; custom SQLSTATE `RF001`);
+  `branches_born_with_cash` (AFTER INSERT, SECURITY INVOKER, plus a backfill of any branch created after 0021 -- none on
+  dev); `payments.channel_id` + composite FK; `REVOKE DELETE` on `purchase_bills`, `purchase_bill_items`,
+  `doc_no_counters` (pre-state `held` measured and written to each table's COMMENT; the downgrade restores exactly it).
+  Routes: `POST /shifts`, `GET /shifts/current` (drawer figure only for `money.view_shop`), `POST /shifts/{id}/close`
+  (figure computed under `FOR NO KEY UPDATE`, frozen in one UPDATE, `closed_at = clock_timestamp()` after the lock),
+  `PATCH /shifts/{id}` (the reason; a second one is refused BY THE TRIGGER and worded 409), `POST`/`GET
+  /cash-movements`; the stamp (`bills._open_shift_stamp`, `FOR SHARE`) in `POST /payments` and `POST /bills`' automatic
+  payment, refusing nothing; `channel_id` on `POST /payments`; `PATCH /branches` + `shifts_enabled`, `PUT
+  /branches/{id}/payment-methods/{method}`, `GET /shop/policy` + `shifts_enabled`/`payment_methods`, `POST`/`PATCH`/`GET
+  /shop/payment-channels` (masked below `shop.settings.write`). `reconcile.py` H1/H2/H3 + a corrected CANNOT_SEE line
+  (it said the schema had no BEFORE UPDATE trigger "anywhere" -- false since 0019) and a new one (a NULL-stamped cash
+  payment sits in no drawer). `prove_reconcile.py` three injections. `prove_rls.py`'s teardown moved to the owner for
+  bills (the REVOKE) and `branch_payment_methods` (the trigger's row). NEW `scripts/prove_drawer.py`.
+- **THREE DEPARTURES, each stated.** (1) `uq_shop_channels_tenant_id UNIQUE (tenant_id, id)`: the brief's composite FK
+  cannot be created without it -- `pg_constraint` on dev showed only `PRIMARY KEY (id)` on `shop_payment_channels`,
+  beside `uq_shifts_tenant_id` on `shifts` as the control; `id` is already the key, so it adds no rule. (2) `shifts` has
+  no idempotency column and the fence allowed one column, so the client-minted `id` is the idempotency key. (3) The stamp
+  attaches a row only if its arrival instant is at or after `opened_at`, so a stamped row is inside its shift's window by
+  ORDERING (H2 checks it).
+- **PROVEN — each observed.** P2: `alembic upgrade head` on dev exit 0; `alembic current` `0022 (head)`; from the
+  catalogue: both triggers, `channel_id uuid YES`, the FK and unique key, `shifts.manage` row, 15 codes, grants
+  owner 4 / admin 4, the three bill tables `INSERT,SELECT,UPDATE` (control: `branches` reads the same, the 0018 revoke).
+  The migration was first trialled up/down/up on a throwaway scratch before dev. P3: `prove_drawer` **85 cells GREEN
+  TWICE, `PROVE_DRAWER_EXIT=0`**. P4: the lock by HOLDING it -- a close-mode hold made `POST /payments` wait 1.55 s and
+  `pg_stat_activity` named the stamp's `FOR SHARE`; a recorder-mode hold did not (0.06 s); an in-flight uncommitted cash
+  payment made the close wait 1.55 s and the frozen figure 41.50 equals the proof's rows figure, which counts it; a close
+  committing under its lock left a concurrent payment stamped NULL. The barrier race: 6 overlapping rounds, all outcome B
+  (the close always won), 0 lost, every frozen figure exact; 2 sequential control rounds read A. P5: cell G, an AST scan
+  of 20 files / 181 functions in `server/app` for an `if` reading `shifts_enabled`/`branch_payment_methods`/
+  `separate_cashier` (directly or via a variable assigned from one) whose branch raises -- 0 hits, with a planted direct
+  AND a planted tainted violation both found. P6: `reconcile.py` exit 0 on dev; `prove_reconcile` GREEN twice, H1/H2/H3
+  each firing alone, naming its row, clearing on undo. `prove_shifts` 59/59 and `prove_rls` green, twice each, at 0022.
+  P9: both mobile typechecks exit 0. P7/P8: reported at the STOP. **P10 NOT RUN:** RobloxPlayerBeta (pid 7732, 1.91 GB)
+  was running at the check, the brief's stop condition (free 15.84 GB of 31.12).
+- **THE DISPROOF, 12 breaks, each reddening only its predicted cells.** DB (`--break`): freeze trigger -> FR1/FR3/FR4;
+  born-with trigger -> BW1 + X1 (reconciler H3=1); channel FK -> CH7; DELETE re-granted on bills -> RV bills; one-open
+  index -> OP3. Code (by hand, restored byte-identical by sha256): stamp without `FOR SHARE` -> RH1/RH1b/RH3/RB1/RB2/X1,
+  and 5 of 6 raced cash payments were stamped to a CLOSED shift and missing from its frozen figure; close without its
+  lock -> RH2b/RH2c/X1 (froze 45.50 against rows 41.50); masking removed -> MK1/MK2; `POST /shifts` gated on
+  `bills.create` -> PM POST /shifts; a planted "cash deactivated" refusal in `POST /payments` -> INV1 + G (naming
+  `payments.py:256`); `deposit_to_bank` dropped from the figure -> CL1/CL2/X1; the channel-FK translation removed ->
+  CH7 (a 500).
+- **TWO OF THIS PROOF'S OWN DEFECTS, found by its disproofs, fixed, and recorded as a lesson amendment**
+  (`lessons/a-lock-is-proven-by-what-waits-not-by-a-race.md`): the RH timings measured the proof's own hold (RH1 green
+  with the lock deleted until fixed); and one "disproof" ran unmutated because the file had been restored between turns
+  by something other than this session -- caught by reading the file back.
+- **DEFERRED, RECORDED at `OPEN_ITEMS.md`:** the screens, channel picker and masked display, cash-movement and payment
+  void (and what H1 means after a post-close void), the shifts-off day close (P1.19), the variance notification, the
+  offline kinds and the late-arrival policy (DECIDED, not built), approvals and the two cashier-limit columns (DECIDED
+  shape, not built), payment verification (DECIDED goal, research owed); the reconciler's missing cross-tenant arms for
+  the drawer's references; 0021's stale "NOT audited" table comment; ARCHITECTURE.md's schema table.
+
 **THE SHIFTS AND CASH-DRAWER UNIT, COMMIT 1 — the migration and nothing else: four tables, two columns, a born-with backfill, and a proof the schema REFUSES what it must. 2026-09-12.**
 No sha yet (precedes the commit; anchor next pass). Migration `0021_shifts_and_cash.py`. NO route, NO handler,
 NO screen, NO client code — `mobile/` is untouched (both typechecks exit 0, run to show it). The irreversible
@@ -994,6 +1054,8 @@ there is marked built.
 privileges, so hard rule 5 is enforced by code and not by grant; 0016/0017 chose grant-level enforcement for
 their append-only tables, so the precedent exists; whether to revoke is the owner's call
 (`OPEN_ITEMS.md § Decisions open — the owner's, not the code's`, dated, with the measurement).
+**Superseded 2026-09-26:** revoked by migration `0022` (decided by the advisor under the owner's delegation); the
+shifts unit's commit-2 record above holds the readings.
 **THE PROOFS THAT MINT THEIR OWN TENANT BY SQL — six, not four, each conscripted to provision a born-with
 branch (a proof failing on NOT NULL is the migration working, not a regression).** Cell counts before → after:
 `prove_rls.py` — first run after the migration RED at the TEARDOWN only (7 failure lines: the app role holds

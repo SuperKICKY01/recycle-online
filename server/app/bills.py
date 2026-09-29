@@ -203,6 +203,50 @@ async def _paid_amount(conn: AsyncConnection, bill_id) -> Decimal:
     ).quantize(Decimal("0.01"))
 
 
+async def _open_shift_stamp(
+    conn: AsyncConnection, branch_id: uuid.UUID, received_at: datetime
+) -> uuid.UUID | None:
+    """The shift a money row recorded NOW belongs to: the branch's OPEN shift, or
+    None. Called inside the recording transaction by POST /bills (the automatic
+    payment), POST /payments and POST /cash-movements -- one helper, so the three
+    cannot disagree about what "the shift it was recorded in" means.
+
+    A STAMP, NEVER A GATE (STRUCTURE.md invariant 1, lessons/unavailable-is-not-
+    rejected.md): None is a legal answer and nothing refuses on it. A payment whose
+    cash has already been handed over is recorded whether or not a drawer is open.
+
+    FOR SHARE ON THE SHIFT ROW, AND IT IS THE WHOLE RACE. The close route takes FOR NO
+    KEY UPDATE on the same row before it sums, and the two modes conflict, so a
+    close and a recording serialise:
+      * recording first: the close waits for this transaction to COMMIT, then sums
+        in a later statement (a fresh READ COMMITTED snapshot), so this row is IN
+        the frozen figure;
+      * close first: this SELECT waits for the close to commit, then Postgres
+        re-evaluates the WHERE on the updated row version, `closed_at IS NULL` is
+        now false, and the answer is None -- never a closed shift the figure
+        missed.
+    A foreign key alone would NOT do this: an FK check takes FOR KEY SHARE, which
+    does not conflict with FOR NO KEY UPDATE, so a payment could be stamped to a
+    shift whose close is summing concurrently and land outside its frozen figure.
+
+    `opened_at <= received_at`: a row whose transaction started (its arrival
+    instant) before the shift was opened is not stamped to it, even if the open
+    committed while this transaction ran. That keeps every stamped row's
+    server_received_at inside [opened_at, closed_at] BY ORDERING, which reconcile.py
+    checks -- not by a tolerance.
+    """
+    return (
+        await conn.execute(
+            text(
+                "SELECT id FROM shifts"
+                " WHERE branch_id = :br AND closed_at IS NULL AND opened_at <= :at"
+                " FOR SHARE"
+            ),
+            {"br": branch_id, "at": received_at},
+        )
+    ).scalar_one_or_none()
+
+
 async def _record_automatic_payment(
     conn: AsyncConnection,
     principal: Principal,
@@ -225,12 +269,18 @@ async def _record_automatic_payment(
     THE SWITCH SELECTS WHO PERFORMS THE TRANSITION, NEVER WHETHER IT EXISTS
     (invariant 1): the caller reads branch.separate_cashier to decide whether to
     call this, and there is no `if not policy: raise` anywhere on this path.
+
+    THE SHIFT (migration 0021's payments.shift_id, stamped from 0022): the branch's
+    open shift at this arrival instant, or NULL. Stamped whatever shifts_enabled
+    says -- the column records where the cash left from, and a shop that turns
+    shifts on later must not find its automatic cash outside every drawer.
     """
+    shift_id = await _open_shift_stamp(conn, branch.id, received_at)
     await conn.execute(
         text(
             "INSERT INTO payments (id, tenant_id, branch_id, seller_id, method, amount,"
-            " idempotency_key, device_created_at, server_received_at, paid_by)"
-            " VALUES (:id, :t, :br, :s, 'cash', :amt, :k, :dca, :sra, :by)"
+            " idempotency_key, device_created_at, server_received_at, paid_by, shift_id)"
+            " VALUES (:id, :t, :br, :s, 'cash', :amt, :k, :dca, :sra, :by, :sh)"
         ),
         {
             "id": uuid.uuid4(), "t": principal.tenant_id, "br": branch.id,
@@ -240,6 +290,7 @@ async def _record_automatic_payment(
             # The session that submitted the bill: the same principal created_by
             # names, and for the same reason (never a field from the body).
             "by": principal.user_id,
+            "sh": shift_id,
         },
     )
     await conn.execute(
