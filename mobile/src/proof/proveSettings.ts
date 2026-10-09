@@ -419,6 +419,12 @@ const SCROLLED_CONTROLS: readonly string[] = [
   'accessibilityLabel="ยืนยันบันทึก"',
   'accessibilityLabel="เพิ่มเกรด"',
   "accessibilityLabel={screen.action.label}",
+  // The payments group (the shifts unit, commit 3): its switches and its writes.
+  "accessibilityLabel={screen.shifts.label}",
+  "accessibilityLabel={m.label}",
+  "accessibilityLabel={screen.deactivateLabel}",
+  'accessibilityLabel="ยืนยันปิดใช้งาน"',
+  "accessibilityLabel={ADD_CHANNEL_LABEL}",
 ];
 
 /**

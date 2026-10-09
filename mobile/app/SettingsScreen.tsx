@@ -19,10 +19,28 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
 } from "react-native";
+
+import {
+  ADD_CHANNEL_HEADING,
+  ADD_CHANNEL_LABEL,
+  BANK_CODE_HINT,
+  CHANNEL_FIELD_LABEL,
+  CHANNEL_KIND_LABEL,
+  CHANNEL_MAX,
+  checkChannelDraft,
+  PROXY_TYPE_LABEL,
+  type ChannelCreateBody,
+  type ChannelDraft,
+  type ChannelKind,
+  type DrawerSettingsScreen,
+  type ProxyType,
+} from "../src/counter/drawerView";
+import type { PaymentMethod } from "../src/counter/counterView";
 
 import {
   defaultGradeChangeConfirmation,
@@ -112,6 +130,26 @@ interface Props {
   /** Open the product-management screen (P1.15). NULL for a staff session — the entry
    *  is ADMIN-ONLY (mayManageProducts, decided in App.tsx), the same gate shape. */
   onManageProducts: (() => void) | null;
+  /** THE PAYMENTS GROUP (the shifts unit, commit 3): the shifts switch, the branch's
+   *  methods, the shop's own channels. NULL for a principal without
+   *  shop.settings.write (mayShowDrawerSettings, decided in App.tsx) — the group is
+   *  not drawn at all, the entry-gate shape of the two rows above. */
+  payments: PaymentsSettings | null;
+}
+
+/** What the payments group draws from and writes through. Every write is the app's
+ *  (a PATCH/PUT/POST, then a re-read); this group owns only the add-form buffer and
+ *  the pending switch value while a write is in flight. */
+export interface PaymentsSettings {
+  /** null while the two reads are in flight. */
+  screen: DrawerSettingsScreen | null;
+  refusal: string | null;
+  busy: boolean;
+  onRetry: () => void;
+  onToggleShifts: (on: boolean) => void;
+  onToggleMethod: (method: PaymentMethod, on: boolean) => void;
+  onAddChannel: (body: ChannelCreateBody) => void;
+  onDeactivateChannel: (channelId: string) => void;
 }
 
 export function SettingsScreen({
@@ -130,6 +168,7 @@ export function SettingsScreen({
   onTierMenu,
   onManageUsers,
   onManageProducts,
+  payments,
 }: Props) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
@@ -215,7 +254,284 @@ export function SettingsScreen({
             onTierMenu={onTierMenu}
           />
         )}
+
+        {/* THE PAYMENTS GROUP (the shifts unit, commit 3), below the shop form and the
+            tiers, INSIDE the one scroll region (S7). Its own two reads, so it is drawn
+            whatever state the /shop read is in; null for a principal without
+            shop.settings.write, so the group is not drawn at all. */}
+        {payments !== null ? <PaymentsGroup payments={payments} /> : null}
       </ScrollView>
+    </View>
+  );
+}
+
+/* -------------------------------------------------------- payments group ---- */
+
+type PendingSwitch = { key: string; value: boolean } | null;
+
+const PROXY_TYPES: readonly ProxyType[] = ["phone", "national_id", "ewallet"];
+const CHANNEL_KINDS: readonly ChannelKind[] = ["promptpay", "bank_account"];
+const EMPTY_DRAFT: ChannelDraft = {
+  kind: "promptpay",
+  label: "",
+  proxyType: "phone",
+  proxy: "",
+  bankCode: "",
+  accountNo: "",
+  accountName: "",
+};
+
+/**
+ * THE PAYMENTS GROUP — the shifts switch, the branch's methods as switches, and the
+ * shop's own channels (list, add, deactivate). Presentation only: the gate, the
+ * wording and the add-form check are drawerView's. The switches are the platform's
+ * own control (a settings toggle is used a hundred times and is never animated here).
+ *
+ * WHILE A WRITE IS IN FLIGHT the switch shows the value it was moved to, beside a
+ * spinner, so the tap answers at once; when the re-read lands the SERVER's value is
+ * drawn — after a save this screen shows what was witnessed, never what was sent.
+ */
+function PaymentsGroup({ payments }: { payments: PaymentsSettings }) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
+  const { screen, refusal, busy } = payments;
+  const [pending, setPending] = useState<PendingSwitch>(null);
+  const [draft, setDraft] = useState<ChannelDraft>(EMPTY_DRAFT);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [confirmOff, setConfirmOff] = useState<string | null>(null);
+
+  // A new screen (the re-read) or the end of a write retires the pending value.
+  useEffect(() => {
+    setPending(null);
+  }, [screen]);
+  useEffect(() => {
+    if (!busy) setPending(null);
+  }, [busy]);
+
+  if (screen === null) {
+    return (
+      <View style={styles.body}>
+        <View style={styles.loadingBox}>
+          <ActivityIndicator size="large" />
+        </View>
+      </View>
+    );
+  }
+  if (screen.kind === "message") {
+    return (
+      <View style={styles.body}>
+        <View style={[styles.messageCard, { backgroundColor: t.color.neutralBg }]}>
+          <Text style={[styles.messageBadge, { backgroundColor: t.color.textSubtle }]}>{screen.badge}</Text>
+          <Text style={[styles.messageLead, { color: t.color.neutralFg }]}>{screen.line}</Text>
+          {screen.retry ? (
+            <Touchable style={styles.messageBtn} onPress={payments.onRetry} haptic="light" accessibilityLabel="ลองอีกครั้ง">
+              <Text style={styles.messageBtnText}>ลองอีกครั้ง</Text>
+            </Touchable>
+          ) : null}
+        </View>
+      </View>
+    );
+  }
+
+  const shown = (key: string, server: boolean): boolean =>
+    pending !== null && pending.key === key ? pending.value : server;
+  const flip = (key: string, value: boolean, write: () => void): void => {
+    setPending({ key, value });
+    write();
+  };
+  const submitAdd = (): void => {
+    const c = checkChannelDraft(draft);
+    if (!c.ok) {
+      setDraftError(c.message);
+      return;
+    }
+    setDraftError(null);
+    setDraft(EMPTY_DRAFT);
+    payments.onAddChannel(c.body);
+  };
+  const track = { false: t.color.border, true: t.color.primary };
+
+  return (
+    <View style={styles.body}>
+      <Text style={styles.formHead}>{screen.heading}</Text>
+
+      {/* THE SHIFTS SWITCH — the declared display rule the counter's pay-gate reads. */}
+      <View style={styles.card}>
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>{screen.shifts.label}</Text>
+          {busy && pending?.key === "shifts" ? <ActivityIndicator /> : null}
+          <Switch
+            value={shown("shifts", screen.shifts.value)}
+            onValueChange={(v) => flip("shifts", v, () => payments.onToggleShifts(v))}
+            disabled={busy}
+            trackColor={track}
+            accessibilityLabel={screen.shifts.label}
+          />
+        </View>
+        <Text style={styles.note}>{screen.shifts.note}</Text>
+      </View>
+
+      {/* THE METHODS — what the counter's payment form offers (R7). */}
+      <View style={styles.card}>
+        <Text style={styles.label}>{screen.methodsHeading}</Text>
+        {screen.methods.map((m) => (
+          <View key={m.method} style={styles.switchRow}>
+            <Text style={styles.switchLabel}>{m.label}</Text>
+            {busy && pending?.key === m.method ? <ActivityIndicator /> : null}
+            <Switch
+              value={shown(m.method, m.value)}
+              onValueChange={(v) => flip(m.method, v, () => payments.onToggleMethod(m.method, v))}
+              disabled={busy}
+              trackColor={track}
+              accessibilityLabel={m.label}
+            />
+          </View>
+        ))}
+        <Text style={styles.note}>{screen.methodsNote}</Text>
+      </View>
+
+      {/* THE SHOP'S OWN CHANNELS — list, deactivate, add. */}
+      <View style={styles.tierCard}>
+        <Text style={styles.tierTitle}>{screen.channelsHeading}</Text>
+        {screen.channels.length === 0 ? <Text style={styles.empty}>{screen.emptyLine}</Text> : null}
+        {screen.channels.map((c) => (
+          <View key={c.id} style={styles.tierRow}>
+            <View style={styles.tierRowMain}>
+              <Text style={[styles.tierName, !c.isActive && styles.tierNameOff]}>{c.line}</Text>
+              <Text style={styles.tierCode}>{c.kindLabel}</Text>
+            </View>
+            {!c.isActive ? <Text style={styles.tierOffBadge}>{screen.inactiveBadge}</Text> : null}
+            {c.isActive && confirmOff !== c.id ? (
+              <Touchable
+                style={styles.tierBtn}
+                disabled={busy}
+                onPress={() => setConfirmOff(c.id)}
+                accessibilityLabel={screen.deactivateLabel}
+              >
+                <Text style={styles.tierBtnText}>{screen.deactivateLabel}</Text>
+              </Touchable>
+            ) : null}
+            {c.isActive && confirmOff === c.id ? (
+              <View style={styles.confirmRow}>
+                <Touchable
+                  style={[styles.saveBtn, styles.confirmYes]}
+                  disabled={busy}
+                  haptic="medium"
+                  accessibilityLabel="ยืนยันปิดใช้งาน"
+                  onPress={() => {
+                    setConfirmOff(null);
+                    payments.onDeactivateChannel(c.id);
+                  }}
+                >
+                  <Text style={styles.saveText}>ยืนยันปิดใช้งาน</Text>
+                </Touchable>
+                <Touchable style={styles.cancelBtn} disabled={busy} onPress={() => setConfirmOff(null)} accessibilityLabel="ยกเลิก">
+                  <Text style={styles.cancelText}>ยกเลิก</Text>
+                </Touchable>
+              </View>
+            ) : null}
+          </View>
+        ))}
+        <Text style={styles.note}>{screen.immutableNote}</Text>
+
+        {refusal !== null ? <Text style={styles.tierRefusal}>{refusal}</Text> : null}
+
+        <View style={styles.tierAddBox}>
+          <Text style={styles.label}>{ADD_CHANNEL_HEADING}</Text>
+          <View style={styles.chips}>
+            {CHANNEL_KINDS.map((k) => {
+              const on = draft.kind === k;
+              return (
+                <Touchable
+                  key={k}
+                  style={[styles.chip, on && styles.chipOn]}
+                  onPress={() => setDraft({ ...draft, kind: k })}
+                  haptic="light"
+                  accessibilityLabel={CHANNEL_KIND_LABEL[k]}
+                >
+                  <Text style={[styles.chipText, on && styles.chipTextOn]}>{CHANNEL_KIND_LABEL[k]}</Text>
+                </Touchable>
+              );
+            })}
+          </View>
+          <TextInput
+            style={styles.input}
+            value={draft.label}
+            onChangeText={(v) => setDraft({ ...draft, label: v })}
+            maxLength={CHANNEL_MAX.label}
+            placeholder={CHANNEL_FIELD_LABEL.label}
+            placeholderTextColor={t.color.placeholder}
+          />
+          {draft.kind === "promptpay" ? (
+            <>
+              <View style={styles.chips}>
+                {PROXY_TYPES.map((p) => {
+                  const on = draft.proxyType === p;
+                  return (
+                    <Touchable
+                      key={p}
+                      style={[styles.chip, on && styles.chipOn]}
+                      onPress={() => setDraft({ ...draft, proxyType: p })}
+                      haptic="light"
+                      accessibilityLabel={PROXY_TYPE_LABEL[p]}
+                    >
+                      <Text style={[styles.chipText, on && styles.chipTextOn]}>{PROXY_TYPE_LABEL[p]}</Text>
+                    </Touchable>
+                  );
+                })}
+              </View>
+              <TextInput
+                style={styles.input}
+                value={draft.proxy}
+                onChangeText={(v) => setDraft({ ...draft, proxy: v })}
+                maxLength={CHANNEL_MAX.proxy}
+                keyboardType={draft.proxyType === "ewallet" ? "default" : "number-pad"}
+                placeholder={CHANNEL_FIELD_LABEL.proxy}
+                placeholderTextColor={t.color.placeholder}
+              />
+            </>
+          ) : (
+            <>
+              <TextInput
+                style={styles.input}
+                value={draft.bankCode}
+                onChangeText={(v) => setDraft({ ...draft, bankCode: v })}
+                maxLength={CHANNEL_MAX.bankCode}
+                autoCapitalize="characters"
+                placeholder={CHANNEL_FIELD_LABEL.bankCode + " (" + BANK_CODE_HINT + ")"}
+                placeholderTextColor={t.color.placeholder}
+              />
+              <TextInput
+                style={styles.input}
+                value={draft.accountNo}
+                onChangeText={(v) => setDraft({ ...draft, accountNo: v })}
+                maxLength={CHANNEL_MAX.accountNo}
+                keyboardType="number-pad"
+                placeholder={CHANNEL_FIELD_LABEL.accountNo}
+                placeholderTextColor={t.color.placeholder}
+              />
+              <TextInput
+                style={styles.input}
+                value={draft.accountName}
+                onChangeText={(v) => setDraft({ ...draft, accountName: v })}
+                maxLength={CHANNEL_MAX.accountName}
+                placeholder={CHANNEL_FIELD_LABEL.accountName}
+                placeholderTextColor={t.color.placeholder}
+              />
+            </>
+          )}
+          {draftError !== null ? <Text style={styles.tierError}>{draftError}</Text> : null}
+          <Touchable
+            style={[styles.saveBtn, busy && styles.saveBusy]}
+            disabled={busy}
+            haptic="light"
+            accessibilityLabel={ADD_CHANNEL_LABEL}
+            onPress={submitAdd}
+          >
+            <Text style={styles.saveText}>{busy ? "กำลังบันทึก…" : ADD_CHANNEL_LABEL}</Text>
+          </Touchable>
+        </View>
+      </View>
     </View>
   );
 }
@@ -688,6 +1004,10 @@ function makeStyles(t: ThemeTokens) {
       borderWidth: 1, borderColor: t.color.borderSoft,
     },
     label: { fontSize: t.type.body, fontWeight: "900", color: t.color.textSubtle },
+    // The payments group's switch rows: label left, the platform switch right, at the
+    // tap floor so the whole row reads as one control.
+    switchRow: { flexDirection: "row", alignItems: "center", gap: t.space.md, minHeight: t.tapMin, marginTop: t.space.sm },
+    switchLabel: { flex: 1, fontSize: t.type.bodyLg, fontWeight: "700", color: t.color.text },
     deviceHead: {
       fontSize: t.type.body, fontWeight: "800", color: t.color.textSubtle, letterSpacing: 0.3,
       marginHorizontal: t.space.x3, marginTop: t.space.x3, marginBottom: t.space.xs,

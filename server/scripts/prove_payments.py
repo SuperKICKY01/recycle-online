@@ -18,9 +18,12 @@ THE CELLS, and the disproof each stands against:
   E0  the child serves THIS code and THIS schema: /openapi.json declares POST
       and GET /payments and the `unpaid` query on GET /bills; the scratch reads
       alembic 0020.
-  B   THE BACKFILL, read from Postgres: every live positive bill of Shop A has
-      allocations summing to its total (with the count of such bills as the
-      presence control); the marked reconstructions exist and each carries
+  B   THE BACKFILL, read from Postgres: every live positive bill of Shop A that the
+      AUTOMATIC path (or 0020's backfill) paid -- keyed auto:<bill id> -- has
+      allocations summing to its total (with the count of such bills as the presence
+      control), and every live bill WITHOUT such a payment arrived while its branch's
+      separate_cashier was ON, read from the branches audit trail (B1b; restated
+      2026-10-09 -- see the cell); the marked reconstructions exist and each carries
       exactly one allocation equal to its amount and its bill's total; a
       reconstruction lacks a payer EXACTLY where its bill lacks created_by
       (value against value); one such bill read over HTTP says paid.
@@ -311,6 +314,13 @@ class Db:
         finally:
             await conn.close()
 
+    async def fetch(self, sql: str, *args):
+        conn = await asyncpg.connect(self.dsn)
+        try:
+            return await conn.fetch(sql, *args)
+        finally:
+            await conn.close()
+
     async def set_switch(self, on: bool) -> None:
         """Flip Shop A's born-with branch. branches is AUDITED, so the actor and
         the tenant context are declared on this session first (the audit row
@@ -346,20 +356,64 @@ async def run(client: httpx.AsyncClient, db: Db, scratch: str) -> None:
 
     # ---------------------------------------------------------------- B
     header("B  the backfill, read from Postgres (0020's reconstructions)")
-    live_positive = await db.fetchval(
-        "SELECT count(*) FROM purchase_bills WHERE tenant_id = $1 AND voided_at IS NULL"
-        " AND total_amount > 0", TENANT_A_ID)
-    unbalanced = await db.fetchval(
-        "SELECT count(*) FROM (SELECT b.id FROM purchase_bills b"
-        " LEFT JOIN payment_allocations a ON a.bill_id = b.id"
-        " LEFT JOIN payments p ON p.id = a.payment_id AND p.voided_at IS NULL"
+    # B1 RESTATED (the gate repair, 2026-10-09). It used to read "EVERY live positive bill
+    # has live allocations summing to its total", which was the invariant only while the
+    # automatic path paid every bill (0020). Since the counter commit a bill created with
+    # separate_cashier ON is legitimately UNPAID, and this scratch is a dump of dev, so the
+    # old cell reddened on two of prove:counter's own unpaid fixtures (2026-10-09) -- an
+    # ENVIRONMENT fact read as a defect. The invariant is split into the set each half is
+    # RESPONSIBLE for, both derived from the rows, never from a list:
+    #   B1  every live bill carrying an AUTOMATIC payment -- keyed auto:<bill id>, the key
+    #       POST /bills' automatic payment and 0020's reconstruction both use -- is paid
+    #       exactly its total by live allocations;
+    #   B1b every live bill WITHOUT one arrived while its branch's separate_cashier was ON,
+    #       read from the branches audit trail at the bill's own arrival instant. B1b is
+    #       what keeps the cell's original reach: an automatic payment that was silently
+    #       NEVER WRITTEN leaves its bill out of B1's set, and B1 alone could not see it.
+    auto_bills = await db.fetch(
+        "SELECT b.doc_no, b.total_amount,"
+        "  coalesce((SELECT sum(a.amount) FROM payment_allocations a JOIN payments p2"
+        "            ON p2.id = a.payment_id WHERE a.bill_id = b.id AND p2.voided_at IS NULL), 0)"
+        "    AS allocated"
+        " FROM purchase_bills b"
         " WHERE b.tenant_id = $1 AND b.voided_at IS NULL AND b.total_amount > 0"
-        " GROUP BY b.id, b.total_amount"
-        " HAVING coalesce(sum(CASE WHEN p.id IS NULL THEN 0 ELSE a.amount END), 0)"
-        "        <> b.total_amount) x", TENANT_A_ID)
-    check(live_positive > 0 and unbalanced == 0,
-          f"B1: every one of Shop A's {live_positive} live positive bills has live allocations"
-          f" summing to its total ({unbalanced} do not)")
+        "   AND EXISTS (SELECT 1 FROM payments p WHERE p.tenant_id = b.tenant_id"
+        "               AND p.idempotency_key = 'auto:' || b.id::text)", TENANT_A_ID)
+    short = [r for r in auto_bills if r["allocated"] != r["total_amount"]]
+    check(len(auto_bills) > 0 and not short,
+          f"B1: every one of Shop A's {len(auto_bills)} live positive bills paid by the AUTOMATIC"
+          f" path (or 0020's backfill), keyed auto:<bill id>, has live allocations summing to its"
+          f" total ({len(short)} do not"
+          + ("" if not short else ": " + ", ".join(
+              f"{r['doc_no']} {r['allocated']}/{r['total_amount']}" for r in short[:5]))
+          + ")")
+    no_auto = await db.fetch(
+        "WITH na AS ("
+        "  SELECT b.id, b.doc_no, b.branch_id, b.server_received_at FROM purchase_bills b"
+        "  WHERE b.tenant_id = $1 AND b.voided_at IS NULL AND b.total_amount > 0"
+        "    AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.tenant_id = b.tenant_id"
+        "                    AND p.idempotency_key = 'auto:' || b.id::text))"
+        " SELECT na.doc_no, coalesce("
+        "   (SELECT (a.new_data->>'separate_cashier')::boolean FROM audit_log a"
+        "     WHERE a.tenant_id = $1 AND a.table_name = 'branches'"
+        "       AND a.new_data->>'id' = na.branch_id::text AND a.new_data ? 'separate_cashier'"
+        "       AND a.created_at <= na.server_received_at"
+        "     ORDER BY a.created_at DESC LIMIT 1),"
+        "   (SELECT (a.old_data->>'separate_cashier')::boolean FROM audit_log a"
+        "     WHERE a.tenant_id = $1 AND a.table_name = 'branches'"
+        "       AND a.old_data->>'id' = na.branch_id::text AND a.old_data ? 'separate_cashier'"
+        "       AND a.created_at > na.server_received_at"
+        "     ORDER BY a.created_at ASC LIMIT 1),"
+        "   (SELECT br.separate_cashier FROM branches br WHERE br.id = na.branch_id)"
+        " ) AS cashier_on FROM na", TENANT_A_ID)
+    owed_by_auto = [r for r in no_auto if r["cashier_on"] is not True]
+    check(not owed_by_auto,
+          f"B1b: every one of Shop A's {len(no_auto)} live positive bills WITHOUT an automatic"
+          f" payment arrived while its branch's separate_cashier was ON, read from the branches"
+          f" audit trail at the bill's own arrival ({len(owed_by_auto)} did not"
+          + ("" if not owed_by_auto else ": " + ", ".join(
+              str(r["doc_no"]) for r in owed_by_auto[:5]))
+          + ")")
     marked = await db.fetchval(
         "SELECT count(*) FROM payments WHERE tenant_id = $1 AND recorded_by_migration", TENANT_A_ID)
     marked_bad = await db.fetchval(

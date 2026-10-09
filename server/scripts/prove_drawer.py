@@ -70,14 +70,17 @@ THE CELLS (every negative cell has a positive sibling in the same run, named):
       separate_cashier; the same scanner over a planted violation finds it.
   X   reconcile.py on the scratch after every write above exits 0, H1..H3 and P1..P4
       present as [OK].
-  RT  on a FRESH scratch: downgrade to 0021 (a closed shift present does NOT refuse),
-      the objects gone and the DELETE grant restored from the recorded marker; a
-      branch inserted at 0021 has no cash row; upgrade to 0022 gives it one.
-  RF  a payment naming a channel makes the downgrade REFUSE, read as an error, head
-      still 0022.
+  RT  on a scratch BUILT FROM EMPTY (alembic upgrade head + seed_dev.py + one bill
+      through POST /bills; never a dump of dev -- the gate repair, 2026-10-09):
+      downgrade to 0021 (a closed shift present does NOT refuse), the objects gone and
+      the DELETE grant restored from the recorded marker; a branch inserted at 0021 has
+      no cash row; upgrade to 0022 gives it one.
+  RF  the cell stamps the seeded bill's own automatic payment with a channel, and the
+      downgrade REFUSES naming payments, read as an error, head still 0022.
 
 --break <name> breaks ONE database object on the scratch before the cells run:
   freeze_trigger, born_trigger, channel_fk, revoke_bills, one_open_index.
+--disprove-refusal: RF does not make its refusing row; RF1 alone must go red.
 The code-level disproofs (a lock deleted, the mask removed, a gate removed, the
 formula changed) are made BY HAND on the working tree and restored byte-identical;
 the phase record carries that table.
@@ -89,6 +92,7 @@ import ast
 import asyncio
 import datetime as dt
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -206,6 +210,160 @@ def run_alembic(scratch: str, *args: str) -> tuple[int, str]:
                         capture_output=True, text=True, timeout=600,
                         encoding="utf-8", errors="replace")
     return cp.returncode, cp.stdout + cp.stderr
+
+
+# ---------------------------------------------------------------------------
+# THE EMPTY BUILD (the gate repair, 2026-10-09). The round trip and its refusal test
+# MIGRATION MECHANICS, so their scratch is built from an EMPTY database brought to head
+# by `alembic upgrade head`, seeded by scripts/seed_dev.py, and given ONE paid bill
+# through the real POST /bills -- never a dump of dev, which holds whatever every other
+# proof, live round and device walk left there (lessons/proof-must-run-twice.md, the
+# 2026-10-09 amendment). The same helper lives in prove_shifts.py: the brief's fence
+# names these three proofs and no shared module. Built from ORIG_ENV, never os.environ,
+# which amain rebinds to the scratch while the cells run.
+# ---------------------------------------------------------------------------
+def _qi(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _ql(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+_ACL_PRIVS = {"C": "CREATE", "c": "CONNECT", "T": "TEMPORARY"}
+
+
+def scratch_env(scratch: str) -> dict:
+    env = dict(ORIG_ENV)
+    for key in ("APP_DATABASE_URL", "DIRECTORY_DATABASE_URL", "MIGRATION_DATABASE_URL"):
+        env[key] = make_url(ORIG_ENV[key]).set(database=scratch).render_as_string(hide_password=False)
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
+INIT_SQL = os.path.join(SERVER_DIR, "db", "init", "00_init_roles.sql")
+
+
+async def apply_init_in_database(scratch: str) -> None:
+    """The IN-DATABASE half of db/init/00_init_roles.sql -- every statement after its
+    `\\connect recycle` -- run on `scratch` as the superuser, READ FROM THE FILE so the two
+    cannot drift. It carries the schema ownership, the PUBLIC revoke, the app role's USAGE
+    and the ALTER DEFAULT PRIVILEGES that hands recycle_app DELETE on doc_no_counters; an
+    empty build without it differs from every real database (measured 2026-10-09: RT2 read
+    del_ctr False on the first empty build, because 0022 truthfully recorded `absent`).
+    The parser must find the ALTER DEFAULT PRIVILEGES statement or it raises -- a parser
+    that quietly stops matching would rebuild exactly that difference."""
+    text = open(INIT_SQL, encoding="utf-8").read().replace("\r\n", "\n")
+    head, sep, tail = text.partition("\n\\connect recycle\n")
+    if not sep:
+        raise RuntimeError(f"{INIT_SQL}: no `\\connect recycle` line to split at")
+    body = "\n".join(ln for ln in tail.split("\n") if not ln.lstrip().startswith("--"))
+    stmts = [s.strip() for s in body.split(";") if s.strip()]
+    if not any(s.startswith("ALTER DEFAULT PRIVILEGES") for s in stmts) or any("\\" in s for s in stmts):
+        raise RuntimeError(f"{INIT_SQL}: the in-database half did not parse as expected ({stmts})")
+    c = await asyncpg.connect(host=_APP_URL.host, port=_APP_URL.port, user="postgres",
+                              password="postgres", database=scratch)
+    try:
+        for s in stmts:
+            await c.execute(s)
+    finally:
+        await c.close()
+
+
+async def build_empty_scratch(live_name: str, scratch: str) -> None:
+    """DROP and CREATE `scratch` with the LIVE database's owner, encoding, locale, ACL and
+    per-database settings (the facts restore_db.py takes from its manifest), then
+    `alembic upgrade head` and scripts/seed_dev.py. Raises on any step's failure."""
+    if scratch == live_name:
+        raise RuntimeError("refusing to build an empty scratch over the live database")
+    c = await asyncpg.connect(host=_APP_URL.host, port=_APP_URL.port, user="postgres",
+                              password="postgres", database="postgres")
+    try:
+        row = await c.fetchrow(
+            "SELECT pg_get_userbyid(d.datdba) AS owner, pg_encoding_to_char(d.encoding) AS enc,"
+            " d.datcollate, d.datctype, d.datacl::text AS acl FROM pg_database d WHERE d.datname = $1",
+            live_name)
+        settings = await c.fetch(
+            "SELECT unnest(s.setconfig) AS kv FROM pg_db_role_setting s JOIN pg_database d"
+            " ON d.oid = s.setdatabase WHERE d.datname = $1 AND s.setrole = 0", live_name)
+        await c.execute(f"DROP DATABASE IF EXISTS {_qi(scratch)} WITH (FORCE)")
+        await c.execute(
+            f"CREATE DATABASE {_qi(scratch)} WITH TEMPLATE = template0 ENCODING = {_ql(row['enc'])}"
+            f" LC_COLLATE = {_ql(row['datcollate'])} LC_CTYPE = {_ql(row['datctype'])}"
+            f" OWNER = {_qi(row['owner'])}")
+        for item in [a for a in (row["acl"] or "").strip("{}").split(",") if a]:
+            grantee, _, rest = item.partition("=")
+            for ch in rest.split("/")[0]:
+                if ch in _ACL_PRIVS:
+                    who = "PUBLIC" if grantee == "" else _qi(grantee.strip('"'))
+                    await c.execute(f"GRANT {_ACL_PRIVS[ch]} ON DATABASE {_qi(scratch)} TO {who}")
+        for r in settings:
+            k, _, v = r["kv"].partition("=")
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?", k):
+                raise RuntimeError(f"refusing a database setting named {k!r}")
+            await c.execute(f"ALTER DATABASE {_qi(scratch)} SET {k} = {_ql(v)}")
+    finally:
+        await c.close()
+    await apply_init_in_database(scratch)
+    env = scratch_env(scratch)
+    cp = subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=SERVER_DIR, env=env,
+                        capture_output=True, text=True, timeout=900, encoding="utf-8", errors="replace")
+    if cp.returncode != 0:
+        raise RuntimeError(f"alembic upgrade head on the empty scratch failed:\n{(cp.stdout + cp.stderr)[-1500:]}")
+    cp = subprocess.run([sys.executable, os.path.join("scripts", "seed_dev.py")], cwd=SERVER_DIR, env=env,
+                        capture_output=True, text=True, timeout=300, encoding="utf-8", errors="replace")
+    if cp.returncode != 0:
+        raise RuntimeError(f"seed_dev.py on the empty scratch failed:\n{(cp.stdout + cp.stderr)[-1500:]}")
+
+
+def seed_paid_bill(scratch: str) -> str:
+    """ONE bill through the REAL POST /bills on a child uvicorn bound to `scratch` (the
+    switch is off at birth, so the server writes the automatic payment itself) -- a row
+    the product produces, not one written by hand
+    (lessons/a-proof-fixture-must-be-a-row-the-product-could-produce.md)."""
+    port = free_port()
+    base = f"http://127.0.0.1:{port}"
+    log = tempfile.NamedTemporaryFile(mode="w", suffix=".log", prefix="prove_drawer_seed_",
+                                      delete=False, encoding="utf-8")
+    proc = subprocess.Popen([sys.executable, "-u", "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1",
+                             "--port", str(port), "--log-level", "warning"],
+                            cwd=SERVER_DIR, env=scratch_env(scratch), stdout=log, stderr=subprocess.STDOUT)
+    try:
+        deadline = time.time() + 40
+        while True:
+            if proc.poll() is not None:
+                raise RuntimeError(f"the seeding uvicorn exited {proc.returncode} (log {log.name})")
+            try:
+                if httpx.get(f"{base}/health", timeout=2.0).status_code == 200:
+                    break
+            except httpx.HTTPError:
+                pass
+            if time.time() > deadline:
+                raise RuntimeError(f"the seeding uvicorn never answered /health (log {log.name})")
+            time.sleep(0.25)
+        r = httpx.post(f"{base}/auth/login", json={"tenant_id": str(TENANT_A_ID), "username": ADMIN_USERNAME,
+                                                   "password": TENANT_A_PASSWORD}, timeout=15.0)
+        token = r.json().get("access_token") if r.status_code == 200 else None
+        if not token:
+            raise RuntimeError(f"admin login on the empty scratch -> {r.status_code}")
+        bill_id = str(uuid.uuid4())
+        r = httpx.post(f"{base}/bills", headers={"Authorization": f"Bearer {token}"}, timeout=15.0, json={
+            "id": bill_id, "seller_id": str(SELLER_A_ID), "vehicle_no": f"RT-{RUN[:4]}",
+            "device_created_at": now_iso(),
+            "idempotency_key": f"drawer-rt-{RUN}",
+            "items": [{"id": str(uuid.uuid4()), "product_id": str(PRODUCT_A_ID), "line_no": 1,
+                       "gross_weight": "1.000", "tare_weight": "0.000", "net_weight": "1.000",
+                       "unit_price": "20.00"}]})
+        if r.status_code != 201:
+            raise RuntimeError(f"POST /bills on the empty scratch -> {r.status_code}: {r.text[:300]}")
+        return bill_id
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        log.close()
 
 
 def free_port() -> int:
@@ -978,10 +1136,10 @@ async def run_db_cells(db: Db, scratch: str) -> None:
         print(out[-3000:])
 
 
-async def run_round_trip(db: Db) -> None:
-    header("RT  the 0022 round trip on a FRESH scratch (explicit targets 0021 / 0022)")
+async def run_round_trip(db: Db, paid_bill: str, drop_refusal_row: bool) -> None:
+    header("RT  the 0022 round trip on a scratch BUILT FROM EMPTY (explicit targets 0021 / 0022)")
     head = await db.fetchval("SELECT version_num FROM alembic_version")
-    check(head is not None and head >= "0022", f"RT0 the fresh scratch is at 0022 or later ({head})")
+    check(head is not None and head >= "0022", f"RT0 the empty-built scratch is at 0022 or later ({head})")
     a_branch = await db.fetchval("SELECT id FROM branches WHERE tenant_id = $1 ORDER BY code LIMIT 1",
                                  TENANT_A_ID)
     a_user = await db.fetchval("SELECT id FROM users WHERE tenant_id = $1 ORDER BY username LIMIT 1",
@@ -1036,14 +1194,25 @@ async def run_round_trip(db: Db) -> None:
                      "INSERT INTO shop_payment_channels (id, tenant_id, kind, label, promptpay_proxy,"
                      " promptpay_proxy_type, created_by) VALUES ($1, $2, 'promptpay', 'RF', '0800000002',"
                      " 'phone', $3)", ch, TENANT_A_ID, a_user)
-    pid = await db.fetchval("SELECT id FROM payments WHERE tenant_id = $1 LIMIT 1", TENANT_A_ID)
-    await db.exec_as(TENANT_A_ID, "UPDATE payments SET channel_id = $1 WHERE id = $2", ch, pid)
+    # The refusing row is MADE HERE, on the empty build: the automatic payment the server
+    # wrote for the bill seed_paid_bill posted is stamped with the channel. Read back, never
+    # assumed (the gate repair, 2026-10-09: `payments LIMIT 1` on a dev dump took whatever
+    # was there). --disprove-refusal withholds the stamp, and RF1 alone must go red.
+    pid = await db.fetchval("SELECT id FROM payments WHERE tenant_id = $1 AND idempotency_key = $2",
+                            TENANT_A_ID, f"auto:{paid_bill}")
+    check(pid is not None, f"RF0 the seeded bill's automatic payment exists on the empty build ({pid})")
+    if not drop_refusal_row:
+        await db.exec_as(TENANT_A_ID, "UPDATE payments SET channel_id = $1 WHERE id = $2", ch, pid)
+    else:
+        print("  !! DISPROOF: the refusing row is NOT made (no payment names a channel)")
+    stamped = await db.fetchval("SELECT count(*) FROM payments WHERE channel_id IS NOT NULL")
     rc, out = run_alembic(db.scratch, "downgrade", "0021")
     head = await db.fetchval("SELECT version_num FROM alembic_version")
     check(rc != 0 and "REFUSING to downgrade 0022" in out
           and "payments naming a shop payment channel" in out and head == "0022",
-          f"RF1 the downgrade REFUSED (exit {rc}, refusal named={'REFUSING to downgrade 0022' in out},"
-          f" head still {head})")
+          f"RF1 the downgrade REFUSED over the {stamped} payment(s) this cell stamped (exit {rc},"
+          f" refusal named={'REFUSING to downgrade 0022' in out},"
+          f" names payments={'payments naming a shop payment channel' in out}, head still {head})")
 
 
 BREAKS = {
@@ -1122,8 +1291,12 @@ async def amain(args) -> int:
     await run_db_cells(db, scratch)
     run_g()
     if not args.brk:
-        restore_scratch(live_name, scratch)
-        await run_round_trip(db)
+        # BUILT FROM EMPTY (the gate repair, 2026-10-09), never a dump of dev: a dev dump
+        # carries whatever drawer rows other proofs and walks left, and 0022's downgrade
+        # refused over them before RT1 could judge the mechanics.
+        await build_empty_scratch(live_name, scratch)
+        paid_bill = seed_paid_bill(scratch)
+        await run_round_trip(db, paid_bill, args.disprove_refusal)
 
     header("verdict")
     total = len(passes) + len(failures)
@@ -1139,6 +1312,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Prove the drawer routes (shifts unit, commit 2).")
     ap.add_argument("--break", dest="brk", default=None,
                     help=f"DISPROOF: break one DB object first. One of {sorted(BREAKS)}")
+    ap.add_argument("--disprove-refusal", action="store_true",
+                    help="DISPROOF: RF does not make the row that makes the downgrade refuse;"
+                         " RF1 alone must go red")
     return asyncio.run(amain(ap.parse_args()))
 
 

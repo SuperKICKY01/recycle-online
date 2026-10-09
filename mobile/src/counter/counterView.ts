@@ -76,7 +76,9 @@ const allocationOverRemaining = (remainingDisplay: string): string =>
   `ยอดของบิลนี้เกินยอดค้าง (ค้าง ${remainingDisplay} บาท)`;
 
 // The POST refusals, worded from (status, code) — never the server's prose.
-const REFUSED_OFFLINE =
+// REFUSED_OFFLINE is exported for the drawer (drawerView.ts): the shift panel lives on
+// this same online-only screen, so an unreachable shift route says the same sentence.
+export const REFUSED_OFFLINE =
   "ยังติดต่อระบบไม่ได้ หน้ารับชำระเงินต้องเชื่อมต่อระบบ — เมื่อกลับมาออนไลน์ รายการจะรีเฟรชเอง";
 const REFUSED_FORBIDDEN =
   "บัญชีนี้ไม่มีสิทธิ์รับชำระเงินที่เคาน์เตอร์ ต้องให้เจ้าของร้านมอบสิทธิ์";
@@ -108,11 +110,47 @@ const REFUSED_SERVER = "ระบบยังรับชำระเงิน�
  * list, while wrongly HIDING it costs a cashier who cannot pay a seller standing in
  * front of them. Both directions favour showing (the owner's ruling 2). Only a row
  * for THIS tenant that says the switch is OFF hides it.
+ *
+ * THE SECOND BRANCH (the shifts unit, commit 3's closing turn, ADVISOR-DECIDED
+ * 2026-09-30): the entry is ALSO drawn when `shifts_enabled` is not known-OFF and the
+ * principal holds `shifts.manage` — the shift panel lives on this screen, and a shop
+ * that runs shifts WITHOUT a separate cashier (the weigher pays; POST /bills writes the
+ * cash payment and stamps it to the OPEN shift) must be able to open one, or every
+ * such payment is stamped to no drawer. `shiftsEnabled` is the live GET /shop/policy
+ * answer (it is NOT in the device cache), so after a cold OFFLINE start it is null.
+ * UNKNOWN DRAWS THE ENTRY for a shifts.manage holder, by the same weighing: wrongly
+ * SHOWING it costs a screen whose shift panel stays hidden (the panel re-reads the
+ * policy live) above an empty queue, while wrongly HIDING it costs a shop that cannot
+ * open the shift its drawer count depends on. Only a policy that was read and says
+ * shifts are OFF — or a read grant set lacking shifts.manage — closes this branch.
+ * The parameter has no default on purpose: a call site that does not name the shift
+ * policy must not be given a meaning for it.
  */
-export function mayShowCounterEntry(grants: Grants, separateCashier: boolean | null): boolean {
-  if (!may(grants, "payments.record")) return false;
-  return separateCashier !== false;
+export function mayShowCounterEntry(
+  grants: Grants,
+  separateCashier: boolean | null,
+  shiftsEnabled: boolean | null,
+): boolean {
+  const counterBranch = may(grants, "payments.record") && separateCashier !== false;
+  const drawerBranch = may(grants, "shifts.manage") && shiftsEnabled !== false;
+  return counterBranch || drawerBranch;
 }
+
+/**
+ * Inside the screen: the unpaid QUEUE and the pay panel belong to the counter branch
+ * of the entry and to nothing else — `payments.record` and a separate cashier not
+ * known-off. A shop that reached this screen through the drawer branch alone sees the
+ * shift panel and no queue (and the queue is not even read, since a principal without
+ * payments.record would only get a 403 in its place).
+ */
+export function mayShowQueue(grants: Grants, separateCashier: boolean | null): boolean {
+  return may(grants, "payments.record") && separateCashier !== false;
+}
+
+/** What the screen says under the shift panel when it shows no queue, so the page
+ *  reads as a drawer page and not as a counter with nothing in it. */
+export const DRAWER_ONLY_NOTE =
+  "ร้านนี้จ่ายเงินตอนบันทึกบิลที่ลานชั่ง — หน้านี้ใช้สำหรับกะและลิ้นชักเงินสด";
 
 /* ==========================================================================
  * 4. PARSING GET /bills?unpaid=true — fatal on a malformed row
@@ -329,6 +367,10 @@ export interface PaymentDraft {
   /** The total that will leave the drawer. Defaults to Σ allocations. */
   amount: string;
   allocations: readonly AllocationDraft[];
+  /** Which of the shop's OWN accounts a non-cash payment left from (R6, the shifts
+   *  unit commit 3), or absent/null for "not stated" — optional on the wire and
+   *  never required (payments.py PaymentCreate.channel_id). */
+  channel_id?: string | null;
 }
 
 /** The wire body for POST /payments (payments.py PaymentCreate). id, key and stamp
@@ -342,11 +384,14 @@ export interface PaymentCreateBody {
   device_created_at: string;
   allocations: { bill_id: string; amount: string }[];
   branch_id?: string | null;
+  channel_id?: string;
 }
 
 export interface PaymentPlan {
   seller_id: string;
   method: PaymentMethod;
+  /** Present only for a non-cash method with a channel chosen (checkPayment). */
+  channel_id: string | null;
   amount: string;
   amountDisplay: string;
   allocations: readonly { bill_id: string; amount: string }[];
@@ -421,6 +466,9 @@ export function checkPayment(draft: PaymentDraft): PaymentCheck {
     plan: {
       seller_id: draft.seller_id,
       method: draft.method,
+      // Cash leaves the drawer, not an account: a channel carried over from a
+      // non-cash selection is DROPPED here, so a cash body can never name one.
+      channel_id: draft.method === "cash" ? null : (draft.channel_id ?? null),
       amount: amount.value,
       amountDisplay: display(amount.value),
       allocations,
@@ -460,6 +508,9 @@ export function buildPaymentBody(meta: PaymentMeta, plan: PaymentPlan): PaymentC
     device_created_at: meta.clock.now().toISOString(),
     allocations: plan.allocations.map((a) => ({ bill_id: a.bill_id, amount: a.amount })),
     ...(meta.branch_id ? { branch_id: meta.branch_id } : {}),
+    // The key is PRESENT only when a channel was chosen, the branch_id rule: a
+    // payment with no channel sends the shape every earlier build sent.
+    ...(plan.channel_id !== null ? { channel_id: plan.channel_id } : {}),
   };
 }
 

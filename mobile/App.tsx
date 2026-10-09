@@ -152,10 +152,42 @@ import {
   buildPaymentBody,
   counterScreenState,
   mayShowCounterEntry,
+  mayShowQueue,
   paymentOutcome,
   type CounterScreenState,
+  type PaymentFetch,
+  type PaymentMethod,
   type PaymentPlan,
 } from "./src/counter/counterView";
+import {
+  buildMovementBody,
+  buildOpenShiftBody,
+  CLOSE_RESULT_UNREADABLE,
+  closeResult,
+  counterPolicy,
+  drawerOutcome,
+  drawerSettingsScreen,
+  isReasonFrozen,
+  mayShowDrawerSettings,
+  mayShowShiftPanel,
+  offeredMethods,
+  panelGate,
+  payGate,
+  readChannels,
+  readClosedShift,
+  shiftPanel,
+  shiftState,
+  SHIFT_NOT_PERMITTED,
+  UNKNOWN_POLICY,
+  type CashKind,
+  type ChannelCreateBody,
+  type ClosedShift,
+  type CounterPolicy,
+  type DrawerSettingsScreen,
+  type DrawerSubject,
+  type ShiftState,
+  type ShopChannel,
+} from "./src/counter/drawerView";
 import type {
   UserCreateBody,
   UserFetch,
@@ -211,6 +243,17 @@ import {
   fetchSummary,
   fetchUnpaidBills,
   postPayment,
+  fetchShopPolicyValue,
+  fetchCurrentShift,
+  postOpenShift,
+  postCloseShift,
+  patchShiftReason,
+  postCashMovement,
+  fetchPaymentChannels,
+  postPaymentChannel,
+  deactivatePaymentChannel,
+  patchBranchShiftsEnabled,
+  putBranchMethod,
   patchGradeTier,
   reorderGradeTiers,
   fetchUsers,
@@ -527,6 +570,35 @@ function AppInner() {
   const [counterRefusal, setCounterRefusal] = useState<string | null>(null);
   const [counterBusy, setCounterBusy] = useState(false);
   const [separateCashier, setSeparateCashier] = useState<boolean | null>(null);
+  /** The branch's shifts_enabled from the LIVE policy read beside the branch (the
+   *  closing turn of the shifts unit's commit 3). Not cached on the device, so null
+   *  (unknown) after a cold offline start — mayShowCounterEntry says why that draws. */
+  const [shiftsEnabledHome, setShiftsEnabledHome] = useState<boolean | null>(null);
+  /*
+   * THE CASH DRAWER (the shifts unit, commit 3), read LIVE with the queue and never
+   * cached (online-only, like the counter). `counterPolicy` is GET /shop/policy as
+   * drawerView classified it (UNKNOWN on any failure); `counterShift` is GET
+   * /shifts/current classified (not asked for a session without shifts.manage);
+   * `counterChannels` is the shop's own channels as the SERVER masked them;
+   * `drawerClosed` is the last close's response, shown until dismissed (R2/R3);
+   * `drawerRefusal`/`drawerBusy` are the drawer writes' own, apart from a payment's.
+   */
+  const [counterPolicyState, setCounterPolicyState] = useState<CounterPolicy>(UNKNOWN_POLICY);
+  const [counterShift, setCounterShift] = useState<ShiftState>(SHIFT_NOT_PERMITTED);
+  const [counterChannels, setCounterChannels] = useState<ShopChannel[] | null>(null);
+  const [drawerClosed, setDrawerClosed] = useState<{ shift: ClosedShift; frozen: boolean } | null>(null);
+  const [drawerRefusal, setDrawerRefusal] = useState<string | null>(null);
+  const [drawerBusy, setDrawerBusy] = useState(false);
+  /** Whether the counter screen shows the unpaid queue (mayShowQueue over the live
+   *  policy). Starts true, the pre-drawer behaviour, until the policy read decides. */
+  const [counterQueueShown, setCounterQueueShown] = useState(true);
+  /*
+   * THE PAYMENTS GROUP in settings (the shifts unit, commit 3): its own two reads
+   * (policy + channels), drawn only for shop.settings.write. Online only.
+   */
+  const [paymentsScreen, setPaymentsScreen] = useState<DrawerSettingsScreen | null>(null);
+  const [paymentsRefusal, setPaymentsRefusal] = useState<string | null>(null);
+  const [paymentsBusy, setPaymentsBusy] = useState(false);
   /*
    * PRODUCT MASTER DATA (P1.15, homed on the phone), opened from an admin-only row
    * inside settings. `productsScreen` is the three-list-or-message the read produced;
@@ -1577,6 +1649,7 @@ function AppInner() {
           const pol = await fetchShopPolicy(t);
           await shopPolicyStoreRef.current?.save(learned.shop_id, pol.separate_cashier);
           setSeparateCashier(pol.separate_cashier);
+          setShiftsEnabledHome(typeof pol.shifts_enabled === "boolean" ? pol.shifts_enabled : null);
         } catch {
           /* leave the cached policy; the entry fails open on unknown */
         }
@@ -1833,11 +1906,66 @@ function AppInner() {
     if (governing.kind === "http" && governing.status === 401) setSessionEnded(true);
   }, [grants]);
 
+  /**
+   * READ THE PAYMENTS GROUP (the shifts unit, commit 3) — GET /shop/policy and GET
+   * /shop/payment-channels over one session, both LIVE. A message unless both land
+   * (drawerSettingsScreen). Not read at all for a session without
+   * shop.settings.write: the group is not drawn for it.
+   */
+  const loadPayments = useCallback(async (keepShown = false): Promise<void> => {
+    const t = tokenRef.current;
+    if (t === null || !mayShowDrawerSettings(grants)) return;
+    // A re-read AFTER A WRITE keeps the group on screen until the answer lands:
+    // dropping it to the spinner collapses the scroll's height and the page jumps
+    // under the operator's thumb (observed on the emulator, 2026-09-29).
+    if (!keepShown) setPaymentsScreen(null);
+    const [polRes, chRes] = await Promise.all([fetchShopPolicyValue(t), fetchPaymentChannels(t)]);
+    const screen = drawerSettingsScreen(polRes, chRes);
+    if (screen === "session") {
+      setSessionEnded(true);
+      return;
+    }
+    setPaymentsScreen(screen);
+  }, [grants]);
+
   const openSettings = useCallback(() => {
     setSettingsSaving(false);
+    setPaymentsRefusal(null);
+    setPaymentsBusy(false);
     sheet("open_settings");
     void loadSettings();
-  }, [loadSettings, sheet]);
+    void loadPayments();
+  }, [loadSettings, loadPayments, sheet]);
+
+  /**
+   * ONE PAYMENTS-GROUP WRITE, then the WHOLE group is re-read: the server is the
+   * authority, and after a save the screen shows what was witnessed (the settings
+   * screen's rule). A refusal is worded by drawerOutcome with the SETTINGS subject.
+   */
+  const runPaymentsWrite = useCallback(
+    async (write: (t: string) => Promise<PaymentFetch>): Promise<void> => {
+      const t = tokenRef.current;
+      if (t === null) {
+        setSessionEnded(true);
+        return;
+      }
+      setPaymentsBusy(true);
+      setPaymentsRefusal(null);
+      const fetch = await write(t);
+      const outcome = drawerOutcome(fetch, "settings");
+      setPaymentsBusy(false);
+      if (outcome.kind === "session") {
+        setSessionEnded(true);
+        return;
+      }
+      setOnline(fetch.kind !== "unreachable");
+      if (outcome.kind === "refused") setPaymentsRefusal(outcome.message);
+      if (outcome.kind === "ok" || outcome.reload) await loadPayments(true);
+    },
+    [loadPayments],
+  );
+
+  const paymentsBranch = paymentsScreen !== null && paymentsScreen.kind === "form" ? paymentsScreen.branchId : null;
 
   /**
    * SAVE, THEN RENDER WHAT CAME BACK. PATCH /shop returns the re-read row, so a
@@ -2049,6 +2177,29 @@ function AppInner() {
    * the session; an outage is the calm amber message, and the queue refreshes when
    * the line returns.
    */
+  /**
+   * READ THE DRAWER — the policy (R1/R7), the open shift (R4) and the shop's channels
+   * (R6), in parallel, LIVE. The shift is not asked for by a session whose read grant
+   * set lacks shifts.manage (the route is gated; the answer would be a 403). Every
+   * failure lands as UNKNOWN in drawerView, never as a verdict. Does not touch the
+   * queue, so a drawer write re-reads this alone and the list does not flash.
+   */
+  const loadDrawer = useCallback(
+    async (t: string): Promise<CounterPolicy> => {
+      const [polRes, shiftRes, chRes] = await Promise.all([
+        fetchShopPolicyValue(t),
+        may(grants, "shifts.manage") ? fetchCurrentShift(t) : Promise.resolve(null),
+        fetchPaymentChannels(t),
+      ]);
+      const policy = counterPolicy(polRes);
+      setCounterPolicyState(policy);
+      setCounterShift(shiftRes === null ? SHIFT_NOT_PERMITTED : shiftState(shiftRes));
+      setCounterChannels(chRes.kind === "ok" ? readChannels(chRes.body) : null);
+      return policy;
+    },
+    [grants],
+  );
+
   const loadCounter = useCallback(async (): Promise<void> => {
     const t = tokenRef.current;
     if (t === null) {
@@ -2056,7 +2207,16 @@ function AppInner() {
       return;
     }
     setCounterScreen(null);
+    setCounterQueueShown(true); // the spinner until the policy decides, never a stale body
     const byId = new Map(sellers.map((s) => [s.id, { name: s.name, phone: s.phone }]));
+    // The policy FIRST: whether the queue is shown at all is the counter branch of the
+    // entry (mayShowQueue). A shop that reached this screen through the drawer branch
+    // alone does not read the queue — for a principal without payments.record that
+    // read is a 403, and its message screen would hide the shift panel it came for.
+    const policy = await loadDrawer(t);
+    const queueShown = mayShowQueue(grants, policy.separateCashier);
+    setCounterQueueShown(queueShown);
+    if (!queueShown) return;
     const result = await fetchUnpaidBills(t);
     setCounterScreen(counterScreenState(result, byId));
     if (result.kind === "unreachable") {
@@ -2065,14 +2225,104 @@ function AppInner() {
     }
     setOnline(true);
     if (result.kind === "http" && result.status === 401) setSessionEnded(true);
-  }, [sellers]);
+  }, [sellers, loadDrawer, grants]);
 
   const openCounter = useCallback(() => {
     setCounterBusy(false);
     setCounterRefusal(null);
+    setDrawerClosed(null);
+    setDrawerRefusal(null);
+    setDrawerBusy(false);
     sheet("open_counter");
     void loadCounter();
   }, [loadCounter, sheet]);
+
+  /**
+   * ONE DRAWER WRITE, classified by drawerOutcome (R8): a refusal is worded from its
+   * (status, code), a 401 ends the session, a refusal that says the state moved
+   * re-reads the drawer. Returns the outcome AND the raw fetch (the reason write needs
+   * the 409 code), or null when there is no token. NOTHING queues — online only.
+   */
+  const runDrawerWrite = useCallback(
+    async (
+      write: (t: string) => Promise<PaymentFetch>,
+      subject: DrawerSubject,
+    ): Promise<{ fetch: PaymentFetch; outcome: ReturnType<typeof drawerOutcome> } | null> => {
+      const t = tokenRef.current;
+      if (t === null) {
+        setSessionEnded(true);
+        return null;
+      }
+      setDrawerBusy(true);
+      setDrawerRefusal(null);
+      const fetch = await write(t);
+      const outcome = drawerOutcome(fetch, subject);
+      setDrawerBusy(false);
+      if (outcome.kind === "session") {
+        setSessionEnded(true);
+        return { fetch, outcome };
+      }
+      setOnline(fetch.kind !== "unreachable");
+      if (outcome.kind === "refused") {
+        setDrawerRefusal(outcome.message);
+        if (outcome.reload) await loadDrawer(t);
+      }
+      return { fetch, outcome };
+    },
+    [loadDrawer],
+  );
+
+  const openShift = useCallback(
+    async (openingFloat: string): Promise<void> => {
+      const r = await runDrawerWrite((t) => postOpenShift(t, buildOpenShiftBody(deviceIds, openingFloat)), "shift");
+      const t = tokenRef.current;
+      if (r?.outcome.kind === "ok" && t !== null) await loadDrawer(t);
+    },
+    [runDrawerWrite, loadDrawer],
+  );
+
+  const recordMovement = useCallback(
+    async (kind: CashKind, amount: string, note: string): Promise<void> => {
+      const r = await runDrawerWrite(
+        (t) => postCashMovement(t, buildMovementBody({ clock: systemClock, ids: deviceIds }, kind, amount, note)),
+        "shift",
+      );
+      const t = tokenRef.current;
+      if (r?.outcome.kind === "ok" && t !== null) await loadDrawer(t);
+    },
+    [runDrawerWrite, loadDrawer],
+  );
+
+  /** R2: the COUNT only. The expected figure and the variance are read from the
+   *  close RESPONSE and shown for the first time on the result card. */
+  const closeShiftAt = useCallback(
+    async (shiftId: string, countedCash: string): Promise<void> => {
+      const r = await runDrawerWrite((t) => postCloseShift(t, shiftId, countedCash), "shift");
+      if (r === null || r.outcome.kind !== "ok") return;
+      const closed = readClosedShift(r.outcome.body);
+      if (closed === null) setDrawerRefusal(CLOSE_RESULT_UNREADABLE);
+      else setDrawerClosed({ shift: closed, frozen: false });
+      const t = tokenRef.current;
+      if (t !== null) await loadDrawer(t);
+    },
+    [runDrawerWrite, loadDrawer],
+  );
+
+  /** R3: the reason, once. A second is refused BY THE SERVER (409), and the card
+   *  stops asking rather than offering an input that cannot succeed. */
+  const setShiftReason = useCallback(
+    async (shiftId: string, reason: string): Promise<void> => {
+      const r = await runDrawerWrite((t) => patchShiftReason(t, shiftId, reason), "shift");
+      if (r === null) return;
+      if (r.outcome.kind === "ok") {
+        const saved = readClosedShift(r.outcome.body);
+        if (saved !== null) setDrawerClosed({ shift: saved, frozen: false });
+        return;
+      }
+      if (isReasonFrozen(r.fetch)) setDrawerClosed((prev) => (prev === null ? prev : { ...prev, frozen: true }));
+    },
+    [runDrawerWrite],
+  );
 
   /**
    * RECORD ONE PAYMENT. `plan` is the validated model (checkPayment, in the pay
@@ -3387,9 +3637,11 @@ function AppInner() {
         who cannot pay a seller standing at the counter. Only a set that was read
         and lacks payments.record, or a branch known to have the switch off, hides
         it. The reasoning lives in mayShowCounterEntry; this only names the gate.
+        Since the shifts unit's closing turn it ALSO draws for shifts.manage when
+        shifts are not known-off (the drawer branch) — same function, same reasoning.
       */
       case "counter_entry":
-        return mayShowCounterEntry(grants, separateCashier);
+        return mayShowCounterEntry(grants, separateCashier, shiftsEnabledHome);
       /*
         PRICES (P1.9). The ยกเลิกบิลนี้ rule, not the ยอดวันนี้ one: this opens a screen
         whose purpose is a WRITE the prices.write gate refuses, and a session must not
@@ -3672,6 +3924,33 @@ function AppInner() {
                  จัดการผู้ใช้งาน. Fails open on an absent set; the server refuses
                  every write regardless. */
               onManageProducts={may(grants, "master.write") ? openProducts : null}
+              /* shop.settings.write (the shifts unit, commit 3): null for a session
+                 without it, so the payments group is not drawn at all. Every write
+                 needs the branch the policy read named; with none, nothing is sent. */
+              payments={
+                mayShowDrawerSettings(grants)
+                  ? {
+                      screen: paymentsScreen,
+                      refusal: paymentsRefusal,
+                      busy: paymentsBusy,
+                      onRetry: () => void loadPayments(),
+                      onToggleShifts: (on: boolean) => {
+                        if (paymentsBranch !== null) {
+                          void runPaymentsWrite((t) => patchBranchShiftsEnabled(t, paymentsBranch, on));
+                        }
+                      },
+                      onToggleMethod: (method: PaymentMethod, on: boolean) => {
+                        if (paymentsBranch !== null) {
+                          void runPaymentsWrite((t) => putBranchMethod(t, paymentsBranch, method, on));
+                        }
+                      },
+                      onAddChannel: (body: ChannelCreateBody) =>
+                        void runPaymentsWrite((t) => postPaymentChannel(t, body)),
+                      onDeactivateChannel: (channelId: string) =>
+                        void runPaymentsWrite((t) => deactivatePaymentChannel(t, channelId)),
+                    }
+                  : null
+              }
             />
           ),
         };
@@ -3789,15 +4068,39 @@ function AppInner() {
          payment form, over the app's own screen (reachable only from null, like the
          dashboard). Online-only: no offline cache and no outbox, so a stale queue is
          never shown; onRetry re-READS, a payment never replays on its own. */
-      case "counter":
+      case "counter": {
+        // The drawer half, composed from drawerView over the live reads (R1/R4/R6/R7).
+        const gate = payGate(counterPolicyState, counterShift);
         return {
           animation: "slide",
           back: closeTopSheet,
           content: (
             <CounterScreen
               state={counterScreen}
+              queueShown={counterQueueShown}
               refusal={counterRefusal}
               busy={counterBusy}
+              drawer={{
+                panel: mayShowShiftPanel(grants, counterPolicyState, counterShift)
+                  ? shiftPanel(counterShift, panelGate(gate, counterQueueShown), readTokenUserId(tokenRef.current))
+                  : null,
+                gate,
+                methods: offeredMethods(counterPolicyState),
+                channels: counterChannels,
+                closed: drawerClosed === null ? null : closeResult(drawerClosed.shift, drawerClosed.frozen),
+                refusal: drawerRefusal,
+                busy: drawerBusy,
+              }}
+              actions={{
+                onOpenShift: (f) => void openShift(f),
+                onMovement: (k, a, n) => void recordMovement(k, a, n),
+                onCloseShift: (id, c) => void closeShiftAt(id, c),
+                onReason: (id, r) => void setShiftReason(id, r),
+                onDismissClosed: () => {
+                  setDrawerClosed(null);
+                  setDrawerRefusal(null);
+                },
+              }}
               onClose={closeTopSheet}
               onRetry={() => void loadCounter()}
               onSignIn={closeTopSheet}
@@ -3805,6 +4108,7 @@ function AppInner() {
             />
           ),
         };
+      }
 
       /* P3.7. The shop's people — the roster, add-a-user, and the row that opens the
          actions sheet. OVER the settings sheet (the stack settings>users), reached

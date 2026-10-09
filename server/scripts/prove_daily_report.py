@@ -66,6 +66,10 @@ an exception for its own. So NOTHING here asserts an absolute count or total.
 Every assertion is either set membership on this run's own doc_nos, or a DELTA
 between a baseline read before the fixtures and a read after them. A second run
 adds a second set of fixtures and every delta comes out identical.
+And because the fixture day therefore only GROWS, every membership claim reads the
+day's lines across EVERY page (all_lines), never page 1: on 2026-10-09 the day passed
+the default page of 200 and the 23:59:59.999999 bill fell onto page 2. The pages are
+cross-checked against bills.total, which the report computes by aggregate.
 
 WEIGHTS ARE POWERS OF TWO, deliberately. Every fixture's amount is a distinct
 power of two times the list price, so any subset of them sums to a unique
@@ -230,6 +234,35 @@ async def main() -> int:
         async def daily(headers, **params) -> httpx.Response:
             return await http.get("/reports/daily", headers=headers, params=params)
 
+        async def all_lines(headers, date: str) -> tuple[list[dict], int, int]:
+            """EVERY line of the day, read page by page until next_offset is None.
+            The fixture day is append-only on dev (hard rule 5: this script's bills
+            are never deleted), so it only grows; on 2026-10-09 it passed the default
+            page of 200 and `edge_last` -- the day's LAST instant, so the last line --
+            fell onto page 2 and its IN cell went red with the report correct
+            (lessons/proof-must-run-twice.md, the seventh amendment). Membership in
+            the day is membership across all pages, never in page 1."""
+            got: list[dict] = []
+            offset, pages, total = 0, 0, -1
+            while True:
+                # 100, not the 500 maximum: the day held 216 lines when this was
+                # written, so 100 makes the pager actually TURN pages on every run
+                # (a pager read in one page would never have exercised next_offset).
+                page = (await daily(headers, date=date, limit=100, offset=offset)).json()["bills"]
+                pages += 1
+                got += page["lines"]
+                total = page["total"]
+                nxt = page["next_offset"]
+                if nxt is None:
+                    return got, total, pages
+                if nxt <= offset or pages > 10_000:
+                    # Stop and SAY so; the coverage cell (lines vs bills.total) then
+                    # reddens by name instead of the run dying in a traceback.
+                    print(f"  !! the pager did not advance (offset {offset} -> {nxt}) after"
+                          f" {pages} page(s): {len(got)} lines read of bills.total {total}")
+                    return got, total, pages
+                offset = nxt
+
         # The seeded list price for seller A's grade — the reference every
         # fixture is priced against. Read from the DB, never assumed.
         grade = await db.fetchval("SELECT grade FROM sellers WHERE id = $1", SELLER_A_ID)
@@ -357,7 +390,8 @@ async def main() -> int:
         resp = await daily(admin_a, date=DAY.isoformat())
         rep = resp.json()
         doc_of = {n: created[n]["doc_no"] for n in created}
-        listed = {ln["doc_no"] for ln in rep["bills"]["lines"]}
+        day_lines, day_total, day_pages = await all_lines(admin_a, DAY.isoformat())
+        listed = {ln["doc_no"] for ln in day_lines}
         # BY ID FOR THE CROSS-TENANT CELLS. doc_no is unique per TENANT only
         # (uq_bills_tenant_docno), so tenant B's `B-2569-17` and tenant A's
         # `B-2569-17` are two bills wearing one string; comparing doc_no across
@@ -365,7 +399,7 @@ async def main() -> int:
         # reached a number A's fixture day already held. Within ONE tenant
         # (doc_of, listed) the string is a fine key and those cells stand.
         id_of = {n: created[n]["id"] for n in created}
-        listed_ids = {ln["id"] for ln in rep["bills"]["lines"]}
+        listed_ids = {ln["id"] for ln in day_lines}
 
         # ================================================================
         header("D - the day boundary, both edges, in shop time")
@@ -379,6 +413,13 @@ async def main() -> int:
         check("is_today false for a past day", rep["day"]["is_today"] is False)
         check("requested true when a date was named", rep["day"]["requested"] is True)
 
+        # The instrument's own control: the pages together carry exactly the day's
+        # count, which the report computes by aggregate and NOT from the lines -- so a
+        # pager that lost or repeated a page is red here, not quietly green below.
+        check("the day's lines, read across EVERY page, are exactly bills.total distinct bills",
+              len(day_lines) == day_total and len(listed_ids) == day_total,
+              f"{len(day_lines)} lines ({len(listed_ids)} distinct) over {day_pages} page(s),"
+              f" bills.total {day_total}")
         check("00:00:00.000000+07 is IN the day", doc_of["edge_first"] in listed)
         check("23:59:59.999999+07 is IN the day", doc_of["edge_last"] in listed)
         check("previous day 23:59:59.999999 is OUT", doc_of["edge_before"] not in listed)
@@ -506,7 +547,7 @@ async def main() -> int:
 
         # ================================================================
         header("O - off-list payment surfaced")
-        line_by_doc = {ln["doc_no"]: ln for ln in rep["bills"]["lines"]}
+        line_by_doc = {ln["doc_no"]: ln for ln in day_lines}
         off = line_by_doc[doc_of["off_list"]]
         on = line_by_doc[doc_of["on_list"]]
         check("the off-list bill is flagged", off["off_list"] is True)
@@ -536,7 +577,8 @@ async def main() -> int:
         header("T - tenant isolation")
         check("tenant B's bill is invisible in A's day", b_bill["id"] not in listed_ids)
         b_rep = (await daily(admin_b, date=DAY.isoformat())).json()
-        b_listed_ids = {ln["id"] for ln in b_rep["bills"]["lines"]}
+        b_lines, _b_total, _b_pages = await all_lines(admin_b, DAY.isoformat())
+        b_listed_ids = {ln["id"] for ln in b_lines}
         check("tenant B sees its OWN bill on that day", b_bill["id"] in b_listed_ids)
         check("none of A's fixtures appear in B's day",
               not (set(id_of.values()) & b_listed_ids))
@@ -548,7 +590,7 @@ async def main() -> int:
         money_fields = [
             rep["totals"]["active_total"], rep["totals"]["voided_total"],
             rep["totals"]["off_list_variance"],
-            *[ln["total_amount"] for ln in rep["bills"]["lines"]],
+            *[ln["total_amount"] for ln in day_lines],
             *[v["total_amount"] for v in rep["voided"]],
         ]
         check("every money value is a string", all(isinstance(m, str) for m in money_fields))
@@ -575,9 +617,12 @@ async def main() -> int:
         check("next_offset points at the next page", paged["bills"]["next_offset"] == 1)
         check("bills.total is the whole day, not the page",
               paged["bills"]["total"] == rep["totals"]["active_bill_count"])
-        last_page = (await daily(admin_a, date=DAY.isoformat(),
-                                 limit=500, offset=0)).json()
-        check("a full page reports not truncated and no next_offset",
+        # The LAST page, not page 1 at limit 500: the day only grows (see all_lines),
+        # and past 500 lines `offset=0` would be truncated by design. At 500 or fewer
+        # this is the very request it always was (offset 0).
+        last_page = (await daily(admin_a, date=DAY.isoformat(), limit=500,
+                                 offset=max(0, rep["totals"]["active_bill_count"] - 500))).json()
+        check("the LAST page reports not truncated and no next_offset",
               last_page["bills"]["truncated"] is False and last_page["bills"]["next_offset"] is None)
 
         # ================================================================

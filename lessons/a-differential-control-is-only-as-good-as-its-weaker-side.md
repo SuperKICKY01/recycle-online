@@ -62,3 +62,23 @@ the literal. A paired control does not inherit strength from the stronger half;
 it is bounded by the weaker one. And when a proof measures one input off a real
 run and hand-types another beside it, the hand-typed one is where the next
 defect hides — the measured neighbour makes the whole cell look measured.
+
+## AMENDED (shifts commit 3, 2026-10-09): a scanner's needle must not be built from the text it also scans
+
+The opposite failure: a differential that goes red when the product is RIGHT.
+`proveDrawer.ts` L5 checks that STAFF's render of a shop account carries no five
+consecutive characters of the account number, beside ADMIN's render as the control (both
+from the real server, as above). It went red once in `prove_all`, `exits=[0, 1]`:
+`proof-drawer-b20852 · ลงท้าย 2364` — a correctly masked render. The account number was
+`99` + the run tag's digits, and the channel's LABEL was `proof-drawer-<run tag>`. The run
+tag `b20852` put `20852` in both, and the scanner, reading the whole render, found it in
+the label. About one run in three hundred draws five digits in a row: a red with a
+half-life measured in runs, not days.
+
+**The rule: when a check scans a render for a needle, the needle must share nothing with
+the rest of that render by construction, and the proof must ASSERT that as a precondition
+— and when the precondition fails, the scan is NOT RUN, never passed.** The account is now
+built only from digits the label does not carry, and a precondition cell checks that the
+label shares no 5-character run with it. Disproven: with the account's last five digits
+planted into the label, the precondition alone went red and the mask cell printed
+`[NOT RUN]`; the mask scan itself was not narrowed.

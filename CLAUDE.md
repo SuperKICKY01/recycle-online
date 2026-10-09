@@ -103,6 +103,10 @@ on 2026-08-28 — nothing weakened, only relocated.
   UTF-8 needs 62 — no error, renders fine until decoded as UTF-8. Instead: never
   compare a name by what a program PRINTED — hex from the authority against a
   value fixed ONCE before the write, with an ASCII control down the same path.
+  BUT A CHARACTER CP874 LACKS (`·`, U+00B7) DOES RAISE: on 2026-10-09 `tools/prove_all.py`
+  crashed with UnicodeEncodeError printing a red line containing `·` and lost its TOTAL
+  line and `PROVE_ALL_EXIT`; fixed AT THE RUNNER (`say()` encodes with backslashreplace),
+  never by a launch variable.
   → `EVIDENCE.md § CP874 writer: the five-layer measurement`
 - **A non-ASCII character in `.ps1` SOURCE breaks the program before it runs.**
   PowerShell 5.1 decodes a BOM-less `.ps1` as CP874, so a section mark stops
@@ -224,6 +228,50 @@ on 2026-08-28 — nothing weakened, only relocated.
   `git ls-files --others --exclude-standard` as two `git.exe` processes, ~2.3 GB combined
   (measured). It belongs to the desktop app — a session must not kill it, and must not
   mistake it for its own leftover.
+  **Amended 2026-10-09 (advisor-decided) — THE CRITERION IS FREE MEMORY, NOT ANY NAMED
+  APPLICATION.** Measured that day: the suite adds UNDER 1 GB (launched at 14.11 GB free,
+  minimum 13.45 GB across all 85 proofs, ten watcher samples); the three kills above were at
+  ~4.5 GB, ~4.5 GB and ~3.85 GB free with several large apps open. A killed run costs only its time (scratches only,
+  and with no `PROVE_ALL_EXIT=0` line it cannot read as a pass), so LAUNCH and read the exit
+  line rather than wait: launch whenever free memory is at least 6 GB, keep a watcher running,
+  allow one retry after a kill, and then stop and report.
+- **THE EMULATOR'S QUICK-BOOT SNAPSHOT CAN RESUME WEDGED — `System UI` / `Process system
+  isn't responding` returns after every `Wait`, taps are swallowed, the clock stops.**
+  Measured 2026-09-29 on `recycle_api36`: a walk on that guest reads nothing. Instead:
+  cold-boot (`emulator -avd recycle_api36 -no-snapshot-load -no-snapshot-save`), wait for
+  the guest's 1-minute load to fall (`adb shell uptime`), then launch.
+- **AN ADB `keyevent 4` (BACK) SENT WHEN NO KEYBOARD IS UP CLOSES THE SHEET, THEN THE APP,
+  AND THE WALK'S NEXT TAPS LAND IN OTHER APPS** (Calendar, Google's "Sign in with ease"
+  setup) — measured twice on 2026-09-29, the second time from a script that still carried
+  the key. Nothing in the app records it; the screenshot does. Instead: never put BACK in a
+  walk script; disable the soft keyboards for the walk (`adb shell ime disable
+  com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME`, and the
+  voice IME) so typing needs no dismissal, and re-enable them after. AND know that Google's
+  setup screen RE-ENABLES a disabled IME on its own (measured the same day): after any
+  excursion out of the app, re-disable before typing again.
+- **A FAILED SIGN-IN AS A SEEDED USER RISKS MIGRATION 0016'S LOGIN LOCK ON THAT ACCOUNT —
+  AND `tools/prove_all.py` RESTORES EVERY SCRATCH FROM A DUMP OF DEV, SO A LOCK TAKEN ON
+  DEV IS INHERITED BY EVERY PROOF THAT SIGNS IN AS `staff` OR `admin`.** A walk's typed
+  password that did not land (a swallowed keystroke reads as a wrong password) is a failed
+  attempt all the same. Instead: stop after ONE failed seeded sign-in, confirm the account
+  still signs in over HTTP (a scripted `POST /auth/login`, credentials in the script file,
+  never on a command line), and do not retry by hand.
+- **`NativeDatabase.prepareAsync` / `execAsync` `has been rejected → java.lang.NullPointerException`
+  on the phone — OBSERVED 2026-09-29, UNDIAGNOSED.** It appeared on a sign-in and then at
+  boot (`เปิดฐานข้อมูลไม่สำเร็จ`) after the app had been sent to the background and relaunched
+  several times by stray BACK/HOME events; ONE `am force-stop` and a cold process start
+  cleared it, and it was not seen again. That is one clearing, not a cause. Instead: when it
+  appears, force-stop and cold-start once and record whether it returns BEFORE naming any
+  code path; if it survives a cold start it is real and is debugged
+  (`.claude/skills/debug-mantra/SKILL.md`).
+- **`adb exec-out screencap -p > shot.png` THROUGH POWERSHELL WRITES A CORRUPT PNG** — `>` is
+  `Out-File`, which re-encodes the bytes. Instead: `adb shell screencap -p /sdcard/shot.png`
+  then `adb pull /sdcard/shot.png <path>` (a path with NO colon after the drive).
+- **A METRO `ERROR [ReferenceError: Property '<name>' doesn't exist]` LOGGED WHILE A CHANGE
+  IS BEING MADE IN TWO EDITS IS HOT RELOAD BUNDLING THE HALF-EDIT** (the call landed before
+  its import; measured 2026-09-30, gone after the next rebuild). Instead: judge the bundle by
+  a force-stop + relaunch AFTER the last edit and by what that screen renders, never by an
+  error line from the middle of the edit.
 
 ### Boot check — name the observable, don't assume the environment
 

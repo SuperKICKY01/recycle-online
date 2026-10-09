@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 37 across 20 files, counted from the source headings and
+**Amendments:** 40 across 22 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -41,9 +41,9 @@ line instead of by heading depth.
 - `a-checker-must-not-share-the-code-it-checks.md` *(1 amendment)* -- A checker must not share the code it checks — and must not reach past it
 - `a-column-that-describes-content-must-follow-a-rewrite.md` -- A column that describes the row's CONTENT must follow a rewrite; one that records its ORIGIN never may
 - `a-control-must-contain-what-fooled-you.md` *(1 amendment)* -- A control must contain the thing that fools the counter
-- `a-default-exit-code-is-a-default-verdict.md` -- A default exit code is a default verdict
+- `a-default-exit-code-is-a-default-verdict.md` *(1 amendment)* -- A default exit code is a default verdict
 - `a-defaulted-getattr-is-a-silent-dead-branch.md` *(1 amendment)* -- A defaulted `getattr` is a silent dead branch
-- `a-differential-control-is-only-as-good-as-its-weaker-side.md` -- A differential control is only as good as its weaker side
+- `a-differential-control-is-only-as-good-as-its-weaker-side.md` *(1 amendment)* -- A differential control is only as good as its weaker side
 - `a-disproof-that-opens-a-gate-must-still-parse.md` -- A disproof that opens a gate must still produce a body that parses
 - `a-docstring-that-states-a-filter-is-a-claim-about-its-caller.md` *(1 amendment)* -- A docstring that states a FILTER is a claim about its CALLER, and nothing checks it
 - `a-fail-closed-trigger-conscripts-every-writer-of-its-table.md` *(1 amendment)* -- A trigger that REFUSES a write without new context conscripts every writer of that table
@@ -91,7 +91,7 @@ line instead of by heading depth.
 - `metro-file-map-nesting.md` -- When a resolver says a file is missing, ask the resolver — not the OS
 - `opening-a-copy-is-a-write.md` -- Opening a copy is a write to it
 - `printed-code-in-a-design-document-is-run-by-nobody.md` -- Printed code in a design document is run by nobody
-- `proof-must-run-twice.md` *(6 amendments)* -- A proof that passes only once proves the environment, not the code
+- `proof-must-run-twice.md` *(7 amendments)* -- A proof that passes only once proves the environment, not the code
 - `queue-jam-must-be-visible.md` *(1 amendment)* -- A strict ordered queue CAN deadlock. Don't skip the head — make the jam visible.
 - `render-in-shop-time-not-device-time.md` *(1 amendment)* -- Store UTC, render in the SHOP's timezone — and never slice an ISO string
 - `revoke-in-migration.md` -- Privilege changes live in the migration, not in a live one-off
@@ -2603,6 +2603,35 @@ a hang-shaped bug, which is exactly the moment its false green costs most.
   this file's — every assertion in the measured run was sound, and what lied
   was the process carrying them.
 
+## AMENDED (the shifts unit, commit 3, 2026-09-29) — A COLLIDING EXIT CODE IS A BORROWED VERDICT
+
+The preset closes the drained-event-loop hole. It does not close this one: a run
+that never STARTS, whose failure code happens to EQUAL one of the proof's own
+success codes.
+
+**Measured.** `npm run prove:counter -- --offline` exits **2** by design when every
+headless cell passes and the live round is skipped (the `prove:forbidden --offline`
+convention: "incomplete", never 0). A disproof of the drawer's R6 cell deleted the
+only read of a parameter; `tsc` refused the build — and **`tsc` exits 2 on a type
+error**. `npm run build` stopped, the proof never ran, and npm exited **2**, with
+zero `[FAIL]` lines and **no `PROVE_COUNTER_EXIT` line**. By exit code alone that is
+"headless green, live skipped"; the disproof driver reported the predicted cell as
+"PREDICTED BUT GREEN" — the conclusion it invites is that the cell cannot see its
+break, a vacuous-cell verdict about a cell that was never executed. Only the absent
+exit line told the two apart. Re-aimed so the mutation still compiled, the same
+break reddened exactly the predicted cell.
+
+**The rule, and it is this file's reading half made mandatory:** when a proof
+reserves a NON-ZERO code as a success-like outcome (`--offline` = 2, "incomplete"),
+its exit code no longer separates "ran and passed" from "the toolchain in front of
+it failed" — `tsc` 2, Python's argparse 2, a shell's misuse 2. Judge such a run by
+its OWN printed `<NAME>_EXIT=<n>` line and NEVER by the process status; a driver
+that automates disproofs must treat an absent exit line as "DID NOT RUN", before it
+compares a single cell (the drawer's disproof driver does, since this run). The
+writing-half repair — a reserved code no tool in the chain uses — is not made
+here: `--offline` = 2 is a convention several proofs share, and changing it is a
+suite-wide decision, recorded at `OPEN_ITEMS.md`.
+
 ---
 
 **SOURCE:** `a-defaulted-getattr-is-a-silent-dead-branch.md`
@@ -2848,6 +2877,26 @@ the literal. A paired control does not inherit strength from the stronger half;
 it is bounded by the weaker one. And when a proof measures one input off a real
 run and hand-types another beside it, the hand-typed one is where the next
 defect hides — the measured neighbour makes the whole cell look measured.
+
+## AMENDED (shifts commit 3, 2026-10-09): a scanner's needle must not be built from the text it also scans
+
+The opposite failure: a differential that goes red when the product is RIGHT.
+`proveDrawer.ts` L5 checks that STAFF's render of a shop account carries no five
+consecutive characters of the account number, beside ADMIN's render as the control (both
+from the real server, as above). It went red once in `prove_all`, `exits=[0, 1]`:
+`proof-drawer-b20852 · ลงท้าย 2364` — a correctly masked render. The account number was
+`99` + the run tag's digits, and the channel's LABEL was `proof-drawer-<run tag>`. The run
+tag `b20852` put `20852` in both, and the scanner, reading the whole render, found it in
+the label. About one run in three hundred draws five digits in a row: a red with a
+half-life measured in runs, not days.
+
+**The rule: when a check scans a render for a needle, the needle must share nothing with
+the rest of that render by construction, and the proof must ASSERT that as a precondition
+— and when the precondition fails, the scan is NOT RUN, never passed.** The account is now
+built only from digits the label does not carry, and a precondition cell checks that the
+label shares no 5-character run with it. Disproven: with the account's last five digits
+planted into the label, the precondition alone went red and the mask cell printed
+`[NOT RUN]`; the mask scan itself was not narrowed.
 
 ---
 
@@ -9135,6 +9184,72 @@ and `downgrade -1` / `upgrade head` in a round trip) — the proof you just wrot
 likely offender, and the proof of the PREVIOUS unit is the second.** A proof that pins the
 head is [[a-migration-stack-is-a-log-not-a-schema]] pointed at a test: the stack is a log, and
 its head is a value that moves.
+
+## AMENDED A SEVENTH TIME (the gate repair, 2026-10-09): a scratch restored from a DUMP OF DEV inherits every other proof's and every walk's leftovers
+
+The fifth and sixth amendments are about a number the environment owns. This one is about
+the ROWS: a proof that restores its scratch from a dump of dev runs on whatever every OTHER
+proof, live round and device walk left in dev — and on 2026-10-09 three of them went red at
+once in `prove_all` (RED 3), on a commit that changed none of them and nothing they test,
+and the re-gate found a fourth. Measured in `_prove_all/20261009T051545Z` and
+`_prove_all/20261009T063337Z`:
+
+1. **`prove_payments` B1** — `every one of Shop A's 1408 live positive bills has live
+   allocations summing to its total (2 do not)`. The two were `prove:counter`'s unpaid
+   fixtures, B-2569-1619 / -1624: bills that legitimately carry NO payment, because they
+   arrived while their branch's `separate_cashier` was on. B1 had assumed every bill in dev
+   was paid by the automatic path. Restated over the set that path is responsible for (bills
+   keyed `auto:<bill id>`), plus B1b — every bill WITHOUT an automatic payment arrived while
+   its branch's switch was ON, read from the `branches` audit trail at the bill's own arrival —
+   because the restatement alone goes blind to an automatic payment that was never written
+   (the bill simply leaves the set). Disproven both ways on the scratch: an allocation short
+   0.01 reddened B1 alone naming the bill; the automatic payment deleted reddened B1b alone.
+2. **The round trips** — `prove_drawer` RT1 `downgrade to 0021 ... (got 1)` and
+   `prove_shifts` RT/RF: dev held payments naming a channel and real shifts — rows neither
+   proof made, whose origin was not traced — so 0022's and 0021's downgrade guards REFUSED — correctly —
+   before the cells could judge the mechanics. Now built FROM EMPTY: create the database,
+   replay `db/init/00_init_roles.sql`'s in-database half, `alembic upgrade head`,
+   `seed_dev.py`, one bill through the real `POST /bills`; each refusal cell MAKES its own
+   refusing row and `--disprove-refusal` (the row withheld) reddens exactly the refusal cells.
+3. **`prove_shifts` GR's insert** — `INSERT into branch_payment_methods is accepted -- [but
+   UniqueViolationError]`: a hard-coded `'transfer'` collided with a row a settings toggle had
+   left on dev. The method is now CHOSEN by reading the branch's rows against the CHECK set
+   read from `pg_constraint`, and a branch is created when it already holds every method — so
+   it survives `transfer` becoming born-with. Measured: with every method held, the chooser
+   made a new branch and picked `promptpay`.
+
+4. **`prove_daily_report`, the re-gate the same day** — `[FAIL] 23:59:59.999999+07 is IN the
+   day`, exits `[0, 1]`: green on run 1, red on run 2, the report correct. The proof writes
+   its fixtures onto ONE fixed day (6 January) on dev and hard rule 5 never lets them go, so
+   that day only grows; it held 208 live lines, the report pages its lines at 200 ordered by
+   arrival, and `edge_last` — the day's LAST instant, hence the last line — fell onto page 2.
+   A count on an append-only table only grows, so **a page-1 assumption has a half-life**,
+   exactly like the third amendment's `+ 1`. The sweep of the same file found four more
+   page-1 readers (the OUT cells, the off-list lines, both tenant-isolation sets, the money
+   strings) and a `limit=500, offset=0` "not truncated" cell due to expire at 500 lines.
+   Every membership claim now reads the day across EVERY page at 100 a page, so the pager
+   actually turns, cross-checked against `bills.total`, which the report computes by aggregate.
+   The "not truncated" cell asks for the LAST page. Disproven on a scratch: with the lines
+   query mutated to stop one microsecond early, the IN cell, the coverage cell (168 lines vs
+   224) and the last-page cell reddened, as predicted. Green with 228 and 232 lines over
+   three pages.
+
+**And the empty build had its own trap, which is the part worth keeping.** The first empty
+build ran migrations + seed and nothing else, and `prove_drawer` RT2 went red:
+`del_ctr: False`. The migration was right — 0022 recorded `pre0022_app_delete=absent` because
+the app role truly lacked DELETE on `doc_no_counters`. What was missing was
+`00_init_roles.sql:100-107`: schema ownership, the PUBLIC revoke, USAGE, and the `ALTER
+DEFAULT PRIVILEGES` that hands the app role DML on every table — PER-DATABASE statements, so a
+new database without them is not the database production runs. The empty build now replays
+them READ FROM THE FILE (the parser raises if the `ALTER DEFAULT PRIVILEGES` is not found),
+and an empty build compared to dev at head showed 0 differences across 27 relations' owner,
+ACL and RLS flags, both schemas, `pg_default_acl` and the database ACL.
+
+**Rule: a proof's expected state comes from rows it READ or rows it MADE — never from dev
+being pristine.** Either derive what to expect from the restored copy at runtime (a set the
+proof can name, a method the branch does not hold), or build the scratch from empty and make
+the precondition yourself. And an "empty" build is only empty of DATA: everything the real
+bootstrap does to a new database belongs in it, or it proves a database nobody runs.
 
 ---
 

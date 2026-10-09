@@ -25,6 +25,10 @@
  *   imported here (it reaches expo-constants through ./config), so the shape is
  *   reconstructed, exactly as proveUsers does.
  *
+ *   THE CASH DRAWER (the shifts unit, commit 3): D1..D9 headless and L0..L10 live,
+ *   from src/proof/proveDrawer.ts, run after the cells above under this proof's one
+ *   verdict line — that file's header says why they are not a proof of their own.
+ *
  * ON THE OUTPUT. Mostly Thai; mojibake in the console is the console (cp874,
  * lessons/console-is-not-the-observation.md). Every assertion compares JS strings.
  */
@@ -54,8 +58,16 @@ import {
   type UnpaidBill,
 } from "../counter/counterView.js";
 import { grantsOf } from "./proofGrants.js";
+import { drawerHeadless, drawerLive } from "./proveDrawer.js";
 import { withClientVersion } from "../net/clientVersion.js";
 import type { Clock, IdSource } from "../sync/types.js";
+
+// THE VERDICT IS RED UNTIL A COMPLETED RUN SAYS OTHERWISE
+// (lessons/a-default-exit-code-is-a-default-verdict.md): a run that stalls on an
+// unsettled await drains the event loop and would otherwise exit 0 over no verdict
+// line. Only the final tally below overwrites this. Added with the drawer cells
+// (the shifts unit, commit 3), whose live half makes a stall reachable.
+process.exitCode = 1;
 
 let failures = 0;
 let passes = 0;
@@ -127,27 +139,31 @@ function bill(id: string, seller_id: string, total: string, paid: string, at: st
 // H1 — the entry gate: fail-open, and the fail-open reasoning proved both ways
 // ---------------------------------------------------------------------------
 function h1Gate(): void {
-  header("H1 the counter entry gate (payments.record AND not switch-off)");
+  header("H1 the counter entry gate (payments.record AND not switch-off) — shifts known OFF");
+  // These cells predate shifts; the entry gained a DRAWER branch in the shifts unit's
+  // closing turn (2026-09-30). They pin shifts_enabled = false — a shop without shifts
+  // — so each still measures the counter branch it was written for. The drawer branch
+  // has its own matrix, A3, in proveDrawer.ts.
   const admin = grantsOf("admin");
   const staff = grantsOf("staff");
   const owner = grantsOf("owner");
   check("a definite STAFF role is NOT offered the entry (no payments.record)",
-    mayShowCounterEntry(staff, true) === false);
+    mayShowCounterEntry(staff, true, false) === false);
   check("ADMIN with the switch ON is offered it (the presence sibling)",
-    mayShowCounterEntry(admin, true) === true);
+    mayShowCounterEntry(admin, true, false) === true);
   check("OWNER with the switch ON is offered it",
-    mayShowCounterEntry(owner, true) === true);
+    mayShowCounterEntry(owner, true, false) === true);
   // The switch-off case: the ONE state that hides it for a permitted caller.
   check("ADMIN with the switch known-OFF is NOT offered it",
-    mayShowCounterEntry(admin, false) === false);
+    mayShowCounterEntry(admin, false, false) === false);
   // Fail-open: an UNKNOWN policy draws it (the reasoning lives at the gate).
   check("ADMIN with an UNKNOWN policy (null) IS offered it — fail open",
-    mayShowCounterEntry(admin, null) === true);
+    mayShowCounterEntry(admin, null, false) === true);
   // Fail-open on the grants too: an absent set draws it, the server refuses if wrong.
   check("an ABSENT grant set (null) with the switch on IS offered it — fail open",
-    mayShowCounterEntry(null, true) === true);
+    mayShowCounterEntry(null, true, false) === true);
   check("an ABSENT grant set with an UNKNOWN policy IS offered it",
-    mayShowCounterEntry(null, null) === true);
+    mayShowCounterEntry(null, null, false) === true);
 }
 
 // ---------------------------------------------------------------------------
@@ -555,6 +571,9 @@ async function main(): Promise<number> {
   h3Arithmetic();
   h4Outcome();
   h5Labels();
+  // The cash drawer (the shifts unit, commit 3): src/proof/proveDrawer.ts says why
+  // these cells extend this proof rather than standing as prove:drawer.
+  drawerHeadless({ check, header });
 
   if (offline) {
     console.log("\n=== R SKIPPED (--offline) ===");
@@ -571,6 +590,16 @@ async function main(): Promise<number> {
     console.log(`\n  [FAIL] the live server could not be driven at ${API}`);
     console.log(`         ${err instanceof Error ? err.message : String(err)}`);
     console.log("         Start a uvicorn on a scratch and set RECYCLE_API_BASE, or run --offline (exits 2).");
+  }
+
+  // Its own try: a counter-round failure must not skip the drawer round, whose
+  // finally is what restores the switches it turns on.
+  try {
+    await drawerLive({ check, header });
+  } catch (err) {
+    failures += 1;
+    console.log(`\n  [FAIL] the drawer round could not be driven at ${API}`);
+    console.log(`         ${err instanceof Error ? err.message : String(err)}`);
   }
 
   console.log("");

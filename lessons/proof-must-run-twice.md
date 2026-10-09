@@ -311,3 +311,69 @@ and `downgrade -1` / `upgrade head` in a round trip) — the proof you just wrot
 likely offender, and the proof of the PREVIOUS unit is the second.** A proof that pins the
 head is [[a-migration-stack-is-a-log-not-a-schema]] pointed at a test: the stack is a log, and
 its head is a value that moves.
+
+## AMENDED A SEVENTH TIME (the gate repair, 2026-10-09): a scratch restored from a DUMP OF DEV inherits every other proof's and every walk's leftovers
+
+The fifth and sixth amendments are about a number the environment owns. This one is about
+the ROWS: a proof that restores its scratch from a dump of dev runs on whatever every OTHER
+proof, live round and device walk left in dev — and on 2026-10-09 three of them went red at
+once in `prove_all` (RED 3), on a commit that changed none of them and nothing they test,
+and the re-gate found a fourth. Measured in `_prove_all/20261009T051545Z` and
+`_prove_all/20261009T063337Z`:
+
+1. **`prove_payments` B1** — `every one of Shop A's 1408 live positive bills has live
+   allocations summing to its total (2 do not)`. The two were `prove:counter`'s unpaid
+   fixtures, B-2569-1619 / -1624: bills that legitimately carry NO payment, because they
+   arrived while their branch's `separate_cashier` was on. B1 had assumed every bill in dev
+   was paid by the automatic path. Restated over the set that path is responsible for (bills
+   keyed `auto:<bill id>`), plus B1b — every bill WITHOUT an automatic payment arrived while
+   its branch's switch was ON, read from the `branches` audit trail at the bill's own arrival —
+   because the restatement alone goes blind to an automatic payment that was never written
+   (the bill simply leaves the set). Disproven both ways on the scratch: an allocation short
+   0.01 reddened B1 alone naming the bill; the automatic payment deleted reddened B1b alone.
+2. **The round trips** — `prove_drawer` RT1 `downgrade to 0021 ... (got 1)` and
+   `prove_shifts` RT/RF: dev held payments naming a channel and real shifts — rows neither
+   proof made, whose origin was not traced — so 0022's and 0021's downgrade guards REFUSED — correctly —
+   before the cells could judge the mechanics. Now built FROM EMPTY: create the database,
+   replay `db/init/00_init_roles.sql`'s in-database half, `alembic upgrade head`,
+   `seed_dev.py`, one bill through the real `POST /bills`; each refusal cell MAKES its own
+   refusing row and `--disprove-refusal` (the row withheld) reddens exactly the refusal cells.
+3. **`prove_shifts` GR's insert** — `INSERT into branch_payment_methods is accepted -- [but
+   UniqueViolationError]`: a hard-coded `'transfer'` collided with a row a settings toggle had
+   left on dev. The method is now CHOSEN by reading the branch's rows against the CHECK set
+   read from `pg_constraint`, and a branch is created when it already holds every method — so
+   it survives `transfer` becoming born-with. Measured: with every method held, the chooser
+   made a new branch and picked `promptpay`.
+
+4. **`prove_daily_report`, the re-gate the same day** — `[FAIL] 23:59:59.999999+07 is IN the
+   day`, exits `[0, 1]`: green on run 1, red on run 2, the report correct. The proof writes
+   its fixtures onto ONE fixed day (6 January) on dev and hard rule 5 never lets them go, so
+   that day only grows; it held 208 live lines, the report pages its lines at 200 ordered by
+   arrival, and `edge_last` — the day's LAST instant, hence the last line — fell onto page 2.
+   A count on an append-only table only grows, so **a page-1 assumption has a half-life**,
+   exactly like the third amendment's `+ 1`. The sweep of the same file found four more
+   page-1 readers (the OUT cells, the off-list lines, both tenant-isolation sets, the money
+   strings) and a `limit=500, offset=0` "not truncated" cell due to expire at 500 lines.
+   Every membership claim now reads the day across EVERY page at 100 a page, so the pager
+   actually turns, cross-checked against `bills.total`, which the report computes by aggregate.
+   The "not truncated" cell asks for the LAST page. Disproven on a scratch: with the lines
+   query mutated to stop one microsecond early, the IN cell, the coverage cell (168 lines vs
+   224) and the last-page cell reddened, as predicted. Green with 228 and 232 lines over
+   three pages.
+
+**And the empty build had its own trap, which is the part worth keeping.** The first empty
+build ran migrations + seed and nothing else, and `prove_drawer` RT2 went red:
+`del_ctr: False`. The migration was right — 0022 recorded `pre0022_app_delete=absent` because
+the app role truly lacked DELETE on `doc_no_counters`. What was missing was
+`00_init_roles.sql:100-107`: schema ownership, the PUBLIC revoke, USAGE, and the `ALTER
+DEFAULT PRIVILEGES` that hands the app role DML on every table — PER-DATABASE statements, so a
+new database without them is not the database production runs. The empty build now replays
+them READ FROM THE FILE (the parser raises if the `ALTER DEFAULT PRIVILEGES` is not found),
+and an empty build compared to dev at head showed 0 differences across 27 relations' owner,
+ACL and RLS flags, both schemas, `pg_default_acl` and the database ACL.
+
+**Rule: a proof's expected state comes from rows it READ or rows it MADE — never from dev
+being pristine.** Either derive what to expect from the restored copy at runtime (a set the
+proof can name, a method the branch does not hold), or build the scratch from empty and make
+the precondition yourself. And an "empty" build is only empty of DATA: everything the real
+bootstrap does to a new database belongs in it, or it proves a database nobody runs.

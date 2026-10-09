@@ -1818,8 +1818,19 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
     - **The counter's SHIFT and DRAWER screens** (open, the running figure for
       `money.view_shop`, the count, the reason after the variance is shown), read from
       `GET /shop/policy`'s `shifts_enabled` and `payment_methods` -- DISPLAY rules only.
+      **ADDRESSED 2026-09-29 (commit 3, unanchored; anchor next pass):**
+      `mobile/src/counter/drawerView.ts` + `app/CounterScreen.tsx`; R1-R8 proven in
+      `prove:counter` (D1-D9 headless, L0-L10 live) and walked on the emulator.
     - **The channel picker on the payment form, and the masked display**
       (`identifier_last4` for a principal without `shop.settings.write`).
+      **ADDRESSED 2026-09-29 (commit 3), with one half NOT SHOWN ON A SCREEN:** the picker
+      is built and walked; the MASKED render is proven over the server's real answers
+      (`prove:counter` L5: staff's render carries no 5-character run of the account number,
+      admin's does) but no role the product can create today reaches it on a screen --
+      staff holds neither `payments.record` nor `shop.settings.write` (no counter, no
+      settings group), owner/admin hold `shop.settings.write` (full identifier). A masked
+      picker needs a custom role with `payments.record` and without `shop.settings.write`,
+      and there is no roles route. Shown when the roles screen exists.
     - **Cash-movement VOID** (a route and its screen). When it lands, `reconcile.py` H1
       reads a movement voided AFTER its shift closed as a changed figure -- the void unit
       decides whether the frozen figure or the live set is the truth, in the same commit.
@@ -1840,6 +1851,105 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
       cash that no drawer counted. (Note for (b): `branches.shifts_enabled` holds only
       its CURRENT value; its value at a past instant must be read from the `branches`
       audit trail, since `branches` is audited.)
+      **(a) ADDRESSED 2026-09-29 (commit 3):** the pay-gate (`drawerView.payGate`, R1) --
+      shifts ON and a DEFINITE `404 no_open_shift` draws no pay action and offers the
+      open-shift form; an UNKNOWN shift state (failed read, or a caller without
+      `shifts.manage`) leaves payment drawn, the fail-open reasoning at the site.
+      **(b) REVERSED BY THE ADVISOR, 2026-09-29, and re-filed -- NOT a reconciler arm.**
+      The reason, recorded as given: the reconciler reddens on states that must NEVER
+      exist, and cash paid while no shift is open is a LEGITIMATE business event (a
+      shifts-off shop, a close that won the race); an arm that reddens on it trains its
+      reader to shrug at red, which costs every other arm its meaning. It belongs in an
+      OWNER-FACING REPORT, built with the notifications unit (batch E). The pay-gate (a)
+      closes the gap from the counter side for every case but a close-wins race and a
+      caller who cannot read the shift (next entry). RE-FILED under the notifications
+      unit; nothing built here.
+    - **Cash-movement VOID, the shifts-off day close, the variance notification:** NOT
+      addressed by commit 3 (out of its fence); each stays as filed above.
+  - **C1 -- ADVISOR-DECIDED 2026-09-30, FOR THE NEXT MIGRATION (recorded, NOT built): born-with
+    payment methods become `cash` AND `transfer`, and every existing branch without an active
+    `transfer` row gains one.** The owner's words, verbatim: "ส่วนมากคน แสกน qr จ่ายเงินกัน". A
+    counter that shows only `เงินสด` on day one makes a shop hunt for a switch before it can pay
+    the way most sellers are paid (commit 3 measured Shop A at `["cash"]`, and R7 hides every
+    inactive method). No real shop exists yet, so nothing is lost by waiting for the migration
+    the stale `shifts` table comment already requires (the entry below, "0021's `COMMENT ON
+    TABLE shifts` still says 'NOT audited'").
+  - **C2 -- THE ROLE-CREATION SCREEN'S REQUIREMENT: a shop-made CASHIER template must hold
+    `shifts.manage` alongside `payments.record`.** Without it the pay-gate fails OPEN for
+    exactly the role the drawer exists for: `GET /shifts/current` is gated on `shifts.manage`,
+    so a cashier holding only `payments.record` cannot learn that no shift is open and is
+    offered payment anyway (commit 3's finding, the first entry of the block below).
+  - **C3 -- DEVICE GAP, owed to the role-creation unit: the MASKED channel display is
+    UNOBSERVED ON A SCREEN.** It is proven over HTTP only (`prove:counter` L5: staff's real
+    read carries no 5-character run of the account number and no `account_no` key; admin's
+    carries it), because no principal who can open the counter lacks `shop.settings.write`
+    until shops can make roles -- staff can open neither the counter nor the settings group,
+    owner and admin see the full identifier.
+  - **FOUND BY commit 3 (the drawer screens, 2026-09-29), RECORDED, not fixed (not now):**
+    *(C4, confirmed 2026-09-30: of the entries below, the shifts-on/cashier-off one is now
+    ADDRESSED; the caller-without-`shifts.manage`, the closed-shift read, `MOBILE_LIVE`, and
+    the unpaid bill `prove:counter` leaves per run are each recorded on their own line, as are
+    "by whom" and the colliding exit code.)*
+    - **A caller with `payments.record` but WITHOUT `shifts.manage` cannot read the shift
+      state** (`GET /shifts/current` is gated on `shifts.manage`), so for that caller the
+      pay-gate fails OPEN and a cash payment with shifts on and no shift open is possible
+      from the counter. No born-with role has this combination (owner/admin hold both,
+      staff neither); a shop-minted cashier role would. The repair is a server decision
+      (e.g. `GET /shop/policy` carrying "a shift is open" for any principal) -- out of this
+      fence, which forbade all of `server/`.
+    - **A branch with `shifts_enabled` ON and `separate_cashier` OFF has no way to the shift
+      panel**: the panel lives on the counter screen, whose entry is gated on
+      `separate_cashier` not being off (`mayShowCounterEntry`). Such a shop's automatic
+      cash payments are stamped only if a shift is open, and the phone cannot open one.
+      Owner/advisor decision: a drawer entry independent of the counter, or the entry
+      gate widened.
+      **ADDRESSED 2026-09-30 (commit 3's closing turn), ADVISOR-DECIDED: the entry gate
+      widened.** `mayShowCounterEntry(grants, separateCashier, shiftsEnabled)` draws the
+      entry for (a) `payments.record` with `separate_cashier` not known-off OR (b)
+      `shifts.manage` with `shifts_enabled` not known-off; inside, the shift panel follows
+      (b) and the queue (`mayShowQueue`) follows (a), and a (b)-only shop is not even read
+      the queue. `shifts_enabled` comes from the LIVE policy read (not the device cache),
+      unknown fails open, reasoning at the gate. Proven by `prove:counter` A3 (a literal
+      16-row matrix x entry/panel/queue, the unknown cases, the no-queue page) with a
+      disproof reddening exactly four cells; walked on the emulator (Shop A cashier OFF,
+      shifts ON: the entry, the shift opened, a yard bill's automatic cash payment in the
+      panel's figure, 200.00 -> 160.00).
+    - **THE ENTRY'S LABEL for a drawer-only shop — PROPOSED, NOT CHANGED (the advisor's A2).**
+      `รับชำระเงิน` ("receive payment") heads a screen that, for a shop where the weigher
+      pays, holds only the shift panel. One proposal: `เคาน์เตอร์เงินสด` ("cash counter"),
+      true of both uses. Not renamed: the label is existing wording other proofs assert;
+      the no-queue page carries `ร้านนี้จ่ายเงินตอนบันทึกบิลที่ลานชั่ง — หน้านี้ใช้สำหรับกะและลิ้นชักเงินสด`
+      under the panel in the meantime.
+      **ADVISOR-DECIDED 2026-09-30: the label becomes `เคาน์เตอร์จ่ายเงิน` in the NEXT commit that
+      touches `mobile/`** — `รับชำระเงิน` means RECEIVING payment and this counter PAYS sellers, so
+      it has read in the wrong direction since the counter's screen commit; not in commit 3
+      (the string is asserted by existing proofs and that changeset was closed); the proposal
+      `เคาน์เตอร์เงินสด` declined because the counter also pays by transfer.
+    - **The panel says "by whom" as คุณ / บัญชีอื่น, not a name**: `GET /shifts/current`
+      returns `opened_by` as a user id and no name, and a name would need a route change
+      (server out of fence). `readTokenUserId` decides self vs other; nothing is invented.
+    - **No route reads a CLOSED shift**: once the result card is dismissed the phone cannot
+      show that shift's variance or reason again, and after a `409 shift_reason_frozen` it
+      cannot show the reason another device saved (the card says `ระบุเหตุผลของกะนี้ไว้แล้ว`
+      without the text). A shift-history read is owed with the owner-facing report.
+    - **R7's measured consequence, confirmed by the owner 2026-09-29 before building:**
+      every branch is born with ONLY the cash method row (Shop A read `["cash"]`), so from
+      commit 3 the counter offers `โอนเงิน` only after someone switches transfer on in
+      ตั้งค่าร้าน > การรับชำระเงิน.
+    - **`tools/prove_all.py` hands `RECYCLE_API_BASE` only to a HAND-KEPT set `MOBILE_LIVE`
+      (`tools/prove_all.py:142`)** -- a quantified list naming no future member
+      (`lessons/a-quantified-sentence-names-no-member.md`). A new live mobile proof added
+      under `mobile/` alone would be enumerated and then run against the DEFAULT
+      `127.0.0.1:8000` (the dev database if a dev server is up). Commit 3 extended
+      `prove:counter` instead (the owner's answer); the list itself is unchanged.
+    - **`prove:counter` leaves one UNPAID bill per run** on whatever database it runs against
+      (its R6 over-allocation cell creates `b3` at 10.00 and never pays it): two such bills
+      (`B-2569-1604`, `B-2569-1609`) appeared in dev's queue during commit 3's walk and were
+      paid there. Pre-existing since commit 2; not changed here.
+    - **`--offline` exits 2 for "headless green", and `tsc` exits 2 on a type error** -- a
+      disproof whose mutation did not compile read as a green cell (the lesson amendment in
+      `lessons/a-default-exit-code-is-a-default-verdict.md`). A reserved code no tool in the
+      chain uses is a suite-wide decision, not taken here.
   - **FOUND OUTSIDE THE FENCE by commit 2, RECORDED, not fixed (not now):**
     - **`reconcile.py` has no T10/X1 arm for the drawer's references**:
       `payments.shift_id`, `payments.channel_id`, `cash_movements` -> `shifts`/`branches`/

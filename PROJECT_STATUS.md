@@ -75,6 +75,90 @@ not read the green as re-run.**
 
 ## Current phase
 
+**THE SHIFTS AND CASH-DRAWER UNIT, COMMIT 3 — THE SCREENS: the shift panel on the counter, the pay-gate, the blind count, cash movements, the method set, the channel picker, and the shop-settings payments group. ONLINE ONLY, NO server change. 2026-09-29.**
+No sha yet (precedes the commit; anchor next pass). Supersedes the commit-2 record below AS THE POINTER ONLY — that
+work stands. Built under the advisor's R1-R8 (the owner's 2026-09-26 delegation); three fence questions put to the
+owner before any edit and answered: `mobile/App.tsx` (absent from the brief's allowed list) may be edited for WIRING
+ONLY; the proof EXTENDS `prove:counter` rather than standing as `prove:drawer` (a new live mobile proof would need
+`tools/prove_all.py`'s hand-kept `MOBILE_LIVE`, outside the fence); R7 built as written although it hides `โอนเงิน` on
+every born-with branch (measured: Shop A `payment_methods` = `["cash"]`).
+- **BUILT.** `src/counter/drawerView.ts` (NEW, pure): the live policy read (UNKNOWN on any failure, never "off"); the
+  shift state (only `404 no_open_shift` is "none" — a code-less 404 is unknown); R1 `payGate` (closes only on shifts
+  ON + a DEFINITE no-shift; fail-open reasoning at the site); R4 the panel draws the running figure from the server's
+  `drawer` key ONLY; R2 `closeForm()` takes no argument; R3 `closeResult` asks once on a non-zero variance, never on
+  zero, shows a saved reason, stops asking on `409 shift_reason_frozen`; R5 four kinds, amounts refused before the
+  request; R6 `channelPicker` (non-cash, active channels, optional) and `channelLine` (full identifier only if the
+  response carried it, else `ลงท้าย` + the server's last four); R7 `offeredMethods` (active ∩ cash/transfer, fail-open
+  to the pair on an unread policy); R8 `drawerOutcome` worded from `(status, code)` with its own generic sentence;
+  the settings-group model and the add-channel check. `counterView.ts`: `channel_id` on draft/plan/body (DROPPED for
+  cash), `REFUSED_OFFLINE` exported. `deviceRole.ts`: `shifts.manage` in the `Permission` union (and its stale "13
+  codes" comment corrected to 15). `app/api.ts`: eleven transports. `app/CounterScreen.tsx`: the drawer above the
+  queue in the ONE scroll, the count form REPLACING the panel, the pay-gate in place of each pay button, the method set,
+  the picker. `app/SettingsScreen.tsx`: the payments group (`shop.settings.write` only) inside the ONE ScrollView —
+  platform switches, the channel list with a two-step deactivate, the add form, the immutability note. `App.tsx`:
+  the reads and writes, wiring only. No Modal added (content swaps inside the existing sheet); no animation added
+  (`animate-expo` § 1: settings toggles and a panel swap fail its gate).
+- **FOUR DEPARTURES, each stated.** (1) R8: the counter's generic refusal says "the system cannot take a PAYMENT now" —
+  a wrong instruction on a shift route — so the drawer has its own generic `ระบบยังทำรายการนี้ไม่ได้ในตอนนี้ — ลองอีกครั้ง`,
+  in the same `(status, code)` shape; there was no route-neutral `(status, code)` function to reuse. (2) "By whom" is
+  `คุณ` / `บัญชีอื่น`: the route returns an id and no name. (3) The settings methods are cash and transfer only — a
+  promptpay switch would change nothing a cashier sees while its QR waits. (4) The device walk paid a seller's bills
+  in cash and then a SECOND pair by transfer: the pay panel pays all of a seller's unpaid bills together (commit 2's
+  design), so "one bill cash, one bill transfer" for one seller is not a path the screen has.
+- **PROVEN — each observed.** Both mobile typechecks exit 0 (re-run after the last edit). `prove:counter` exit 0 TWICE
+  against the dev server, `passes=269 failures=0`, `PROVE_COUNTER_EXIT=0` both runs (211 headless OK in the
+  `--offline` run, which exits 2 by design). Its live L-round on real answers: the gate closed then opened; a second
+  open 409 worded; float_in 100.00 and expense 30.00 (key replay = same row); cash 40.00 paid; the channel created,
+  read FULL by admin and MASKED by staff (no 5-char run of the account number, no `account_no` key); transfer paid
+  naming the channel; the running figure 530.00 = 500+100−30−40 re-derived in decimal; the close's `expected_cash`
+  530.00 / `variance` −5.00 re-derived; the reason once, a second 409 worded and the server's own message NOT shown;
+  staff 403 on all six shift routes; everything restored and no shift left open. **Nine disproofs** (driver hashes,
+  confirms each mutation landed, restores byte-identical, re-runs green): every one reddened EXACTLY its predicted
+  cells — R1 2, R2 1 (the CloseCountForm source scan), R3 2, R4 1, R5 2, R6 1, R6-seam 2, R7 2, R8 2. The first R6
+  mutation did not compile and "passed" by exit code — the lesson amendment below. `prove:settings` exit 0 with S7's
+  judged list widened to the group's five controls.
+- **SHOWN — on the emulator (`recycle_api36`, cold-booted after a quick-boot snapshot left `system_server` wedged),
+  bundle: Metro started `expo start -c` 14:33:02, a one-module rebuild after the settings fix, app relaunched 14:44:49.**
+  Screenshots under `E:\recycle-shots\shifts-c3\` (outside the repo). The settings group switching shifts and transfer
+  ON through the real routes (read back over HTTP), a bank channel added and shown in full to admin; the counter with
+  no shift — the gate line in place of the pay button; a shift opened (500.00, `29/09/2569 14:49`, `คุณ`); a cash-in
+  and an expense (figure 570.00); a cash payment (485.00); a transfer choosing the channel (figure unchanged); the
+  count form with no figure on screen; the result `480.00 / 485.00 / 5.00 เงินขาด` and the reason prompt; the reason
+  shown read-only; light and dark for the open panel and the result. **A defect found and fixed on the device:** a
+  settings write re-read the group through its spinner, collapsing the scroll so the page jumped (a following tap
+  hit `เพิ่มเกรด`, refused locally, nothing sent); the re-read now keeps the group on screen — observed fixed.
+  **NOT shown:** the masked channel on a screen (no role reaches it — `OPEN_ITEMS.md`); a staff session's screens (the
+  walk was stopped after one failed staff sign-in to avoid the 0016 lock on the seeded account; staff then signed in
+  over HTTP, 200, not locked). Restored through the audited routes: `separate_cashier` false, `shifts_enabled` false,
+  methods `["cash"]`, no active channel, no open shift — Shop A as found. The emulator's app theme was left on
+  `ตามระบบ` (it was `มืด`) with the system in night mode.
+- **NOT RUN:** `prove_all` (P8) — `RobloxPlayerBeta` (pid 18416, 2.90 GB) was running at the check (free 9.23 of
+  31.12 GB), the brief's stop condition.
+- **THE CLOSING TURN, 2026-09-30 (the advisor accepted the work and its departures, and brought one finding inside
+  the fence).** The counter entry now opens for (a) `payments.record` + `separate_cashier` not known-off OR (b)
+  `shifts.manage` + `shifts_enabled` not known-off (`mobile/src/counter/counterView.ts` `mayShowCounterEntry`); inside,
+  the shift panel follows (b), the queue follows (a) (`mayShowQueue`), and a (b)-only shop is not read the queue — it
+  sees the panel and `ร้านนี้จ่ายเงินตอนบันทึกบิลที่ลานชั่ง — หน้านี้ใช้สำหรับกะและลิ้นชักเงินสด`. `shifts_enabled` comes from the
+  LIVE policy read beside the branch (not the device cache); unknown fails open, reasoning at the gate. A defect found
+  on the emulator and fixed: on the no-queue page the panel said `…เปิดกะก่อน แล้วจึงรับชำระเงินได้`, a gate that does
+  not exist where the weigher pays — `panelGate` drops it there. Proven: `prove:counter` A3 (a literal 16-row matrix x
+  entry / panel / queue, the unknown cases, the no-queue page, the dropped gate line); the seven pre-existing H1 cells
+  now pass `shifts_enabled = false` explicitly (they predate shifts) and none reddened; the disproof reverting branch
+  (b) reddened EXACTLY four predicted cells, restored byte-identical, re-run green; `prove:counter` exit 0 TWICE after
+  the last edit, `passes=325 failures=0`, `PROVE_COUNTER_EXIT=0`; `prove:settings` exit 0. Shown on the emulator (Metro
+  `expo start -c` 17:02:32, bundle `Android Bundled 9792ms index.ts (1220 modules)`, relaunched 17:07:37 after the last
+  edit): Shop A with `separate_cashier` OFF and `shifts_enabled` ON — the entry drawn after the app's live policy read,
+  the drawer-only page, a shift opened at 200.00, a yard bill via `POST /bills` whose automatic cash payment took the
+  panel's figure to 160.00 (`จ่ายเงินสด 40.00`). Restored: the shift closed at its expected figure, `shifts_enabled`
+  false. The emulator traps moved from session memory into `CLAUDE.md § Machine footguns`. C1-C3 recorded at
+  `OPEN_ITEMS.md` (born-with `transfer` for the next migration, the cashier template's `shifts.manage`, the masked
+  display as a device gap). **`prove_all` NOT RUN AGAIN:** RobloxPlayerBeta present at the check (2 processes, pid
+  40348 2.10 GB; free 13.48 of 31.12 GB) — the brief's stop; nothing committed.
+- **LESSON:** `lessons/a-default-exit-code-is-a-default-verdict.md` amended — a colliding exit code is a borrowed
+  verdict. **DEFERRED, RECORDED at `OPEN_ITEMS.md`:** the unstamped-cash owner report (the advisor's reversal), the
+  shift read for a cashier role without `shifts.manage`, the drawer entry for a shifts-on / separate-cashier-off
+  branch, a closed-shift read, `MOBILE_LIVE`, the unpaid bill `prove:counter` leaves per run.
+
 **THE SHIFTS AND CASH-DRAWER UNIT, COMMIT 2 — THE SERVER: shifts open and close, cash moves, the drawer figure is computed and FROZEN, payments are stamped with their shift, and a shop configures its methods and its own accounts. 2026-09-26.**
 No sha yet (precedes the commit; anchor next pass). Migration `0022_drawer_routes.py`, `server/app/shifts.py`,
 `server/app/channels.py`. ONLINE ONLY. NO screen, NO client code -- `mobile/` is untouched: the phone's claim parser

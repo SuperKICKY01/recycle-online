@@ -18,7 +18,8 @@ import type {
   GradeTierPatchBody,
 } from "../src/settings/gradeTierAdmin";
 import type { UserCreateBody, UserFetch, UserResetBody } from "../src/users/usersAdmin";
-import type { PaymentCreateBody, PaymentFetch } from "../src/counter/counterView";
+import type { PaymentCreateBody, PaymentFetch, PaymentMethod } from "../src/counter/counterView";
+import type { CashMovementBody, ChannelCreateBody, ShiftOpenBody } from "../src/counter/drawerView";
 import type {
   EntityCreateBody,
   EntityRenameBody,
@@ -591,8 +592,152 @@ export function postPayment(token: string, body: PaymentCreateBody): Promise<Pay
  */
 export function fetchShopPolicy(
   token: string,
-): Promise<{ separate_cashier: boolean | null; branch_id: string | null }> {
-  return getJson<{ separate_cashier: boolean | null; branch_id: string | null }>("/shop/policy", token);
+): Promise<{ separate_cashier: boolean | null; branch_id: string | null; shifts_enabled?: boolean | null }> {
+  // shifts_enabled arrived with the shifts unit's commit 2 and is OPTIONAL here: a
+  // server from before it does not send the key, and absent reads as unknown.
+  return getJson<{ separate_cashier: boolean | null; branch_id: string | null; shifts_enabled?: boolean | null }>(
+    "/shop/policy",
+    token,
+  );
+}
+
+/* ------------------------------------ the cash drawer and its settings (2.4) ---- */
+
+/*
+ * THE SHIFTS UNIT, commit 3. TRANSPORT ONLY, body-keeping, never throwing — the
+ * counter's shape, and for its reason: every classification (the pay-gate, the shift
+ * state, the (status, code) wording) lives in src/counter/drawerView.ts where a
+ * headless proof reaches it. Money is a STRING on the wire exactly as the model built
+ * it; nothing here parses an amount. `no_token` is App's case: it checks first.
+ */
+
+const jsonHeaders = (token: string) => ({
+  "content-type": "application/json",
+  authorization: `Bearer ${token}`,
+});
+
+/** GET /shop/policy as a VALUE (the counter reads it LIVE on open: R7 needs the
+ *  branch's active methods and shifts_enabled, and a failure must be classifiable
+ *  as UNKNOWN rather than thrown — fetchShopPolicy above throws for refreshMaster). */
+export function fetchShopPolicyValue(token: string): Promise<PaymentFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/shop/policy`, { headers: { authorization: `Bearer ${token}` }, signal }),
+  );
+}
+
+/** GET /shifts/current — 404 no_open_shift is an ANSWER, classified by shiftState. */
+export function fetchCurrentShift(token: string): Promise<PaymentFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/shifts/current`, { headers: { authorization: `Bearer ${token}` }, signal }),
+  );
+}
+
+/** POST /shifts — open with the float the cashier counted. */
+export function postOpenShift(token: string, body: ShiftOpenBody): Promise<PaymentFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/shifts`, {
+      method: "POST",
+      headers: jsonHeaders(token),
+      body: JSON.stringify(body),
+      signal,
+    }),
+  );
+}
+
+/** POST /shifts/{id}/close — the COUNT only (R2). The reason is never sent here: it
+ *  is written after the cashier has seen the variance (PATCH below, R3). */
+export function postCloseShift(token: string, shiftId: string, countedCash: string): Promise<PaymentFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/shifts/${encodeURIComponent(shiftId)}/close`, {
+      method: "POST",
+      headers: jsonHeaders(token),
+      body: JSON.stringify({ counted_cash: countedCash }),
+      signal,
+    }),
+  );
+}
+
+/** PATCH /shifts/{id} — the variance reason, once (a second is 409 by the trigger). */
+export function patchShiftReason(token: string, shiftId: string, reason: string): Promise<PaymentFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/shifts/${encodeURIComponent(shiftId)}`, {
+      method: "PATCH",
+      headers: jsonHeaders(token),
+      body: JSON.stringify({ variance_reason: reason }),
+      signal,
+    }),
+  );
+}
+
+/** POST /cash-movements — a float in/out, an expense, a deposit to the bank. */
+export function postCashMovement(token: string, body: CashMovementBody): Promise<PaymentFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/cash-movements`, {
+      method: "POST",
+      headers: jsonHeaders(token),
+      body: JSON.stringify(body),
+      signal,
+    }),
+  );
+}
+
+/** GET /shop/payment-channels — masked by the SERVER below shop.settings.write. */
+export function fetchPaymentChannels(token: string): Promise<PaymentFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/shop/payment-channels`, { headers: { authorization: `Bearer ${token}` }, signal }),
+  );
+}
+
+/** POST /shop/payment-channels — one of the shop's own accounts. */
+export function postPaymentChannel(token: string, body: ChannelCreateBody): Promise<PaymentFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/shop/payment-channels`, {
+      method: "POST",
+      headers: jsonHeaders(token),
+      body: JSON.stringify(body),
+      signal,
+    }),
+  );
+}
+
+/** PATCH /shop/payment-channels/{id} — only is_active is ever sent from the phone
+ *  (the identifying fields are immutable server-side, and the label is not edited here). */
+export function deactivatePaymentChannel(token: string, channelId: string): Promise<PaymentFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/shop/payment-channels/${encodeURIComponent(channelId)}`, {
+      method: "PATCH",
+      headers: jsonHeaders(token),
+      body: JSON.stringify({ is_active: false }),
+      signal,
+    }),
+  );
+}
+
+/** PATCH /branches/{id} with shifts_enabled ONLY (separate_cashier is not touched). */
+export function patchBranchShiftsEnabled(token: string, branchId: string, on: boolean): Promise<PaymentFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(`${API_BASE_URL}/branches/${encodeURIComponent(branchId)}`, {
+      method: "PATCH",
+      headers: jsonHeaders(token),
+      body: JSON.stringify({ shifts_enabled: on }),
+      signal,
+    }),
+  );
+}
+
+/** PUT /branches/{id}/payment-methods/{method} — switch one method on or off. */
+export function putBranchMethod(
+  token: string,
+  branchId: string,
+  method: PaymentMethod,
+  on: boolean,
+): Promise<PaymentFetchNoToken> {
+  return transportJsonKeepingBody((signal) =>
+    apiFetch(
+      `${API_BASE_URL}/branches/${encodeURIComponent(branchId)}/payment-methods/${encodeURIComponent(method)}`,
+      { method: "PUT", headers: jsonHeaders(token), body: JSON.stringify({ is_active: on }), signal },
+    ),
+  );
 }
 
 /** PATCH /shop — admin-only on the server. `patch` carries ONLY the changed

@@ -150,7 +150,16 @@ CLAIMS_LINE = re.compile(rb"^\s*THESE CLAIMS DID NOT HOLD.*$", re.M)
 
 
 def say(msg: str) -> None:
-    print(msg, flush=True)
+    """THE RUNNER MUST NEVER RAISE WHILE REPORTING. Every line it prints goes through
+    here, and a RED note quotes a child's failing line verbatim -- Thai, `·`, anything.
+    With stdout redirected to a file, Python on this box encodes it as CP874, which has
+    no `·`: on 2026-10-09 `print` raised UnicodeEncodeError on prove:counter's red line
+    and the run lost its TOTAL line and PROVE_ALL_EXIT. So the message is encoded for
+    the stream's OWN encoding with backslashreplace (`·` -> `\\xb7`; Thai survives in
+    CP874 and UTF-8 alike) -- in the code, never in a variable a launch must remember.
+    The child logs, summary.md and results.json are UTF-8 bytes and lose nothing."""
+    enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+    print(msg.encode(enc, errors="backslashreplace").decode(enc), flush=True)
 
 
 class Refused(Exception):
@@ -428,14 +437,14 @@ def run_proof(entry: dict, run_no: int, out: Path, env_extra: dict[str, str], ti
         try:
             proc = subprocess.Popen(entry["argv"], cwd=entry["cwd"], env=env, stdout=fh, stderr=subprocess.STDOUT)
         except FileNotFoundError as exc:
-            fh.write(f"COULD NOT RUN: {exc}\n".encode())
+            fh.write(f"COULD NOT RUN: {exc}\n".encode("utf-8"))
             code = "COULD_NOT_START"
         else:
             try:
                 code = proc.wait(timeout)
             except subprocess.TimeoutExpired:
                 kill_tree(proc)
-                fh.write(f"\nCOULD NOT RUN: timed out after {timeout}s; the process tree was killed\n".encode())
+                fh.write(f"\nCOULD NOT RUN: timed out after {timeout}s; the process tree was killed\n".encode("utf-8"))
                 code = "TIMEOUT"
     return {"run": run_no, "exit": code, "seconds": round(time.time() - t0, 1), "log": log_path.name,
             **scan(log_path.read_bytes())}
@@ -619,7 +628,13 @@ def main() -> int:
     finally:
         for s in servers.values():
             s.stop()
+    return report(out, stamp, args.runs, round(time.time() - t_start), results)
 
+
+def report(out: Path, stamp: str, runs_per_proof: int, seconds: int, results: dict) -> int:
+    """Classify every proof, write summary.md (UTF-8) and print the summary. Its own
+    function so the reporting path can be driven with synthetic results
+    (the 2026-10-09 encoding repair's proof does exactly that)."""
     # ---- classify -----------------------------------------------------------
     green, green_exit_only, red, cnr = [], [], [], []
     for name, r in results.items():
@@ -631,7 +646,7 @@ def main() -> int:
         elif klass == "COULD_NOT_RUN":
             cnr.append((name, note))
 
-    lines = [f"# prove_all  {stamp}  runs={args.runs}  {round(time.time() - t_start)}s", "",
+    lines = [f"# prove_all  {stamp}  runs={runs_per_proof}  {seconds}s", "",
              f"TOTAL {len(results)}  GREEN {len(green)}  GREEN-EXIT-CODE-ONLY {len(green_exit_only)}  RED {len(red)}  COULD-NOT-RUN {len(cnr)}", ""]
     lines.append("## RED (a defect, a crash, or a printed verdict contradicting exit 0) -- " + (", ".join(n for n, _ in red) or "none"))
     lines += [f"  - {n}  {note}" for n, note in red]
@@ -653,5 +668,5 @@ if __name__ == "__main__":
     except Refused as exc:
         say(f"REFUSED: {exc}")
         rc = 2
-    print(f"PROVE_ALL_EXIT={rc}", flush=True)
+    say(f"PROVE_ALL_EXIT={rc}")
     sys.exit(rc)

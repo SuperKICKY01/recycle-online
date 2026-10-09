@@ -72,3 +72,32 @@ a hang-shaped bug, which is exactly the moment its false green costs most.
   vacuous or misaimed verdict is the never-went-red family's subject, not
   this file's — every assertion in the measured run was sound, and what lied
   was the process carrying them.
+
+## AMENDED (the shifts unit, commit 3, 2026-09-29) — A COLLIDING EXIT CODE IS A BORROWED VERDICT
+
+The preset closes the drained-event-loop hole. It does not close this one: a run
+that never STARTS, whose failure code happens to EQUAL one of the proof's own
+success codes.
+
+**Measured.** `npm run prove:counter -- --offline` exits **2** by design when every
+headless cell passes and the live round is skipped (the `prove:forbidden --offline`
+convention: "incomplete", never 0). A disproof of the drawer's R6 cell deleted the
+only read of a parameter; `tsc` refused the build — and **`tsc` exits 2 on a type
+error**. `npm run build` stopped, the proof never ran, and npm exited **2**, with
+zero `[FAIL]` lines and **no `PROVE_COUNTER_EXIT` line**. By exit code alone that is
+"headless green, live skipped"; the disproof driver reported the predicted cell as
+"PREDICTED BUT GREEN" — the conclusion it invites is that the cell cannot see its
+break, a vacuous-cell verdict about a cell that was never executed. Only the absent
+exit line told the two apart. Re-aimed so the mutation still compiled, the same
+break reddened exactly the predicted cell.
+
+**The rule, and it is this file's reading half made mandatory:** when a proof
+reserves a NON-ZERO code as a success-like outcome (`--offline` = 2, "incomplete"),
+its exit code no longer separates "ran and passed" from "the toolchain in front of
+it failed" — `tsc` 2, Python's argparse 2, a shell's misuse 2. Judge such a run by
+its OWN printed `<NAME>_EXIT=<n>` line and NEVER by the process status; a driver
+that automates disproofs must treat an absent exit line as "DID NOT RUN", before it
+compares a single cell (the drawer's disproof driver does, since this run). The
+writing-half repair — a reserved code no tool in the chain uses — is not made
+here: `--offline` = 2 is a convention several proofs share, and changing it is a
+suite-wide decision, recorded at `OPEN_ITEMS.md`.
