@@ -30,6 +30,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -79,6 +80,7 @@ import {
   FALLBACK_HEADING,
   filterProducts,
   FREQUENT_HEADING,
+  frequentTilesFor,
   type FrequentRow,
   SEARCH_PLACEHOLDER,
 } from "../src/cart/productPicker";
@@ -180,13 +182,16 @@ export function CartScreen({
   const chips = useMemo(() => categoryChips(products), [products]);
   const listed = useMemo(() => filterProducts(products, categoryId, query), [products, categoryId, query]);
   // The frozen row holds IDS; a product retired since it was computed simply has no tile.
+  const { fontScale } = useWindowDimensions();
   const frequentTiles = useMemo(() => {
     const byId = new Map(products.filter((p) => p.is_active !== false).map((p) => [p.id, p]));
-    return (frequent?.productIds ?? []).flatMap((id) => {
-      const p = byId.get(id);
-      return p ? [p] : [];
-    });
-  }, [products, frequent]);
+    return (frequent?.productIds ?? [])
+      .flatMap((id) => {
+        const p = byId.get(id);
+        return p ? [p] : [];
+      })
+      .slice(0, frequentTilesFor(fontScale));
+  }, [products, frequent, fontScale]);
 
   const form = draft.form;
   const lines = orderedLines(draft);
@@ -390,13 +395,15 @@ export function CartScreen({
         contentContainerStyle={styles.scrollBody}
         keyboardShouldPersistTaps="handled"
       >
-        {topSlot ? <View style={styles.topSlot}>{topSlot}</View> : null}
-        {/* ---------------------------------------------- who and which truck */}
-        <Pressable
-          style={[styles.sellerBox, !sellerKnown && styles.sellerBoxBad]}
-          onPress={onPickSeller}
-          disabled={busy}
-        >
+        {/* ---------------------------------------------- who */}
+        {/*
+          CART MILESTONE (2026-10-12): ONE card for the seller, so the product list can start above
+          the fold at font scale 1.3. The card is a View holding two SIBLING controls — choose the
+          seller (the whole upper area, as before) and, once one is chosen, the history link as the
+          card's footer. Still not nested in each other (P1.21's rule), only no longer two boxes.
+        */}
+        <View style={[styles.sellerBox, !sellerKnown && styles.sellerBoxBad]}>
+        <Pressable onPress={onPickSeller} disabled={busy} style={styles.sellerPick}>
           <View style={styles.sellerTop}>
             <Text style={styles.label}>ผู้ขาย</Text>
             <View style={styles.changeBtnWrap}>
@@ -432,7 +439,7 @@ export function CartScreen({
         </Pressable>
 
         {/* P1.21: what this seller last sold. A SEPARATE control (not nested in the
-            seller box's own Pressable), drawn only once a seller is chosen. */}
+            seller's own Pressable), drawn only once a seller is chosen — the card's footer. */}
         {seller !== null ? (
           <Pressable style={styles.historyBtn} onPress={onViewHistory} disabled={busy}>
             <View style={styles.historyBtnRow}>
@@ -441,6 +448,7 @@ export function CartScreen({
             </View>
           </Pressable>
         ) : null}
+        </View>
 
         {/*
           vehicle_no. FREE TEXT, so the OS keyboard is correct here — the same
@@ -452,22 +460,7 @@ export function CartScreen({
           and flushed on blur so the last keystrokes are on disk before the
           operator's attention moves on.
         */}
-        <View style={styles.fieldBlock}>
-          <Text style={styles.label}>ทะเบียนรถ (ถ้ามี)</Text>
-          <TextInput
-            style={styles.vehicleInput}
-            value={draft.vehicle_no ?? ""}
-            onChangeText={onVehicleChange}
-            onBlur={onVehicleBlur}
-            onEndEditing={onVehicleBlur}
-            placeholder="เช่น 70-1234 หรือ 1กก 5678"
-            placeholderTextColor={t.color.placeholder}
-            autoCorrect={false}
-            autoCapitalize="characters"
-            maxLength={20}
-            editable={!busy}
-          />
-        </View>
+        {/* (The plate field is drawn AFTER the bill's lines — cart milestone; see there.) */}
 
         <Text style={styles.section}>
           {editingId === null ? "เพิ่มรายการ" : "แก้ไขรายการ"}
@@ -707,6 +700,31 @@ export function CartScreen({
             </View>
           </View>
         ))}
+
+        {/*
+          CART MILESTONE (2026-10-12): the plate and the last-bill card come AFTER the bill's lines.
+          ADVISOR-DECIDED 2026-10-12 (2b): the product list must start above the fold at font scale
+          1.0 and 1.3, and measured on the walk device the two together (~355 of 2000 display px)
+          were what kept it below. The plate is optional and entered once a bill; the last bill
+          stays one scroll away. Seller, then product, then weights — the task's own order.
+        */}
+        <View style={styles.fieldBlock}>
+          <Text style={styles.label}>ทะเบียนรถ (ถ้ามี)</Text>
+          <TextInput
+            style={styles.vehicleInput}
+            value={draft.vehicle_no ?? ""}
+            onChangeText={onVehicleChange}
+            onBlur={onVehicleBlur}
+            onEndEditing={onVehicleBlur}
+            placeholder="เช่น 70-1234 หรือ 1กก 5678"
+            placeholderTextColor={t.color.placeholder}
+            autoCorrect={false}
+            autoCapitalize="characters"
+            maxLength={20}
+            editable={!busy}
+          />
+        </View>
+        {topSlot ? <View style={styles.bottomSlot}>{topSlot}</View> : null}
       </ScrollView>
 
       {undo !== null ? (
@@ -826,7 +844,7 @@ function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     fill: { flex: 1 },
     scrollBody: { padding: t.space.x3, paddingBottom: t.space.x4 },
-    topSlot: { marginBottom: t.space.xl },
+    bottomSlot: { marginTop: t.space.xxl },
 
     section: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.text, marginTop: t.space.md },
     label: { fontSize: t.type.body, fontWeight: "700", color: t.color.textMuted },
@@ -855,10 +873,11 @@ function makeStyles(t: ThemeTokens) {
     },
     changeBtn: { fontSize: t.type.bodyLg, fontWeight: "900", color: t.color.primary },
     changeBtnWrap: { flexDirection: "row", alignItems: "center", gap: t.space.xs },
+    sellerPick: { minHeight: t.tapMin, justifyContent: "center" },
+    // The card's footer now (cart milestone): a divider above, no box of its own.
     historyBtn: {
-      minHeight: t.tapMin, marginTop: t.space.md, borderRadius: t.radius.lg, borderWidth: 1,
-      borderColor: t.color.border, backgroundColor: t.color.surface,
-      alignItems: "center", justifyContent: "center", paddingHorizontal: t.space.x3,
+      minHeight: t.tapMin, marginTop: t.space.md, borderTopWidth: 1, borderTopColor: t.color.divider,
+      alignItems: "flex-start", justifyContent: "center",
     },
     historyBtnText: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.primary },
     historyBtnRow: { flexDirection: "row", alignItems: "center", gap: t.space.xs },

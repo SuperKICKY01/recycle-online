@@ -32,6 +32,7 @@ import {
   filterProducts,
   frequentForDay,
   frequentProducts,
+  frequentTilesFor,
   type FrequentInput,
 } from "../cart/productPicker.js";
 import type { LocalBill } from "../sync/types.js";
@@ -297,6 +298,11 @@ function p3ScreensWireThePicker(): void {
     cart.includes("emptyListLine(categoryId, query)") && cart.includes("placeholder={SEARCH_PLACEHOLDER}"));
   check("the row heading is history -> FREQUENT_HEADING, fallback -> FALLBACK_HEADING",
     cart.includes('frequent?.source === "history" ? FREQUENT_HEADING : FALLBACK_HEADING'));
+  check("ROW SIZE: 6 tiles at font scale 1.0, 3 above 1.15 (two lines would push the list below the fold at 1.3)",
+    frequentTilesFor(1.0) === 6 && frequentTilesFor(1.15) === 6 && frequentTilesFor(1.3) === 3,
+    `${String(frequentTilesFor(1.0))}/${String(frequentTilesFor(1.3))}`);
+  check("the cart draws frequentTilesFor(fontScale) tiles, read from useWindowDimensions",
+    cart.includes(".slice(0, frequentTilesFor(fontScale))") && cart.includes("const { fontScale } = useWindowDimensions();"));
   check("App derives the row in refresh() from ALL bills, held by frequentForDay (frozen for the shop day)",
     /setFrequent\(\(prev\) =>\s*frequentForDay\(prev, new Date\(\), productsRef\.current\.length > 0, \(now\) =>\s*frequentProducts\(\{ bills: all, products: productsRef\.current, branchId: branchRef\.current, now \}\)/.test(app));
 }

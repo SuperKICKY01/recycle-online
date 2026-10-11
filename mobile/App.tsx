@@ -390,6 +390,8 @@ function AppInner() {
   productsRef.current = products;
   const branchRef = useRef<string | null>(null);
   const [frequent, setFrequent] = useState<FrequentRow | null>(null);
+  // The slim bill header's toggle (cart milestone). View state only.
+  const [menuOpen, setMenuOpen] = useState(false);
   const [sellers, setSellers] = useState<Seller[]>([]);
   /**
    * THE SHOP'S ACTIVE GRADE TIERS (S16 / P1.24), a third cached master list. The
@@ -4279,6 +4281,12 @@ function AppInner() {
     }
   })();
 
+  /** Slim while a bill is open and signed in, until the เมนู toggle opens the full header. */
+  // Only while the CART is on screen: an expired session with a draft shows the sign-in instead, and
+  // that screen keeps the whole header (measured on the walk: the first cut slimmed it there too).
+  const cartOnScreen = draft !== null && token !== null && !mustShowSignIn({ token, sessionEnded });
+  const slimHeader = cartOnScreen && !menuOpen;
+
   /** The last-bill navigation card (pinned with no bill open; the cart's top slot during one). */
   const latestCard: ReactNode =
     bills.length > 0 ? (
@@ -4333,18 +4341,37 @@ function AppInner() {
               committing, that signing back in needs a connection — the one consequence
               the operator cannot discover by trying.
             */}
-            {token !== null ? (
-              <Touchable
-                style={styles.signOut}
-                onPress={() => {
-                  setSignOutFailure(null);
-                  sheet("open_sign_out");
-                }}
-                accessibilityLabel="ออกจากระบบ"
-              >
-                <Icon name="logout" size={16} color={theme.color.danger} />
-                <Text style={styles.signOutText}>ออกจากระบบ</Text>
+            {/*
+              THE SLIM BILL HEADER (cart milestone, A2 item 5's second half). While a bill is open
+              the title bar keeps the wordmark and a เมนู toggle; the toggle brings back the whole
+              header. It never LEAVES the bill: every destination opens a sheet over the cart and
+              the draft is already on disk (onDraftChange's debounced write, hard rule 8), so
+              nothing is discarded and no confirmation is asked (ADVISOR-DECIDED 2026-10-12, 2e).
+            */}
+            {slimHeader ? (
+              <Touchable style={styles.menuToggle} onPress={() => setMenuOpen(true)} accessibilityLabel="เมนู">
+                <Text style={styles.menuToggleText}>เมนู</Text>
+                <Icon name="chevron" size={16} color={theme.color.primary} />
               </Touchable>
+            ) : token !== null ? (
+              <View style={styles.topBarActions}>
+                {cartOnScreen ? (
+                  <Touchable style={styles.menuToggle} onPress={() => setMenuOpen(false)} accessibilityLabel="ซ่อนเมนู">
+                    <Text style={styles.menuToggleText}>ซ่อนเมนู</Text>
+                  </Touchable>
+                ) : null}
+                <Touchable
+                  style={styles.signOut}
+                  onPress={() => {
+                    setSignOutFailure(null);
+                    sheet("open_sign_out");
+                  }}
+                  accessibilityLabel="ออกจากระบบ"
+                >
+                  <Icon name="logout" size={16} color={theme.color.danger} />
+                  <Text style={styles.signOutText}>ออกจากระบบ</Text>
+                </Touchable>
+              </View>
             ) : null}
           </View>
           {/*
@@ -4356,6 +4383,7 @@ function AppInner() {
             most-used and shows at rest, and a horizontal scroll never captures a
             vertical drag. Every chip clears TAP_MIN.
           */}
+          {slimHeader ? null : (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -4375,7 +4403,8 @@ function AppInner() {
               ) : null,
             )}
           </ScrollView>
-          {status !== "" ? (
+          )}
+          {status !== "" && !slimHeader ? (
             <Text style={styles.status} numberOfLines={1}>
               {status}
             </Text>
@@ -4563,6 +4592,13 @@ function makeStyles(t: ThemeTokens) {
       justifyContent: "center", alignItems: "center",
     },
     signOutText: { fontSize: t.type.body, fontWeight: "700", color: t.color.danger },
+    // The slim bill header's เมนู toggle (cart milestone) — navigation, so the accent text, not red.
+    topBarActions: { flexDirection: "row", alignItems: "center", gap: t.space.sm },
+    menuToggle: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.md, flexDirection: "row", gap: t.space.xs,
+      justifyContent: "center", alignItems: "center",
+    },
+    menuToggleText: { fontSize: t.type.body, fontWeight: "700", color: t.color.primary },
     // The horizontal navigation scroll row.
     navRow: { flexDirection: "row", gap: t.space.md, paddingHorizontal: t.layout.screenPad, paddingBottom: t.space.sm },
     // Neutral pill chips — navigation, NOT the one accent. Every one clears TAP_MIN.

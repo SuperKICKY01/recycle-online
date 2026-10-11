@@ -102,6 +102,18 @@ export const SEARCH_PLACEHOLDER = "ค้นหา: ชื่อ / รหัส 
 
 export const FREQUENT_WINDOW_DAYS = 30;
 export const FREQUENT_MAX = 6;
+
+/**
+ * HOW MANY TILES TO SHOW (ADVISOR-DECIDED 2026-10-12, decision 2b): up to 6 in two lines of 3, but
+ * the product list must start above the fold at font scale 1.0 AND 1.3. At a large system font a
+ * tile's Thai name takes two lines and the row would push the list below the fold (measured on the
+ * walk device), so above 1.15 the row shows ONE line of 3. The frozen row still holds 6 ids; this
+ * only decides how many of them are drawn.
+ */
+export const LARGE_FONT_SCALE = 1.15;
+export function frequentTilesFor(fontScale: number): number {
+  return fontScale > LARGE_FONT_SCALE ? 3 : FREQUENT_MAX;
+}
 export const FREQUENT_HEADING = "ใช้บ่อย";
 /** The fallback row is NOT frequency, so it does not say it is. */
 export const FALLBACK_HEADING = "สินค้าในร้าน";

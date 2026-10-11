@@ -125,6 +125,19 @@ server migration, no server route, no stored pins.
   familiarity. The tool should disappear into the task." `prove:productpicker` P3 (6 source cells); disproof: App
   counting `all.slice(0, 30)` (hashed `B85771C4…`, restored byte-identical) reddened EXACTLY the App cell (42/43).
   `prove:productpicker` exit 0 twice, `prove:tapaudit` 0 (14 controls announce, 21 fields coloured); typechecks 0.
+- **The slim bill header and the fold (A2 item 5's second half; decisions 2b, 2e).** While the CART is on screen
+  (`cartOnScreen`: a draft, a token, and not the sign-in screen — the first cut slimmed the sign-in too, caught on the
+  walk), the header is the wordmark and `เมนู`; `เมนู` brings back the nav row, status and sign-out, and `ซ่อนเมนู`
+  folds them again (impeccable · operate.md · "The tool should disappear into the task."). **2e — the exit path is
+  CASE "kept and resumable", so no dialog:** `เมนู` never leaves the bill (`App.tsx` `setMenuOpen(true)`), every nav
+  destination opens a SHEET over the cart, and the draft is on disk already (`onDraftChange`, the debounced write);
+  no wording needed sign-off. To make the product list start above the fold at 1.0 AND 1.3 (2b), measured on the walk:
+  the seller and its history link are ONE card (history as its footer, still a sibling control — P1.21), the plate
+  field and the last-bill card moved AFTER the bill's lines, and the row shows 6 tiles at 1.0 but 3 above font scale
+  1.15 (`frequentTilesFor`). `prove:productpicker` +2 cells (row size), `prove:tapaudit` Ch (2 cells) and the Cc slot
+  cell updated. Disproofs (hashed `ACF1B263…`/`FAB848F6…`, both restored byte-identical): the sign-in exclusion removed
+  reddened EXACTLY the slim cell; the row-size threshold disabled reddened EXACTLY the row-size cell. Exit 0 twice;
+  `prove:sheets`, `prove:signout` 0; typechecks 0.
 
 **LANE A, A3 BATCH 1b — the relaunch database error, the idle re-renders, item 3's native fix (ADVISOR-DECIDED
 2026-10-11). 2026-10-11.** Shas anchor next pass.

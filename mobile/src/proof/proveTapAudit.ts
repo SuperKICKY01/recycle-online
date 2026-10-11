@@ -221,9 +221,11 @@ function main(): number {
     "App.tsx pins the last-bill card only with NO bill open, and hands it to the cart as topSlot",
     appText.includes("{draft === null ? latestCard : null}") && appText.includes("topSlot={latestCard}"),
   );
+  // Cart milestone (2026-10-12): the slot moved from the TOP of the scroll to AFTER the bill's
+  // lines, so the product list starts above the fold at font scale 1.0 and 1.3 (decision 2b).
   check(
-    "CartScreen renders topSlot as the FIRST child of its ScrollView",
-    /<ScrollView\s+ref=\{scrollRef\}[\s\S]*?keyboardShouldPersistTaps="handled"\s*>\s*\{topSlot \? <View style=\{styles\.topSlot\}>\{topSlot\}<\/View> : null\}/.test(
+    "CartScreen renders the slot (and the plate field) AFTER the bill's lines, inside the scroll",
+    /\{lines\.map\([\s\S]*?ทะเบียนรถ \(ถ้ามี\)[\s\S]*?\{topSlot \? <View style=\{styles\.bottomSlot\}>\{topSlot\}<\/View> : null\}\s*<\/ScrollView>/.test(
       cartText,
     ),
   );
@@ -270,6 +272,19 @@ function main(): number {
     "no control draws a selection without announcing it",
     sel.findings.length === 0,
     sel.findings.length === 0 ? `${String(sel.selectable)} controls announce` : `${String(sel.findings.length)} findings`,
+  );
+
+  // ── cart milestone: the slim bill header (A2 item 5's second half) ─────────────
+  header("Ch the slim bill header: only while the cart is on screen; เมนู opens the full header");
+  check(
+    "slim only while the CART is on screen (a draft, a token, no sign-in screen) and the menu is closed",
+    appText.includes("const cartOnScreen = draft !== null && token !== null && !mustShowSignIn({ token, sessionEnded });") &&
+      appText.includes("const slimHeader = cartOnScreen && !menuOpen;"),
+  );
+  check(
+    "the nav row and the status line are not drawn when slim; เมนู is",
+    appText.includes("{slimHeader ? null : (") && appText.includes('{status !== "" && !slimHeader ? (') &&
+      /slimHeader \? \(\s*<Touchable style=\{styles\.menuToggle\} onPress=\{\(\) => setMenuOpen\(true\)\} accessibilityLabel="เมนู">/.test(appText),
   );
 
   // ── A3 item 1: every TextInput draws its text in a theme colour ────────────────

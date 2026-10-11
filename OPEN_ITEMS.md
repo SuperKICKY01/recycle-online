@@ -1705,6 +1705,13 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
 
 ## Code debt found and left in place
 
+- **CART MILESTONE (2026-10-12) — LATER LINES, recorded not built (ADVISOR-DECIDED).** (1) **Manual per-branch pins** —
+  the frequent row is derived (`src/cart/productPicker.ts`), never stored; a shop-chosen pinned set waits "when a real
+  shop asks" (it needs a server table, i.e. a migration lane A mints). (2) **Thai tone-mark-insensitive search** —
+  search matches name/code/category by plain substring after removing whitespace and lower-casing Latin; `ทองแดง` does
+  not find a name typed without its tone marks. (3) **The frequent row counts only this DEVICE's bills** (the app never
+  downloads bills): a new phone, or one reinstalled, shows the fallback row until it has written bills of its own.
+
 - **LANE A, A3 (2026-10-11) — FOUND AND LEFT, RECORDED ONLY (advisor 2e), one line each.**
   (1) **`Audit Proof User` accounts in dev:** `server/scripts/prove_audit.py:193-196` creates a user `audit-<RUN>`
   named `Audit Proof User` through `POST /users` on EVERY run and never deactivates it; `prove_audit` is in
