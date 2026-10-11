@@ -64,6 +64,14 @@ import * as SQLite from "expo-sqlite";
 
 import type { SqlDriver, SqlRunResult, SqlTx, SqlValue } from "../adapters/sqlite/driver.js";
 import { openOncePerProcess } from "../adapters/sqlite/openOnce.js";
+import { CONNECTION_PRAGMAS } from "../adapters/sqlite/schema.js";
+
+/** The main connection's busy_timeout pragma, read from the one list so the two cannot drift. */
+const BUSY_TIMEOUT_PRAGMA = ((): string => {
+  const p = CONNECTION_PRAGMAS.find((s) => s.startsWith("PRAGMA busy_timeout"));
+  if (p === undefined) throw new Error("CONNECTION_PRAGMAS lost its busy_timeout");
+  return p;
+})();
 
 export class ExpoSqliteDriver implements SqlDriver {
   /*
@@ -101,6 +109,17 @@ export class ExpoSqliteDriver implements SqlDriver {
   async transaction<T>(fn: (tx: SqlTx) => Promise<T>): Promise<T> {
     let out!: T;
     await this.db.withExclusiveTransactionAsync(async (txn) => {
+      /*
+       * THE TRANSACTION'S OWN CONNECTION GETS THE SAME busy_timeout (cart milestone, 2026-10-12).
+       * withExclusiveTransactionAsync opens a NEW connection and runs a plain (DEFERRED) `BEGIN`;
+       * initConnection's pragmas were set on the main connection only, so this one waited 0 ms and
+       * its first write failed at once with SQLITE_BUSY whenever another write held the file.
+       * Measured on the emulator: the boot's product-cache save failed with `NativeStatement.
+       * finalizeAsync … database is locked` while the permission and branch saves ran beside it,
+       * and the device kept its old products. A deferred BEGIN takes no lock, so setting the
+       * timeout as the transaction's FIRST statement is in force before any lock is needed.
+       */
+      await txn.execAsync(BUSY_TIMEOUT_PRAGMA);
       const tx: SqlTx = {
         run: async (sql, params = []) => {
           const r = await txn.runAsync(sql, [...params]);

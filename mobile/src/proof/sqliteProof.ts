@@ -521,6 +521,33 @@ async function s5StartupOncePerProcess(): Promise<void> {
   rmSync(dir, { recursive: true, force: true });
 }
 
+/* ------------------------------------------------------------------ S6 ---- */
+
+/**
+ * The DEVICE driver's transaction connection gets the main connection's busy_timeout (cart
+ * milestone, 2026-10-12). expo-sqlite's withExclusiveTransactionAsync runs on a NEW connection
+ * with a deferred BEGIN, so without this its first write failed at once with SQLITE_BUSY — on the
+ * emulator the boot's product-cache save failed `database is locked` and the device kept old
+ * products. src/device/ cannot run under node, so its TEXT is read: the pragma comes from
+ * CONNECTION_PRAGMAS and is the FIRST statement of the transaction callback.
+ */
+function s6TransactionConnectionWaits(): void {
+  header("S6 the device driver's transaction connection waits (busy_timeout) before its first write");
+  const src = readFileSync(join(process.cwd(), "src", "device", "expoSqliteDriver.ts"), "utf8");
+  check("control: expoSqliteDriver.ts was read", src.includes("withExclusiveTransactionAsync"));
+  check(
+    "the pragma is taken from CONNECTION_PRAGMAS, not retyped",
+    /CONNECTION_PRAGMAS\.find\(\(s\) => s\.startsWith\("PRAGMA busy_timeout"\)\)/.test(src),
+  );
+  const body = /withExclusiveTransactionAsync\(async \(txn\) => \{([\s\S]*?)const tx: SqlTx/.exec(src)?.[1] ?? "";
+  const firstStatement = body.split("\n").map((l) => l.trim()).find((l) => l !== "" && !l.startsWith("/*") && !l.startsWith("*"));
+  check(
+    "the FIRST statement of the transaction callback sets it",
+    firstStatement === "await txn.execAsync(BUSY_TIMEOUT_PRAGMA);",
+    JSON.stringify(firstStatement),
+  );
+}
+
 /* ---------------------------------------------------------------- main --- */
 
 async function main(): Promise<number> {
@@ -532,6 +559,7 @@ async function main(): Promise<number> {
   await s3ConcurrentClaims(4, 300);
   await s4DurabilityAcrossRestart();
   await s5StartupOncePerProcess();
+  s6TransactionConnectionWaits();
 
   console.log("");
   console.log(failures === 0 ? "ALL SQLITE CASES PASSED" : `FAILED — ${failures} check(s)`);

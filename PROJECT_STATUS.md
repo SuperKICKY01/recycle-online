@@ -105,6 +105,17 @@ server migration, no server route, no stored pins.
   P1 (12 cells) and P2 (15 cells), 37 in all with P0. Disproofs, one source mutation each, restored byte-identical
   (`b8d8e825…`): frequency order, tie by code, same-day stability, retired, fallback, search by name, by code, by
   category name, inactive filter, no-match sentence — each reddened its own cell(s). Exit 0 twice; both typechecks 0.
+- **FOUND ON THE WALK AND FIXED (its own commit): the device driver's transaction connection had no busy_timeout.**
+  The cart walk showed only `ทั้งหมด` although `GET /products` and `GET /product-categories` both answered 200; a
+  probe (`DBG_cat5`, removed) caught the product-cache save failing `NativeStatement.finalizeAsync … database is
+  locked`. expo-sqlite's `withExclusiveTransactionAsync` (`SQLiteDatabase.ts:167-188`) opens a NEW connection and a
+  DEFERRED `BEGIN`; `initConnection`'s `PRAGMA busy_timeout = 5000` was on the main connection only, so the
+  transaction's first write gave up at once while the boot's permission and branch saves ran beside it (the new
+  category fetch shifted the timing into that race; it pre-dates this milestone and is consistent with batch 1b's
+  single first-relaunch lock). `src/device/expoSqliteDriver.ts` now runs the same pragma (read from
+  `CONNECTION_PRAGMAS`) as the transaction's first statement. Device: three cold starts, no refresh error, the
+  categories cached. `prove:sqlite` S6 (source cells; the driver cannot run under node); disproof: the line removed
+  (hashed `D20666F0…`, restored byte-identical) reddened EXACTLY the first-statement cell. Exit 0 twice.
 
 **LANE A, A3 BATCH 1b — the relaunch database error, the idle re-renders, item 3's native fix (ADVISOR-DECIDED
 2026-10-11). 2026-10-11.** Shas anchor next pass.
