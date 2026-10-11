@@ -87,6 +87,12 @@ before/after under `E:\recycle-shots\lane-a\A3\`.
   restored byte-identical) reddened EXACTLY Ct1 naming `app/PricesSheet.tsx:290`. Four placeholders with no
   `placeholderTextColor` are REPORTED, not asserted (one is A2 item 22, outside this batch). Exit 0 twice; both
   typechecks 0.
+- **Item 2, the price editor did not say which product.** New pure `editorHeading(product, tier)` in
+  `src/master/priceEdit.ts` (product name; `<code> · เกรด <tier name>`; `ราคาปัจจุบัน <display(price)>` or the list's
+  own `ยังไม่ได้ตั้งราคา`, never a default); `PricesSheet` carries it in `Editing` and renders the three lines
+  (impeccable · critique.md § 5 Error Prevention · "Clear labels that prevent misunderstanding"). `prove:prices` p6
+  (six cells, the sheet's source read). Disproof: the editor rendering the tier name in place of the product (hashed
+  `9C1EBDFC…`, restored byte-identical) reddened EXACTLY the render cell. Exit 0 twice; both typechecks 0.
 
 **LANE A, A1 FOLLOW-UP — the `prove_shifts` RT red, decided as OPTION A (ADVISOR-DECIDED 2026-10-11). 2026-10-11.**
 No sha yet. The A1 gate (`_prove_all/20261011T072726Z`) was killed for memory after `[31/85]`, no exit line;

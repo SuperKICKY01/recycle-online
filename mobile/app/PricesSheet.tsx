@@ -47,10 +47,12 @@ import { messageFor } from "./messages";
 import {
   EDIT_TIER_LABEL,
   editableValue,
+  editorHeading,
   parseTierPrice,
   SAVE_TIER_LABEL,
 } from "../src/master/priceEdit";
 import type {
+  EditorHeading,
   PriceAction,
   PriceProduct,
   PriceScreen,
@@ -93,6 +95,8 @@ interface Editing {
   /** The tier NAME — display only (F3). What the operator reads in the editor. */
   readonly name: string;
   readonly value: string;
+  /** Which product, which tier, and the price being replaced (A3 item 2). */
+  readonly heading: EditorHeading;
 }
 
 interface Props {
@@ -166,6 +170,7 @@ export function PricesSheet({
                   name: tier.name,
                   // NEVER a default: the current value, or empty. See editableValue.
                   value: editableValue(tier),
+                  heading: editorHeading(p, tier),
                 })
               }
             />
@@ -286,7 +291,16 @@ function TierEditor({
 
   return (
     <View style={styles.editor}>
-      <Text style={styles.editorGrade}>เกรด {editing.name}</Text>
+      {/*
+        A3 item 2: the editor NAMES what it changes — the product scrolled away the moment
+        this opened, and a price applies to every next bill of that product. The text is
+        priceEdit.ts editorHeading (proven); this only lays it out.
+      */}
+      <View style={styles.editorHead}>
+        <Text style={styles.editorProduct}>{editing.heading.product}</Text>
+        <Text style={styles.editorGrade}>{editing.heading.detail}</Text>
+        <Text style={styles.editorCurrent}>{editing.heading.current}</Text>
+      </View>
       <TextInput
         style={styles.input}
         value={editing.value}
@@ -361,7 +375,10 @@ function makeStyles(t: ThemeTokens) {
     editBtn: { paddingHorizontal: t.space.lg, paddingVertical: t.space.sm, backgroundColor: t.color.surface, borderWidth: 1, borderColor: t.color.borderSoft, borderRadius: t.radius.sm },
     editText: { fontSize: t.type.bodyLg, color: t.color.primary },
     editor: { flex: 1, padding: t.space.x3, gap: t.space.xl },
+    editorHead: { gap: t.space.xs },
+    editorProduct: { fontSize: t.type.title, fontWeight: "700", color: t.color.text },
     editorGrade: { fontSize: t.type.subhead, fontWeight: "700", color: t.color.text },
+    editorCurrent: { fontSize: t.type.bodyLg, color: t.color.textMuted },
     input: {
       borderWidth: 1,
       borderColor: t.color.border,

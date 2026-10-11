@@ -55,9 +55,13 @@
  * is codepage 874, `lessons/console-is-not-the-observation.md`. Every assertion
  * compares JavaScript strings.
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import {
   EDIT_TIER_LABEL,
   editableValue,
+  editorHeading,
   isPriced,
   parseTierPrice,
   priceListScreen,
@@ -66,6 +70,7 @@ import {
   priceScreenText,
   SAVE_TIER_LABEL,
   tierControlsText,
+  UNPRICED_LINE,
 } from "../master/priceEdit.js";
 import type { CacheRefresh, PriceProduct, PriceScreen, PriceWrite } from "../master/priceEdit.js";
 import { may } from "../session/deviceRole.js";
@@ -813,6 +818,53 @@ function p5NoActionThatCannotHelp(): void {
   );
 }
 
+/* ------------------------------------------------- p6 the editor names it -- */
+
+/*
+ * A3 item 2 (2026-10-11). The open editor said only `เกรด A` and the value; the product
+ * had scrolled away. editorHeading names the product, its code and the tier NAME, and
+ * the price being replaced — the cached string, or the list's own unpriced sentence,
+ * never a default. The sheet's source must render all three (it is outside the node
+ * program, so its TEXT is read, as proveSheets.ts does).
+ */
+function p6TheEditorNamesWhatItChanges(): void {
+  header("p6  the open editor names the product, the tier and the price it replaces");
+  const product: PriceProduct = {
+    id: "h-1",
+    code: "AL-CAN",
+    name: "อลูมิเนียมกระป๋อง",
+    tiers: [
+      { grade: "A", name: "A", price: "1234.50" },
+      { grade: "G2", name: "เกรดสอง", price: null },
+    ],
+  };
+  const [priced, unpriced] = product.tiers;
+  if (priced === undefined || unpriced === undefined) throw new Error("fixture lost a tier");
+  const h = editorHeading(product, priced);
+  check("the heading names the PRODUCT", h.product === "อลูมิเนียมกระป๋อง", JSON.stringify(h.product));
+  check("the detail line carries the code and the tier name", h.detail === "AL-CAN · เกรด A", JSON.stringify(h.detail));
+  check(
+    "the current price is the cached string, displayed (grouped, never re-rounded)",
+    h.current === "ราคาปัจจุบัน 1,234.50",
+    JSON.stringify(h.current),
+  );
+  const u = editorHeading(product, unpriced);
+  check(
+    "an unpriced tier says so in the list's own sentence — never 0, never a default",
+    u.current === UNPRICED_LINE && u.current === "ยังไม่ได้ตั้งราคา" && u.detail === "AL-CAN · เกรด เกรดสอง",
+    JSON.stringify(u),
+  );
+  const sheet = readFileSync(fileURLToPath(new URL("../../app/PricesSheet.tsx", import.meta.url)), {
+    encoding: "utf8",
+  });
+  check("control: the sheet's source was read", sheet.includes("function TierEditor"), `${String(sheet.length)} chars`);
+  check(
+    "the editor renders the heading's product, detail and current price",
+    ["{editing.heading.product}", "{editing.heading.detail}", "{editing.heading.current}"].every((s) => sheet.includes(s)) &&
+      sheet.includes("heading: editorHeading(p, tier)"),
+  );
+}
+
 /* ------------------------------------------------------------------ main -- */
 
 function main(): number {
@@ -824,6 +876,7 @@ function main(): number {
   p3ASaveThisDeviceDidNotSee();
   p4EveryOutcomeHasAScreen();
   p5NoActionThatCannotHelp();
+  p6TheEditorNamesWhatItChanges();
 
   console.log("");
   console.log(failures === 0 ? "ALL PRICE CASES PASSED" : `FAILED — ${String(failures)} check(s)`);

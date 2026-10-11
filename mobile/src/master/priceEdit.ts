@@ -39,6 +39,7 @@
  *   now knows" are two facts, and this file refuses to print the first as
  *   though it were the second.
  */
+import { display } from "../money/format.js";
 import { MONEY_DP, MONEY_MAX_INT_DIGITS, parseDecimal } from "../money/money.js";
 import type { Parsed } from "../money/money.js";
 import { may } from "../session/deviceRole.js";
@@ -241,6 +242,31 @@ export const isPriced = (tier: TierPrice): boolean => tier.price !== null;
  * front of somebody that no one in the shop chose.
  */
 export const editableValue = (tier: TierPrice): string => tier.price ?? "";
+
+/**
+ * WHAT THE OPEN EDITOR SAYS IT IS EDITING (A3 item 2, 2026-10-11).
+ *
+ * The editor used to say only `เกรด A` and the value: the product's name scrolled away
+ * the moment the editor opened, and a price change applies to every next bill of THAT
+ * product. So the editor names the product, its code and the tier, and states the
+ * price the change will replace — the cached string through `display`, or the same
+ * sentence the list uses for a tier with no row. Never a default (see editableValue).
+ */
+export interface EditorHeading {
+  readonly product: string;
+  readonly detail: string;
+  readonly current: string;
+}
+
+export const UNPRICED_LINE = "ยังไม่ได้ตั้งราคา";
+
+export function editorHeading(product: PriceProduct, tier: TierPrice): EditorHeading {
+  return {
+    product: product.name,
+    detail: `${product.code} · เกรด ${tier.name}`,
+    current: tier.price === null ? UNPRICED_LINE : `ราคาปัจจุบัน ${display(tier.price)}`,
+  };
+}
 
 /* ---------------------------------------------------------- the screens -- */
 
