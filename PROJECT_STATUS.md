@@ -75,6 +75,19 @@ not read the green as re-run.**
 
 ## Current phase
 
+**LANE A, A3 BATCH 1 — six fixes from the A2 ranked list (`E:\recycle-shots\lane-a\A2\A2_ranked_list.md`), in the
+advisor's order 1, 2, 3, 5, 6, 4 (ADVISOR-DECIDED 2026-10-11). 2026-10-11.** One commit per item; shas anchor next
+pass. Walks and screenshots run against `recycle_walk_a`, built empty at head plus `scripts/seed_dev.py` (never dev);
+before/after under `E:\recycle-shots\lane-a\A3\`.
+- **Item 1, the price editor's typed value had no text colour.** `PricesSheet.tsx` `input` gains
+  `color: t.color.text` and the field `placeholderTextColor={t.color.placeholder}` (impeccable · craft-floor.md
+  § Verify · "Contrast: body and placeholder text ≥4.5:1"). `prove:tapaudit` gains Ct0/Ct1 (`scanInputColours` in
+  `src/ui/tapAudit.ts`): the BASE style and every ternary arm of each `<TextInput>` must set `color`; 20 fields,
+  clean. Disproofs: `--break=nocolor` reddened EXACTLY Ct1; removing the new colour line (hashed `BE6456C2…`,
+  restored byte-identical) reddened EXACTLY Ct1 naming `app/PricesSheet.tsx:290`. Four placeholders with no
+  `placeholderTextColor` are REPORTED, not asserted (one is A2 item 22, outside this batch). Exit 0 twice; both
+  typechecks 0.
+
 **LANE A, A1 FOLLOW-UP — the `prove_shifts` RT red, decided as OPTION A (ADVISOR-DECIDED 2026-10-11). 2026-10-11.**
 No sha yet. The A1 gate (`_prove_all/20261011T072726Z`) was killed for memory after `[31/85]`, no exit line;
 `prove_shifts` had already logged RT red twice: on a scratch built empty at HEAD, 0021's guard refused on

@@ -294,6 +294,7 @@ function TierEditor({
         keyboardType="decimal-pad"
         autoFocus
         placeholder="ราคาต่อหน่วย"
+        placeholderTextColor={t.color.placeholder}
       />
       {complaint === null ? null : <Text style={styles.error}>{messageFor(complaint)}</Text>}
       <View style={styles.editorActions}>
@@ -368,6 +369,9 @@ function makeStyles(t: ThemeTokens) {
       paddingHorizontal: t.space.xl,
       paddingVertical: t.space.lg,
       fontSize: t.type.titleLg,
+      // A3 item 1: the one TextInput in the app that set no text colour, so the
+      // price being typed drew in the platform default (near-black) on the dark sheet.
+      color: t.color.text,
     },
     error: { fontSize: t.type.bodyLg, color: t.color.danger },
     editorActions: { flexDirection: "row", gap: t.space.xl },

@@ -27,6 +27,9 @@
  *   inject_layout  adds a synthetic file carrying `padding: 20` to the scaffold's
  *                  LAYOUT scan (P1.23 item 3 phase C). Reddens the "scaffold draws
  *                  geometry from tokens" cell only.
+ *   nocolor        adds a synthetic `<TextInput>` whose style sets no `color` to the
+ *                  text-field scan (A3 item 1). Reddens the Ct1 "every TextInput sets
+ *                  a text colour" cell only.
  *
  * P1.23 item 3 phase C also added a LAYOUT scan (scanLayoutLiterals): the page-model
  * scaffold — App.tsx and the shared SheetHeader — must draw its margin/gap/radius from
@@ -40,7 +43,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { scanLayoutLiterals, scanTapLiterals, type ScannedFile } from "../ui/tapAudit.js";
+import { scanInputColours, scanLayoutLiterals, scanTapLiterals, type ScannedFile } from "../ui/tapAudit.js";
 
 let failures = 0;
 
@@ -53,7 +56,7 @@ function header(title: string): void {
 }
 
 const BREAK = (process.argv.find((a) => a.startsWith("--break=")) ?? "").split("=")[1] ?? "";
-const BREAK_MODES: readonly string[] = ["inject", "inject_layout"];
+const BREAK_MODES: readonly string[] = ["inject", "inject_layout", "nocolor"];
 if (BREAK !== "" && !BREAK_MODES.includes(BREAK)) {
   console.log(`  [FAIL] unknown --break=${BREAK} — nothing was damaged and nothing was measured`);
   console.log(`         known breaks: ${BREAK_MODES.join(", ")}`);
@@ -197,6 +200,43 @@ function main(): number {
     settingsText.includes("API_BASE_URL"),
     "the server address moved to settings",
   );
+
+  // ── A3 item 1: every TextInput draws its text in a theme colour ────────────────
+  header("Ct0 the text-field colour scan catches what it hunts");
+  const plantedBad =
+    "<TextInput\n  style={styles.box}\n  placeholder=\"x\"\n/>\nconst s = {\n  box: {\n    borderWidth: 1,\n  },\n};";
+  const plantedGood =
+    "<TextInput\n  style={[styles.box, null]}\n  placeholder=\"x\"\n  placeholderTextColor={t.color.placeholder}\n/>\nconst s = {\n  box: { borderColor: c, color: t.color.text },\n};";
+  const bad = scanInputColours([{ path: "(fixture)", text: plantedBad }]).findings.map((f) => f.kind).sort();
+  check(
+    "control: a planted field with no colour and no placeholder colour is found twice",
+    bad.join(",") === "no-placeholder-color,no-text-color",
+    bad.join(",") || "(none)",
+  );
+  check(
+    "control: a coloured field is clean (borderColor alone does not count as a text colour)",
+    scanInputColours([{ path: "(fixture)", text: plantedGood }]).findings.length === 0,
+  );
+
+  header("Ct1 every TextInput in the real screen files sets a text colour");
+  const inputScan: ScannedFile[] =
+    BREAK === "nocolor"
+      ? [...files, { path: "(injected)", text: "<TextInput style={styles.raw} />\n  raw: {\n    fontSize: 18,\n  },\n" }]
+      : files;
+  const inputs = scanInputColours(inputScan);
+  const colourFindings = inputs.findings.filter((f) => f.kind !== "no-placeholder-color");
+  for (const f of colourFindings) console.log(`    ${f.path}:${String(f.line)} [${f.kind}] ${f.style}`);
+  check("the scan found text fields to judge", inputs.fields >= 10, `${String(inputs.fields)} TextInputs`);
+  check(
+    "every TextInput's style sets `color` (and every style it names resolves)",
+    colourFindings.length === 0,
+    colourFindings.length === 0 ? `${String(inputs.fields)} fields clean` : `${String(colourFindings.length)} findings`,
+  );
+  // REPORTED, not asserted: a placeholder left to the platform's grey. One of these is
+  // A2 item 22 (the void-reason field), outside batch 1; the rest are the same shape.
+  const placeholderFindings = inputs.findings.filter((f) => f.kind === "no-placeholder-color");
+  console.log(`  ${String(placeholderFindings.length)} placeholder(s) with no placeholderTextColor (reported):`);
+  for (const f of placeholderFindings) console.log(`    ${f.path}:${String(f.line)}`);
 
   console.log("");
   console.log(failures === 0 ? "ALL CELLS PASSED" : `FAILED — ${String(failures)} check(s)`);

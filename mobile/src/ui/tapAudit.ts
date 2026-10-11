@@ -137,3 +137,90 @@ export function scanLayoutLiterals(files: readonly ScannedFile[]): LayoutFinding
   }
   return findings;
 }
+
+/**
+ * EVERY TEXT FIELD DRAWS ITS TEXT IN A THEME COLOUR (A3 item 1, 2026-10-11).
+ *
+ * A `TextInput` whose style sets no `color` draws the typed value in the platform
+ * default — near-black — which on the dark theme is unreadable. The price editor was
+ * the one field in the app that did this, and a price nobody can read is a price
+ * nobody can check before it lands on every next bill.
+ *
+ * For each `<TextInput … />` the scan reads its `style={…}`, takes the BASE style (the
+ * first `styles.<name>` / `s.<name>`) and every ARM of a ternary, and brace-matches each
+ * one's style block in the same file; each must contain `color:`. A `cond && styles.x`
+ * modifier layered on a coloured base is not required to repeat the colour. A field whose style cannot be
+ * resolved is itself a finding (fail closed): an unresolvable style is one this scan
+ * cannot vouch for. A `placeholder=` with no `placeholderTextColor=` is reported as its
+ * own kind; the proof REPORTS that kind and does not yet assert it to zero (A2 item 22). Same honest boundary as the other scans —
+ * it reads TEXT, so a colour merged in at runtime from elsewhere is invisible.
+ */
+export type InputFindingKind = "no-text-color" | "no-placeholder-color" | "style-unresolved";
+
+export interface InputFinding {
+  readonly path: string;
+  readonly line: number; // 1-based, the `<TextInput` line
+  readonly kind: InputFindingKind;
+  readonly style: string;
+}
+
+function styleBlock(text: string, name: string): string | null {
+  const m = new RegExp(`\\n\\s+${name}:\\s*\\{`).exec(text);
+  if (m === null) return null;
+  let depth = 0;
+  for (let i = m.index + m[0].length - 1; i < text.length; i++) {
+    if (text[i] === "{") depth += 1;
+    else if (text[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(m.index + m[0].length, i);
+    }
+  }
+  return null;
+}
+
+/** The text inside `style={…}` (brace-matched), or "" when the field has no style. */
+function styleAttr(attrs: string): string {
+  const at = attrs.search(/\bstyle=\{/);
+  if (at < 0) return "";
+  let depth = 0;
+  const start = attrs.indexOf("{", at);
+  for (let i = start; i < attrs.length; i++) {
+    if (attrs[i] === "{") depth += 1;
+    else if (attrs[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return attrs.slice(start + 1, i);
+    }
+  }
+  return "";
+}
+
+export function scanInputColours(files: readonly ScannedFile[]): {
+  fields: number;
+  findings: InputFinding[];
+} {
+  const findings: InputFinding[] = [];
+  let fields = 0;
+  for (const { path, text } of files) {
+    for (const m of text.matchAll(/<TextInput\b([\s\S]*?)\/>/g)) {
+      fields += 1;
+      const attrs = m[1] ?? "";
+      const line = text.slice(0, m.index).split("\n").length;
+      const sattr = styleAttr(attrs);
+      const names = [...sattr.matchAll(/\b(?:styles|s)\.(\w+)/g)].map((n) => n[1] ?? "");
+      // The BASE (first name) and every TERNARY ARM must colour the text; a `cond && styles.x`
+      // modifier layered on a coloured base need not (AddSellerSheet's inputTall).
+      const arms = [...sattr.matchAll(/[?:]\s*(?:styles|s)\.(\w+)/g)].map((n) => n[1] ?? "");
+      const mustColour = [...new Set([...names.slice(0, 1), ...arms])];
+      if (names.length === 0) findings.push({ path, line, kind: "style-unresolved", style: "(none)" });
+      for (const style of mustColour) {
+        const block = styleBlock(text, style);
+        if (block === null) findings.push({ path, line, kind: "style-unresolved", style });
+        else if (!/\bcolor\s*:/.test(block)) findings.push({ path, line, kind: "no-text-color", style });
+      }
+      if (/\bplaceholder=/.test(attrs) && !/\bplaceholderTextColor=/.test(attrs)) {
+        findings.push({ path, line, kind: "no-placeholder-color", style: names.join("|") });
+      }
+    }
+  }
+  return { fields, findings };
+}
