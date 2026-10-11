@@ -76,6 +76,7 @@ import { cleanVehicleNo, gradePrice, indexPlates } from "./src/cart/sellers";
 import { mergeSellersForPicker } from "./src/cart/pickerSellers";
 import type { Draft } from "./src/cart/types";
 import { ExpoSqliteDriver } from "./src/device/expoSqliteDriver";
+import { localDatabaseOnce } from "./src/adapters/sqlite/localDatabase";
 import { SecureTokenStore } from "./src/device/secureTokenStore";
 import {
   applyClearedSession,
@@ -356,6 +357,13 @@ const nowIso = (): string => new Date().toISOString();
  */
 const nowMinuteIso = (): string =>
   new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString();
+
+/**
+ * The local database, brought up ONCE per JS process — module scope, so a relaunched root
+ * (Android re-runs "main" in the same process on a font-size change) reuses it rather than
+ * opening and migrating again. See src/adapters/sqlite/localDatabase.ts.
+ */
+const LOCAL_DATABASE = localDatabaseOnce((name) => ExpoSqliteDriver.open(name));
 
 export default function App() {
   return (
@@ -1169,10 +1177,10 @@ function AppInner() {
     let cancelled = false;
     void (async () => {
       try {
-        const driver = await ExpoSqliteDriver.open("recycle.db");
-        const billStore = await SqliteLocalStore.open(driver);
-        const draftStore = await SqliteDraftStore.open(driver);
-        const masterStore = await SqliteMasterStore.open(driver);
+        // ONCE PER JS PROCESS (A3 batch 1b): an activity relaunch mounts a new root in the same
+        // process and runs this effect again; it must get the SAME driver and stores, not a
+        // second open and a second schema transaction. See src/adapters/sqlite/localDatabase.ts.
+        const { driver, billStore, draftStore, masterStore } = await LOCAL_DATABASE.open("recycle.db");
         // The SAME driver, so the identity shares the transaction boundary and
         // the file lifetime of the bills it will one day be stamped onto. No
         // open() of its own: the table is created by initConnection, which the

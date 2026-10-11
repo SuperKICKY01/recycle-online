@@ -1712,7 +1712,12 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   worktree (`.claude\worktrees\recycle-online-paste-set`), the per-worktree path shape of
   `lessons/a-path-derived-from-the-checkout-is-per-worktree.md`; lanes pass `--out E:\recycle-online-paste-set`.
   (4) **`AppInner` re-renders about three times every ~400 ms while idle** — a render-counting probe on the cart
-  (A3 item 3's debugging, removed) logged about 250 renders between 19:14:23 and 19:14:56 with nothing touched. Cause UNMEASURED; outside the
+  (A3 item 3's debugging, removed) logged about 250 renders between 19:14:23 and 19:14:56 with nothing touched.
+  (5) **After an activity relaunch the OLD root's background work may still run beside the new root** — A3 batch 1b
+  made the database bring-up once per process (`localDatabase.ts`), but each root still builds its own `SyncEngine`,
+  timers and fetches in App.tsx's effects, and whether the old root's are stopped when it unmounts is UNMEASURED
+  (the first-relaunch `database is locked` in 1b is consistent with leftover work holding the file). Owed: count
+  live engines after a relaunch before trusting two roots to share one queue. Cause UNMEASURED; outside the
   batch.
 
 - **LANE ZERO (2026-10-11) — FOUND AND LEFT, one line each.** (1) The `prove_all` lock does not cover a dev-targeting

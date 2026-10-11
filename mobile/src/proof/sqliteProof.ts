@@ -4,11 +4,13 @@
  *
  * Run: npm run prove:sqlite
  */
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 
+import type { SqlDriver, SqlRunResult, SqlTx, SqlValue } from "../adapters/sqlite/driver.js";
+import { localDatabaseOnce, type LocalDatabase } from "../adapters/sqlite/localDatabase.js";
 import { NodeSqliteDriver } from "../adapters/sqlite/nodeDriver.js";
 import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { createLocalBill } from "../sync/createBill.js";
@@ -409,6 +411,116 @@ async function s4DurabilityAcrossRestart(): Promise<void> {
   rmSync(dir, { recursive: true, force: true });
 }
 
+/* ------------------------------------------------------------------ S5 ---- */
+
+const BREAK = (process.argv.find((a) => a.startsWith("--break=")) ?? "").split("=")[1] ?? "";
+
+/** Delegates to a real driver and counts what the startup does to it. */
+class CountingDriver implements SqlDriver {
+  pragmas = 0;
+  transactions = 0;
+  constructor(private readonly inner: SqlDriver) {}
+  exec(sql: string): Promise<void> {
+    if (sql.startsWith("PRAGMA busy_timeout")) this.pragmas += 1;
+    return this.inner.exec(sql);
+  }
+  run(sql: string, params?: readonly SqlValue[]): Promise<SqlRunResult> {
+    return this.inner.run(sql, params);
+  }
+  all<T>(sql: string, params?: readonly SqlValue[]): Promise<T[]> {
+    return this.inner.all<T>(sql, params);
+  }
+  transaction<T>(fn: (tx: SqlTx) => Promise<T>): Promise<T> {
+    this.transactions += 1;
+    return this.inner.transaction(fn);
+  }
+  close(): Promise<void> {
+    return this.inner.close();
+  }
+}
+
+/**
+ * A3 batch 1b. An Android activity relaunch runs App.tsx's startup a SECOND time in the same JS
+ * process. On the emulator that second startup failed two ways (localDatabase.ts carries the
+ * measurement); the fix brings the database up once per process. These cells drive the very
+ * function App.tsx calls — `localDatabaseOnce` — over node:sqlite, and count.
+ * DISPROOF: `--break=noonce` gives each startup its own bring-up (the pre-fix behaviour).
+ */
+async function s5StartupOncePerProcess(): Promise<void> {
+  header("S5 the startup brings the database up ONCE per process (a relaunch reuses it)");
+  if (BREAK === "noonce") console.log("  *** DISPROOF ACTIVE: --break=noonce — every startup brings up its own ***");
+  const dir = tempDir("once");
+  let opens = 0;
+  const drivers: CountingDriver[] = [];
+  const opener = (name: string): Promise<SqlDriver> => {
+    opens += 1;
+    const d = new CountingDriver(NodeSqliteDriver.open(join(dir, `${name}.db`)));
+    drivers.push(d);
+    return Promise.resolve(d);
+  };
+  const process1 = localDatabaseOnce(opener);
+  const startup = (): Promise<LocalDatabase> =>
+    BREAK === "noonce" ? localDatabaseOnce(opener).open("recycle") : process1.open("recycle");
+
+  // Two startups racing (the relaunched root mounts while the first bring-up is in flight),
+  // then a third later (a second relaunch).
+  // A rejection is RECORDED, not thrown: under the disproof two independent bring-ups race on
+  // one file and the loser fails `database is locked` — the emulator's failure, reproduced here.
+  const settled = await Promise.allSettled([startup(), startup()]);
+  const later = await startup().then((v) => ({ ok: true as const, v }), (e: unknown) => ({ ok: false as const, e }));
+  const rejected = [
+    ...settled.filter((s): s is PromiseRejectedResult => s.status === "rejected").map((s) => String(s.reason)),
+    ...(later.ok ? [] : [String(later.e)]),
+  ];
+  const got = [...settled.flatMap((s) => (s.status === "fulfilled" ? [s.value] : [])), ...(later.ok ? [later.v] : [])];
+  const [a, b, c] = got;
+  const first = drivers[0];
+  check("every startup succeeded", rejected.length === 0, rejected.length === 0 ? "3 of 3" : rejected.join(" | "));
+  check("three startups opened the database ONCE", opens === 1, `opens=${String(opens)}`);
+  check(
+    "every startup got the SAME driver and the SAME stores",
+    a !== undefined && b !== undefined && c !== undefined &&
+      a.driver === b.driver && b.driver === c.driver && a.billStore === c.billStore && a.draftStore === c.draftStore,
+  );
+  check(
+    "the schema bring-up (busy_timeout pragma, exclusive transaction) ran for ONE startup only — three stores, once",
+    first !== undefined && first.pragmas === 3 && first.transactions === 3 && drivers.length === 1,
+    first === undefined ? "no driver" : `pragmas=${String(first.pragmas)} transactions=${String(first.transactions)} drivers=${String(drivers.length)}`,
+  );
+  // The reused stores still work: the handle a relaunched root gets is a live one.
+  const lastGood = got[got.length - 1];
+  const bills = lastGood === undefined ? null : await lastGood.billStore.listByState("pending");
+  check("control: the reused bill store answers a query", Array.isArray(bills), `pending=${String(bills?.length ?? "none")}`);
+
+  // A FAILED bring-up is not remembered: the next startup tries again.
+  let flaky = 0;
+  const failingOnce = localDatabaseOnce((name: string) => {
+    flaky += 1;
+    if (flaky === 1) return Promise.reject(new Error("first open fails"));
+    return Promise.resolve(NodeSqliteDriver.open(join(dir, `${name}-retry.db`)));
+  });
+  const firstTry = await failingOnce.open("r").then(() => "opened", () => "rejected");
+  const retried = await failingOnce.open("r").catch(() => null);
+  const secondTry = retried === null ? "rejected" : "opened";
+  if (retried !== null) await retried.driver.close();
+  check("a rejected bring-up is not cached — the next startup opens for real",
+    firstTry === "rejected" && secondTry === "opened" && flaky === 2, `${firstTry}, ${secondTry}, opens=${String(flaky)}`);
+
+  // The cells above prove the function; this one proves the APP calls it. App.tsx is outside
+  // the node program, so its TEXT is read (as proveSheets.ts does).
+  const app = readFileSync(join(process.cwd(), "App.tsx"), "utf8");
+  check(
+    "App.tsx brings the database up through localDatabaseOnce at module scope, and opens nothing itself",
+    app.includes("const LOCAL_DATABASE = localDatabaseOnce((name) => ExpoSqliteDriver.open(name));") &&
+      app.includes("await LOCAL_DATABASE.open(\"recycle.db\")") &&
+      !/await ExpoSqliteDriver\.open\(/.test(app) &&
+      !/await Sqlite(LocalStore|DraftStore|MasterStore)\.open\(/.test(app),
+  );
+
+  for (const d of drivers) await d.close();
+  rmSync(dir, { recursive: true, force: true });
+}
+
 /* ---------------------------------------------------------------- main --- */
 
 async function main(): Promise<number> {
@@ -419,6 +531,7 @@ async function main(): Promise<number> {
   await s2DecimalRoundTrip();
   await s3ConcurrentClaims(4, 300);
   await s4DurabilityAcrossRestart();
+  await s5StartupOncePerProcess();
 
   console.log("");
   console.log(failures === 0 ? "ALL SQLITE CASES PASSED" : `FAILED — ${failures} check(s)`);

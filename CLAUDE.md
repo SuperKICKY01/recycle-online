@@ -279,6 +279,12 @@ on 2026-08-28 — nothing weakened, only relocated.
   the Activity and React Native starts a NEW root (logcat `Running "main" with {"rootTag":11,…}`),
   so the app's boot — the database open included — runs a second time in the same process. Treat
   any configuration change as a suspect trigger; the trail is `OPEN_ITEMS.md § Verification gaps`, first line.
+  **Amended again 2026-10-11 (lane A, A3 batch 1b) — CAUSE FOUND AND FIXED IN JS.** Reproduced 2 of 2 on
+  the SECOND live font change in one process (`NativeDatabase.execAsync … NullPointerException`): expo-sqlite
+  hands a second open of the same path the same cached native connection, and when the first JS wrapper
+  is collected its release closes that connection underneath. The app now brings the database up once
+  per JS process (`src/adapters/sqlite/localDatabase.ts`); five consecutive live changes after the fix,
+  no error. If the line is seen again, it is a NEW cause: capture the full message from logcat first.
 - **`adb exec-out screencap -p > shot.png` THROUGH POWERSHELL WRITES A CORRUPT PNG** — `>` is
   `Out-File`, which re-encodes the bytes. Instead: `adb shell screencap -p /sdcard/shot.png`
   then `adb pull /sdcard/shot.png <path>` (a path with NO colon after the drive).

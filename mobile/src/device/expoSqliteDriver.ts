@@ -63,12 +63,26 @@
 import * as SQLite from "expo-sqlite";
 
 import type { SqlDriver, SqlRunResult, SqlTx, SqlValue } from "../adapters/sqlite/driver.js";
+import { openOncePerProcess } from "../adapters/sqlite/openOnce.js";
 
 export class ExpoSqliteDriver implements SqlDriver {
-  private constructor(private readonly db: SQLite.SQLiteDatabase) {}
+  /*
+   * ONE OPEN PER JS PROCESS (A3 batch 1b): an activity relaunch runs App.tsx's startup again in
+   * the same process, and a second openDatabaseAsync of the same name left expo-sqlite's cached
+   * native connection to be closed under us when the first JS wrapper was collected — see
+   * src/adapters/sqlite/openOnce.ts for the measurement. Every open goes through this.
+   */
+  private static readonly once = openOncePerProcess(
+    async (name: string) => new ExpoSqliteDriver(await SQLite.openDatabaseAsync(name), name),
+  );
 
-  static async open(databaseName = "recycle.db"): Promise<ExpoSqliteDriver> {
-    return new ExpoSqliteDriver(await SQLite.openDatabaseAsync(databaseName));
+  private constructor(
+    private readonly db: SQLite.SQLiteDatabase,
+    private readonly name: string,
+  ) {}
+
+  static open(databaseName = "recycle.db"): Promise<ExpoSqliteDriver> {
+    return ExpoSqliteDriver.once.open(databaseName);
   }
 
   async exec(sql: string): Promise<void> {
@@ -104,6 +118,7 @@ export class ExpoSqliteDriver implements SqlDriver {
   }
 
   async close(): Promise<void> {
+    ExpoSqliteDriver.once.forget(this.name);
     await this.db.closeAsync();
   }
 }

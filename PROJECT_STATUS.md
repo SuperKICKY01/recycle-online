@@ -75,6 +75,28 @@ not read the green as re-run.**
 
 ## Current phase
 
+**LANE A, A3 BATCH 1b — the relaunch database error, the idle re-renders, item 3's native fix (ADVISOR-DECIDED
+2026-10-11). 2026-10-11.** Shas anchor next pass.
+- **2a, the database open on an activity relaunch — FIXED in JS.** The built manifest
+  (`mobile/android/app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml:67`)
+  handles only `keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode`; every other configuration
+  change (font scale, locale, density, …) relaunches the activity and React Native runs "main" again in the same
+  process. Repro ledger (emulator, `recycle_walk_a`): attempts 1, 2, 4 (first relaunch) no error; 3 and 5 (second
+  relaunch) `เปิดฐานข้อมูลไม่สำเร็จ`, full message `Call to function 'NativeDatabase.execAsync' has been rejected. →
+  Caused by: java.lang.NullPointerException`. Cause (expo-sqlite 16.0.10 source): a later open of the same path
+  returns the cached native connection (`SQLiteModule.kt:110-113`) in a new JS wrapper; collecting the old wrapper
+  closes it (`NativeDatabase.kt:28-31`). A first fix (one driver per process, `openOnce.ts`) then failed once on
+  the first relaunch with `NativeStatement.finalizeAsync … database is locked` — the second startup's schema
+  transaction runs on a fresh expo connection without busy_timeout. Final fix: `localDatabaseOnce`
+  (`src/adapters/sqlite/localDatabase.ts`) brings the driver AND the three schema-initialising stores up once per
+  JS process; App.tsx calls it at module scope (`LOCAL_DATABASE`). After it: five consecutive live font changes
+  (attempts 21–25), five new roots, five startups, no boot failure, the cart and session intact.
+  `prove:sqlite` S5 (six cells, over the real function and App.tsx's text); disproof `--break=noonce` (a bring-up
+  per startup) reddened EXACTLY the four once-per-process cells and reproduced the lock under node (`database is
+  locked`), control and retry green. Exit 0 twice; both typechecks 0. Skills: debug-mantra · 3 · "Run the
+  **disproof first**."; verification-discipline · 5 · "A negative result is only attributable if a known-good
+  signal passes the same harness".
+
 **LANE A, A3 BATCH 1 — six fixes from the A2 ranked list (`E:\recycle-shots\lane-a\A2\A2_ranked_list.md`), in the
 advisor's order 1, 2, 3, 5, 6, 4 (ADVISOR-DECIDED 2026-10-11). 2026-10-11.** One commit per item; shas anchor next
 pass. Walks and screenshots run against `recycle_walk_a`, built empty at head plus `scripts/seed_dev.py` (never dev);
