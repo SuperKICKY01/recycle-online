@@ -372,6 +372,32 @@ duplication is licensed by that check — remove it and the licence dies.
   CLAUDE.md's Conventions).
 <!-- shared-checks:end -->
 
+## Running two lanes
+
+Two orchestrator lanes (A mobile, B desktop) may run on this box at once. The
+mechanism is `server/scripts/lane.py` and the lock in `tools/prove_all.py`; the rules:
+
+- **Each lane works in its own worktree** under `.claude/worktrees/<lane>` on its
+  own branch — never in the main checkout, never on the other lane's branch.
+- **Each lane sets `RECYCLE_LANE`** (`a` or `b`) for every proof and gate it runs, so
+  every scratch database it creates ends `_<lane>`. Unset means the main checkout's
+  names exactly. A lane also sets `RECYCLE_BACKUP_DIR=E:\recycle-online-backups`
+  (in a worktree the repo's parent is not `E:\`), and passes its own
+  `API_BASE_URL` / `RECYCLE_API_BASE` to any proof it runs by hand — a proof's
+  default is `:8000`/`:8099`, which may be the OTHER lane's server.
+- **Only lane A mints migrations.** Lane B that needs a schema change asks lane A
+  through the owner; two lanes numbering migrations independently fork the chain.
+- **`prove_all` holds the lock** (`%TEMP%\recycle_prove_all.lock`, shared by every
+  worktree): one gate at a time on this box. A second run refuses naming the holder;
+  wait for its `PROVE_ALL_EXIT`, never delete a live lock by hand.
+- **A lane merges to `main` only after a green gate** (`PROVE_ALL_EXIT=0`, RED 0)
+  on its own branch REBASED ONTO CURRENT `main` — a green on a stale base proves
+  the branch, not the merge.
+- **The dev database and the seeded accounts are shared** — there is one of each,
+  not laned. A lane never trips a seeded account's login lock (`Machine footguns`
+  "A FAILED SIGN-IN AS A SEEDED USER"): a lock taken on dev reaches the other
+  lane's next gate through the dump.
+
 ## Conventions
 
 - Python: async throughout (FastAPI), type hints required, Alembic for migrations.

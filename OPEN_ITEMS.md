@@ -1665,6 +1665,17 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
 
 ## Code debt found and left in place
 
+- **LANE ZERO (2026-10-11) — FOUND AND LEFT, one line each.** (1) The `prove_all` lock does not cover a dev-targeting
+  proof run BY HAND: the ten dev-targeting proofs write to the one dev database, so a lane hand-running one during the
+  other lane's gate interleaves rows (proof-must-run-twice's seventh amendment is the shape). (2) Every live proof's
+  base-URL DEFAULT is a fixed port (`:8000`, `:8099`, `:8137`, `:8211`, `:8231`; census in that phase), not
+  lane-aware: a lane that forgets `API_BASE_URL`/`RECYCLE_API_BASE` talks to whatever listens there, possibly the
+  other lane's server. (3) Clearing a stale lock compares its bytes and then unlinks: a narrow window remains in which
+  a fresh lock written between the two calls could be removed. (4) `backup_db.py` and `prove_backup_restore.py` fall
+  back to `<checkout parent>/recycle-online-backups` when `RECYCLE_BACKUP_DIR` is unset, which in a worktree is inside
+  `.claude/worktrees`. (5) A fresh worktree has no `mobile/node_modules` or `server/.venv`; what a lane's first gate
+  costs or refuses there has NOT been observed.
+
 - **THE MONEY LEDGER (migration 0020, 2026-09-05) — FOUND AND NOT FIXED, and one
   CONDITION the next unit invalidates.**
   - **THE DEFERRED READERS OF `total_amount` ARE SAFE UNDER ONE CONDITION, AND THE

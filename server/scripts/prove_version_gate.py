@@ -60,7 +60,8 @@ UNAUTHORIZED = 401
 GATED_ROUTE = "/products"  # requires get_principal; no token -> 401 AT the auth layer
 
 SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRATCH_DB = "recycle_version_gate_scratch"
+from lane import scratch_name  # noqa: E402  (scratch names are decided in lane.py only)
+SCRATCH_DB = scratch_name("recycle_version_gate_scratch")
 RUN = uuid.uuid4().hex[:8]
 
 BASE = ""

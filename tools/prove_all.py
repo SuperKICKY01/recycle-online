@@ -84,6 +84,24 @@ EXIT CODE: 0 only when RED and COULD NOT RUN are both empty. 1 otherwise. 2 when
 the preflight or the stand-up refused and no proof ran. The last line is
 `PROVE_ALL_EXIT=<n>`; its ABSENCE means this script itself died, and is a failure.
 
+TWO LANES (CLAUDE.md, "Running two lanes"). Every scratch name above goes through
+server/scripts/lane.py `scratch_name()`: with RECYCLE_LANE unset they are exactly the
+names written here; with RECYCLE_LANE=a each gains `_a`, so two worktrees never
+restore the same scratch under each other. A malformed tag refuses (exit 2). The
+live database and the seeded accounts are NOT laned -- there is one of each.
+
+ONE GATE AT A TIME. A run takes an exclusive lock file, LOCK_PATH below, in the
+user's TEMP directory and not the repo root: the contended things are the one
+Postgres cluster, the dev database and the box's memory (three uvicorns), and a
+repo-root lock would be per WORKTREE -- two lanes would each hold their own and
+run at once. A second run REFUSES (exit 2) naming the holder's pid, start time,
+lane and checkout. STALENESS: the lock records the holder's pid AND that process's
+creation time; it is stale when no live process has that pid, or when the live one
+was created at a different time (a reused pid). An unreadable lock is stale once
+older than LOCK_UNREADABLE_GRACE seconds (a killed run can leave it empty). A stale
+lock is removed, said so in the output, and the run proceeds; age alone never makes
+a lock stale, because a full run legitimately holds it for hours.
+
 LOG NAMES CARRY NO COLON. `prove:login` becomes `prove_login.run1.log`: on NTFS a
 colon in a file name is an alternate-data-stream separator and the write succeeds
 INTO A STREAM of a file named `prove` (CLAUDE.md, Machine footguns).
@@ -105,6 +123,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -113,34 +132,51 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 SERVER = REPO / "server"
 MOBILE = REPO / "mobile"
+sys.path.insert(0, str(SERVER / "scripts"))
+from lane import lane_tag, scratch_name  # noqa: E402  (scratch names are decided in lane.py only)
+
+try:
+    LANE = lane_tag()
+except ValueError as _exc:
+    print(f"REFUSED: {_exc}\nPROVE_ALL_EXIT=2", flush=True)
+    sys.exit(2)
+# Where backups live. In a worktree (.claude/worktrees/<x>) REPO.parent is the
+# worktrees directory, not E:\, so a lane sets RECYCLE_BACKUP_DIR -- the variable
+# scripts/backup_db.py already reads for the same directory. Unset = as before.
+BACKUPS = Path(os.environ.get("RECYCLE_BACKUP_DIR") or (REPO.parent / "recycle-online-backups"))
+LOCK_PATH = Path(tempfile.gettempdir()) / "recycle_prove_all.lock"
+LOCK_UNREADABLE_GRACE = 120
 CONTAINER = os.environ.get("PROVE_PG_CONTAINER", "recycle_pg")
 TENANT_A_ID = "11111111-1111-1111-1111-111111111111"   # server/app/seeddata.py
 LOGINSCREEN_CODE = "K7M2P9QB"                           # mobile/src/proof/proveLoginScreen.ts GOOD_CODE
 SCRATCH_BOUND_CODE = "SCRBVKQ7"                         # letters/digits all present in codes the directory already holds
 
-SCRATCH_BOUND_DB = "recycle_all_scratch_bound"
-MOBILE_DB = "recycle_all_mobile_scratch"
+SCRATCH_BOUND_DB = scratch_name("recycle_all_scratch_bound")
+MOBILE_DB = scratch_name("recycle_all_mobile_scratch")
+BRANCHES_DB = scratch_name("recycle_branches_scratch")
+RECON_DB = scratch_name("recycle_recon_scratch")
 # Scratches the --database proofs take by name. Restored from the fresh dump at
 # the start of every prove_all run, so each proof meets a copy at head.
 FLAGGED_SCRATCHES = {
-    "prove_seller_create": ["--database", "recycle_p18a_scratch"],
-    "prove_seller_code_reservations": ["--database", "recycle_p18b_scratch"],
-    "prove_user_create": ["--database", "recycle_users_scratch"],
-    "prove_docno_clock": ["--database", "recycle_docno_scratch"],
-    "prove_shop_code": ["--app-database", "recycle_restore_scratch",
-                        "--directory-database", "recycle_keyshape_scratch"],
+    "prove_seller_create": ["--database", scratch_name("recycle_p18a_scratch")],
+    "prove_seller_code_reservations": ["--database", scratch_name("recycle_p18b_scratch")],
+    "prove_user_create": ["--database", scratch_name("recycle_users_scratch")],
+    "prove_docno_clock": ["--database", scratch_name("recycle_docno_scratch")],
+    "prove_shop_code": ["--app-database", scratch_name("recycle_restore_scratch"),
+                        "--directory-database", scratch_name("recycle_keyshape_scratch")],
     "prove_clock_guard": ["--database", SCRATCH_BOUND_DB],
     "prove_year_gate": ["--database", SCRATCH_BOUND_DB],
 }
-RESTORE_TARGETS = ["recycle_p18a_scratch", "recycle_p18b_scratch", "recycle_users_scratch",
-                   "recycle_docno_scratch", "recycle_restore_scratch", "recycle_keyshape_scratch",
-                   SCRATCH_BOUND_DB, MOBILE_DB]
+RESTORE_TARGETS = [scratch_name(n) for n in (
+    "recycle_p18a_scratch", "recycle_p18b_scratch", "recycle_users_scratch",
+    "recycle_docno_scratch", "recycle_restore_scratch", "recycle_keyshape_scratch")] + \
+    [SCRATCH_BOUND_DB, MOBILE_DB]
 DEV_TARGETING = {"prove_audit", "prove_auth", "prove_bills", "prove_daily_report", "prove_master",
                  "prove_master_data_gate", "prove_master_write", "prove_revocation",
                  "prove_seller_pricing", "prove_shop_time"}
 SCRATCH_SERVER = {"prove_clock_guard", "prove_year_gate"}
 MOBILE_LIVE = {"prove:forbidden", "prove:products", "prove:users", "prove:login", "prove:loginscreen", "prove:counter"}
-DEFAULT_PRE0018 = REPO.parent / "recycle-online-backups" / "recycle_pre0018_clean_20260904T150246Z_pre-0018-clean"
+DEFAULT_PRE0018 = BACKUPS / "recycle_pre0018_clean_20260904T150246Z_pre-0018-clean"
 
 EXIT_LINE = re.compile(rb"^([A-Z][A-Z0-9_]*EXIT)=(\d+)\s*$", re.M)
 CELL_FAIL = re.compile(rb"^\s*\[(?:FAIL|fail|RED|red)\b.*$", re.M)
@@ -232,6 +268,111 @@ def kill_tree(proc: subprocess.Popen) -> None:
         proc.wait(15)
     except subprocess.TimeoutExpired:
         pass
+
+
+# ---------------------------------------------------------------------------
+# the lock (one gate at a time, across every worktree on this box)
+# ---------------------------------------------------------------------------
+def _process_identity(pid: int) -> str | None:
+    """The creation time of the LIVE process with this pid, as a string; None when no
+    live process has it; "?" when one exists but cannot be inspected (treated as the
+    holder -- refusing wrongly costs a retry, clearing wrongly costs two gates at once)."""
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return "?" if ctypes.get_last_error() == 5 else None  # 5 = ERROR_ACCESS_DENIED
+        try:
+            code = wintypes.DWORD()
+            if not k32.GetExitCodeProcess(handle, ctypes.byref(code)) or code.value != 259:  # STILL_ACTIVE
+                return None
+            created, ended, kern, user = (wintypes.FILETIME() for _ in range(4))
+            if not k32.GetProcessTimes(handle, ctypes.byref(created), ctypes.byref(ended),
+                                       ctypes.byref(kern), ctypes.byref(user)):
+                return "?"
+            return str((created.dwHighDateTime << 32) | created.dwLowDateTime)
+        finally:
+            k32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return None
+    except PermissionError:
+        return "?"
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
+    except (OSError, IndexError):
+        return "?"
+
+
+def _judge_lock(raw: bytes) -> tuple[str, str | None]:
+    """-> (who holds it, why it is STALE or None if it is held)."""
+    try:
+        h = json.loads(raw.decode("utf-8"))
+        pid = int(h["pid"])
+    except (ValueError, KeyError, TypeError):
+        age = time.time() - LOCK_PATH.stat().st_mtime
+        who = f"an unreadable lock ({len(raw)} bytes, {age:.0f}s old)"
+        return who, (f"unreadable and older than {LOCK_UNREADABLE_GRACE}s" if age > LOCK_UNREADABLE_GRACE else None)
+    who = (f"pid {pid}, started {h.get('started_utc')}, lane {h.get('lane') or '(none)'}, "
+           f"checkout {h.get('repo')}")
+    now = _process_identity(pid)
+    if now is None:
+        return who, f"pid {pid} is not running"
+    if now != "?" and h.get("proc_start") not in (None, "?") and now != h["proc_start"]:
+        return who, f"pid {pid} is now a different process (created {now}, the lock names {h['proc_start']})"
+    return who, None
+
+
+_LOCK_MINE: bytes | None = None
+
+
+def acquire_lock() -> None:
+    global _LOCK_MINE
+    mine = json.dumps({"pid": os.getpid(), "proc_start": _process_identity(os.getpid()),
+                       "started_utc": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                       "lane": LANE, "repo": str(REPO), "argv": sys.argv[1:]}).encode("utf-8")
+    for _ in range(2):
+        try:
+            fd = os.open(LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            try:
+                raw = LOCK_PATH.read_bytes()
+                who, stale = _judge_lock(raw)
+            except FileNotFoundError:
+                continue  # released between the two calls; try again
+            if stale is None:
+                raise Refused(f"another prove_all holds the lock {LOCK_PATH}: {who}. One gate at a time "
+                              "(CLAUDE.md, Running two lanes) -- wait for it to print PROVE_ALL_EXIT.")
+            # Remove it only if it is still the lock just judged, so a fresh lock another
+            # run took in between is never deleted (a narrow window remains; see report).
+            try:
+                if LOCK_PATH.read_bytes() == raw:
+                    LOCK_PATH.unlink()
+            except FileNotFoundError:
+                pass
+            say(f"  lock: a STALE lock was cleared ({stale}) -- it named {who}")
+            continue
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(mine)
+        _LOCK_MINE = mine
+        say(f"  lock: {LOCK_PATH} taken by pid {os.getpid()}")
+        return
+    raise Refused(f"could not take the lock {LOCK_PATH} after clearing a stale one: another run took it first")
+
+
+def release_lock() -> None:
+    """Remove the lock only if it is still the one this run wrote."""
+    try:
+        if _LOCK_MINE is not None and LOCK_PATH.read_bytes() == _LOCK_MINE:
+            LOCK_PATH.unlink()
+            say(f"  lock: {LOCK_PATH} released")
+    except FileNotFoundError:
+        say(f"  lock: {LOCK_PATH} was already gone at release")
 
 
 # ---------------------------------------------------------------------------
@@ -565,13 +706,22 @@ def main() -> int:
     ap.add_argument("--only", default="", help="comma-separated proof names")
     ap.add_argument("--timeout", type=int, default=1800, help="seconds per proof run")
     ap.add_argument("--pre0018", type=Path, default=DEFAULT_PRE0018, help="a backup_db.py dir at alembic 0017, for prove_branches --from")
-    ap.add_argument("--out", type=Path, default=REPO.parent / "recycle-online-backups" / "_prove_all")
+    ap.add_argument("--out", type=Path, default=BACKUPS / "_prove_all")
     args = ap.parse_args()
 
+    acquire_lock()
+    try:
+        return _main(args)
+    finally:
+        release_lock()
+
+
+def _main(args) -> int:
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = args.out / stamp
     out.mkdir(parents=True, exist_ok=True)
-    say(f"prove_all  runs={args.runs}  logs={out}")
+    say(f"prove_all  runs={args.runs}  lane={LANE or '(none)'}  logs={out}")
+    say(f"  scratches this run restores: {', '.join(RESTORE_TARGETS)}; and passes: {BRANCHES_DB}, {RECON_DB}")
 
     dotenv = preflight(args)
     only = {s for s in args.only.split(",") if s}
@@ -595,9 +745,9 @@ def main() -> int:
     seed_code(SCRATCH_BOUND_DB, SCRATCH_BOUND_CODE)
     for e in plan:
         if e["name"] == "prove_branches":
-            e["argv"] += ["--from", str(args.pre0018), "--database", "recycle_branches_scratch"]
+            e["argv"] += ["--from", str(args.pre0018), "--database", BRANCHES_DB]
         if e["name"] == "prove_reconcile":
-            e["argv"] += ["--database", "recycle_recon_scratch", "--from", str(dump)]
+            e["argv"] += ["--database", RECON_DB, "--from", str(dump)]
 
     say("=== servers (bound by environment dict; ports chosen free) ===")
     servers: dict[str, Server] = {}

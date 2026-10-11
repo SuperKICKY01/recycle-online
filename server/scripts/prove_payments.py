@@ -116,7 +116,8 @@ except (AttributeError, OSError):
     pass
 
 SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRATCH_DB = "recycle_payments_scratch"
+from lane import scratch_name  # noqa: E402  (scratch names are decided in lane.py only)
+SCRATCH_DB = scratch_name("recycle_payments_scratch")
 RUN = uuid.uuid4().hex[:8]
 SYSTEM_ACTOR = "00000000-0000-0000-0000-000000000000"
 

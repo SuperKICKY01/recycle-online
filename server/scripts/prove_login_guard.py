@@ -55,7 +55,8 @@ LOCKOUT_WINDOW_SECONDS = -1
 
 SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONTAINER = os.environ.get("PROVE_PG_CONTAINER", "recycle_pg")
-SCRATCH_DB = "recycle_login_guard_scratch"
+from lane import scratch_name  # noqa: E402  (scratch names are decided in lane.py only)
+SCRATCH_DB = scratch_name("recycle_login_guard_scratch")
 RUN = uuid.uuid4().hex[:8]
 
 BASE = ""

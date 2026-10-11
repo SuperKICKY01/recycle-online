@@ -83,8 +83,9 @@ CONTAINER = os.environ.get("RECYCLE_PG_CONTAINER", "recycle_pg")
 # Two scratches, fixed names so restore_db.py OVERWRITES them each run (twice-bare,
 # no accumulation). SOURCE is the only database this proof ever mutates; the live
 # database is only dumped.
-SCRATCH_SOURCE = "recycle_restore_source"
-SCRATCH_TARGET = "recycle_restore_target"
+from lane import scratch_name  # noqa: E402  (scratch names are decided in lane.py only)
+SCRATCH_SOURCE = scratch_name("recycle_restore_source")
+SCRATCH_TARGET = scratch_name("recycle_restore_target")
 SUPERUSER = "postgres"
 
 failures: list[str] = []

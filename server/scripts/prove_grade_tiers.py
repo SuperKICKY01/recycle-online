@@ -88,7 +88,8 @@ import httpx  # noqa: E402
 from sqlalchemy.engine import make_url  # noqa: E402
 
 SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRATCH_DB = "recycle_grade_tiers_scratch"
+from lane import scratch_name  # noqa: E402  (scratch names are decided in lane.py only)
+SCRATCH_DB = scratch_name("recycle_grade_tiers_scratch")
 RUN = uuid.uuid4().hex[:8]
 
 BASE = ""

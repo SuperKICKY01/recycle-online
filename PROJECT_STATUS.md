@@ -75,6 +75,30 @@ not read the green as re-run.**
 
 ## Current phase
 
+**LANE ZERO — TWO LANES CAN RUN ON THIS BOX AT ONCE. HARNESS ONLY: no product code, no migration, no screen, no worktree opened. 2026-10-11.**
+No sha yet (precedes the commit; anchor next pass). Supersedes the drawer-screens record below AS THE POINTER ONLY.
+- **BUILT.** `server/scripts/lane.py` (NEW): `RECYCLE_LANE` (unset = today's names exactly; `a` → every scratch
+  name gains `_a`; a malformed tag raises). Every scratch-name constant now goes through `scratch_name()`: eleven
+  self-restoring proofs, `prove_backup_restore` (source and target), `verify_backup`, `restore_db.py`'s default, and
+  every name `tools/prove_all.py` restores or passes (ten). `prove_all` takes an exclusive lock at
+  `%TEMP%\recycle_prove_all.lock`, in TEMP because a repo-root lock is per worktree; a second run refuses (exit 2)
+  naming the holder. A lock is STALE when its pid is dead, when that pid now has a different creation time, or when
+  it is unreadable and older than 120s. `prove_all`'s `--pre0018`/`--out` defaults honour `RECYCLE_BACKUP_DIR`, so the
+  gate can find the 0017 backup from a worktree. `CLAUDE.md § Running two lanes` (NEW) holds the rules.
+- **PROVEN — each observed.** P2: `prove_all` with no lane set → `PROVE_ALL_EXIT=0`, `TOTAL 85 GREEN 71
+  GREEN-EXIT-CODE-ONLY 14 RED 0 COULD-NOT-RUN 0` (`_prove_all/20261011T055519Z`, free memory ≥ 11.05 GB over 19 samples).
+  It created 23 databases (OID above the pre-run maximum), every one unsuffixed and already in the pre-run list. P3:
+  `RECYCLE_LANE=a`, `prove_drawer`, `prove_payments`, `prove_shifts` each exit 0 twice with their own `_EXIT=0` lines.
+  `pg_database` showed exactly three new databases, `recycle_{drawer,payments,shifts}_scratch_a`, and their unsuffixed
+  twins were untouched. P4: a lane-`b` run started during P2 refused, naming pid 22724; a run killed by `taskkill /T /F`
+  left its lock, and the next run printed `a STALE lock was cleared (pid 22608 is not running)`, ran, and released it.
+  The pid-reuse and unreadable-lock branches were driven directly (4/4). P1/P5: censuses with planted controls. P6: both
+  mobile typechecks exit 0; `verify_citations` `SOURCES=15 BROKEN=2` (both pre-existing, in files not touched).
+- **NOT OBSERVED.** Nothing ran inside a worktree (out of bounds), so the worktree readings, `RECYCLE_BACKUP_DIR`
+  included, are ASSUMED-BECAUSE `REPO = Path(__file__).resolve().parent.parent`. Two gates from two real lanes were never
+  run, and neither was a stale-clear race between two runs. Lesson written:
+  `lessons/a-path-derived-from-the-checkout-is-per-worktree.md`.
+
 **THE SHIFTS AND CASH-DRAWER UNIT, COMMIT 3 — THE SCREENS: the shift panel on the counter, the pay-gate, the blind count, cash movements, the method set, the channel picker, and the shop-settings payments group. ONLINE ONLY, NO server change. 2026-09-29.**
 No sha yet (precedes the commit; anchor next pass). Supersedes the commit-2 record below AS THE POINTER ONLY — that
 work stands. Built under the advisor's R1-R8 (the owner's 2026-09-26 delegation); three fence questions put to the

@@ -54,7 +54,8 @@ SERVER_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SERVER_DIR))
 
 DEFAULT_CONTAINER = os.environ.get("RECYCLE_PG_CONTAINER", "recycle_pg")
-DEFAULT_SCRATCH = "recycle_restore_scratch"
+from lane import scratch_name  # noqa: E402  (scratch names are decided in lane.py only)
+DEFAULT_SCRATCH = scratch_name("recycle_restore_scratch")
 SUPERUSER = "postgres"
 
 

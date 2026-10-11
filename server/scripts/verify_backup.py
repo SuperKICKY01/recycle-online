@@ -54,7 +54,8 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 import safety_net_common as C  # noqa: E402
 
-SCRATCH_DB = "recycle_backup_drill_scratch"
+from lane import scratch_name  # noqa: E402  (scratch names are decided in lane.py only)
+SCRATCH_DB = scratch_name("recycle_backup_drill_scratch")
 
 _failures: list[str] = []
 

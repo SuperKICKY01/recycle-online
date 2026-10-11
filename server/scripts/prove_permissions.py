@@ -89,7 +89,8 @@ from app.seeddata import (  # noqa: E402
 )
 
 SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRATCH_DB = "recycle_permissions_scratch"
+from lane import scratch_name  # noqa: E402  (scratch names are decided in lane.py only)
+SCRATCH_DB = scratch_name("recycle_permissions_scratch")
 RUN = uuid.uuid4().hex[:8]
 
 # THE CATALOGUE, RESTATED BY HAND. Never imported from app.permissions: the F

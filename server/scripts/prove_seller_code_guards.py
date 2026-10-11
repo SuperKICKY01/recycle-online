@@ -106,7 +106,8 @@ REFILL_PATH = "/seller-code-reservations"
 # commit, not "N commits back", so it cannot drift as history grows.
 GUARDS_COMMIT = "b8b557f"
 # The scratch this proof restores for itself, overwritten each run (twice-bare).
-SCRATCH_DB = "recycle_guards_scratch"
+from lane import scratch_name  # noqa: E402  (scratch names are decided in lane.py only)
+SCRATCH_DB = scratch_name("recycle_guards_scratch")
 
 failures: list[str] = []
 
