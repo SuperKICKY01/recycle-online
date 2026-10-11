@@ -60,8 +60,9 @@ THE CELLS (every negative cell has a positive sibling in the same run, named):
   MK  masking: the admin response carries the full identifiers (the scanner's
       POSITIVE CONTROL finds them); the staff response carries no 5-character
       substring of either identifier, no full-identifier key, and the right last four.
-  BW  born with cash: a shop provisioned by provision_shop.py on the scratch has its
-      one active cash row.
+  BW  born with cash AND transfer (migration 0023): a shop provisioned by
+      provision_shop.py on the scratch has exactly an active cash row and an active
+      transfer row.
   RV  REVOKE: as recycle_app, DELETE on purchase_bills, purchase_bill_items and
       doc_no_counters each REFUSED (InsufficientPrivilege); a SELECT on each is the
       control that the connection works.
@@ -70,6 +71,16 @@ THE CELLS (every negative cell has a positive sibling in the same run, named):
       separate_cashier; the same scanner over a planted violation finds it.
   X   reconcile.py on the scratch after every write above exits 0, H1..H3 and P1..P4
       present as [OK].
+  T23 migration 0023, on the same EMPTY build and BEFORE RT: at head every branch holds
+      an active cash and an active transfer row and both corrected comments read as
+      0023 wrote them; downgrade to 0022 exit 0, the comments read back as 0021's text
+      and the transfer rows STAY; at 0022 a new branch is born with cash ONLY (the
+      control) and an existing transfer row is set inactive; upgrade to 0023 gives the
+      branch that held NO transfer row an active one, leaves the INACTIVE row untouched
+      (value against value -- a shop's choice is never overturned), and raises the row
+      count by exactly the number of branches that held none; a branch inserted at 0023
+      is born with both; the backfill is audited as INSERTs only. The 0023 downgrade has
+      no refusal (it touches no row); RT1 runs it again on the way to 0021.
   RT  on a scratch BUILT FROM EMPTY (alembic upgrade head + seed_dev.py + one bill
       through POST /bills; never a dump of dev -- the gate repair, 2026-10-09):
       downgrade to 0021 (a closed shift present does NOT refuse), the objects gone and
@@ -1094,7 +1105,7 @@ async def run_cells(client: httpx.AsyncClient, db: Db, scratch: str) -> None:
 # cells that need no server
 # ---------------------------------------------------------------------------
 async def run_db_cells(db: Db, scratch: str) -> None:
-    header("BW  born with cash: a shop provisioned through provision_shop.py")
+    header("BW  born with cash AND transfer: a shop provisioned through provision_shop.py")
     name = f"drawer-bw-{RUN}"
     env = dict(ORIG_ENV)
     env["PYTHONIOENCODING"] = "utf-8"
@@ -1103,14 +1114,14 @@ async def run_db_cells(db: Db, scratch: str) -> None:
                         capture_output=True, text=True, timeout=300,
                         encoding="utf-8", errors="replace")
     tid = await db.fetchval("SELECT id FROM tenants WHERE name = $1", name)
-    rows = await db.fetch("SELECT method, is_active FROM branch_payment_methods WHERE tenant_id = $1",
-                          tid) if tid else []
+    rows = await db.fetch("SELECT method, is_active FROM branch_payment_methods WHERE tenant_id = $1"
+                          " ORDER BY method", tid) if tid else []
     check(cp.returncode == 0 and tid is not None,
           f"BW0 provision_shop.py exit {cp.returncode}, the tenant exists"
           + ("" if cp.returncode == 0 else f": {(cp.stdout + cp.stderr)[-300:]}"))
-    check([(r["method"], r["is_active"]) for r in rows] == [("cash", True)],
-          f"BW1 its born-with branch holds exactly one active cash row"
-          f" (got {[tuple(r) for r in rows]})")
+    check([(r["method"], r["is_active"]) for r in rows] == [("cash", True), ("transfer", True)],
+          f"BW1 its born-with branch holds exactly an active cash row and an active transfer"
+          f" row, migration 0023 (got {[tuple(r) for r in rows]})")
 
     header("RV  hard rule 5 at the grant level, as recycle_app")
     a_bill = await db.fetchval("SELECT id FROM purchase_bills WHERE tenant_id = $1 LIMIT 1", TENANT_A_ID)
@@ -1135,6 +1146,106 @@ async def run_db_cells(db: Db, scratch: str) -> None:
           f"X2 the report carries H1..H3 and P1..P4 as [OK] lines (present {present})")
     if cp.returncode != 0:
         print(out[-3000:])
+
+
+async def methods_of(db: Db, branch) -> list[tuple[str, bool]]:
+    return [(r["method"], r["is_active"]) for r in await db.fetch(
+        "SELECT method, is_active FROM branch_payment_methods WHERE branch_id = $1 ORDER BY method",
+        branch)]
+
+
+async def comments(db: Db) -> dict:
+    return dict(await db.fetchrow(
+        "SELECT (SELECT version_num FROM alembic_version) AS head,"
+        " obj_description('public.shifts'::regclass, 'pg_class') AS shifts,"
+        " obj_description('public.branch_payment_methods'::regclass, 'pg_class') AS bpm"))
+
+
+async def run_0023(db: Db) -> None:
+    """Migration 0023 on the EMPTY build, before RT moves the head below it. The comment
+    claims are judged by WORDS the two texts must and must not carry, never by a copy of
+    either text (a copy would only prove this file equals the migration)."""
+    header("T23 migration 0023: born with transfer, the backfill, the corrected comments")
+    both = [("cash", True), ("transfer", True)]
+    st = await comments(db)
+    short = await db.fetchval(
+        "SELECT count(*) FROM branches b WHERE (SELECT count(*) FROM branch_payment_methods m"
+        " WHERE m.branch_id = b.id AND m.is_active AND m.method IN ('cash', 'transfer')) <> 2")
+    n_br = await db.fetchval("SELECT count(*) FROM branches")
+    check(st["head"] is not None and st["head"] >= "0023" and n_br > 0 and short == 0,
+          f"T23-0 at {st['head']}: all {n_br} branch(es) hold an active cash AND an active"
+          f" transfer row (short={short})")
+    check("AUDITED" in (st["shifts"] or "") and "NOT audited" not in (st["shifts"] or "")
+          and "cash and transfer" in (st["bpm"] or ""),
+          f"T23-1 the corrected comments: shifts says AUDITED and not 'NOT audited'; the"
+          f" methods table names cash and transfer (shifts AUDITED={'AUDITED' in (st['shifts'] or '')},"
+          f" 'NOT audited'={'NOT audited' in (st['shifts'] or '')},"
+          f" bpm={'cash and transfer' in (st['bpm'] or '')})")
+
+    a_branch = await db.fetchval("SELECT id FROM branches WHERE tenant_id = $1 ORDER BY code LIMIT 1",
+                                 TENANT_A_ID)
+    rc, out = run_alembic(db.scratch, "downgrade", "0022")
+    st = await comments(db)
+    check(rc == 0 and st["head"] == "0022"
+          and "NOT audited" in (st["shifts"] or "")
+          and "provision_shop.py" in (st["bpm"] or ""),
+          f"T23-2 downgrade to 0022 exit {rc}: head {st['head']}, both comments read back as"
+          f" 0021's text" + ("" if rc == 0 else f": {out[-400:]}"))
+    check(await methods_of(db, a_branch) == both,
+          f"T23-3 the transfer rows STAY at 0022 ({await methods_of(db, a_branch)})")
+
+    at22 = uuid.uuid4()
+    await db.exec_as(TENANT_A_ID,
+                     "INSERT INTO branches (id, tenant_id, code, name, doc_prefix, is_active)"
+                     " VALUES ($1, $2, $3, '0022 probe', 'QX', true)",
+                     at22, TENANT_A_ID, f"TA{RUN[:4].upper()}")
+    check(await methods_of(db, at22) == [("cash", True)],
+          f"T23-4 control: a branch inserted at 0022 is born with cash ONLY"
+          f" ({await methods_of(db, at22)})")
+    await db.exec_as(TENANT_A_ID,
+                     "UPDATE branch_payment_methods SET is_active = false"
+                     " WHERE branch_id = $1 AND method = 'transfer'", a_branch)
+    row_q = ("SELECT tenant_id, branch_id, method, is_active FROM branch_payment_methods"
+             " WHERE branch_id = $1 AND method = 'transfer'")
+    inactive_before = await db.fetchrow(row_q, a_branch)
+    check(inactive_before is not None and inactive_before["is_active"] is False,
+          f"T23-5 control: the existing branch's transfer row is now INACTIVE (a shop's"
+          f" choice) ({dict(inactive_before) if inactive_before else None})")
+    lacking = await db.fetchval(
+        "SELECT count(*) FROM branches b WHERE NOT EXISTS (SELECT 1 FROM branch_payment_methods m"
+        " WHERE m.branch_id = b.id AND m.method = 'transfer')")
+    rows_before = await db.fetchval("SELECT count(*) FROM branch_payment_methods")
+
+    rc, out = run_alembic(db.scratch, "upgrade", "0023")
+    st = await comments(db)
+    check(rc == 0 and st["head"] == "0023" and await methods_of(db, at22) == both,
+          f"T23-6 upgrade to 0023 exit {rc}: the branch that held NO transfer row now holds an"
+          f" active one ({await methods_of(db, at22)})" + ("" if rc == 0 else f": {out[-400:]}"))
+    inactive_after = await db.fetchrow(row_q, a_branch)
+    check(inactive_before is not None and inactive_after is not None
+          and dict(inactive_after) == dict(inactive_before),
+          f"T23-7 the INACTIVE transfer row is UNTOUCHED, value against value -- a migration"
+          f" never overturns a shop's choice (before {dict(inactive_before) if inactive_before else None},"
+          f" after {dict(inactive_after) if inactive_after else None})")
+    rows_after = await db.fetchval("SELECT count(*) FROM branch_payment_methods")
+    check(lacking >= 1 and rows_after - rows_before == lacking,
+          f"T23-8 the method rows rose by EXACTLY the branches that held no transfer row"
+          f" ({rows_before} -> {rows_after}, lacking {lacking})")
+    at23 = uuid.uuid4()
+    await db.exec_as(TENANT_A_ID,
+                     "INSERT INTO branches (id, tenant_id, code, name, doc_prefix, is_active)"
+                     " VALUES ($1, $2, $3, '0023 probe', 'QY', true)",
+                     at23, TENANT_A_ID, f"TB{RUN[:4].upper()}")
+    check(await methods_of(db, at23) == both,
+          f"T23-9 a branch inserted at 0023 is born with BOTH, by the trigger alone"
+          f" ({await methods_of(db, at23)})")
+    audit = await db.fetchrow(
+        "SELECT count(*) FILTER (WHERE action = 'INSERT') AS ins,"
+        " count(*) FILTER (WHERE action <> 'INSERT') AS other FROM audit_log"
+        " WHERE table_name = 'branch_payment_methods' AND actor_username = 'system:migration_0023'")
+    check(audit["ins"] == lacking and audit["other"] == 0,
+          f"T23-10 the backfill is AUDITED under the declared migration actor: {audit['ins']}"
+          f" INSERT(s) = the {lacking} lacking branch(es), and no UPDATE ({audit['other']})")
 
 
 async def run_round_trip(db: Db, paid_bill: str, drop_refusal_row: bool) -> None:
@@ -1297,6 +1408,7 @@ async def amain(args) -> int:
         # refused over them before RT1 could judge the mechanics.
         await build_empty_scratch(live_name, scratch)
         paid_bill = seed_paid_bill(scratch)
+        await run_0023(db)
         await run_round_trip(db, paid_bill, args.disprove_refusal)
 
     header("verdict")

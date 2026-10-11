@@ -34,6 +34,7 @@ import {
   DRAWER_ONLY_NOTE,
   METHOD_LABEL,
   PARTIAL_NOTE,
+  QUEUE_TITLE,
   type CounterMessage,
   type CounterScreenState,
   type PaymentMethod,
@@ -142,7 +143,7 @@ export function CounterScreen({
   const styles = useMemo(() => makeStyles(t), [t]);
   return (
     <View style={styles.fill}>
-      <SheetHeader title="รับชำระเงิน" onClose={onClose} />
+      <SheetHeader title={QUEUE_TITLE} onClose={onClose} />
       {!queueShown ? (
         <QueueBody
           queue={null}

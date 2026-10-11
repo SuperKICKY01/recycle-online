@@ -259,7 +259,7 @@ const EXPECTED_REACHABLE: readonly string[] = [
   "bills",
   "confirm_save",
   "confirm_seller_change",
-  "counter", // the รับชำระเงิน header button opens the cashier counter (STRUCTURE.md 2.1, commit 2)
+  "counter", // the เคาน์เตอร์จ่ายเงิน header button opens the cashier counter (STRUCTURE.md 2.1, commit 2)
   "dashboard", // the ยอดวันนี้ button opens the dashboard (P1.23 item 4 unit 3; it absorbed the daily screen)
   "notices", // the notice-count control on the main screen opens the collapsed notices (P1.23 item 3 phase C)
   "prices",

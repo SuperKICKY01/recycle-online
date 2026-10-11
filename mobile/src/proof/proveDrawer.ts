@@ -438,7 +438,7 @@ function d6Channels(t: Tally): void {
 function d7Methods(t: Tally): void {
   t.header("D7 R7 the methods — the branch's ACTIVE ones; fail OPEN only on an unread policy");
   t.check("R7: an UNKNOWN policy offers today's pair (fail open)", offeredMethods(UNKNOWN_POLICY).join() === "cash,transfer");
-  t.check("R7: ['cash'] (every born-with branch) offers cash ONLY — transfer hidden",
+  t.check("R7: ['cash'] (transfer switched off; born-with cash+transfer since migration 0023) offers cash ONLY — transfer hidden",
     offeredMethods(policy(true, ["cash"])).join() === "cash");
   t.check("R7 sibling: ['cash','transfer'] offers both", offeredMethods(policy(true, ["cash", "transfer"])).join() === "cash,transfer");
   t.check("R7: ['transfer'] (cash switched off) offers transfer only", offeredMethods(policy(true, ["transfer"])).join() === "transfer");

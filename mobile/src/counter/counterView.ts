@@ -64,7 +64,11 @@ export const METHOD_LABEL: { readonly [M in PaymentMethod]: string } = {
 // is guarded by nothing unless a proof asserts it (the dashboard finding, OPEN_ITEMS).
 export const OUTSTANDING_LABEL = "ค้างจ่าย";
 export const PAID_LABEL = "จ่ายแล้ว";
-export const QUEUE_TITLE = "รับชำระเงิน";
+// The counter's name, on its header AND on the entry that opens it (navRow.ts). The shop
+// PAYS sellers here, so "รับชำระเงิน" (receiving payment) read in the wrong direction
+// (ADVISOR-DECIDED 2026-09-30, OPEN_ITEMS.md); เคาน์เตอร์เงินสด was declined because the
+// counter also pays by transfer.
+export const QUEUE_TITLE = "เคาน์เตอร์จ่ายเงิน";
 export const QUEUE_EMPTY = "ไม่มีบิลค้างจ่าย";
 export const PARTIAL_NOTE = "จ่ายแล้วบางส่วน";
 
@@ -79,7 +83,7 @@ const allocationOverRemaining = (remainingDisplay: string): string =>
 // REFUSED_OFFLINE is exported for the drawer (drawerView.ts): the shift panel lives on
 // this same online-only screen, so an unreachable shift route says the same sentence.
 export const REFUSED_OFFLINE =
-  "ยังติดต่อระบบไม่ได้ หน้ารับชำระเงินต้องเชื่อมต่อระบบ — เมื่อกลับมาออนไลน์ รายการจะรีเฟรชเอง";
+  "ยังติดต่อระบบไม่ได้ หน้าเคาน์เตอร์จ่ายเงินต้องเชื่อมต่อระบบ — เมื่อกลับมาออนไลน์ รายการจะรีเฟรชเอง";
 const REFUSED_FORBIDDEN =
   "บัญชีนี้ไม่มีสิทธิ์รับชำระเงินที่เคาน์เตอร์ ต้องให้เจ้าของร้านมอบสิทธิ์";
 const REFUSED_BILL_UNKNOWN = "บิลนี้ยังส่งไม่ถึงระบบ — รีเฟรชรายการแล้วลองใหม่";

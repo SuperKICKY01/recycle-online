@@ -273,7 +273,7 @@ export const SHEET_TRANSITIONS = {
     site: "App.tsx the latest-bill Pressable",
   },
   /**
-   * Header รับชำระเงิน (STRUCTURE.md 2.1, commit 2). In the body's header like
+   * Header เคาน์เตอร์จ่ายเงิน (STRUCTURE.md 2.1, commit 2; รับชำระเงิน until migration 0023's commit). In the body's header like
    * ยอดวันนี้, so a sheet covers it and it is reachable only from the app's own
    * screen. The control is NOT always drawn — hidden from a session without
    * payments.record and from a branch whose separate_cashier is known-off
@@ -284,7 +284,7 @@ export const SHEET_TRANSITIONS = {
   open_counter: {
     action: { kind: "open", sheet: "counter" },
     from: [null],
-    site: "App.tsx header, the รับชำระเงิน Pressable",
+    site: "App.tsx header, the เคาน์เตอร์จ่ายเงิน Pressable",
   },
   /**
    * Header ราคารับซื้อ (P1.9). In the BODY's header, so it is reachable only

@@ -45,7 +45,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   // shop with a separated counter it is the cashier's most-used destination; its
   // gate (counter_entry) hides it for a session without payments.record or a branch
   // whose separate_cashier is known-off, so an ordinary yard never sees it.
-  { dest: "counter", label: "รับชำระเงิน", transition: "open_counter", gate: "counter_entry" },
+  { dest: "counter", label: "เคาน์เตอร์จ่ายเงิน", transition: "open_counter", gate: "counter_entry" },
   { dest: "prices", label: "ราคารับซื้อ", transition: "open_prices", gate: "edit_prices" },
   { dest: "settings", label: "ตั้งค่าร้าน", transition: "open_settings", gate: "signed_in" },
   { dest: "account", label: "บัญชีของฉัน", transition: "open_account", gate: "signed_in" },

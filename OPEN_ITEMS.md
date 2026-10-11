@@ -698,6 +698,18 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Verification gaps — built, not proven
 
+- **A LANE CANNOT WALK THE EMULATOR AGAINST ITS OWN SERVER PORT WITHOUT A REBUILT APK. Found
+  2026-10-11 (lane A, A1), measured.** The installed debug build (`dev.chutipon.recycle`, no URL
+  scheme registered, so no dev-client deep link) bakes `extra.apiBaseUrl` `http://192.168.1.238:8000`
+  at build time: with the worktree's `app.json` pointed at :8100 and a cleared-cache Metro serving the
+  bundle, lane A's :8100 server logged no request from the emulator and the shop-settings screen
+  printed `http://192.168.1.238:8000`. Its Metro host defaults to `10.0.2.2:8081`, so `adb reverse` does
+  nothing; writing `debug_http_host` = `10.0.2.2:8082` into the app's `shared_prefs` (`run-as`) made it
+  load lane A's Metro. A1's walk therefore served the worktree's code on :8000 while nothing held it.
+  Two lanes walking at once would contend for :8000. Owed: a build that reads the API base from the
+  Metro manifest, or one APK per lane, or a walk lock like `prove_all`'s. A candidate MACHINE FOOTGUN
+  ("offline" on the device that is really the baked port) once the owner settles the remedy.
+
 - **THE PromptPay QR PAYLOAD IS SELF-CONSISTENT, NOT VERIFIED AGAINST A REAL BANK. Filed
   2026-09-10 (unit 4 commit 3).** `@recycle/promptpay`'s `promptPayPhonePayload` is built and
   `prove:promptpay` is green twice, but a headless proof can only establish SELF-CONSISTENCY (the
@@ -1877,9 +1889,14 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
       unit; nothing built here.
     - **Cash-movement VOID, the shifts-off day close, the variance notification:** NOT
       addressed by commit 3 (out of its fence); each stays as filed above.
-  - **C1 -- ADVISOR-DECIDED 2026-09-30, FOR THE NEXT MIGRATION (recorded, NOT built): born-with
-    payment methods become `cash` AND `transfer`, and every existing branch without an active
-    `transfer` row gains one.** The owner's words, verbatim: "ส่วนมากคน แสกน qr จ่ายเงินกัน". A
+  - **C1 -- ADVISOR-DECIDED 2026-09-30, CORRECTED 2026-10-11 (the advisor's own wording was
+    ambiguous): born-with payment methods become `cash` AND `transfer`, and every existing branch
+    with NO `transfer` row AT ALL gains one, active. An existing INACTIVE `transfer` row is NOT
+    touched** -- it is a shop's recorded choice, written through the audited route, and a
+    migration never overturns a choice a shop made (the 2026-09-30 text read "without an active
+    `transfer` row", which would have reactivated it). **BUILT 2026-10-11 as migration `0023`**
+    (lane A, milestone A1; no sha yet -- anchor next pass): dev 5 -> 8 method rows, Shop A's
+    inactive `transfer` row left inactive; `prove_drawer` T23. The owner's words, verbatim: "ส่วนมากคน แสกน qr จ่ายเงินกัน". A
     counter that shows only `เงินสด` on day one makes a shop hunt for a switch before it can pay
     the way most sellers are paid (commit 3 measured Shop A at `["cash"]`, and R7 hides every
     inactive method). No real shop exists yet, so nothing is lost by waiting for the migration
@@ -1936,6 +1953,27 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
       it has read in the wrong direction since the counter's screen commit; not in commit 3
       (the string is asserted by existing proofs and that changeset was closed); the proposal
       `เคาน์เตอร์เงินสด` declined because the counter also pays by transfer.
+      **BUILT 2026-10-11 (lane A, A1, with migration `0023`; no sha yet):** the entry
+      (`navRow.ts`) and the header (`QUEUE_TITLE`, which `CounterScreen.tsx` now RENDERS instead
+      of its own literal) read `เคาน์เตอร์จ่ายเงิน`; the two sentences naming the screen by its old
+      name (`หน้ารับชำระเงิน` in `REFUSED_OFFLINE` and `METHODS_NOTE`) follow it. `prove:counter`
+      H5 asserts the title, that the entry carries the SAME label as the header, and that the
+      header renders `QUEUE_TITLE`; the disproof putting the old label back on the entry reddened
+      exactly that one cell.
+    - **FOUND 2026-10-11 (lane A, A1), RECORDED, not changed (outside the label decision): the
+      same wrong-direction verb `รับชำระเงิน` survives in NINE other strings** (counted after the
+      edit by a ripgrep content search over `mobile/{app,src}/**/*.{ts,tsx}`: 14 lines, of which
+      2 are comments and 3 are in `src/proof/` -- nine product strings) -- the seller row's pay button `รับชำระเงิน <amount> บาท` (`CounterScreen.tsx`);
+      in `counterView.ts` `REFUSED_FORBIDDEN` `…ไม่มีสิทธิ์รับชำระเงินที่เคาน์เตอร์…`, `REFUSED_SERVER`
+      `ระบบยังรับชำระเงินไม่ได้ในตอนนี้…`, and the 401 and generic lines; in `drawerView.ts` the gate
+      line `…แล้วจึงรับชำระเงินได้` (`SHIFT_FIRST_LINE`), the settings heading `การรับชำระเงิน`, and
+      two settings-group lines. The shop PAYS in every one. Carried into the A2 UX audit as a
+      wording item.
+    - **FOUND 2026-10-11 (lane A, A1), RECORDED: `reconcile.py` H3 checks only the born-with
+      CASH row.** From `0023` every branch also holds a `transfer` row (active or not, and no
+      DELETE grant can remove it), so a branch with none is a state that must never exist; H3
+      does not name it. Adding the arm needs its injection in `prove_reconcile` (fires / names /
+      clears) -- not done in A1.
     - **The panel says "by whom" as คุณ / บัญชีอื่น, not a name**: `GET /shifts/current`
       returns `opened_by` as a user id and no name, and a name would need a route change
       (server out of fence). `readTokenUserId` decides self vs other; nothing is invented.

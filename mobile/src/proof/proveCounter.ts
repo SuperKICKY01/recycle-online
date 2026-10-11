@@ -57,6 +57,7 @@ import {
   type PaymentMeta,
   type UnpaidBill,
 } from "../counter/counterView.js";
+import { NAV_ITEMS } from "../ui/navRow.js";
 import { grantsOf } from "./proofGrants.js";
 import { drawerHeadless, drawerLive } from "./proveDrawer.js";
 import { withClientVersion } from "../net/clientVersion.js";
@@ -350,7 +351,12 @@ function h5Labels(): void {
   header("H5 the labels — a label that says what a number MEANS is asserted here");
   check("the outstanding label is ค้างจ่าย", OUTSTANDING_LABEL === "ค้างจ่าย");
   check("the paid label is จ่ายแล้ว", PAID_LABEL === "จ่ายแล้ว");
-  check("the queue title is รับชำระเงิน", QUEUE_TITLE === "รับชำระเงิน");
+  // เคาน์เตอร์จ่ายเงิน since migration 0023's commit: the shop PAYS sellers here, and the old
+  // รับชำระเงิน ("receiving payment") read in the wrong direction (ADVISOR-DECIDED 2026-09-30).
+  check("the counter's title is เคาน์เตอร์จ่ายเงิน", QUEUE_TITLE === "เคาน์เตอร์จ่ายเงิน");
+  const navCounter = NAV_ITEMS.find((n) => n.dest === "counter");
+  check("the ENTRY that opens the counter carries the same label as its header",
+    navCounter !== undefined && navCounter.label === QUEUE_TITLE);
   check("the partial note reads จ่ายแล้วบางส่วน", PARTIAL_NOTE === "จ่ายแล้วบางส่วน");
   check("cash is เงินสด, transfer is โอนเงิน", METHOD_LABEL.cash === "เงินสด" && METHOD_LABEL.transfer === "โอนเงิน");
   check("this commit OFFERS cash and transfer (promptpay rides commit 3, write_off with void)",
@@ -362,6 +368,8 @@ function h5Labels(): void {
   check("CounterScreen renders the outstanding label from the model",
     screenSrc.includes("outstandingLabel") || screenSrc.includes("OUTSTANDING_LABEL"));
   check("CounterScreen renders the method label", screenSrc.includes("METHOD_LABEL"));
+  check("CounterScreen's header renders QUEUE_TITLE, not a literal of its own",
+    screenSrc.includes("title={QUEUE_TITLE}"));
 }
 
 // ---------------------------------------------------------------------------

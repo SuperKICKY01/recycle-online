@@ -75,6 +75,43 @@ not read the green as re-run.**
 
 ## Current phase
 
+**LANE A, MILESTONE A1 — MIGRATION 0023 (born with cash AND transfer) AND THE COUNTER LABEL `เคาน์เตอร์จ่ายเงิน`. 2026-10-11.**
+No sha yet (precedes the commit; anchor next pass). Built in worktree `.claude/worktrees/a`, branch `lane-a`, under
+`RECYCLE_LANE=a`. Supersedes the lane-zero record below AS THE POINTER ONLY.
+- **A0 FIRST (no commit, the harness needed no fix):** a fresh worktree lacked `server/.env` (copied), `server/.venv`
+  (`uv sync --frozen`), root and `mobile/` `node_modules` (`npm ci`); both typechecks exit 0; `prove_all` under
+  `RECYCLE_LANE=a` → `PROVE_ALL_EXIT=0`, `TOTAL 85 GREEN 71 GREEN-EXIT-CODE-ONLY 14 RED 0 COULD-NOT-RUN 0`
+  (`_prove_all/20261011T064741Z`, free memory ≥ 10.06 GB over 39 samples). `pg_database` read with each database's
+  `PG_VERSION` mtime as its creation instant: the 23 databases created at or after the run's start all end `_a`; the
+  newest unsuffixed one dates from the lane-zero run (06:17:30Z).
+- **BUILT.** `0023_born_with_transfer.py`: `branches_born_with_cash()` replaced so a new branch is born with an active
+  `cash` AND an active `transfer` row (names kept, reason at the site); every branch holding NO `transfer` row gains one,
+  active; an existing INACTIVE row is NOT touched (ADVISOR-DECIDED 2026-10-11, correcting the 2026-09-30 wording);
+  `shifts` COMMENT corrected to AUDITED (the upgrade refuses unless `audit_capture` is on `shifts`) and the
+  `branch_payment_methods` COMMENT corrected. The downgrade restores 0022's body and the 0021 comments, never refuses
+  (it touches no row — advisor-decided), and leaves the transfer rows. Read-backs check that a row EXISTS per born-with
+  method (never "an active row": the first draft's "active cash" would have refused on a shop that switched cash off)
+  and that the row count rose by exactly the branches that had none. Mobile: `QUEUE_TITLE` and the `navRow` entry read
+  `เคาน์เตอร์จ่ายเงิน`; `CounterScreen` now renders `QUEUE_TITLE` instead of its own literal; `REFUSED_OFFLINE` and
+  `METHODS_NOTE` name the screen by its new name.
+- **PROVEN — each observed.** Dev: backup `recycle_20261011T070839Z_pre0023` (BACKUP_EXIT=0), `alembic upgrade head`
+  exit 0 → `0023`; read back 5 → 8 method rows, Shop A `transfer` still `f`, Shop B / the encoding control / the pilot
+  shop each gained `transfer t`, both comments as written. `prove_drawer` (T23-0..10 new, BW1 now cash+transfer)
+  exit 0 TWICE, 97/97. Disproofs on the migration (hashed, restored byte-identical `bf49872a…`, re-run 97/97): the
+  overruled reactivation reddened EXACTLY T23-7, T23-10; a cash-only trigger body EXACTLY T23-0, -3, -5, -7, -9.
+  Both typechecks exit 0. Against lane A's own server on :8100: `prove:counter` exit 0 TWICE (`passes=328 failures=0`),
+  `prove:sheets` and `prove:settings` exit 0 twice each; the old label put back on the entry reddened EXACTLY "the ENTRY
+  that opens the counter carries the same label as its header" (restored, `sha256sum -c` OK). Dev's Shop A methods
+  re-read after the live rounds: as found.
+- **SHOWN — emulator `recycle_api36`, cold-booted; Metro `expo start -c` from the worktree on :8082, `Android Bundled
+  8781ms index.ts (1220 modules)`.** `E:\recycle-shots\lane-a\A1\`: the entry `เคาน์เตอร์จ่ายเงิน` (02), the header (03),
+  `REFUSED_OFFLINE` with the new name (04), the drawer-only page under the new header (10), the settings group with
+  `METHODS_NOTE` renamed and Shop A's `โอนเงิน` OFF (13). A screenshot that caught the dev seed password typed into the
+  username field (a keyboard re-enabled itself and covered the password field; nothing was submitted, the server log
+  shows no login request) was DELETED, not kept. The installed debug build bakes `apiBaseUrl` `:8000` and Metro's
+  `debug_http_host` default `10.0.2.2:8081`, so the walk served the worktree's code on :8000 for its duration (nothing
+  held it; stopped after) and set the host preference to `10.0.2.2:8082` — `OPEN_ITEMS.md`.
+- **NOT RUN / NOT OBSERVED.** A staff session on the device. The A1 gate is recorded with the commit.
 **LANE ZERO — TWO LANES CAN RUN ON THIS BOX AT ONCE. HARNESS ONLY: no product code, no migration, no screen, no worktree opened. 2026-10-11.**
 No sha yet (precedes the commit; anchor next pass). Supersedes the drawer-screens record below AS THE POINTER ONLY.
 - **BUILT.** `server/scripts/lane.py` (NEW): `RECYCLE_LANE` (unset = today's names exactly; `a` → every scratch
