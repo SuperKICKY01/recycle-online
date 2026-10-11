@@ -274,6 +274,11 @@ on 2026-08-28 — nothing weakened, only relocated.
   appears, force-stop and cold-start once and record whether it returns BEFORE naming any
   code path; if it survives a cold start it is real and is debugged
   (`.claude/skills/debug-mantra/SKILL.md`).
+  **Amended 2026-10-11 (lane A) — A TRIGGER OBSERVED, STILL NO CAUSE.** Seen twice more, each time
+  right after a system font-size change made while the app ran (A2; A3). A font change RELAUNCHES
+  the Activity and React Native starts a NEW root (logcat `Running "main" with {"rootTag":11,…}`),
+  so the app's boot — the database open included — runs a second time in the same process. Treat
+  any configuration change as a suspect trigger; the trail is `OPEN_ITEMS.md § Verification gaps`, first line.
 - **`adb exec-out screencap -p > shot.png` THROUGH POWERSHELL WRITES A CORRUPT PNG** — `>` is
   `Out-File`, which re-encodes the bytes. Instead: `adb shell screencap -p /sdcard/shot.png`
   then `adb pull /sdcard/shot.png <path>` (a path with NO colon after the drive).
@@ -407,6 +412,15 @@ mechanism is `server/scripts/lane.py` and the lock in `tools/prove_all.py`; the 
   not laned. A lane never trips a seeded account's login lock (`Machine footguns`
   "A FAILED SIGN-IN AS A SEEDED USER"): a lock taken on dev reaches the other
   lane's next gate through the dump.
+- **Port 8000 is lane A's (ADVISOR-DECIDED 2026-10-11).** The installed debug APK reaches only
+  `:8000` (it bakes `extra.apiBaseUrl` at build time), so lane A walks there; lane B never binds
+  `:8000`. There is no single server-start helper in the repo to put a refusal in (a dev server is
+  started by hand; `tools/prove_all.py` picks free ports), so the rule is this line, not a guard.
+- **Walks run against a fresh lane walk database, never dev (ADVISOR-DECIDED 2026-10-11).** Build
+  it empty — `scratch_name("recycle_walk")` from `server/scripts/lane.py`, migrations at head, then
+  `scripts/seed_dev.py` (lane A used `prove_shifts.build_empty_scratch(name, "head")`) — and point the
+  walk's server at it. Every screenshot comes from it. Nobody cleans dev to make a walk look tidy: no
+  deletes, no deactivations.
 
 ## Conventions
 

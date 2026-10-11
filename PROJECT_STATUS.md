@@ -135,6 +135,11 @@ before/after under `E:\recycle-shots\lane-a\A3\`.
   removing `selected` from the dashboard chip (hashed `84ABA7BD…`, restored byte-identical) reddened EXACTLY Ca1
   naming `app/DashboardScreen.tsx:163`. Exit 0 twice; `prove:dashboard`, `prove:products`, `prove:settings`,
   `prove:pickerseller` exit 0; both typechecks 0.
+- **Docs (advisor 2c, 2d, 2e).** `CLAUDE.md § Running two lanes`: port 8000 is lane A's, lane B never binds it, no
+  guard (the repo has no single server-start helper); walks run against a fresh lane walk database, never dev, and
+  nobody cleans dev. `OPEN_ITEMS.md`: the port line marked DECIDED; four found-and-left lines (who leaves
+  `Audit Proof User` and `proof-drawer-…` rows in dev and how found, `build_paste_set.py`'s worktree default, an idle
+  re-render loop). `CLAUDE.md` NativeDatabase footgun amended with the observed trigger.
 
 **LANE A, A1 FOLLOW-UP — the `prove_shifts` RT red, decided as OPTION A (ADVISOR-DECIDED 2026-10-11). 2026-10-11.**
 No sha yet. The A1 gate (`_prove_all/20261011T072726Z`) was killed for memory after `[31/85]`, no exit line;

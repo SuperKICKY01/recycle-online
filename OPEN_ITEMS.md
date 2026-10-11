@@ -728,6 +728,9 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   Two lanes walking at once would contend for :8000. Owed: a build that reads the API base from the
   Metro manifest, or one APK per lane, or a walk lock like `prove_all`'s. A candidate MACHINE FOOTGUN
   ("offline" on the device that is really the baked port) once the owner settles the remedy.
+  **DECIDED 2026-10-11 (advisor): port 8000 is lane A's; lane B never binds it** — recorded in
+  `CLAUDE.md § Running two lanes`. No guard: the repo has no single server-start helper to put one in.
+  The rebuilt APK stays owed only if lane B ever needs to walk.
 
 - **THE PromptPay QR PAYLOAD IS SELF-CONSISTENT, NOT VERIFIED AGAINST A REAL BANK. Filed
   2026-09-10 (unit 4 commit 3).** `@recycle/promptpay`'s `promptPayPhonePayload` is built and
@@ -1695,6 +1698,22 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   the scratch-database retention entry below.
 
 ## Code debt found and left in place
+
+- **LANE A, A3 (2026-10-11) — FOUND AND LEFT, RECORDED ONLY (advisor 2e), one line each.**
+  (1) **`Audit Proof User` accounts in dev:** `server/scripts/prove_audit.py:193-196` creates a user `audit-<RUN>`
+  named `Audit Proof User` through `POST /users` on EVERY run and never deactivates it; `prove_audit` is in
+  `DEV_TARGETING` (`tools/prove_all.py:174`), so each gate adds one to dev (the A2 walk saw 50+). Found by a content
+  grep for `Audit Proof` over `*.py,*.ts` (one hit) and the `DEV_TARGETING` set. (2) **Struck-through `proof-drawer-…`
+  bank rows:** `mobile/src/proof/proveDrawer.ts` L5 (run by `prove:counter`) creates a channel `proof-drawer-<run>`
+  and Lz deactivates it (never deleted, by design). `prove_all` sends `prove:counter` to the MOBILE scratch
+  (`MOBILE_LIVE`, `tools/prove_all.py:178`), so these reach dev only when `prove:counter` is run BY HAND against a
+  server bound to dev — ASSUMED to be A1's hand runs (its :8100 server's database was not recorded). Found by a grep
+  for `proof-drawer-|payment-channels`. (3) **`build_paste_set.py` from a worktree** defaults its output beside the
+  worktree (`.claude\worktrees\recycle-online-paste-set`), the per-worktree path shape of
+  `lessons/a-path-derived-from-the-checkout-is-per-worktree.md`; lanes pass `--out E:\recycle-online-paste-set`.
+  (4) **`AppInner` re-renders about three times every ~400 ms while idle** — a render-counting probe on the cart
+  (A3 item 3's debugging, removed) logged about 250 renders between 19:14:23 and 19:14:56 with nothing touched. Cause UNMEASURED; outside the
+  batch.
 
 - **LANE ZERO (2026-10-11) — FOUND AND LEFT, one line each.** (1) The `prove_all` lock does not cover a dev-targeting
   proof run BY HAND: the ten dev-targeting proofs write to the one dev database, so a lane hand-running one during the
