@@ -95,6 +95,16 @@ server migration, no server route, no stored pins.
   `AC2ACB63…`, restored byte-identical) reddened EXACTLY the two upgrade cells (`no such column: category_id`).
   P0 exit 0 twice; `prove:migration`, `prove:cachetenant`, `prove:cold`, `prove:sqlite`, `prove:signout` exit 0;
   both typechecks 0.
+- **The picker, pure (`mobile/src/cart/productPicker.ts`).** `categoryChips` (ทั้งหมด, then categories by code);
+  `filterProducts` (active only; category; query on name, code and category name, whitespace- and case-insensitive;
+  catalogue order); `emptyListLine` (literal Thai); `frequentProducts` (this branch's bills on this device over the
+  last 30 SHOP days via `dashboard/period.ts` `shopToday`/`spanDays`; a bill counts once per product; voided bills,
+  other branches and retired products excluded; count desc then code asc; no history → the first products in
+  catalogue order, marked `fallback`); `frequentForDay` (frozen for the shop day; handed its own instant). Codes are
+  ordered by code unit, not `localeCompare` (ICU collation ignores `-` and varies by locale). `prove:productpicker`
+  P1 (12 cells) and P2 (15 cells), 37 in all with P0. Disproofs, one source mutation each, restored byte-identical
+  (`b8d8e825…`): frequency order, tie by code, same-day stability, retired, fallback, search by name, by code, by
+  category name, inactive filter, no-match sentence — each reddened its own cell(s). Exit 0 twice; both typechecks 0.
 
 **LANE A, A3 BATCH 1b — the relaunch database error, the idle re-renders, item 3's native fix (ADVISOR-DECIDED
 2026-10-11). 2026-10-11.** Shas anchor next pass.
