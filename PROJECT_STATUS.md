@@ -75,6 +75,17 @@ not read the green as re-run.**
 
 ## Current phase
 
+**LANE A, CART MILESTONE — frequent-products row, category browse, search, slim bill header (ADVISOR-DECIDED
+2026-10-12; plan `E:\recycle-shots\lane-a\cart\cart_milestone_plan.md`). 2026-10-12.** Shas anchor next pass. No
+server migration, no server route, no stored pins.
+- **Walk fixture.** `server/scripts/walk_fixture.py` writes 6 categories and 37 products (Thai scrap-yard names,
+  tiers A-D) for Shop A into a LANE WALK/SCRATCH database only; idempotent (`ON CONFLICT` on the per-tenant codes),
+  audited as `system:walk_fixture`. Refuses (exit 2) with no `RECYCLE_LANE`, on the dev name, and on any name that is
+  not `scratch_name("recycle_walk")` or `recycle_*_scratch_<lane>`; URLs are rebound before the app is imported.
+  Against `recycle_walk_a`: run 1 wrote categories=6 products=37 prices=148, run 2 wrote 0/0/0. It writes NO bills —
+  the frequent row counts the DEVICE's bills and the app never downloads bills, so the walk's bills are saved on the
+  emulator (a correction to the brief's "plus enough bills").
+
 **LANE A, A3 BATCH 1b — the relaunch database error, the idle re-renders, item 3's native fix (ADVISOR-DECIDED
 2026-10-11). 2026-10-11.** Shas anchor next pass.
 - **2a, the database open on an activity relaunch — FIXED in JS.** The built manifest
