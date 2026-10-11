@@ -17,7 +17,7 @@
  * Expectations are LITERAL Thai where a sentence is asserted (STRUCTURE.md invariant 12).
  * main() prints `PRODUCTPICKER_EXIT=<n>`; its ABSENCE is the signal.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -277,6 +277,30 @@ function p2Frequent(): void {
     late?.day === "2026-10-12" && after?.day === "2026-10-13" && after !== late, `${String(late?.day)} -> ${String(after?.day)}`);
 }
 
+/* ------------------------------------------------------------------ P3 ---- */
+
+/*
+ * THE SCREENS RENDER THE PICKER, AND DECIDE NOTHING. app/ and App.tsx are outside the node program,
+ * so their TEXT is read (as proveSheets.ts does). What a source scan cannot see — that the device
+ * draws it — is the walk's before/after screenshots.
+ */
+function p3ScreensWireThePicker(): void {
+  header("P3 the cart renders the picker's outputs; App derives the frequent row from EVERY bill");
+  const cart = readFileSync(join(process.cwd(), "app", "CartScreen.tsx"), "utf8");
+  const app = readFileSync(join(process.cwd(), "App.tsx"), "utf8");
+  check("control: both sources were read", cart.includes("export function CartScreen") && app.includes("function AppInner"));
+  check("the cart's list is filterProducts(products, categoryId, query) — no flat products.map left",
+    cart.includes("filterProducts(products, categoryId, query)") && !/\{products\.map\(/.test(cart));
+  check("the chips are categoryChips(products), each announcing selected",
+    cart.includes("categoryChips(products)") && /onPress=\{\(\) => setCategoryId\(c\.id\)\}[\s\S]{0,80}selected=\{on\}/.test(cart));
+  check("an empty list is worded by emptyListLine; the search placeholder is SEARCH_PLACEHOLDER",
+    cart.includes("emptyListLine(categoryId, query)") && cart.includes("placeholder={SEARCH_PLACEHOLDER}"));
+  check("the row heading is history -> FREQUENT_HEADING, fallback -> FALLBACK_HEADING",
+    cart.includes('frequent?.source === "history" ? FREQUENT_HEADING : FALLBACK_HEADING'));
+  check("App derives the row in refresh() from ALL bills, held by frequentForDay (frozen for the shop day)",
+    /setFrequent\(\(prev\) =>\s*frequentForDay\(prev, new Date\(\), productsRef\.current\.length > 0, \(now\) =>\s*frequentProducts\(\{ bills: all, products: productsRef\.current, branchId: branchRef\.current, now \}\)/.test(app));
+}
+
 /* ---------------------------------------------------------------- main --- */
 
 async function main(): Promise<number> {
@@ -284,6 +308,7 @@ async function main(): Promise<number> {
   await p0Categories();
   p1SearchAndCategories();
   p2Frequent();
+  p3ScreensWireThePicker();
   console.log("");
   console.log(`  passes=${String(passes)}  failures=${String(failures)}`);
   console.log(failures === 0 ? "ALL CELLS PASSED" : `FAILED — ${String(failures)} check(s)`);

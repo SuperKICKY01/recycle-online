@@ -78,6 +78,7 @@ import type { Draft } from "./src/cart/types";
 import { ExpoSqliteDriver } from "./src/device/expoSqliteDriver";
 import { localDatabaseOnce } from "./src/adapters/sqlite/localDatabase";
 import { joinCategories } from "./src/master/categories";
+import { frequentForDay, frequentProducts, type FrequentRow } from "./src/cart/productPicker";
 import { SecureTokenStore } from "./src/device/secureTokenStore";
 import {
   applyClearedSession,
@@ -384,6 +385,11 @@ function AppInner() {
   const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
+  // Read by refresh() (a [] callback) for the frequent row, hence refs beside the state.
+  const productsRef = useRef<Product[]>([]);
+  productsRef.current = products;
+  const branchRef = useRef<string | null>(null);
+  const [frequent, setFrequent] = useState<FrequentRow | null>(null);
   const [sellers, setSellers] = useState<Seller[]>([]);
   /**
    * THE SHOP'S ACTIVE GRADE TIERS (S16 / P1.24), a third cached master list. The
@@ -1310,6 +1316,8 @@ function AppInner() {
         // operator must be shown.
         const deviceShop = (await shopStore.load())?.tenant_id ?? null;
         setShop(deviceShop);
+        // The branch the frequent row counts (cart milestone): the one this device last learned.
+        branchRef.current = deviceShop === null ? null : ((await shopStore.readBranch(deviceShop)) ?? null);
         // The branch's counter policy, as the cache last held it (STRUCTURE.md
         // 1.4). null when never learned / another tenant / no single branch — the
         // counter entry fails OPEN on that, so a cold offline start still offers
@@ -1433,6 +1441,17 @@ function AppInner() {
      * end of one screen would understate it on exactly the busy day it matters.
      */
     setVoidsRefusedCount(all.filter(isVoidRefused).length);
+    /*
+     * THE FREQUENT ROW (cart milestone, ADVISOR-DECIDED 2026-10-12): derived from EVERY bill this
+     * device holds (`all`, not the 30 shown), this branch, 30 shop days — and FROZEN for the shop
+     * day: frequentForDay returns the held object unchanged until the day turns, so this setter
+     * re-renders nothing on the 400 ms tick. Not computed before the catalogue is loaded.
+     */
+    setFrequent((prev) =>
+      frequentForDay(prev, new Date(), productsRef.current.length > 0, (now) =>
+        frequentProducts({ bills: all, products: productsRef.current, branchId: branchRef.current, now }),
+      ),
+    );
     // A voided bill is not the "latest bill" — it is a reversal, and showing it
     // as the shop's most recent business would misreport the day.
     setLatest(all.find((b) => !isVoided(b)) ?? null);
@@ -1653,6 +1672,8 @@ function AppInner() {
       const learned = readShopBranch(r.body);
       if (learned !== null) {
         await shopStoreRef.current?.saveBranch(learned.shop_id, learned.branch_id);
+        // The frequent row reads it from the NEXT shop day on (today's row is frozen).
+        branchRef.current = learned.branch_id;
         // The branch's counter policy (STRUCTURE.md 1.4), fetched beside the
         // branch and cached keyed on the same shop id, so the counter entry gates
         // itself offline next boot. DISPLAY-ONLY, FAILS OPEN: fetchShopPolicy
@@ -4455,6 +4476,7 @@ function AppInner() {
         ) : (
           <CartScreen
             topSlot={latestCard}
+            frequent={frequent}
             products={products}
             tiers={gradeTiers}
             seller={seller}

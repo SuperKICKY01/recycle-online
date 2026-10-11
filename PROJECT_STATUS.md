@@ -116,6 +116,15 @@ server migration, no server route, no stored pins.
   `CONNECTION_PRAGMAS`) as the transaction's first statement. Device: three cold starts, no refresh error, the
   categories cached. `prove:sqlite` S6 (source cells; the driver cannot run under node); disproof: the line removed
   (hashed `D20666F0…`, restored byte-identical) reddened EXACTLY the first-statement cell. Exit 0 twice.
+- **The cart renders the picker.** `CartScreen.tsx`: the flat `products.map` is replaced by the frequent row (up to 6
+  tiles, 3 per line, headed `ใช้บ่อย` from history or `สินค้าในร้าน` for the fallback), the category chips and the
+  search field (`ค้นหา: ชื่อ / รหัส / หมวด`), then `filterProducts`' list or `emptyListLine`; every tile and chip
+  announces `selected`. Picker state is view state, never in the draft. `App.tsx` derives the row in `refresh()` from
+  ALL bills (not the 30 shown) with `frequentForDay`, so the 400 ms setter re-renders nothing within the shop day;
+  the branch is read at boot and updated when `GET /shop` answers. impeccable · operate.md · "The bar is earned
+  familiarity. The tool should disappear into the task." `prove:productpicker` P3 (6 source cells); disproof: App
+  counting `all.slice(0, 30)` (hashed `B85771C4…`, restored byte-identical) reddened EXACTLY the App cell (42/43).
+  `prove:productpicker` exit 0 twice, `prove:tapaudit` 0 (14 controls announce, 21 fields coloured); typechecks 0.
 
 **LANE A, A3 BATCH 1b — the relaunch database error, the idle re-renders, item 3's native fix (ADVISOR-DECIDED
 2026-10-11). 2026-10-11.** Shas anchor next pass.

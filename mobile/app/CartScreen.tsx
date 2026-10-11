@@ -70,7 +70,18 @@ import type { LineErrorCode } from "./messages";
 import { Numpad } from "./Numpad";
 import { useTheme, type ThemeTokens } from "./theme";
 import { Icon } from "./Icon";
+import { Touchable } from "./Press";
 import { display } from "../src/money/format";
+import {
+  ALL_CATEGORIES,
+  categoryChips,
+  emptyListLine,
+  FALLBACK_HEADING,
+  filterProducts,
+  FREQUENT_HEADING,
+  type FrequentRow,
+  SEARCH_PLACEHOLDER,
+} from "../src/cart/productPicker";
 
 const UNDO_MS = 8000;
 
@@ -95,6 +106,8 @@ interface Props {
    * which while a bill is open scrolls away with it instead of staying pinned.
    */
   topSlot?: ReactNode;
+  /** The frequent row for today, frozen in App.tsx (src/cart/productPicker.ts frequentForDay). */
+  frequent?: FrequentRow | null;
   products: Product[];
   /** The shop's cached grade tiers, to show the seller's grade by its NAME (S16, F3). */
   tiers: readonly NamedTier[];
@@ -129,6 +142,7 @@ interface Props {
 
 export function CartScreen({
   topSlot,
+  frequent = null,
   products,
   tiers,
   seller,
@@ -158,6 +172,21 @@ export function CartScreen({
   const scrollRef = useRef<ScrollView>(null);
   const grossY = useRef<number | null>(null);
   const reducedMotion = useReducedMotion();
+
+  // The picker's state (cart milestone): which category chip, what is typed. View state only —
+  // never part of the draft, so a restart opens on ทั้งหมด with an empty search.
+  const [categoryId, setCategoryId] = useState<string>(ALL_CATEGORIES);
+  const [query, setQuery] = useState("");
+  const chips = useMemo(() => categoryChips(products), [products]);
+  const listed = useMemo(() => filterProducts(products, categoryId, query), [products, categoryId, query]);
+  // The frozen row holds IDS; a product retired since it was computed simply has no tile.
+  const frequentTiles = useMemo(() => {
+    const byId = new Map(products.filter((p) => p.is_active !== false).map((p) => [p.id, p]));
+    return (frequent?.productIds ?? []).flatMap((id) => {
+      const p = byId.get(id);
+      return p ? [p] : [];
+    });
+  }, [products, frequent]);
 
   const form = draft.form;
   const lines = orderedLines(draft);
@@ -444,8 +473,76 @@ export function CartScreen({
           {editingId === null ? "เพิ่มรายการ" : "แก้ไขรายการ"}
         </Text>
 
-        <Text style={styles.label}>สินค้า</Text>
-        {products.map((p) => {
+        {/*
+          CART MILESTONE (2026-10-12): the product is reached through the FREQUENT row (derived in
+          App.tsx from this device's bills — src/cart/productPicker.ts frequentProducts, frozen for
+          the shop day), the CATEGORY chips (SRS 2.1 เลือกกลุ่มสินค้า), or SEARCH (name, code,
+          category name). The decisions are productPicker.ts's; this only lays them out.
+        */}
+        {frequentTiles.length > 0 ? (
+          <View style={styles.freqBlock}>
+            <Text style={styles.label}>
+              {frequent?.source === "history" ? FREQUENT_HEADING : FALLBACK_HEADING}
+            </Text>
+            <View style={styles.freqGrid}>
+              {frequentTiles.map((p) => {
+                const isOn = p.id === form.product_id;
+                return (
+                  <Touchable
+                    key={p.id}
+                    style={[styles.freqTile, isOn && styles.freqTileOn]}
+                    onPress={() => selectProduct(p)}
+                    disabled={busy || !sellerKnown}
+                    accessibilityLabel={p.name}
+                    selected={isOn}
+                  >
+                    <Text style={[styles.freqTileText, isOn && styles.onDark]} numberOfLines={2}>
+                      {p.name}
+                    </Text>
+                  </Touchable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRow}
+          keyboardShouldPersistTaps="handled"
+        >
+          {chips.map((c) => {
+            const on = c.id === categoryId;
+            return (
+              <Touchable
+                key={c.id}
+                style={[styles.chip, on && styles.chipOn]}
+                onPress={() => setCategoryId(c.id)}
+                accessibilityLabel={c.label}
+                selected={on}
+              >
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{c.label}</Text>
+              </Touchable>
+            );
+          })}
+        </ScrollView>
+
+        <TextInput
+          style={styles.searchInput}
+          value={query}
+          onChangeText={setQuery}
+          placeholder={SEARCH_PLACEHOLDER}
+          placeholderTextColor={t.color.placeholder}
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+          editable={!busy}
+        />
+
+        {listed.length === 0 ? (
+          <Text style={styles.emptyLine}>{emptyListLine(categoryId, query)}</Text>
+        ) : null}
+        {listed.map((p) => {
           const isOn = p.id === form.product_id;
           const gp = gradePrice(p.prices, grade);
           return (
@@ -780,6 +877,30 @@ function makeStyles(t: ThemeTokens) {
     productName: { fontSize: t.type.subhead, fontWeight: "700", color: t.color.text },
     productMeta: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.xs },
     onDark: { color: t.color.onPrimary },
+
+    // Cart milestone: the frequent row, the category chips and the search field.
+    freqBlock: { marginTop: t.space.md, gap: t.space.sm },
+    freqGrid: { flexDirection: "row", flexWrap: "wrap", gap: t.space.md },
+    freqTile: {
+      flexBasis: "31%", flexGrow: 1, minHeight: t.tapMin, paddingHorizontal: t.space.lg, paddingVertical: t.space.md,
+      borderWidth: 1, borderColor: t.color.border, borderRadius: t.radius.card, backgroundColor: t.color.surface,
+      justifyContent: "center",
+    },
+    freqTileOn: { backgroundColor: t.color.primary, borderColor: t.color.primary },
+    freqTileText: { fontSize: t.type.bodyLg, fontWeight: "700", color: t.color.text },
+    chipRow: { gap: t.space.md, paddingVertical: t.space.md },
+    chip: {
+      minHeight: t.tapMin, paddingHorizontal: t.space.xl, justifyContent: "center", borderRadius: t.radius.pill,
+      borderWidth: 1, borderColor: t.color.border, backgroundColor: t.color.surface,
+    },
+    chipOn: { backgroundColor: t.color.primary, borderColor: t.color.primary },
+    chipText: { fontSize: t.type.bodyLg, fontWeight: "700", color: t.color.text },
+    chipTextOn: { color: t.color.onPrimary },
+    searchInput: {
+      minHeight: t.tapMin, borderWidth: 1, borderColor: t.color.border, borderRadius: t.radius.lg,
+      paddingHorizontal: t.space.xl, fontSize: t.type.subhead, color: t.color.text, backgroundColor: t.color.surface,
+    },
+    emptyLine: { fontSize: t.type.bodyLg, color: t.color.textMuted, marginTop: t.space.xl },
 
     fieldBlock: { marginTop: t.space.xxl },
     fieldHead: {
