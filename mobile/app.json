@@ -24,7 +24,8 @@
     },
     "plugins": [
       "expo-sqlite",
-      "expo-secure-store"
+      "expo-secure-store",
+      "./plugins/withFontScaleLayout"
     ],
     "extra": {
       "_comment_native": "THIS FILE GENERATES mobile/android/ AND mobile/ios/. Produce them with `npx expo prebuild --platform android` (add --clean to start over). Both are gitignored and NEITHER MAY BE HAND-EDITED: the next prebuild overwrites them without warning, so an edit made there is destroyed silently and the person who made it will not be told. Anything that must change in the native project changes HERE, or in a config plugin listed under `plugins` below. That is also why `android.package` and `name` live in this file — the applicationId and the launcher label are generated from them.",

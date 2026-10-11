@@ -101,6 +101,23 @@ not read the green as re-run.**
   `await`-separated groups. Measured: 24 ticks, 80 renders in 10 idle seconds, three renders per tick. Line in
   `OPEN_ITEMS.md § Code debt` (LANE A, A3 (4)). Within the 30-minute timebox (about 15 minutes). debug-mantra · 2 ·
   "In-code instrumentation … Tag every probe with a unique prefix"; probes removed, `git diff` of App.tsx empty.
+- **2c, item 3's native fix — FIXED IN SOURCE AND ON THE EMULATOR (owner devices pending the next native build).**
+  `mobile/plugins/withFontScaleLayout.js`, listed in `app.json` `plugins`: after `loadReactNative(this)` it calls
+  `ReactNativeFeatureFlags.dangerouslyForceOverride` with a provider identical to
+  `ReactNativeFeatureFlagsOverrides_RNOSS_Stable_Android(true, true, true)` (that class is final; its four overrides on
+  the same open base) plus `enableFontScaleChangesUpdatingLayout = true`; idempotent by a marker; refuses if the anchor
+  is gone. Prebuild wrote it to the generated `MainApplication.kt:50-60`; no flag was read before the override (no
+  `recycle` warning in logcat). Build: `gradlew.bat assembleDebug --no-daemon --max-workers=2
+  -Dorg.gradle.parallel=false -Dorg.gradle.jvmargs=-Xmx1536m … -Pkotlin.compiler.execution.strategy=in-process
+  -PreactNativeArchitectures=x86_64` (command-line caps only, `gradle.properties` untouched), emulator OFF, launched at
+  ≥ 10.75 GB free held 60 s, `BUILD SUCCESSFUL in 3m 27s`, `GRADLE_EXIT=0`; `gradlew --stop` → `No Gradle daemons are
+  running.`, no java process left. Installed in place (`adb install -r` → `Success`). Control: cold start at 1.3
+  whole; test: signed in at 1.0, live change to 1.3, `ผู้ขาย` whole (`E:\recycle-shots\lane-a\A3b\item3\`).
+  verification-discipline · 5 · "A negative result is only attributable if a known-good signal passes the same
+  harness". The first attempt (batch 1b) was killed by the harness for memory with the emulator up during the compile.
+- **Measured with the emulator up:** OPEN_ITEMS § Code debt (5) — the old root's timers stop at unmount (probe
+  log per root); font scale set to 1.0, read back `1.0`, then `sync` + `reboot -p` and a cold boot read back `1.0`
+  (an `adb emu kill` had lost the same setting earlier: the abrupt kill does not flush it).
 
 **LANE A, A3 BATCH 1 — six fixes from the A2 ranked list (`E:\recycle-shots\lane-a\A2\A2_ranked_list.md`), in the
 advisor's order 1, 2, 3, 5, 6, 4 (ADVISOR-DECIDED 2026-10-11). 2026-10-11.** One commit per item; shas anchor next

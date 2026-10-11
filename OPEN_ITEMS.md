@@ -699,8 +699,14 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 ## Verification gaps — built, not proven
 
 - **A SYSTEM FONT-SIZE CHANGE MADE WHILE THE APP RUNS CLIPS EVERY TEXT UNTIL THE PROCESS RESTARTS — A2 item 3,
-  re-diagnosed 2026-10-11 (lane A, A3), measured; NOT fixed (needs a native change and an APK rebuild, the
-  advisor's call).** A2 blamed fixed heights / tight `lineHeight`; refuted. On `recycle_api36` against
+  re-diagnosed 2026-10-11 (lane A, A3), measured. FIXED IN SOURCE AND ON THE EMULATOR; OWNER DEVICES PENDING THE NEXT
+  NATIVE BUILD (A3 batch 1b, 2026-10-11).** The config plugin `mobile/plugins/withFontScaleLayout.js` (listed in
+  `app.json` `plugins`) force-overrides the flags after `loadReactNative(this)` with the stable provider plus
+  `enableFontScaleChangesUpdatingLayout = true` (generated `MainApplication.kt:50-60`). Emulator-only build
+  (`assembleDebug`, x86_64, `BUILD SUCCESSFUL`), installed in place: control — a cold start at 1.3 draws whole;
+  test — signed in at 1.0, live change to 1.3, `ผู้ขาย`, `เปลี่ยน` and `ดูประวัติการซื้อขายของผู้ขายรายนี้` whole
+  (`E:\recycle-shots\lane-a\A3b\item3\live_change_130_FIXED.png`). The owner's phones get it with the next native
+  build for release. The trail that follows is the diagnosis as first recorded. A2 blamed fixed heights / tight `lineHeight`; refuted. On `recycle_api36` against
   `recycle_walk_a`: a COLD start at font scale 1.3 draws the cart whole (`ผู้ขาย`, `เปลี่ยน`, `ดูประวัติ…`); a cold
   start at 1.0 then a live change to 1.3 clips them to `ผ้`, `เปลี่`, `ดประวัติ…ของผ้` (both shots under
   `E:\recycle-shots\lane-a\A3\before\`). A JS remount keyed on `useWindowDimensions().fontScale` changed nothing:
@@ -1720,11 +1726,14 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   and 80 renders in 10 idle seconds, every tick followed by exactly three renders within ~80 ms. The fix is to keep
   each previous value when the new one is equal (or to skip the ticker's re-read when nothing changed) — three
   setters, so outside the advisor's "single setter" fix rule.
-  (5) **After an activity relaunch the OLD root's background work may still run beside the new root** — A3 batch 1b
-  made the database bring-up once per process (`localDatabase.ts`), but each root still builds its own `SyncEngine`,
-  timers and fetches in App.tsx's effects, and whether the old root's are stopped when it unmounts is UNMEASURED
-  (the first-relaunch `database is locked` in 1b is consistent with leftover work holding the file). Owed: count
-  live engines after a relaunch before trusting two roots to share one queue.
+  (5) **After an activity relaunch, does the OLD root's background work keep running beside the new root? — MEASURED
+  2026-10-11 (A3 batch 1b, 2c's emulator session): NO, its timers stop at unmount.** Probes tagged per root (`DBG_ow3`,
+  removed; App.tsx diff empty after): one live font change at 23:21:01.625 started root 2; root 1's last 400 ms tick
+  was 23:21:01.305, its last 4 s sync tick 23:20:59.422, and `unmount root=1` 23:21:01.703 — nothing from root 1
+  after it; root 2 then ran 70 ticks and 7 sync ticks alone in 30 s. So two roots do not run sync loops side by side.
+  NOT excluded by this: a sync pass ALREADY IN FLIGHT at the unmount completing afterwards (its interval is cleared,
+  the awaited `runOnce` is not cancelled), which is consistent with 1b's single first-relaunch `database is locked`.
+  Each root still builds its own `SyncEngine` object over the shared driver; only one ticks at a time.
 
 - **LANE ZERO (2026-10-11) — FOUND AND LEFT, one line each.** (1) The `prove_all` lock does not cover a dev-targeting
   proof run BY HAND: the ten dev-targeting proofs write to the one dev database, so a lane hand-running one during the
