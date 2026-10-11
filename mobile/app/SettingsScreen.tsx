@@ -448,6 +448,7 @@ function PaymentsGroup({ payments }: { payments: PaymentsSettings }) {
                   onPress={() => setDraft({ ...draft, kind: k })}
                   haptic="light"
                   accessibilityLabel={CHANNEL_KIND_LABEL[k]}
+                  selected={on}
                 >
                   <Text style={[styles.chipText, on && styles.chipTextOn]}>{CHANNEL_KIND_LABEL[k]}</Text>
                 </Touchable>
@@ -474,6 +475,7 @@ function PaymentsGroup({ payments }: { payments: PaymentsSettings }) {
                       onPress={() => setDraft({ ...draft, proxyType: p })}
                       haptic="light"
                       accessibilityLabel={PROXY_TYPE_LABEL[p]}
+                      selected={on}
                     >
                       <Text style={[styles.chipText, on && styles.chipTextOn]}>{PROXY_TYPE_LABEL[p]}</Text>
                     </Touchable>
@@ -664,6 +666,7 @@ function FormBody({
                     onPress={() => setGrade(opt.value)}
                     haptic="light"
                     accessibilityLabel={opt.label}
+                    selected={on}
                   >
                     <Text style={[styles.chipText, on && styles.chipTextOn]}>{opt.label}</Text>
                   </Touchable>
@@ -953,6 +956,7 @@ function ThemeControl() {
               onPress={() => setPref(opt.pref)}
               haptic="light"
               accessibilityLabel={opt.label}
+              selected={on}
             >
               <Text style={[styles.segmentText, on && styles.segmentTextOn]}>{opt.label}</Text>
             </Touchable>

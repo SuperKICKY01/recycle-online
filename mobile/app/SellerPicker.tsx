@@ -189,6 +189,7 @@ export function SellerPicker({
               style={[styles.row, isCurrent && styles.rowCurrent]}
               onPress={() => pick(item)}
               accessibilityLabel={s.name}
+              selected={isCurrent}
             >
               <View style={styles.rowTop}>
                 <Text style={styles.name} numberOfLines={1}>

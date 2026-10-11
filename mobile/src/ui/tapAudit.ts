@@ -178,6 +178,56 @@ function styleBlock(text: string, name: string): string | null {
   return null;
 }
 
+/**
+ * A DRAWN SELECTION IS ALSO AN ANNOUNCED ONE (A3 item 4, 2026-10-11).
+ *
+ * A uiautomator dump of the dashboard read `selected=false` on every filter chip, the one
+ * drawn as chosen included: the state existed only as colour. For every `<Touchable …>` /
+ * `<Pressable …>` opening tag whose `style` switches on a SELECTION style — `cond && styles.xOn`
+ * or `cond ? styles.xOn : …`, the suffix On / Active / Current / Selected — the tag must pass
+ * `selected={…}` (Touchable) or an `accessibilityState={{ … selected … }}` (Pressable).
+ * Text-level: a selection drawn some other way (an icon only) is invisible to it.
+ */
+export interface SelectionFinding {
+  readonly path: string;
+  readonly line: number;
+  readonly tag: string;
+}
+
+/** The opening tag's attribute text, brace-aware so `onPress={() => …}` does not end it. */
+function openingTag(text: string, from: number): string {
+  let depth = 0;
+  for (let i = from; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") depth -= 1;
+    else if (ch === ">" && depth === 0) return text.slice(from, i);
+  }
+  return text.slice(from);
+}
+
+const SELECTION_STYLE = /\b\w+\s*(?:&&|\?)\s*styles\.\w+(?:On|Active|Current|Selected)\b/;
+const ANNOUNCES_SELECTION = /\bselected=\{|accessibilityState=\{\{[^}]*\bselected\b/;
+
+export function scanSelectionAnnounced(files: readonly ScannedFile[]): {
+  selectable: number;
+  findings: SelectionFinding[];
+} {
+  const findings: SelectionFinding[] = [];
+  let selectable = 0;
+  for (const { path, text } of files) {
+    for (const m of text.matchAll(/<(Touchable|Pressable)\b/g)) {
+      const attrs = openingTag(text, (m.index ?? 0) + m[0].length);
+      if (!SELECTION_STYLE.test(styleAttr(attrs))) continue;
+      selectable += 1;
+      if (!ANNOUNCES_SELECTION.test(attrs)) {
+        findings.push({ path, line: text.slice(0, m.index).split("\n").length, tag: m[1] ?? "" });
+      }
+    }
+  }
+  return { selectable, findings };
+}
+
 /** The text inside `style={…}` (brace-matched), or "" when the field has no style. */
 function styleAttr(attrs: string): string {
   const at = attrs.search(/\bstyle=\{/);

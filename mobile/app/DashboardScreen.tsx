@@ -160,7 +160,7 @@ function Chip({
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
   return (
-    <Touchable style={[styles.chip, selected && styles.chipOn]} onPress={onPress} haptic="light" accessibilityLabel={label}>
+    <Touchable style={[styles.chip, selected && styles.chipOn]} onPress={onPress} haptic="light" accessibilityLabel={label} selected={selected}>
       <Text style={[styles.chipText, selected && styles.chipTextOn]}>{label}</Text>
       {note ? <Text style={[styles.chipNote, selected && styles.chipTextOn]}>{note}</Text> : null}
     </Touchable>

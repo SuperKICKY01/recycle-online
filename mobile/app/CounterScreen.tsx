@@ -582,6 +582,7 @@ function MovementForm({
               onPress={() => setKind(k)}
               haptic="light"
               accessibilityLabel={CASH_KIND_LABEL[k]}
+              selected={on}
             >
               <Text style={[styles.chipText, on && styles.chipTextOn]}>{CASH_KIND_LABEL[k]}</Text>
             </Touchable>
@@ -775,6 +776,7 @@ function PayPanel({
                     onPress={() => setChannelId(o.id)}
                     haptic="light"
                     accessibilityLabel={o.line}
+                    selected={on}
                     style={styles.pickRow}
                   >
                     <Text style={[styles.pickText, on && styles.pickTextOn]}>{o.line}</Text>

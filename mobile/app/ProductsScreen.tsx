@@ -462,6 +462,7 @@ function ChipPicker({
             haptic="light"
             onPress={() => onSelect(o.id)}
             accessibilityLabel={o.name}
+            selected={on}
             style={[styles.pickChip, on ? styles.pickChipOn : null]}
           >
             <Text style={[styles.pickChipText, on ? styles.pickChipTextOn : null]}>{o.name}</Text>
@@ -480,6 +481,7 @@ function FilterChip({ label, on, onPress }: { label: string; on: boolean; onPres
       haptic="light"
       onPress={onPress}
       accessibilityLabel={label}
+      selected={on}
       style={[styles.filterChip, on ? styles.filterChipOn : null]}
     >
       <Text style={[styles.filterChipText, on ? styles.filterChipTextOn : null]}>{label}</Text>

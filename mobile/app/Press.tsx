@@ -55,6 +55,14 @@ export interface TouchableProps {
   hitSlop?: number;
   accessibilityLabel?: string;
   accessibilityRole?: "button" | "link" | "none";
+  /**
+   * A3 item 4: whether this control is the CHOSEN one of a set (a chip, a segment, a picker
+   * row). Drawn selection alone is invisible to TalkBack — a uiautomator dump of the
+   * dashboard read `selected=false` on every chip, the drawn one included. `disabled` needs
+   * no prop of its own here: Pressable already announces it (the same dump read
+   * `enabled=false` on a disabled save).
+   */
+  selected?: boolean;
 }
 
 export function Touchable({
@@ -66,6 +74,7 @@ export function Touchable({
   hitSlop,
   accessibilityLabel,
   accessibilityRole = "button",
+  selected,
 }: TouchableProps): ReactElement {
   const scale = useSharedValue(1);
   const reduced = useReducedMotion();
@@ -93,6 +102,7 @@ export function Touchable({
       hitSlop={hitSlop}
       accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel}
+      accessibilityState={selected === undefined ? { disabled } : { disabled, selected }}
       style={[animatedStyle, style]}
     >
       {children}

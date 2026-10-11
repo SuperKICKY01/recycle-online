@@ -120,6 +120,21 @@ before/after under `E:\recycle-shots\lane-a\A3\`.
   `REFUSED_SERVER` alone (hashed `1620AB00…`, restored byte-identical) reddened EXACTLY the scan cell (330/331).
   `prove:counter` (live round against `recycle_walk_a`, 331 cells) exit 0 twice; `prove:settings`,
   `prove:sheets` exit 0; both typechecks 0.
+- **Item 4, state announced to TalkBack — A2's own claim CORRECTED first.** A2 said no control announces
+  `disabled`; a uiautomator dump of the price editor with an empty field read `enabled=false` on the disabled
+  save — React Native's `Pressable` already maps `disabled`. What was missing is `selected`: the dashboard dump
+  read `selected=false` on every filter chip, the drawn one included. `Touchable` (`Press.tsx`) gains `selected`,
+  forwarded as `accessibilityState={{ disabled, selected }}`; every control that draws a selection passes it —
+  the dashboard chips, the counter's cash-kind chips and channel rows, the products picker and filter chips,
+  four settings chip/segment sets, the seller picker's current row, and in `CartScreen` (a `Pressable`) the
+  product rows, the ค้างค่า lock and the numeric field box (the field the numpad types into — found by the new
+  scan, not by A2) (impeccable · audit.native.md § 1 · "Missing labels: interactive elements without
+  accessibility labels, traits/roles, or state announcements"). `prove:tapaudit` Ca0/Ca1
+  (`scanSelectionAnnounced`: a `cond && / ? styles.xOn|Active|Current|Selected` style needs `selected=` or an
+  `accessibilityState` with `selected`; 12 controls). Disproofs: `--break=noselected` reddened EXACTLY Ca1;
+  removing `selected` from the dashboard chip (hashed `84ABA7BD…`, restored byte-identical) reddened EXACTLY Ca1
+  naming `app/DashboardScreen.tsx:163`. Exit 0 twice; `prove:dashboard`, `prove:products`, `prove:settings`,
+  `prove:pickerseller` exit 0; both typechecks 0.
 
 **LANE A, A1 FOLLOW-UP — the `prove_shifts` RT red, decided as OPTION A (ADVISOR-DECIDED 2026-10-11). 2026-10-11.**
 No sha yet. The A1 gate (`_prove_all/20261011T072726Z`) was killed for memory after `[31/85]`, no exit line;

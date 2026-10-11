@@ -454,6 +454,8 @@ export function CartScreen({
               style={[styles.product, isOn && styles.productActive]}
               onPress={() => selectProduct(p)}
               disabled={busy || !sellerKnown}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isOn, disabled: busy || !sellerKnown }}
             >
               <Text style={[styles.productName, isOn && styles.onDark]}>{p.name}</Text>
               {/*
@@ -687,6 +689,8 @@ function NumericField({
             style={[styles.lockBtn, locked && styles.lockBtnOn]}
             onPress={onToggleLock}
             disabled={disabled}
+            accessibilityRole="button"
+            accessibilityState={{ selected: locked === true, disabled: disabled === true }}
           >
             <Text style={[styles.lockBtnText, locked && styles.lockBtnTextOn]}>
               {locked ? "ปลดล็อก" : "ค้างค่า"}
@@ -703,6 +707,8 @@ function NumericField({
         ]}
         onPress={onPress}
         disabled={disabled}
+        accessibilityRole="button"
+        accessibilityState={{ selected: active, disabled: disabled === true }}
       >
         <Text style={[styles.fieldValue, value === "" && styles.fieldPlaceholder]}>
           {value === "" ? "แตะเพื่อกรอก" : value}

@@ -30,6 +30,9 @@
  *   nocolor        adds a synthetic `<TextInput>` whose style sets no `color` to the
  *                  text-field scan (A3 item 1). Reddens the Ct1 "every TextInput sets
  *                  a text colour" cell only.
+ *   noselected     adds a synthetic chip that draws a selection and does not announce it
+ *                  (A3 item 4). Reddens the Ca1 "no control draws a selection without
+ *                  announcing it" cell only.
  *
  * P1.23 item 3 phase C also added a LAYOUT scan (scanLayoutLiterals): the page-model
  * scaffold — App.tsx and the shared SheetHeader — must draw its margin/gap/radius from
@@ -43,7 +46,13 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { scanInputColours, scanLayoutLiterals, scanTapLiterals, type ScannedFile } from "../ui/tapAudit.js";
+import {
+  scanInputColours,
+  scanLayoutLiterals,
+  scanSelectionAnnounced,
+  scanTapLiterals,
+  type ScannedFile,
+} from "../ui/tapAudit.js";
 
 let failures = 0;
 
@@ -56,7 +65,7 @@ function header(title: string): void {
 }
 
 const BREAK = (process.argv.find((a) => a.startsWith("--break=")) ?? "").split("=")[1] ?? "";
-const BREAK_MODES: readonly string[] = ["inject", "inject_layout", "nocolor"];
+const BREAK_MODES: readonly string[] = ["inject", "inject_layout", "nocolor", "noselected"];
 if (BREAK !== "" && !BREAK_MODES.includes(BREAK)) {
   console.log(`  [FAIL] unknown --break=${BREAK} — nothing was damaged and nothing was measured`);
   console.log(`         known breaks: ${BREAK_MODES.join(", ")}`);
@@ -222,6 +231,45 @@ function main(): number {
     "selecting a product activates gross and scrolls to the measured weight entry",
     /const selectProduct = [\s\S]*?setActive\("gross"\);[\s\S]*?scrollRef\.current\?\.scrollTo\(/.test(cartText) &&
       cartText.includes("grossY.current = e.nativeEvent.layout.y;"),
+  );
+
+  // ── A3 item 4: a drawn selection is an announced one ───────────────────────────
+  header("Ca0 the selection scan catches what it hunts");
+  const unannounced =
+    "<Touchable\n  style={[styles.chip, on && styles.chipOn]}\n  onPress={() => pick(x)}\n>\n  <Text>x</Text>\n</Touchable>";
+  const announced =
+    "<Touchable style={[styles.chip, on ? styles.chipOn : null]} onPress={() => pick(x)} selected={on}>x</Touchable>\n" +
+    "<Pressable style={[styles.row, cur && styles.rowCurrent]} accessibilityState={{ selected: cur }}>x</Pressable>";
+  const plantedScan = scanSelectionAnnounced([{ path: "(fixture)", text: unannounced }]);
+  check(
+    "control: a chip drawn selected with no announcement is found (the arrow in onPress does not end the tag)",
+    plantedScan.selectable === 1 && plantedScan.findings.length === 1,
+    `${String(plantedScan.selectable)} selectable, ${String(plantedScan.findings.length)} finding(s)`,
+  );
+  const cleanScan = scanSelectionAnnounced([{ path: "(fixture)", text: announced }]);
+  check(
+    "control: a Touchable with selected= and a Pressable with accessibilityState selected are clean",
+    cleanScan.selectable === 2 && cleanScan.findings.length === 0,
+    `${String(cleanScan.selectable)} selectable, ${String(cleanScan.findings.length)} finding(s)`,
+  );
+
+  header("Ca1 every control that DRAWS a selection ANNOUNCES it (A3 item 4)");
+  const pressText = files.find((f) => f.path === "app/Press.tsx")?.text ?? "";
+  check(
+    "Touchable forwards `selected` into accessibilityState (disabled alongside, as Pressable already announces it)",
+    pressText.includes("accessibilityState={selected === undefined ? { disabled } : { disabled, selected }}"),
+  );
+  const selectionScan: ScannedFile[] =
+    BREAK === "noselected"
+      ? [...files, { path: "(injected)", text: "<Touchable style={[styles.seg, on && styles.segOn]} onPress={go}>x</Touchable>" }]
+      : files;
+  const sel = scanSelectionAnnounced(selectionScan);
+  for (const f of sel.findings) console.log(`    ${f.path}:${String(f.line)} <${f.tag}> draws a selection it does not announce`);
+  check("the scan found selectable controls to judge", sel.selectable >= 10, `${String(sel.selectable)} controls`);
+  check(
+    "no control draws a selection without announcing it",
+    sel.findings.length === 0,
+    sel.findings.length === 0 ? `${String(sel.selectable)} controls announce` : `${String(sel.findings.length)} findings`,
   );
 
   // ── A3 item 1: every TextInput draws its text in a theme colour ────────────────
