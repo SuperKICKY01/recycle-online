@@ -21,7 +21,8 @@
  *
  * Money is never a JS number here; every value is a decimal string.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useReducedMotion } from "react-native-reanimated";
 import {
   Alert,
   Pressable,
@@ -89,6 +90,11 @@ const FIELD_SCALE: Record<NumField, { dp: number; maxInt: number }> = {
 };
 
 interface Props {
+  /**
+   * Rendered at the TOP OF THE SCROLL, above the seller (A3 item 5): the last-bill card,
+   * which while a bill is open scrolls away with it instead of staying pinned.
+   */
+  topSlot?: ReactNode;
   products: Product[];
   /** The shop's cached grade tiers, to show the seller's grade by its NAME (S16, F3). */
   tiers: readonly NamedTier[];
@@ -122,6 +128,7 @@ interface Props {
 }
 
 export function CartScreen({
+  topSlot,
   products,
   tiers,
   seller,
@@ -146,6 +153,11 @@ export function CartScreen({
   const [undo, setUndo] = useState<DraftLine | null>(null);
   const [active, setActive] = useState<NumField | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A3 item 5: where the weight entry starts in the scroll, so choosing a product can
+  // bring it into view (it sat below the fold, under the product list).
+  const scrollRef = useRef<ScrollView>(null);
+  const grossY = useRef<number | null>(null);
+  const reducedMotion = useReducedMotion();
 
   const form = draft.form;
   const lines = orderedLines(draft);
@@ -209,6 +221,15 @@ export function CartScreen({
       }),
       true,
     );
+    /*
+     * A3 item 5: the next thing the operator does is type the gross weight, so the
+     * weight entry is scrolled into view and gross becomes the active field. Before this
+     * the selection changed nothing on screen — the fields stayed below the fold.
+     */
+    setActive("gross");
+    if (grossY.current !== null) {
+      scrollRef.current?.scrollTo({ y: Math.max(0, grossY.current - t.space.x3), animated: !reducedMotion });
+    }
   };
 
   const candidate = useMemo(
@@ -335,10 +356,12 @@ export function CartScreen({
   return (
     <View style={styles.fill}>
       <ScrollView
+        ref={scrollRef}
         style={styles.fill}
         contentContainerStyle={styles.scrollBody}
         keyboardShouldPersistTaps="handled"
       >
+        {topSlot ? <View style={styles.topSlot}>{topSlot}</View> : null}
         {/* ---------------------------------------------- who and which truck */}
         <Pressable
           style={[styles.sellerBox, !sellerKnown && styles.sellerBoxBad]}
@@ -454,13 +477,19 @@ export function CartScreen({
           gross passes NO `lockable` prop, so no lock control is rendered for it
           — the UI mirrors the type, where LockableField has no "gross" member.
         */}
-        <NumericField
-          field="gross"
-          value={form.gross}
-          active={active === "gross"}
-          onPress={() => setActive("gross")}
-          disabled={busy}
-        />
+        <View
+          onLayout={(e) => {
+            grossY.current = e.nativeEvent.layout.y;
+          }}
+        >
+          <NumericField
+            field="gross"
+            value={form.gross}
+            active={active === "gross"}
+            onPress={() => setActive("gross")}
+            disabled={busy}
+          />
+        </View>
         {errorFor("gross") ? <Text style={styles.err}>{errorFor("gross")}</Text> : null}
 
         <NumericField
@@ -694,6 +723,7 @@ function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
     fill: { flex: 1 },
     scrollBody: { padding: t.space.x3, paddingBottom: t.space.x4 },
+    topSlot: { marginBottom: t.space.xl },
 
     section: { fontSize: t.type.subhead, fontWeight: "800", color: t.color.text, marginTop: t.space.md },
     label: { fontSize: t.type.body, fontWeight: "700", color: t.color.textMuted },

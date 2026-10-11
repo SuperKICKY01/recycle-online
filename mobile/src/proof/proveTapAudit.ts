@@ -201,6 +201,29 @@ function main(): number {
     "the server address moved to settings",
   );
 
+  // ── A3 item 5: the open bill is not buried under pinned chrome ─────────────────
+  header("Cc the open bill: the last-bill card scrolls with it, and a product brings the weights into view");
+  // Source, not a render (the walk's before/after screenshots are the render). Measured on the
+  // A2/A3 walk: the pinned header plus the last-bill card took ~30% of the screen while weighing
+  // and hid the น้ำหนักรวม label; choosing a product moved nothing on screen.
+  const cartText = files.find((f) => f.path === "app/CartScreen.tsx")?.text ?? "";
+  check("control: CartScreen.tsx was read", cartText.includes("export function CartScreen"));
+  check(
+    "App.tsx pins the last-bill card only with NO bill open, and hands it to the cart as topSlot",
+    appText.includes("{draft === null ? latestCard : null}") && appText.includes("topSlot={latestCard}"),
+  );
+  check(
+    "CartScreen renders topSlot as the FIRST child of its ScrollView",
+    /<ScrollView\s+ref=\{scrollRef\}[\s\S]*?keyboardShouldPersistTaps="handled"\s*>\s*\{topSlot \? <View style=\{styles\.topSlot\}>\{topSlot\}<\/View> : null\}/.test(
+      cartText,
+    ),
+  );
+  check(
+    "selecting a product activates gross and scrolls to the measured weight entry",
+    /const selectProduct = [\s\S]*?setActive\("gross"\);[\s\S]*?scrollRef\.current\?\.scrollTo\(/.test(cartText) &&
+      cartText.includes("grossY.current = e.nativeEvent.layout.y;"),
+  );
+
   // ── A3 item 1: every TextInput draws its text in a theme colour ────────────────
   header("Ct0 the text-field colour scan catches what it hunts");
   const plantedBad =

@@ -698,6 +698,25 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Verification gaps — built, not proven
 
+- **A SYSTEM FONT-SIZE CHANGE MADE WHILE THE APP RUNS CLIPS EVERY TEXT UNTIL THE PROCESS RESTARTS — A2 item 3,
+  re-diagnosed 2026-10-11 (lane A, A3), measured; NOT fixed (needs a native change and an APK rebuild, the
+  advisor's call).** A2 blamed fixed heights / tight `lineHeight`; refuted. On `recycle_api36` against
+  `recycle_walk_a`: a COLD start at font scale 1.3 draws the cart whole (`ผู้ขาย`, `เปลี่ยน`, `ดูประวัติ…`); a cold
+  start at 1.0 then a live change to 1.3 clips them to `ผ้`, `เปลี่`, `ดประวัติ…ของผ้` (both shots under
+  `E:\recycle-shots\lane-a\A3\before\`). A JS remount keyed on `useWindowDimensions().fontScale` changed nothing:
+  a probe logged `fontScale` `1` → `1.2999999523162842`, and logcat shows the Activity RELAUNCHED and React Native
+  started a NEW root (`Running "main" with {"rootTag":11,…}`) — the whole tree remounted already, still clipped.
+  Source (react-native 0.81.5): `ReactNativeFeatureFlagsDefaults.kt:64` `enableFontScaleChangesUpdatingLayout()
+  = false`; with it off, `ReactHostImpl.onConfigurationChanged` (`:622-624`) never re-runs
+  `DisplayMetricsHolder.initDisplayMetrics`, and a surface's font scale is `1f` (`ReactSurfaceImpl.kt:211-214`) —
+  text is MEASURED at the process's first scale and DRAWN at the current one. Owed: a config plugin (app.json
+  `plugins`; `android/` is generated) enabling that flag after `loadReactNative` — it needs
+  `ReactNativeFeatureFlags.dangerouslyForceOverride` from `com.facebook.react.internal.featureflags`, on the
+  startup path — then an APK rebuild and a live-change walk. The same relaunch re-runs boot, and on the second
+  run of that walk boot failed with `เปิดฐานข้อมูลไม่สำเร็จ: Call to function 'NativeSt…` and the session
+  showed `ยังไม่ได้เข้าสู่ระบบ` — the third sighting of the CLAUDE.md NativeDatabase footgun, the first tied to a
+  trigger (an Activity relaunch on a configuration change). Adding `fontScale` to the activity's
+  `configChanges` would stop the relaunch; that is part of the same native unit and is UNMEASURED.
 - **A LANE CANNOT WALK THE EMULATOR AGAINST ITS OWN SERVER PORT WITHOUT A REBUILT APK. Found
   2026-10-11 (lane A, A1), measured.** The installed debug build (`dev.chutipon.recycle`, no URL
   scheme registered, so no dev-client deep link) bakes `extra.apiBaseUrl` `http://192.168.1.238:8000`

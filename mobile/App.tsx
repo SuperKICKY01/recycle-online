@@ -4244,6 +4244,30 @@ function AppInner() {
     }
   })();
 
+  /** The last-bill navigation card (pinned with no bill open; the cart's top slot during one). */
+  const latestCard: ReactNode =
+    bills.length > 0 ? (
+      <Touchable style={styles.latest} onPress={() => sheet("open_bills")} accessibilityLabel="บิลล่าสุด">
+        {latest !== null ? (
+          <>
+            <Text style={[styles.latestBadge, { backgroundColor: stateColor[latest.sync_state] }]}>
+              {STATE_TH[latest.sync_state]}
+            </Text>
+            <Text style={styles.latestDoc}>บิลล่าสุด {latest.doc_no ?? "ยังไม่มีเลขที่บิล"}</Text>
+            <Text style={styles.latestTotal}>
+              {latest.payload.total_amount !== null ? display(latest.payload.total_amount) : "-"} ({latest.payload.items.length})
+            </Text>
+          </>
+        ) : (
+          <Text style={styles.latestDoc}>ไม่มีบิลที่ยังไม่ถูกยกเลิก</Text>
+        )}
+        <View style={styles.latestOpenWrap}>
+          <Text style={styles.latestOpen}>ดู/ยกเลิก</Text>
+          <Icon name="chevron" size={16} color={theme.color.primary} />
+        </View>
+      </Touchable>
+    ) : null;
+
   return (
     <SafeAreaProvider>
       {/*
@@ -4333,7 +4357,14 @@ function AppInner() {
           When nothing blocks and nothing else is active, this whole zone is empty — the
           clean screen the reference reads as current, not a stack of four equal bars.
         */}
-        {noticeArrangement.inline !== null || noticeArrangement.count > 0 || bills.length > 0 ? (
+        {/*
+          A3 item 5 (2026-10-11): while a bill is OPEN the last-bill card is not pinned —
+          it is handed to CartScreen as `topSlot` and scrolls away with the bill, so the
+          pinned chrome above the weighing stops covering ~30% of the screen (measured on
+          the walk: it hid the น้ำหนักรวม label). It stays one tap away at the top of the
+          cart. With no bill open it is pinned here exactly as before.
+        */}
+        {noticeArrangement.inline !== null || noticeArrangement.count > 0 || (latestCard !== null && draft === null) ? (
           <View style={styles.noticeZone}>
             {noticeArrangement.inline !== null ? noticeStripFor(noticeArrangement.inline.id) : null}
             {noticeArrangement.count > 0 ? (
@@ -4346,31 +4377,7 @@ function AppInner() {
                 <Icon name="chevron" size={18} color={theme.color.textSubtle} />
               </Touchable>
             ) : null}
-            {bills.length > 0 ? (
-              <Touchable style={styles.latest} onPress={() => sheet("open_bills")} accessibilityLabel="บิลล่าสุด">
-                {latest !== null ? (
-                  <>
-                    <Text
-                      style={[styles.latestBadge, { backgroundColor: stateColor[latest.sync_state] }]}
-                    >
-                      {STATE_TH[latest.sync_state]}
-                    </Text>
-                    <Text style={styles.latestDoc}>
-                      บิลล่าสุด {latest.doc_no ?? "ยังไม่มีเลขที่บิล"}
-                    </Text>
-                    <Text style={styles.latestTotal}>
-                      {latest.payload.total_amount !== null ? display(latest.payload.total_amount) : "-"} ({latest.payload.items.length})
-                    </Text>
-                  </>
-                ) : (
-                  <Text style={styles.latestDoc}>ไม่มีบิลที่ยังไม่ถูกยกเลิก</Text>
-                )}
-                <View style={styles.latestOpenWrap}>
-                  <Text style={styles.latestOpen}>ดู/ยกเลิก</Text>
-                  <Icon name="chevron" size={16} color={theme.color.primary} />
-                </View>
-              </Touchable>
-            ) : null}
+            {draft === null ? latestCard : null}
           </View>
         ) : null}
 
@@ -4433,6 +4440,7 @@ function AppInner() {
           </View>
         ) : (
           <CartScreen
+            topSlot={latestCard}
             products={products}
             tiers={gradeTiers}
             seller={seller}

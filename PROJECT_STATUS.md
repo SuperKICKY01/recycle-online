@@ -93,6 +93,20 @@ before/after under `E:\recycle-shots\lane-a\A3\`.
   (impeccable · critique.md § 5 Error Prevention · "Clear labels that prevent misunderstanding"). `prove:prices` p6
   (six cells, the sheet's source read). Disproof: the editor rendering the tier name in place of the product (hashed
   `9C1EBDFC…`, restored byte-identical) reddened EXACTLY the render cell. Exit 0 twice; both typechecks 0.
+- **Item 3, clipped Thai at font scale 1.3 — RE-DIAGNOSED, NOT FIXED, no commit.** A cold start at 1.3 draws
+  whole; only a font change made while the app runs clips, and the cause is React Native's
+  `enableFontScaleChangesUpdatingLayout` flag being off (full trail in `OPEN_ITEMS.md § Verification gaps`, first
+  line). A JS remount keyed on `fontScale` was built, walked, shown to change nothing (the Activity already
+  relaunches into a new root), and reverted. The fix is native plus an APK rebuild: the advisor's call.
+- **Item 5, the open bill was buried under pinned chrome.** While a bill is open the last-bill card is no
+  longer pinned: App.tsx hands it to `CartScreen` as `topSlot`, rendered at the top of the scroll; selecting a
+  product makes gross the active field and scrolls the weight entry (measured by `onLayout`) into view, animated
+  unless reduced motion (impeccable · operate.md · "The bar is earned familiarity. The tool should disappear into
+  the task."). Walked at 1.0: after selecting AL-CAN, `น้ำหนักรวม` sits whole under the pinned header with the
+  numpad open. NOT done: collapsing the title and nav row to a slim bill header (still ~19% pinned) — the larger
+  half of A2's fix, left for the cart milestone. `prove:tapaudit` Cc (4 cells, source); disproof: pinning the
+  card unconditionally (hashed `F30ED2FA…`, restored byte-identical) reddened EXACTLY the pin cell. Exit 0 twice;
+  both typechecks 0.
 
 **LANE A, A1 FOLLOW-UP — the `prove_shifts` RT red, decided as OPTION A (ADVISOR-DECIDED 2026-10-11). 2026-10-11.**
 No sha yet. The A1 gate (`_prove_all/20261011T072726Z`) was killed for memory after `[31/85]`, no exit line;
