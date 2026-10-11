@@ -186,7 +186,7 @@ function d1PayGate(t: Tally): void {
     payGate(policy(true), none).kind === "shift_first");
   const g = payGate(policy(true), none);
   t.check("R1: the gate's line tells the cashier to open a shift first (literal Thai)",
-    g.kind === "shift_first" && g.line === "ร้านนี้ใช้ระบบกะ — เปิดกะก่อน แล้วจึงรับชำระเงินได้");
+    g.kind === "shift_first" && g.line === "ร้านนี้ใช้ระบบกะ — เปิดกะก่อน แล้วจึงจ่ายเงินได้");
   t.check("R1 sibling: shifts ON + an OPEN shift → pay offered", payGate(policy(true), openState(true)).kind === "pay");
   t.check("R1: shifts OFF + no shift → pay offered exactly as today", payGate(policy(false), none).kind === "pay");
   t.check("R1: shifts UNKNOWN (policy unread) + no shift → pay offered", payGate(UNKNOWN_POLICY, none).kind === "pay");
@@ -592,7 +592,7 @@ function a3EntryMatrix(t: Tally): void {
   t.check("A3 no queue: the closed panel carries NO 'open a shift, then pay' line",
     noQueuePanel.kind === "closed" && noQueuePanel.gateLine === null);
   t.check("A3 sibling: WITH the queue the same state carries it",
-    queuePanel.kind === "closed" && queuePanel.gateLine === "ร้านนี้ใช้ระบบกะ — เปิดกะก่อน แล้วจึงรับชำระเงินได้");
+    queuePanel.kind === "closed" && queuePanel.gateLine === "ร้านนี้ใช้ระบบกะ — เปิดกะก่อน แล้วจึงจ่ายเงินได้");
   // The drawer-only page reads as a drawer page, not as an empty counter.
   t.check("A3 the drawer-only note (literal Thai)",
     DRAWER_ONLY_NOTE === "ร้านนี้จ่ายเงินตอนบันทึกบิลที่ลานชั่ง — หน้านี้ใช้สำหรับกะและลิ้นชักเงินสด");

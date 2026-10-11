@@ -48,6 +48,7 @@ import {
   OUTSTANDING_LABEL,
   PAID_LABEL,
   PARTIAL_NOTE,
+  PAY_BUTTON_PREFIX,
   paymentOutcome,
   QUEUE_TITLE,
   readUnpaidBills,
@@ -57,6 +58,7 @@ import {
   type PaymentMeta,
   type UnpaidBill,
 } from "../counter/counterView.js";
+import { SETTINGS_HEADING, SHIFT_FIRST_LINE } from "../counter/drawerView.js";
 import { NAV_ITEMS } from "../ui/navRow.js";
 import { grantsOf } from "./proofGrants.js";
 import { drawerHeadless, drawerLive } from "./proveDrawer.js";
@@ -370,6 +372,26 @@ function h5Labels(): void {
   check("CounterScreen renders the method label", screenSrc.includes("METHOD_LABEL"));
   check("CounterScreen's header renders QUEUE_TITLE, not a literal of its own",
     screenSrc.includes("title={QUEUE_TITLE}"));
+  // A3 item 6 (ADVISOR-DECIDED 2026-10-11): money the shop pays a seller is "จ่าย". The pay button
+  // and the eight sibling sentences that still said รับชำระเงิน now say จ่ายเงิน; รับชำระเงิน is kept only
+  // where money comes IN. No UI string in the counter/drawer sources may say รับชำระ (comments may
+  // quote the old word to explain the change; only quoted strings are scanned).
+  check("the pay button reads จ่ายเงิน <amount> บาท", PAY_BUTTON_PREFIX === "จ่ายเงิน ");
+  check("CounterScreen's pay button renders PAY_BUTTON_PREFIX",
+    screenSrc.includes("label={PAY_BUTTON_PREFIX + seller.outstandingDisplay + \" บาท\"}"));
+  const copySources = ["app/CounterScreen.tsx", "app/SettingsScreen.tsx", "src/counter/counterView.ts", "src/counter/drawerView.ts"];
+  const quotedPaysIn = /["'`][^"'`\n]*รับชำระ[^"'`\n]*["'`]/;
+  const codeLines = (src: string): string[] =>
+    src.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l));
+  const offendsIn = (src: string): boolean => codeLines(src).some((l) => quotedPaysIn.test(l));
+  const offenders = copySources.filter((p) => offendsIn(readFileSync(join(process.cwd(), ...p.split("/")), "utf8")));
+  check("control: the quoted-string scan FINDS a planted รับชำระเงิน string, and skips a comment quoting it",
+    offendsIn('const X = "ต้องเข้าสู่ระบบใหม่เพื่อรับชำระเงิน";') &&
+      !offendsIn('// the old "รับชำระเงิน" read in the wrong direction'));
+  check("no quoted UI string in the counter, the drawer or settings says รับชำระ",
+    offenders.length === 0, offenders.join(", "));
+  check("the counter's and the drawer's sentences say จ่ายเงิน (the settings heading and the shift gate)",
+    SETTINGS_HEADING === "การจ่ายเงิน" && SHIFT_FIRST_LINE === "ร้านนี้ใช้ระบบกะ — เปิดกะก่อน แล้วจึงจ่ายเงินได้");
 }
 
 // ---------------------------------------------------------------------------

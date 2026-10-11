@@ -34,6 +34,7 @@ import {
   DRAWER_ONLY_NOTE,
   METHOD_LABEL,
   PARTIAL_NOTE,
+  PAY_BUTTON_PREFIX,
   QUEUE_TITLE,
   type CounterMessage,
   type CounterScreenState,
@@ -291,7 +292,7 @@ function QueueBody({
                 <Text style={styles.gateLine}>{drawer.gate.kind === "shift_first" ? drawer.gate.line : ""}</Text>
               ) : (
                 <Button
-                  label={"รับชำระเงิน " + seller.outstandingDisplay + " บาท"}
+                  label={PAY_BUTTON_PREFIX + seller.outstandingDisplay + " บาท"}
                   icon="check"
                   onPress={() => setPaying(seller)}
                   style={styles.payBtn}

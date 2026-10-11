@@ -237,7 +237,7 @@ export const SHIFT_NOT_PERMITTED: ShiftState = { kind: "unknown", why: "not_perm
 
 export type PayGate = { kind: "pay" } | { kind: "shift_first"; line: string };
 
-export const SHIFT_FIRST_LINE = "ร้านนี้ใช้ระบบกะ — เปิดกะก่อน แล้วจึงรับชำระเงินได้";
+export const SHIFT_FIRST_LINE = "ร้านนี้ใช้ระบบกะ — เปิดกะก่อน แล้วจึงจ่ายเงินได้";
 
 /**
  * R1: `shifts_enabled` ON and DEFINITELY no open shift → the pay action is not
@@ -857,7 +857,7 @@ export function mayShowDrawerSettings(grants: Grants): boolean {
   return may(grants, "shop.settings.write");
 }
 
-export const SETTINGS_HEADING = "การรับชำระเงิน";
+export const SETTINGS_HEADING = "การจ่ายเงิน";
 export const SHIFTS_SWITCH_LABEL = "ใช้ระบบกะและลิ้นชักเงินสด";
 export const SHIFTS_SWITCH_NOTE = "เมื่อเปิด ต้องเปิดกะก่อนจึงจะจ่ายเงินที่เคาน์เตอร์ได้";
 export const METHODS_HEADING = "วิธีจ่ายที่เคาน์เตอร์";
@@ -916,13 +916,13 @@ export type DrawerSettingsScreen =
 const SETTINGS_OFFLINE: DrawerSettingsScreen = {
   kind: "message",
   badge: "ยังติดต่อระบบไม่ได้",
-  line: "การตั้งค่าการรับชำระเงินต้องเชื่อมต่อระบบ",
+  line: "การตั้งค่าการจ่ายเงินต้องเชื่อมต่อระบบ",
   retry: true,
 };
 const SETTINGS_SERVER: DrawerSettingsScreen = {
   kind: "message",
   badge: "อ่านการตั้งค่าไม่ได้",
-  line: "ระบบยังตอบเรื่องการรับชำระเงินไม่ได้ในตอนนี้",
+  line: "ระบบยังตอบเรื่องการจ่ายเงินไม่ได้ในตอนนี้",
   retry: true,
 };
 const SETTINGS_FORBIDDEN: DrawerSettingsScreen = {

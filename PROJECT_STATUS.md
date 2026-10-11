@@ -107,6 +107,19 @@ before/after under `E:\recycle-shots\lane-a\A3\`.
   half of A2's fix, left for the cart milestone. `prove:tapaudit` Cc (4 cells, source); disproof: pinning the
   card unconditionally (hashed `F30ED2FA…`, restored byte-identical) reddened EXACTLY the pin cell. Exit 0 twice;
   both typechecks 0.
+- **Item 6, the nine `รับชำระเงิน` strings (wording ADVISOR-DECIDED 2026-10-11: money the shop pays a seller is
+  `จ่าย`).** All nine sit on the paying side and now read `จ่ายเงิน`: the pay button (new `PAY_BUTTON_PREFIX`
+  `จ่ายเงิน `), `REFUSED_FORBIDDEN`, `REFUSED_SERVER`, the session and server lines (`counterView.ts`), and
+  `SHIFT_FIRST_LINE`, `SETTINGS_HEADING` `การจ่ายเงิน`, the settings offline and server lines (`drawerView.ts`). Not
+  changed, listed: `STRUCTURE.md:644` and `ROADMAP.md:1660` still name the nav entry `รับชำระเงิน` (docs describing
+  the entry A1 renamed; stale references, not UI). impeccable · clarify.md § Actions and navigation · "Keep the same
+  noun and verb for the same concept throughout the product." (no separate UX-copy skill in the repo; impeccable's
+  `clarify` is it). `prove:counter` H5 gains four cells — the button prefix and its render, and NO quoted string
+  in the counter/drawer/settings sources says `รับชำระ` (comment lines skipped; control both ways);
+  `proveDrawer.ts`'s two literal gate-line cells updated. Disproof: the old wording put back into
+  `REFUSED_SERVER` alone (hashed `1620AB00…`, restored byte-identical) reddened EXACTLY the scan cell (330/331).
+  `prove:counter` (live round against `recycle_walk_a`, 331 cells) exit 0 twice; `prove:settings`,
+  `prove:sheets` exit 0; both typechecks 0.
 
 **LANE A, A1 FOLLOW-UP — the `prove_shifts` RT red, decided as OPTION A (ADVISOR-DECIDED 2026-10-11). 2026-10-11.**
 No sha yet. The A1 gate (`_prove_all/20261011T072726Z`) was killed for memory after `[31/85]`, no exit line;

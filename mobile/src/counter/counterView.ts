@@ -64,6 +64,9 @@ export const METHOD_LABEL: { readonly [M in PaymentMethod]: string } = {
 // is guarded by nothing unless a proof asserts it (the dashboard finding, OPEN_ITEMS).
 export const OUTSTANDING_LABEL = "ค้างจ่าย";
 export const PAID_LABEL = "จ่ายแล้ว";
+// The pay button reads `จ่ายเงิน <amount> บาท` (A3 item 6, ADVISOR-DECIDED 2026-10-11): money the
+// shop pays a seller is "จ่าย"; "รับชำระเงิน" is kept only where money comes IN to whoever reads it.
+export const PAY_BUTTON_PREFIX = "จ่ายเงิน ";
 // The counter's name, on its header AND on the entry that opens it (navRow.ts). The shop
 // PAYS sellers here, so "รับชำระเงิน" (receiving payment) read in the wrong direction
 // (ADVISOR-DECIDED 2026-09-30, OPEN_ITEMS.md); เคาน์เตอร์เงินสด was declined because the
@@ -85,7 +88,7 @@ const allocationOverRemaining = (remainingDisplay: string): string =>
 export const REFUSED_OFFLINE =
   "ยังติดต่อระบบไม่ได้ หน้าเคาน์เตอร์จ่ายเงินต้องเชื่อมต่อระบบ — เมื่อกลับมาออนไลน์ รายการจะรีเฟรชเอง";
 const REFUSED_FORBIDDEN =
-  "บัญชีนี้ไม่มีสิทธิ์รับชำระเงินที่เคาน์เตอร์ ต้องให้เจ้าของร้านมอบสิทธิ์";
+  "บัญชีนี้ไม่มีสิทธิ์จ่ายเงินที่เคาน์เตอร์ ต้องให้เจ้าของร้านมอบสิทธิ์";
 const REFUSED_BILL_UNKNOWN = "บิลนี้ยังส่งไม่ถึงระบบ — รีเฟรชรายการแล้วลองใหม่";
 const REFUSED_SELLER_INACTIVE = "ผู้ขายรายนี้ถูกปิดใช้งานแล้ว";
 const REFUSED_BILL_VOIDED = "บิลนี้ถูกยกเลิกแล้ว — โหลดรายการใหม่";
@@ -94,7 +97,7 @@ const REFUSED_ALLOCATION_OVER_BILL = "ยอดที่จัดสรรเก
 const REFUSED_ALLOCATIONS_OVER_AMOUNT = "ยอดที่จัดสรรให้บิลรวมกันเกินยอดจ่าย";
 const REFUSED_DUPLICATE = "บิลเดียวกันถูกจัดสรรซ้ำในรายการจ่ายเดียว";
 const REFUSED_SELLER_UNKNOWN = "ไม่พบผู้ขายรายนี้ — โหลดรายชื่อใหม่";
-const REFUSED_SERVER = "ระบบยังรับชำระเงินไม่ได้ในตอนนี้ — ลองอีกครั้ง";
+const REFUSED_SERVER = "ระบบยังจ่ายเงินไม่ได้ในตอนนี้ — ลองอีกครั้ง";
 
 /* ==========================================================================
  * 3. THE ENTRY GATE (E2 of the dashboard pattern), and the fail-open reasoning
@@ -621,7 +624,7 @@ const OFFLINE_MESSAGE: CounterMessage = {
 const SESSION_MESSAGE: CounterMessage = {
   tone: "session",
   badge: "หมดเวลาเข้าใช้งาน",
-  lines: ["ต้องเข้าสู่ระบบใหม่เพื่อรับชำระเงิน"],
+  lines: ["ต้องเข้าสู่ระบบใหม่เพื่อจ่ายเงิน"],
   action: { kind: "sign_in", label: "เข้าสู่ระบบ" },
 };
 const FORBIDDEN_MESSAGE: CounterMessage = {
@@ -633,7 +636,7 @@ const FORBIDDEN_MESSAGE: CounterMessage = {
 const SERVER_MESSAGE: CounterMessage = {
   tone: "error",
   badge: "ระบบขัดข้อง",
-  lines: ["ระบบยังตอบเรื่องการรับชำระเงินไม่ได้ในตอนนี้"],
+  lines: ["ระบบยังตอบเรื่องการจ่ายเงินไม่ได้ในตอนนี้"],
   action: { kind: "retry", label: "ลองอีกครั้ง" },
 };
 
