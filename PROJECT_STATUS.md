@@ -75,6 +75,20 @@ not read the green as re-run.**
 
 ## Current phase
 
+**LANE A, A1 FOLLOW-UP — the `prove_shifts` RT red, decided as OPTION A (ADVISOR-DECIDED 2026-10-11). 2026-10-11.**
+No sha yet. The A1 gate (`_prove_all/20261011T072726Z`) was killed for memory after `[31/85]`, no exit line;
+`prove_shifts` had already logged RT red twice: on a scratch built empty at HEAD, 0021's guard refused on
+`branch payment methods beyond the born-with cash: 2` (the seed's born-with transfer rows). A database born at 0023
+cannot go below 0022 — the design, not a defect. `prove_shifts` RT/RF now build at `0022`; NEW cell BT builds at
+head and proves the refusal (downgrade to 0020 exits non-zero naming exactly the transfer rows; rolled back whole).
+Disproof: 0021's guard mutated to count active transfer rows as born-with (hashed `fd5ccd99…`, restored
+byte-identical) reddened EXACTLY BT1 and BT2 (60/62); the first try crashed BT2 on the dropped table instead, so
+BT2 now reads `to_regclass` first. After restore `prove_shifts` 62/62 TWICE; `prove_drawer` 97/97 TWICE; the other
+ten server proofs the lesson's sweep names exit 0 once each (`prove_reconcile` skip count 1, as in A0). 0023
+docstring + `OPEN_ITEMS.md` C1 carry the fact; `lessons/proof-must-run-twice.md` EIGHTH amendment; `CLAUDE.md` gate
+footgun amended (no own server/emulator during `prove_all`; launch at ≥ 10 GB free holding 60 s). Free memory
+before this gate: minimum 12.18 GB over 60 s.
+
 **LANE A, MILESTONE A1 — MIGRATION 0023 (born with cash AND transfer) AND THE COUNTER LABEL `เคาน์เตอร์จ่ายเงิน`. 2026-10-11.**
 No sha yet (precedes the commit; anchor next pass). Built in worktree `.claude/worktrees/a`, branch `lane-a`, under
 `RECYCLE_LANE=a`. Supersedes the lane-zero record below AS THE POINTER ONLY.

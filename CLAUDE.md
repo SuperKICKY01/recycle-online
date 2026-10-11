@@ -235,6 +235,16 @@ on 2026-08-28 — nothing weakened, only relocated.
   and with no `PROVE_ALL_EXIT=0` line it cannot read as a pass), so LAUNCH and read the exit
   line rather than wait: launch whenever free memory is at least 6 GB, keep a watcher running,
   allow one retry after a kill, and then stop and report.
+  **Amended 2026-10-11 (advisor-decided) — A FOURTH KILL POINT, AND THE SESSION'S OWN PROCESSES
+  COUNT.** Lane A's gate (`_prove_all/20261011T072726Z`) was killed after `[31/85]` with no exit
+  line, its watcher reading 7.86–8.36 GB free (last sample 8.21 GB) while lane A's own dev
+  server and the emulator were still up; the same kill took the server, the emulator and the
+  watcher. A process listing taken just after the kill, not during the run, showed `ollama app`
+  3.85 GB and `RobloxPlayerBeta` 2.8 GB. The red the run had already logged (`prove_shifts`) was
+  real, so a killed run can still carry a finding — read its per-proof logs. **New rule: no dev
+  server and no emulator of the session's own during `prove_all`; launch only at ≥ 10 GB free,
+  holding for 60 s** (this supersedes the 6 GB figure above). Never kill an application the
+  session did not start.
 - **THE EMULATOR'S QUICK-BOOT SNAPSHOT CAN RESUME WEDGED — `System UI` / `Process system
   isn't responding` returns after every `Wait`, taps are swallowed, the clock stops.**
   Measured 2026-09-29 on `recycle_api36`: a walk on that guest reads nothing. Instead:

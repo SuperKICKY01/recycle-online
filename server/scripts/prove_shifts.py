@@ -58,8 +58,13 @@ cash_kind, cash_amount, cash_idem, cash_void, method_check, channel_coherent,
 shifts_fk_branch, payments_shift_fk, shifts_delete_grant, audit_bpm, audit_shifts,
 audit_cm_add, bpm_delete_grant, bpm_insert_revoke.
 
-RT and RF run on a scratch BUILT FROM EMPTY (`alembic upgrade head`, scripts/seed_dev.py,
-one bill through the real POST /bills) since the gate repair of 2026-10-09 -- never on a
+RT and RF run on a scratch BUILT FROM EMPTY (`alembic upgrade 0022` since migration 0023 --
+`head` before it -- scripts/seed_dev.py, one bill through the real POST /bills) since the
+gate repair of 2026-10-09. They build at 0022 because a database born at 0023 or later
+cannot go below 0022: its branches are born with transfer rows, 0023's downgrade leaves
+them (shop data), and 0021's guard refuses -- by design (ADVISOR-DECIDED 2026-10-11).
+BT proves that refusal on a build at head: the downgrade to 0020 exits non-zero naming
+exactly the born-with transfer rows, and rolls back whole. Never on a
 dump of dev, whose drawer rows made both downgrades refuse before the cells could judge
 them. The cells above still run on a dump of dev; what they insert is chosen by reading
 its rows (the BPM and GR method), never assumed absent. RF makes its own refusing row
@@ -229,10 +234,15 @@ async def apply_init_in_database(scratch: str) -> None:
         await c.close()
 
 
-async def build_empty_scratch(scratch: str) -> None:
+async def build_empty_scratch(scratch: str, target: str = "head") -> None:
     """DROP and CREATE `scratch` with the LIVE database's owner, encoding, locale, ACL and
     per-database settings (the facts restore_db.py takes from its manifest), then
-    `alembic upgrade head` and scripts/seed_dev.py. Raises on any step's failure."""
+    `alembic upgrade <target>` and scripts/seed_dev.py. Raises on any step's failure.
+    RT and RF pass target="0022": from 0023 every branch is BORN with a transfer row,
+    0023's downgrade leaves those rows (they are shop data), and 0021's guard refuses on
+    any method row beyond the pristine cash -- so a database born at 0023 cannot go below
+    0022, by design (BT proves it). Building at 0022 keeps RT/RF testing 0021's OWN
+    downgrade exactly as before."""
     if scratch == _APP_URL.database:
         raise RuntimeError("refusing to build an empty scratch over the live database")
     c = await asyncpg.connect(host=_APP_URL.host, port=_APP_URL.port, user="postgres",
@@ -265,10 +275,10 @@ async def build_empty_scratch(scratch: str) -> None:
         await c.close()
     await apply_init_in_database(scratch)
     env = scratch_env(scratch)
-    cp = subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=SERVER_DIR, env=env,
+    cp = subprocess.run([sys.executable, "-m", "alembic", "upgrade", target], cwd=SERVER_DIR, env=env,
                         capture_output=True, text=True, timeout=900, encoding="utf-8", errors="replace")
     if cp.returncode != 0:
-        raise RuntimeError(f"alembic upgrade head on the empty scratch failed:\n{(cp.stdout + cp.stderr)[-1500:]}")
+        raise RuntimeError(f"alembic upgrade {target} on the empty scratch failed:\n{(cp.stdout + cp.stderr)[-1500:]}")
     cp = subprocess.run([sys.executable, os.path.join("scripts", "seed_dev.py")], cwd=SERVER_DIR, env=env,
                         capture_output=True, text=True, timeout=300, encoding="utf-8", errors="replace")
     if cp.returncode != 0:
@@ -882,6 +892,42 @@ async def run_refusal(drop_refusal_row: bool) -> None:
         await su.close()
 
 
+async def run_born_transfer_refusal() -> None:
+    header("BT  a database born at 0023 or later cannot go below 0022 -- by design")
+    # Built at HEAD and seeded, nothing else: the only rows beyond 0021's pristine cash
+    # row are the transfer rows the born-with trigger wrote. Downgrade target 0020, not
+    # 0021: 0021's guard runs only in the 0021 -> 0020 step.
+    su = await su_conn()
+    try:
+        head0 = await su.fetchval("SELECT version_num FROM alembic_version")
+        branches = await su.fetchval("SELECT count(*) FROM branches")
+        transfer = await su.fetchval("SELECT count(*) FROM branch_payment_methods WHERE method = 'transfer'")
+        shifts0 = await su.fetchval("SELECT count(*) FROM shifts")
+    finally:
+        await su.close()
+    check(head0 is not None and head0 >= "0023" and branches > 0 and transfer == branches and shifts0 == 0,
+          f"BT0 the fresh build is at {head0}: {branches} branch(es), each born with a transfer row"
+          f" ({transfer}), and no shift ({shifts0})")
+    rc, out = run_alembic("downgrade", "0020")
+    m = re.search(r"branch payment methods beyond the born-with cash\s*:\s*(\d+)", out)
+    named = int(m.group(1)) if m else None
+    check(rc != 0 and "REFUSING to downgrade 0021" in out and named == transfer,
+          f"BT1 the downgrade below 0022 is REFUSED, naming the born-with transfer rows (exit {rc},"
+          f" refusal={'REFUSING to downgrade 0021' in out}, rows named={named}, expected {transfer})")
+    su = await su_conn()
+    try:
+        head1 = await su.fetchval("SELECT version_num FROM alembic_version")
+        # The table is GONE if the guard let the downgrade through (the disproof's state):
+        # report that as a red cell, never as a crash that skips the tally.
+        present = await su.fetchval("SELECT to_regclass('public.branch_payment_methods') IS NOT NULL")
+        kept = (await su.fetchval("SELECT count(*) FROM branch_payment_methods WHERE method = 'transfer'")
+                if present else None)
+    finally:
+        await su.close()
+    check(head1 == head0 and kept == transfer,
+          f"BT2 the refusal rolled back whole: head still {head1}, the transfer rows all there ({kept})")
+
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -899,12 +945,14 @@ async def amain(args) -> int:
         # (the gate repair, 2026-10-09), never a dump of dev: they test the migration's
         # mechanics, and a dev dump carries whatever drawer rows anything left there,
         # which made 0022's and 0021's downgrades refuse before the cells could judge them.
-        await build_empty_scratch(SCRATCH_DB)
+        await build_empty_scratch(SCRATCH_DB, "0022")
         seed_paid_bill(SCRATCH_DB)
         await run_round_trip()
-        await build_empty_scratch(SCRATCH_DB)
+        await build_empty_scratch(SCRATCH_DB, "0022")
         seed_paid_bill(SCRATCH_DB)
         await run_refusal(args.disprove_refusal)
+        await build_empty_scratch(SCRATCH_DB)
+        await run_born_transfer_refusal()
 
     header("verdict")
     total = len(passes) + len(failures)

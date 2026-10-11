@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 40 across 22 files, counted from the source headings and
+**Amendments:** 41 across 22 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -92,7 +92,7 @@ line instead of by heading depth.
 - `metro-file-map-nesting.md` -- When a resolver says a file is missing, ask the resolver — not the OS
 - `opening-a-copy-is-a-write.md` -- Opening a copy is a write to it
 - `printed-code-in-a-design-document-is-run-by-nobody.md` -- Printed code in a design document is run by nobody
-- `proof-must-run-twice.md` *(7 amendments)* -- A proof that passes only once proves the environment, not the code
+- `proof-must-run-twice.md` *(8 amendments)* -- A proof that passes only once proves the environment, not the code
 - `queue-jam-must-be-visible.md` *(1 amendment)* -- A strict ordered queue CAN deadlock. Don't skip the head — make the jam visible.
 - `render-in-shop-time-not-device-time.md` *(1 amendment)* -- Store UTC, render in the SHOP's timezone — and never slice an ISO string
 - `revoke-in-migration.md` -- Privilege changes live in the migration, not in a live one-off
@@ -9290,6 +9290,38 @@ being pristine.** Either derive what to expect from the restored copy at runtime
 proof can name, a method the branch does not hold), or build the scratch from empty and make
 the precondition yourself. And an "empty" build is only empty of DATA: everything the real
 bootstrap does to a new database belongs in it, or it proves a database nobody runs.
+
+## AMENDED AN EIGHTH TIME (lane A, migration 0023, 2026-10-11): an empty build at HEAD carries whatever the born-with rows are TODAY, so a change to born-with rows moves every round trip built on it
+
+The seventh amendment moved the round trips onto a scratch built FROM EMPTY at `head`. That
+build is empty of shop DATA but not of BORN-WITH rows: the seed's branches get whatever the
+born-with trigger writes at the head of the day. Migration `0023` made `transfer` born-with,
+and `prove_shifts` RT went red in the A1 gate (`_prove_all/20261011T072726Z`, run 1 and run 2):
+`RT downgrade to 0020 exit 0 (got 1)` -- 0021's guard refused on `branch payment methods beyond
+the born-with cash: 2`, the two seeded branches' transfer rows. Nothing in `prove_shifts`
+changed; `0023` changed what "empty" means. The refusal is correct and is the design (a
+database born at 0023 cannot go below 0022, ADVISOR-DECIDED 2026-10-11): the PROOF's premise
+was wrong, so RT/RF now build at `0022` -- the migration whose downgrade they test -- and a new
+cell BT proves the refusal at head.
+
+**The miss was in the ORDER, not the code.** Before that gate the session ran `prove_drawer`,
+`prove:counter`, `prove:sheets` and `prove:settings` alone -- the proofs it had EDITED -- and
+not `prove_shifts`, which it had not edited but which builds and round-trips branches. A red
+found by the full gate costs a whole gate run, and on this box a gate run can be killed for
+memory before it reports at all (it was, at 31/85, with the red already in its log).
+
+**Rule: after ANY change to born-with rows (a trigger on `branches`, a seeded default, a
+backfill), run EVERY proof that creates or round-trips branches ALONE, before the full gate.**
+Found 2026-10-11 by two ripgrep content searches over `server/scripts/prove_*.py`,
+`mobile/src/proof/*.ts` and `tools/*.py` -- one for `INSERT INTO branches|provision_shop\.py|
+"downgrade"|build_empty_scratch\(|branch_payment_methods|payment-methods|payment_methods`, one
+for `\bprovision\(|provision_shop import` -- with `prove_shifts` and `prove_drawer` (known to
+touch born-with methods) as the positive control, both present. The union, thirteen:
+`prove_shifts`, `prove_drawer`, `prove_branches`, `prove_rls`, `prove_reconcile`,
+`prove_login_guard`, `prove_grade_tiers`, `prove_reports_summary`, `prove_seller_history`,
+`prove_user_create`, `prove_user_admin`, `prove_permissions`, and `mobile/src/proof/proveDrawer.ts`
+(run by `prove:counter`). Not found with these words is not proof of absence: re-run both
+searches at the time of the change, because the list grows with every proof.
 
 ---
 

@@ -79,6 +79,11 @@ is master data a shop edits -- nothing in this migration can tell a row it wrote
 row a shop has since chosen to keep. They are rows 0022 knows how to hold (0022's own
 precedent: "the born-with trigger's rows stay"). Below 0022, 0021's downgrade refuses on
 any method row beyond the pristine cash row, as it always has.
+
+A DATABASE BORN AT 0023 OR LATER CANNOT BE DOWNGRADED BELOW 0022. Its branches are born
+with transfer rows, those rows are shop data that this downgrade leaves in place, and
+0021's guard refuses on them. By design (ADVISOR-DECIDED 2026-10-11), not a defect:
+prove_shifts BT proves the refusal, and its RT/RF build their scratch at 0022.
 """
 from typing import Sequence, Union
 

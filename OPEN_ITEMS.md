@@ -1896,7 +1896,10 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
     migration never overturns a choice a shop made (the 2026-09-30 text read "without an active
     `transfer` row", which would have reactivated it). **BUILT 2026-10-11 as migration `0023`**
     (lane A, milestone A1; no sha yet -- anchor next pass): dev 5 -> 8 method rows, Shop A's
-    inactive `transfer` row left inactive; `prove_drawer` T23. The owner's words, verbatim: "ส่วนมากคน แสกน qr จ่ายเงินกัน". A
+    inactive `transfer` row left inactive; `prove_drawer` T23. **A database born at `0023` or
+    later cannot be downgraded below `0022`:** its branches are born with transfer rows, which
+    are shop data that `0023`'s downgrade leaves in place, and `0021`'s guard refuses on them --
+    by design (ADVISOR-DECIDED 2026-10-11), proven by `prove_shifts` BT. The owner's words, verbatim: "ส่วนมากคน แสกน qr จ่ายเงินกัน". A
     counter that shows only `เงินสด` on day one makes a shop hunt for a switch before it can pay
     the way most sellers are paid (commit 3 measured Shop A at `["cash"]`, and R7 hides every
     inactive method). No real shop exists yet, so nothing is lost by waiting for the migration

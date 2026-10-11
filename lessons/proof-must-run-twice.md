@@ -377,3 +377,35 @@ being pristine.** Either derive what to expect from the restored copy at runtime
 proof can name, a method the branch does not hold), or build the scratch from empty and make
 the precondition yourself. And an "empty" build is only empty of DATA: everything the real
 bootstrap does to a new database belongs in it, or it proves a database nobody runs.
+
+## AMENDED AN EIGHTH TIME (lane A, migration 0023, 2026-10-11): an empty build at HEAD carries whatever the born-with rows are TODAY, so a change to born-with rows moves every round trip built on it
+
+The seventh amendment moved the round trips onto a scratch built FROM EMPTY at `head`. That
+build is empty of shop DATA but not of BORN-WITH rows: the seed's branches get whatever the
+born-with trigger writes at the head of the day. Migration `0023` made `transfer` born-with,
+and `prove_shifts` RT went red in the A1 gate (`_prove_all/20261011T072726Z`, run 1 and run 2):
+`RT downgrade to 0020 exit 0 (got 1)` -- 0021's guard refused on `branch payment methods beyond
+the born-with cash: 2`, the two seeded branches' transfer rows. Nothing in `prove_shifts`
+changed; `0023` changed what "empty" means. The refusal is correct and is the design (a
+database born at 0023 cannot go below 0022, ADVISOR-DECIDED 2026-10-11): the PROOF's premise
+was wrong, so RT/RF now build at `0022` -- the migration whose downgrade they test -- and a new
+cell BT proves the refusal at head.
+
+**The miss was in the ORDER, not the code.** Before that gate the session ran `prove_drawer`,
+`prove:counter`, `prove:sheets` and `prove:settings` alone -- the proofs it had EDITED -- and
+not `prove_shifts`, which it had not edited but which builds and round-trips branches. A red
+found by the full gate costs a whole gate run, and on this box a gate run can be killed for
+memory before it reports at all (it was, at 31/85, with the red already in its log).
+
+**Rule: after ANY change to born-with rows (a trigger on `branches`, a seeded default, a
+backfill), run EVERY proof that creates or round-trips branches ALONE, before the full gate.**
+Found 2026-10-11 by two ripgrep content searches over `server/scripts/prove_*.py`,
+`mobile/src/proof/*.ts` and `tools/*.py` -- one for `INSERT INTO branches|provision_shop\.py|
+"downgrade"|build_empty_scratch\(|branch_payment_methods|payment-methods|payment_methods`, one
+for `\bprovision\(|provision_shop import` -- with `prove_shifts` and `prove_drawer` (known to
+touch born-with methods) as the positive control, both present. The union, thirteen:
+`prove_shifts`, `prove_drawer`, `prove_branches`, `prove_rls`, `prove_reconcile`,
+`prove_login_guard`, `prove_grade_tiers`, `prove_reports_summary`, `prove_seller_history`,
+`prove_user_create`, `prove_user_admin`, `prove_permissions`, and `mobile/src/proof/proveDrawer.ts`
+(run by `prove:counter`). Not found with these words is not proof of absence: re-run both
+searches at the time of the change, because the list grows with every proof.
