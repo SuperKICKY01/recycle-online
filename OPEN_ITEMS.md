@@ -1711,14 +1711,20 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   for `proof-drawer-|payment-channels`. (3) **`build_paste_set.py` from a worktree** defaults its output beside the
   worktree (`.claude\worktrees\recycle-online-paste-set`), the per-worktree path shape of
   `lessons/a-path-derived-from-the-checkout-is-per-worktree.md`; lanes pass `--out E:\recycle-online-paste-set`.
-  (4) **`AppInner` re-renders about three times every ~400 ms while idle** — a render-counting probe on the cart
-  (A3 item 3's debugging, removed) logged about 250 renders between 19:14:23 and 19:14:56 with nothing touched.
+  (4) **`AppInner` re-renders three times every 400 ms while idle — CAUSE NAMED (A3 batch 1b, recorded, not fixed:
+  more than one setter).** The 400 ms ticker (`mobile/App.tsx:1442-1452`) calls `refresh()` (`:1361-1440`), which sets
+  fresh-identity values whose contents did not change, in three groups separated by `await`s, so React renders each
+  group: `setOwed(await engine.owedByKind())` (`:1409`, a new object); the synchronous block ending `setBills(all
+  .slice(0, 30))` / `setLatest(...)` (`:1422`, `:1432`, a new array and object); `setHealth(assessQueue(snap, new
+  Date()))` (`:1439`, a new object). Measured on the emulator with a tick probe and a render probe (removed): 24 ticks
+  and 80 renders in 10 idle seconds, every tick followed by exactly three renders within ~80 ms. The fix is to keep
+  each previous value when the new one is equal (or to skip the ticker's re-read when nothing changed) — three
+  setters, so outside the advisor's "single setter" fix rule.
   (5) **After an activity relaunch the OLD root's background work may still run beside the new root** — A3 batch 1b
   made the database bring-up once per process (`localDatabase.ts`), but each root still builds its own `SyncEngine`,
   timers and fetches in App.tsx's effects, and whether the old root's are stopped when it unmounts is UNMEASURED
   (the first-relaunch `database is locked` in 1b is consistent with leftover work holding the file). Owed: count
-  live engines after a relaunch before trusting two roots to share one queue. Cause UNMEASURED; outside the
-  batch.
+  live engines after a relaunch before trusting two roots to share one queue.
 
 - **LANE ZERO (2026-10-11) — FOUND AND LEFT, one line each.** (1) The `prove_all` lock does not cover a dev-targeting
   proof run BY HAND: the ten dev-targeting proofs write to the one dev database, so a lane hand-running one during the

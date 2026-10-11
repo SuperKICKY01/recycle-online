@@ -96,6 +96,11 @@ not read the green as re-run.**
   locked`), control and retry green. Exit 0 twice; both typechecks 0. Skills: debug-mantra · 3 · "Run the
   **disproof first**."; verification-discipline · 5 · "A negative result is only attributable if a known-good
   signal passes the same harness".
+- **2b, the idle re-renders — CAUSE NAMED, RECORDED, NOT FIXED (three setters, not one).** The 400 ms ticker
+  (`App.tsx:1442-1452`) → `refresh()` sets `owed`, `bills`/`latest` and `health` to fresh-but-equal values in three
+  `await`-separated groups. Measured: 24 ticks, 80 renders in 10 idle seconds, three renders per tick. Line in
+  `OPEN_ITEMS.md § Code debt` (LANE A, A3 (4)). Within the 30-minute timebox (about 15 minutes). debug-mantra · 2 ·
+  "In-code instrumentation … Tag every probe with a unique prefix"; probes removed, `git diff` of App.tsx empty.
 
 **LANE A, A3 BATCH 1 — six fixes from the A2 ranked list (`E:\recycle-shots\lane-a\A2\A2_ranked_list.md`), in the
 advisor's order 1, 2, 3, 5, 6, 4 (ADVISOR-DECIDED 2026-10-11). 2026-10-11.** One commit per item; shas anchor next
