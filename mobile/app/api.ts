@@ -6,6 +6,7 @@
  * parses money into a number.
  */
 import type { PriceWrite } from "../src/master/priceEdit";
+import type { WireCategory, WireProduct } from "../src/master/categories";
 import type { DailyFetch } from "../src/reports/dailyView";
 import { exchangeShopCode } from "../src/session/shopCode";
 import type { ShopCodeResult } from "../src/session/shopCode";
@@ -50,6 +51,9 @@ export interface Product {
   uom_name: string;
   /** grade -> price, e.g. { A: "15.50", B: "15.00" }. Strings, always. */
   prices: Record<string, string>;
+  /** Joined on the device from GET /product-categories (src/master/categories.ts). */
+  category?: { id: string; code: string; name: string } | null;
+  is_active?: boolean;
 }
 
 /**
@@ -241,8 +245,19 @@ export function login(
   );
 }
 
-export const fetchProducts = (token: string): Promise<Product[]> =>
-  getJson<{ products: Product[] }>("/products", token).then((b) => b.products);
+export const fetchProducts = (token: string): Promise<WireProduct[]> =>
+  getJson<{ products: WireProduct[] }>("/products", token).then((b) => b.products);
+
+/**
+ * GET /product-categories — the ACTIVE categories, for the cart's category browse (cart
+ * milestone). Any signed-in user may read it (server master.py list_categories). THROWS on a
+ * non-2xx like fetchProducts; refreshMaster treats a failure as "no names" and still saves the
+ * products, so a product is then listed under ทั้งหมด only.
+ */
+export const fetchProductCategories = (token: string): Promise<WireCategory[]> =>
+  getJson<{ product_categories: WireCategory[] }>("/product-categories", token).then(
+    (b) => b.product_categories,
+  );
 
 /**
  * PUT /products/{id}/prices/{grade} — TRANSPORT ONLY. P1.9.

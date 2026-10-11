@@ -63,6 +63,9 @@ interface ProductRow {
   uom_code: string;
   uom_name: string;
   prices_json: string;
+  category_id: string | null;
+  category_code: string | null;
+  category_name: string | null;
 }
 
 interface SellerRow {
@@ -238,7 +241,8 @@ export class SqliteMasterStore implements MasterStore {
     // two mechanisms guarding one observable make a green about whichever still
     // works (lessons/a-green-cell-is-evidence-about-the-assertion-not-the-claim.md).
     const products = await this.db.all<ProductRow>(
-      "SELECT id, code, name, uom_code, uom_name, prices_json FROM cached_products" +
+      "SELECT id, code, name, uom_code, uom_name, prices_json, category_id, category_code, category_name" +
+        " FROM cached_products" +
         ` WHERE ${CACHE_TENANT_MATCHES} ORDER BY code, id`,
       [tenant],
     );
@@ -265,6 +269,11 @@ export class SqliteMasterStore implements MasterStore {
           uom_code: r.uom_code,
           uom_name: r.uom_name,
           prices: parsePrices(r.prices_json),
+          // All three or nothing: a half-written category is no category.
+          category:
+            r.category_id !== null && r.category_code !== null && r.category_name !== null
+              ? { id: r.category_id, code: r.category_code, name: r.category_name }
+              : null,
         }),
       ),
       sellers: sellers.map(
@@ -312,9 +321,13 @@ export class SqliteMasterStore implements MasterStore {
       for (const p of products) {
         await tx.run(
           "INSERT INTO cached_products" +
-            " (id, code, name, uom_code, uom_name, prices_json, owner_tenant_id)" +
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
-          [p.id, p.code, p.name, p.uom_code, p.uom_name, JSON.stringify(p.prices), tenant],
+            " (id, code, name, uom_code, uom_name, prices_json, owner_tenant_id," +
+            " category_id, category_code, category_name)" +
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [
+            p.id, p.code, p.name, p.uom_code, p.uom_name, JSON.stringify(p.prices), tenant,
+            p.category?.id ?? null, p.category?.code ?? null, p.category?.name ?? null,
+          ],
         );
       }
       await stamp(tx, PRODUCTS, fetchedAt, tenant);

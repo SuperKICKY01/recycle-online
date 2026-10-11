@@ -77,6 +77,7 @@ import { mergeSellersForPicker } from "./src/cart/pickerSellers";
 import type { Draft } from "./src/cart/types";
 import { ExpoSqliteDriver } from "./src/device/expoSqliteDriver";
 import { localDatabaseOnce } from "./src/adapters/sqlite/localDatabase";
+import { joinCategories } from "./src/master/categories";
 import { SecureTokenStore } from "./src/device/secureTokenStore";
 import {
   applyClearedSession,
@@ -237,6 +238,7 @@ import {
   fetchGradeTiers,
   fetchGradeTiersAdmin,
   fetchProducts,
+  fetchProductCategories,
   fetchSellerHistory,
   fetchSellers,
   fetchShop,
@@ -1101,7 +1103,11 @@ function AppInner() {
     let failed = false;
     try {
       try {
-        const ps = await fetchProducts(token);
+        const wire = await fetchProducts(token);
+        // The category NAMES (cart milestone): a failed category read is not a failed product
+        // read — the products are saved with category null and listed under ทั้งหมด only.
+        const cats = await fetchProductCategories(token).catch(() => []);
+        const ps = joinCategories(wire, cats);
         const at = nowIso();
         await store.saveProducts(ps, at);
         setProducts(ps);

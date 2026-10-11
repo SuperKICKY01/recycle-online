@@ -20,6 +20,27 @@ export interface MasterProduct {
   uom_name: string;
   /** grade -> price, e.g. { A: "15.50", B: "15.00" }. Strings, always. */
   prices: Record<string, string>;
+  /**
+   * THE PRODUCT'S CATEGORY, as the cart groups it (cart milestone, 2026-10-12; SRS 2.1
+   * `เลือกกลุ่มสินค้า`). Null when the category is retired, unknown to this device, or its
+   * list could not be fetched — such a product is listed under `ทั้งหมด` only, never
+   * dropped. OPTIONAL so a row cached before the column existed still reads. See
+   * src/master/categories.ts.
+   */
+  category?: MasterCategoryRef | null;
+  /**
+   * False only on a product the server reported RETIRED. The cache holds the server's
+   * ACTIVE list, so a cached row reads undefined = active; the cart's picker still
+   * filters on it, so an inactive row can never be offered (src/cart/productPicker.ts).
+   */
+  is_active?: boolean;
+}
+
+/** The three fields of a category the cart needs: the id it filters on, code to order, name to show. */
+export interface MasterCategoryRef {
+  id: string;
+  code: string;
+  name: string;
 }
 
 export interface MasterSeller {

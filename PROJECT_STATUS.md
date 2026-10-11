@@ -85,6 +85,16 @@ server migration, no server route, no stored pins.
   Against `recycle_walk_a`: run 1 wrote categories=6 products=37 prices=148, run 2 wrote 0/0/0. It writes NO bills —
   the frequent row counts the DEVICE's bills and the app never downloads bills, so the walk's bills are saved on the
   emulator (a correction to the brief's "plus enough bills").
+- **Categories cached on the device (PHONE schema only; no Alembic, no route).** `GET /products` already carries
+  `category_id` and `GET /product-categories` is open to any signed-in user; `src/master/categories.ts`
+  `joinCategories` joins them at fetch time (retired / unknown / failed read → `category: null`, the product kept);
+  `refreshMaster` fetches both (a failed category read still saves the products). `cached_products` gains
+  `category_id`, `category_code`, `category_name` (in its CREATE and in `ADDED_PRODUCT_CATEGORY_COLUMNS` for an
+  upgraded phone); `SqliteMasterStore` writes and reads them. NEW `prove:productpicker` P0 (10 cells: the join, a
+  save/close/reopen, an old-shape file upgraded with its row kept). Disproof: the column migration removed (hashed
+  `AC2ACB63…`, restored byte-identical) reddened EXACTLY the two upgrade cells (`no such column: category_id`).
+  P0 exit 0 twice; `prove:migration`, `prove:cachetenant`, `prove:cold`, `prove:sqlite`, `prove:signout` exit 0;
+  both typechecks 0.
 
 **LANE A, A3 BATCH 1b — the relaunch database error, the idle re-renders, item 3's native fix (ADVISOR-DECIDED
 2026-10-11). 2026-10-11.** Shas anchor next pass.

@@ -222,7 +222,14 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
      uom_name    TEXT NOT NULL,
      prices_json TEXT NOT NULL,
      /* Tenant only. See the note above master_cache. */
-     owner_tenant_id TEXT
+     owner_tenant_id TEXT,
+     /* The product's ACTIVE category, joined on the device at fetch time (cart milestone,
+        2026-10-12; src/master/categories.ts). All three NULL when retired, unknown or not
+        fetched -- the product is then listed under ทั้งหมด only. Also in
+        ADDED_PRODUCT_CATEGORY_COLUMNS for a device that cached products before them. */
+     category_id   TEXT,
+     category_code TEXT,
+     category_name TEXT
    ) STRICT`,
 
   `CREATE TABLE IF NOT EXISTS cached_sellers (
@@ -733,6 +740,18 @@ const ADDED_CACHE_TENANT_COLUMN: readonly { name: string; ddl: string }[] = [
 const CACHE_TABLES: readonly string[] = ["master_cache", "cached_products", "cached_sellers"];
 
 /**
+ * The product's category (cart milestone, 2026-10-12), added to cached_products after it
+ * shipped. NULLABLE: a row cached before them reads as "no category" and is listed under
+ * ทั้งหมด until the next refresh rewrites the table. No backfill — the next fetch is the
+ * backfill, and until then the only consequence is a product missing from one chip.
+ */
+const ADDED_PRODUCT_CATEGORY_COLUMNS: readonly { name: string; ddl: string }[] = [
+  { name: "category_id", ddl: "category_id TEXT" },
+  { name: "category_code", ddl: "category_code TEXT" },
+  { name: "category_name", ddl: "category_name TEXT" },
+];
+
+/**
  * Columns added to local_shop after IT first shipped.
  *
  * `branch_id` (server migration 0018): the yard this device's caller works at,
@@ -898,6 +917,7 @@ export async function initConnection(db: SqlDriver): Promise<string[]> {
     for (const t of CACHE_TABLES) {
       added.push(...(await migrateColumns(tx, t, ADDED_CACHE_TENANT_COLUMN)));
     }
+    added.push(...(await migrateColumns(tx, "cached_products", ADDED_PRODUCT_CATEGORY_COLUMNS)));
     for (const ddl of POST_MIGRATION_STATEMENTS) await tx.run(ddl);
     return added;
   });
