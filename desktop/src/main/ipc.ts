@@ -6,6 +6,8 @@
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
 
 import { isOurPage } from "./origin";
+import { sendToPrinter } from "./printer";
+import { isPrinterSettings, loadPrinterSettings, savePrinterSettings } from "./printerStore";
 import {
   clearConfig,
   clearToken,
@@ -42,4 +44,18 @@ export function registerIpc(): void {
     saveConfig(c);
   });
   ipcMain.handle("config:clear", (e) => { fromOurPage(e); clearConfig(); clearToken(); });
+  ipcMain.handle("printer:load", (e) => { fromOurPage(e); return loadPrinterSettings(); });
+  ipcMain.handle("printer:save", (e, s: unknown) => {
+    fromOurPage(e);
+    if (!isPrinterSettings(s)) throw new Error("refused: not printer settings");
+    savePrinterSettings(s);
+  });
+  // The bytes go to the SAVED printer only: the page cannot name a host or a share of its own.
+  ipcMain.handle("printer:send", async (e, bytes: unknown) => {
+    fromOurPage(e);
+    if (!(bytes instanceof Uint8Array) || bytes.length === 0 || bytes.length > 1_000_000) throw new Error("refused: not slip bytes");
+    const s = loadPrinterSettings();
+    if (s === null) return { kind: "not_configured" };
+    return sendToPrinter(s.target, bytes);
+  });
 }

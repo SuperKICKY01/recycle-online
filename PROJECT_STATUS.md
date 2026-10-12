@@ -157,6 +157,33 @@ anchor next pass.
   without the seller name → exactly N2; a whitespace reason accepted → V1; `>=` → `>` at the ceiling → P1; the void
   form left open after a void (both guards removed — the FIRST build's own defect, seen in its screenshot) → B5. A
   first M6 that removed only one guard stayed green, correctly: the other guard alone closes the form.
+- **B4 — the thermal slip (P1.17), bytes proven, paper NOT observed.** `desktop/src/shared/slip.ts` (pure): `slipLines`
+  decides what a slip says (shop name/address/phone from `GET /shop`; doc_no; shop-time BE date; seller CODE and NAME
+  only; plate; per line ชั่ง/หัก/สุทธิ x price = amount; total; paid; printed-at), `lineText` lays it out at 32 columns
+  (58 mm) or 48 (80 mm) with Thai above/below marks taking no column and wrapping never splitting a letter from its
+  marks, and `escposBytes` encodes the SAME lines: `ESC @`, `FS .`, `ESC t n`, TIS-620 text, bold/double-height, feed,
+  partial cut; a character with no TIS-620 byte goes as `?` and is shown to the operator. The preview
+  (`src/renderer/Slip.tsx`) draws those lines, so what is approved is what is sent. A bill with no doc_no or a voided
+  bill is refused on screen with its sentence. Printer screen (nav `เครื่องพิมพ์`): paper width, network (host:port,
+  9100) or a Windows-shared USB printer (`\\PC\Share`, sent by `copy /b` as an argument, never a shell string), the
+  Thai code page `n` (default 21, ASSUMED — printer-specific), and a TEST PAGE printing one line per candidate 20–26 so
+  the operator picks by eye. The bytes go only to the SAVED printer (`printer:send` IPC, frame-checked, re-validated in
+  main). NEW proofs, each exit 0 twice: `prove:slip` (15: golden files `src/proof/golden/slip58.bin` 716 bytes and
+  `slip80.bin` 916 bytes; the 58 mm slip decoded by Node's own windows-874 decoder through a parser written in the proof
+  equals 24 lines typed by hand with counted spaces; TIS-620 table by hand; all 87 Thai code points round-trip; framing;
+  refusals; test page; send sentences; no ID number/address on the slip), `prove:printer` (6: a fake printer on
+  127.0.0.1 receives the exact 3000 bytes; refused/unreachable; malformed hosts refused before any connection; the
+  validator; a missing share fails through the REAL `copy /b` — MEASURED "The network name cannot be found." — and the
+  temp file is removed), `prove:slipflow` (6, Playwright on the real screens against `scratch_server.py` and a fake
+  printer: test page arrives with 8 code-page selects; preview carries doc_no and a 25xx date; the printer receives the
+  slip whose words equal the preview's in order; the screen says SENT and asks the operator to look; a voided bill is
+  refused with nothing sent; printer off → the refused sentence). Disproofs, each restored byte-identical by sha256:
+  33 columns → G1 D1; MAI HAN-AKAT given a column → G1 G2 D1 D2; TIS-620 off by one → E2 E3 (and D1 D2 G1 G2 P1);
+  `FS .` dropped → G1 G2 E1; voided printable (rule) → R1; "sent" saying พิมพ์แล้ว → S1; ID number on the slip → P1;
+  refused read as unreachable → N2; share validator admitting `"` and `&` → N4; the screen ignoring the refusal → F5.
+  `.gitattributes` marks `desktop/src/proof/golden/*.bin` binary. **UNMEASURED: a real printer** — whether paper comes
+  out, whether code page 21 is Thai on the owner's model, whether its firmware composes the marks — is the owner's
+  photograph (ROADMAP P1.17 DONE WHEN); the shared-printer path has run only to its failure case.
 
 **LANE A, SELLER SEARCH — C1: a seller's full ID number and address are personal data (migration 0024,
 ADVISOR-DECIDED 2026-10-12, the no-migration ban lifted for this milestone only). 2026-10-12.** Shas anchor next pass.

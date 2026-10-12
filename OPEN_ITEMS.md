@@ -1705,6 +1705,20 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
 
 ## Code debt found and left in place
 
+- **DESKTOP B4 — THE SLIP'S THAI ON A REAL PRINTER IS UNMEASURED (2026-10-12).** Text mode sends TIS-620 under `ESC t n`;
+  `n` is the printer maker's choice (default 21 is ASSUMED-BECAUSE Epson's table puts Thai at 20–26) and the test page
+  lets the operator pick. If the owner's printer prints the above/below marks in their OWN columns (a printer without
+  Thai composition), no code page fixes it: the fallback is a RASTER slip (render the lines to a 384/576-dot bitmap,
+  send `GS v 0`), which works on any ESC/POS printer and is a builder change with its own golden files. Decide on the
+  owner's first photograph, not before.
+
+- **DESKTOP B4 — A VOIDED BILL PRINTS NO SLIP; ASSUMED (2026-10-12).** A slip is a receipt, so a voided bill is refused
+  rather than reprinted. If the shop needs a reprint of a voided bill for its records (marked ยกเลิก), that is the
+  owner's call and a small change to `slipRefusal` plus a marked header.
+
+- **DESKTOP B4 — DEV'S SHOP A HAS NO ADDRESS OR PHONE**, so every slip from it is headed by its name alone. Both are set
+  on the phone (`PATCH /shop`, settings screen); a pilot shop must fill them before its first slip.
+
 - **DESKTOP B3 — `GET /bills` HAS A CEILING OF 200 AND NO PAGING (2026-10-12).** The bills screen says so at 200 rows
   (`listCountText`) rather than showing a false count, but a shop with more than 200 bills in a chosen range cannot
   browse the rest except by narrowing the range or picking a seller. A cursor (`before` = the last row's

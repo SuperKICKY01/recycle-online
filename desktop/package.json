@@ -16,7 +16,10 @@
     "prove:session": "npm run build && node dist/proof/proveSession.cjs",
     "prove:signin": "npm run build && node dist/proof/proveSignIn.cjs",
     "prove:bills": "npm run build && node dist/proof/proveBills.cjs",
-    "prove:billsflow": "npm run build && node dist/proof/proveBillsFlow.cjs"
+    "prove:billsflow": "npm run build && node dist/proof/proveBillsFlow.cjs",
+    "prove:slip": "npm run build && node dist/proof/proveSlip.cjs",
+    "prove:printer": "npm run build && node dist/proof/provePrinter.cjs",
+    "prove:slipflow": "npm run build && node dist/proof/proveSlipFlow.cjs"
   },
   "dependencies": {
     "@recycle/shop-time": "file:../packages/shop-time",

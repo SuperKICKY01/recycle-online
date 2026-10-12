@@ -174,4 +174,29 @@ textarea { resize: vertical; }
 .btn-danger-quiet:hover:not(:disabled) { background: var(--danger-soft); }
 .void-form { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid #f0c6c2; border-radius: var(--radius); background: #fffafa; }
 .void-warn { margin: 0; color: var(--danger); font-weight: 600; }
-.void-actions { display: flex; gap: 8px; }
+.void-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* --- the slip (B4): a paper roll, drawn from the same lines the printer is sent ---------------- */
+.paper-scroll { align-self: center; max-width: 100%; overflow-x: auto; }
+.paper { padding: 16px 2ch; background: #fff; color: #111;
+  font-family: "Cascadia Mono", Consolas, "Leelawadee UI", monospace; font-size: 0.8125rem; line-height: 1.55;
+  border: 1px solid var(--border); border-radius: 2px; box-shadow: 0 2px 10px rgba(19, 35, 58, 0.10);
+  font-variant-numeric: tabular-nums;
+}
+.paper-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.paper-center { text-align: center; }
+.paper-bold { font-weight: 700; }
+.paper-big { font-size: 1.25em; line-height: 1.4; }
+.paper-pair { display: flex; justify-content: space-between; gap: 1ch; }
+.paper-pair > span:first-child { white-space: pre; }  /* the slip's own indent; a line is never re-broken */
+.paper-pair > span:last-child { white-space: nowrap; flex-shrink: 0; }
+.paper-rule { border-top: 1px dashed #777; margin: 6px 0; }
+.paper-blank { height: 0.8em; }
+.slip-meta { margin: 0; color: var(--text-muted); font-size: 0.875rem; text-align: center; }
+.settings-form { display: flex; flex-direction: column; gap: 18px; max-width: 560px; }
+.settings-form fieldset { border: 0; padding: 0; margin: 0; }
+.settings-form .chips { align-self: flex-start; }
+.field-row { display: flex; gap: 12px; }
+.field-row .field:first-child { flex: 1; }
+.field-narrow input { max-width: 220px; }
+.field-hint { color: var(--text-muted); font-size: 0.875rem; }

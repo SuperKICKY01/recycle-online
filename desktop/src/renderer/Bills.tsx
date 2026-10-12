@@ -30,6 +30,7 @@ import {
 import { display } from "../shared/money";
 import { presetRange, PRESETS, shopDayLabel, type PresetId } from "../shared/period";
 import { noticeFor, type Session } from "../shared/session";
+import { SlipPreview } from "./Slip";
 
 interface Props {
   readonly session: Session;
@@ -44,6 +45,8 @@ export function BillsScreen({ session, onSettle }: Props) {
   const [rows, setRows] = useState<BillRow[] | null>(null);
   const [sellers, setSellers] = useState<SellerChoice[]>([]);
   const [selected, setSelected] = useState<BillDetail | null>(null);
+  /** The bill whose slip is on screen (the preview replaces the detail panel), or null. */
+  const [printing, setPrinting] = useState(false);
   const [listNotice, setListNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -73,8 +76,10 @@ export function BillsScreen({ session, onSettle }: Props) {
   const open = async (id: string) => {
     const out = await session.authed((t) => session.api.get(t, `/bills/${id}`, readBillDetail));
     onSettle(out.kind);
-    if (out.kind === "ok") setSelected(out.value);
-    else setListNotice(noticeFor(out, "session"));
+    if (out.kind === "ok") {
+      setSelected(out.value);
+      setPrinting(false);
+    } else setListNotice(noticeFor(out, "session"));
   };
 
   const choosePreset = (id: PresetId) => {
@@ -128,8 +133,11 @@ export function BillsScreen({ session, onSettle }: Props) {
       {listNotice !== null ? <p className="notice notice-warn" role="alert">{listNotice}</p> : null}
       <div className={selected !== null ? "bills-split has-panel" : "bills-split"}>
         <BillTable rows={rows} loading={loading} selectedId={selected?.id ?? null} onOpen={(id) => void open(id)} />
-        {selected !== null ? (
-          <BillPanel bill={selected} session={session} onSettle={onSettle}
+        {selected !== null && printing ? (
+          <SlipPreview bill={selected} session={session} onSettle={onSettle} onClose={() => setPrinting(false)} />
+        ) : null}
+        {selected !== null && !printing ? (
+          <BillPanel bill={selected} session={session} onSettle={onSettle} onPrint={() => setPrinting(true)}
             onVoided={(b) => { setSelected(b); void load(filter); }} onClose={() => setSelected(null)} />
         ) : null}
       </div>
@@ -172,9 +180,9 @@ function BillTable(props: {
 
 function BillPanel(props: {
   bill: BillDetail; session: Session; onSettle: (kind: ApiOutcome<unknown>["kind"]) => void;
-  onVoided: (b: BillDetail) => void; onClose: () => void;
+  onVoided: (b: BillDetail) => void; onClose: () => void; onPrint: () => void;
 }) {
-  const { bill, session, onSettle, onVoided, onClose } = props;
+  const { bill, session, onSettle, onVoided, onClose, onPrint } = props;
   const [voiding, setVoiding] = useState(false);
   const [reason, setReason] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -236,8 +244,11 @@ function BillPanel(props: {
         ))}
       </ol>
       <div className="bill-total"><span>รวมทั้งบิล</span><span className="num">{display(bill.total_amount)} บาท</span></div>
-      {canVoid && !voiding ? (
-        <button type="button" className="btn btn-danger-quiet" onClick={() => setVoiding(true)}>ยกเลิกบิลนี้</button>
+      {!voiding ? (
+        <div className="void-actions">
+          <button type="button" className="btn btn-primary" onClick={onPrint}>พิมพ์สลิป</button>
+          {canVoid ? <button type="button" className="btn btn-danger-quiet" onClick={() => setVoiding(true)}>ยกเลิกบิลนี้</button> : null}
+        </div>
       ) : null}
       {voiding && canVoid ? (
         <div className="void-form" role="group" aria-label="ยกเลิกบิล">
