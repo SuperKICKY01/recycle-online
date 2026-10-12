@@ -1717,6 +1717,15 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   is audited), so a future `audit.read` route must apply the same gate; no route reads it today; (3) **`tenants.address`**
   (the SHOP's own address, `PATCH /shop`) is not a seller's personal data and is untouched.
 
+- **SELLER SEARCH (2026-10-12) — LATER LINES, recorded not built.** (1) **QR, blueprint 5.5's sixth axis, DEFERRED
+  (ADVISOR-DECIDED):** it needs a printed seller card that does not exist yet. (2) **Thai tone-mark-insensitive name
+  search** is not here either (same gap as the cart's line below). (3) **OBSERVED ON THE WALK, NOT DIAGNOSED:** a
+  phone whose session had expired sent `POST /seller-code-reservations` to the walk server about 15 times a minute,
+  each answered 401 (measured: 89 then 94 calls over 20 s), with the app process at 44% CPU; while it ran, taps on
+  the sign-in form's เข้าสู่ระบบ sent no `POST /auth/login` (three attempts, the server log the instrument), and one
+  `am force-stop` plus a cold start cleared it — the next tap signed in. One clearing, not a cause
+  (`.claude/skills/debug-mantra/SKILL.md` before any fix).
+
 - **CART MILESTONE (2026-10-12) — LATER LINES, recorded not built (ADVISOR-DECIDED).** (1) **Manual per-branch pins** —
   the frequent row is derived (`src/cart/productPicker.ts`), never stored; a shop-chosen pinned set waits "when a real
   shop asks" (it needs a server table, i.e. a migration lane A mints). (2) **Thai tone-mark-insensitive search** —

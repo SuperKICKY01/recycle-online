@@ -99,7 +99,8 @@ ADVISOR-DECIDED 2026-10-12, the no-migration ban lifted for this milestone only)
   role with every code but `sellers.read_personal`, `users.manage` included, neither reads nor writes; a role with only
   it and `sellers.write` does both), RT down 0023 / up 0024 / refused downgrade. Disproofs, each restored
   byte-identical: gate removed → exactly L2 L3 C1 R1 D1 W1; PATCH refusal removed → exactly W3–W6; grant removed → 0024
-  refuses itself (`0 grant(s), but 8 role(s) hold users.manage`); downgrade refusal removed → exactly RT3 RT4.
+  refuses itself (`0 grant(s), but 8 role(s) hold users.manage`); downgrade refusal removed → exactly RT3 RT4. `prove_master_write` V4 now reads S001's identity as ADMIN and asserts staff gets neither key;
+  `prove_permissions` restates the sixteen codes; the phone's `Permission` union and `proofGrants` mirror it.
 - **Red team (nemesis, read-only, diff + property, no conversation): two CONFIRMED findings, both COVERAGE, no leak.**
   (1) the supplied-code create return was read only as admin, so a leak at that one `return` stayed green → C3 added;
   the mutation now reddens exactly C3. (2) no fixture told `sellers.read_personal` from any other code admin holds and
@@ -130,8 +131,29 @@ ADVISOR-DECIDED 2026-10-12, the no-migration ban lifted for this milestone only)
   last four, no key without an ID, a dashed ID's last four after the dashes go, no key for a 2-character ID; staff's raw
   body has the last four and never the full ID). Disproofs, each restored byte-identical: never sent → exactly K1 K3
   (both roles) and K5; empty string for no ID → exactly K2 (both); length guard removed → exactly K4 (both). Exit 0
-  twice (45 cells). `prove_master_write` V4 now reads S001's identity as ADMIN and asserts staff gets neither key;
-  `prove_permissions` restates the sixteen codes; the phone's `Permission` union and `proofGrants` mirror it.
+  twice (45 cells).
+- **C3 — one search box on the phone.** `src/cart/sellers.ts` `searchSellers` now matches name, phone (`foldPhone`:
+  spaces, dashes, dots and brackets dropped, a leading +66 read as 0; a digits-only query is ONE token), code
+  (case-insensitive), the ID's last four (exact), and plates — the seller's USUAL truck (`vehicle_no`) beside the
+  plates this device's bills recorded. Ranking keeps its shape with the insert: exact code, exact phone, exact last
+  four, prefix, plate, substring; ties by code as before. `sellerRowText` gives each row a meta line (code · เบอร์ … ·
+  ทะเบียน …, so two same-name sellers differ at a glance) and a reason line when the hit is not already visible
+  (`ตรงกับ เบอร์ …`, `ตรงกับ บัตร …1137`, `ตรงกับ ทะเบียน …`); placeholder `ค้นหา: ชื่อ / เบอร์ / ทะเบียน / รหัส`, hint
+  `หรือพิมพ์เลขบัตรประชาชน 4 ตัวท้าย` (impeccable · clarify). `cached_sellers` gains `id_last4` and `vehicle_no` (CREATE
+  and `ADDED_SELLER_SEARCH_COLUMNS`; still NO id_number column); a local seller's last four is derived at read time
+  (`idLast4`), never stored. NEW `prove:sellersearch` (28 cells: S0 the cache incl. an upgraded file and "no full ID
+  stored", S1 each axis, S2 the ranking insert, S3 the row text). Disproofs, each restored byte-identical: +66 fold →
+  S1a, the two +66 S1b, S3b; last-four rung → S1c S1d S2a S2b S3c; usual truck → S1e S1f S1j S2a S3d; bill plates →
+  S1g; name substring → S1h S2a and S3e (not predicted: S3e finds its rows BY name); code case → S1i S3f; exact phone
+  demoted → S2a. Exit 0 twice; both typechecks 0; `prove:seller`, `pickerseller`, `sellerstore`, `migration`,
+  `cachetenant`, `sqlite`, `tapaudit` exit 0.
+- **The walk (recycle_walk_a rebuilt from empty at 0024; `walk_fixture.py` + 30 sellers, fake phones `081-000-01NN`
+  and IDs `9900000` + 6 digits, two named สมชาย ใจดี beside seed S001's).** Shots in `E:\recycle-shots\lane-a\seller`,
+  BEFORE (`before_10_*`, `before_13_*`) and AFTER (`after_10_*`, `after_13_*`), AFTER on a cleared Metro cache and a
+  force-stop relaunch: phone `081-000-0101` and `+66 81-000-0102` found nothing before and find WS01 / WS02 with
+  `ตรงกับ เบอร์ …` after; last four `1137` → WS01 `ตรงกับ บัตร …1137`; plate `1001` → WS01 `ตรงกับ ทะเบียน 1กก 1001`; the
+  same-name rows show code only before and code · phone · truck after, at 1.0 and 1.3. Queries are ASCII: adb `input
+  text` cannot type Thai.
 
 **LANE A, CART MILESTONE — frequent-products row, category browse, search, slim bill header (ADVISOR-DECIDED
 2026-10-12; plan `E:\recycle-shots\lane-a\cart\cart_milestone_plan.md`). 2026-10-12.** Shas anchor next pass. No

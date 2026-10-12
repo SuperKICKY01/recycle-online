@@ -65,6 +65,7 @@
     "prove:permissions": "npm run build && node dist/proof/provePermissions.js",
     "prove:counter": "npm run build && node dist/proof/proveCounter.js",
     "prove:productpicker": "npm run build && node dist/proof/proveProductPicker.js",
+    "prove:sellersearch": "npm run build && node dist/proof/proveSellerSearch.js",
     "prove:promptpay":"npm run build && node dist/proof/provePromptPay.js",
     "prove:all": "python ../tools/prove_all.py"
   },

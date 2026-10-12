@@ -42,6 +42,10 @@ export interface PickerServerSeller {
   name: string;
   phone: string | null;
   grade: string | null;
+  /** The server's minimised ID (seller search C2); for a local row, derived at read time. */
+  id_last4?: string | null;
+  /** The truck the seller usually arrives in (seller search C3). */
+  vehicle_no?: string | null;
 }
 
 /** A local seller, with the one extra field the union's drop rule reads. */
@@ -73,7 +77,10 @@ export function mergeSellersForPicker(
   const localIds = new Set<string>();
   for (const s of local) {
     if (s.server_seller_id !== null && cachedIds.has(s.server_seller_id)) continue;
-    options.push({ id: s.id, code: s.code, name: s.name, phone: s.phone, grade: s.grade });
+    options.push({
+      id: s.id, code: s.code, name: s.name, phone: s.phone, grade: s.grade,
+      id_last4: s.id_last4 ?? null, vehicle_no: s.vehicle_no ?? null,
+    });
     localIds.add(s.id);
   }
   return { options, localIds };

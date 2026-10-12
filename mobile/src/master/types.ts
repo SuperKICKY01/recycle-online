@@ -50,6 +50,9 @@ export interface MasterSeller {
   phone: string | null;
   /** Selects which product price tier applies (SRS 1.6). May be null. */
   grade: string | null;
+  /** Seller search: the server's minimised ID (last four) and the usual truck. Cached. */
+  id_last4?: string | null;
+  vehicle_no?: string | null;
 }
 
 /**

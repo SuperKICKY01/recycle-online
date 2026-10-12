@@ -10,6 +10,9 @@ realistic Thai scrap-yard names, each priced on the seed's four tiers A-D. With 
 three products that is 40. Every write is idempotent (ON CONFLICT on the per-tenant unique
 codes) and audited as the system actor `system:walk_fixture`, the way seed_dev.py is.
 
+AND 30 SELLERS (seller search C3) with obviously fake phones and ID numbers by the pattern stated
+at SELLERS below, a usual-truck plate on about two in three, and two sharing one name.
+
 WHAT IT DOES NOT WRITE: bills. The frequent-products row is derived from the bills the DEVICE
 holds (mobile/src/cart/productPicker.ts), and the app never downloads bills from the server, so
 server-side bills could not reach it; the walk's bills are made by saving real bills on the
@@ -97,6 +100,55 @@ PRODUCTS = [
 
 TIER_STEP = {"A": Decimal("1.00"), "B": Decimal("0.98"), "C": Decimal("0.96"), "D": Decimal("0.94")}
 
+# THE SELLER SEARCH WALK (seller search C3, ADVISOR-DECIDED 2026-10-12): 30 sellers in Shop A.
+# EVERY PHONE AND ID IS OBVIOUSLY FAKE, by a stated pattern, and none is a seed row's number:
+#   phone       081-000-01NN       (NN = 01..30; the `000-01` middle block marks it fake)
+#   id_number   9900000 + 6 digits  (13 digits starting 9900000; no checksum -- the server
+#                                    validates none, master.py IdNumber)
+#   vehicle_no  the seller's usual truck, a Thai plate or a truck plate, on about two in three
+# Two sellers share the name สมชาย ใจดี -- the walk's "two same-name sellers told apart".
+# (code, name, grade, has_phone, has_id, plate or None)
+SELLERS = [
+    ("WS01", "สมชาย ใจดี", "A", True, True, "1กก 1001"),
+    ("WS02", "สมชาย ใจดี", "B", True, True, "70-2002"),
+    ("WS03", "สมหญิง รักษ์ดี", "B", True, True, None),
+    ("WS04", "บุญมี ศรีสุข", "C", True, False, "2ขข 3003"),
+    ("WS05", "ประยุทธ มั่นคง", "A", True, True, "81-4004"),
+    ("WS06", "วิชัย ทองดี", "D", False, True, None),
+    ("WS07", "สุดา แก้วใส", "B", True, True, "3คค 5005"),
+    ("WS08", "มานะ อดทน", "C", True, False, "72-6006"),
+    ("WS09", "ชูใจ สุขสันต์", "A", True, True, None),
+    ("WS10", "ร้านเจริญรุ่งเรือง", "A", True, False, "4งง 7007"),
+    ("WS11", "สมศักดิ์ เพชรงาม", "B", True, True, "1กข 8008"),
+    ("WS12", "นิพนธ์ ดีมาก", "C", False, False, "75-9009"),
+    ("WS13", "อำนวย ชัยชนะ", "D", True, True, None),
+    ("WS14", "จันทร์เพ็ญ ศรีทอง", "B", True, True, "5จจ 1010"),
+    ("WS15", "ทองใบ บุญมา", "A", True, True, "76-1111"),
+    ("WS16", "สมพร ใจเย็น", "C", True, False, None),
+    ("WS17", "ณรงค์ แสงทอง", "B", True, True, "6ฉฉ 1212"),
+    ("WS18", "ประเสริฐ วงศ์ดี", "D", False, True, "78-1313"),
+    ("WS19", "ละเอียด ถี่ถ้วน", "C", True, True, None),
+    ("WS20", "บริษัท รีไซเคิลไทย จำกัด", "A", True, False, "80-1414"),
+    ("WS21", "สายทอง คำดี", "B", True, True, "7ชช 1515"),
+    ("WS22", "เกษม สุขใจ", "C", True, True, None),
+    ("WS23", "ไพโรจน์ รุ่งเรือง", "A", True, False, "8ซซ 1616"),
+    ("WS24", "สมบัติ มีทรัพย์", "B", True, True, "82-1717"),
+    ("WS25", "อรุณ แจ่มใส", "D", False, False, None),
+    ("WS26", "ลำดวน หอมหวาน", "C", True, True, "9ฌฌ 1818"),
+    ("WS27", "ประจักษ์ ชัดเจน", "B", True, True, "85-1919"),
+    ("WS28", "สมนึก นึกดี", "A", True, False, None),
+    ("WS29", "ทวีศักดิ์ เพิ่มพูน", "C", True, True, "1ญญ 2020"),
+    ("WS30", "รัตนา ใจงาม", "B", True, True, "86-2121"),
+]
+
+
+def fake_phone(n: int) -> str:
+    return f"081-000-01{n:02d}"
+
+
+def fake_id(n: int) -> str:
+    return f"9900000{(1000 + n * 137) % 1000000:06d}"
+
 
 def refuse(msg: str) -> None:
     print(f"WALK_FIXTURE REFUSED: {msg}")
@@ -170,14 +222,30 @@ async def run(target: str) -> int:
                     {"t": TENANT_A_ID, "p": pid, "g": grade, "price": price},
                 )
                 prices_written += r.rowcount
+        sellers_new = 0
+        for i, (code, name, grade, has_phone, has_id, plate) in enumerate(SELLERS, start=1):
+            r = await conn.execute(
+                text(
+                    "INSERT INTO sellers (tenant_id, code, name, phone, grade, id_number, vehicle_no,"
+                    " is_active) VALUES (:t, :code, :n, :ph, :g, :idn, :veh, true)"
+                    " ON CONFLICT (tenant_id, code) DO NOTHING"
+                ),
+                {"t": TENANT_A_ID, "code": code, "n": name,
+                 "ph": fake_phone(i) if has_phone else None, "g": grade,
+                 "idn": fake_id(i) if has_id else None, "veh": plate},
+            )
+            sellers_new += r.rowcount
         totals = (await conn.execute(text(
             "SELECT (SELECT count(*) FROM product_categories),"
             " (SELECT count(*) FROM products WHERE is_active),"
-            " (SELECT count(*) FROM product_prices)"
+            " (SELECT count(*) FROM product_prices),"
+            " (SELECT count(*) FROM sellers WHERE is_active)"
         ))).one()
     print(f"WALK_FIXTURE target={target}")
-    print(f"  wrote this run: categories={cats_new} products={prods_new} prices={prices_written}")
-    print(f"  Shop A now holds: categories={totals[0]} active_products={totals[1]} prices={totals[2]}")
+    print(f"  wrote this run: categories={cats_new} products={prods_new} prices={prices_written}"
+          f" sellers={sellers_new}")
+    print(f"  Shop A now holds: categories={totals[0]} active_products={totals[1]} prices={totals[2]}"
+          f" active_sellers={totals[3]}")
     print("WALK_FIXTURE_EXIT=0")
     return 0
 

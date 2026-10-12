@@ -136,6 +136,14 @@ export interface Seller {
   phone: string | null;
   /** Selects which product price tier applies (SRS 1.6). May be null. */
   grade: string | null;
+  /**
+   * SELLER SEARCH C2/C3: the server's MINIMISED ID -- its last four characters, sent to every
+   * caller -- and the truck the seller usually arrives in. Both cached for offline search. The
+   * full `id_number` stays off this type (and since migration 0024 off the wire for a caller
+   * without sellers.read_personal).
+   */
+  id_last4?: string | null;
+  vehicle_no?: string | null;
 }
 
 /**

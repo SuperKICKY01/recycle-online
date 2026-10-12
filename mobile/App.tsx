@@ -72,7 +72,7 @@ import type { GradeTiers, SellerChangeImpact } from "./src/cart/cart";
 import { withheldDraftNotice } from "./src/cart/draftNotice";
 import { NO_LOCKS, releaseOnSave } from "./src/cart/entry";
 import type { Locks } from "./src/cart/entry";
-import { cleanVehicleNo, gradePrice, indexPlates } from "./src/cart/sellers";
+import { cleanVehicleNo, gradePrice, idLast4, indexPlates } from "./src/cart/sellers";
 import { mergeSellersForPicker } from "./src/cart/pickerSellers";
 import type { Draft } from "./src/cart/types";
 import { ExpoSqliteDriver } from "./src/device/expoSqliteDriver";
@@ -717,6 +717,10 @@ function AppInner() {
           name: s.name,
           phone: s.phone,
           grade: s.grade,
+          // Seller search C3: the local row's own truck, and its ID MINIMISED here at read
+          // time -- local_sellers holds the ID its creator typed; the picker never sees it.
+          vehicle_no: s.vehicle_no,
+          id_last4: idLast4(s.id_number),
           server_seller_id: s.server_seller_id,
         })),
       ),

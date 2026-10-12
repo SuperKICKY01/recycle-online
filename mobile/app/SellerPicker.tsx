@@ -5,12 +5,13 @@
  * a SEARCH screen with a list under it, not a list to scroll. The box is
  * focused on open and every row is TAP_MIN tall.
  *
- * SEARCHING BY PLATE, AND WHAT IT ACTUALLY SEARCHES. Sellers carry no plate:
- * the plate belongs to the BILL (SRS 1.6), because the same customer arrives in
- * different trucks. So plate search matches the plates THIS DEVICE has recorded
- * for that seller on previous bills — a memory, not master data. A device that
- * has not written a bill yet knows none, and the screen says so rather than
- * looking broken.
+ * SEARCHING BY PLATE, AND WHAT IT ACTUALLY SEARCHES. A bill's plate is the
+ * truck that turned up THAT day (SRS 1.6), and those this device recorded are
+ * searched as a memory. SUPERSEDED 2026-10-12 (seller search C3): the seller's
+ * USUAL truck (sellers.vehicle_no) is now cached and searched too, beside phone,
+ * code, name and the ID's last four (src/cart/sellers.ts searchSellers), so a
+ * device with no bills is no longer blind to plates and the old "no bills yet"
+ * hint is gone.
  *
  * The search box is FREE TEXT and uses the OS keyboard. That is not a
  * regression against the Phase 2c-4 numpad rule: the rule is about the numeric
@@ -29,7 +30,13 @@ import {
   View,
 } from "react-native";
 
-import { searchSellers, tierName } from "../src/cart/sellers";
+import {
+  SELLER_SEARCH_HINT,
+  SELLER_SEARCH_PLACEHOLDER,
+  searchSellers,
+  sellerRowText,
+  tierName,
+} from "../src/cart/sellers";
 import type { NamedTier, SellerMatch } from "../src/cart/sellers";
 import type { Seller } from "./api";
 import { useTheme, type ThemeTokens } from "./theme";
@@ -107,8 +114,6 @@ export function SellerPicker({
     [sellers, query, platesBySeller],
   );
 
-  const anyPlatesKnown = platesBySeller.size > 0;
-
   const close = (): void => {
     setQuery("");
     onClose();
@@ -142,7 +147,7 @@ export function SellerPicker({
           style={styles.search}
           value={query}
           onChangeText={setQuery}
-          placeholder="ค้นหา: ชื่อ / รหัส / ทะเบียนรถ"
+          placeholder={SELLER_SEARCH_PLACEHOLDER}
           placeholderTextColor={t.color.placeholder}
           autoFocus
           autoCorrect={false}
@@ -150,11 +155,13 @@ export function SellerPicker({
           returnKeyType="search"
           clearButtonMode="while-editing"
         />
-        <Text style={styles.searchHint}>
-          {anyPlatesKnown
-            ? "ค้นทะเบียนได้จากบิลที่เคยบันทึกในเครื่องนี้"
-            : "เครื่องนี้ยังไม่มีบิล จึงยังค้นด้วยทะเบียนรถไม่ได้"}
-        </Text>
+        {/*
+          SELLER SEARCH C3: the box finds name, phone, plate (the seller's usual truck and the
+          plates this device's bills recorded), code, and the ID's last four. The old hint
+          ("plates come only from this device's bills") stopped being true when the usual
+          truck was cached, so the line now answers the one axis the placeholder cannot fit.
+        */}
+        <Text style={styles.searchHint}>{SELLER_SEARCH_HINT}</Text>
       </View>
 
       <FlatList
@@ -182,6 +189,7 @@ export function SellerPicker({
         }
         renderItem={({ item }) => {
           const s = item.seller;
+          const text = sellerRowText(item);
           const isCurrent = s.id === currentSellerId;
           const noGrade = s.grade === null;
           return (
@@ -199,10 +207,14 @@ export function SellerPicker({
                   {s.grade === null ? "ไม่มีเกรด" : `เกรด ${tierName(tiers, s.grade)}`}
                 </Text>
               </View>
-              <Text style={styles.meta} numberOfLines={1}>
-                {s.code}
-                {item.plates.length > 0 ? ` · ทะเบียน ${item.plates.join(", ")}` : ""}
+              <Text style={styles.meta} numberOfLines={2}>
+                {text.meta}
               </Text>
+              {/*
+                WHY THIS ROW MATCHED, when the hit is not the name or the code the row already
+                shows -- so a weigher who typed a phone or a last four sees which seller it is.
+              */}
+              {text.reason !== null ? <Text style={styles.reason}>{text.reason}</Text> : null}
               {/*
                 Created on THIS device and not yet confirmed by the server. The
                 bill still saves and still sends — it carries the local id and the
@@ -272,6 +284,7 @@ function makeStyles(t: ThemeTokens) {
     },
     gradeNone: { backgroundColor: t.color.danger },
     meta: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.xs },
+    reason: { fontSize: t.type.body, color: t.color.primary, fontWeight: "800", marginTop: t.space.xs },
     warn: { fontSize: t.type.body, color: t.color.dangerFg, backgroundColor: t.color.dangerBg, borderRadius: t.radius.md,
       paddingHorizontal: t.space.md, paddingVertical: t.space.sm, marginTop: t.space.md, fontWeight: "700" },
     current: { fontSize: t.type.body, color: t.color.primary, fontWeight: "800", marginTop: t.space.sm },

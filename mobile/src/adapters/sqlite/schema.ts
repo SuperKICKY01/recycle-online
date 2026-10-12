@@ -239,7 +239,12 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
      phone TEXT,
      grade TEXT,
      /* Tenant only. See the note above master_cache. */
-     owner_tenant_id TEXT
+     owner_tenant_id TEXT,
+     /* Seller search (2026-10-12): the server's MINIMISED ID -- its last four characters,
+        never the full number -- and the truck the seller usually arrives in. Searched
+        offline. ADDED_SELLER_SEARCH_COLUMNS for a device that cached sellers before them. */
+     id_last4   TEXT,
+     vehicle_no TEXT
    ) STRICT`,
 
   /*
@@ -752,6 +757,18 @@ const ADDED_PRODUCT_CATEGORY_COLUMNS: readonly { name: string; ddl: string }[] =
 ];
 
 /**
+ * The seller-search columns (seller search C3, 2026-10-12), added to cached_sellers after it
+ * shipped. NULLABLE: a row cached before them is simply not findable by last four or usual
+ * truck until the next refresh rewrites the table -- no backfill, the next fetch is the
+ * backfill. `id_last4` is the server's minimised form; the full ID has no column here and
+ * must never get one (ADVISOR-DECIDED: "Cache a full ID on the phone" is forbidden).
+ */
+const ADDED_SELLER_SEARCH_COLUMNS: readonly { name: string; ddl: string }[] = [
+  { name: "id_last4", ddl: "id_last4 TEXT" },
+  { name: "vehicle_no", ddl: "vehicle_no TEXT" },
+];
+
+/**
  * Columns added to local_shop after IT first shipped.
  *
  * `branch_id` (server migration 0018): the yard this device's caller works at,
@@ -918,6 +935,7 @@ export async function initConnection(db: SqlDriver): Promise<string[]> {
       added.push(...(await migrateColumns(tx, t, ADDED_CACHE_TENANT_COLUMN)));
     }
     added.push(...(await migrateColumns(tx, "cached_products", ADDED_PRODUCT_CATEGORY_COLUMNS)));
+    added.push(...(await migrateColumns(tx, "cached_sellers", ADDED_SELLER_SEARCH_COLUMNS)));
     for (const ddl of POST_MIGRATION_STATEMENTS) await tx.run(ddl);
     return added;
   });

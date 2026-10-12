@@ -74,6 +74,8 @@ interface SellerRow {
   name: string;
   phone: string | null;
   grade: string | null;
+  id_last4: string | null;
+  vehicle_no: string | null;
 }
 
 interface GradeTierRow {
@@ -247,7 +249,7 @@ export class SqliteMasterStore implements MasterStore {
       [tenant],
     );
     const sellers = await this.db.all<SellerRow>(
-      "SELECT id, code, name, phone, grade FROM cached_sellers" +
+      "SELECT id, code, name, phone, grade, id_last4, vehicle_no FROM cached_sellers" +
         ` WHERE ${CACHE_TENANT_MATCHES} ORDER BY code, id`,
       [tenant],
     );
@@ -283,6 +285,8 @@ export class SqliteMasterStore implements MasterStore {
           name: r.name,
           phone: r.phone,
           grade: r.grade,
+          id_last4: r.id_last4,
+          vehicle_no: r.vehicle_no,
         }),
       ),
       gradeTiers: gradeTiers.map(
@@ -340,9 +344,9 @@ export class SqliteMasterStore implements MasterStore {
       await tx.run("DELETE FROM cached_sellers");
       for (const s of sellers) {
         await tx.run(
-          "INSERT INTO cached_sellers (id, code, name, phone, grade, owner_tenant_id)" +
-            " VALUES (?, ?, ?, ?, ?, ?)",
-          [s.id, s.code, s.name, s.phone, s.grade, tenant],
+          "INSERT INTO cached_sellers (id, code, name, phone, grade, owner_tenant_id," +
+            " id_last4, vehicle_no) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          [s.id, s.code, s.name, s.phone, s.grade, tenant, s.id_last4 ?? null, s.vehicle_no ?? null],
         );
       }
       await stamp(tx, SELLERS, fetchedAt, tenant);
