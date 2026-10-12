@@ -121,7 +121,16 @@ ADVISOR-DECIDED 2026-10-12, the no-migration ban lifted for this milestone only)
   measured). Disproof: the fixture's payment method `'cash'`→`'promptpay'` reddened FX alone (62/63). `prove_shifts`
   63/63 twice; `prove_drawer` 97/97; `prove_seller_personal` exit 0. The standing rule ("a scratch below head is seeded
   by SQL only — no server") is in CLAUDE.md § Conventions and the 2026-10-12 amendment of
-  `lessons/a-quantified-sentence-names-no-member.md`. `prove_master_write` V4 now reads S001's identity as ADMIN and asserts staff gets neither key;
+  `lessons/a-quantified-sentence-names-no-member.md`.
+- **C1 merged:** gate `_prove_all/20261012T083333Z` TOTAL 87, GREEN 73, EXIT-CODE-ONLY 14, RED 0, launched at 10.33 GB
+  free after a 60 s hold; main `325c5a5..e7e08f7`.
+- **C2 — `id_last4`, the minimised form, for EVERY signed-in caller.** `master._id_last4`: the stored id_number's last
+  four characters after dropping spaces and dashes, computed at response time (no column, no migration); the KEY is
+  absent with no ID or fewer than four characters. `prove_seller_personal` K1–K5 (admin and staff each: the fixture's
+  last four, no key without an ID, a dashed ID's last four after the dashes go, no key for a 2-character ID; staff's raw
+  body has the last four and never the full ID). Disproofs, each restored byte-identical: never sent → exactly K1 K3
+  (both roles) and K5; empty string for no ID → exactly K2 (both); length guard removed → exactly K4 (both). Exit 0
+  twice (45 cells). `prove_master_write` V4 now reads S001's identity as ADMIN and asserts staff gets neither key;
   `prove_permissions` restates the sixteen codes; the phone's `Permission` union and `proofGrants` mirror it.
 
 **LANE A, CART MILESTONE — frequent-products row, category browse, search, slim bill header (ADVISOR-DECIDED

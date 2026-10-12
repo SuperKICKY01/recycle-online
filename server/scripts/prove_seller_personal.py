@@ -47,6 +47,9 @@ THE CELLS
       (users.manage included) neither reads nor writes the fields; a role holding only
       sellers.read_personal and sellers.write does both. Without it a gate keyed on ANY code the
       admin holds and staff lacks would pass every cell above (red team, 2026-10-12).
+  K   id_last4 (seller search C2): the ID's last four, after dropping spaces and dashes, to
+      admin AND staff; the key ABSENT for a seller with no ID and for a 2-character ID; staff's
+      raw body carries the last four and never the full ID.
   RT  after the child stops: downgrade to 0023 (catalogue 15, no grant), upgrade to 0024
       (catalogue 16, grants EQUAL the users.manage holders as a set); then a grant to the
       staff role and a downgrade -> REFUSED naming the count, head still 0024; the grant is
@@ -400,6 +403,7 @@ async def run_http(client: httpx.AsyncClient) -> None:
           f" (got {rok.status_code})")
 
     await run_discriminating(client, sid)
+    await run_last4(client, sid)
 
 
 async def run_discriminating(client: httpx.AsyncClient, sid: str) -> None:
@@ -423,6 +427,45 @@ async def run_discriminating(client: httpx.AsyncClient, sid: str) -> None:
     check(po.status_code == 200 and has(po, ADDR_ONLY)
           and await stored_personal(sid) == (stored[0], ADDR_ONLY),
           f"P4: the read_personal-only role may write it -> 200, stored (got {po.status_code})")
+
+
+async def run_last4(client: httpx.AsyncClient, sid: str) -> None:
+    """C2: the minimised id_last4 goes to EVERY caller; absent with no ID or a short one."""
+    header("K  id_last4 -- the minimised form, for every caller")
+    adm = auth(await login(client, "padm"))
+    stf = auth(await login(client, "pstf"))
+
+    async def make(tag: str, id_number: str | None) -> str:
+        body = {"name": f"last4 {tag} {RUN}", "grade": "B"}
+        if id_number is not None:
+            body["id_number"] = id_number
+        r = await client.post("/sellers", headers=adm, json=body)
+        r.raise_for_status()
+        return r.json()["id"]
+
+    no_id = await make("none", None)
+    dashed = await make("dashed", f"8-5{_DIGITS[:4]}-{_DIGITS[4:9]}-{_DIGITS[9:]}-7")
+    short = await make("short", "85")
+    dashed_compact = f"85{_DIGITS}7"
+
+    rows = {}
+    for who, h in (("admin", adm), ("staff", stf)):
+        r = await client.get("/sellers", headers=h)
+        rows[who] = {s["id"]: s for s in r.json()["sellers"]}
+    for who in ("admin", "staff"):
+        got = rows[who]
+        check(got[sid].get("id_last4") == ID_MAIN[-4:],
+              f"K1 {who}: the fixture's id_last4 is the ID's last four ({got[sid].get('id_last4')!r})")
+        check("id_last4" not in got[no_id],
+              f"K2 {who}: a seller with NO ID carries no id_last4 key (keys={sorted(got[no_id])})")
+        check(got[dashed].get("id_last4") == dashed_compact[-4:],
+              f"K3 {who}: a dashed ID's last four are taken after dropping the dashes"
+              f" ({got[dashed].get('id_last4')!r} == {dashed_compact[-4:]!r})")
+        check("id_last4" not in got[short],
+              f"K4 {who}: a 2-character ID has no last four -- the key is absent, not the whole value")
+    rs = await client.get("/sellers", headers=stf)
+    check(not has(rs, ID_MAIN) and has(rs, ID_MAIN[-4:]),
+          "K5: staff's raw body carries the last four and still NOT the full ID")
 
 
 async def run_round_trip(scratch: str) -> None:

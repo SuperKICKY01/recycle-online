@@ -967,6 +967,23 @@ _SELLER_NULLABLE = frozenset({"phone", "grade", "id_number", "address", "vehicle
 _SELLER_PERSONAL_FIELDS = ("id_number", "address")
 
 
+def _id_last4(id_number: str | None) -> str | None:
+    """THE MINIMISED FORM of a seller's ID (seller search C2, ADVISOR-DECIDED 2026-10-12):
+    its last four characters, like a bank card's last four, so a weigher can search by it
+    and tell two same-name sellers apart without the full number ever leaving the server.
+    Computed at RESPONSE time from the stored id_number -- no column, no migration.
+
+    Spaces and dashes are dropped first (an ID transcribed as `1-2345-67890-12-3` has the
+    same last four as `1234567890123`); anything else is kept as typed, because id_number is
+    free text (a passport number is not digits). None -- and the key ABSENT from the
+    payload -- when there is no ID, or fewer than four characters remain: a two-character
+    "ID" has no last four, and its whole value is not minimised."""
+    if id_number is None:
+        return None
+    compact = "".join(ch for ch in id_number if not ch.isspace() and ch != "-")
+    return compact[-4:] if len(compact) >= 4 else None
+
+
 def _seller_payload(r: Any, principal: Principal) -> dict:
     payload = {
         "id": str(r["id"]),
@@ -981,6 +998,11 @@ def _seller_payload(r: Any, principal: Principal) -> dict:
     if principal.has(Permission.SELLERS_READ_PERSONAL):
         for key in _SELLER_PERSONAL_FIELDS:
             payload[key] = r[key]
+    # To EVERY signed-in caller, holder or not: the weigher is this field's main user, and
+    # gating it would make the search axis useless to the person it is for (ADVISOR-DECIDED).
+    last4 = _id_last4(r["id_number"])
+    if last4 is not None:
+        payload["id_last4"] = last4
     return payload
 
 
