@@ -27,6 +27,7 @@ export const SESSION_TEXT = {
   saveFailed: "เข้าสู่ระบบแล้ว แต่เครื่องนี้บันทึกการเข้าสู่ระบบไว้ไม่ได้ — ครั้งหน้าต้องเข้าสู่ระบบใหม่",
   clearFailed: "ออกจากระบบแล้ว แต่ลบข้อมูลการเข้าสู่ระบบในเครื่องไม่สำเร็จ — ปิดโปรแกรมแล้วเปิดใหม่ก่อนให้ผู้อื่นใช้เครื่อง",
   configFailed: "บันทึกการตั้งค่าในเครื่องไม่สำเร็จ — ลองอีกครั้ง",
+  notFound: "ไม่พบรายการนี้ในร้าน — อาจถูกเปลี่ยนจากเครื่องอื่น ลองโหลดรายการใหม่",
 } as const;
 
 export interface ShopConfig {
@@ -44,7 +45,6 @@ export interface SessionPersistence {
 /** `notice` on success is a non-blocking warning (the session could not be remembered). */
 export type SignInResult = { ok: true; me: WhoAmI; notice: string | null } | { ok: false; notice: string };
 
-/** One outcome that is not `ok`, as the sentence the operator reads. */
 /**
  * What the shell's top line does after an authenticated call. Only an unreachable or outdated
  * server is the SHELL's news; a refusal the server ANSWERED (403, 404, 422) belongs to the screen
@@ -60,12 +60,14 @@ export function shellNoticeFor(kind: ApiOutcome<unknown>["kind"]): ShellNotice {
   return { kind: "leave" };
 }
 
+/** One outcome that is not `ok`, as the sentence the operator reads. */
 export function noticeFor(outcome: ApiOutcome<unknown>, context: "login" | "shop" | "session"): string {
   switch (outcome.kind) {
     case "unauthorized":
       return context === "login" ? SESSION_TEXT.badCredentials : SESSION_TEXT.expired;
     case "not_found":
-      return context === "shop" ? SESSION_TEXT.unknownShop : SESSION_TEXT.offline;
+      // A 404 the server ANSWERED is never a network fault (B3 red team, finding 1's shape).
+      return context === "shop" ? SESSION_TEXT.unknownShop : SESSION_TEXT.notFound;
     case "outdated":
       return SESSION_TEXT.outdated;
     case "unavailable":
@@ -73,7 +75,8 @@ export function noticeFor(outcome: ApiOutcome<unknown>, context: "login" | "shop
     case "forbidden":
       return "บัญชีนี้ไม่มีสิทธิ์ทำรายการนี้";
     case "invalid":
-      return context === "shop" ? SESSION_TEXT.unknownShop : "คำขอไม่ถูกต้อง";
+      if (context === "shop") return SESSION_TEXT.unknownShop;
+      return outcome.message ?? "คำขอไม่ถูกต้อง";
     case "ok":
       return "";
   }

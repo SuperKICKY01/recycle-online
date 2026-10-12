@@ -13,12 +13,14 @@ import { ApiClient } from "../shared/api";
 import { normaliseApiBase, noticeFor, Session, SESSION_TEXT, shellNoticeFor, type ShopConfig } from "../shared/session";
 import type { ApiOutcome, WhoAmI } from "../shared/api";
 import { BillsScreen } from "./Bills";
+import { MasterScreen } from "./Master";
 import { PrinterScreen } from "./Slip";
 import { Shell, type NavItem } from "./Shell";
 import { SetupScreen, SignInScreen } from "./SignIn";
 
 const NAV: readonly NavItem[] = [
   { id: "bills", label: "บิลรับซื้อ", icon: "receipt", enabled: true },
+  { id: "master", label: "ข้อมูลหลัก", icon: "box", enabled: true },
   { id: "printer", label: "เครื่องพิมพ์", icon: "printer", enabled: true },
 ];
 
@@ -220,7 +222,9 @@ function App() {
       }
     >
       {shellNotice !== null ? <p className="notice notice-warn shell-notice" role="status">{shellNotice}</p> : null}
-      {current === "printer" ? <PrinterScreen /> : <BillsScreen session={sessionRef.current} onSettle={settle} />}
+      {current === "printer" ? <PrinterScreen />
+        : current === "master" ? <MasterScreen session={sessionRef.current} onSettle={settle} />
+        : <BillsScreen session={sessionRef.current} onSettle={settle} />}
     </Shell>
   );
 }

@@ -1705,6 +1705,13 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
 
 ## Code debt found and left in place
 
+- **NO ROUTE READS OR EDITS A ROLE'S PERMISSIONS, AND NONE CHANGES A USER'S ROLE (measured 2026-10-13 from
+  `/openapi.json`: no `/roles` path; `UserCreate` takes a role, nothing updates it).** B6's "permissions as ticks" needs
+  server route code under `roles.manage` (owner-only at birth). Recorded at B5; B6 decides.
+
+- **`PATCH /shop` CANNOT CHANGE THE SHOP'S NAME** (`ShopUpdate` = default_grade, address, phone; measured 2026-10-13). The
+  slip prints the name; B6 owns the shop-information screen and adds the field as route code if the brief holds.
+
 - **SUPERSEDED 2026-10-12 (ADVISOR-DECIDED, fixed before the B3/B4 gate):** the race below is closed — the void's write is
   conditional, a second void is 409 `bill_already_voided`, a replay with the same key gets the original outcome
   (migration 0025), and `prove_bill_filters` W1–W5 prove it under a Postgres-visible barrier; the old SELECT-then-UPDATE

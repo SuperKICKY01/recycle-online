@@ -10,7 +10,9 @@
  *   forbidden      403 — this account may not do this
  *   not_found      404
  *   outdated       426 — this program is older than the server accepts; only an update helps
- *   invalid        422 / other 4xx — the request itself is wrong
+ *   invalid        422 / other 4xx — the request itself is wrong; carries the server's own `code`
+ *                  and, when it wrote one, its operator sentence (`message`, Thai) -- a duplicate code
+ *                  or a retired category is the server's to word, not this client's to guess
  *   unavailable    no answer, or a 5xx: the network or the server; asking again later may work
  *
  * Every request carries the API-contract version header (server/app/version_gate.py), the same
@@ -25,7 +27,7 @@ export type ApiOutcome<T> =
   | { kind: "forbidden"; requiredPermission: string | null }
   | { kind: "not_found" }
   | { kind: "outdated" }
-  | { kind: "invalid"; status: number; code: string | null }
+  | { kind: "invalid"; status: number; code: string | null; message: string | null }
   | { kind: "unavailable"; reason: string };
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
@@ -39,7 +41,7 @@ export interface WhoAmI {
 }
 
 /** The server's own words for the refusal, read only to pick a CODE out of a structured detail. */
-async function detailCode(res: Response): Promise<{ code: string | null; requiredPermission: string | null }> {
+async function detailCode(res: Response): Promise<{ code: string | null; requiredPermission: string | null; message: string | null }> {
   try {
     const body = (await res.json()) as { detail?: unknown };
     const d = body.detail;
@@ -48,12 +50,13 @@ async function detailCode(res: Response): Promise<{ code: string | null; require
       return {
         code: typeof o["code"] === "string" ? o["code"] : null,
         requiredPermission: typeof o["required_permission"] === "string" ? o["required_permission"] : null,
+        message: typeof o["message"] === "string" && o["message"] !== "" ? o["message"] : null,
       };
     }
   } catch {
     /* an unreadable body classifies by status alone */
   }
-  return { code: null, requiredPermission: null };
+  return { code: null, requiredPermission: null, message: null };
 }
 
 export class ApiClient {
@@ -96,7 +99,7 @@ export class ApiClient {
     if (res.status >= 500) return { kind: "unavailable", reason: `HTTP ${String(res.status)}` };
     if (res.status < 200 || res.status >= 300) {
       const d = await detailCode(res);
-      return { kind: "invalid", status: res.status, code: d.code };
+      return { kind: "invalid", status: res.status, code: d.code, message: d.message };
     }
     let json: unknown;
     try {
@@ -154,5 +157,13 @@ export class ApiClient {
 
   post<T>(token: string, path: string, body: unknown, read: (json: unknown) => T | null): Promise<ApiOutcome<T>> {
     return this.call("POST", path, { token, body, read });
+  }
+
+  patch<T>(token: string, path: string, body: unknown, read: (json: unknown) => T | null): Promise<ApiOutcome<T>> {
+    return this.call("PATCH", path, { token, body, read });
+  }
+
+  put<T>(token: string, path: string, body: unknown, read: (json: unknown) => T | null): Promise<ApiOutcome<T>> {
+    return this.call("PUT", path, { token, body, read });
   }
 }

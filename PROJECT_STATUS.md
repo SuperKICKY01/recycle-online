@@ -177,6 +177,31 @@ anchor next pass.
   (R2). Lesson amended: `correct-classification-can-still-render-as-an-error.md` (a reused wording function's domain
   widened by a new caller). After the fixes: `prove_bill_filters` 14, `prove:bills` 15, `prove:billsflow` 10,
   `prove:slip` 15, `prove:slipflow` 6 — each exit 0 twice.
+- **B5 — MASTER DATA ON THE DESKTOP (SRS 1.1–1.6), proven against a real server.** Nav `ข้อมูลหลัก`, one screen with
+  five tabs — สินค้าและราคา, หมวดหมู่, หน่วยนับ, เกรด, ผู้ขาย — each a searchable list beside a sticky panel: add, edit,
+  retire (`ปิดใช้งาน`) and bring back (`เปิดใช้งานอีกครั้ง`); NOTHING IS DELETED (no delete route exists). Codes are
+  read-only once made (the server's rule, said on screen). Prices: one input per tier, typed and SENT AS TEXT
+  (`{"price": "15.5"}` captured off the wire), only changed tiers sent, the input then showing what the server stored
+  (`15.50`); the list shows each tier's price grouped from the server's string. Tiers: add, rename, retire, move
+  up/down (`PUT /grade-tiers/order`, the whole order). Sellers: code optional (the server assigns), phone, usual plate,
+  grade (or the shop default), and — ONLY for a `sellers.read_personal` holder — ID number and address; anyone else
+  sees `เลขบัตรลงท้าย ####` and no field at all, and the PATCH body never carries either key for them. Search: code,
+  name, and for sellers phone (digits match across dashes), plate and the ID's last four. Controls a caller may not
+  use are not drawn (`master.write`, `prices.write`, `tiers.manage`, `sellers.create`, `sellers.write`). The API client
+  now carries the server's own refusal sentence (`invalid.message`, e.g. a duplicate code) and gains `patch`/`put`; a
+  404 the server answered says `ไม่พบรายการนี้ในร้าน …`, never the network sentence. NEW proofs, each exit 0 twice:
+  `prove:master` (9: readers refuse a NUMERIC price; personal keys absent stay absent; `sellerPatch` without the
+  permission carries no ID/address key; prices as text; search; tier moves), `prove:masterflow` (6, the real screens
+  against `scratch_server.py`: category/unit/product added and linked over HTTP; prices as strings on the wire, read
+  back `15.50`/`1234.50`, shown `15.50`/`1,234.50`, input showing the stored value; renamed, retired-yet-present,
+  hidden by default and back; a tier moved up in the server's order; a seller with ID and address found by phone
+  digits; a per-run STAFF account opening that seller sees no ID/address field, the last four, and neither value
+  anywhere in the window's HTML). Disproofs, each restored byte-identical: personal keys in the PATCH without the
+  permission → S1; personal fields drawn for staff → F6; a price sent as a number → F2 (and the SERVER read it back as
+  `15.50` all the same — only the wire capture sees hard rule 1 broken in the client); the reader accepting a numeric
+  price → R1; the input keeping the typed `15.5` → F2. Two defects found by the first flow runs, fixed before commit:
+  an add's confirmation died with the panel it re-keyed (now held by the screen), and the price table inherited it.
+  Screenshots `E:\recycle-shots\lane-a\desktop\b5_*.png`.
 - **1a — A VOID IS WRITTEN ONCE (ADVISOR-DECIDED 2026-10-12; strengthens hard rule 5's write path).** `void_bill`'s
   UPDATE now carries `AND voided_at IS NULL` and returns the row it changed; when it changes none, the bill is 404 or
   already voided → 409 `{"kind": "conflict", "code": "bill_already_voided", "message": "บิลนี้ถูกยกเลิกไปแล้ว — ผู้ยกเลิก
