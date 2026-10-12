@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 42 across 22 files, counted from the source headings and
+**Amendments:** 43 across 23 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -33,7 +33,7 @@ line instead of by heading depth.
 
 ## Table of contents
 
-- `401-is-about-the-caller-not-the-bill.md` -- A 401 is neither unavailable nor rejected: the request was fine, the CALLER is no longer anyone
+- `401-is-about-the-caller-not-the-bill.md` *(1 amendment)* -- A 401 is neither unavailable nor rejected: the request was fine, the CALLER is no longer anyone
 - `403-is-about-what-the-caller-may-do.md` -- A 403 is the fourth class: the caller is SOMEONE, and may not do this
 - `a-backup-is-a-claim-until-it-is-restored.md` -- A backup is a claim until it has been restored
 - `a-cache-key-must-distinguish-the-values-it-caches.md` -- A cache key must distinguish the values it caches — or a corrective write is masked
@@ -229,6 +229,20 @@ it red.
    signing in appears to do nothing for up to 30 seconds.
 6. Bills stay queued, intact, in weighing order, with the same idempotency keys.
    An expiry must cost the yard nothing but a tap.
+
+## AMENDED (2026-10-12, lane A) — A PATH THAT OWES NOTHING STILL HEARS THE 401
+
+The reservation top-up (`sync/sellerRefill.ts`) argued itself down to ONE outcome class,
+`unavailable`, because it has no payload to be wrong and no master data to park on — and so
+folded the 401 in with the outages. A refill writes no counter, so with no bill queued the app
+was never told the session had ended, and the 4-second pass re-sent the dead token for ever.
+MEASURED on a scratch server with `JWT_TTL_SECONDS=60`: 7 POSTs per 30 s, every one 401, the
+screen still reading `เข้าสู่ระบบแล้ว`, the app at 70% CPU. Fixed by giving the refill the
+fourth class (`session_expired`): the pass reports it (the banner rises) and the engine stops
+asking until a sign-in. After the fix the same walk logged exactly ONE 401 after expiry, then
+none for 40 s. **How to apply:** "it owes nothing, so every failure is the same" is wrong for
+the 401 — every authenticated path classifies the caller separately, including the ones that
+only WANT something from the server.
 
 ---
 

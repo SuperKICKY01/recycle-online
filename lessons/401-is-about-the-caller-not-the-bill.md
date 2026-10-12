@@ -117,3 +117,17 @@ it red.
    signing in appears to do nothing for up to 30 seconds.
 6. Bills stay queued, intact, in weighing order, with the same idempotency keys.
    An expiry must cost the yard nothing but a tap.
+
+## AMENDED (2026-10-12, lane A) — A PATH THAT OWES NOTHING STILL HEARS THE 401
+
+The reservation top-up (`sync/sellerRefill.ts`) argued itself down to ONE outcome class,
+`unavailable`, because it has no payload to be wrong and no master data to park on — and so
+folded the 401 in with the outages. A refill writes no counter, so with no bill queued the app
+was never told the session had ended, and the 4-second pass re-sent the dead token for ever.
+MEASURED on a scratch server with `JWT_TTL_SECONDS=60`: 7 POSTs per 30 s, every one 401, the
+screen still reading `เข้าสู่ระบบแล้ว`, the app at 70% CPU. Fixed by giving the refill the
+fourth class (`session_expired`): the pass reports it (the banner rises) and the engine stops
+asking until a sign-in. After the fix the same walk logged exactly ONE 401 after expiry, then
+none for 40 s. **How to apply:** "it owes nothing, so every failure is the same" is wrong for
+the 401 — every authenticated path classifies the caller separately, including the ones that
+only WANT something from the server.

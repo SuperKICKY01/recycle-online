@@ -75,6 +75,21 @@ not read the green as re-run.**
 
 ## Current phase
 
+**LANE A, DESKTOP RUN (ADVISOR-DECIDED 2026-10-12; lane B cancelled, the desktop is lane A's). 2026-10-12.** Shas
+anchor next pass.
+- **0 — the expired-session loop, fixed on the phone.** Reproduced on `recycle_walk_a` served with
+  `JWT_TTL_SECONDS=60` (environment only, nothing committed for it): the reservation top-up folded a 401 into
+  `unavailable`, so the 4-second pass re-sent the dead token for ever (7 POSTs per 30 s, all 401, app at 70% CPU) and,
+  with no bill queued, the screen kept `เข้าสู่ระบบแล้ว`. Fix: `RefillOutcome` gains `session_expired`
+  (`sync/sellerRefill.ts`), the HTTP transport maps 401 to it, `SyncEngine.runOnce` counts it as `sessionExpired` (the
+  existing banner rises) and stops asking until `resumeAfterSignIn` / `resetAfterSignOut`. `prove:reservestrip` I2
+  (reported once; four more passes send no top-up; re-asked after a sign-in) and I3 (401 → session_expired, 503 →
+  unavailable). Disproofs, each restored byte-identical: the stop flag removed → I2b, I2c (and I2d, its call count
+  inflated); the 401 mapping removed → exactly I3a. Exit 0 twice; both typechecks 0; `sellerkind`, `signout`, `sync`,
+  `reservenotice`, `owedsurfaces`, `version`, `parkedbill` exit 0. On the device after the fix: 15 top-ups answered 200
+  over the token's minute, then ONE 401, then none for 40 s, and the banner. "Sign-in does nothing" did NOT reproduce
+  (two sign-ins under the loop both reached the server). Lesson amended: `401-is-about-the-caller-not-the-bill.md`.
+
 **LANE A, SELLER SEARCH — C1: a seller's full ID number and address are personal data (migration 0024,
 ADVISOR-DECIDED 2026-10-12, the no-migration ban lifted for this milestone only). 2026-10-12.** Shas anchor next pass.
 - **Measured before (2a, accepted):** over real HTTP on `recycle_walk_a` at 0023, `GET /sellers` gave the STAFF role

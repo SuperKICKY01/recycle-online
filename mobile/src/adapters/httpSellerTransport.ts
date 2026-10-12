@@ -297,6 +297,9 @@ export class HttpSellerTransport implements SellerCreateTransport, ReservationTr
       clearTimeout(timer);
     }
 
+    // A 401 IS ABOUT THE CALLER, not the network (amended 2026-10-12; sync/sellerRefill.ts
+    // RefillOutcome): the engine reports it and stops asking until the operator signs in.
+    if (response.status === 401) return { kind: "session_expired", reason: "401" };
     if (response.status !== 200) {
       // 200 AND NEVER 201, including on the call that mints a whole block —
       // the route's own docstring says so, because the response describes a

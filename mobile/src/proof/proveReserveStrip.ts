@@ -29,6 +29,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HttpSellerTransport } from "../adapters/httpSellerTransport.js";
 import { NodeSqliteDriver } from "../adapters/sqlite/nodeDriver.js";
 import { SqliteLocalSellerStore } from "../adapters/sqlite/SqliteLocalSellerStore.js";
 import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
@@ -252,6 +253,74 @@ async function i1EnginePersistsTarget(): Promise<void> {
   }
 }
 
+/* ------------------------------- the expired session (amended 2026-10-12) --- */
+
+/** Answers the top-up with whatever `answer` currently is, and counts every call. */
+class ScriptedRefillTransport {
+  calls = 0;
+  answer: "session_expired" | "holding" = "session_expired";
+  createSeller(_row: LocalSeller): Promise<SellerCreateOutcome> {
+    return Promise.reject(new Error("proveReserveStrip: no seller creates in this cell"));
+  }
+  topUp(_deviceId: string): Promise<RefillOutcome> {
+    this.calls += 1;
+    if (this.answer === "session_expired") return Promise.resolve({ kind: "session_expired", reason: "401" });
+    return Promise.resolve({ kind: "holding", holding: { target: 2, reservations: [
+      { code: "S950", token: `tok-S950-${"y".repeat(30)}` },
+      { code: "S951", token: `tok-S951-${"y".repeat(30)}` },
+    ] } });
+  }
+}
+
+async function i2ExpiredSessionStopsAsking(): Promise<void> {
+  header("I2: a refill 401 is REPORTED as a session end, and NOT re-asked until a sign-in");
+  const dir = mkdtempSync(join(tmpdir(), "recycle-reservestrip-expired-"));
+  let driver: NodeSqliteDriver | null = null;
+  try {
+    driver = NodeSqliteDriver.open(join(dir, "expired.db"));
+    const bills = await SqliteLocalStore.open(driver);
+    const sellers = SqliteLocalSellerStore.open(driver);
+    const clock = new FakeClock(NOW);
+    const transport = new ScriptedRefillTransport();
+    const engine = new SyncEngine({
+      store: bills, transport: new OfflineTransport(), clock,
+      sellerStore: sellers, sellerTransport: transport,
+      deviceStore: new FixedDeviceStore("00000000-0000-4000-8000-00000000dev2"),
+    });
+    const first = await engine.runOnce();
+    check("I2a the pass that hears the refill's 401 reports sessionExpired = 1 (the app raises its banner from this)",
+      first.sessionExpired === 1, `sessionExpired=${String(first.sessionExpired)}`);
+    let later = 0;
+    for (let i = 0; i < 4; i += 1) later += (await engine.runOnce()).sessionExpired;
+    check("I2b four more passes (the 4-second timer's next 16 s) send NO further top-up with the dead token",
+      transport.calls === 1, `top-up calls=${String(transport.calls)}`);
+    check("I2c ...and re-count nothing (the end was already reported)", later === 0, `later=${String(later)}`);
+    transport.answer = "holding";
+    await engine.resumeAfterSignIn();
+    const resumed = await engine.runOnce();
+    check("I2d after a sign-in the next pass asks again, and the holding arrives (2 spendable)",
+      transport.calls === 2 && resumed.sessionExpired === 0 && (await sellers.spendableCount()) === 2,
+      `calls=${String(transport.calls)} spendable=${String(await sellers.spendableCount())}`);
+  } finally {
+    if (driver !== null) await driver.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+async function i3TransportMaps401(): Promise<void> {
+  header("I3: the HTTP transport maps the reservation route's 401 to session_expired, a 503 to unavailable");
+  const answer = (status: number) =>
+    new HttpSellerTransport({
+      baseUrl: "http://proof.invalid",
+      getToken: () => Promise.resolve("expired-token"),
+      fetchImpl: () => Promise.resolve(new Response("{}", { status })),
+    }).topUp("00000000-0000-4000-8000-00000000dev3");
+  const r401 = await answer(401);
+  const r503 = await answer(503);
+  check("I3a 401 -> session_expired", r401.kind === "session_expired", JSON.stringify(r401));
+  check("I3b 503 -> unavailable (the outage class is unchanged)", r503.kind === "unavailable", JSON.stringify(r503));
+}
+
 async function main(): Promise<number> {
   console.log("PROVE RESERVE STRIP — four states, one suppressed, and no stale target sold as fresh");
   if (BREAK !== "") {
@@ -268,6 +337,8 @@ async function main(): Promise<number> {
   c5StaleTargetDegradesToLow();
   c6ClockSuspectDegrades();
   await i1EnginePersistsTarget();
+  await i2ExpiredSessionStopsAsking();
+  await i3TransportMaps401();
 
   console.log("");
   console.log(failures === 0 ? "ALL CELLS PASSED" : `FAILED — ${String(failures)} check(s)`);

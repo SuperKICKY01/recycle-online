@@ -170,6 +170,15 @@ export class SyncEngine {
    */
   private readonly runner: OutboxRunner;
 
+  /**
+   * THE REFILL HEARD A 401 (amended 2026-10-12). Set when the top-up answers
+   * `session_expired`; while set the pass does NOT ask again — a dead token re-sent every
+   * four seconds is a request that cannot succeed (measured on the walk: 7 per 30 s, all
+   * 401). Cleared ONLY by a sign-in or a sign-out, the two events that change who is asking.
+   * In memory on purpose, like the runner's halts: a cold start re-asks once and re-learns.
+   */
+  private refillSessionEnded = false;
+
   constructor(opts: SyncEngineOptions) {
     this.store = opts.store;
     this.clock = opts.clock;
@@ -271,6 +280,7 @@ export class SyncEngine {
      * feel responsive rather than to answer a question anyone asked.
      */
     this.runner.retractHalts();
+    this.refillSessionEnded = false;
     const freed = await this.store.clearBackoffForPending(now);
     const unrefused = await this.store.clearVoidRefusals(now);
     return freed + unrefused;
@@ -295,6 +305,8 @@ export class SyncEngine {
    */
   resetAfterSignOut(): void {
     this.runner.retractHalts();
+    // The refill's 401 was about the account that just left (amended 2026-10-12).
+    this.refillSessionEnded = false;
   }
 
   /**
@@ -381,7 +393,7 @@ export class SyncEngine {
     const released = await this.store.releaseMasterDataBlocked(this.clock.now(), false);
     const report = await this.runner.runPass();
     report.result.masterDataReleased += released;
-    await this.topUpReservations();
+    report.result.sessionExpired += await this.topUpReservations();
     return report.result;
   }
 
@@ -434,7 +446,12 @@ export class SyncEngine {
    * that gave up asking is a device that silently stops being able to buy from a
    * walk-in.
    */
-  private async topUpReservations(): Promise<void> {
+  private async topUpReservations(): Promise<number> {
+    // A 401 already heard: do not ask again until a sign-in or sign-out clears the flag.
+    // Returns 0 — the session end was already REPORTED on the pass that heard it, and the
+    // app's banner is sticky until a sign-in (sessionEndedAfterPass), so re-counting adds
+    // nothing but would not hurt either.
+    if (this.refillSessionEnded) return 0;
     const deviceId = await this.deviceStore.ensure(this.clock.now());
     const now = this.clock.now();
     const result = await refillOnce(
@@ -448,6 +465,11 @@ export class SyncEngine {
     if (result.outcome.kind === "holding") {
       await this.sellerStore.saveReserveTarget(result.outcome.holding.target, now);
     }
+    if (result.outcome.kind === "session_expired") {
+      this.refillSessionEnded = true;
+      return 1;
+    }
+    return 0;
   }
 
   /**

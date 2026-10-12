@@ -88,7 +88,20 @@ export interface ReservationHolding {
  */
 export type RefillOutcome =
   | { kind: "holding"; holding: ReservationHolding }
-  | { kind: "unavailable"; reason: string };
+  | { kind: "unavailable"; reason: string }
+  /*
+   * AMENDED 2026-10-12 — A FOURTH CLASS THE HEADER'S "ONE CLASS" ARGUMENT MISSED: THE CALLER.
+   * The three-way rule's other two classes have no referent here, as argued above; but an
+   * EXPIRED SESSION is neither an outage nor a payload fault — it is about who is asking
+   * (lessons/401-is-about-the-caller-not-the-bill.md). Folded into `unavailable`, it was
+   * re-asked every 4-second pass with a dead token, for ever, and — because the refill writes
+   * no counter — the app was never told the session had ended while no bill was queued.
+   * MEASURED on the walk (scratch server, JWT_TTL_SECONDS=60): 7 POSTs per 30 s, every one 401,
+   * and the screen still read "เข้าสู่ระบบแล้ว". `session_expired` is reported on the pass
+   * (SyncEngine.runOnce counts it as sessionExpired) and the engine stops asking until a
+   * sign-in (resumeAfterSignIn). It is NOT terminal: nothing about this device is wrong.
+   */
+  | { kind: "session_expired"; reason: string };
 
 export interface ReservationTransport {
   /**
@@ -200,7 +213,7 @@ export async function refillOnce(deps: RefillDeps, deviceId: string, now: Date):
       reason: err instanceof Error ? err.message : String(err),
     };
   }
-  if (outcome.kind === "unavailable") return { outcome, added: 0 };
+  if (outcome.kind !== "holding") return { outcome, added: 0 };
   const added = await deps.store.saveReservations(outcome.holding.reservations, now);
   return { outcome, added };
 }

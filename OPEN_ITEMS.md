@@ -1719,12 +1719,13 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
 
 - **SELLER SEARCH (2026-10-12) — LATER LINES, recorded not built.** (1) **QR, blueprint 5.5's sixth axis, DEFERRED
   (ADVISOR-DECIDED):** it needs a printed seller card that does not exist yet. (2) **Thai tone-mark-insensitive name
-  search** is not here either (same gap as the cart's line below). (3) **OBSERVED ON THE WALK, NOT DIAGNOSED:** a
-  phone whose session had expired sent `POST /seller-code-reservations` to the walk server about 15 times a minute,
-  each answered 401 (measured: 89 then 94 calls over 20 s), with the app process at 44% CPU; while it ran, taps on
-  the sign-in form's เข้าสู่ระบบ sent no `POST /auth/login` (three attempts, the server log the instrument), and one
-  `am force-stop` plus a cold start cleared it — the next tap signed in. One clearing, not a cause
-  (`.claude/skills/debug-mantra/SKILL.md` before any fix).
+  search** is not here either (same gap as the cart's line below). (3) **RESOLVED 2026-10-12 — the expired-session request loop; one half NOT reproduced.** Reproduced on
+  a scratch server with `JWT_TTL_SECONDS=60`: the reservation top-up re-sent a dead token every 4 s (7 per 30 s, all
+  401) and the app never raised its expiry banner while no bill was queued — the refill folded 401 into `unavailable`.
+  Fixed (refill `session_expired`, reported on the pass, not re-asked until sign-in); after it, one 401 then none for
+  40 s and the banner shows. **NOT reproduced:** "sign-in does nothing" — two sign-ins under the running loop both
+  reached the server (`POST /auth/login 200`). The original failure's taps were driven by fixed coordinates while the
+  soft keyboard moved the layout; that cause is ASSUMED, not shown.
 
 - **CART MILESTONE (2026-10-12) — LATER LINES, recorded not built (ADVISOR-DECIDED).** (1) **Manual per-branch pins** —
   the frequent row is derived (`src/cart/productPicker.ts`), never stored; a shop-chosen pinned set waits "when a real
