@@ -20,6 +20,8 @@ const ALL: readonly string[] = [
   "payments.record",
   // Migration 0022 (the shifts unit, commit 2): the fifteenth code.
   "shifts.manage",
+  // Migration 0024 (seller search, C1): the sixteenth code. Owner and admin hold it.
+  "sellers.read_personal",
   "money.view_own",
   "money.view_shop",
   "master.write",

@@ -31,8 +31,9 @@ be ten meanings a later session must guess). One of the thirteen is the exceptio
 and says so at its line: `roles.manage` gates no route yet. Unit 3 (the money
 ledger, migration 0020) minted the FOURTEENTH, `payments.record`, the day
 POST /payments and GET /payments gated on it. The shifts unit (migration 0022)
-minted the FIFTEENTH, `shifts.manage`, the day the drawer routes gated on it. The
-other eight are recorded in DEFERRED against the unit that will gate them, so nobody
+minted the FIFTEENTH, `shifts.manage`, the day the drawer routes gated on it.
+Migration 0024 minted the SIXTEENTH, `sellers.read_personal`, the day the seller
+responses gated their personal fields on it. The other seven are recorded in DEFERRED against the unit that will gate them, so nobody
 re-invents a name later.
 
 THE THREE SYSTEM ROLES every shop is born with are S9's owner/admin/staff, as rows
@@ -86,6 +87,13 @@ class Permission(StrEnum):
     # POST /payments and POST /bills stamp a shift and refuse nothing for a missing
     # one (STRUCTURE.md invariant 1).
     SHIFTS_MANAGE = "shifts.manage"
+    # Migration 0024 (seller search, ADVISOR-DECIDED 2026-10-12): a seller's full
+    # id_number and address are personal data. Not a ROUTE gate -- every seller route
+    # still answers -- but an INLINE one in master._seller_payload: without it the two
+    # keys are ABSENT, and PATCH refuses to write them. Granted by 0024 to
+    # every role holding users.manage (owner and admin at birth); staff does not hold
+    # it. ASSUMED pending P1.1/PDPA advice (OPEN_ITEMS.md).
+    SELLERS_READ_PERSONAL = "sellers.read_personal"
 
 
 # What each permission gates, by route. ASCII, because migration 0019 restates the
@@ -144,6 +152,11 @@ DESCRIPTIONS: Mapping[Permission, str] = {
         " GET /shifts/current, POST /shifts/id/close, PATCH /shifts/id,"
         " POST /cash-movements, GET /cash-movements"
     ),
+    Permission.SELLERS_READ_PERSONAL: (
+        "see a seller full id_number and address in every seller response: GET /sellers,"
+        " POST /sellers, PATCH /sellers/id, POST /sellers/id/deactivate and /activate;"
+        " without it those keys are absent and the caller may not write them"
+    ),
 }
 
 # Section 3.1's codes NOT minted by unit 1, each against the unit that gates it.
@@ -154,7 +167,7 @@ DEFERRED: Mapping[str, str] = {
     # route voids a payment in unit 3 (the counter screen is the unit that does).
     "payments.void": "the counter unit, when POST /payments/{id}/void exists",
     # shifts.manage left this map with migration 0022 (the shifts unit, commit 2).
-    "sellers.read_personal": "batch C, files and personal data (a seller's id document)",
+    # sellers.read_personal left this map with migration 0024 (seller search, C1).
     "audit.read": "the audit-log read route, when one exists (D3 wrote the log only)",
     "reports.export": "the export step (Excel is out of MVP today)",
     "files.read_personal": "batch C, files",

@@ -116,6 +116,12 @@ export interface Product {
  * → `lessons/a-narrowing-type-is-not-a-barrier-to-the-object.md`, indexed at
  *   `lessons/README.md § Lessons` "one word apart in English".
  *
+ * SUPERSEDED AGAIN 2026-10-12 (seller search C1, migration 0024): "`GET /sellers`
+ * returns `id_number`, `address`" is now true only for a caller holding
+ * `sellers.read_personal` (owner and admin at birth). For every other caller the
+ * server omits both keys, so a staff phone never receives them at all. The phone
+ * still caches neither, whoever is signed in.
+ *
  * NO SHA ON THIS SUPERSESSION, deliberately: it is written before the commit
  * that carries it, so the only sha available names the tree without it
  * (CLAUDE.md § Conventions, the pin-a-claim corollary). The date stands

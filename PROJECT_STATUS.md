@@ -75,6 +75,43 @@ not read the green as re-run.**
 
 ## Current phase
 
+**LANE A, SELLER SEARCH — C1: a seller's full ID number and address are personal data (migration 0024,
+ADVISOR-DECIDED 2026-10-12, the no-migration ban lifted for this milestone only). 2026-10-12.** Shas anchor next pass.
+- **Measured before (2a, accepted):** over real HTTP on `recycle_walk_a` at 0023, `GET /sellers` gave the STAFF role
+  (`bills.create`, `bills.read`, `sellers.create`) the same nine keys as admin, the full 13-digit `id_number` and the
+  `address` included; `sellers.read_personal` existed only in `permissions.DEFERRED`; the server validates no ID
+  checksum (`IdNumber` is free text, 1–32). PATCH semantics, read from source: `_changes` dumps `exclude_unset`, so an
+  OMITTED key keeps its value and an explicit null CLEARS a nullable column.
+- **Migration 0024** mints `sellers.read_personal` (the sixteenth code; out of DEFERRED) and grants it to EVERY ROLE
+  THAT HELD `users.manage` (the criterion is the permission, not the role code — 8 roles in a scratch restored from dev), per
+  tenant as `system:migration_0024`. It refuses itself unless the grants equal the `users.manage` holders as a set;
+  its downgrade refuses while the permission is granted to a role without `users.manage`.
+- **The gate, at the one serialiser.** `master._seller_payload(row, principal)` (and `_read_seller`) now TAKE the
+  principal with no default; without `sellers.read_personal` the `id_number` and `address` KEYS ARE ABSENT. It covers
+  `GET /sellers`, the three create paths and the create replay, PATCH, activate/deactivate. History only uses
+  `_read_seller` as an existence check; bills, reports and payments select a seller's code/name only. PATCH by a caller
+  without the permission that NAMES `id_number` or `address` (a value or null) is 403 `permission_required` naming it,
+  before anything is written; omitting them is unaffected.
+- **Proof: NEW `server/scripts/prove_seller_personal.py`** (36 cells, real HTTP, raw body BYTES; per-run admin, staff and
+  a `sellers.write`-without-`read_personal` writer in Shop A): L list, C create echo (mint path, and C3 the
+  SUPPLIED-code path), R reservation replay, H history, X refusal bodies (409 duplicate_code, 422 over-long id, 403
+  PATCH), D deactivate/activate echoes, W no-erase (value against value out of Postgres), P the discriminating pair (a
+  role with every code but `sellers.read_personal`, `users.manage` included, neither reads nor writes; a role with only
+  it and `sellers.write` does both), RT down 0023 / up 0024 / refused downgrade. Disproofs, each restored
+  byte-identical: gate removed → exactly L2 L3 C1 R1 D1 W1; PATCH refusal removed → exactly W3–W6; grant removed → 0024
+  refuses itself (`0 grant(s), but 8 role(s) hold users.manage`); downgrade refusal removed → exactly RT3 RT4.
+- **Red team (nemesis, read-only, diff + property, no conversation): two CONFIRMED findings, both COVERAGE, no leak.**
+  (1) the supplied-code create return was read only as admin, so a leak at that one `return` stayed green → C3 added;
+  the mutation now reddens exactly C3. (2) no fixture told `sellers.read_personal` from any other code admin holds and
+  staff lacks → the P pair added; gating the payload on `users.manage` now reddens P1, P2 and P4 (P4 not predicted:
+  the PATCH is admitted by the write guard but its echo then omits the address it wrote). Its sweeps of P1/P2/P3 held
+  (two SQL reads of the columns, both through `_seller_payload`; no `UPDATE sellers` outside `_update_row`; a single
+  linear chain to 0024). Its observation that `mobile/app/api.ts`'s comment claimed every caller receives `id_number`
+  is corrected there. Exit 0 twice after the fixes.
+- **Dev:** backed up first (`E:\recycle-online-backups\recycle_20261012T070751Z_pre0024`, every table's rows
+  db = dump), then `alembic upgrade head`: `alembic current` read `0023` before, `0024 (head)` after. `prove_master_write` V4 now reads S001's identity as ADMIN and asserts staff gets neither key;
+  `prove_permissions` restates the sixteen codes; the phone's `Permission` union and `proofGrants` mirror it.
+
 **LANE A, CART MILESTONE — frequent-products row, category browse, search, slim bill header (ADVISOR-DECIDED
 2026-10-12; plan `E:\recycle-shots\lane-a\cart\cart_milestone_plan.md`). 2026-10-12.** Shas anchor next pass. No
 server migration, no server route, no stored pins.

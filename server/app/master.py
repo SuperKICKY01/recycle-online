@@ -92,7 +92,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from .auth import Principal, get_principal, require
+from .auth import Principal, get_principal, permission_required, require
 from .bills import payment_status
 from .branches import branch_payload, read_branch, read_caller_branch
 from .config import SHOP_TIMEZONE
@@ -952,19 +952,36 @@ class SellerUpdate(BaseModel):
 _SELLER_NULLABLE = frozenset({"phone", "grade", "id_number", "address", "vehicle_no"})
 
 
-def _seller_payload(r: Any) -> dict:
-    return {
+# A SELLER'S PERSONAL FIELDS (migration 0024, ADVISOR-DECIDED 2026-10-12). The full ID
+# number and the address go ONLY to a caller holding sellers.read_personal; for anyone
+# else the KEYS ARE ABSENT -- not null, which would read as "this seller has none" -- the
+# shape the money gate in seller_history already uses. Measured before 0024 on the walk
+# database: every signed-in caller, staff included, received both from GET /sellers.
+#
+# THIS FUNCTION IS THE ONLY PLACE A SELLER ROW BECOMES A RESPONSE, and that is what makes
+# the gate whole: GET /sellers, the three create paths and the create replay, PATCH, and
+# activate/deactivate all serialise through it (directly or through _read_seller). It
+# therefore TAKES THE PRINCIPAL and has no default: a new caller cannot reach a payload
+# without saying whose it is. A route that serialises a seller some other way is a hole;
+# prove_seller_personal.py reads every one of those routes' raw bytes as staff.
+_SELLER_PERSONAL_FIELDS = ("id_number", "address")
+
+
+def _seller_payload(r: Any, principal: Principal) -> dict:
+    payload = {
         "id": str(r["id"]),
         "code": r["code"],
         "name": r["name"],
         "phone": r["phone"],
         # Seller grade selects which product_prices tier applies (SRS 1.6).
         "grade": r["grade"],
-        "id_number": r["id_number"],
-        "address": r["address"],
         "vehicle_no": r["vehicle_no"],
         "is_active": r["is_active"],
     }
+    if principal.has(Permission.SELLERS_READ_PERSONAL):
+        for key in _SELLER_PERSONAL_FIELDS:
+            payload[key] = r[key]
+    return payload
 
 
 _SELLER_SELECT = (
@@ -973,11 +990,13 @@ _SELLER_SELECT = (
 )
 
 
-async def _read_seller(conn: AsyncConnection, seller_id: uuid.UUID) -> dict | None:
+async def _read_seller(
+    conn: AsyncConnection, seller_id: uuid.UUID, principal: Principal
+) -> dict | None:
     row = (
         await conn.execute(text(f"{_SELLER_SELECT} WHERE id = :id"), {"id": seller_id})
     ).mappings().first()
-    return _seller_payload(row) if row else None
+    return _seller_payload(row, principal) if row else None
 
 
 @router.get("/sellers")
@@ -991,7 +1010,7 @@ async def list_sellers(
                 text(f"{_SELLER_SELECT}{_active_filter(include_inactive)} ORDER BY code")
             )
         ).mappings().all()
-    return {"sellers": [_seller_payload(r) for r in rows]}
+    return {"sellers": [_seller_payload(r, principal) for r in rows]}
 
 
 # ---------------------------------------------------------------------------
@@ -1140,7 +1159,7 @@ async def seller_history(
         # Existence FIRST, so an unknown or cross-tenant seller is a 404 the caller
         # can tell apart from a seller who simply has no bills yet. RLS makes
         # another tenant's seller INVISIBLE -> _read_seller returns None -> 404.
-        if await _read_seller(conn, seller_id) is None:
+        if await _read_seller(conn, seller_id, principal) is None:
             raise _not_found("seller")
 
         # THE MONEY GATE, on the permission set the principal carries (0019):
@@ -1671,7 +1690,7 @@ async def create_seller(
                 # attempt committed and its response was lost; the row it made is
                 # the answer. 200, not 201: this request created nothing.
                 response.status_code = status.HTTP_200_OK
-                existing = await _read_seller(conn, held["seller_id"])
+                existing = await _read_seller(conn, held["seller_id"], principal)
                 if existing is not None:
                     return existing
                 # UNREACHABLE BY CONSTRUCTION and refused rather than assumed
@@ -1707,7 +1726,7 @@ async def create_seller(
                 ).mappings().first()
                 if (again is not None and again["state"] == "spent"
                         and again["seller_id"] is not None):
-                    winner = await _read_seller(conn, again["seller_id"])
+                    winner = await _read_seller(conn, again["seller_id"], principal)
                     if winner is not None:
                         response.status_code = status.HTTP_200_OK
                         return winner
@@ -1717,7 +1736,7 @@ async def create_seller(
                 # state that has been reached must never be settled on.
                 _raise_for_integrity(e, body.code)
                 raise
-            return _seller_payload(row)
+            return _seller_payload(row, principal)
 
         if body.code is not None:
             # THE FIRST OF THE TWO GUARDS. A supplied code that a handset is
@@ -1757,7 +1776,7 @@ async def create_seller(
             except IntegrityError as e:
                 _raise_for_integrity(e, body.code)
                 raise
-            return _seller_payload(row)
+            return _seller_payload(row, principal)
 
         # THE SECOND GUARD, AND IT IS THE WORSE OF THE TWO because it needs
         # nobody to make a mistake. The candidate is derived above BOTH tables,
@@ -1790,7 +1809,7 @@ async def create_seller(
                 # _raise_for_integrity states: a violation this loop does not
                 # understand must not be dressed up as a race it survived.
                 raise
-            return _seller_payload(row)
+            return _seller_payload(row, principal)
 
         # NOT duplicate_code. The caller supplied no code, so naming one as taken
         # would be a confident lie about a value they never sent.
@@ -1816,6 +1835,15 @@ async def update_seller(
     # possible: a seller can lose their grade, and the resulting bills are then
     # refused with a resolvable 424 rather than mispriced.
     changes = _changes(body, nullable=_SELLER_NULLABLE)
+    # A CALLER WHO MAY NOT SEE THE PERSONAL FIELDS MAY NOT WRITE THEM (0024). Omitting
+    # them already leaves the stored values alone (_changes reads exclude_unset), so an
+    # ordinary edit is unaffected; but an explicit null would ERASE an ID the caller
+    # cannot see, and a new value would overwrite one they never read. Both are refused
+    # with the one permission 403, naming the permission, before anything is written.
+    if not principal.has(Permission.SELLERS_READ_PERSONAL) and any(
+        key in changes for key in _SELLER_PERSONAL_FIELDS
+    ):
+        raise permission_required(Permission.SELLERS_READ_PERSONAL)
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         # A grade being SET (not cleared) must be one of the shop's active tiers
         # (S16 / P1.24). An explicit null clears it -- the resulting bills park on
@@ -1824,7 +1852,7 @@ async def update_seller(
             await _validate_grade(conn, changes["grade"], must_be_active=True)
         if not await _update_row(conn, "sellers", seller_id, changes):
             raise _not_found("seller")
-        return await _read_seller(conn, seller_id)
+        return await _read_seller(conn, seller_id, principal)
 
 
 @router.post("/sellers/{seller_id}/deactivate")
@@ -1834,7 +1862,7 @@ async def deactivate_seller(
     """Retire a seller. Their existing bills are untouched and stay readable."""
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "sellers", "seller", seller_id, False)
-        return await _read_seller(conn, seller_id)
+        return await _read_seller(conn, seller_id, principal)
 
 
 @router.post("/sellers/{seller_id}/activate")
@@ -1843,7 +1871,7 @@ async def activate_seller(
 ) -> dict:
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
         await _set_active(conn, "sellers", "seller", seller_id, True)
-        return await _read_seller(conn, seller_id)
+        return await _read_seller(conn, seller_id, principal)
 
 
 # ---------------------------------------------------------------------------

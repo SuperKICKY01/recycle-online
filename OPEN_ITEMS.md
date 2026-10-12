@@ -1705,6 +1705,18 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
 
 ## Code debt found and left in place
 
+- **SELLER PERSONAL DATA (2026-10-12, migration 0024) — THE HOLDER SET IS ASSUMED, PENDING P1.1 / PDPA ADVICE.**
+  ADVISOR-DECIDED: a seller's FULL `id_number` and `address` go only to a caller holding `sellers.read_personal`,
+  granted by 0024 to every role that held `users.manage` (owner and admin at birth); every other caller receives
+  neither key (seller search C2 adds the minimised `id_last4` for every caller). Measured before 0024 on lane A's walk
+  database over real HTTP: the staff role received both from `GET /sellers`. The holder set is reversible (a grant
+  is data once the role screen exists; 0024 downgrades to 0023 exactly). Three things it does NOT cover, each
+  recorded rather than changed: (1) **`local_sellers` keeps the ID its creator typed** after the seller syncs
+  (`mobile/src/adapters/sqlite/schema.ts` `local_sellers.id_number`) — whether it should be dropped once the row
+  settles is open; (2) **`audit_log` holds full seller row images** (`to_jsonb(OLD/NEW)`, migration 0017, `sellers`
+  is audited), so a future `audit.read` route must apply the same gate; no route reads it today; (3) **`tenants.address`**
+  (the SHOP's own address, `PATCH /shop`) is not a seller's personal data and is untouched.
+
 - **CART MILESTONE (2026-10-12) — LATER LINES, recorded not built (ADVISOR-DECIDED).** (1) **Manual per-branch pins** —
   the frequent row is derived (`src/cart/productPicker.ts`), never stored; a shop-chosen pinned set waits "when a real
   shop asks" (it needs a server table, i.e. a migration lane A mints). (2) **Thai tone-mark-insensitive search** —

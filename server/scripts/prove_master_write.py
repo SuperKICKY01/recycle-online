@@ -819,14 +819,22 @@ async def main() -> int:  # noqa: C901 — one linear narrative, deliberately fl
               f"status={r.status_code} body={r.json()}")
         check("clearing one did not touch the others",
               r.json().get("id_number") == "1103700123456", str(r.json()))
-        seeded = next(s for s in client.get(f"{BASE}/sellers", headers=staff).json()["sellers"]
+        # Read as ADMIN since migration 0024: the full ID and the address go only to a
+        # holder of sellers.read_personal (owner/admin at birth). Until 0024 these two
+        # cells read as staff, which is the exposure 0024 closed.
+        seeded = next(s for s in client.get(f"{BASE}/sellers", headers=admin).json()["sellers"]
                       if s["code"] == "S001")
-        check("the seeded S001 carries its address through the read endpoint",
+        check("the seeded S001 carries its address through the read endpoint (admin)",
               bool(seeded.get("id_number")) and bool(seeded.get("address")),
               f"id_number={seeded.get('id_number')!r} address={seeded.get('address')!r}")
-        ragged = client.get(f"{BASE}/sellers", headers=staff).json()["sellers"]
+        ragged = client.get(f"{BASE}/sellers", headers=admin).json()["sellers"]
         check("and a seller with none of them reports null, not an empty string",
-              any(s.get("id_number") is None for s in ragged))
+              any("id_number" in s and s["id_number"] is None for s in ragged))
+        staff_seeded = next(s for s in client.get(f"{BASE}/sellers", headers=staff).json()["sellers"]
+                            if s["code"] == "S001")
+        check("and STAFF (no sellers.read_personal) receives neither key for S001 (0024)",
+              "id_number" not in staff_seeded and "address" not in staff_seeded,
+              f"keys={sorted(staff_seeded)}")
 
         # ------------------------------------------------------------------ D1
         header("D1: there is NO delete route — a bill's references cannot be removed")

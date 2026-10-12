@@ -71,8 +71,8 @@ export type DeviceRole = "owner" | "admin" | "staff" | null;
 const ROLES: readonly string[] = ["owner", "admin", "staff"];
 
 /**
- * The permission catalogue, MIRRORED from server/app/permissions.py (15 codes since
- * migration 0022 minted shifts.manage; this line said 13 while the union below held
+ * The permission catalogue, MIRRORED from server/app/permissions.py (16 codes since
+ * migration 0024 minted sellers.read_personal, 15 since 0022 minted shifts.manage; this line said 13 while the union below held
  * 14, a count left stale when 0020 added payments.record).
  * A courtesy list for the call sites, so a typo at a gate is a compile error;
  * the SERVER's boot check is what keeps its catalogue equal to its code, and a
@@ -87,6 +87,10 @@ export type Permission =
   // Migration 0022 (the shifts unit): open/close a shift and record a cash movement.
   // Added with its first client gate, the shift panel (drawerView.mayShowShiftPanel).
   | "shifts.manage"
+  // Migration 0024 (seller search): a seller's full ID number and address. No client
+  // gate reads it -- the phone never caches either field -- but the union mirrors
+  // the catalogue.
+  | "sellers.read_personal"
   | "money.view_own"
   | "money.view_shop"
   | "master.write"

@@ -104,6 +104,9 @@ PERMS: tuple[str, ...] = (
     "payments.record",
     # Migration 0022 (the shifts unit, commit 2): the fifteenth code.
     "shifts.manage",
+    # Migration 0024 (seller search, C1): the sixteenth code -- an INLINE gate in the
+    # seller responses, not a route gate, so it adds no matrix site.
+    "sellers.read_personal",
 )
 
 BASE = ""
