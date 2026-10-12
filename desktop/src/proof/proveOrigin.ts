@@ -13,7 +13,10 @@
  *      the server's CORS allowlist must name
  *   O3 it is not "null" (the file:// value D-2 forbids allowing)
  */
+import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 
 import { APP_ORIGIN } from "../main/origin";
@@ -38,7 +41,9 @@ void finish("PROVE_ORIGIN", async () => {
     await fetch(url);
     check("O0 control: a request with no Origin is recorded as absent", seen.length === 1 && seen[0] === undefined,
       JSON.stringify(seen));
-    const { code, out } = await runElectron({ RECYCLE_PROOF_ORIGIN_URL: url });
+    const userData = mkdtempSync(join(tmpdir(), "recycle-desktop-origin-"));
+    const { code, out } = await runElectron({ RECYCLE_PROOF_ORIGIN_URL: url, RECYCLE_USER_DATA: userData });
+    rmSync(userData, { recursive: true, force: true });
     const fetched = readLine(out, "DESKTOP_FETCH") as { ok?: boolean; status?: number } | null;
     const fromPage = seen.slice(1);
     check("O1 the page's fetch reached the server and resolved", code === 0 && fetched?.ok === true && fromPage.length >= 1,

@@ -19,7 +19,13 @@ import { writeFileSync } from "node:fs";
 import { join, normalize, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { registerIpc } from "./ipc";
 import { APP_HOST, APP_INDEX_URL, APP_ORIGIN, APP_SCHEME } from "./origin";
+
+// A proof runs each launch in its own fresh userData (config.json and session.bin), never the
+// operator's. Set before `ready`, as Electron requires for userData.
+const proofUserData = process.env["RECYCLE_USER_DATA"];
+if (proofUserData !== undefined && proofUserData !== "") app.setPath("userData", proofUserData);
 
 protocol.registerSchemesAsPrivileged([
   { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
@@ -61,10 +67,21 @@ function createWindow(): BrowserWindow {
 async function proofHooks(win: BrowserWindow): Promise<void> {
   const wc = win.webContents;
   if (process.env["RECYCLE_PROOF_WINDOW"] !== undefined) {
+    // The first screen depends on an async read of the stored config, so wait (up to 10 s) for
+    // the first heading before reading the page.
     const report: unknown = await wc.executeJavaScript(
-      `({ title: document.title, url: location.href, origin: location.origin,
-          shell: document.querySelector('[data-shell]')?.getAttribute('data-shell') ?? null,
-          nav: Array.from(document.querySelectorAll('[data-nav]')).map((n) => n.textContent) })`,
+      `new Promise((resolve) => {
+         const t0 = Date.now();
+         const look = () => {
+           const h1 = document.querySelector('h1');
+           if (h1 === null && Date.now() - t0 < 10000) { setTimeout(look, 50); return; }
+           resolve({ title: document.title, url: location.href, origin: location.origin,
+             heading: h1 ? h1.textContent : null,
+             shell: document.querySelector('[data-shell]')?.getAttribute('data-shell') ?? null,
+             nav: Array.from(document.querySelectorAll('[data-nav]')).map((n) => n.textContent) });
+         };
+         look();
+       })`,
     );
     process.stdout.write(`DESKTOP_WINDOW=${JSON.stringify(report)}\n`);
     app.quit();
@@ -100,6 +117,7 @@ async function proofHooks(win: BrowserWindow): Promise<void> {
 
 void app.whenReady().then(async () => {
   protocol.handle(APP_SCHEME, serveRenderer);
+  registerIpc();
   const win = createWindow();
   win.webContents.once("did-finish-load", () => {
     void proofHooks(win);

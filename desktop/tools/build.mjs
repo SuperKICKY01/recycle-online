@@ -14,7 +14,7 @@ const dist = join(root, "dist");
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(join(dist, "renderer"), { recursive: true });
 
-const node = { bundle: true, platform: "node", format: "cjs", target: "node20", external: ["electron"], logLevel: "warning" };
+const node = { bundle: true, platform: "node", format: "cjs", target: "node20", external: ["electron", "playwright-core"], logLevel: "warning" };
 
 await build({ ...node, entryPoints: [join(root, "src/main/main.ts")], outfile: join(dist, "main.cjs") });
 await build({ ...node, entryPoints: [join(root, "src/preload/preload.ts")], outfile: join(dist, "preload.cjs") });

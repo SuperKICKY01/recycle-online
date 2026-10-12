@@ -70,3 +70,44 @@ body {
 .page-lead { color: var(--text-muted); margin: 0 0 24px; max-width: 70ch; }
 .icon { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75;
         stroke-linecap: round; stroke-linejoin: round; }
+
+/* --- the gate: setup and sign-in (B2) ------------------------------------------------- */
+.gate { min-height: 100%; display: grid; place-items: center; padding: 32px; background: var(--bg); }
+.gate-form {
+  width: min(420px, 100%); display: flex; flex-direction: column; gap: 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 32px;
+  box-shadow: 0 8px 24px rgba(19, 35, 58, 0.08);
+}
+.gate-form .page-lead { margin-bottom: 6px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-label { font-weight: 600; font-size: 0.875rem; }
+input {
+  font: inherit; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 12px; min-height: 40px;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+input::placeholder { color: #6b7d95; } /* 4.6:1 on white */
+input:hover:not(:disabled) { border-color: #a9c1dd; }
+input:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+input:disabled { background: var(--bg); color: var(--text-muted); }
+
+.btn {
+  font: inherit; font-weight: 600; border-radius: var(--radius); padding: 9px 16px; min-height: 40px;
+  border: 1px solid transparent; cursor: pointer;
+  transition: background-color 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out;
+}
+.btn:disabled { cursor: default; opacity: 0.55; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-strong); }
+.btn-quiet { background: transparent; color: var(--accent-strong); border-color: var(--border); }
+.btn-quiet:hover:not(:disabled) { background: var(--accent-soft); }
+.btn-small { min-height: 32px; padding: 5px 10px; font-size: 0.8125rem; }
+
+.notice { margin: 0; padding: 10px 12px; border-radius: var(--radius); font-weight: 600; }
+.notice-error { background: var(--danger-soft); color: var(--danger); }
+.notice-warn { background: var(--warn-soft); color: var(--warn); }
+.notice-ok { background: var(--ok-soft); color: var(--ok); }
+
+.who { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.who-name { font-weight: 700; color: var(--text); font-size: var(--step-0); }
+.who-role { font-size: 0.8125rem; }

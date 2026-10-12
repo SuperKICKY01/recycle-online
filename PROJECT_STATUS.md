@@ -106,6 +106,23 @@ anchor next pass.
   and F1–F4; `null` added → exactly F3; renderer loaded from `file://` → W2 and O2 (the measured Origin was ABSENT, not
   `null` — O3 stayed green); the BE digits planted in `desktop/src` → exactly B5. `tools/prove_all.py` (its one allowed
   edit, D-6) type-checks the desktop at preflight and enumerates `desktop/` `prove:*` as `desktop_prove:<x>`.
+- **B2 — desktop sign-in (P1.14), proven against a real server.** First run: the shop's server address and 8-letter
+  shop code (`POST /auth/shop-code`) → sign-in with the phone's username and password → `/whoami` → the shell, the
+  user and role in its footer; sign-out. **Token storage (D-3): `desktop/src/main/sessionStore.ts`** — Electron
+  `safeStorage` (DPAPI on Windows) encrypts the token and only the ciphertext is written, to `<userData>/session.bin`;
+  if the OS offers no encryption nothing is persisted; the renderer holds the token in memory only and reaches the store
+  through a narrow preload bridge whose IPC handlers refuse any frame that is not `app://recycle`. **Expiry without a
+  loop:** `src/shared/session.ts` — a 401 on any authenticated call ends the session once (token cleared, sentence
+  `หมดเวลาเข้าใช้งาน — กรุณาเข้าสู่ระบบอีกครั้ง`) and every later call short-circuits with NO request; the session is
+  re-checked only on start-up, window focus and navigation, never on a timer. Wording via `src/shared/session.ts`
+  (offline, outdated, unknown shop, bad credentials). NEW `prove:session` (7 pure cells: the client's classification,
+  the version header, one-401-ends-it, ten calls after it send zero requests) and `prove:signin` (12 cells, Playwright
+  driving the built app's real screens against `server/scripts/scratch_server.py` — a non-proof helper serving a fresh
+  scratch with a per-run admin and a 30 s token: setup, both refusal sentences, the shell, no token in
+  localStorage/sessionStorage/IndexedDB, `session.bin` holding no JWT text, relaunch restores, sign-out deletes it,
+  expiry shows its sentence after exactly ONE 401 and none in the next 12 s, offline sentence). Disproofs, each
+  restored byte-identical: a 401 not ending the session → L1 L2 and S9 (S10 not reached; the app has no timer to loop
+  on); the token written in plain text → S6 (file) and S7; the token also put in localStorage → exactly S6 (storage).
 
 **LANE A, SELLER SEARCH — C1: a seller's full ID number and address are personal data (migration 0024,
 ADVISOR-DECIDED 2026-10-12, the no-migration ban lifted for this milestone only). 2026-10-12.** Shas anchor next pass.

@@ -1,10 +1,30 @@
 /**
- * THE BRIDGE between the sandboxed renderer and the main process. Deliberately narrow: the
- * renderer gets named functions, never `ipcRenderer` itself. B1 exposes only the app version;
- * the session (B2) adds its calls here and nowhere else.
+ * THE BRIDGE between the sandboxed renderer and the main process. Deliberately narrow: named
+ * functions only, never `ipcRenderer` itself. The session token crosses it in one direction per
+ * call and is stored by the main process alone (src/main/sessionStore.ts, OS-backed encryption).
  */
-import { contextBridge } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
 
-contextBridge.exposeInMainWorld("recycle", {
+export interface ShopConfigBridge {
+  apiBase: string;
+  shopCode: string;
+  tenantId: string;
+}
+
+const bridge = {
   version: "0.0.0",
-});
+  session: {
+    load: (): Promise<string | null> => ipcRenderer.invoke("session:load"),
+    save: (token: string): Promise<boolean> => ipcRenderer.invoke("session:save", token),
+    clear: (): Promise<void> => ipcRenderer.invoke("session:clear"),
+  },
+  config: {
+    load: (): Promise<ShopConfigBridge | null> => ipcRenderer.invoke("config:load"),
+    save: (c: ShopConfigBridge): Promise<void> => ipcRenderer.invoke("config:save", c),
+    clear: (): Promise<void> => ipcRenderer.invoke("config:clear"),
+  },
+};
+
+export type RecycleBridge = typeof bridge;
+
+contextBridge.exposeInMainWorld("recycle", bridge);
