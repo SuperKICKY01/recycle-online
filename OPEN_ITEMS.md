@@ -1705,6 +1705,21 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
 
 ## Code debt found and left in place
 
+- **THE SHOP'S NAME: SHOWN, NOT EDITABLE — A RECORDED DECISION MET A BRIEF THAT LISTS IT (2026-10-13, B6).** The B6 brief
+  lists "shop information (name, address, phone — what the slip prints)"; `server/app/master.py` ShopUpdate records that
+  `name` is NOT a setting ("changing either is a provisioning act", decision 9ad225e). B6 shows the name read-only and
+  edits address and phone. Whether the shop may rename itself is the advisor's call; it is one optional field and a
+  proof cell if yes.
+
+- **THE DATABASE STILL DESCRIBES `roles.manage` AS GATING NO ROUTE** (`permissions.description`, migration 0019's
+  literal; `GET /roles` returns it). The code's copy was corrected 2026-10-13; nothing compares the two texts, and the
+  screen words every code itself, so nothing shows it. A migration rewriting the row is the fix.
+
+- **NO ROUTE CHANGES AN ACCOUNT'S ROLE, AND NONE CREATES A ROLE (2026-10-13, B6).** Ticks are edited per role; a person
+  who needs a different set needs a different role, and today the only roles are owner/admin/staff. `POST /users` picks
+  the role once. A role change for an existing account (with the escalation guard) and shop-made roles are the next
+  surface of the role screen.
+
 - **NO ROUTE READS OR EDITS A ROLE'S PERMISSIONS, AND NONE CHANGES A USER'S ROLE (measured 2026-10-13 from
   `/openapi.json`: no `/roles` path; `UserCreate` takes a role, nothing updates it).** B6's "permissions as ticks" needs
   server route code under `roles.manage` (owner-only at birth). Recorded at B5; B6 decides.

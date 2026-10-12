@@ -12,7 +12,7 @@ lesson file; anything written here is destroyed by the next run.
 byte for byte, with line endings normalised to LF on both sides first. It exits
 1 on any difference. That is how a lesson edited without regenerating is caught.
 
-**Sources:** 73 lesson files, `lessons/*.md`, ASCII filename order.
+**Sources:** 74 lesson files, `lessons/*.md`, ASCII filename order.
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
@@ -102,6 +102,7 @@ line instead of by heading depth.
 - `sqlite-busy-timeout-first.md` -- PRAGMA busy_timeout must be the FIRST statement on a SQLite connection
 - `sqlite-money-is-text.md` -- In SQLite, money columns are TEXT — and STRICT will not save you
 - `sync-state-needs-startup-recovery.md` -- An in-progress state that nothing polls strands records forever
+- `thai-words-nest-select-controls-by-role.md` -- Thai words nest: select a control by its role and exact name, never by a text fragment
 - `the-observer-is-a-writer-to-what-it-observes.md` -- The observer is a writer to what it observes
 - `two-green-proofs-do-not-cover-the-seam.md` *(1 amendment)* -- Two green proofs do not cover the seam between them
 - `unavailable-is-not-rejected.md` *(1 amendment)* -- A failure to reach a verdict is not a negative verdict — and not every verdict is final
@@ -9939,6 +9940,29 @@ at bill creation; regenerate it on retry and every recovery becomes a duplicate.
 `listReadyToSend` returns nothing — the bill really is unreachable — before
 `recoverInterrupted()` returns it to `pending` and it syncs. CASE 3 proves the
 same-key retry after a lost response yields exactly one bill on the server.
+
+---
+
+**SOURCE:** `thai-words-nest-select-controls-by-role.md`
+
+# Thai words nest: select a control by its role and exact name, never by a text fragment
+
+**Applies to:** every Playwright (or any DOM) proof that clicks a control by its Thai label.
+
+**What happened (desktop B5 and B6, 2026-10-13).** `page.click("text=ปิด")` was meant for a panel's close button. Playwright's
+`text=` matches a SUBSTRING, and `เปิดใช้งานอีกครั้ง` ("bring back") contains `ปิด`: the proof clicked "bring back"
+right after retiring a product, and its cell read an active product as a retirement that had not stuck. A day later
+`text=ปิดกะ` ("close shift") clicked the hint sentence `…ตอนปิดกะ…` beside the button, and `เปิดกะ` ("open shift") would
+have matched too. Thai composes words from words with no spaces — ปิด in เปิด, ปิดกะ in เปิดกะ and in any sentence about
+closing a shift — so a fragment that is unique in English is routinely not unique in Thai. Both times the proof went red
+for a reason that was the PROOF's, and both times the first reading of the red was "the screen is wrong".
+
+**The rule.** Click by role and EXACT accessible name — `page.getByRole("button", { name: "ปิดกะ", exact: true })` — or by a
+`data-*` attribute the screen sets for the purpose (`.panel .panel-head button`, `[data-toggle-active]`). A text
+selector is for READING what a screen says, never for choosing what to press.
+
+**When a click-driven cell goes red,** look at the window before the code: the last-state screenshot showed the open
+shift still open with the amount typed — the click had landed elsewhere — which a log line could never say.
 
 ---
 

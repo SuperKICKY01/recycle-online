@@ -21,7 +21,9 @@
     "prove:printer": "npm run build && node dist/proof/provePrinter.cjs",
     "prove:slipflow": "npm run build && node dist/proof/proveSlipFlow.cjs",
     "prove:master": "npm run build && node dist/proof/proveMaster.cjs",
-    "prove:masterflow": "npm run build && node dist/proof/proveMasterFlow.cjs"
+    "prove:masterflow": "npm run build && node dist/proof/proveMasterFlow.cjs",
+    "prove:people": "npm run build && node dist/proof/provePeople.cjs",
+    "prove:peopleflow": "npm run build && node dist/proof/provePeopleFlow.cjs"
   },
   "dependencies": {
     "@recycle/shop-time": "file:../packages/shop-time",

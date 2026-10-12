@@ -28,7 +28,8 @@ WHAT IS MINTED, AND WHAT IS DELIBERATELY NOT. Section 3.1 lists 23 codes; THIRTE
 were minted by unit 1, the ones a route gates on in this tree (the owner's decision
 2026-09-04: a permission nobody checks means nothing, and ten unchecked rows would
 be ten meanings a later session must guess). One of the thirteen is the exception
-and says so at its line: `roles.manage` gates no route yet. Unit 3 (the money
+and says so at its line: `roles.manage` gates no route yet (SUPERSEDED 2026-10-13: PUT
+/roles/{id}/permissions gates on it, app/roles.py -- the role screen). Unit 3 (the money
 ledger, migration 0020) minted the FOURTEENTH, `payments.record`, the day
 POST /payments and GET /payments gated on it. The shifts unit (migration 0022)
 minted the FIFTEENTH, `shifts.manage`, the day the drawer routes gated on it.
@@ -140,9 +141,12 @@ DESCRIPTIONS: Mapping[Permission, str] = {
     # separation enforceable today -- an admin cannot mint an owner because the
     # owner's set is not a subset of the admin's. The route that will gate on it
     # is the role-management screen (OPEN_ITEMS.md, owed).
+    # SUPERSEDED 2026-10-13: the role screen's PUT /roles/{id}/permissions gates on it (app/roles.py).
+    # The DATABASE's copy of this sentence (0019's literal) still says "no route gates on this yet"
+    # until a migration rewrites it (OPEN_ITEMS.md); nothing compares the two texts.
     Permission.ROLES_MANAGE: (
-        "create and edit a shop's own roles (the role-management screen, owed;"
-        " no route gates on this yet)"
+        "edit which permissions each of a shop's roles holds: PUT /roles/{id}/permissions"
+        " (the owner role and roles.manage itself are not editable)"
     ),
     Permission.PAYMENTS_RECORD: (
         "record money leaving the shop and read the ledger: POST /payments, GET /payments"

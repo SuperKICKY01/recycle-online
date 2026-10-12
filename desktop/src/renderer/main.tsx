@@ -14,6 +14,7 @@ import { normaliseApiBase, noticeFor, Session, SESSION_TEXT, shellNoticeFor, typ
 import type { ApiOutcome, WhoAmI } from "../shared/api";
 import { BillsScreen } from "./Bills";
 import { MasterScreen } from "./Master";
+import { PeopleScreen } from "./People";
 import { PrinterScreen } from "./Slip";
 import { Shell, type NavItem } from "./Shell";
 import { SetupScreen, SignInScreen } from "./SignIn";
@@ -21,6 +22,7 @@ import { SetupScreen, SignInScreen } from "./SignIn";
 const NAV: readonly NavItem[] = [
   { id: "bills", label: "บิลรับซื้อ", icon: "receipt", enabled: true },
   { id: "master", label: "ข้อมูลหลัก", icon: "box", enabled: true },
+  { id: "people", label: "ร้านและพนักงาน", icon: "store", enabled: true },
   { id: "printer", label: "เครื่องพิมพ์", icon: "printer", enabled: true },
 ];
 
@@ -224,6 +226,7 @@ function App() {
       {shellNotice !== null ? <p className="notice notice-warn shell-notice" role="status">{shellNotice}</p> : null}
       {current === "printer" ? <PrinterScreen />
         : current === "master" ? <MasterScreen session={sessionRef.current} onSettle={settle} />
+        : current === "people" ? <PeopleScreen session={sessionRef.current} onSettle={settle} />
         : <BillsScreen session={sessionRef.current} onSettle={settle} />}
     </Shell>
   );

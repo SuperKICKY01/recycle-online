@@ -18,6 +18,8 @@ What it does, in order, and nothing to the live database but a READ (the dump):
   5. serves uvicorn IN THIS PROCESS on 127.0.0.1:<free port> until killed, so killing this
      process stops the server (no orphaned child on Windows).
 --ttl sets JWT_TTL_SECONDS for this server only (the expired-session cells use a short one).
+--role names the born-with role of the per-run user (default admin; `owner` for the role screen's
+proof, since only the owner holds roles.manage).
 """
 from __future__ import annotations
 
@@ -68,7 +70,7 @@ def restore(live: str) -> None:
         raise SystemExit(f"SCRATCH_SERVER_REFUSED restore_db.py: {(cp.stdout + cp.stderr)[-400:]}")
 
 
-async def provision() -> dict:
+async def provision(role: str) -> dict:
     from sqlalchemy import text
 
     from app.db import SYSTEM_ACTOR_ID, directory_connection, tenant_connection
@@ -79,7 +81,7 @@ async def provision() -> dict:
     password = secrets.token_urlsafe(12)
     async with tenant_connection(TENANT_A_ID, actor_id=SYSTEM_ACTOR_ID,
                                  actor_username="system:scratch_server") as conn:
-        role_id = (await conn.execute(text("SELECT id FROM roles WHERE code = 'admin'"))).scalar_one()
+        role_id = (await conn.execute(text("SELECT id FROM roles WHERE code = :c"), {"c": role})).scalar_one()
         await conn.execute(
             text("INSERT INTO users (id, tenant_id, username, full_name, role_id, password_hash)"
                  " VALUES (:id, :t, :u, :fn, :r, :ph)"),
@@ -99,6 +101,7 @@ async def provision() -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ttl", type=int, default=None)
+    ap.add_argument("--role", choices=("owner", "admin", "staff"), default="admin")
     args = ap.parse_args()
     live = make_url(os.environ["APP_DATABASE_URL"]).database
     if SCRATCH == live:
@@ -108,7 +111,7 @@ def main() -> None:
         os.environ[key] = make_url(ORIG_ENV[key]).set(database=SCRATCH).render_as_string(hide_password=False)
     if args.ttl is not None:
         os.environ["JWT_TTL_SECONDS"] = str(args.ttl)
-    info = asyncio.run(provision())
+    info = asyncio.run(provision(args.role))
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = int(s.getsockname()[1])

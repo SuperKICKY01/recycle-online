@@ -204,6 +204,19 @@ textarea { resize: vertical; }
 .price-row input { text-align: right; font-variant-numeric: tabular-nums; }
 .price-row .field-problem { grid-column: 1 / -1; }
 
+/* --- shop and people (B6) ------------------------------------------------------------------ */
+.policy { border: 0; padding: 12px 0 0; margin: 8px 0 0; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+.tick-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr; gap: 2px; font-size: 0.875rem; }
+.tick-on { color: var(--text); }
+.tick-off { color: var(--text-muted); }
+.tick-grid { max-width: 880px; }
+.tick-grid .tick-col { text-align: center; width: 110px; }
+.tick-grid tbody tr { cursor: default; }
+.tick-grid input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
+.tick-group td { background: var(--panel); font-weight: 700; font-size: 0.8125rem; color: var(--text-muted); }
+.variance { color: var(--danger); font-weight: 700; }
+.drawer section { display: flex; flex-direction: column; gap: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+
 /* --- the one date entry (D-5): Buddhist era, day first, typed or picked -------------------- */
 .date-field { position: relative; }
 .date-input { display: flex; align-items: stretch; }

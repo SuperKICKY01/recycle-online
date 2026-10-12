@@ -177,6 +177,39 @@ anchor next pass.
   (R2). Lesson amended: `correct-classification-can-still-render-as-an-error.md` (a reused wording function's domain
   widened by a new caller). After the fixes: `prove_bill_filters` 14, `prove:bills` 15, `prove:billsflow` 10,
   `prove:slip` 15, `prove:slipflow` 6 — each exit 0 twice.
+- **B6 — SHOP AND PEOPLE (SRS 1.9, 4.1): shop information, settings, staff accounts, permissions as ticks, and the
+  cash drawer — proven against a real server.** Nav `ร้านและพนักงาน`, four tabs. **ข้อมูลร้าน:** the name SHOWN and locked
+  (`ชื่อร้านพิมพ์อยู่บนสลิปทุกใบ จึงเปลี่ยนได้ผ่านผู้ให้บริการเท่านั้น` — the server records renaming as a provisioning act,
+  master.py ShopUpdate / 9ad225e; not overturned here, OPEN_ITEMS), address and phone (what the slip prints) and the
+  default grade editable, an emptied field sent as null; the branch's two policy switches (separate cashier, shifts).
+  **พนักงาน:** accounts listed, added (username, name, role, first password), retired and brought back, login unlocked,
+  sessions ended everywhere, a new password set; each account's ticks shown read-only — they ARE its role's. **สิทธิ์ตาม
+  ตำแหน่ง:** a role × permission grid of ticks with every code worded in Thai and grouped; the owner's column ticked and
+  locked, the roles.manage row locked; edited only by a `roles.manage` holder. **ลิ้นชักเงิน:** open a shift with its
+  float, the running figure (money.view_shop), close with the counted cash — the screen shows the SERVER's expected,
+  counted and variance — and the reason for a difference, once. **NEW SERVER ROUTES** (`server/app/roles.py`, route code,
+  the role screen permissions.py filed as owed and the first route gating on `roles.manage`): `GET /roles`
+  (users.manage) and `PUT /roles/{id}/permissions` (roles.manage) replacing one role's set atomically, audited with the
+  caller as actor; refusals: owner role fixed (409), roles.manage the owner's alone (422), unknown code (422), the
+  escalation guard (403 role_exceeds_caller). Effect is immediate (permissions are read per request, never from the
+  token). `scripts/scratch_server.py` gains `--role` (owner for this proof). NEW proofs, each exit 0 twice:
+  `prove_roles.py` (10 over real HTTP: sets equal Postgres; staff/admin refused naming the permission; a removed tick
+  refuses the SAME token's next request and an added one admits it; the audit row names the owner; owner role 409;
+  roles.manage 422; unknown 422; Shop B's role 404), `prove:people` (8 pure: all 16 codes worded and grouped once; tick
+  rules; the drawer reader refusing numeric money; account and amount checks; the shop body; zero variance),
+  `prove:peopleflow` (5, the real screens as a per-run owner: name locked, address/phone read back, emptied phone null;
+  an account added, its ticks equal its role's, retired it cannot sign in, back it can; ticking money.view_own admits a
+  staff token and unticking refuses it, the owner column and roles.manage row locked; no reads for 3 s on an idle
+  screen; the drawer at 1500 → running 1,500.00 → closed at 1450.5 showing `1,500.00`/`1,450.50`/`-49.50` and the reason).
+  Disproofs, each restored byte-identical: owner role editable → R7; roles.manage tickable → R8; the edit gated on
+  users.manage → R3; no catalogue check → R9 (the escalation guard caught it, 403); the owner's column editable on screen
+  → P3; an effect with no dependency list → P4 (206 → 574 reads while idle); an emptied field sent as "" → S1; the drawer
+  reader taking a number → R1; the running figure not reloaded after an open → P5. NOT DISPROVED, and why: the
+  `[props]` dependency the first draft carried does NOT loop in this tree (the parent does not re-render while idle) —
+  the change to stable dependencies is defensive and P4 holds the real loop shape instead. Defects found by the first
+  flow runs and fixed before commit: a "saved" line left standing beside new unsaved ticks; no running figure after an
+  open (the open's answer carries none). P5's reason is read back from the reason write's own answer — no route reads a
+  shift by id. Screenshots `E:\recycle-shots\lane-a\desktop\b6_*.png`.
 - **B5 — MASTER DATA ON THE DESKTOP (SRS 1.1–1.6), proven against a real server.** Nav `ข้อมูลหลัก`, one screen with
   five tabs — สินค้าและราคา, หมวดหมู่, หน่วยนับ, เกรด, ผู้ขาย — each a searchable list beside a sticky panel: add, edit,
   retire (`ปิดใช้งาน`) and bring back (`เปิดใช้งานอีกครั้ง`); NOTHING IS DELETED (no delete route exists). Codes are

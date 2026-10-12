@@ -13,9 +13,9 @@ const SERVER_DIR = join(DESKTOP_ROOT, "..", "server");
 
 export interface ScratchInfo { base: string; shop_code: string; tenant_id: string; username: string; password: string }
 
-export function startScratchServer(): Promise<{ proc: ChildProcess; info: ScratchInfo; log: () => string }> {
+export function startScratchServer(role: "owner" | "admin" = "admin"): Promise<{ proc: ChildProcess; info: ScratchInfo; log: () => string }> {
   const python = join(SERVER_DIR, ".venv", "Scripts", "python.exe");
-  const proc = spawn(python, ["scripts/scratch_server.py"], {
+  const proc = spawn(python, ["scripts/scratch_server.py", "--role", role], {
     cwd: SERVER_DIR, env: { ...process.env, PYTHONUTF8: "1" }, stdio: ["ignore", "pipe", "pipe"],
   });
   let out = "";

@@ -28,6 +28,7 @@ from .directory import router as directory_router
 from .master import router as master_router
 from .payments import router as payments_router
 from .reports import router as reports_router
+from .roles import router as roles_router
 from .security import DUMMY_HASH, create_access_token, verify_password
 from .shifts import router as shifts_router
 from .users import router as users_router
@@ -289,6 +290,7 @@ app.include_router(directory_router)
 app.include_router(master_router)
 app.include_router(payments_router)
 app.include_router(reports_router)
+app.include_router(roles_router)
 app.include_router(shifts_router)
 app.include_router(users_router)
 
