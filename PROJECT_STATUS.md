@@ -177,6 +177,27 @@ anchor next pass.
   (R2). Lesson amended: `correct-classification-can-still-render-as-an-error.md` (a reused wording function's domain
   widened by a new caller). After the fixes: `prove_bill_filters` 14, `prove:bills` 15, `prove:billsflow` 10,
   `prove:slip` 15, `prove:slipflow` 6 — each exit 0 twice.
+- **1a — A VOID IS WRITTEN ONCE (ADVISOR-DECIDED 2026-10-12; strengthens hard rule 5's write path).** `void_bill`'s
+  UPDATE now carries `AND voided_at IS NULL` and returns the row it changed; when it changes none, the bill is 404 or
+  already voided → 409 `{"kind": "conflict", "code": "bill_already_voided", "message": "บิลนี้ถูกยกเลิกไปแล้ว — ผู้ยกเลิก
+  เวลา และเหตุผลเดิมยังคงอยู่ ไม่ถูกแก้ไข"}`, the first void's who/when/why untouched. Hard rule 4: `VoidRequest` takes an
+  OPTIONAL `idempotency_key`, stored by **migration 0025** (`purchase_bills.void_idempotency_key text NULL`, CHECK key ⇒
+  voided; downgrade refuses while any row carries a key); a replay with the key the void was made with returns its
+  original 200. The phone sends no key and keeps settling a 409 as done (`mobile/src/adapters/httpTransport.ts`
+  voidBill, status-only), so nothing changes for it. The desktop mints one key per void it means and, on a 409, reloads
+  the bill and shows the record that stands (`บิลนี้ถูกยกเลิกไปก่อนแล้ว — เหตุผลของคุณไม่ได้ถูกบันทึก …`). MIGRATION:
+  rehearsed on a scratch copy of dev (`scripts/rehearse_migration.py`: 0024 → 0025 → 0024 → 0025, each revision read
+  back), then dev backed up (`E:\recycle-online-backups\recycle_20261012T162936Z_pre-0025`, 28674 rows) and upgraded
+  (`alembic current` 0024 → `0025 (head)`). Proof `prove_bill_filters` (19 cells, exit 0 twice): V5 sequential second void;
+  W1 a BARRIER Postgres can see — a superuser holds the row lock, two admins void, both UPDATEs observed waiting at once
+  in `pg_stat_activity` (watched from a SEPARATE connection: inside the lock holder's transaction the view is cached, and
+  the first W1 run read 0 waiters forever), then released; W2 exactly one 200 and one 409; W3 the stored voided_by,
+  void_reason and key equal the WINNER's, value against value in Postgres; W4 the winner's replay → 200, record
+  unchanged; W5 the loser's replay → 409. `prove:billsflow` B10: voided from elsewhere while the desktop's form is open
+  → the screen says so and shows THEIR reason. Disproofs, each restored byte-identical: guard removed → V5 W2 W3 (two
+  200s, overwritten); the OLD SELECT-then-UPDATE shape → W2 red with V5 GREEN (the race needs the barrier, and was real);
+  replay answered 409 → W4; the desktop treating 409 as a bare error → B10. `prove_permissions` exit 0 twice;
+  `prove_bills.py` needs a live server (ConnectError standalone) and is left to the gate.
 - **B4 — the thermal slip (P1.17), bytes proven, paper NOT observed.** `desktop/src/shared/slip.ts` (pure): `slipLines`
   decides what a slip says (shop name/address/phone from `GET /shop`; doc_no; shop-time BE date; seller CODE and NAME
   only; plate; per line ชั่ง/หัก/สุทธิ x price = amount; total; paid; printed-at), `lineText` lays it out at 32 columns

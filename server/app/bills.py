@@ -365,6 +365,17 @@ class BillCreate(BaseModel):
 
 class VoidRequest(BaseModel):
     reason: str = Field(min_length=1)
+    # OPTIONAL (migration 0025). A client that may repeat this void sends one key per void it
+    # means; the replay of THAT void returns its original outcome (hard rule 4). Absent (the
+    # phone today) a repeat is simply the 409 below, which the phone already settles as done.
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+VOID_REFUSED_ALREADY = {
+    "kind": "conflict",
+    "code": "bill_already_voided",
+    "message": "บิลนี้ถูกยกเลิกไปแล้ว — ผู้ยกเลิก เวลา และเหตุผลเดิมยังคงอยู่ ไม่ถูกแก้ไข",
+}
 
 
 async def _resolve_bill_branch(
@@ -1048,24 +1059,37 @@ async def void_bill(
     principal: Principal = Depends(require(Permission.BILLS_VOID)),
 ) -> dict:
     async with tenant_connection(principal.tenant_id) as conn:
-        h = (
-            await conn.execute(
-                text("SELECT voided_at FROM purchase_bills WHERE id = :id"),
-                {"id": bill_id},
-            )
-        ).mappings().first()
-        if h is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "bill not found")
-        if h["voided_at"] is not None:
-            raise HTTPException(status.HTTP_409_CONFLICT, "bill already voided")
+        # THE WRITE IS CONDITIONAL (ADVISOR-DECIDED 2026-10-12): a void record is the shop's
+        # anti-fraud evidence and is never overwritten. `voided_at IS NULL` in the UPDATE's own
+        # WHERE is what makes two concurrent voids safe at READ COMMITTED: the second waits on
+        # the row lock, Postgres re-checks the WHERE against the committed row, finds it voided,
+        # and updates nothing. A SELECT-then-UPDATE (the shape before this) let both succeed and
+        # the second overwrite the first's who/when/why.
         # doc_no is left untouched -> a voided bill keeps its number, and the
         # counter is never decremented, so the number is never reused.
-        await conn.execute(
-            text(
-                "UPDATE purchase_bills"
-                " SET voided_at = now(), voided_by = :by, void_reason = :r"
-                " WHERE id = :id"
-            ),
-            {"by": principal.user_id, "r": body.reason, "id": bill_id},
-        )
+        won = (
+            await conn.execute(
+                text(
+                    "UPDATE purchase_bills"
+                    " SET voided_at = now(), voided_by = :by, void_reason = :r,"
+                    "     void_idempotency_key = :k"
+                    " WHERE id = :id AND voided_at IS NULL"
+                    " RETURNING id"
+                ),
+                {"by": principal.user_id, "r": body.reason, "k": body.idempotency_key, "id": bill_id},
+            )
+        ).first()
+        if won is None:
+            h = (
+                await conn.execute(
+                    text("SELECT voided_at, void_idempotency_key FROM purchase_bills WHERE id = :id"),
+                    {"id": bill_id},
+                )
+            ).mappings().first()
+            if h is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "bill not found")
+            # A replay of the void that won -- the same key -- gets that void's outcome again.
+            if body.idempotency_key is not None and h["void_idempotency_key"] == body.idempotency_key:
+                return await _read_bill(conn, bill_id)
+            raise HTTPException(status.HTTP_409_CONFLICT, detail=VOID_REFUSED_ALREADY)
         return await _read_bill(conn, bill_id)

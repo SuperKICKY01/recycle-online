@@ -26,6 +26,15 @@ fixture bill off the page (measured: the first run's S1/N1 reds, a fixture flaw,
   V3  the voided bill is GONE from the default list and PRESENT with include_voided, its reason on
       the row; and the purchase_bills row still exists in Postgres (count 1)
   V4  absent filters: the list is exactly the old shape plus the new keys (back-compat)
+  V5  a second void (no key) of a voided bill -> 409; the first void's record unchanged
+  W1  TWO CONCURRENT VOIDS, with a barrier built from Postgres itself: a superuser connection holds
+      the bill's row lock while two admins void it; the cell waits until BOTH UPDATEs are seen
+      blocked on that lock at the same moment (pg_stat_activity), then releases it
+  W2  exactly one 200 and one 409 naming bill_already_voided
+  W3  the stored record (voided_by, void_reason, void_idempotency_key) equals the WINNER's, read
+      from Postgres value against value
+  W4  the winner's replay with the SAME idempotency key -> 200, the original outcome, record unchanged
+  W5  the loser's replay with ITS key -> still 409; record unchanged
 """
 from __future__ import annotations
 
@@ -57,7 +66,8 @@ SCRATCH_DB = scratch_name("recycle_bill_filters_scratch")
 RUN = uuid.uuid4().hex[:8]
 ORIG_ENV = dict(os.environ)
 SHOP_TZ = dt.timezone(dt.timedelta(hours=7))
-PW = {"adm": f"pw-{RUN}-adm", "stf": f"pw-{RUN}-stf"}
+PW = {"adm": f"pw-{RUN}-adm", "adm2": f"pw-{RUN}-adm2", "stf": f"pw-{RUN}-stf"}
+USER_IDS: dict[str, uuid.UUID] = {}
 
 failures: list[str] = []
 passes: list[str] = []
@@ -91,12 +101,13 @@ async def provision() -> None:
     from app.security import hash_password
     async with tenant_connection(TENANT_A_ID, actor_id=SYSTEM_ACTOR_ID,
                                  actor_username="system:prove_bill_filters") as conn:
-        for key, role in (("adm", "admin"), ("stf", "staff")):
+        for key, role in (("adm", "admin"), ("adm2", "admin"), ("stf", "staff")):
             rid = (await conn.execute(text("SELECT id FROM roles WHERE code = :c"), {"c": role})).scalar_one()
+            USER_IDS[key] = uuid.uuid4()
             await conn.execute(
                 text("INSERT INTO users (id, tenant_id, username, full_name, role_id, password_hash)"
                      " VALUES (:id, :t, :u, :fn, :r, :ph)"),
-                {"id": uuid.uuid4(), "t": TENANT_A_ID, "u": f"{key}-{RUN}", "fn": key, "r": rid,
+                {"id": USER_IDS[key], "t": TENANT_A_ID, "u": f"{key}-{RUN}", "fn": key, "r": rid,
                  "ph": await hash_password(PW[key])})
 
 
@@ -117,6 +128,53 @@ async def row_count(bill_id: str) -> int:
     c = await asyncpg.connect(host=u.host, port=u.port, user="postgres", password="postgres", database=SCRATCH_DB)
     try:
         return int(await c.fetchval("SELECT count(*) FROM purchase_bills WHERE id = $1", uuid.UUID(bill_id)))
+    finally:
+        await c.close()
+
+
+async def race_two_voids(base: str, bill_id: str, a: tuple[dict, str, str], b: tuple[dict, str, str]) -> dict:
+    """Both voids held at the bill's row lock until Postgres shows them BOTH waiting, then released."""
+    import asyncpg
+    u = make_url(ORIG_ENV["APP_DATABASE_URL"])
+    su = await asyncpg.connect(host=u.host, port=u.port, user="postgres", password="postgres", database=SCRATCH_DB)
+    # The WATCHER is a second connection, outside the lock-holder's transaction: inside a
+    # transaction pg_stat_activity is read ONCE and cached, so polling from the lock holder re-reads
+    # its first, empty picture forever (measured: the first W1 run saw 0 waiters every time).
+    mon = await asyncpg.connect(host=u.host, port=u.port, user="postgres", password="postgres", database=SCRATCH_DB)
+    waiting = 0
+    try:
+        tr = su.transaction()
+        await tr.start()
+        await su.execute("SELECT 1 FROM purchase_bills WHERE id = $1 FOR UPDATE", uuid.UUID(bill_id))
+        async with httpx.AsyncClient(timeout=60) as c:
+            tasks = [asyncio.create_task(c.post(f"{base}/bills/{bill_id}/void", headers=h,
+                                                json={"reason": r, "idempotency_key": k})) for h, r, k in (a, b)]
+            for _ in range(200):
+                waiting = int(await mon.fetchval(
+                    "SELECT count(*) FROM pg_stat_activity WHERE datname = $1 AND wait_event_type = 'Lock'"
+                    " AND query ILIKE '%UPDATE purchase_bills%voided_at%'", SCRATCH_DB))
+                if waiting >= 2:
+                    break
+                await asyncio.sleep(0.05)
+            snapshot = [dict(r) for r in await mon.fetch(
+                "SELECT pid, state, wait_event_type, wait_event, left(query, 90) AS q FROM pg_stat_activity"
+                " WHERE datname = $1 AND pid <> pg_backend_pid()", SCRATCH_DB)]
+            await tr.rollback()
+            ra, rb = await asyncio.gather(*tasks)
+    finally:
+        await su.close()
+        await mon.close()
+    return {"waiting": waiting, "a": ra, "b": rb, "snapshot": snapshot}
+
+
+async def void_record_full(bill_id: str) -> tuple:
+    import asyncpg
+    u = make_url(ORIG_ENV["APP_DATABASE_URL"])
+    c = await asyncpg.connect(host=u.host, port=u.port, user="postgres", password="postgres", database=SCRATCH_DB)
+    try:
+        r = await c.fetchrow("SELECT voided_at, voided_by, void_reason, void_idempotency_key FROM purchase_bills"
+                             " WHERE id = $1", uuid.UUID(bill_id))
+        return (r["voided_at"], r["voided_by"], r["void_reason"], r["void_idempotency_key"])
     finally:
         await c.close()
 
@@ -251,6 +309,34 @@ def run_cells(base: str) -> None:
     after = asyncio.run(void_record(t2))
     check(again.status_code == 409 and after == first and first[2] == reason,
           f"V5 a second void -> 409 and voided_at/voided_by/void_reason unchanged (got {again.status_code}; same={after == first})")
+    # W: two concurrent voids of one bill, held at a barrier Postgres can see.
+    adm2 = login(base, "adm2")
+    w = post_bill(base, adm, sq, "w1")
+    ka, kb = f"void-a-{RUN}", f"void-b-{RUN}"
+    rsn_a, rsn_b = f"ชั่งซ้ำ A {RUN}", f"รถผิดคัน B {RUN}"
+    out = asyncio.run(race_two_voids(base, w, (adm, rsn_a, ka), (adm2, rsn_b, kb)))
+    check(out["waiting"] >= 2, f"W1 both voids seen blocked on the bill's row lock at once ({out['waiting']} waiting)"
+          + ("" if out["waiting"] >= 2 else f" snapshot={out['snapshot']}"))
+    codes = sorted([out["a"].status_code, out["b"].status_code])
+    loser = out["a"] if out["a"].status_code == 409 else out["b"]
+    ldet = loser.json().get("detail") if loser.status_code == 409 else None
+    check(codes == [200, 409] and isinstance(ldet, dict) and ldet.get("code") == "bill_already_voided"
+          and bool(ldet.get("message")), f"W2 exactly one 200 and one 409 bill_already_voided (got {codes}, {ldet})")
+    a_won = out["a"].status_code == 200
+    win = ("adm", rsn_a, ka, adm) if a_won else ("adm2", rsn_b, kb, adm2)
+    lose = ("adm2", rsn_b, kb, adm2) if a_won else ("adm", rsn_a, ka, adm)
+    rec = asyncio.run(void_record_full(w))
+    check(rec[0] is not None and rec[1] == USER_IDS[win[0]] and rec[2] == win[1] and rec[3] == win[2],
+          f"W3 Postgres holds the winner's record: voided_by {rec[1] == USER_IDS[win[0]]}, reason {rec[2] == win[1]},"
+          f" key {rec[3] == win[2]} (winner {win[0]})")
+    rp = httpx.post(f"{base}/bills/{w}/void", headers=win[3], timeout=15, json={"reason": win[1], "idempotency_key": win[2]})
+    rec_after = asyncio.run(void_record_full(w))
+    check(rp.status_code == 200 and rp.json().get("status") == "voided" and rp.json().get("void_reason") == win[1]
+          and rec_after == rec, f"W4 the winner's replay (same key) -> {rp.status_code}, the original outcome; record unchanged {rec_after == rec}")
+    rl = httpx.post(f"{base}/bills/{w}/void", headers=lose[3], timeout=15, json={"reason": lose[1], "idempotency_key": lose[2]})
+    check(rl.status_code == 409 and asyncio.run(void_record_full(w)) == rec,
+          f"W5 the loser's replay (its own key) -> {rl.status_code}; record unchanged")
+
     plain = httpx.get(f"{base}/bills", headers=adm, timeout=15, params={"limit": 5})
     keys = set(plain.json()["bills"][0]) if plain.json()["bills"] else set()
     old = {"id", "doc_no", "branch_id", "seller_id", "vehicle_no", "total_amount", "paid_amount", "payment_status",

@@ -629,7 +629,7 @@ shorthand for locating the row, not the rule.
 | 3a | a bill has no number until it syncs | **DB**: `doc_no` nullable, partial unique index; **client**: the screen must say so | schema + client |
 | 3b | **the series is gap-free** | **APPLICATION CODE ONLY** — `bills.py` increments a locked counter row; **CHECKED AFTER THE FACT** by `reconcile.py:1037` (T8) | **not a schema guarantee** |
 | 4 | a repeat must not buy twice | **DB constraint** `uq_bills_tenant_idem UNIQUE (tenant_id, idempotency_key)`, with the handler re-SELECTing the key on a race | schema |
-| 5 | no deletes on transactions | **DB constraint** `ck_bills_void_consistency` + composite FK on `voided_by`; **and by absence** — there is no delete route (observed 405) | schema + absence |
+| 5 | no deletes on transactions | **DB constraint** `ck_bills_void_consistency` + composite FK on `voided_by`; **and by absence** — there is no delete route (observed 405) **and a void is written ONCE** — `UPDATE … WHERE id = :id AND voided_at IS NULL` (2026-10-12; a second void is 409 `bill_already_voided`, a replay with the void's own `idempotency_key` gets the original outcome, migration 0025; `prove_bill_filters` V5, W1–W5) | schema + absence + conditional write |
 | 6 | all three weights, both prices, stored amount | **DB columns**, all NOT NULL, plus `ck_items_net CHECK (net_weight = gross_weight - tare_weight)` | schema |
 | 7 | keep both timestamps | **DB columns**, both NOT NULL; `server_received_at` written explicitly from the transaction's own clock, not left to the default | schema |
 | 8 | write locally first, failure visible | **CLIENT ONLY, by definition** — it is a statement about an app on a phone. No server constraint can express it and none does | client, proofs only |

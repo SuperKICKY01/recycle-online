@@ -20,6 +20,9 @@
  *      the shell does not call it a network fault (red team 2026-10-12, finding 1)
  *   B9 the server gone: a new range shows NO bills and NO count from the range before it, and says
  *      the load failed (finding 2)
+ *   B10 someone else voids the bill while its void form is open: the confirm is refused (409), the
+ *      panel says so and shows THEIR reason; over HTTP the bill still carries their reason
+ *      (ADVISOR-DECIDED 2026-10-12: a void record is never overwritten)
  * B4's request counter has a POSITIVE CONTROL: the real void in B5 must move it by exactly one.
  *
  * RECYCLE_SHOT_DIR set: the window is saved there as PNGs at the list, the detail and after the void
@@ -137,6 +140,22 @@ void finish("PROVE_BILLSFLOW", async () => {
     const struck = await page.locator(`[data-bill="${docA2}"]`).getAttribute("class");
     check("B7 gone from the default list; the voided toggle brings it back, struck through",
       goneByDefault && struck === "row-voided", `class=${String(struck)}`);
+
+    // B10: voided elsewhere while the form is open
+    await page.click(`[data-bill="${docB1}"] button.link`);
+    await page.waitForSelector(`[data-detail="${docB1}"]`, { timeout: 15_000 });
+    await page.click("text=ยกเลิกบิลนี้");
+    const theirs = `ยกเลิกจากโทรศัพท์ ${run}`;
+    const elsewhere = await http(info.base, "POST", `/bills/${b1}/void`, token, { reason: theirs });
+    await page.fill('textarea[name="voidReason"]', `เหตุผลจากเดสก์ท็อป ${run}`);
+    await page.click("text=ยืนยันยกเลิกบิล");
+    const told = await page.waitForSelector("[data-void-already]", { timeout: 15_000 }).then(() => true, () => false);
+    const shownReason = await page.locator(`[data-detail="${docB1}"] [data-void-reason]`).getAttribute("data-void-reason").catch(() => null);
+    const stored = (await http(info.base, "GET", `/bills/${b1}`, token)).json as { void_reason?: string };
+    await shot(page, "b3_voided_elsewhere");
+    check("B10 voided elsewhere first: the screen says so and shows THEIR reason; the stored reason is theirs",
+      elsewhere.status === 200 && told && shownReason === theirs && stored.void_reason === theirs,
+      JSON.stringify({ elsewhere: elsewhere.status, told, shownReason, stored: stored.void_reason }));
 
     const listGets = (): number => (server.log().match(/GET \/bills\?[^ ]*from_date/g) ?? []).length;
     const before8 = listGets();

@@ -1705,6 +1705,10 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
 
 ## Code debt found and left in place
 
+- **SUPERSEDED 2026-10-12 (ADVISOR-DECIDED, fixed before the B3/B4 gate):** the race below is closed — the void's write is
+  conditional, a second void is 409 `bill_already_voided`, a replay with the same key gets the original outcome
+  (migration 0025), and `prove_bill_filters` W1–W5 prove it under a Postgres-visible barrier; the old SELECT-then-UPDATE
+  shape restored as a disproof reddens W2 (`[200, 200]`) while the sequential V5 stays green, so the race was real.
 - **`POST /bills/{id}/void` CAN LET TWO CONCURRENT VOIDS BOTH SUCCEED, THE SECOND OVERWRITING THE FIRST'S WHO/WHEN/WHY
   (red team on desktop B3, 2026-10-12; PLAUSIBLE — read from source, not executed).** `server/app/bills.py` `void_bill`
   SELECTs `voided_at` with no `FOR UPDATE`, then UPDATEs `WHERE id = :id` with no `AND voided_at IS NULL`, at READ

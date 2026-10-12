@@ -215,9 +215,17 @@ function BillPanel(props: {
   const [reason, setReason] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * One idempotency key per void the operator MEANS (minted when the form opens, reused by every
+   * confirm of it): a confirm repeated after a lost answer replays that void and gets its original
+   * outcome, never a second void (migration 0025, hard rule 4).
+   */
+  const [voidKey, setVoidKey] = useState("");
+  /** Set when someone else voided the bill first: the panel then shows THEIR record. */
+  const [already, setAlready] = useState(false);
   const canVoid = bill.status === "active" && mayVoid(session.me?.permissions ?? []);
 
-  useEffect(() => { setVoiding(false); setReason(""); setProblem(null); }, [bill.id]);
+  useEffect(() => { setVoiding(false); setReason(""); setProblem(null); setAlready(false); }, [bill.id]);
 
   const confirm = async () => {
     const p = voidReasonProblem(reason);
@@ -227,13 +235,20 @@ function BillPanel(props: {
     }
     setBusy(true);
     try {
-      const out = await session.authed((t) => session.api.post(t, `/bills/${bill.id}/void`, { reason: reason.trim() }, readBillDetail));
+      const out = await session.authed((t) => session.api.post(t, `/bills/${bill.id}/void`,
+        { reason: reason.trim(), idempotency_key: voidKey }, readBillDetail));
       onSettle(out.kind);
       if (out.kind === "ok") {
         setVoiding(false);
         onVoided(out.value);
+      } else if (out.kind === "invalid" && out.status === 409) {
+        // Voided by someone else first. Their who/when/why stand; show THEM, not ours.
+        const fresh = await session.authed((t) => session.api.get(t, `/bills/${bill.id}`, readBillDetail));
+        onSettle(fresh.kind);
+        setVoiding(false);
+        setAlready(true);
+        if (fresh.kind === "ok") onVoided(fresh.value);
       }
-      else if (out.kind === "invalid" && out.status === 409) setProblem("บิลนี้ถูกยกเลิกไปแล้ว");
       else if (out.kind === "forbidden") setProblem("บัญชีนี้ไม่มีสิทธิ์ยกเลิกบิล");
       else setProblem(noticeFor(out, "session"));
     } finally {
@@ -247,6 +262,11 @@ function BillPanel(props: {
         <h2 className="panel-title">บิล {bill.doc_no ?? "—"}</h2>
         <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>ปิด</button>
       </div>
+      {already ? (
+        <p className="notice notice-warn" role="status" data-void-already>
+          บิลนี้ถูกยกเลิกไปก่อนแล้ว — เหตุผลของคุณไม่ได้ถูกบันทึก ด้านล่างคือการยกเลิกที่บันทึกไว้
+        </p>
+      ) : null}
       {bill.status === "voided" ? (
         <p className="notice notice-error" data-void-reason={bill.void_reason ?? ""}>
           ยกเลิกแล้ว{bill.voided_at !== null ? ` เมื่อ ${shopDateTime(bill.voided_at)}` : ""} — เหตุผล: {bill.void_reason}
@@ -275,7 +295,7 @@ function BillPanel(props: {
       {!voiding ? (
         <div className="void-actions">
           <button type="button" className="btn btn-primary" onClick={onPrint}>พิมพ์สลิป</button>
-          {canVoid ? <button type="button" className="btn btn-danger-quiet" onClick={() => setVoiding(true)}>ยกเลิกบิลนี้</button> : null}
+          {canVoid ? <button type="button" className="btn btn-danger-quiet" onClick={() => { setVoidKey(crypto.randomUUID()); setVoiding(true); }}>ยกเลิกบิลนี้</button> : null}
         </div>
       ) : null}
       {voiding && canVoid ? (
