@@ -89,6 +89,23 @@ anchor next pass.
   `reservenotice`, `owedsurfaces`, `version`, `parkedbill` exit 0. On the device after the fix: 15 top-ups answered 200
   over the token's minute, then ONE 401, then none for 40 s, and the banner. "Sign-in does nothing" did NOT reproduce
   (two sign-ins under the loop both reached the server). Lesson amended: `401-is-about-the-caller-not-the-bill.md`.
+- **B1 — the desktop scaffold (P1.13) and the origin policy (P1.6, closes ROADMAP D7).** `desktop/` is Electron 44.4.5
+  + React 18.3.1 + TypeScript 5.9.2 strict, bundled by esbuild 0.28.2, with ITS OWN `package.json` and
+  `package-lock.json` and NOT a member of the root workspaces (D-1); `@recycle/shop-time` by path. Electron 33 was the
+  first pin and `npm audit` reported 2 high (ASAR integrity bypass, extract-zip); 44.4.5 is the newest supported major's
+  newest release at least two weeks old (published 2026-09-23) and audits 0. One window, served from the privileged
+  scheme `app://recycle` (never `file://`), contextIsolation + sandbox on, navigation off-origin refused; the shell is
+  ONE component (`src/renderer/Shell.tsx`, left nav + content, D-4). **Origin MEASURED before the allowlist:** a fetch
+  from the page carries `Origin: app://recycle` (`prove:origin` O2; not null). Server: `CORSMiddleware` registered
+  last (outermost), allowlist EXACTLY `app://recycle`, no credentials, never `*`/`null`, no dev origin (there is no dev
+  server). NEW proofs: desktop `prove:boundary` (6 cells: root workspaces and root lockfile free of the desktop, its own
+  lock pins Electron, shop-time by path, the BE offset's digits absent from `desktop/src` with a positive control),
+  `prove:window` (4: the built app renders the shell from app://recycle), `prove:origin` (4, with a no-Origin control);
+  server `prove_cors.py` (8 cells over real HTTP: allowed preflight and GET, a 401 that still carries the header, a
+  foreign origin and `null` refused, never `*`). Disproofs, each restored byte-identical: allowlist `*` → exactly A1–A3
+  and F1–F4; `null` added → exactly F3; renderer loaded from `file://` → W2 and O2 (the measured Origin was ABSENT, not
+  `null` — O3 stayed green); the BE digits planted in `desktop/src` → exactly B5. `tools/prove_all.py` (its one allowed
+  edit, D-6) type-checks the desktop at preflight and enumerates `desktop/` `prove:*` as `desktop_prove:<x>`.
 
 **LANE A, SELLER SEARCH — C1: a seller's full ID number and address are personal data (migration 0024,
 ADVISOR-DECIDED 2026-10-12, the no-migration ban lifted for this milestone only). 2026-10-12.** Shas anchor next pass.

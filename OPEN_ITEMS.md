@@ -1705,6 +1705,11 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
 
 ## Code debt found and left in place
 
+- **ROADMAP D7's premise measured wrong for a GET (2026-10-12, desktop B1):** it says an Electron `file://` renderer
+  sends `Origin: null`; a `fetch` GET from a `file://` page to an http server carried NO Origin header at all (measured
+  by `prove:origin` under the file:// disproof, Electron 44.4.5). Moot for this program — it never loads from file:// —
+  but a reader of D7 should not carry the claim further.
+
 - **SELLER PERSONAL DATA (2026-10-12, migration 0024) — THE HOLDER SET IS ASSUMED, PENDING P1.1 / PDPA ADVICE.**
   ADVISOR-DECIDED: a seller's FULL `id_number` and `address` go only to a caller holding `sellers.read_personal`,
   granted by 0024 to every role that held `users.manage` (owner and admin at birth); every other caller receives

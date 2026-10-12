@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -248,6 +249,38 @@ async def _refuse_outdated_client(request, call_next):
                 content=version_gate.refusal_payload(client_version, floor),
             )
     return await call_next(request)
+
+
+# THE ORIGIN POLICY (ADVISOR-DECIDED D-2; closes ROADMAP D7 and is P1.6's middleware).
+#
+# EXACTLY ONE ORIGIN: the desktop renderer, served from the privileged custom scheme
+# `app://recycle` (desktop/src/main/origin.ts). That value was MEASURED before this line was
+# written -- desktop `npm run prove:origin` reads the Origin header a fetch from the page
+# actually carries -- not assumed. NEVER `*` and NEVER `null`: `null` is what an Electron
+# file:// page sends and what every sandboxed iframe sends, so allowing it would allow them all.
+# No dev server exists, so no localhost origin is named; the phone sends no Origin at all
+# (native fetch) and is unaffected.
+#
+# REGISTERED LAST, SO IT RUNS OUTERMOST (Starlette wraps later registrations around earlier
+# ones, see _refuse_outdated_client). Two consequences, both wanted: a browser PREFLIGHT, which
+# carries no client-version header, is answered here before the version gate could refuse it;
+# and a 426, 503 or 401 from inside carries the allow-origin header, so the renderer can READ
+# the refusal and show the right sentence instead of a bare network error.
+#
+# NO CREDENTIALS: the API authenticates by a bearer header, never a cookie, so
+# allow_credentials stays False and a browser never attaches ambient credentials.
+DESKTOP_RENDERER_ORIGIN = "app://recycle"
+CORS_ALLOWED_ORIGINS: tuple[str, ...] = (DESKTOP_RENDERER_ORIGIN,)
+if any(o in ("*", "null") for o in CORS_ALLOWED_ORIGINS):  # pragma: no cover - a guard on a constant
+    raise RuntimeError("CORS allowlist must never contain '*' or 'null'")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(CORS_ALLOWED_ORIGINS),
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH", "PUT"],
+    allow_headers=["authorization", "content-type", version_gate.CLIENT_API_VERSION_HEADER],
+    max_age=600,
+)
 
 
 app.include_router(bills_router)

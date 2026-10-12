@@ -1,0 +1,72 @@
+/*
+ * THE DESKTOP'S ONE STYLESHEET. Tokens first; components read only tokens.
+ * Blue-white per docs/SRS.md "Desktop Color Scheme: โทนสีฟ้า-ขาว"; light, because the use scene
+ * is a back-office PC in daylight (impeccable · craft-floor · "Pick it from the use scene").
+ */
+:root {
+  --bg: #f4f8fc;            /* content surface */
+  --panel: #e8f0f9;         /* the second neutral layer: navigation */
+  --surface: #ffffff;
+  --border: #d3e0ee;
+  --text: #13233a;          /* 15.0:1 on --surface */
+  --text-muted: #4a5d77;    /* 6.6:1 on --surface */
+  --accent: #1d5fb4;        /* primary action, current selection; 6.2:1 on white */
+  --accent-strong: #154a8e;
+  --accent-soft: #dbe8f8;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --warn: #8a5300;
+  --warn-soft: #fff4e0;
+  --ok: #17663a;
+  --ok-soft: #e5f4ea;
+  --focus: #1d5fb4;
+  --radius: 8px;
+  --font: "Leelawadee UI", "Segoe UI", "Noto Sans Thai", "Tahoma", sans-serif;
+  --step-0: 0.9375rem;      /* 15px body */
+  --step-1: 1.0625rem;
+  --step-2: 1.25rem;
+  --step-3: 1.5rem;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  font-family: var(--font);
+  font-size: var(--step-0);
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  font-variant-numeric: tabular-nums;
+}
+::selection { background: var(--accent-soft); color: var(--text); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* --- the shell ------------------------------------------------------------------------ */
+.shell { display: grid; grid-template-columns: 232px 1fr; height: 100%; }
+.shell-nav {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 20px 12px; gap: 4px;
+}
+.shell-brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 20px; }
+.shell-brand-name { font-size: var(--step-1); font-weight: 700; color: var(--accent-strong); }
+.shell-brand-sub { font-size: 0.8125rem; color: var(--text-muted); }
+.nav-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 10px; border: 0; border-radius: var(--radius);
+  background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+.nav-item:hover { background: var(--accent-soft); }
+.nav-item[aria-current="page"] { background: var(--accent); color: #fff; font-weight: 600; }
+.nav-item:disabled { color: var(--text-muted); cursor: default; background: transparent; }
+.shell-foot { margin-top: auto; padding: 10px; font-size: 0.8125rem; color: var(--text-muted); }
+.shell-main { overflow: auto; padding: 28px 36px; }
+
+.page-title { font-size: var(--step-3); font-weight: 700; margin: 0 0 6px; }
+.page-lead { color: var(--text-muted); margin: 0 0 24px; max-width: 70ch; }
+.icon { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75;
+        stroke-linecap: round; stroke-linejoin: round; }

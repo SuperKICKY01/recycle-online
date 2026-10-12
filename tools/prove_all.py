@@ -132,6 +132,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 SERVER = REPO / "server"
 MOBILE = REPO / "mobile"
+# The desktop program (ADVISOR-DECIDED D-6, 2026-10-12): its own package.json and lockfile,
+# outside the root workspaces; its `prove:*` scripts are enumerated beside mobile's.
+DESKTOP = REPO / "desktop"
 sys.path.insert(0, str(SERVER / "scripts"))
 from lane import lane_tag, scratch_name  # noqa: E402  (scratch names are decided in lane.py only)
 
@@ -515,6 +518,18 @@ def preflight(args) -> dict[str, str]:
         raise Refused(f"the node program does not compile (`npm run build` in mobile/ exit {cp.returncode}): "
                       f"{first or '(no `error TS` line; read the build output)'}")
     say("  mobile: `npm run build` exit 0 (the node program compiles)")
+    # THE DESKTOP, same two checks: installed, and its one TypeScript program clean. Its proofs
+    # bundle with esbuild, which does NOT type-check, so without this a type error would never
+    # reach the gate at all.
+    if not (DESKTOP / "node_modules").exists():
+        raise Refused("desktop/node_modules is absent -- run `npm install` in desktop/ first")
+    cp = subprocess.run(["npm.cmd" if os.name == "nt" else "npm", "run", "typecheck"], cwd=str(DESKTOP),
+                        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if cp.returncode != 0:
+        first = next((l for l in (cp.stdout + cp.stderr).splitlines() if "error TS" in l), None)
+        raise Refused(f"the desktop program does not type-check (`npm run typecheck` in desktop/ exit {cp.returncode}): "
+                      f"{first or '(no `error TS` line; read the output)'}")
+    say("  desktop: `npm run typecheck` exit 0")
     return dotenv
 
 
@@ -530,6 +545,13 @@ def enumerate_proofs() -> list[dict]:
     for key in pkg["scripts"]:
         if key.startswith("prove:") and key != "prove:all":
             plan.append({"name": key, "cwd": str(MOBILE), "argv": ["npm.cmd" if os.name == "nt" else "npm", "run", key]})
+    # The desktop's proofs, named `desktop_prove:<x>` so they can never collide with a mobile
+    # script of the same name; the log name turns the colon into `_` like every other.
+    dpkg = json.loads((DESKTOP / "package.json").read_text(encoding="utf-8"))
+    for key in dpkg["scripts"]:
+        if key.startswith("prove:"):
+            plan.append({"name": f"desktop_{key}", "cwd": str(DESKTOP),
+                         "argv": ["npm.cmd" if os.name == "nt" else "npm", "run", key]})
     return plan
 
 

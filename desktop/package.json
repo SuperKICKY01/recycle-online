@@ -1,0 +1,30 @@
+{
+  "name": "recycle-desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Recycle Online back office (Electron + React + TypeScript). ITS OWN package.json AND ITS OWN LOCKFILE, and NOT a member of the root npm workspaces (ADVISOR-DECIDED D-1): Electron and React in the root lockfile could re-hoist the mobile app's native packages. Shared code (packages/shop-time) is consumed BY PATH.",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build:shared": "tsc -p ../packages/shop-time/tsconfig.json",
+    "build": "npm run build:shared && node tools/build.mjs",
+    "typecheck": "npm run build:shared && tsc -p tsconfig.json --noEmit",
+    "start": "npm run build && electron .",
+    "capture": "npm run build && node tools/capture.mjs",
+    "prove:boundary": "npm run build && node dist/proof/proveBoundary.cjs",
+    "prove:window": "npm run build && node dist/proof/proveWindow.cjs",
+    "prove:origin": "npm run build && node dist/proof/proveOrigin.cjs"
+  },
+  "dependencies": {
+    "@recycle/shop-time": "file:../packages/shop-time",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "electron": "44.4.5",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.2"
+  }
+}

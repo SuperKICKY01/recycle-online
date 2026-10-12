@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      CONTENT SECURITY POLICY. Scripts and styles only from this origin (app://recycle). Network
+      reads go to the shop's API, whose address is a per-install setting (B2), so connect-src
+      admits http(s) generally; what protects the session is that the token never enters this
+      page's storage (src/preload, B2), not this line.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' http: https:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    />
+    <title>Recycle Online — สำนักงาน</title>
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="app.js"></script>
+  </body>
+</html>

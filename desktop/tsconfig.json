@@ -1,0 +1,28 @@
+{
+  // THE DESKTOP'S ONE TypeScript PROGRAM: main, preload, renderer, pure modules and proofs.
+  // `npm run typecheck` runs it with --noEmit; esbuild (tools/build.mjs) does the bundling.
+  // Strict, with the same extra checks as packages/shop-time.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "noEmit": true,
+
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "useUnknownInCatchVariables": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}
