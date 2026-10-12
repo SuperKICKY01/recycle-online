@@ -111,3 +111,4 @@ input:disabled { background: var(--bg); color: var(--text-muted); }
 .who { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .who-name { font-weight: 700; color: var(--text); font-size: var(--step-0); }
 .who-role { font-size: 0.8125rem; }
+.shell-notice { margin-bottom: 16px; max-width: 70ch; }

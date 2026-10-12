@@ -11,6 +11,7 @@ import { createRoot } from "react-dom/client";
 
 import { ApiClient } from "../shared/api";
 import { normaliseApiBase, noticeFor, Session, SESSION_TEXT, type ShopConfig } from "../shared/session";
+import type { ApiOutcome, WhoAmI } from "../shared/api";
 import { Shell, type NavItem } from "./Shell";
 import { SetupScreen, SignInScreen } from "./SignIn";
 
@@ -19,7 +20,12 @@ const NAV: readonly NavItem[] = [
   { id: "slip", label: "พิมพ์สลิป", icon: "printer", enabled: false },
 ];
 
-type Phase = "loading" | "setup" | "signin" | "app";
+type Phase = "loading" | "setup" | "signin" | "offline" | "app";
+
+/** The sentence for a resume that did not succeed and did not end the session. */
+function unreachableNotice(kind: ApiOutcome<WhoAmI>["kind"]): string {
+  return kind === "outdated" ? SESSION_TEXT.outdated : SESSION_TEXT.offline;
+}
 
 function makeSession(config: ShopConfig, token: string | null): Session {
   const api = new ApiClient(config.apiBase, (url, init) => fetch(url, init));
@@ -39,14 +45,33 @@ function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [current, setCurrent] = useState("bills");
+  /** A non-blocking line at the top of the shell (a server blip on focus, a save that failed). */
+  const [shellNotice, setShellNotice] = useState<string | null>(null);
   const sessionRef = useRef<Session | null>(null);
 
-  /** After any authenticated call: if it ended the session, go to sign-in and say why. */
-  const settle = useCallback(() => {
+  /**
+   * After a re-check: an ENDED session goes to sign-in with its sentence; a server that could not
+   * be reached leaves the shell up and says so in it -- the session is still valid
+   * (red team 2026-10-12, finding 1).
+   */
+  const settle = useCallback((kind: ApiOutcome<WhoAmI>["kind"]) => {
     const s = sessionRef.current;
     if (s !== null && !s.signedIn) {
       setNotice(s.notice);
       setPhase("signin");
+    } else setShellNotice(kind === "ok" ? null : unreachableNotice(kind));
+  }, []);
+
+  /** Start-up and the offline screen's retry: confirm a stored session once. */
+  const resumeStored = useCallback(async (s: Session) => {
+    const kind = await s.resume();
+    if (kind === "ok") setPhase("app");
+    else if (!s.signedIn) {
+      setNotice(s.notice);
+      setPhase("signin");
+    } else {
+      setNotice(unreachableNotice(kind));
+      setPhase("offline");
     }
   }, []);
 
@@ -58,15 +83,13 @@ function App() {
         return;
       }
       setConfig(stored);
-      const s = makeSession(stored, await window.recycle.session.load());
+      const token = await window.recycle.session.load();
+      const s = makeSession(stored, token);
       sessionRef.current = s;
-      if (await s.resume()) setPhase("app");
-      else {
-        setNotice(s.notice);
-        setPhase("signin");
-      }
+      if (token === null) setPhase("signin");
+      else await resumeStored(s);
     })();
-  }, []);
+  }, [resumeStored]);
 
   /** Coming back to the window re-confirms the session once — an event, not a poll. */
   useEffect(() => {
@@ -85,31 +108,43 @@ function App() {
       return;
     }
     setBusy(true);
-    const code = rawCode.trim().toUpperCase();
-    const out = await new ApiClient(apiBase, (url, init) => fetch(url, init)).resolveShopCode(code);
-    setBusy(false);
-    if (out.kind !== "ok") {
-      setNotice(noticeFor(out, "shop"));
-      return;
+    try {
+      const code = rawCode.trim().toUpperCase();
+      const out = await new ApiClient(apiBase, (url, init) => fetch(url, init)).resolveShopCode(code);
+      if (out.kind !== "ok") {
+        setNotice(noticeFor(out, "shop"));
+        return;
+      }
+      const c: ShopConfig = { apiBase, shopCode: code, tenantId: out.value };
+      try {
+        await window.recycle.config.save(c);
+      } catch {
+        setNotice(SESSION_TEXT.configFailed);
+        return;
+      }
+      setConfig(c);
+      sessionRef.current = makeSession(c, null);
+      setNotice(null);
+      setPhase("signin");
+    } finally {
+      setBusy(false);
     }
-    const c: ShopConfig = { apiBase, shopCode: code, tenantId: out.value };
-    await window.recycle.config.save(c);
-    setConfig(c);
-    sessionRef.current = makeSession(c, null);
-    setNotice(null);
-    setPhase("signin");
   };
 
   const doSignIn = async (username: string, password: string) => {
     const s = sessionRef.current;
     if (s === null || config === null) return;
     setBusy(true);
-    const r = await s.signIn(config.tenantId, username, password);
-    setBusy(false);
-    if (r.ok) {
-      setNotice(null);
-      setPhase("app");
-    } else setNotice(r.notice);
+    try {
+      const r = await s.signIn(config.tenantId, username, password);
+      if (r.ok) {
+        setNotice(null);
+        setShellNotice(r.notice);
+        setPhase("app");
+      } else setNotice(r.notice);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const doSignOut = async () => {
@@ -119,7 +154,12 @@ function App() {
   };
 
   const doChangeShop = async () => {
-    await window.recycle.config.clear();
+    try {
+      await window.recycle.config.clear();
+    } catch {
+      setNotice(SESSION_TEXT.configFailed);
+      return;
+    }
     sessionRef.current = null;
     setConfig(null);
     setNotice(null);
@@ -132,6 +172,26 @@ function App() {
   };
 
   if (phase === "loading") return <div className="gate" aria-busy="true" />;
+  if (phase === "offline") {
+    return (
+      <div className="gate">
+        <div className="gate-form" role="alert">
+          <h1 className="page-title">ติดต่อเซิร์ฟเวอร์ไม่ได้</h1>
+          <p className="notice notice-warn">{notice}</p>
+          <p className="page-lead">ยังเข้าสู่ระบบอยู่ ไม่ต้องใส่รหัสผ่านใหม่ — เมื่อเครือข่ายกลับมาให้กดลองอีกครั้ง</p>
+          <button type="button" className="btn btn-primary" disabled={busy}
+            onClick={() => {
+              const s = sessionRef.current;
+              if (s === null) return;
+              setBusy(true);
+              void resumeStored(s).finally(() => setBusy(false));
+            }}>
+            ลองอีกครั้ง
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (phase === "setup") return <SetupScreen busy={busy} notice={notice} onSubmit={(b, c) => void doSetup(b, c)} />;
   if (phase === "signin" || config === null || sessionRef.current?.me == null) {
     return (
@@ -153,6 +213,7 @@ function App() {
         </div>
       }
     >
+      {shellNotice !== null ? <p className="notice notice-warn shell-notice" role="status">{shellNotice}</p> : null}
       <h1 className="page-title">บิลรับซื้อ</h1>
       <p className="page-lead">เข้าสู่ระบบแล้ว รายการบิลของร้านจะแสดงที่หน้านี้</p>
     </Shell>

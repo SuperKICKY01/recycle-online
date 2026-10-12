@@ -22,6 +22,11 @@ export const SESSION_TEXT = {
   outdated: "โปรแกรมนี้เก่ากว่าที่เซิร์ฟเวอร์รองรับ — ต้องอัปเดตก่อนจึงจะใช้งานได้",
   signedOut: "ออกจากระบบแล้ว",
   badAddress: "ที่อยู่เซิร์ฟเวอร์ไม่ถูกต้อง — ใช้รูปแบบ http://ที่อยู่:พอร์ต",
+  // A FAILED WRITE OR DELETE OF THE STORED SESSION (red team 2026-10-12, findings 5 and 6):
+  // said, never swallowed, and never a frozen screen.
+  saveFailed: "เข้าสู่ระบบแล้ว แต่เครื่องนี้บันทึกการเข้าสู่ระบบไว้ไม่ได้ — ครั้งหน้าต้องเข้าสู่ระบบใหม่",
+  clearFailed: "ออกจากระบบแล้ว แต่ลบข้อมูลการเข้าสู่ระบบในเครื่องไม่สำเร็จ — ปิดโปรแกรมแล้วเปิดใหม่ก่อนให้ผู้อื่นใช้เครื่อง",
+  configFailed: "บันทึกการตั้งค่าในเครื่องไม่สำเร็จ — ลองอีกครั้ง",
 } as const;
 
 export interface ShopConfig {
@@ -36,7 +41,8 @@ export interface SessionPersistence {
   clearToken(): Promise<void>;
 }
 
-export type SignInResult = { ok: true; me: WhoAmI } | { ok: false; notice: string };
+/** `notice` on success is a non-blocking warning (the session could not be remembered). */
+export type SignInResult = { ok: true; me: WhoAmI; notice: string | null } | { ok: false; notice: string };
 
 /** One outcome that is not `ok`, as the sentence the operator reads. */
 export function noticeFor(outcome: ApiOutcome<unknown>, context: "login" | "shop" | "session"): string {
@@ -98,17 +104,28 @@ export class Session {
     this.token = login.value;
     this.me = who.value;
     this.notice = null;
-    await this.persistence.saveToken(login.value);
-    return { ok: true, me: who.value };
+    // A store that cannot write keeps the session for THIS run and says so; it never wedges
+    // the screen on a rejected bridge call (red team 2026-10-12, finding 6).
+    try {
+      await this.persistence.saveToken(login.value);
+    } catch {
+      return { ok: true, me: who.value, notice: SESSION_TEXT.saveFailed };
+    }
+    return { ok: true, me: who.value, notice: null };
   }
 
-  /** On start-up with a stored token: confirm it once. A 401 ends it like any other. */
-  async resume(): Promise<boolean> {
-    if (this.token === null) return false;
+  /**
+   * Confirm the session once (start-up, focus, navigation). Returns what the server said, so the
+   * caller can tell an ENDED session (`unauthorized`, which ends it here) from a server it could
+   * not reach (`unavailable`, `outdated`, ...) -- the session is still valid then, and showing
+   * the sign-in screen would be a network failure rendered on the identity screen
+   * (red team 2026-10-12, finding 1).
+   */
+  async resume(): Promise<ApiOutcome<WhoAmI>["kind"]> {
+    if (this.token === null) return "unauthorized";
     const who = await this.authed((t) => this.api.whoami(t));
-    if (who.kind !== "ok") return false;
-    this.me = who.value;
-    return true;
+    if (who.kind === "ok") this.me = who.value;
+    return who.kind;
   }
 
   /**
@@ -130,6 +147,11 @@ export class Session {
     this.token = null;
     this.me = null;
     this.notice = notice;
-    await this.persistence.clearToken();
+    try {
+      await this.persistence.clearToken();
+    } catch {
+      // The session is over in memory either way; the operator must know the disk copy may not be.
+      this.notice = SESSION_TEXT.clearFailed;
+    }
   }
 }

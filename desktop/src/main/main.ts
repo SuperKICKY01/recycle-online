@@ -20,7 +20,7 @@ import { join, normalize, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { registerIpc } from "./ipc";
-import { APP_HOST, APP_INDEX_URL, APP_ORIGIN, APP_SCHEME } from "./origin";
+import { APP_HOST, APP_INDEX_URL, APP_SCHEME, isOurPage } from "./origin";
 
 // A proof runs each launch in its own fresh userData (config.json and session.bin), never the
 // operator's. Set before `ready`, as Electron requires for userData.
@@ -58,7 +58,7 @@ function createWindow(): BrowserWindow {
     },
   });
   win.webContents.on("will-navigate", (event, target) => {
-    if (!target.startsWith(`${APP_ORIGIN}/`)) event.preventDefault();
+    if (!isOurPage(target)) event.preventDefault();
   });
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   return win;

@@ -123,6 +123,19 @@ anchor next pass.
   expiry shows its sentence after exactly ONE 401 and none in the next 12 s, offline sentence). Disproofs, each
   restored byte-identical: a 401 not ending the session → L1 L2 and S9 (S10 not reached; the app has no timer to loop
   on); the token written in plain text → S6 (file) and S7; the token also put in localStorage → exactly S6 (storage).
+- **B2 red team (nemesis, read-only): four CONFIRMED, two PLAUSIBLE, all fixed in their own commit.** (1) start-up with
+  the server unreachable showed sign-in with NO sentence while the session was still valid → `Session.resume()` now
+  returns the outcome; only a 401 ends the session; an unreachable server gets its own screen (`ติดต่อเซิร์ฟเวอร์ไม่ได้`,
+  the network sentence, a retry, the stored session kept) and a blip on focus a line inside the shell. (2) S6 could not
+  tell ciphertext from a hex or UTF-16 token, nor see a second file → `session.bin` must start with os_crypt's `v10`,
+  and every file under userData (68 scanned, read after the app closes) is searched in three encodings. (3) the IPC
+  frame check was unasserted → one parsed predicate `isOurPage` serves IPC and navigation, `prove:session` P1 over
+  look-alikes. (4) the shell's menu lost its only cell → S5 asserts it. (5)/(6) a rejected store call left the shell up
+  after sign-out or wedged sign-in on its busy label → every bridge rejection is owned and worded (`saveFailed`,
+  `clearFailed`, `configFailed`), `busy` cleared in `finally`, and a failed delete truncates `session.bin` so it cannot
+  decrypt. The red team's mutations, re-run here, each reddened exactly the new cell: substring origin check → P1;
+  ending on any non-ok → R1; no catch on clear → F5; hex store → S6; an extra plaintext file → S6; no menu → S5; the old
+  resume → S11. `prove:session` 13 cells, `prove:signin` 12, exit 0 twice.
 
 **LANE A, SELLER SEARCH — C1: a seller's full ID number and address are personal data (migration 0024,
 ADVISOR-DECIDED 2026-10-12, the no-migration ban lifted for this milestone only). 2026-10-12.** Shas anchor next pass.

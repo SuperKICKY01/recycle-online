@@ -12,8 +12,15 @@
  *   L2 NO LOOP: after it, ten more authenticated calls send ZERO requests
  *   L3 a sign-in restores the session and the next call is sent again
  *   A1 normaliseApiBase accepts http(s)://host:port and refuses anything else
+ *   R1 resume() against an UNREACHABLE server keeps the session (not the sign-in screen's case)
+ *   R2 resume() on a 401 ends it
+ *   F5 a store that cannot DELETE: sign-out still ends the session and says so (never throws)
+ *   F6 a store that cannot WRITE: sign-in still succeeds for this run and says so (never throws)
+ *   P1 isOurPage: only app://recycle pages pass; look-alikes and substrings do not
+ *   (R1, F5, F6 and P1 answer the red team of 2026-10-12, findings 1, 5, 6 and 3.)
  */
 import { ApiClient, CLIENT_API_VERSION_HEADER, type ApiOutcome } from "../shared/api";
+import { isOurPage } from "../main/origin";
 import { normaliseApiBase, noticeFor, Session, SESSION_TEXT } from "../shared/session";
 import { check, finish, header } from "./harness";
 
@@ -95,4 +102,56 @@ void finish("PROVE_SESSION", async () => {
       && normaliseApiBase("https://shop.example") === "https://shop.example"
       && normaliseApiBase("ftp://x") === null && normaliseApiBase("192.168.1.10:8000") === null
       && normaliseApiBase("http://x:8000/api") === null);
+
+  header("R resume() tells an ended session from an unreachable server");
+  const h = new ScriptedFetch();
+  let hCleared = 0;
+  const kept = new Session(new ApiClient("http://srv:8000", h.fetch),
+    { saveToken: () => Promise.resolve(), clearToken: () => { hCleared += 1; return Promise.resolve(); } }, "tok");
+  h.next = json(503, {});
+  const r1 = await kept.resume();
+  check("R1 a 503 at resume -> 'unavailable', the session KEPT (signed in, nothing cleared, no notice)",
+    r1 === "unavailable" && kept.signedIn && hCleared === 0 && kept.notice === null,
+    `kind=${r1} signedIn=${String(kept.signedIn)} cleared=${String(hCleared)}`);
+  h.next = json(401, {});
+  const r2 = await kept.resume();
+  check("R2 a 401 at resume -> 'unauthorized', the session ENDED with the expiry sentence",
+    r2 === "unauthorized" && !kept.signedIn && hCleared === 1 && kept.notice === SESSION_TEXT.expired);
+
+  header("F a store that fails is said, never thrown");
+  const k = new ScriptedFetch();
+  const failing = new Session(new ApiClient("http://srv:8000", k.fetch),
+    { saveToken: () => Promise.reject(new Error("EPERM")), clearToken: () => Promise.reject(new Error("EBUSY")) }, "tok");
+  let threw = false;
+  try {
+    await failing.signOut();
+  } catch {
+    threw = true;
+  }
+  check("F5 sign-out with a failing delete resolves, ends the session, and says the disk copy may remain",
+    !threw && !failing.signedIn && failing.notice === SESSION_TEXT.clearFailed, String(failing.notice));
+  let kStep = 0;
+  k.next = () => {
+    kStep += 1;
+    return kStep === 1
+      ? new Response(JSON.stringify({ access_token: "t2" }), { status: 200 })
+      : new Response(JSON.stringify({ tenant_id: "t", user_id: "u", username: "admin", role: "admin", permissions: [] }), { status: 200 });
+  };
+  let threw2 = false;
+  let res: Awaited<ReturnType<Session["signIn"]>> | null = null;
+  try {
+    res = await failing.signIn("t", "admin", "pw");
+  } catch {
+    threw2 = true;
+  }
+  check("F6 sign-in with a failing write resolves OK for this run, with the 'not remembered' sentence",
+    !threw2 && res?.ok === true && res.notice === SESSION_TEXT.saveFailed && failing.signedIn, JSON.stringify(res));
+
+  header("P1 isOurPage");
+  const yes = ["app://recycle/index.html", "app://recycle/"];
+  const no = ["", "app://recycle.evil/index.html", "app://recyclex/", "app://recycle:1234/", "http://x/app://recycle/",
+    "file:///C:/app/recycle/index.html", "app://user:pw@recycle/", "https://recycle/"];
+  check("P1 app://recycle pages pass", yes.every(isOurPage), JSON.stringify(yes.map(isOurPage)));
+  check("P1 look-alikes, substrings, other schemes and credentials do not", no.every((u) => !isOurPage(u)),
+    JSON.stringify(no.filter(isOurPage)));
 });

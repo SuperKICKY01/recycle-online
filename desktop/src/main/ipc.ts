@@ -5,7 +5,7 @@
  */
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
 
-import { APP_ORIGIN } from "./origin";
+import { isOurPage } from "./origin";
 import {
   clearConfig,
   clearToken,
@@ -18,7 +18,7 @@ import {
 
 function fromOurPage(e: IpcMainInvokeEvent): void {
   const url = e.senderFrame?.url ?? "";
-  if (!url.startsWith(`${APP_ORIGIN}/`)) throw new Error(`refused: IPC from ${url || "an unknown frame"}`);
+  if (!isOurPage(url)) throw new Error(`refused: IPC from ${url || "an unknown frame"}`);
 }
 
 function isConfig(c: unknown): c is StoredConfig {

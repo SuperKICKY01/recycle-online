@@ -1705,6 +1705,12 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
 
 ## Code debt found and left in place
 
+- **DESKTOP B2 — UNMEASURED, named by the red team (2026-10-12).** (1) That a REAL window focus delivers the renderer's
+  `focus` event (S9 dispatches it): settle by alt-tabbing away and back with a dead token and reading one `/whoami` in
+  the server log. (2) That `safeStorage.decryptString` THROWS for a foreign or corrupted `session.bin` rather than
+  returning garbage. (3) That IndexedDB works on the `app://` scheme, so S6's `idb: 0` is not vacuous (localStorage IS
+  measured working: the localstore disproof read `local: 1`).
+
 - **ROADMAP D7's premise measured wrong for a GET (2026-10-12, desktop B1):** it says an Electron `file://` renderer
   sends `Origin: null`; a `fetch` GET from a `file://` page to an http server carried NO Origin header at all (measured
   by `prove:origin` under the file:// disproof, Electron 44.4.5). Moot for this program — it never loads from file:// —

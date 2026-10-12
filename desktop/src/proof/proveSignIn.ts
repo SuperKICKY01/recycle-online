@@ -19,10 +19,12 @@
  *   S9 EXPIRY: sign in, let the 30 s token lapse, come back to the window -> the sign-in screen
  *      with the expiry sentence, and session.bin gone
  *   S10 NO LOOP: in the 12 s after that, the server logs no further 401 from this program
- *   S11 OFFLINE: with the server stopped, a sign-in attempt shows the network sentence
+ *   S11 OFFLINE AT START-UP: signed in, closed, server stopped, relaunched -> the OFFLINE screen
+ *       with the network sentence (not the sign-in screen), and session.bin KEPT
+ *   (S5's menu, S6's encodings and S11 answer the red team of 2026-10-12, findings 4, 2 and 1.)
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -86,6 +88,22 @@ async function waitText(page: Page, needle: string, ms = 15_000): Promise<boolea
 
 const count401 = (log: string): number => (log.match(/" 401 /g) ?? []).length;
 
+function filesUnder(dir: string): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    let st;
+    try {
+      st = statSync(p);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) out.push(...filesUnder(p));
+    else out.push(p);
+  }
+  return out;
+}
+
 void finish("PROVE_SIGNIN", async () => {
   header("S a real sign-in, through the real screens, against a scratch server");
   const userData = mkdtempSync(join(tmpdir(), "recycle-desktop-proof-"));
@@ -115,7 +133,12 @@ void finish("PROVE_SIGNIN", async () => {
     await page.fill('input[name="password"]', info.password);
     await page.click('button[type="submit"]');
     const signedIn = await page.waitForSelector(`[data-signed-in="${info.username}"]`, { timeout: 15_000 }).then(() => true, () => false);
-    check("S5 the right password opens the shell, the user named in its footer", signedIn);
+    const shell = await page.evaluate(() => ({
+      frame: document.querySelector("[data-shell]")?.getAttribute("data-shell") ?? null,
+      nav: Array.from(document.querySelectorAll("[data-nav]")).map((n) => n.textContent),
+    }));
+    check("S5 the right password opens the shell with its Thai menu, the user named in its footer",
+      signedIn && shell.frame === "nav-content" && shell.nav.includes("บิลรับซื้อ"), JSON.stringify(shell));
 
     const storage = await page.evaluate(async () => ({
       local: Object.keys(localStorage).length,
@@ -127,11 +150,23 @@ void finish("PROVE_SIGNIN", async () => {
     const cfg = existsSync(join(userData, "config.json")) ? readFileSync(join(userData, "config.json"), "utf8") : "";
     check("S6 no web storage holds anything (localStorage, sessionStorage, IndexedDB)",
       storage.local === 0 && storage.session === 0 && storage.idb === 0, JSON.stringify(storage));
-    check("S6 session.bin exists and holds no JWT text; config.json holds none either",
-      binText.length > 0 && !binText.includes("eyJ") && cfg.length > 0 && !cfg.includes("eyJ"),
-      `session.bin ${String(binText.length)} bytes; config ${String(cfg.length)} bytes`);
-
+    // A JWT always begins with "eyJ" (base64url of '{"'). Searched for in EVERY file under the
+    // whole userData directory, in three encodings a plain store could use -- UTF-8 text, UTF-16LE,
+    // and hex -- and session.bin must carry Chromium's os_crypt ciphertext marker "v10". Read
+    // AFTER the app closes: while it runs Chromium holds some of its own files locked (EBUSY,
+    // measured), and a file that could not be read would be a file that was not checked.
     await app.close();
+    const needles = [Buffer.from("eyJ", "utf8"), Buffer.from("eyJ", "utf16le"), Buffer.from(Buffer.from("eyJ").toString("hex"))];
+    const scanned = filesUnder(userData);
+    const leaks = scanned.filter((f) => {
+      const b = readFileSync(f);
+      return needles.some((n) => b.includes(n));
+    });
+    const head = existsSync(bin) ? readFileSync(bin).subarray(0, 3).toString("latin1") : "";
+    check("S6 session.bin is os_crypt ciphertext (starts v10); no file under userData holds the token's text",
+      head === "v10" && leaks.length === 0 && cfg.length > 0 && scanned.length > 2,
+      `head=${JSON.stringify(head)} session.bin ${String(binText.length)} bytes; files scanned=${String(scanned.length)}; leaks=${JSON.stringify(leaks)}`);
+
     ({ app, page } = await launch(userData));
     const resumed = await page.waitForSelector(`[data-signed-in="${info.username}"]`, { timeout: 15_000 }).then(() => true, () => false);
     check("S7 a relaunch lands in the shell: the token came back from the OS-backed store", resumed);
@@ -157,13 +192,20 @@ void finish("PROVE_SIGNIN", async () => {
     check("S10 the expiry cost ONE 401, and the next 12 s brought none", atExpiry - before === 1 && after === atExpiry,
       `401s: before=${String(before)} at expiry=${String(atExpiry)} after 12 s=${String(after)}`);
 
-    header("S11 offline");
-    server.proc.kill();
-    await new Promise((r) => setTimeout(r, 1500));
+    header("S11 offline at start-up");
     await page.fill('input[name="username"]', info.username);
     await page.fill('input[name="password"]', info.password);
     await page.click('button[type="submit"]');
-    check("S11 with the server gone, a sign-in shows the network sentence", await waitText(page, SESSION_TEXT.offline));
+    await page.waitForSelector(`[data-signed-in="${info.username}"]`, { timeout: 15_000 });
+    await app.close();
+    server.proc.kill();
+    await new Promise((r) => setTimeout(r, 1500));
+    ({ app, page } = await launch(userData));
+    const offline = await waitText(page, SESSION_TEXT.offline);
+    const onScreen = await text(page);
+    check("S11 a relaunch with the server gone shows the OFFLINE screen and its sentence, not sign-in; session.bin kept",
+      offline && onScreen.includes("ติดต่อเซิร์ฟเวอร์ไม่ได้") && !onScreen.includes("ชื่อผู้ใช้") && existsSync(bin),
+      onScreen.slice(0, 200));
   } finally {
     if (app !== null) await app.close().catch(() => undefined);
     server.proc.kill();

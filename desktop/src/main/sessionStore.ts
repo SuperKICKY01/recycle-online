@@ -37,14 +37,28 @@ export function loadToken(): string | null {
   try {
     return safeStorage.decryptString(readFileSync(p));
   } catch {
-    // Unreadable ciphertext (another Windows user, a corrupted file): treat as signed out.
-    rmSync(p, { force: true });
+    // Unreadable ciphertext (another Windows user, a corrupted or truncated file): signed out.
+    try {
+      rmSync(p, { force: true });
+    } catch {
+      /* a locked file stays; it still cannot be decrypted, so it still reads as signed out */
+    }
     return null;
   }
 }
 
+/**
+ * Delete the stored session. If the delete fails (a file held open by a backup or virus scanner on
+ * Windows), TRUNCATE it instead: an empty session.bin cannot be decrypted, so the next launch is
+ * signed out either way. Only if both fail does the error reach the renderer, which says so
+ * (SESSION_TEXT.clearFailed).
+ */
 export function clearToken(): void {
-  rmSync(tokenPath(), { force: true });
+  try {
+    rmSync(tokenPath(), { force: true });
+  } catch {
+    writeFileSync(tokenPath(), Buffer.alloc(0));
+  }
 }
 
 export function loadConfig(): StoredConfig | null {
