@@ -16,6 +16,9 @@
  *   H1 the shell's top line: only an unreachable or outdated server is shown there; a 403/404/422
  *      the server answered leaves it alone (the screen words those)
  *   R2 a detail without paid_amount reads as MISSING (null), never as 0.00
+ *   E1 entering a date: `12/10/2569` is the shop day 2026-10-12; a Christian-era year, an impossible
+ *      day and an ISO string are each refused with their sentence; the calendar's month title is
+ *      Thai and Buddhist-era, and its grid starts October 2026 on a Thursday
  */
 import {
   billsQuery,
@@ -31,7 +34,7 @@ import {
 import { display as phoneDisplay } from "../../../mobile/src/money/format";
 import { display, GROUP_SEPARATOR } from "../shared/money";
 import { SESSION_TEXT, shellNoticeFor } from "../shared/session";
-import { presetRange, shopDayLabel, shopToday } from "../shared/period";
+import { DATE_ENTRY_TEXT, monthGrid, monthTitle, parseShopDay, presetRange, shopDayLabel, shopToday } from "../shared/period";
 import { check, finish, header } from "./harness";
 
 void finish("PROVE_BILLS", async () => {
@@ -85,6 +88,19 @@ void finish("PROVE_BILLS", async () => {
     rangeProblem({ from: "2026-10-12", to: "2026-10-05" }) === RANGE_TEXT.reversed
       && rangeProblem({ from: "", to: "2026-10-05" }) === RANGE_TEXT.incomplete
       && rangeProblem({ from: "2026-10-05", to: "2026-10-05" }) === null);
+
+  header("E entering a date");
+  const e = (t: string) => JSON.stringify(parseShopDay(t));
+  check("E1 12/10/2569 -> 2026-10-12, 1.2.2569 -> 2026-02-01; 12/10/2026, 31/02/2569, 2026-10-12 refused with their sentences",
+    e("12/10/2569") === JSON.stringify({ wire: "2026-10-12" }) && e("1.2.2569") === JSON.stringify({ wire: "2026-02-01" })
+      && e("12/10/2026") === JSON.stringify({ problem: DATE_ENTRY_TEXT.gregorian })
+      && e("31/02/2569") === JSON.stringify({ problem: DATE_ENTRY_TEXT.noSuchDay })
+      && e("2026-10-12") === JSON.stringify({ problem: DATE_ENTRY_TEXT.shape }),
+    [e("12/10/2569"), e("12/10/2026"), e("31/02/2569"), e("2026-10-12")].join(" "));
+  const grid = monthGrid("2026-10-12");
+  check("E1 the calendar: 'ตุลาคม 2569'; 1 Oct 2026 under Thursday (4 blanks); 31 days",
+    monthTitle("2026-10-12") === "ตุลาคม 2569" && grid[0]?.slice(0, 4).every((c) => c === null) === true
+      && grid[0]?.[4] === "2026-10-01" && grid.flat().filter((c) => c !== null).length === 31, monthTitle("2026-10-12"));
 
   header("H the shell's line");
   const h = (k: Parameters<typeof shellNoticeFor>[0]) => JSON.stringify(shellNoticeFor(k));

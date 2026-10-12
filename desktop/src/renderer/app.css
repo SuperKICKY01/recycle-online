@@ -177,6 +177,42 @@ textarea { resize: vertical; }
 .void-warn { margin: 0; color: var(--danger); font-weight: 600; }
 .void-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
+/* --- the one date entry (D-5): Buddhist era, day first, typed or picked -------------------- */
+.date-field { position: relative; }
+.date-input { display: flex; align-items: stretch; }
+.date-input input {
+  width: 9.5em; font-variant-numeric: tabular-nums; border-top-right-radius: 0; border-bottom-right-radius: 0;
+}
+.date-input input[aria-invalid="true"] { border-color: var(--danger); }
+.date-open {
+  display: grid; place-items: center; width: 40px; border: 1px solid var(--border); border-left: 0;
+  background: var(--surface); color: var(--text-muted); cursor: pointer;
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.date-open:hover, .date-open[aria-expanded="true"] { color: var(--accent-strong); background: var(--accent-soft); }
+.field-problem { color: var(--danger); font-size: 0.8125rem; }
+/* under the field without moving the row's other controls */
+.date-field .field-problem { position: absolute; top: 100%; left: 0; margin-top: 4px; white-space: nowrap; }
+.calendar {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; width: 300px; padding: 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(19, 35, 58, 0.16);
+}
+.calendar-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.calendar-title { font-weight: 700; }
+.calendar-nav { width: 32px; height: 32px; border: 0; border-radius: 8px; background: none; font-size: 1.25rem; cursor: pointer; color: var(--text); }
+.calendar-nav:hover { background: var(--bg); }
+.calendar-grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.calendar-grid th { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); padding: 4px 0; }
+.calendar-grid td { padding: 2px; text-align: center; }
+.calendar-day {
+  width: 100%; aspect-ratio: 1; border: 0; border-radius: 8px; background: none; cursor: pointer;
+  font: inherit; font-variant-numeric: tabular-nums; color: var(--text);
+}
+.calendar-day:hover { background: var(--bg); }
+.calendar-day.is-today { box-shadow: inset 0 0 0 1px var(--accent); }
+.calendar-day[aria-pressed="true"] { background: var(--accent); color: #fff; }
+
 /* --- the slip (B4): a paper roll, drawn from the same lines the printer is sent ---------------- */
 .paper-scroll { align-self: center; max-width: 100%; overflow-x: auto; }
 .paper { padding: 16px 2ch; background: #fff; color: #111;

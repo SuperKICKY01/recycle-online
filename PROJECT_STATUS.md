@@ -198,6 +198,25 @@ anchor next pass.
   200s, overwritten); the OLD SELECT-then-UPDATE shape → W2 red with V5 GREEN (the race needs the barrier, and was real);
   replay answered 409 → W4; the desktop treating 409 as a bare error → B10. `prove_permissions` exit 0 twice;
   `prove_bills.py` needs a live server (ConnectError standalone) and is left to the gate.
+- **1b — DATES ON THE DESKTOP ARE BUDDHIST-ERA, DAY FIRST, EVERYWHERE (ADVISOR-DECIDED 2026-10-12, D-5).** Chromium's
+  `<input type="date">` drew `10/12/2026` (Christian era, month first) beside `12/10/2569` — measured in the B3
+  screenshot. It is gone; `src/renderer/DateField.tsx` is the one way a date is entered: the operator types `12/10/2569`
+  (also `.`/`-`/space), committed on Enter or leaving the field; a Christian-era year is REFUSED with
+  `ใส่ปีเป็น พ.ศ. เช่น 2569 ไม่ใช่ ค.ศ.` (never read as a year five centuries away), an impossible day with
+  `ไม่มีวันที่นี้ในปฏิทิน`, and the previous day stands; a calendar popover is titled in Thai and BE (`ตุลาคม 2569`),
+  weeks from อา. The year conversion uses shop-time's exported `BE_YEAR_OFFSET`/`shopBEYear`, so the offset's digits stay
+  out of `desktop/src` (`prove:boundary` B5). Every date SHOWN was already BE day-first through shop-time (list, panel,
+  slip, range label). Proofs: `prove:bills` E1 (parse/refuse/calendar grid, 17 cells) and `prove:billsflow` B11 (12):
+  the field DISPLAYS `dd/mm/25yy` equal to the range label, zero native date inputs, NO Christian-era date in the
+  screen's text or any field value, a typed `12/10/2026` refused with the range unchanged, the calendar Thai/BE and a
+  picked day setting the range — each exit 0 twice. Disproofs, restored byte-identical: the field showing the wire
+  value → B11 (`2026-10-12`); the CE refusal removed → E1 (`1483-10-12`). A first B11 disproof that changed only the
+  initial state stayed green, correctly: the effect that follows `value` rewrote the display (the second time this
+  milestone a one-writer mutation of a two-writer value proved nothing — the M6 shape). AFTER screenshots
+  `E:\recycle-shots\lane-a\desktop\b3_dates_after.png`, `b3_calendar_open.png`. **AND A RED THE B3 COMMIT CARRIED:**
+  `prove:boundary` B5 was red since `abdf61e` — B3's `period.ts` comment wrote the offset's digits — unseen because only
+  the proofs written for B3 were run before it was committed; caught here by running every desktop proof before the
+  gate, fixed by rewording the comment (B5 exit 0 twice). The gate exists for exactly this; it had not run yet.
 - **B4 — the thermal slip (P1.17), bytes proven, paper NOT observed.** `desktop/src/shared/slip.ts` (pure): `slipLines`
   decides what a slip says (shop name/address/phone from `GET /shop`; doc_no; shop-time BE date; seller CODE and NAME
   only; plate; per line ชั่ง/หัก/สุทธิ x price = amount; total; paid; printed-at), `lineText` lays it out at 32 columns

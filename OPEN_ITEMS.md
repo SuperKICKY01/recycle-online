@@ -1724,6 +1724,9 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   `bills.read` holder reached only the newest 200 live bills; `from_date`/`to_date`/`seller_id` now reach any window,
   each row with `total_amount` and `paid_amount`, for the role that `GET /reports/daily` refuses. Not changed here.
 
+- **SUPERSEDED 2026-10-12 (ADVISOR-DECIDED, 1b):** the desktop no longer uses `<input type="date">` anywhere; every date
+  entered is typed or picked as Buddhist-era day/month/year (`src/renderer/DateField.tsx`), proven by `prove:billsflow`
+  B11 over the fields' displayed strings and the whole screen's text.
 - **THE DESKTOP'S DATE FIELDS SHOW GREGORIAN MONTH/DAY (`10/12/2026`) BESIDE THE BUDDHIST-ERA LABEL `12/10/2569`
   (MEASURED in `E:\recycle-shots\lane-a\desktop\b3_list.png`).** Chromium renders `<input type="date">` in its own
   locale. The range label below restates the chosen range in shop time and BE, so nothing is misread as a

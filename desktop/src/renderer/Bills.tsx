@@ -30,8 +30,9 @@ import {
   type SellerChoice,
 } from "../shared/bills";
 import { display } from "../shared/money";
-import { presetRange, PRESETS, shopDayLabel, type PresetId } from "../shared/period";
+import { presetRange, PRESETS, shopDayLabel, shopToday, type PresetId } from "../shared/period";
 import { noticeFor, type Session } from "../shared/session";
+import { DateField } from "./DateField";
 import { SlipPreview } from "./Slip";
 
 interface Props {
@@ -122,16 +123,10 @@ export function BillsScreen({ session, onSettle }: Props) {
             </button>
           ))}
         </div>
-        <label className="field field-inline">
-          <span className="field-label">ตั้งแต่</span>
-          <input type="date" name="from" value={filter.from}
-            onChange={(e) => { setPreset(null); setFilter((f) => ({ ...f, from: e.target.value })); }} />
-        </label>
-        <label className="field field-inline">
-          <span className="field-label">ถึง</span>
-          <input type="date" name="to" value={filter.to}
-            onChange={(e) => { setPreset(null); setFilter((f) => ({ ...f, to: e.target.value })); }} />
-        </label>
+        <DateField name="from" label="ตั้งแต่" value={filter.from} today={shopToday(new Date())}
+          onChange={(w) => { setPreset(null); setFilter((f) => ({ ...f, from: w })); }} />
+        <DateField name="to" label="ถึง" value={filter.to} today={shopToday(new Date())}
+          onChange={(w) => { setPreset(null); setFilter((f) => ({ ...f, to: w })); }} />
         <label className="field field-inline">
           <span className="field-label">ผู้ขาย</span>
           <select name="seller" value={filter.sellerId ?? ""}

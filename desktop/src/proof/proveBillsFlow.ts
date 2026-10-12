@@ -20,6 +20,10 @@
  *      the shell does not call it a network fault (red team 2026-10-12, finding 1)
  *   B9 the server gone: a new range shows NO bills and NO count from the range before it, and says
  *      the load failed (finding 2)
+ *   B11 DATES ON SCREEN ARE BUDDHIST-ERA, DAY FIRST (D-5): the date fields DISPLAY `dd/mm/25yy` equal to
+ *      the range label, no native date input exists, no Christian-era date appears anywhere on the
+ *      screen (text or field value); a typed `12/10/2026` is refused with its sentence and the range
+ *      stands; the calendar is titled in Thai and BE and picking a day sets the range
  *   B10 someone else voids the bill while its void form is open: the confirm is refused (409), the
  *      panel says so and shows THEIR reason; over HTTP the bill still carries their reason
  *      (ADVISOR-DECIDED 2026-10-12: a void record is never overwritten)
@@ -141,6 +145,36 @@ void finish("PROVE_BILLSFLOW", async () => {
     check("B7 gone from the default list; the voided toggle brings it back, struck through",
       goneByDefault && struck === "row-voided", `class=${String(struck)}`);
 
+    // B11: Buddhist-era dates, day first, on every date the screen shows or takes
+    const fromShown = await page.inputValue('input[name="from"]');
+    const rangeText = await page.locator("[data-range]").innerText();
+    const nativeDates = await page.locator('input[type="date"]').count();
+    const everything = await page.evaluate(() => document.body.innerText + " "
+      + Array.from(document.querySelectorAll("input")).map((i) => i.value).join(" "));
+    const gregorian = everything.match(/\b\d{1,2}\/\d{1,2}\/20\d{2}\b|\b20\d{2}-\d{2}-\d{2}\b/g) ?? [];
+    const rangeBefore = await page.locator("[data-range]").getAttribute("data-range");
+    await page.fill('input[name="from"]', "12/10/2026");
+    await page.press('input[name="from"]', "Enter");
+    const refusedCE = await page.waitForSelector("text=ใส่ปีเป็น พ.ศ. เช่น 2569 ไม่ใช่ ค.ศ.", { timeout: 5_000 }).then(() => true, () => false);
+    const rangeStood = (await page.locator("[data-range]").getAttribute("data-range")) === rangeBefore;
+    await page.click('[aria-label="เลือกตั้งแต่จากปฏิทิน"]');
+    const title = await page.locator('[data-calendar="from"] [data-calendar-title]').innerText();
+    const weekday = await page.locator('[data-calendar="from"] th').first().innerText();
+    await shot(page, "b3_calendar_open");
+    const firstDay = await page.locator('[data-calendar="from"] [data-day]').first().getAttribute("data-day");
+    await page.locator('[data-calendar="from"] [data-day]').first().click();
+    await page.waitForFunction((d) => document.querySelector("[data-range]")?.getAttribute("data-range")?.startsWith(`${d}..`) === true, firstDay);
+    const pickedShown = await page.inputValue('input[name="from"]');
+    await shot(page, "b3_dates_after");
+    check("B11 Buddhist-era day-first everywhere: field shows dd/mm/25yy = the label, no native picker, no Christian-era date,"
+      + " a CE year refused, the calendar Thai/BE and picking sets the range",
+      /^\d{2}\/\d{2}\/25\d{2}$/.test(fromShown) && rangeText.includes(fromShown) && nativeDates === 0 && gregorian.length === 0
+        && refusedCE && rangeStood && /^\S+ 25\d{2}$/.test(title) && weekday === "อา"
+        && /^01\/\d{2}\/25\d{2}$/.test(pickedShown),
+      JSON.stringify({ fromShown, rangeText, nativeDates, gregorian, refusedCE, rangeStood, title, weekday, pickedShown }));
+    await page.click("text=วันนี้");
+    await page.waitForSelector(`[data-bill="${docA1}"]`, { timeout: 15_000 });
+
     // B10: voided elsewhere while the form is open
     await page.click(`[data-bill="${docB1}"] button.link`);
     await page.waitForSelector(`[data-detail="${docB1}"]`, { timeout: 15_000 });
@@ -160,8 +194,10 @@ void finish("PROVE_BILLSFLOW", async () => {
     const listGets = (): number => (server.log().match(/GET \/bills\?[^ ]*from_date/g) ?? []).length;
     const before8 = listGets();
     const shell8 = await page.locator(".shell-notice").count();
-    await page.fill('input[name="from"]', "2026-10-20");
-    await page.fill('input[name="to"]', "2026-10-05");
+    await page.fill('input[name="from"]', "20/10/2569");
+    await page.press('input[name="from"]', "Enter");
+    await page.fill('input[name="to"]', "05/10/2569");
+    await page.press('input[name="to"]', "Enter");
     const said8 = await page.waitForSelector("text=วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น", { timeout: 5_000 }).then(() => true, () => false);
     await new Promise((r) => setTimeout(r, 1000));
     const offline8 = (await textOf(page)).includes("ติดต่อเซิร์ฟเวอร์ไม่ได้");
