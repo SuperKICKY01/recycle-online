@@ -136,6 +136,27 @@ anchor next pass.
   decrypt. The red team's mutations, re-run here, each reddened exactly the new cell: substring origin check → P1;
   ending on any non-ok → R1; no catch on clear → F5; hex store → S6; an extra plaintext file → S6; no menu → S5; the old
   resume → S11. `prove:session` 13 cells, `prove:signin` 12, exit 0 twice.
+- **B3 — desktop bills (P1.14, SRS 2.1): list by shop-day range and seller, detail with the seller's name, void with a
+  reason; proven against a real server.** Server, route code only (R4): `GET /bills` gains `from_date`/`to_date`
+  (shop days, the report's `_day_window`; reversed → 422 `date_range_reversed`), `seller_id`, `include_voided`
+  (default hides voided, as before), and each row adds `seller_code`, `seller_name`, `status`, `void_reason` (LEFT JOIN
+  sellers; never `id_number`/`address`); `GET /bills/{id}` adds `seller_code`/`seller_name`. With no new parameter the
+  old answer is unchanged (V4). Desktop `src/renderer/Bills.tsx`: presets today / yesterday / 7 days, two date fields,
+  a seller picker, a voided toggle; the detail as a sticky side panel with the lines as a narrow receipt; void is an
+  INLINE confirmation (no modal) that needs a non-blank reason, shown only to a `bills.void` holder, every request
+  through `Session.authed`. **A full page is not a count:** the route's ceiling is 200; at 200 rows the screen says
+  `200 บิลล่าสุด อาจมีมากกว่านี้ — เลือกช่วงวันที่ให้สั้นลงหรือเลือกผู้ขาย` instead of `200 บิล` (found when the dev-restored
+  scratch's 200+ bills of today pushed a fixture bill off the page). NEW proofs: server `prove_bill_filters.py` (12
+  cells over real HTTP, per-run sellers P and Q so the ceiling cannot hide a fixture row; V2/V3 read the void back
+  with its reason and the row still in Postgres), desktop `prove:bills` (11 pure: grouping vs the phone's rule, shop
+  day at 17:30 UTC, presets, BE label via shop-time, the query, the reason rule, the readers, the full-page sentence)
+  and `prove:billsflow` (7, Playwright on the real screen against `scratch_server.py`: list, seller filter, detail, an
+  empty reason sends NO void request, a void read back over HTTP as `voided` with its reason and the row still listed
+  with `include_voided`, gone by default, struck through with the toggle). Each exit 0 twice. Disproofs, each restored
+  byte-identical by sha256: seller filter dropped → D1 D2 S1 S1 N1; include_voided ignored → exactly V3; detail
+  without the seller name → exactly N2; a whitespace reason accepted → V1; `>=` → `>` at the ceiling → P1; the void
+  form left open after a void (both guards removed — the FIRST build's own defect, seen in its screenshot) → B5. A
+  first M6 that removed only one guard stayed green, correctly: the other guard alone closes the form.
 
 **LANE A, SELLER SEARCH — C1: a seller's full ID number and address are personal data (migration 0024,
 ADVISOR-DECIDED 2026-10-12, the no-migration ban lifted for this milestone only). 2026-10-12.** Shas anchor next pass.

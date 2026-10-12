@@ -84,7 +84,8 @@ export class Session {
   notice: string | null = null;
 
   constructor(
-    private readonly api: ApiClient,
+    /** The client every authenticated call goes through, always via `authed`. */
+    readonly api: ApiClient,
     private readonly persistence: SessionPersistence,
     initialToken: string | null,
   ) {

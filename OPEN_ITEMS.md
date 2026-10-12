@@ -1705,6 +1705,16 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
 
 ## Code debt found and left in place
 
+- **DESKTOP B3 — `GET /bills` HAS A CEILING OF 200 AND NO PAGING (2026-10-12).** The bills screen says so at 200 rows
+  (`listCountText`) rather than showing a false count, but a shop with more than 200 bills in a chosen range cannot
+  browse the rest except by narrowing the range or picking a seller. A cursor (`before` = the last row's
+  `server_received_at`, id) is the fix when a shop reaches it; MEASURED that dev reaches it in one day of proof runs.
+
+- **DESKTOP B3 — THE SERVER ACCEPTS A WHITESPACE-ONLY VOID REASON (2026-10-12), ASSUMED-BECAUSE `VoidRequest.reason`
+  is `Field(min_length=1)` with no strip (`server/app/bills.py` `class VoidRequest`), UNMEASURED over HTTP.** The
+  desktop refuses a blank reason and sends it trimmed; the phone, or any other caller, is held only by the server.
+  Whether to strip and require one visible character is a route change with its own proof.
+
 - **DESKTOP B2 — UNMEASURED, named by the red team (2026-10-12).** (1) That a REAL window focus delivers the renderer's
   `focus` event (S9 dispatches it): settle by alt-tabbing away and back with a dead token and reading one `/whoami` in
   the server log. (2) That `safeStorage.decryptString` THROWS for a foreign or corrupted `session.bin` rather than

@@ -14,7 +14,9 @@
     "prove:window": "npm run build && node dist/proof/proveWindow.cjs",
     "prove:origin": "npm run build && node dist/proof/proveOrigin.cjs",
     "prove:session": "npm run build && node dist/proof/proveSession.cjs",
-    "prove:signin": "npm run build && node dist/proof/proveSignIn.cjs"
+    "prove:signin": "npm run build && node dist/proof/proveSignIn.cjs",
+    "prove:bills": "npm run build && node dist/proof/proveBills.cjs",
+    "prove:billsflow": "npm run build && node dist/proof/proveBillsFlow.cjs"
   },
   "dependencies": {
     "@recycle/shop-time": "file:../packages/shop-time",

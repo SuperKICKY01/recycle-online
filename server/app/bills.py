@@ -9,6 +9,7 @@ totals are only ever used to REJECT on mismatch, never trusted.
 from __future__ import annotations
 
 import logging
+import datetime as dt
 import uuid
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -464,10 +465,22 @@ async def _read_bill(conn: AsyncConnection, bill_id) -> dict | None:
         )
     ).mappings().all()
     paid = await _paid_amount(conn, bill_id)
+    # THE SELLER'S CODE AND NAME, for the desktop's bill detail (B3, 2026-10-12). Code and name
+    # only -- never id_number or address, which are personal data behind sellers.read_personal
+    # (migration 0024). No is_active predicate, for the reason the product join below gives:
+    # a retired seller must still name last year's bill. Additive keys; the phone reads doc_no
+    # alone from this payload.
+    seller = (
+        await conn.execute(
+            text("SELECT code, name FROM sellers WHERE id = :s"), {"s": h["seller_id"]}
+        )
+    ).mappings().first()
     return {
         "id": str(h["id"]),
         "doc_no": h["doc_no"],
         "seller_id": str(h["seller_id"]),
+        "seller_code": seller["code"] if seller else None,
+        "seller_name": seller["name"] if seller else None,
         "vehicle_no": h["vehicle_no"],
         "idempotency_key": h["idempotency_key"],
         "total_amount": str(h["total_amount"]),
@@ -924,6 +937,16 @@ async def create_bill(
 @router.get("/bills")
 async def list_bills(
     limit: int = Query(50, ge=1, le=200),
+    # THE DESKTOP'S FILTERS (B3, 2026-10-12; SRS 3.2 "วันที่ถึงวันที่ ... ผู้ขาย/ผู้ซื้อเฉพาะราย").
+    # All OPTIONAL and additive: absent, the list is exactly what it was. Dates are SHOP days,
+    # turned into a half-open UTC window by reports._day_window -- the one place a shop day
+    # becomes instants -- over server_received_at, the instant the bill's doc_no year came from.
+    from_date: dt.date | None = Query(None, description="first shop day, inclusive (YYYY-MM-DD)"),
+    to_date: dt.date | None = Query(None, description="last shop day, inclusive (YYYY-MM-DD)"),
+    seller_id: uuid.UUID | None = Query(None),
+    # A voided bill stays in history (hard rule 5) and the back office must be able to SEE it
+    # with its reason; the default stays False so the cashier queue is unchanged.
+    include_voided: bool = Query(False),
     # THE CASHIER QUEUE (migration 0020, STRUCTURE.md 2.1): the live bills whose
     # allocations from live payments sum to less than their total. An anti-join
     # over one shop's bills, fine at a shop's daily volume and filed under the
@@ -934,23 +957,47 @@ async def list_bills(
     # bills.read (0019): held by every system role, so nothing moved on the wire.
     principal: Principal = Depends(require(Permission.BILLS_READ)),
 ) -> dict:
+    from .reports import _day_window  # local: reports imports this module
+
+    if from_date is not None and to_date is not None and to_date < from_date:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"kind": "invalid_request", "code": "date_range_reversed",
+                    "message": "วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น", "field": "to_date"},
+        )
+    where = [] if include_voided else ["b.voided_at IS NULL"]
+    params: dict = {"lim": limit}
+    if unpaid:
+        where.append("coalesce(pd.paid, 0) < b.total_amount")
+    if from_date is not None:
+        where.append("b.server_received_at >= :start")
+        params["start"] = _day_window(from_date)[0]
+    if to_date is not None:
+        where.append("b.server_received_at < :end")
+        params["end"] = _day_window(to_date)[1]
+    if seller_id is not None:
+        where.append("b.seller_id = :seller")
+        params["seller"] = seller_id
     async with tenant_connection(principal.tenant_id) as conn:
         rows = (
             await conn.execute(
                 text(
                     "SELECT b.id, b.doc_no, b.seller_id, b.vehicle_no, b.total_amount,"
                     " b.device_created_at, b.server_received_at, b.branch_id,"
+                    " b.voided_at, b.void_reason, s.code AS seller_code, s.name AS seller_name,"
                     " coalesce(pd.paid, 0) AS paid_amount"
                     " FROM purchase_bills b"
+                    # Code and name only; no is_active predicate (a retired seller still names
+                    # their bill); LEFT so a money row is never lost to make a name resolve.
+                    " LEFT JOIN sellers s ON s.id = b.seller_id"
                     " LEFT JOIN LATERAL ("
                     "   SELECT sum(a.amount) AS paid FROM payment_allocations a"
                     "   JOIN payments p ON p.id = a.payment_id"
                     "   WHERE a.bill_id = b.id AND p.voided_at IS NULL) pd ON true"
-                    " WHERE b.voided_at IS NULL"
-                    + (" AND coalesce(pd.paid, 0) < b.total_amount" if unpaid else "")
+                    + (" WHERE " + " AND ".join(where) if where else "")
                     + " ORDER BY b.server_received_at DESC, b.id DESC LIMIT :lim"
                 ),
-                {"lim": limit},
+                params,
             )
         ).mappings().all()
     return {
@@ -960,8 +1007,12 @@ async def list_bills(
                 "doc_no": r["doc_no"],
                 "branch_id": str(r["branch_id"]),
                 "seller_id": str(r["seller_id"]),
+                "seller_code": r["seller_code"],
+                "seller_name": r["seller_name"],
                 "vehicle_no": r["vehicle_no"],
                 "total_amount": str(r["total_amount"]),
+                "status": "voided" if r["voided_at"] is not None else "active",
+                "void_reason": r["void_reason"],
                 # Derived per row from the ledger (0020), as on the single read;
                 # quantized for the same reason _paid_amount is.
                 "paid_amount": str(Decimal(r["paid_amount"]).quantize(Decimal("0.01"))),

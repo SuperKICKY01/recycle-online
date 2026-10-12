@@ -12,6 +12,7 @@ import { createRoot } from "react-dom/client";
 import { ApiClient } from "../shared/api";
 import { normaliseApiBase, noticeFor, Session, SESSION_TEXT, type ShopConfig } from "../shared/session";
 import type { ApiOutcome, WhoAmI } from "../shared/api";
+import { BillsScreen } from "./Bills";
 import { Shell, type NavItem } from "./Shell";
 import { SetupScreen, SignInScreen } from "./SignIn";
 
@@ -214,8 +215,7 @@ function App() {
       }
     >
       {shellNotice !== null ? <p className="notice notice-warn shell-notice" role="status">{shellNotice}</p> : null}
-      <h1 className="page-title">บิลรับซื้อ</h1>
-      <p className="page-lead">เข้าสู่ระบบแล้ว รายการบิลของร้านจะแสดงที่หน้านี้</p>
+      <BillsScreen session={sessionRef.current} onSettle={settle} />
     </Shell>
   );
 }
