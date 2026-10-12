@@ -10,16 +10,23 @@ the REAL routes and read back from Postgres as a superuser, value against value.
       catalogue is the 16 codes
   R2  GET /roles as staff -> 403 naming users.manage
   R3  PUT as ADMIN (no roles.manage) -> 403 naming roles.manage; the staff set unchanged
-  R4  the owner sets staff WITHOUT money.view_own -> the staff token issued BEFORE the change is
-      refused GET /reports/summary (403 naming money.view_own) on its very next request
-  R5  the owner adds money.view_own -> the SAME staff token reads the summary (200); Postgres holds
-      the new set; audit_log carries the role_permissions INSERT with the OWNER as actor
+  R4  the owner ADDS money.view_own to staff -> the staff token issued BEFORE the change reads
+      GET /reports/summary (200) on its very next request; audit_log carries the INSERT, owner as actor
+  R5  the owner REMOVES it -> the SAME token is refused (403 naming money.view_own); Postgres holds the
+      set without it; audit_log carries the DELETE, owner as actor. (Red team 2026-10-13: the first R4
+      "removed" a permission dev's staff role never held, wrote nothing, and read a 403 that was
+      already there; the cell now PRECONDITIONS on a 403 before the add.)
   R6  the owner removes bills.create -> that staff token's next POST /bills is 403 naming
       bills.create (no re-login, no revoke); restored afterwards
   R7  the OWNER role -> 409 owner_role_fixed; its set unchanged
   R8  roles.manage on another role -> 422 roles_manage_owner_only; unchanged
   R9  an unknown code -> 422 permission_unknown; unchanged
   R10 Shop B's staff role id from Shop A's owner -> 404 (RLS: another shop's role does not exist)
+  R11 users.manage onto staff, or off admin -> 422 users_manage_fixed; both unchanged (red team
+      2026-10-13: added, it hands staff the owner's password reset; removed, it races the
+      last-active-admin guard)
+  R12 GET /roles returns exactly SHOP A's roles: every id's tenant_id is Shop A and the count is Shop A's
+      (red team 2026-10-13: R1 alone could not tell one shop's three roles from another's)
 """
 from __future__ import annotations
 
@@ -153,21 +160,28 @@ def run_cells(base: str) -> None:
     summary = lambda: httpx.get(f"{base}/reports/summary", headers=stf, timeout=15,  # noqa: E731
                                 params={"from_date": today, "to_date": today, "by": "day"})
     base_set = staff_before - {"money.view_own", "money.view_shop"}
-    r = put(own, staff_rid, base_set)
-    s1 = summary()
-    check(r.status_code == 200 and db_set(staff_rid) == base_set and s1.status_code == 403
-          and detail(s1).get("required_permission") == "money.view_own",
-          f"R4 owner sets staff without money.view_own -> {r.status_code}; the SAME staff token's next summary -> {s1.status_code}")
+    if base_set != staff_before:  # start from WITHOUT, so both directions are real changes
+        put(own, staff_rid, base_set)
+    s0 = summary()
     t0 = asyncio.run(su("SELECT now() AS n"))[0]["n"]
     r = put(own, staff_rid, base_set | {"money.view_own"})
-    s2 = summary()
-    audited = asyncio.run(su(
-        "SELECT actor_user_id, new_data FROM audit_log WHERE table_name = 'role_permissions' AND action = 'INSERT'"
+    s1 = summary()
+    ins = asyncio.run(su(
+        "SELECT actor_user_id FROM audit_log WHERE table_name = 'role_permissions' AND action = 'INSERT'"
         " AND created_at >= $1 AND new_data->>'permission' = 'money.view_own'", t0))
-    check(r.status_code == 200 and set(r.json()["permissions"]) == db_set(staff_rid) == base_set | {"money.view_own"}
-          and s2.status_code == 200 and len(audited) == 1 and audited[0]["actor_user_id"] == USER_IDS["own"],
-          f"R5 owner adds money.view_own -> {r.status_code}; same token's summary -> {s2.status_code};"
-          f" audit rows {len(audited)} with the owner as actor")
+    check(s0.status_code == 403 and r.status_code == 200 and db_set(staff_rid) == base_set | {"money.view_own"}
+          and s1.status_code == 200 and len(ins) == 1 and ins[0]["actor_user_id"] == USER_IDS["own"],
+          f"R4 precondition 403 ({s0.status_code}); owner ADDS money.view_own -> {r.status_code}; the SAME staff token's"
+          f" next summary -> {s1.status_code}; audit INSERT rows {len(ins)}, owner as actor")
+    t1 = asyncio.run(su("SELECT now() AS n"))[0]["n"]
+    r = put(own, staff_rid, base_set)
+    s2 = summary()
+    dels = asyncio.run(su(
+        "SELECT actor_user_id FROM audit_log WHERE table_name = 'role_permissions' AND action = 'DELETE'"
+        " AND created_at >= $1 AND old_data->>'permission' = 'money.view_own'", t1))
+    check(r.status_code == 200 and db_set(staff_rid) == base_set and s2.status_code == 403
+          and detail(s2).get("required_permission") == "money.view_own" and len(dels) == 1 and dels[0]["actor_user_id"] == USER_IDS["own"],
+          f"R5 owner REMOVES it -> {r.status_code}; the same token's next summary -> {s2.status_code}; audit DELETE rows {len(dels)}")
 
     bill = lambda: httpx.post(f"{base}/bills", headers=stf, timeout=15, json={  # noqa: E731
         "id": str(uuid.uuid4()), "seller_id": str(SELLER_A_ID), "vehicle_no": "ROLE",
@@ -193,6 +207,17 @@ def run_cells(base: str) -> None:
     r = put(own, staff_rid, staff_before | {"bills.teleport"})
     check(r.status_code == 422 and detail(r).get("code") == "permission_unknown" and db_set(staff_rid) == staff_before,
           f"R9 an unknown code -> {r.status_code} {detail(r).get('code')!r}; unchanged")
+    r = put(own, staff_rid, staff_before | {"users.manage"})
+    r2 = put(own, admin_rid, admin_before - {"users.manage"})
+    check(r.status_code == 422 and detail(r).get("code") == "users_manage_fixed" and r2.status_code == 422
+          and detail(r2).get("code") == "users_manage_fixed" and db_set(staff_rid) == staff_before and db_set(admin_rid) == admin_before,
+          f"R11 users.manage onto staff -> {r.status_code}, off admin -> {r2.status_code}; both unchanged")
+    listed = httpx.get(f"{base}/roles", headers=adm, timeout=15).json()["roles"]
+    tenants = {row["tenant_id"] for row in asyncio.run(su(
+        "SELECT tenant_id FROM roles WHERE id = ANY($1::uuid[])", [uuid.UUID(x["id"]) for x in listed]))}
+    a_count = asyncio.run(su("SELECT count(*) AS n FROM roles WHERE tenant_id = $1", TENANT_A_ID))[0]["n"]
+    check(tenants == {TENANT_A_ID} and len(listed) == a_count,
+          f"R12 GET /roles: every id is Shop A's ({tenants == {TENANT_A_ID}}), {len(listed)} of Shop A's {a_count}")
     other = role_id(TENANT_B_ID, "staff")
     other_before = db_set(other)
     r = put(own, other, set())

@@ -27,6 +27,9 @@
  *   B10 someone else voids the bill while its void form is open: the confirm is refused (409), the
  *      panel says so and shows THEIR reason; over HTTP the bill still carries their reason
  *      (ADVISOR-DECIDED 2026-10-12: a void record is never overwritten)
+ *   B12 every void the desktop sends carries an idempotency key that is a fresh UUID, never shared
+ *       between two voids (captured off the wire; red team on 36db720, finding 2 -- a constant key
+ *       would turn the loser of a race into a silent "success" carrying another person's void)
  * B4's request counter has a POSITIVE CONTROL: the real void in B5 must move it by exactly one.
  *
  * RECYCLE_SHOT_DIR set: the window is saved there as PNGs at the list, the detail and after the void
@@ -74,6 +77,8 @@ void finish("PROVE_BILLSFLOW", async () => {
     app = await _electron.launch({ executablePath, args: [DESKTOP_ROOT],
       env: { ...process.env, RECYCLE_USER_DATA: userData } as Record<string, string> });
     const page = await app.firstWindow();
+    const voidBodies: string[] = [];
+    page.on("request", (r) => { if (r.method() === "POST" && /\/bills\/[^/]+\/void$/.test(r.url())) voidBodies.push(r.postData() ?? ""); });
     await page.fill('input[name="apiBase"]', info.base);
     await page.fill('input[name="shopCode"]', info.shop_code);
     await page.click('button[type="submit"]');
@@ -190,6 +195,11 @@ void finish("PROVE_BILLSFLOW", async () => {
     check("B10 voided elsewhere first: the screen says so and shows THEIR reason; the stored reason is theirs",
       elsewhere.status === 200 && told && shownReason === theirs && stored.void_reason === theirs,
       JSON.stringify({ elsewhere: elsewhere.status, told, shownReason, stored: stored.void_reason }));
+
+    const keys = voidBodies.map((b) => (JSON.parse(b) as { idempotency_key?: unknown }).idempotency_key);
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+    check("B12 each desktop void carries its own fresh UUID key (two voids sent, two different keys)",
+      keys.length === 2 && keys.every((k) => typeof k === "string" && uuid.test(k)) && keys[0] !== keys[1], JSON.stringify(keys));
 
     const listGets = (): number => (server.log().match(/GET \/bills\?[^ ]*from_date/g) ?? []).length;
     const before8 = listGets();

@@ -177,6 +177,33 @@ anchor next pass.
   (R2). Lesson amended: `correct-classification-can-still-render-as-an-error.md` (a reused wording function's domain
   widened by a new caller). After the fixes: `prove_bill_filters` 14, `prove:bills` 15, `prove:billsflow` 10,
   `prove:slip` 15, `prove:slipflow` 6 — each exit 0 twice.
+- **RED TEAMS ON 1a (`36db720`) AND ON B6's SERVER HALF (`f3abf7b`), 2026-10-13 — fixed before the gate.** 1a: (1)
+  CONFIRMED and MEASURED: migration 0025 reddened `prove_shifts` FX (`columns absent at 0022 are
+  ['void_idempotency_key'], declared []`) — the gate would have failed; the column is DECLARED absent at 0022 (never
+  excepted, so FX still compares it on head), and the FX label now prints the declared set. (2) no cell asserted the
+  desktop's void key is per-void → `prove:billsflow` B12 captures every void body off the wire: a fresh UUID each, never
+  shared. (3) W4 replayed with the winner's own reason, so it could not tell the stored record from an echo → it
+  replays with an EDITED reason and requires the STORED one back. (4) the rehearsal printed revisions without asserting
+  them and could not reach 0025's downgrade refusal → `rehearse_migration.py` asserts head → previous → head, and
+  `--refuse-sql scripts/rehearse_0025_refusal.sql` writes a keyed void on the scratch, then REQUIRES the downgrade to
+  fail with REFUSING and the revision to stay at head (MEASURED: `REFUSING to downgrade 0025 …`, revision `0025
+  (head)`). (5, PLAUSIBLE) a 409 whose reload failed pointed at a record it did not show and still offered to void →
+  "unloaded" wording and no void control on a known-voided bill (no cell: the two-request window was not staged). B6:
+  (1) CONFIRMED by source: one tick — users.manage onto staff — let any staff account reset the owner's password
+  (`POST /users/{id}/password` has no escalation guard) and sign in as the owner; (2) CONFIRMED by source: removing
+  users.manage from admin concurrently with a deactivate could zero the set the last-active-admin lock protects (its
+  premise: no route deletes a grant). Both closed at the root of THIS change: `users.manage` is not a tick (422
+  `users_manage_fixed`, both directions; the desktop locks the row). The pre-existing half — an ADMIN can already reset
+  the OWNER's password — is the owner's decision (OPEN_ITEMS), not changed here. (3) a phone halted on a 403 does not
+  resume when the tick is restored → the role screen says so (`data-phone-hint`); the mobile halt itself is recorded.
+  (4) R1 could not tell Shop A's roles from Shop B's → R12 checks every returned id's tenant and the count. (5) R4
+  "removed" a permission dev's staff never held → R4/R5 now add-then-remove with a 403 precondition, and audit rows for
+  both. (6) the docstring claimed a cell for the escalation guard → it now says the guard is unreachable today and
+  unproven. Disproofs, each restored byte-identical: replay echoing the request → W4; a constant desktop key → B12
+  (`["void","void"]`); users.manage tickable server-side → R11; GET /roles on another shop → R12 (R1 stayed green, as
+  the red team said); users.manage tickable on screen → T1; 0025's refusal removed → the rehearsal (`exit 0 … revision
+  '0024'`). Green twice: prove_bill_filters (24), prove:billsflow (12), prove:people, prove:peopleflow; prove_roles
+  (12) and prove_shifts (63) run alone, green. Lesson `a-guard-on-loan-from-the-route-table.md`.
 - **B7 — REPORTS (SRS 3.1, 3.2): the transaction report, its Excel file, and the master-data lists printed — proven
   against a real server; real Excel and real paper NOT observed.** Server (route code): `GET /bills` gains a KEYSET
   cursor (`cursor` in, `next_cursor` out on a full page; `(server_received_at, id) <` the last row) — a bill arriving

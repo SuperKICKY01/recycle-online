@@ -216,11 +216,16 @@ function BillPanel(props: {
    * outcome, never a second void (migration 0025, hard rule 4).
    */
   const [voidKey, setVoidKey] = useState("");
-  /** Set when someone else voided the bill first: the panel then shows THEIR record. */
-  const [already, setAlready] = useState(false);
-  const canVoid = bill.status === "active" && mayVoid(session.me?.permissions ?? []);
+  /**
+   * Set when someone else voided the bill first: "shown" when their record was reloaded and is drawn
+   * below, "unloaded" when the reload failed -- then the panel says so instead of pointing at a record
+   * it does not have (red team on 36db720, finding 5). Either way the bill is KNOWN voided: no void
+   * control is offered on it again.
+   */
+  const [already, setAlready] = useState<"shown" | "unloaded" | null>(null);
+  const canVoid = bill.status === "active" && already === null && mayVoid(session.me?.permissions ?? []);
 
-  useEffect(() => { setVoiding(false); setReason(""); setProblem(null); setAlready(false); }, [bill.id]);
+  useEffect(() => { setVoiding(false); setReason(""); setProblem(null); setAlready(null); }, [bill.id]);
 
   const confirm = async () => {
     const p = voidReasonProblem(reason);
@@ -241,7 +246,7 @@ function BillPanel(props: {
         const fresh = await session.authed((t) => session.api.get(t, `/bills/${bill.id}`, readBillDetail));
         onSettle(fresh.kind);
         setVoiding(false);
-        setAlready(true);
+        setAlready(fresh.kind === "ok" ? "shown" : "unloaded");
         if (fresh.kind === "ok") onVoided(fresh.value);
       }
       else if (out.kind === "forbidden") setProblem("บัญชีนี้ไม่มีสิทธิ์ยกเลิกบิล");
@@ -257,9 +262,11 @@ function BillPanel(props: {
         <h2 className="panel-title">บิล {bill.doc_no ?? "—"}</h2>
         <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>ปิด</button>
       </div>
-      {already ? (
-        <p className="notice notice-warn" role="status" data-void-already>
-          บิลนี้ถูกยกเลิกไปก่อนแล้ว — เหตุผลของคุณไม่ได้ถูกบันทึก ด้านล่างคือการยกเลิกที่บันทึกไว้
+      {already !== null ? (
+        <p className="notice notice-warn" role="status" data-void-already={already}>
+          {already === "shown"
+            ? "บิลนี้ถูกยกเลิกไปก่อนแล้ว — เหตุผลของคุณไม่ได้ถูกบันทึก ด้านล่างคือการยกเลิกที่บันทึกไว้"
+            : "บิลนี้ถูกยกเลิกไปก่อนแล้ว — เหตุผลของคุณไม่ได้ถูกบันทึก แต่โหลดการยกเลิกที่บันทึกไว้ไม่สำเร็จ ปิดแล้วเปิดบิลนี้ใหม่"}
         </p>
       ) : null}
       {bill.status === "voided" ? (

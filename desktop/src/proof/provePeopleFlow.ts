@@ -120,7 +120,7 @@ void finish("PROVE_PEOPLEFLOW", async () => {
       await page.waitForSelector("[data-panel-saved]", { timeout: 15_000 });
     };
     const ownerLocked = await page.locator('[data-tick^="owner:"]').evaluateAll((els) => els.every((e) => (e as HTMLInputElement).disabled && (e as HTMLInputElement).checked));
-    const rmLocked = await page.locator('[data-tick$=":roles.manage"]').evaluateAll((els) => els.every((e) => (e as HTMLInputElement).disabled));
+    const rmLocked = await page.locator('[data-tick$=":roles.manage"], [data-tick$=":users.manage"]').evaluateAll((els) => els.length >= 6 && els.every((e) => (e as HTMLInputElement).disabled));
     const had = staffRole?.permissions.includes("money.view_own") === true;
     if (had) { // start from "without" so the cell measures a change in BOTH directions
       await page.uncheck('[data-tick="staff:money.view_own"]');

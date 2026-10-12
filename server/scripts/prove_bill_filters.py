@@ -363,10 +363,16 @@ def run_cells(base: str) -> None:
     check(rec[0] is not None and rec[1] == USER_IDS[win[0]] and rec[2] == win[1] and rec[3] == win[2],
           f"W3 Postgres holds the winner's record: voided_by {rec[1] == USER_IDS[win[0]]}, reason {rec[2] == win[1]},"
           f" key {rec[3] == win[2]} (winner {win[0]})")
-    rp = httpx.post(f"{base}/bills/{w}/void", headers=win[3], timeout=15, json={"reason": win[1], "idempotency_key": win[2]})
+    # The replay carries the SAME key and a DIFFERENT reason (an operator edited it before re-confirming
+    # after a lost answer): the answer must be the STORED void, never an echo of this request
+    # (red team on 36db720, finding 3 -- a same-reason replay could not tell the two apart).
+    edited = f"เหตุผลที่แก้ภายหลัง {RUN}"
+    rp = httpx.post(f"{base}/bills/{w}/void", headers=win[3], timeout=15, json={"reason": edited, "idempotency_key": win[2]})
     rec_after = asyncio.run(void_record_full(w))
     check(rp.status_code == 200 and rp.json().get("status") == "voided" and rp.json().get("void_reason") == win[1]
-          and rec_after == rec, f"W4 the winner's replay (same key) -> {rp.status_code}, the original outcome; record unchanged {rec_after == rec}")
+          and rp.json().get("void_reason") != edited and rec_after == rec,
+          f"W4 the winner's replay (same key, EDITED reason) -> {rp.status_code}, answered with the STORED reason"
+          f" ({rp.json().get('void_reason') == win[1]}); record unchanged {rec_after == rec}")
     rl = httpx.post(f"{base}/bills/{w}/void", headers=lose[3], timeout=15, json={"reason": lose[1], "idempotency_key": lose[2]})
     check(rl.status_code == 409 and asyncio.run(void_record_full(w)) == rec,
           f"W5 the loser's replay (its own key) -> {rl.status_code}; record unchanged")

@@ -43,9 +43,10 @@ void finish("PROVE_PEOPLE", async () => {
     withUnknown.some((g) => g.title === "อื่น ๆ" && g.codes.includes("reports.export")));
 
   header("T ticks");
-  check("T1 editable only for roles.manage, never the owner's role, never roles.manage",
+  check("T1 editable only for roles.manage, never the owner's role, never roles.manage or users.manage",
     tickEditable({ code: "staff" }, "bills.void", true) && !tickEditable({ code: "staff" }, "bills.void", false)
-      && !tickEditable({ code: "owner" }, "bills.void", true) && !tickEditable({ code: "admin" }, "roles.manage", true));
+      && !tickEditable({ code: "owner" }, "bills.void", true) && !tickEditable({ code: "admin" }, "roles.manage", true)
+      && !tickEditable({ code: "staff" }, "users.manage", true) && !tickEditable({ code: "admin" }, "users.manage", true));
 
   header("R the drawer reader");
   const shift = { id: "s", status: "open", opened_at: "2026-10-13T01:00:00Z", opening_float: "1500.00", counted_cash: null,

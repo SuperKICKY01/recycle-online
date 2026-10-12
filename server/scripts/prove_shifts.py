@@ -442,7 +442,13 @@ FX_EXCEPT: dict[str, frozenset[str]] = {
 # Columns present at head but ABSENT at 0022 in these four tables, where the fixture runs.
 # MEASURED by FX against the 0022 build of this same run, never assumed: 0023 changed
 # branch_payment_methods and comments, 0024 the permission catalogue -- neither these tables.
+# 0025 (2026-10-13) DID: purchase_bills.void_idempotency_key, the key a void was made with. It is
+# DECLARED here, never added to FX_EXCEPT: declared, FX still compares it on the head scratch
+# (both writes leave it NULL -- a new bill is not voided); excepted, FX would stop looking at it
+# (lessons/a-proof-fixture-must-be-a-row-the-product-could-produce.md: never teach the checker to
+# tolerate). The 0022 fixture cannot write a column its schema lacks.
 FX_ABSENT_AT_0022: dict[str, frozenset[str]] = {t: frozenset() for t in FX_TABLES}
+FX_ABSENT_AT_0022["purchase_bills"] = frozenset({"void_idempotency_key"})
 
 _FX_ROWS = {
     "purchase_bills": "SELECT * FROM purchase_bills WHERE id = $1",
@@ -494,7 +500,8 @@ async def run_fixture_guard(cols_0022: dict[str, set[str]]) -> None:
         await su.close()
     check(not diffs,
           f"FX the SQL fixture equals the real POST /bills on {compared} non-generated columns of"
-          f" {', '.join(FX_TABLES)} (excepted: ids, keys, doc_no, instants; absent at 0022: none)"
+          f" {', '.join(FX_TABLES)} (excepted: ids, keys, doc_no, instants; absent at 0022:"
+          f" {sorted(c for t in FX_TABLES for c in FX_ABSENT_AT_0022[t]) or 'none'})"
           + ("" if not diffs else f" -- DRIFT: {'; '.join(diffs)}"))
 
 

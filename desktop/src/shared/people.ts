@@ -135,7 +135,7 @@ export const PERMISSION_TEXT: Readonly<Record<string, string>> = {
   "sellers.create": "เพิ่มผู้ขาย",
   "sellers.write": "แก้ไขและปิดใช้งานผู้ขาย",
   "sellers.read_personal": "ดูเลขบัตรและที่อยู่ผู้ขาย",
-  "users.manage": "จัดการบัญชีพนักงาน",
+  "users.manage": "จัดการบัญชีพนักงาน (เจ้าของร้านและผู้ดูแลเท่านั้น)",
   "shop.settings.write": "แก้ไขข้อมูลและการตั้งค่าร้าน",
   "roles.manage": "กำหนดสิทธิ์ตามตำแหน่ง (เจ้าของร้านเท่านั้น)",
 };
@@ -160,9 +160,14 @@ export const ROLE_TEXT: Readonly<Record<string, string>> = { owner: "เจ้�
 export const roleLabel = (r: { code: string; name: string }): string =>
   ROLE_TEXT[r.code] ?? (r.name.trim() !== "" ? r.name : r.code);
 
-/** Whether a tick may be changed on screen: never on the owner's role, never roles.manage. */
+/**
+ * Whether a tick may be changed on screen: never on the owner's role, never roles.manage, never
+ * users.manage (the server refuses both directions, 422 users_manage_fixed -- who may take an account
+ * over is not a tick; red team 2026-10-13).
+ */
+export const LOCKED_CODES: readonly string[] = ["roles.manage", "users.manage"];
 export function tickEditable(role: Pick<Role, "code">, code: string, canManageRoles: boolean): boolean {
-  return canManageRoles && role.code !== "owner" && code !== "roles.manage";
+  return canManageRoles && role.code !== "owner" && !LOCKED_CODES.includes(code);
 }
 
 // --- the checks before a request ------------------------------------------------------------------

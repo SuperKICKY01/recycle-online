@@ -1705,6 +1705,24 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
 
 ## Code debt found and left in place
 
+- **AN ADMIN CAN RESET THE OWNER'S PASSWORD AND SIGN IN AS THE OWNER — THE OWNER'S DECISION (red team on f3abf7b,
+  2026-10-13, by source).** `POST /users/{id}/password` (and deactivate, unlock, revoke) check only `users.manage`, not
+  that the target's role is within the caller's — `POST /users` has that guard ("an admin cannot mint an owner"), the
+  account acts do not. B6 closed the NEW path (staff cannot be given users.manage; `users_manage_fixed`); the admin path
+  predates it. Guarding the acts closes the takeover AND removes the only way back for an owner who forgot a password
+  in a shop with no second owner (D7/D8's recovery argument) — which is why it is not changed here.
+
+- **A YARD PHONE HALTED BY A 403 DOES NOT RESUME WHEN THE PERMISSION IS RESTORED** (red team on f3abf7b, by source:
+  `mobile/src/sync/outboxRunner.ts` halts the kind until sign-in/sign-out; `outbox.ts` states the premise that a 403
+  changes only when WHO is asking). The role screen now says to sign out and in on the phone; the device-side answer
+  (re-probe a halted kind after a /whoami that shows the permission back) is the mobile lane's.
+
+- **THE ROLE SCREEN SAVES ROLE BY ROLE AND HAS NO VERSION TOKEN** (red team, desktop half, not pursued): a multi-role save
+  can half-apply on a failure, and two owners editing at once overwrite each other. One owner per shop today.
+
+- **0025's CHECK `purchase_bills_void_key_needs_void` IS NOT IN `reconcile.py` REQUIRED_CONSTRAINTS** (red team, noted,
+  not a finding: no product path writes a key on a live bill). One line in that list when the reconciler is next touched.
+
 - **SUPERSEDED IN PART 2026-10-13 (B7):** `GET /bills` now pages (keyset `cursor` / `next_cursor`), and the report reads
   every page. The BILLS SCREEN still shows the first 200 with its "may be more" sentence and no "load more" — a small
   follow-up now that the route pages.

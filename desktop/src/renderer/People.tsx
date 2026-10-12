@@ -421,6 +421,11 @@ function RolesTab(props: Props) {
       <p className="page-lead">{canManage
         ? "ติ๊กสิทธิ์ที่แต่ละตำแหน่งทำได้ ทุกบัญชีในตำแหน่งนั้นได้สิทธิ์เดียวกันทันทีที่บันทึก สิทธิ์ของเจ้าของร้านแก้ไขไม่ได้"
         : "ดูได้อย่างเดียว — เฉพาะเจ้าของร้านแก้ไขสิทธิ์ตามตำแหน่งได้"}</p>
+      {canManage ? (
+        <p className="field-hint" data-phone-hint>
+          ถ้าเอาสิทธิ์ใดออกแล้วใส่คืน พนักงานที่ใช้โทรศัพท์ต้องออกจากระบบแล้วเข้าใหม่ในโทรศัพท์ จึงจะส่งงานประเภทนั้นต่อได้
+        </p>
+      ) : null}
       <table className="grid tick-grid">
         <thead><tr><th>สิทธิ์</th>{roles.map((r) => <th key={r.id} className="tick-col" data-role-col={r.code}>{roleLabel(r)}</th>)}</tr></thead>
         <tbody>
