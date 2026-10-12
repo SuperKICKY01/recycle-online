@@ -965,6 +965,11 @@ async def list_bills(
     # separate_cashier off it is empty by construction, and the switch has no
     # route yet, so on every shop that exists today it is empty.
     unpaid: bool = Query(False),
+    # THE NEXT PAGE (B7, 2026-10-13): an opaque `next_cursor` from the previous answer. KEYSET,
+    # not offset: the page after (received_at, id) of the last row, in the list's own order, so a
+    # bill arriving while a report pages through a range neither repeats a row nor skips one
+    # (an offset would shift by every new bill). Absent = the first page, as before.
+    cursor: str | None = Query(None, max_length=120),
     # bills.read (0019): held by every system role, so nothing moved on the wire.
     principal: Principal = Depends(require(Permission.BILLS_READ)),
 ) -> dict:
@@ -989,6 +994,20 @@ async def list_bills(
     if seller_id is not None:
         where.append("b.seller_id = :seller")
         params["seller"] = seller_id
+    if cursor is not None:
+        try:
+            at_s, id_s = cursor.split("|")
+            params["c_at"] = datetime.fromisoformat(at_s)
+            params["c_id"] = uuid.UUID(id_s)
+            if params["c_at"].tzinfo is None:
+                raise ValueError("naive")
+        except ValueError:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"kind": "invalid_request", "code": "cursor_invalid",
+                        "message": "ตำแหน่งหน้าถัดไปไม่ถูกต้อง — โหลดรายการใหม่ตั้งแต่หน้าแรก", "field": "cursor"},
+            ) from None
+        where.append("(b.server_received_at, b.id) < (:c_at, :c_id)")
     async with tenant_connection(principal.tenant_id) as conn:
         rows = (
             await conn.execute(
@@ -1032,7 +1051,9 @@ async def list_bills(
                 "server_received_at": r["server_received_at"].isoformat(),
             }
             for r in rows
-        ]
+        ],
+        # A full page may have a next one: its cursor is the last row's key. A short page is the end.
+        "next_cursor": (f"{rows[-1]['server_received_at'].isoformat()}|{rows[-1]['id']}" if len(rows) == limit else None),
     }
 
 

@@ -19,6 +19,8 @@ export interface PrinterSettingsBridge {
   target: PrinterTargetBridge;
 }
 
+export type SaveOutcomeBridge = { kind: "saved"; path: string } | { kind: "cancelled" } | { kind: "refused" } | { kind: "failed"; detail: string };
+
 export type SendOutcomeBridge =
   | { kind: "sent"; bytes: number }
   | { kind: "refused" }
@@ -38,6 +40,12 @@ const bridge = {
     load: (): Promise<ShopConfigBridge | null> => ipcRenderer.invoke("config:load"),
     save: (c: ShopConfigBridge): Promise<void> => ipcRenderer.invoke("config:save", c),
     clear: (): Promise<void> => ipcRenderer.invoke("config:clear"),
+  },
+  files: {
+    /** Ask where, then write; the page names the file, never the folder. */
+    save: (bytes: Uint8Array, name: string): Promise<SaveOutcomeBridge> => ipcRenderer.invoke("file:save", bytes, name),
+    /** This page as an A4 PDF (the same layout the system print dialog receives). */
+    pdf: (): Promise<Uint8Array> => ipcRenderer.invoke("print:pdf"),
   },
   printer: {
     load: (): Promise<PrinterSettingsBridge | null> => ipcRenderer.invoke("printer:load"),

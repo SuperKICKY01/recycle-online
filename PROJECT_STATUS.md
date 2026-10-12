@@ -177,6 +177,34 @@ anchor next pass.
   (R2). Lesson amended: `correct-classification-can-still-render-as-an-error.md` (a reused wording function's domain
   widened by a new caller). After the fixes: `prove_bill_filters` 14, `prove:bills` 15, `prove:billsflow` 10,
   `prove:slip` 15, `prove:slipflow` 6 — each exit 0 twice.
+- **B7 — REPORTS (SRS 3.1, 3.2): the transaction report, its Excel file, and the master-data lists printed — proven
+  against a real server; real Excel and real paper NOT observed.** Server (route code): `GET /bills` gains a KEYSET
+  cursor (`cursor` in, `next_cursor` out on a full page; `(server_received_at, id) <` the last row) — a bill arriving
+  mid-report neither repeats nor causes a skip — closing B3's "200 and no paging" for the report. Desktop nav `รายงาน`:
+  **รายการรับซื้อ** — BE date range (DateField), seller, include voided; reads EVERY page and says how many, stops at
+  10,000 bills and then refuses to export (`REPORT_TEXT.tooMany`); shows the count, the voided count and the total of
+  active bills summed EXACTLY from the server's strings (`money.sumDecimal`, BigInt — `0.10 x 3 = 0.30`); exports an
+  .xlsx written by OUR OWN writer (`src/shared/xlsx.ts`, no library — desktop's lockfile unchanged, D-1): money and
+  weight cells are number cells whose stored text is the server's string VERBATIM under `#,##0.00` / `#,##0.000`, a
+  non-decimal is written as text, Thai and XML specials escaped, a fixed ZIP timestamp so the bytes depend on the
+  content alone; the file is named in BE (`รายการรับซื้อ 07-10-2569 ถึง 13-10-2569.xlsx`) and saved through the system
+  dialog (`file:save`, a plain .xlsx/.pdf name only). **พิมพ์รายการข้อมูลหลัก** — products with prices per tier,
+  sellers (NEVER ID or address, for any caller), tiers, categories, units; `พิมพ์` opens the system dialog with a
+  print layout (print CSS hides the shell), `บันทึกเป็น PDF` saves that same layout (`print:pdf`, Chromium's
+  printToPDF). NEW proofs, each exit 0 twice: server `prove_bill_filters` C1–C3 (paged one at a time = the one-page
+  answer; a bill arriving between pages; a malformed cursor 422), `prove:reports` (6: the exact sum; the workbook READ
+  BACK BY PYTHON's own zipfile/XML — `desktop/tools/read_xlsx.py`, sharing no code with the writer — valid ZIP, parts
+  declared, money stored verbatim under its format, Thai/specials exact, a non-decimal as text, same bytes twice),
+  `prove:reportsflow` (4, the real screens on a dev copy: the week's 701 active bills of 774 read over 4 pages, equal
+  to the proof's own HTTP paging; the screen's total `91152.00` equals the SERVER's /reports/summary paid_total; the
+  exported file has 776 rows, the voided bill's money cell `18000.00` verbatim, ยกเลิกแล้ว, the Thai name intact, the
+  total row = the screen's total; the sellers print list without the ID/address of a seller made with both; a 62 KB,
+  2-page PDF; print media hides the navigation). Disproofs, each restored byte-identical: cursor ignored → C1 C2; the
+  report stopping after page one → F1 (181 of 701) F2 F3; a money cell through `Number()` → X2 (caught by the WEIGHT
+  `8420.000` → `8420`: `1234567.89` survives a float round trip, a trailing zero does not); float summing → S1
+  (`0.30000000000000004`); the ID number on the print list → F4; print media keeping the nav → F4. UNMEASURED: the file
+  opened in real Excel, and paper from a real printer — the owner's observation. Screenshots
+  `E:\recycle-shots\lane-a\desktop\b7_*.png`.
 - **B6 — SHOP AND PEOPLE (SRS 1.9, 4.1): shop information, settings, staff accounts, permissions as ticks, and the
   cash drawer — proven against a real server.** Nav `ร้านและพนักงาน`, four tabs. **ข้อมูลร้าน:** the name SHOWN and locked
   (`ชื่อร้านพิมพ์อยู่บนสลิปทุกใบ จึงเปลี่ยนได้ผ่านผู้ให้บริการเท่านั้น` — the server records renaming as a provisioning act,

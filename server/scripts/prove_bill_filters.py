@@ -35,6 +35,10 @@ fixture bill off the page (measured: the first run's S1/N1 reds, a fixture flaw,
       from Postgres value against value
   W4  the winner's replay with the SAME idempotency key -> 200, the original outcome, record unchanged
   W5  the loser's replay with ITS key -> still 409; record unchanged
+  C1  KEYSET PAGING: seller P's bills one per page -> every bill exactly once, newest first, then
+      next_cursor null
+  C2  a bill arriving BETWEEN two pages is neither repeated nor makes the next page skip one
+  C3  a malformed cursor -> 422 cursor_invalid
 """
 from __future__ import annotations
 
@@ -309,6 +313,36 @@ def run_cells(base: str) -> None:
     after = asyncio.run(void_record(t2))
     check(again.status_code == 409 and after == first and first[2] == reason,
           f"V5 a second void -> 409 and voided_at/voided_by/void_reason unchanged (got {again.status_code}; same={after == first})")
+    # C: keyset paging over the range, one bill per page.
+    window = {"from_date": yday.isoformat(), "to_date": today.isoformat(), "seller_id": sp}
+
+    def page(cur: str | None) -> httpx.Response:
+        q = {**window, "limit": 1, **({"cursor": cur} if cur is not None else {})}
+        return httpx.get(f"{base}/bills", headers=adm, timeout=15, params=q)
+
+    seen: list[str] = []
+    cur: str | None = None
+    for _ in range(10):
+        r = page(cur)
+        seen += [b["id"] for b in r.json()["bills"]]
+        cur = r.json().get("next_cursor")
+        if cur is None:
+            break
+    whole = lst(**window)
+    expect = [b["id"] for b in whole.json()["bills"]]
+    check(seen == expect and set(seen) == {t1, y1} and cur is None,
+          f"C1 paged one at a time: every bill once, newest first, then no cursor ({len(seen)} rows; same as one page: {seen == expect})")
+    p1 = page(None)
+    first = [b["id"] for b in p1.json()["bills"]]
+    newer = post_bill(base, adm, sp, "c2")
+    p2 = page(p1.json()["next_cursor"])
+    second = [b["id"] for b in p2.json()["bills"]]
+    check(first == [t1] and second == [y1] and newer not in second,
+          f"C2 a bill arriving between pages: page 2 is still the next OLDER bill ({first} then {second}; new {newer[:8]} not repeated)")
+    bad = httpx.get(f"{base}/bills", headers=adm, timeout=15, params={**window, "cursor": "yesterday|nobody"})
+    check(bad.status_code == 422 and (bad.json().get("detail") or {}).get("code") == "cursor_invalid",
+          f"C3 a malformed cursor -> {bad.status_code}")
+
     # W: two concurrent voids of one bill, held at a barrier Postgres can see.
     adm2 = login(base, "adm2")
     w = post_bill(base, adm, sq, "w1")

@@ -5,6 +5,7 @@
  */
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
 
+import { pageToPdf, saveFile } from "./files";
 import { isOurPage } from "./origin";
 import { sendToPrinter } from "./printer";
 import { isPrinterSettings, loadPrinterSettings, savePrinterSettings } from "./printerStore";
@@ -50,6 +51,14 @@ export function registerIpc(): void {
     if (!isPrinterSettings(s)) throw new Error("refused: not printer settings");
     savePrinterSettings(s);
   });
+  ipcMain.handle("file:save", async (e, bytes: unknown, name: unknown) => {
+    fromOurPage(e);
+    if (!(bytes instanceof Uint8Array) || bytes.length === 0 || bytes.length > 50_000_000 || typeof name !== "string") {
+      throw new Error("refused: not a file");
+    }
+    return saveFile(e.sender, bytes, name);
+  });
+  ipcMain.handle("print:pdf", async (e) => { fromOurPage(e); return pageToPdf(e.sender); });
   // The bytes go to the SAVED printer only: the page cannot name a host or a share of its own.
   ipcMain.handle("printer:send", async (e, bytes: unknown) => {
     fromOurPage(e);

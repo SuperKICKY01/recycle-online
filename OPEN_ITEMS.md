@@ -1705,6 +1705,14 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
 
 ## Code debt found and left in place
 
+- **SUPERSEDED IN PART 2026-10-13 (B7):** `GET /bills` now pages (keyset `cursor` / `next_cursor`), and the report reads
+  every page. The BILLS SCREEN still shows the first 200 with its "may be more" sentence and no "load more" — a small
+  follow-up now that the route pages.
+
+- **THE REPORT AND THE BILL LIST SHOW MONEY TO ANY `bills.read` HOLDER (staff included)** — the owner's open decision
+  "Whether the bill list should be shop-wide for staff" (above) governs both; B7 adds a screen, not a rule. A report gated
+  on `money.view_shop` is one condition in `main.tsx` if the decision goes that way.
+
 - **THE SHOP'S NAME: SHOWN, NOT EDITABLE — A RECORDED DECISION MET A BRIEF THAT LISTS IT (2026-10-13, B6).** The B6 brief
   lists "shop information (name, address, phone — what the slip prints)"; `server/app/master.py` ShopUpdate records that
   `name` is NOT a setting ("changing either is a provisioning act", decision 9ad225e). B6 shows the name read-only and

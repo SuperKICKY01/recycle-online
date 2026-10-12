@@ -15,6 +15,7 @@ import type { ApiOutcome, WhoAmI } from "../shared/api";
 import { BillsScreen } from "./Bills";
 import { MasterScreen } from "./Master";
 import { PeopleScreen } from "./People";
+import { ReportsScreen } from "./Reports";
 import { PrinterScreen } from "./Slip";
 import { Shell, type NavItem } from "./Shell";
 import { SetupScreen, SignInScreen } from "./SignIn";
@@ -23,6 +24,7 @@ const NAV: readonly NavItem[] = [
   { id: "bills", label: "บิลรับซื้อ", icon: "receipt", enabled: true },
   { id: "master", label: "ข้อมูลหลัก", icon: "box", enabled: true },
   { id: "people", label: "ร้านและพนักงาน", icon: "store", enabled: true },
+  { id: "reports", label: "รายงาน", icon: "chart", enabled: true },
   { id: "printer", label: "เครื่องพิมพ์", icon: "printer", enabled: true },
 ];
 
@@ -227,6 +229,7 @@ function App() {
       {current === "printer" ? <PrinterScreen />
         : current === "master" ? <MasterScreen session={sessionRef.current} onSettle={settle} />
         : current === "people" ? <PeopleScreen session={sessionRef.current} onSettle={settle} />
+        : current === "reports" ? <ReportsScreen session={sessionRef.current} onSettle={settle} />
         : <BillsScreen session={sessionRef.current} onSettle={settle} />}
     </Shell>
   );

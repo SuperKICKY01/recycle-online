@@ -15,6 +15,8 @@ export interface BillRow {
   readonly server_received_at: string;
   readonly status: "active" | "voided";
   readonly void_reason: string | null;
+  /** null when the answer carries no paid amount: shown as missing, never invented as 0.00. */
+  readonly paid_amount: string | null;
 }
 
 export interface BillLine {
@@ -29,8 +31,6 @@ export interface BillLine {
 }
 
 export interface BillDetail extends BillRow {
-  /** null when the answer carries no paid amount: shown as missing, never invented as 0.00. */
-  readonly paid_amount: string | null;
   readonly voided_at: string | null;
   readonly items: readonly BillLine[];
 }
@@ -101,6 +101,7 @@ export function readBillRow(v: unknown): BillRow | null {
     server_received_at: String(o["server_received_at"]),
     status: o["status"] === "voided" ? "voided" : "active",
     void_reason: str(o["void_reason"]),
+    paid_amount: str(o["paid_amount"]),
   };
 }
 
@@ -111,13 +112,26 @@ export function readBillList(json: unknown): BillRow[] | null {
   return rows.every((r): r is BillRow => r !== null) ? rows : null;
 }
 
+/** One page of GET /bills and the cursor for the next (null at the end). B7's report reads every page. */
+export function readBillPage(json: unknown): { rows: BillRow[]; next: string | null } | null {
+  const rows = readBillList(json);
+  if (rows === null) return null;
+  const n = (json as { next_cursor?: unknown }).next_cursor;
+  return { rows, next: typeof n === "string" && n !== "" ? n : null };
+}
+
+/** The query for one page of a report: the filter's query, then the cursor when there is one. */
+export function pageQuery(f: BillFilter, cursor: string | null): string {
+  const q = billsQuery(f);
+  return cursor === null ? q : `${q}&cursor=${encodeURIComponent(cursor)}`;
+}
+
 export function readBillDetail(json: unknown): BillDetail | null {
   const row = readBillRow(json);
   const o = json as Record<string, unknown>;
   if (row === null || !Array.isArray(o["items"])) return null;
   return {
     ...row,
-    paid_amount: str(o["paid_amount"]),
     voided_at: str(o["voided_at"]),
     items: (o["items"] as Record<string, unknown>[]).map((i) => ({
       line_no: Number(i["line_no"]),
