@@ -16,13 +16,92 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlalchemy import text  # noqa: E402
 
 from app.db import SYSTEM_ACTOR_ID, engine, tenant_connection  # noqa: E402
-from app.permissions import seed_system_roles  # noqa: E402
+from app.permissions import Permission, seed_system_roles  # noqa: E402
 from app.security import hash_password  # noqa: E402
 from app.seeddata import SEED  # noqa: E402
+
+SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+class SeedRefused(RuntimeError):
+    """The seed cannot honestly run against this database."""
+
+
+def _code_head() -> str:
+    """The alembic head of THIS checkout's migrations, from alembic's own script directory."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    cfg = Config(os.path.join(SERVER_DIR, "alembic.ini"))
+    cfg.set_main_option("script_location", os.path.join(SERVER_DIR, "migrations"))
+    head = ScriptDirectory.from_config(cfg).get_current_head()
+    if head is None:
+        raise SeedRefused("the migrations directory has no single head")
+    return head
+
+
+async def _database_revision() -> str:
+    """alembic_version of the database being seeded. Read through MIGRATION_DATABASE_URL,
+    because alembic_version is REVOKEd from the app role -- and REFUSED unless that URL
+    names the SAME database as APP_DATABASE_URL, or the seed would judge one database
+    (say, a scratch) by another's revision (say, dev)."""
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.ext.asyncio import create_async_engine
+    app_url = make_url(os.environ["APP_DATABASE_URL"])
+    mig_url = make_url(os.environ["MIGRATION_DATABASE_URL"])
+    if app_url.database != mig_url.database:
+        raise SeedRefused(
+            f"APP_DATABASE_URL names {app_url.database!r} but MIGRATION_DATABASE_URL names"
+            f" {mig_url.database!r}; the revision read would not be this database's")
+    eng = create_async_engine(mig_url)
+    try:
+        async with eng.connect() as c:
+            rev = (await c.execute(text("SELECT version_num FROM alembic_version"))).scalar()
+    finally:
+        await eng.dispose()
+    if rev is None:
+        raise SeedRefused("alembic_version is empty: this database was never migrated")
+    return rev
+
+
+async def grantable_codes() -> frozenset[str] | None:
+    """WHICH PERMISSIONS THE SYSTEM ROLES MAY BE GRANTED HERE (ADVISOR-DECIDED 2026-10-12).
+
+    The code's catalogue is the enumeration in app/permissions.py; the database's is the
+    `permissions` table, which a migration fills. They are equal AT HEAD (assert_catalogue
+    refuses to serve otherwise) and the code's is LARGER below head: a proof that builds
+    an empty scratch at an older revision on purpose (prove_shifts' round trip builds at
+    0022) seeds a database that predates every code minted since, and granting one of them
+    is a foreign-key violation (role_permissions -> permissions), measured on the C1 gate
+    of seller search: 'sellers.read_personal' at 0022.
+
+    BELOW HEAD: grant the INTERSECTION, and PRINT the revision and every code skipped --
+    never silently. AT HEAD: a code missing from the table is a broken database, not an
+    old one, and it is an ERROR (SeedRefused, exit non-zero), exactly as before this
+    function existed. Returns None at head (grant everything), else the intersection.
+    """
+    rev, head = await _database_revision(), _code_head()
+    print(f"seed_dev: database alembic revision {rev}; this checkout's head {head}")
+    async with tenant_connection(None) as conn:
+        listed = set((await conn.execute(text("SELECT code FROM permissions"))).scalars().all())
+    code = {p.value for p in Permission}
+    missing = sorted(code - listed)
+    if rev == head:
+        if missing:
+            raise SeedRefused(
+                f"the database is AT head {head} but its permissions catalogue lacks {missing};"
+                " that is a broken catalogue, not an old one, and nothing will be granted")
+        return None
+    for m in missing:
+        print(f"seed_dev: below head -- NOT granting {m!r}: this database ({rev}) has no such"
+              " catalogue row")
+    if not missing:
+        print("seed_dev: below head, but its catalogue holds every code -- nothing skipped")
+    return frozenset(code & listed)
 
 
 async def main() -> None:
     try:
+        only = await grantable_codes()
         for s in SEED:
             user_hashes = [
                 (u, await hash_password(u["password"])) for u in s["users"]
@@ -60,7 +139,7 @@ async def main() -> None:
                 # re-run neither duplicates nor overwrites a grant edited since. A
                 # tenant that predates 0019 already got its rows from the
                 # migration's backfill, so this is a no-op there.
-                roles = await seed_system_roles(conn, s["tenant_id"])
+                roles = await seed_system_roles(conn, s["tenant_id"], only=only)
                 for u, pw_hash in user_hashes:
                     await conn.execute(
                         text(
@@ -174,4 +253,8 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except SeedRefused as exc:
+        print(f"seed_dev: REFUSED: {exc}")
+        sys.exit(1)

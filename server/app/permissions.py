@@ -242,7 +242,9 @@ async def assert_catalogue() -> None:
         )
 
 
-async def seed_system_roles(conn: object, tenant_id: uuid.UUID) -> dict[str, uuid.UUID]:
+async def seed_system_roles(
+    conn: object, tenant_id: uuid.UUID, only: frozenset[str] | None = None
+) -> dict[str, uuid.UUID]:
     """Write a NEW tenant's three system roles and their born-with grants.
 
     For provisioning and seeding (scripts/provision_shop.py, scripts/seed_dev.py,
@@ -251,6 +253,11 @@ async def seed_system_roles(conn: object, tenant_id: uuid.UUID) -> dict[str, uui
     (roles and role_permissions are audited). Idempotent on (tenant_id, code) and on
     the grant's primary key, so a re-run adds nothing and never overwrites a grant
     a shop has since changed. Returns code -> role id.
+
+    `only`, when given, narrows every grant to that set -- for scripts/seed_dev.py on a
+    database BELOW the code's alembic head, whose catalogue lacks a code minted later
+    (the caller decides and prints what it skipped; see seed_dev). None, the default and
+    the only value provisioning and the runtime pass, grants SYSTEM_ROLE_GRANTS whole.
     """
     ids: dict[str, uuid.UUID] = {}
     for code in SYSTEM_ROLE_CODES:
@@ -270,6 +277,8 @@ async def seed_system_roles(conn: object, tenant_id: uuid.UUID) -> dict[str, uui
         ).scalar_one()
         ids[code] = rid
         for perm in sorted(SYSTEM_ROLE_GRANTS[code]):
+            if only is not None and perm.value not in only:
+                continue
             await conn.execute(  # type: ignore[attr-defined]
                 text(
                     "INSERT INTO role_permissions (tenant_id, role_id, permission)"

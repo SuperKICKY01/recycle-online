@@ -109,7 +109,19 @@ ADVISOR-DECIDED 2026-10-12, the no-migration ban lifted for this milestone only)
   linear chain to 0024). Its observation that `mobile/app/api.ts`'s comment claimed every caller receives `id_number`
   is corrected there. Exit 0 twice after the fixes.
 - **Dev:** backed up first (`E:\recycle-online-backups\recycle_20261012T070751Z_pre0024`, every table's rows
-  db = dump), then `alembic upgrade head`: `alembic current` read `0023` before, `0024 (head)` after. `prove_master_write` V4 now reads S001's identity as ADMIN and asserts staff gets neither key;
+  db = dump), then `alembic upgrade head`: `alembic current` read `0023` before, `0024 (head)` after.
+- **C1's first gate was RED 1 (`prove_shifts`, both runs), and the fix is its own commit.** The round trip builds an
+  empty scratch at 0022 BY DESIGN and (1) `seed_dev.py` granted the code's 16 codes to a 15-code database (FK on
+  `role_permissions.permission`), then (2) `seed_paid_bill` started this checkout's server against it and
+  `assert_catalogue` refused. ADVISOR-DECIDED: `seed_dev` BELOW head grants the intersection and prints the revision
+  and each skipped code (at 0022: `NOT granting 'sellers.read_personal'`); AT head a missing code is `REFUSED`, exit 1
+  (disproved on a scratch with the row removed; control exit 0). Below head the paid bill is written by SQL
+  (`prove_shifts.sql_paid_bill`), and the NEW FX cell holds it to the real `POST /bills` on a separate head scratch
+  (33 non-generated columns over four tables; exceptions: ids, per-bill keys, doc_no, instants; absent at 0022: none,
+  measured). Disproof: the fixture's payment method `'cash'`→`'promptpay'` reddened FX alone (62/63). `prove_shifts`
+  63/63 twice; `prove_drawer` 97/97; `prove_seller_personal` exit 0. The standing rule ("a scratch below head is seeded
+  by SQL only — no server") is in CLAUDE.md § Conventions and the 2026-10-12 amendment of
+  `lessons/a-quantified-sentence-names-no-member.md`. `prove_master_write` V4 now reads S001's identity as ADMIN and asserts staff gets neither key;
   `prove_permissions` restates the sixteen codes; the phone's `Permission` union and `proofGrants` mirror it.
 
 **LANE A, CART MILESTONE — frequent-products row, category browse, search, slim bill header (ADVISOR-DECIDED

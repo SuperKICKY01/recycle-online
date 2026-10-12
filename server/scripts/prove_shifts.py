@@ -112,6 +112,8 @@ except (AttributeError, OSError):
 SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 from lane import scratch_name  # noqa: E402  (scratch names are decided in lane.py only)
 SCRATCH_DB = scratch_name("recycle_shifts_scratch")
+# The FX guard's own HEAD scratch -- separate, so the BT cells' head build stays bill-free.
+GUARD_DB = scratch_name("recycle_shifts_guard_scratch")
 RUN = uuid.uuid4().hex[:8]
 
 _APP_URL = make_url(os.environ["APP_DATABASE_URL"])
@@ -291,11 +293,24 @@ def _free_port() -> int:
         return int(s.getsockname()[1])
 
 
+# THE ONE PAID BILL's inputs, shared by the real POST /bills (seed_paid_bill, on a HEAD
+# scratch only) and by the SQL fixture (sql_paid_bill, on the 0022 scratches), so the FX
+# guard compares two writes of the SAME bill.
+BILL_VEHICLE = f"RT-{RUN[:4]}"
+BILL_GROSS, BILL_TARE, BILL_NET, BILL_UNIT = "1.000", "0.000", "1.000", "20.00"
+
+
 def seed_paid_bill(scratch: str) -> str:
     """ONE bill through the REAL POST /bills on a child uvicorn bound to `scratch` (the
     switch is off at birth, so the server writes the automatic payment itself) -- a row
     the product produces, not one written by hand
-    (lessons/a-proof-fixture-must-be-a-row-the-product-could-produce.md)."""
+    (lessons/a-proof-fixture-must-be-a-row-the-product-could-produce.md).
+
+    HEAD SCRATCHES ONLY (seller search C1, ADVISOR-DECIDED 2026-10-12): it starts THIS
+    checkout's server, and assert_catalogue refuses -- correctly -- to serve a database
+    below head once a later migration minted a permission (0024's sellers.read_personal
+    against the 0022 build). Below head the bill is written by sql_paid_bill, and the FX
+    cell holds that fixture to what this route writes."""
     port = _free_port()
     base = f"http://127.0.0.1:{port}"
     log = tempfile.NamedTemporaryFile(mode="w", suffix=".log", prefix="prove_shifts_seed_",
@@ -323,12 +338,12 @@ def seed_paid_bill(scratch: str) -> str:
             raise RuntimeError(f"admin login on the empty scratch -> {r.status_code}")
         bill_id = str(uuid.uuid4())
         r = httpx.post(f"{base}/bills", headers={"Authorization": f"Bearer {token}"}, timeout=15.0, json={
-            "id": bill_id, "seller_id": str(SELLER_A_ID), "vehicle_no": f"RT-{RUN[:4]}",
+            "id": bill_id, "seller_id": str(SELLER_A_ID), "vehicle_no": BILL_VEHICLE,
             "device_created_at": dt.datetime.now(tz=dt.timezone.utc).isoformat(),
             "idempotency_key": f"shifts-rt-{RUN}",
             "items": [{"id": str(uuid.uuid4()), "product_id": str(PRODUCT_A_ID), "line_no": 1,
-                       "gross_weight": "1.000", "tare_weight": "0.000", "net_weight": "1.000",
-                       "unit_price": "20.00"}]})
+                       "gross_weight": BILL_GROSS, "tare_weight": BILL_TARE, "net_weight": BILL_NET,
+                       "unit_price": BILL_UNIT}]})
         if r.status_code != 201:
             raise RuntimeError(f"POST /bills on the empty scratch -> {r.status_code}: {r.text[:300]}")
         return bill_id
@@ -339,6 +354,148 @@ def seed_paid_bill(scratch: str) -> str:
         except subprocess.TimeoutExpired:
             proc.kill()
         log.close()
+
+
+async def sql_paid_bill(database: str) -> str:
+    """THE SAME ONE PAID BILL, WRITTEN BY SQL -- for a scratch BELOW head, where no server may
+    be started (ADVISOR-DECIDED 2026-10-12, option 1; the standing rule in CLAUDE.md
+    "a scratch below head is seeded by SQL only"). It writes what POST /bills writes with
+    branches.separate_cashier off: the doc_no counter step, purchase_bills, one
+    purchase_bill_items line, the automatic cash payment and its allocation -- in one
+    transaction, as the cluster superuser under Shop A's tenant context with the admin as
+    actor. It is HELD TO THE ROUTE by the FX cell (run_fixture_guard), which writes this
+    bill and the real route's bill on one head scratch and compares every column; a value
+    here that drifts from bills.create_bill turns FX red and nothing else.
+
+    Values are restated, not imported from app.bills (a checker must not share the code it
+    checks): list_price is read from the seller's grade tier, amount is net x unit rounded
+    half-up to 2 places, the BE year is the shop-time year + 543 (config.SHOP_TIMEZONE_NAME
+    'Asia/Bangkok'), the payment key is 'auto:' + the bill id."""
+    from decimal import ROUND_HALF_UP, Decimal
+    su = await su_conn(database)
+    try:
+        async with su.transaction():
+            admin = await su.fetchval(
+                "SELECT id FROM users WHERE tenant_id = $1 AND username = $2", TENANT_A_ID, ADMIN_USERNAME)
+            await su.execute("SELECT set_config('app.tenant_id', $1, true)", str(TENANT_A_ID))
+            await su.execute("SELECT set_config('app.actor_id', $1, true)", str(admin))
+            await su.execute("SELECT set_config('app.actor_username', $1, true)", ADMIN_USERNAME)
+            branch = await su.fetchrow(
+                "SELECT id, doc_prefix FROM branches WHERE tenant_id = $1 AND code = 'MAIN'", TENANT_A_ID)
+            grade = await su.fetchval("SELECT grade FROM sellers WHERE id = $1", SELLER_A_ID)
+            list_price = await su.fetchval(
+                "SELECT price FROM product_prices WHERE product_id = $1 AND grade = $2", PRODUCT_A_ID, grade)
+            received_at = await su.fetchval("SELECT now()")
+            be_year = await su.fetchval(
+                "SELECT (extract(year FROM $1::timestamptz AT TIME ZONE 'Asia/Bangkok') + 543)::int",
+                received_at)
+            await su.execute(
+                "INSERT INTO doc_no_counters (tenant_id, branch_id, be_year, last_seq) VALUES ($1,$2,$3,0)"
+                " ON CONFLICT (tenant_id, branch_id, be_year) DO NOTHING", TENANT_A_ID, branch["id"], be_year)
+            seq = await su.fetchval(
+                "UPDATE doc_no_counters SET last_seq = last_seq + 1"
+                " WHERE tenant_id = $1 AND branch_id = $2 AND be_year = $3 RETURNING last_seq",
+                TENANT_A_ID, branch["id"], be_year)
+            amount = (Decimal(BILL_NET) * Decimal(BILL_UNIT)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            bill_id = uuid.uuid4()
+            device_at = dt.datetime.now(tz=dt.timezone.utc)
+            await su.execute(
+                "INSERT INTO purchase_bills (id, tenant_id, seller_id, doc_no, idempotency_key, total_amount,"
+                " device_created_at, server_received_at, vehicle_no, created_by, branch_id)"
+                " VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+                bill_id, TENANT_A_ID, SELLER_A_ID, f"{branch['doc_prefix']}-{be_year}-{seq}",
+                f"shifts-sql-{RUN}-{bill_id.hex[:6]}", amount, device_at, received_at, BILL_VEHICLE,
+                admin, branch["id"])
+            await su.execute(
+                "INSERT INTO purchase_bill_items (id, tenant_id, bill_id, product_id, line_no, gross_weight,"
+                " tare_weight, net_weight, unit_price, list_price, amount)"
+                " VALUES ($1,$2,$3,$4,1,$5,$6,$7,$8,$9,$10)",
+                uuid.uuid4(), TENANT_A_ID, bill_id, PRODUCT_A_ID, Decimal(BILL_GROSS), Decimal(BILL_TARE),
+                Decimal(BILL_NET), Decimal(BILL_UNIT), list_price, amount)
+            payment_id = uuid.uuid4()
+            await su.execute(
+                "INSERT INTO payments (id, tenant_id, branch_id, seller_id, method, amount, idempotency_key,"
+                " device_created_at, server_received_at, paid_by, shift_id)"
+                " VALUES ($1,$2,$3,$4,'cash',$5,$6,$7,$8,$9,NULL)",
+                payment_id, TENANT_A_ID, branch["id"], SELLER_A_ID, amount, f"auto:{bill_id}",
+                device_at, received_at, admin)
+            await su.execute(
+                "INSERT INTO payment_allocations (tenant_id, payment_id, bill_id, amount, created_at)"
+                " VALUES ($1,$2,$3,$4,$5)", TENANT_A_ID, payment_id, bill_id, amount, received_at)
+        return str(bill_id)
+    finally:
+        await su.close()
+
+
+# THE FX GUARD's exceptions: the columns that differ between two writes of the same bill
+# BY CONSTRUCTION -- ids, the per-bill keys, doc_no (the counter's next value) and instants.
+# Every other column must be EQUAL between the route's row and the fixture's. Each name
+# must exist in its table (FX checks), so a renamed column cannot silently widen this.
+FX_TABLES = ("purchase_bills", "purchase_bill_items", "payments", "payment_allocations")
+FX_EXCEPT: dict[str, frozenset[str]] = {
+    "purchase_bills": frozenset({"id", "doc_no", "idempotency_key", "device_created_at",
+                                 "server_received_at"}),
+    "purchase_bill_items": frozenset({"id", "bill_id"}),
+    "payments": frozenset({"id", "idempotency_key", "device_created_at", "server_received_at"}),
+    "payment_allocations": frozenset({"payment_id", "bill_id", "created_at"}),
+}
+# Columns present at head but ABSENT at 0022 in these four tables, where the fixture runs.
+# MEASURED by FX against the 0022 build of this same run, never assumed: 0023 changed
+# branch_payment_methods and comments, 0024 the permission catalogue -- neither these tables.
+FX_ABSENT_AT_0022: dict[str, frozenset[str]] = {t: frozenset() for t in FX_TABLES}
+
+_FX_ROWS = {
+    "purchase_bills": "SELECT * FROM purchase_bills WHERE id = $1",
+    "purchase_bill_items": "SELECT * FROM purchase_bill_items WHERE bill_id = $1 ORDER BY line_no",
+    "payments": ("SELECT p.* FROM payments p JOIN payment_allocations a ON a.payment_id = p.id"
+                 " WHERE a.bill_id = $1"),
+    "payment_allocations": "SELECT * FROM payment_allocations WHERE bill_id = $1",
+}
+
+
+async def table_columns(database: str) -> dict[str, set[str]]:
+    su = await su_conn(database)
+    try:
+        return {t: {r["column_name"] for r in await su.fetch(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public'"
+            " AND table_name = $1", t)} for t in FX_TABLES}
+    finally:
+        await su.close()
+
+
+async def run_fixture_guard(cols_0022: dict[str, set[str]]) -> None:
+    header("FX  the SQL fixture writes what POST /bills writes (on a separate HEAD scratch)")
+    await build_empty_scratch(GUARD_DB)
+    api_bill = seed_paid_bill(GUARD_DB)
+    sql_bill = await sql_paid_bill(GUARD_DB)
+    cols_head = await table_columns(GUARD_DB)
+    su = await su_conn(GUARD_DB)
+    try:
+        diffs: list[str] = []
+        for t in FX_TABLES:
+            missing_except = sorted(FX_EXCEPT[t] - cols_head[t])
+            if missing_except:
+                diffs.append(f"{t}: excepted column(s) {missing_except} do not exist")
+            absent = cols_head[t] - cols_0022[t]
+            if absent != set(FX_ABSENT_AT_0022[t]):
+                diffs.append(f"{t}: columns absent at 0022 are {sorted(absent)},"
+                             f" declared {sorted(FX_ABSENT_AT_0022[t])}")
+            api_rows = await su.fetch(_FX_ROWS[t], uuid.UUID(api_bill))
+            sql_rows = await su.fetch(_FX_ROWS[t], uuid.UUID(sql_bill))
+            if len(api_rows) != 1 or len(sql_rows) != 1:
+                diffs.append(f"{t}: route wrote {len(api_rows)} row(s), fixture {len(sql_rows)}")
+                continue
+            a, s = dict(api_rows[0]), dict(sql_rows[0])
+            for col in sorted(cols_head[t] - FX_EXCEPT[t]):
+                if a.get(col) != s.get(col):
+                    diffs.append(f"{t}.{col}: route {a.get(col)!r} != fixture {s.get(col)!r}")
+        compared = sum(len(cols_head[t] - FX_EXCEPT[t]) for t in FX_TABLES)
+    finally:
+        await su.close()
+    check(not diffs,
+          f"FX the SQL fixture equals the real POST /bills on {compared} non-generated columns of"
+          f" {', '.join(FX_TABLES)} (excepted: ids, keys, doc_no, instants; absent at 0022: none)"
+          + ("" if not diffs else f" -- DRIFT: {'; '.join(diffs)}"))
 
 
 async def absent_method(su: asyncpg.Connection, branch, method_set: list[str]) -> str | None:
@@ -385,11 +542,11 @@ async def app_conn() -> asyncpg.Connection:
         password=_APP_URL.password, database=SCRATCH_DB)
 
 
-async def su_conn() -> asyncpg.Connection:
+async def su_conn(database: str = SCRATCH_DB) -> asyncpg.Connection:
     """The cluster superuser, for setup, cross-tenant seeds, and --break only."""
     return await asyncpg.connect(
         host=_APP_URL.host, port=_APP_URL.port, user="postgres",
-        password="postgres", database=SCRATCH_DB)
+        password="postgres", database=database)
 
 
 # ---------------------------------------------------------------------------
@@ -945,14 +1102,20 @@ async def amain(args) -> int:
         # (the gate repair, 2026-10-09), never a dump of dev: they test the migration's
         # mechanics, and a dev dump carries whatever drawer rows anything left there,
         # which made 0022's and 0021's downgrades refuse before the cells could judge them.
+        #
+        # BELOW HEAD THE BILL IS WRITTEN BY SQL (seller search C1, ADVISOR-DECIDED 2026-10-12):
+        # no server is started against the 0022 build -- today's code refuses to serve it once
+        # a later migration minted a permission -- and FX, last, holds the fixture to the route.
         await build_empty_scratch(SCRATCH_DB, "0022")
-        seed_paid_bill(SCRATCH_DB)
+        cols_0022 = await table_columns(SCRATCH_DB)
+        await sql_paid_bill(SCRATCH_DB)
         await run_round_trip()
         await build_empty_scratch(SCRATCH_DB, "0022")
-        seed_paid_bill(SCRATCH_DB)
+        await sql_paid_bill(SCRATCH_DB)
         await run_refusal(args.disprove_refusal)
         await build_empty_scratch(SCRATCH_DB)
         await run_born_transfer_refusal()
+        await run_fixture_guard(cols_0022)
 
     header("verdict")
     total = len(passes) + len(failures)

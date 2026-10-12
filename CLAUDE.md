@@ -441,6 +441,14 @@ mechanism is `server/scripts/lane.py` and the lock in `tools/prove_all.py`; the 
   ONE line at BOTH ends — the target end is the harder one, a mid-phrase wrap being
   invisible in the rendered document.
   → `EVIDENCE.md § Pin-a-claim-to-a-commit: the measured evidence`
+- **A SCRATCH BELOW HEAD IS SEEDED BY SQL ONLY — NO SERVER IS STARTED AGAINST IT
+  (ADVISOR-DECIDED 2026-10-12).** Today's code serving an old schema is no released
+  version's route, and `assert_catalogue` refuses it the moment a later migration mints a
+  permission (0024 against `prove_shifts`' 0022 build). It worked through 0023 only by
+  coincidence. A below-head fixture is written by SQL and HELD TO THE ROUTE by a guard cell
+  on a head scratch that compares the two writes column by column (`prove_shifts` FX);
+  `scripts/seed_dev.py` below head grants only the codes the database lists and prints each
+  one it skipped. → `lessons/a-quantified-sentence-names-no-member.md` (2026-10-12 amendment)
 - Commit messages and code comments in English. UI text in Thai.
 - **A CODING SESSION REPORTS IN ENGLISH** — its own prose, all of it: every reply,
   phase report, subagent finding, commit body, explanation of a diff. QUOTED

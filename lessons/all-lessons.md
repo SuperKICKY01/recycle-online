@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 41 across 22 files, counted from the source headings and
+**Amendments:** 42 across 22 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -62,7 +62,7 @@ line instead of by heading depth.
 - `a-platform-can-refuse-an-effect-and-record-it-as-done.md` -- A platform can refuse an effect and record it as done
 - `a-proof-fixture-must-be-a-row-the-product-could-produce.md` *(1 amendment)* -- A proof fixture must be a row the product could have produced
 - `a-proof-must-establish-what-it-is-talking-to.md` -- A proof must establish WHAT IT IS TALKING TO before it asserts anything about the answers
-- `a-quantified-sentence-names-no-member.md` *(3 amendments)* -- A sentence that quantifies over a set names no member of it
+- `a-quantified-sentence-names-no-member.md` *(4 amendments)* -- A sentence that quantifies over a set names no member of it
 - `a-refusal-hands-back-what-it-refused.md` *(1 amendment)* -- A 422 is a MIRROR — the framework hands back the value it refused, and one of those values is a password
 - `a-report-is-many-reads-that-must-agree.md` -- A report is many reads; under READ COMMITTED they are many moments
 - `a-round-trip-must-agree-on-its-key-space.md` -- A round trip must agree on its key space
@@ -5380,6 +5380,44 @@ a stale FULL copy fails only where some cell reads the new code.
 **How to apply.** In the commit that mints a permission, before the gate: sweep for the
 PREVIOUS last-minted code, classify every hit FULL or SUBSET with its reason, and add the
 new code to every FULL copy with a comment naming the migration.
+
+## AMENDED (seller search C1, migration 0024, 2026-10-12) — A MINT ALSO BREAKS EVERY PROOF THAT SEEDS OR SERVES BELOW HEAD
+
+The sweep above finds FULL copies of the catalogue in FILES. It cannot find the third FULL
+copy, which lives in the CODE's enumeration and is applied to a DATABASE: `seed_system_roles`
+grants `SYSTEM_ROLE_GRANTS` (owner = `frozenset(Permission)`, every code), and the server's
+`assert_catalogue` demands the database's catalogue EQUAL the code's. Both are correct at head
+and both are wrong against a database deliberately built BELOW head.
+
+**Measured.** 0024 minted `sellers.read_personal`. The swept FULL copies were edited and green,
+and `prove_all` came back RED 1 on `prove_shifts`, whose round trip builds an empty scratch at
+0022 BY DESIGN (a database born at 0023+ cannot go below 0022) and seeds it: `seed_dev.py`
+granted the code's 16 codes to a 0022 database that lists 15 -- `ForeignKeyViolationError ...
+role_permissions_permission_fkey ... 'sellers.read_personal'`.
+With the seed fixed (below head it grants the intersection and prints each skipped code), the
+SAME proof went red a second way: `seed_paid_bill` started THIS checkout's server against the
+0022 build to post one bill, and `assert_catalogue` refused it (`in code but not in the table :
+['sellers.read_personal']`). Through 0023 both paths had worked by COINCIDENCE: 0022 was the
+last migration to mint a permission, so a 0022 database's catalogue happened to equal the code's.
+
+**The rule (ADVISOR-DECIDED 2026-10-12, also in CLAUDE.md § Conventions).** A scratch below head
+is SEEDED BY SQL ONLY and no server is started against it: today's code serving an old schema
+is no released version's route. A below-head fixture is HELD TO THE ROUTE by a guard cell on a
+head scratch that writes the same thing both ways and compares every column (`prove_shifts`
+FX: 33 non-generated columns over purchase_bills, purchase_bill_items, payments,
+payment_allocations; perturbing the fixture's payment method reddened FX alone).
+`seed_dev.py` below head grants the INTERSECTION and names each code it skipped; AT head a
+missing code is still an error, exit 1 (disproved on a scratch with the row removed).
+
+**The second sweep, run in the commit that mints.** Every proof that builds or moves a scratch
+BELOW head. Found by a content search of `server/scripts`, `server/app`, `tools`,
+`mobile/src/proof` for `seed_dev`, `seed_system_roles`, `build_empty_scratch(` and
+`upgrade`/`downgrade` to a numbered revision (control: `prove_shifts.py`'s 0022 build, the
+known case, is among the hits). At 0024: SEEDS below head -- `prove_shifts` (two 0022 builds);
+MOVES below head without seeding or serving -- `prove_drawer` (to 0022 and 0021),
+`prove_shifts` (to 0020), `prove_seller_personal` (to 0023); every direct caller of
+`seed_system_roles` runs on a dev-restored scratch AT head. Run each before the gate:
+`prove_shifts` 63/63 twice, `prove_drawer` 97/97, `prove_seller_personal` exit 0.
 
 ---
 
