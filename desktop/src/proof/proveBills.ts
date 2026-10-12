@@ -11,17 +11,26 @@
  *   V1 a void needs a reason a person can read: empty and spaces are refused, words are not
  *   R1 the readers refuse a malformed answer instead of rendering a guess
  *   P1 a full page (the route's ceiling) is never shown as the range's count
+ *   M2 the desktop's grouping equals the PHONE's own function (mobile/src/money/format.ts, imported)
+ *   K1 a reversed or incomplete range is refused before any request, with its sentence
+ *   H1 the shell's top line: only an unreachable or outdated server is shown there; a 403/404/422
+ *      the server answered leaves it alone (the screen words those)
+ *   R2 a detail without paid_amount reads as MISSING (null), never as 0.00
  */
 import {
   billsQuery,
   LIST_CEILING,
+  RANGE_TEXT,
+  rangeProblem,
   listCountText,
   mayVoid,
   readBillDetail,
   readBillList,
   voidReasonProblem,
 } from "../shared/bills";
+import { display as phoneDisplay } from "../../../mobile/src/money/format";
 import { display, GROUP_SEPARATOR } from "../shared/money";
+import { SESSION_TEXT, shellNoticeFor } from "../shared/session";
 import { presetRange, shopDayLabel, shopToday } from "../shared/period";
 import { check, finish, header } from "./harness";
 
@@ -36,6 +45,10 @@ void finish("PROVE_BILLS", async () => {
   check("M1 grouping matches the phone's rule on every input", bad.length === 0, JSON.stringify(bad.map(([i]) => [i, display(i)])));
   check("M1 no digit changes: stripping separators returns the input",
     table.every(([i]) => display(i).split(GROUP_SEPARATOR).join("") === i));
+  const inputs = [...table.map(([i]) => i), "100", "1000000", "-0.50", "12345678901234.567"];
+  const differ = inputs.filter((i) => display(i) !== phoneDisplay(i));
+  check("M2 the desktop's display equals the phone's display over every input", differ.length === 0,
+    JSON.stringify(differ.map((i) => [i, display(i), phoneDisplay(i)])));
 
   header("T shop days");
   check("T1 17:30 UTC on 2026-10-12 is 2026-10-13 in the shop; 16:59 UTC is still the 12th",
@@ -66,6 +79,25 @@ void finish("PROVE_BILLS", async () => {
     readBillList({}) === null && readBillList({ bills: [{ id: "x" }] }) === null
       && readBillList({ bills: [{ id: "x", total_amount: "1.00", status: "voided" }] })?.[0]?.status === "voided");
   check("R1 a detail without items is refused", readBillDetail({ id: "x", total_amount: "1.00" }) === null);
+
+  header("K the range");
+  check("K1 reversed -> its sentence; an emptied field -> its sentence; a real range -> null",
+    rangeProblem({ from: "2026-10-12", to: "2026-10-05" }) === RANGE_TEXT.reversed
+      && rangeProblem({ from: "", to: "2026-10-05" }) === RANGE_TEXT.incomplete
+      && rangeProblem({ from: "2026-10-05", to: "2026-10-05" }) === null);
+
+  header("H the shell's line");
+  const h = (k: Parameters<typeof shellNoticeFor>[0]) => JSON.stringify(shellNoticeFor(k));
+  check("H1 ok clears; unavailable and outdated show their sentences; forbidden, invalid, not_found leave it",
+    h("ok") === JSON.stringify({ kind: "clear" })
+      && h("unavailable") === JSON.stringify({ kind: "show", text: SESSION_TEXT.offline })
+      && h("outdated") === JSON.stringify({ kind: "show", text: SESSION_TEXT.outdated })
+      && ["forbidden", "invalid", "not_found", "unauthorized"].every((k) => h(k as Parameters<typeof shellNoticeFor>[0]) === JSON.stringify({ kind: "leave" })));
+
+  header("R2 a missing paid amount");
+  const noPaid = readBillDetail({ id: "x", total_amount: "1.00", items: [] });
+  check("R2 a detail without paid_amount reads paid_amount null, not 0.00", noPaid !== null && noPaid.paid_amount === null,
+    JSON.stringify(noPaid?.paid_amount));
 
   header("P a full page");
   const under = listCountText(LIST_CEILING - 1);

@@ -45,6 +45,21 @@ export interface SessionPersistence {
 export type SignInResult = { ok: true; me: WhoAmI; notice: string | null } | { ok: false; notice: string };
 
 /** One outcome that is not `ok`, as the sentence the operator reads. */
+/**
+ * What the shell's top line does after an authenticated call. Only an unreachable or outdated
+ * server is the SHELL's news; a refusal the server ANSWERED (403, 404, 422) belongs to the screen
+ * that asked, which words it itself -- the shell must not call it a network fault
+ * (red team 2026-10-12, B3 finding 1).
+ */
+export type ShellNotice = { readonly kind: "clear" } | { readonly kind: "show"; readonly text: string } | { readonly kind: "leave" };
+
+export function shellNoticeFor(kind: ApiOutcome<unknown>["kind"]): ShellNotice {
+  if (kind === "ok") return { kind: "clear" };
+  if (kind === "unavailable") return { kind: "show", text: SESSION_TEXT.offline };
+  if (kind === "outdated") return { kind: "show", text: SESSION_TEXT.outdated };
+  return { kind: "leave" };
+}
+
 export function noticeFor(outcome: ApiOutcome<unknown>, context: "login" | "shop" | "session"): string {
   switch (outcome.kind) {
     case "unauthorized":

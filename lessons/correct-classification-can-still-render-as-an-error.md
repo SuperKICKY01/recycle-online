@@ -682,3 +682,17 @@ Here the two typecheck programs enumerated exactly the sites; no fourth appeared
 about the state it names, and does the type system force every one of them to read
 it?** Wiring it into the surface that happened to bite first is the same instance
 bug 2c-7 opens this file with, one axis out.
+
+## Amended 2026-10-12 (desktop B3) — a function written for one CALLER's outcomes was handed every outcome
+
+The desktop's `unreachableNotice(kind)` was written for `Session.resume()` — `/whoami`, which can only
+come back ok, 401, unreachable or outdated — and it said so in its docstring. The bills screen then
+piped EVERY request's outcome into the same `settle(kind)` → `unreachableNotice`, so a 422 the server
+ANSWERED (a reversed date range) and a 403 (void without the permission) both put "ติดต่อเซิร์ฟเวอร์ไม่ได้ —
+ตรวจการเชื่อมต่อเครือข่าย" in the shell, above the screen's own correct sentence. Each piece was correct for
+the caller it was written for; the new caller widened the domain and nothing noticed (red team, found by
+reading; no proof rendered the screen against a refusal). **Repair:** `shellNoticeFor(kind)` names, per
+outcome kind, whether the SHELL speaks at all — only unreachable and outdated are the shell's news, and a
+refusal the server answered is LEFT to the screen that asked (`prove:bills` H1). **Ask, when a new
+caller reuses a wording function: what outcomes could the old caller produce, and what does the new one
+add?** A domain that widened is a call site the function was never written for.

@@ -29,7 +29,8 @@ export interface BillLine {
 }
 
 export interface BillDetail extends BillRow {
-  readonly paid_amount: string;
+  /** null when the answer carries no paid amount: shown as missing, never invented as 0.00. */
+  readonly paid_amount: string | null;
   readonly voided_at: string | null;
   readonly items: readonly BillLine[];
 }
@@ -70,6 +71,19 @@ export function listCountText(n: number): { text: string; partial: boolean } {
   return { text: `${String(n)} บิล`, partial: false };
 }
 
+export const RANGE_TEXT = {
+  incomplete: "เลือกวันที่ให้ครบทั้งสองช่อง",
+  reversed: "วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น",
+  failed: "โหลดบิลของช่วงนี้ไม่สำเร็จ — ไม่แสดงบิลของช่วงก่อนหน้าแทน ลองเลือกช่วงวันที่อีกครั้ง",
+} as const;
+
+/** Why this range cannot be asked for, or null. Checked BEFORE a request, so none is sent for it. */
+export function rangeProblem(f: Pick<BillFilter, "from" | "to">): string | null {
+  const day = /^\d{4}-\d{2}-\d{2}$/;
+  if (!day.test(f.from) || !day.test(f.to)) return RANGE_TEXT.incomplete;
+  return f.from > f.to ? RANGE_TEXT.reversed : null;
+}
+
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
 
 export function readBillRow(v: unknown): BillRow | null {
@@ -103,7 +117,7 @@ export function readBillDetail(json: unknown): BillDetail | null {
   if (row === null || !Array.isArray(o["items"])) return null;
   return {
     ...row,
-    paid_amount: String(o["paid_amount"] ?? "0.00"),
+    paid_amount: str(o["paid_amount"]),
     voided_at: str(o["voided_at"]),
     items: (o["items"] as Record<string, unknown>[]).map((i) => ({
       line_no: Number(i["line_no"]),

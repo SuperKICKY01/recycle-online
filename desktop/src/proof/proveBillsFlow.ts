@@ -16,6 +16,11 @@
  *   B6 READ BACK OVER HTTP: GET /bills/{id} says voided with that reason, and the list with
  *      include_voided still has the row (hard rule 5: voided, never deleted)
  *   B7 the default list no longer shows it; "แสดงบิลที่ยกเลิกแล้ว" brings it back, struck through
+ *   B8 a reversed range typed into the date fields: the screen's own sentence, NO request sent, and
+ *      the shell does not call it a network fault (red team 2026-10-12, finding 1)
+ *   B9 the server gone: a new range shows NO bills and NO count from the range before it, and says
+ *      the load failed (finding 2)
+ * B4's request counter has a POSITIVE CONTROL: the real void in B5 must move it by exactly one.
  *
  * RECYCLE_SHOT_DIR set: the window is saved there as PNGs at the list, the detail and after the void
  * (for the milestone report; the proof's verdict never reads them).
@@ -79,7 +84,9 @@ void finish("PROVE_BILLSFLOW", async () => {
         && rowA1.includes("18,000.00"), rowA1.replace(/\s+/g, " "));
 
     await page.selectOption('select[name="seller"]', S002);
-    await page.waitForSelector(`[data-bill="${docA1}"]`, { state: "detached", timeout: 15_000 });
+    // The table empties while the filtered list loads (rows belong to their own query), so wait for
+    // the ANSWER -- the S002 bill present -- not merely for the S001 rows to go.
+    await page.waitForSelector(`[data-bill="${docB1}"]`, { timeout: 15_000 });
     const afterFilter = await page.locator("[data-bill]").evaluateAll((els) => els.map((e) => e.getAttribute("data-bill")));
     check("B2 the seller filter S002 leaves exactly its fixture bill (no S001 bill)",
       afterFilter.includes(docB1) && !afterFilter.includes(docA1) && !afterFilter.includes(docA2), JSON.stringify(afterFilter));
@@ -111,6 +118,8 @@ void finish("PROVE_BILLSFLOW", async () => {
     const confirmsLeft = await page.locator("text=ยืนยันยกเลิกบิล").count();
     check("B5 the panel shows ยกเลิกแล้ว with the reason, and no void form remains",
       shown && (await textOf(page)).includes("ยกเลิกแล้ว") && confirmsLeft === 0, `confirm buttons left: ${String(confirmsLeft)}`);
+    check("B4 control: the counter SEES a void request -- the real void moved it by exactly one",
+      voidPosts() === beforeEmpty + 1, `void POSTs: ${String(beforeEmpty)} -> ${String(voidPosts())}`);
 
     const back = await http(info.base, "GET", `/bills/${a2}`, token);
     const bj = back.json as { status?: string; void_reason?: string };
@@ -128,6 +137,31 @@ void finish("PROVE_BILLSFLOW", async () => {
     const struck = await page.locator(`[data-bill="${docA2}"]`).getAttribute("class");
     check("B7 gone from the default list; the voided toggle brings it back, struck through",
       goneByDefault && struck === "row-voided", `class=${String(struck)}`);
+
+    const listGets = (): number => (server.log().match(/GET \/bills\?[^ ]*from_date/g) ?? []).length;
+    const before8 = listGets();
+    const shell8 = await page.locator(".shell-notice").count();
+    await page.fill('input[name="from"]', "2026-10-20");
+    await page.fill('input[name="to"]', "2026-10-05");
+    const said8 = await page.waitForSelector("text=วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น", { timeout: 5_000 }).then(() => true, () => false);
+    await new Promise((r) => setTimeout(r, 1000));
+    const offline8 = (await textOf(page)).includes("ติดต่อเซิร์ฟเวอร์ไม่ได้");
+    await shot(page, "b3_reversed_range");
+    check("B8 a reversed range: the screen's sentence, no list request for it, no network line in the shell",
+      said8 && !offline8 && (await page.locator("[data-bill]").count()) === 0 && listGets() === before8 && shell8 === 0,
+      JSON.stringify({ said8, offline8, gets: listGets() - before8 }));
+
+    await page.click("text=วันนี้");
+    await page.waitForSelector(`[data-bill="${docA1}"]`, { timeout: 15_000 });
+    server.proc.kill();
+    await new Promise((r) => setTimeout(r, 1500));
+    await page.click("text=เมื่อวาน");
+    const failed = await page.waitForSelector('[data-list-state="failed"]', { timeout: 20_000 }).then(() => true, () => false);
+    const staleRows = await page.locator("[data-bill]").count();
+    const label = await page.locator("[data-range]").innerText();
+    await shot(page, "b3_load_failed");
+    check("B9 server gone: the new range shows no bills and no count from the old one, and says the load failed",
+      failed && staleRows === 0 && !label.includes("บิล"), JSON.stringify({ failed, staleRows, label }));
   } finally {
     if (app !== null) await app.close().catch(() => undefined);
     server.proc.kill();

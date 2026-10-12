@@ -12,7 +12,7 @@ lesson file; anything written here is destroyed by the next run.
 byte for byte, with line endings normalised to LF on both sides first. It exits
 1 on any difference. That is how a lesson edited without regenerating is caught.
 
-**Sources:** 72 lesson files, `lessons/*.md`, ASCII filename order.
+**Sources:** 73 lesson files, `lessons/*.md`, ASCII filename order.
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
@@ -75,6 +75,7 @@ line instead of by heading depth.
 - `a-sum-over-nothing-has-no-scale.md` -- A sum over nothing has no scale
 - `a-value-comparison-cannot-prove-a-path.md` *(1 amendment)* -- A value comparison cannot prove a PATH
 - `a-warning-in-one-file-does-not-protect-the-next.md` -- A warning written in one file does not protect the file beside it
+- `an-answer-belongs-to-the-question-that-asked.md` -- An answer belongs to the question that asked it
 - `an-error-is-one-branch-not-the-defects-shape.md` -- An error you observed is one branch, not the defect's shape
 - `be-year-comes-after-the-timezone.md` *(2 amendments)* -- The BE year comes AFTER the timezone conversion — and an ISO-shaped BE date is a trap
 - `cached-master-data-is-a-price-claim.md` -- A cached price is a claim about today, and a backwards clock makes it look fresh
@@ -6780,6 +6781,37 @@ anyway.
 
 ---
 
+**SOURCE:** `an-answer-belongs-to-the-question-that-asked.md`
+
+# An answer belongs to the question that asked it
+
+**Applies to:** every screen that shows data from an asynchronous request while its controls can change
+the request — filters, date ranges, a search box, paging.
+
+**What happened (desktop B3, 2026-10-12).** The bills screen kept `rows` (the last SUCCESSFUL answer) and
+`filter` (what the operator has chosen now) in two states. The range heading and the filter controls
+read `filter`; the table and the bill COUNT read `rows`. A failed load wrote nothing, so after choosing
+"7 วันล่าสุด" with the server unreachable the screen read "06/10/2569 – 12/10/2569 · 12 บิล" over TODAY's
+twelve bills — a week's heading over one day's money, unmarked, on the screen a cashier balances a
+drawer from. The same split lets a slow answer for an OLD filter land after a newer one and replace it.
+Every proof was green: each cell checked a successful load, and the first paint always agrees.
+
+**The rule.** Store an answer WITH the question it answers (`{ key: billsQuery(filter), rows }`), and
+render it only while that question is still the one on screen. A different key means the answer is not
+this screen's: show loading, or — when the request for THIS key failed — say the load failed, and never
+the previous range's rows or count. A count is part of the answer, not of the heading.
+
+**Proof shape.** Change the question, make its answer fail (stop the server), and assert that NO row and
+NO count from the old answer remains (`prove:billsflow` B9). Disproved by rendering `listed.rows`
+regardless of its key: B9 red with 200 stale rows. A proof that only ever loads successfully cannot see
+this, because success overwrites the stale state.
+
+**Also learned in the same fix:** once rows empty while a new answer loads, a proof that waited for the
+OLD rows to disappear reads the loading state — wait for the NEW answer's evidence (the expected row),
+never for the absence of the old one (B2 went red exactly so, and the wait was the defect).
+
+---
+
 **SOURCE:** `an-error-is-one-branch-not-the-defects-shape.md`
 
 # An error you observed is one branch, not the defect's shape
@@ -8186,6 +8218,20 @@ Here the two typecheck programs enumerated exactly the sites; no fourth appeared
 about the state it names, and does the type system force every one of them to read
 it?** Wiring it into the surface that happened to bite first is the same instance
 bug 2c-7 opens this file with, one axis out.
+
+## Amended 2026-10-12 (desktop B3) — a function written for one CALLER's outcomes was handed every outcome
+
+The desktop's `unreachableNotice(kind)` was written for `Session.resume()` — `/whoami`, which can only
+come back ok, 401, unreachable or outdated — and it said so in its docstring. The bills screen then
+piped EVERY request's outcome into the same `settle(kind)` → `unreachableNotice`, so a 422 the server
+ANSWERED (a reversed date range) and a 403 (void without the permission) both put "ติดต่อเซิร์ฟเวอร์ไม่ได้ —
+ตรวจการเชื่อมต่อเครือข่าย" in the shell, above the screen's own correct sentence. Each piece was correct for
+the caller it was written for; the new caller widened the domain and nothing noticed (red team, found by
+reading; no proof rendered the screen against a refusal). **Repair:** `shellNoticeFor(kind)` names, per
+outcome kind, whether the SHELL speaks at all — only unreachable and outdated are the shell's news, and a
+refusal the server answered is LEFT to the screen that asked (`prove:bills` H1). **Ask, when a new
+caller reuses a wording function: what outcomes could the old caller produce, and what does the new one
+add?** A domain that widened is a call site the function was never written for.
 
 ---
 

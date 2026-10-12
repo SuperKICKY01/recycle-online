@@ -157,6 +157,26 @@ anchor next pass.
   without the seller name → exactly N2; a whitespace reason accepted → V1; `>=` → `>` at the ceiling → P1; the void
   form left open after a void (both guards removed — the FIRST build's own defect, seen in its screenshot) → B5. A
   first M6 that removed only one guard stayed green, correctly: the other guard alone closes the form.
+- **B3 red team (nemesis, read-only, on `abdf61e`): six CONFIRMED, two PLAUSIBLE; six fixed, two recorded.** (1) every
+  answered refusal on the bills screen (a 422 reversed range, a 403 void) put the NETWORK sentence in the shell →
+  `shellNoticeFor(kind)`: only unreachable/outdated reach the shell (`prove:bills` H1); a reversed or emptied range is
+  refused on screen before any request (K1; `prove:billsflow` B8: no list request, no network line). (2) a failed
+  load left the previous range's bills AND count under the new range's heading → rows are stored with the query they
+  answer and shown only while it is current; a failed load says so (B9: server stopped, no stale row or count); lesson
+  `an-answer-belongs-to-the-question-that-asked.md`. (3) no proof ever voided twice → `prove_bill_filters` V5: a
+  second void is 409 and `voided_at/voided_by/void_reason` are unchanged in Postgres. (5) B4's "no void request"
+  counter had no positive control → the real void must move it by exactly one. (6) the bill detail had no
+  personal-data ABSENCE cell → N3: seller P is created with an ID and address, the seller list as admin shows them
+  (control), and no bill detail or list, staff or admin, carries either. (8) money.ts claimed M1 compared with the
+  phone without reading it → M2 imports `mobile/src/money/format.ts`. (7, PLAUSIBLE) an absent `paid_amount` read as
+  0.00 → read as missing and shown so (R2); the slip omits the paid line. (4, PLAUSIBLE) the concurrent-void race is
+  RECORDED, not fixed (pre-existing route; a change to hard rule 5's write path the brief did not name) — OPEN_ITEMS.
+  Disproofs, each restored byte-identical: answered 422 → shell (H1); rows unkeyed (B8 B9, 200 stale rows); range
+  unchecked (K1); the already-voided guard removed (V5: the second void answered 200 and overwrote the record);
+  detail carrying `id_number` (N3); access log off (B4 control 0 → 0); the phone grouping with `.` (M2); `?? "0.00"`
+  (R2). Lesson amended: `correct-classification-can-still-render-as-an-error.md` (a reused wording function's domain
+  widened by a new caller). After the fixes: `prove_bill_filters` 14, `prove:bills` 15, `prove:billsflow` 10,
+  `prove:slip` 15, `prove:slipflow` 6 — each exit 0 twice.
 - **B4 — the thermal slip (P1.17), bytes proven, paper NOT observed.** `desktop/src/shared/slip.ts` (pure): `slipLines`
   decides what a slip says (shop name/address/phone from `GET /shop`; doc_no; shop-time BE date; seller CODE and NAME
   only; plate; per line ชั่ง/หัก/สุทธิ x price = amount; total; paid; printed-at), `lineText` lays it out at 32 columns

@@ -121,6 +121,17 @@ async def row_count(bill_id: str) -> int:
         await c.close()
 
 
+async def void_record(bill_id: str) -> tuple:
+    import asyncpg
+    u = make_url(ORIG_ENV["APP_DATABASE_URL"])
+    c = await asyncpg.connect(host=u.host, port=u.port, user="postgres", password="postgres", database=SCRATCH_DB)
+    try:
+        r = await c.fetchrow("SELECT voided_at, voided_by, void_reason FROM purchase_bills WHERE id = $1", uuid.UUID(bill_id))
+        return (r["voided_at"], r["voided_by"], r["void_reason"])
+    finally:
+        await c.close()
+
+
 def login(base: str, key: str) -> dict:
     r = httpx.post(f"{base}/auth/login", timeout=15, json={"tenant_id": str(TENANT_A_ID), "username": f"{key}-{RUN}",
                                                             "password": PW[key]})
@@ -128,8 +139,17 @@ def login(base: str, key: str) -> dict:
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
 
-def post_seller(base: str, h: dict, tag: str) -> str:
-    r = httpx.post(f"{base}/sellers", headers=h, timeout=15, json={"name": f"bill filter {tag} {RUN}", "grade": "B"})
+# Needles for the personal-data cells: seller P is created WITH an ID number and an address, so an
+# absence on a bill read means the route left them out, not that there was nothing to leak.
+ID_NEEDLE = f"77{RUN.replace('-', '')[:10]}"
+ADDR_NEEDLE = f"addr-needle-{RUN}"
+
+
+def post_seller(base: str, h: dict, tag: str, personal: bool = False) -> str:
+    body = {"name": f"bill filter {tag} {RUN}", "grade": "B"}
+    if personal:
+        body |= {"id_number": ID_NEEDLE, "address": ADDR_NEEDLE}
+    r = httpx.post(f"{base}/sellers", headers=h, timeout=15, json=body)
     if r.status_code != 201:
         raise RuntimeError(f"POST /sellers {tag} -> {r.status_code}: {r.text[:300]}")
     return r.json()["id"]
@@ -159,7 +179,7 @@ def run_cells(base: str) -> None:
           f"E0 GET /bills declares the four new parameters ({sorted(names)})")
     adm = login(base, "adm")
     stf = login(base, "stf")
-    sp = post_seller(base, adm, "P")
+    sp = post_seller(base, adm, "P", personal=True)
     sq = post_seller(base, adm, "Q")
     t1 = post_bill(base, adm, sp, "t1")
     t2 = post_bill(base, adm, sq, "t2")
@@ -194,6 +214,19 @@ def run_cells(base: str) -> None:
     det = httpx.get(f"{base}/bills/{t1}", headers=adm, timeout=15).json()
     check(bool(det.get("seller_code")) and det.get("seller_name") == f"bill filter P {RUN}",
           f"N2 the detail names the seller ({det.get('seller_code')!r} {det.get('seller_name')!r})")
+    # N3 (red team 2026-10-12): the detail is the payload a slip is built from, and it reads the seller
+    # table itself. CONTROL first: the needles are really there, readable by a read_personal holder.
+    # (There is no GET /sellers/{id}; the list is the seller read that passes the personal-data gate.)
+    ctl = httpx.get(f"{base}/sellers", headers=adm, timeout=15)
+    seen = ctl.status_code == 200 and ID_NEEDLE in ctl.text and ADDR_NEEDLE in ctl.text
+    leaks = []
+    for who, h in (("staff", stf), ("admin", adm)):
+        for path in (f"/bills/{t1}", f"/bills?limit=200&seller_id={sp}&from_date={yday.isoformat()}&to_date={today.isoformat()}"):
+            body = httpx.get(f"{base}{path}", headers=h, timeout=15).text
+            if ID_NEEDLE in body or ADDR_NEEDLE in body:
+                leaks.append(f"{who} {path.split('?')[0]}")
+    check(seen and not leaks,
+          f"N3 control: GET /sellers as admin shows the ID and address ({seen}); no bill read, detail or list, staff or admin, carries either ({leaks})")
 
     reason = f"ชั่งผิดรายการ {RUN}"
     rs = httpx.post(f"{base}/bills/{t2}/void", headers=stf, timeout=15, json={"reason": reason})
@@ -211,6 +244,13 @@ def run_cells(base: str) -> None:
     count = asyncio.run(row_count(t2))
     check(t2 not in ids(default) and vrow.get("status") == "voided" and vrow.get("void_reason") == reason and count == 1,
           f"V3 voided: gone by default, present with include_voided and its reason; Postgres rows={count}")
+    # V5 (red team 2026-10-12): a SECOND void of the same bill is refused, and the first void's who,
+    # when and why are untouched (hard rule 5: the record of a void is history too).
+    first = asyncio.run(void_record(t2))
+    again = httpx.post(f"{base}/bills/{t2}/void", headers=adm, timeout=15, json={"reason": f"second {RUN}"})
+    after = asyncio.run(void_record(t2))
+    check(again.status_code == 409 and after == first and first[2] == reason,
+          f"V5 a second void -> 409 and voided_at/voided_by/void_reason unchanged (got {again.status_code}; same={after == first})")
     plain = httpx.get(f"{base}/bills", headers=adm, timeout=15, params={"limit": 5})
     keys = set(plain.json()["bills"][0]) if plain.json()["bills"] else set()
     old = {"id", "doc_no", "branch_id", "seller_id", "vehicle_no", "total_amount", "paid_amount", "payment_status",

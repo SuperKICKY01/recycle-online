@@ -167,7 +167,7 @@ export function slipLines(shop: ShopHeader, bill: BillDetail, printedAt: string)
   lines.push(
     { kind: "rule" },
     { kind: "pair", left: "รวมเงิน (บาท)", right: display(bill.total_amount), bold: true },
-    { kind: "pair", left: "จ่ายแล้ว", right: display(bill.paid_amount) },
+    ...(bill.paid_amount !== null ? [{ kind: "pair", left: "จ่ายแล้ว", right: display(bill.paid_amount) } as const] : []),
     { kind: "rule" },
     { kind: "text", text: `พิมพ์เมื่อ ${shopDateTime(printedAt)}`, align: "center" },
   );

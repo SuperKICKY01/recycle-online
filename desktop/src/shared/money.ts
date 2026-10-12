@@ -3,7 +3,8 @@
  * (mobile/src/money/format.ts `display`) — pure string surgery, no `Number`, no `parseFloat`, no
  * `toFixed`, no `Intl`, so every digit the server sent survives in order (hard rule 1). The rule
  * is restated here rather than imported because the desktop is not a member of the mobile
- * program; prove:bills M1 holds the two to the same outputs over the same inputs.
+ * program; prove:bills M1 IMPORTS mobile/src/money/format.ts and holds the two to the same outputs
+ * over the same inputs, so a change to either side's grouping reddens it (red team 2026-10-12).
  */
 export const GROUP_SEPARATOR = ",";
 

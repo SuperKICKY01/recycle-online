@@ -10,7 +10,7 @@ import { StrictMode, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ApiClient } from "../shared/api";
-import { normaliseApiBase, noticeFor, Session, SESSION_TEXT, type ShopConfig } from "../shared/session";
+import { normaliseApiBase, noticeFor, Session, SESSION_TEXT, shellNoticeFor, type ShopConfig } from "../shared/session";
 import type { ApiOutcome, WhoAmI } from "../shared/api";
 import { BillsScreen } from "./Bills";
 import { PrinterScreen } from "./Slip";
@@ -61,7 +61,11 @@ function App() {
     if (s !== null && !s.signedIn) {
       setNotice(s.notice);
       setPhase("signin");
-    } else setShellNotice(kind === "ok" ? null : unreachableNotice(kind));
+    } else {
+      const n = shellNoticeFor(kind);
+      if (n.kind === "clear") setShellNotice(null);
+      else if (n.kind === "show") setShellNotice(n.text);
+    }
   }, []);
 
   /** Start-up and the offline screen's retry: confirm a stored session once. */

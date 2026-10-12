@@ -1705,6 +1705,26 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
 
 ## Code debt found and left in place
 
+- **`POST /bills/{id}/void` CAN LET TWO CONCURRENT VOIDS BOTH SUCCEED, THE SECOND OVERWRITING THE FIRST'S WHO/WHEN/WHY
+  (red team on desktop B3, 2026-10-12; PLAUSIBLE — read from source, not executed).** `server/app/bills.py` `void_bill`
+  SELECTs `voided_at` with no `FOR UPDATE`, then UPDATEs `WHERE id = :id` with no `AND voided_at IS NULL`, at READ
+  COMMITTED. Two voids racing both see NULL; the second's UPDATE waits on the row lock, then writes over the first.
+  The sequential case is proven refused (`prove_bill_filters` V5) and the disproof measured the damage when the
+  guard is absent (200, record overwritten). Fix (not made — hard rule 5's write path, not named by the brief):
+  `UPDATE … WHERE id = :id AND voided_at IS NULL RETURNING id`, 409 when no row, with a barrier-synchronised
+  concurrency cell (`lessons/concurrency-tests-need-a-barrier.md`) on a scratch. The desktop makes it more reachable:
+  a sticky detail panel can sit on a bill a phone voids.
+
+- **THE BILL LIST'S NEW FILTERS LET A STAFF TOKEN WALK THE WHOLE BILL HISTORY WITH MONEY (red team, 2026-10-12).**
+  Adds one fact to the owner's open decision "Whether the bill list should be shop-wide for staff": before B3 a
+  `bills.read` holder reached only the newest 200 live bills; `from_date`/`to_date`/`seller_id` now reach any window,
+  each row with `total_amount` and `paid_amount`, for the role that `GET /reports/daily` refuses. Not changed here.
+
+- **THE DESKTOP'S DATE FIELDS SHOW GREGORIAN MONTH/DAY (`10/12/2026`) BESIDE THE BUDDHIST-ERA LABEL `12/10/2569`
+  (MEASURED in `E:\recycle-shots\lane-a\desktop\b3_list.png`).** Chromium renders `<input type="date">` in its own
+  locale. The range label below restates the chosen range in shop time and BE, so nothing is misread as a
+  different day only if the operator reads the label; a Thai-locale or BE date picker is a polish item.
+
 - **DESKTOP B4 — THE SLIP'S THAI ON A REAL PRINTER IS UNMEASURED (2026-10-12).** Text mode sends TIS-620 under `ESC t n`;
   `n` is the printer maker's choice (default 21 is ASSUMED-BECAUSE Epson's table puts Thai at 20–26) and the test page
   lets the operator pick. If the owner's printer prints the above/below marks in their OWN columns (a printer without

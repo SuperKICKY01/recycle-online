@@ -16,6 +16,8 @@ import type { ApiOutcome } from "../shared/api";
 import {
   billsQuery,
   listCountText,
+  RANGE_TEXT,
+  rangeProblem,
   mayVoid,
   PAYMENT_STATUS_TEXT,
   readBillDetail,
@@ -42,7 +44,13 @@ export function BillsScreen({ session, onSettle }: Props) {
   const initial = presetRange("today", new Date());
   const [filter, setFilter] = useState<BillFilter>({ from: initial.from, to: initial.to, sellerId: null, includeVoided: false });
   const [preset, setPreset] = useState<PresetId | null>("today");
-  const [rows, setRows] = useState<BillRow[] | null>(null);
+  /**
+   * The last list the server gave, WITH the query it answers. The screen shows it only while that
+   * query is still the one on screen, so a failed or late answer can never put one range's bills
+   * (or their count) under another range's heading (red team 2026-10-12, B3 finding 2).
+   */
+  const [listed, setListed] = useState<{ key: string; rows: BillRow[] } | null>(null);
+  const [failedKey, setFailedKey] = useState<string | null>(null);
   const [sellers, setSellers] = useState<SellerChoice[]>([]);
   const [selected, setSelected] = useState<BillDetail | null>(null);
   /** The bill whose slip is on screen (the preview replaces the detail panel), or null. */
@@ -51,14 +59,24 @@ export function BillsScreen({ session, onSettle }: Props) {
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async (f: BillFilter) => {
+    const problem = rangeProblem(f);
+    if (problem !== null) {
+      setListNotice(problem);
+      return;
+    }
+    const key = billsQuery(f);
     setLoading(true);
-    const out = await session.authed((t) => session.api.get(t, billsQuery(f), readBillList));
+    const out = await session.authed((t) => session.api.get(t, key, readBillList));
     setLoading(false);
     onSettle(out.kind);
     if (out.kind === "ok") {
-      setRows(out.value);
+      setListed({ key, rows: out.value });
+      setFailedKey(null);
       setListNotice(null);
-    } else setListNotice(noticeFor(out, "session"));
+    } else {
+      setFailedKey(key);
+      setListNotice(noticeFor(out, "session"));
+    }
   }, [session, onSettle]);
 
   useEffect(() => {
@@ -81,6 +99,11 @@ export function BillsScreen({ session, onSettle }: Props) {
       setPrinting(false);
     } else setListNotice(noticeFor(out, "session"));
   };
+
+  const currentKey = billsQuery(filter);
+  const rows = listed !== null && listed.key === currentKey ? listed.rows : null;
+  const invalid = rangeProblem(filter);
+  const tableState = invalid !== null ? "invalid" : failedKey === currentKey ? "failed" : "loading";
 
   const choosePreset = (id: PresetId) => {
     const r = presetRange(id, new Date());
@@ -132,7 +155,7 @@ export function BillsScreen({ session, onSettle }: Props) {
       ) : null}
       {listNotice !== null ? <p className="notice notice-warn" role="alert">{listNotice}</p> : null}
       <div className={selected !== null ? "bills-split has-panel" : "bills-split"}>
-        <BillTable rows={rows} loading={loading} selectedId={selected?.id ?? null} onOpen={(id) => void open(id)} />
+        <BillTable rows={rows} loading={loading} state={tableState} selectedId={selected?.id ?? null} onOpen={(id) => void open(id)} />
         {selected !== null && printing ? (
           <SlipPreview bill={selected} session={session} onSettle={onSettle} onClose={() => setPrinting(false)} />
         ) : null}
@@ -146,10 +169,15 @@ export function BillsScreen({ session, onSettle }: Props) {
 }
 
 function BillTable(props: {
-  rows: BillRow[] | null; loading: boolean; selectedId: string | null; onOpen: (id: string) => void;
+  rows: BillRow[] | null; loading: boolean; state: "invalid" | "failed" | "loading"; selectedId: string | null;
+  onOpen: (id: string) => void;
 }) {
-  const { rows, loading, selectedId, onOpen } = props;
-  if (rows === null) return <div className="table-empty" aria-busy="true">กำลังโหลดบิล…</div>;
+  const { rows, loading, state, selectedId, onOpen } = props;
+  if (rows === null) {
+    if (state === "invalid") return <div className="table-empty" data-list-state="invalid">—</div>;
+    if (state === "failed") return <div className="table-empty" data-list-state="failed">{RANGE_TEXT.failed}</div>;
+    return <div className="table-empty" aria-busy="true" data-list-state="loading">กำลังโหลดบิล…</div>;
+  }
   if (rows.length === 0) {
     return <div className="table-empty">ไม่มีบิลในช่วงนี้ — ลองเปลี่ยนวันที่หรือผู้ขาย</div>;
   }
@@ -228,7 +256,7 @@ function BillPanel(props: {
         <dt>ผู้ขาย</dt><dd data-seller-name>{bill.seller_code ?? ""} {bill.seller_name ?? "—"}</dd>
         <dt>วันที่ เวลา</dt><dd>{shopDateTime(bill.server_received_at)}</dd>
         <dt>ทะเบียนรถ</dt><dd>{bill.vehicle_no ?? "—"}</dd>
-        <dt>การจ่าย</dt><dd>{PAYMENT_STATUS_TEXT[bill.payment_status] ?? bill.payment_status} ({display(bill.paid_amount)} บาท)</dd>
+        <dt>การจ่าย</dt><dd>{PAYMENT_STATUS_TEXT[bill.payment_status] ?? bill.payment_status} {bill.paid_amount !== null ? ` (${display(bill.paid_amount)} บาท)` : " (ไม่มียอดจ่ายในข้อมูล)"}</dd>
       </dl>
       <ol className="lines" aria-label="รายการสินค้า">
         {bill.items.map((i) => (
