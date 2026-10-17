@@ -83,7 +83,16 @@ from lane import scratch_name  # noqa: E402  (scratch names are decided in lane.
 SCRATCH_DB = scratch_name("recycle_seller_personal_scratch")
 RUN = uuid.uuid4().hex[:8]
 ORIG_ENV = dict(os.environ)
-HEAD = "0024"
+# The migration this proof is ABOUT (RT walks it down to 0023 and back) -- a fixed literal.
+MIGRATION = "0024"
+
+
+def code_head() -> str:
+    """The head of THIS checkout's migration chain, read from alembic's own script directory --
+    never a literal (gate 2026-10-17: E0 pinned "0024" and went red the day 0025 landed)."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    return ScriptDirectory.from_config(Config(os.path.join(SERVER_DIR, "alembic.ini"))).get_current_head()
 PERM = "sellers.read_personal"
 
 BASE = ""
@@ -499,10 +508,10 @@ async def run_round_trip(scratch: str) -> None:
     head, n, holders, granted = await state()
     check(rc == 0 and head == "0023" and n == 15 and not granted,
           f"RT1: downgrade to 0023 exit {rc}: head {head}, {n} codes, {len(granted)} grants of {PERM}")
-    rc, out = run_alembic(scratch, "upgrade", HEAD)
+    rc, out = run_alembic(scratch, "upgrade", MIGRATION)
     head, n, holders, granted = await state()
-    check(rc == 0 and head == HEAD and n == 16 and granted == holders and len(holders) > 0,
-          f"RT2: upgrade to {HEAD} exit {rc}: {n} codes, grants == users.manage holders as a set"
+    check(rc == 0 and head == MIGRATION and n == 16 and granted == holders and len(holders) > 0,
+          f"RT2: upgrade to {MIGRATION} exit {rc}: {n} codes, grants == users.manage holders as a set"
           f" ({len(granted)} == {len(holders)})")
     await mig_exec(scratch,
                    "INSERT INTO role_permissions (tenant_id, role_id, permission)"
@@ -510,14 +519,14 @@ async def run_round_trip(scratch: str) -> None:
                    f" WHERE r.tenant_id = '{TENANT_A_ID}' AND r.code = 'staff'")
     rc, out = run_alembic(scratch, "downgrade", "0023")
     head, n, holders, granted = await state()
-    check(rc != 0 and "grants to a role without users.manage" in out and head == HEAD and n == 16,
+    check(rc != 0 and "grants to a role without users.manage" in out and head == MIGRATION and n == 16,
           f"RT3: a grant to the staff role -> downgrade REFUSED (exit {rc}), head still {head}")
     await mig_exec(scratch,
                    f"DELETE FROM role_permissions rp USING roles r WHERE r.id = rp.role_id"
                    f" AND r.tenant_id = '{TENANT_A_ID}' AND r.code = 'staff'"
                    f" AND rp.permission = '{PERM}'")
     head, n, holders, granted = await state()
-    check(head == HEAD and granted == holders,
+    check(head == MIGRATION and granted == holders,
           f"RT4: the scratch's extra grant removed; left at {head} with grants == holders")
 
 
@@ -592,7 +601,8 @@ async def main() -> int:
     os.environ["DIRECTORY_DATABASE_URL"] = dir_live.set(database=scratch).render_as_string(hide_password=False)
 
     head = await mig_scalar(scratch, "SELECT version_num FROM alembic_version")
-    check(head == HEAD, f"E0: the scratch is at {HEAD} (read from alembic_version: {head})")
+    want = code_head()
+    check(head == want, f"E0: the scratch is at the code's head {want} (read from alembic_version: {head})")
 
     port = free_port()
     BASE = f"http://127.0.0.1:{port}"

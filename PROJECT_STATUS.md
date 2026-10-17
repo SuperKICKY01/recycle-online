@@ -177,6 +177,13 @@ anchor next pass.
   (R2). Lesson amended: `correct-classification-can-still-render-as-an-error.md` (a reused wording function's domain
   widened by a new caller). After the fixes: `prove_bill_filters` 14, `prove:bills` 15, `prove:billsflow` 10,
   `prove:slip` 15, `prove:slipflow` 6 — each exit 0 twice.
+- **GATE 2026-10-17 (`_prove_all/20261017T164702Z`, launched 8.40 GB free under the revised >= 8 GB bar, low 5.77 GB,
+  not killed): TOTAL 107, RED 1 — `prove_seller_personal` E0 `the scratch is at 0024 (read from alembic_version: 0025)`,
+  both runs.** Cause, read in the source: E0 asserted a LITERAL head (`HEAD = "0024"`), which migration 0025 (1a) moved.
+  Fix: `MIGRATION = "0024"` stays for RT (it walks 0024 down and up on purpose), and E0 compares against the code's head
+  read from alembic's own script directory (`code_head()`), so the next migration cannot redden it. Exit 0 twice (E0
+  `at the code's head 0025`; RT now walks 0025 → 0023 → 0024 on the scratch); disproved by pinning the head to 0024
+  (E0 red). The only proof that pinned a revision literal (`grep` for `"0024"` over server/scripts: this file alone).
 - **RED TEAMS ON 1a (`36db720`) AND ON B6's SERVER HALF (`f3abf7b`), 2026-10-13 — fixed before the gate.** 1a: (1)
   CONFIRMED and MEASURED: migration 0025 reddened `prove_shifts` FX (`columns absent at 0022 are
   ['void_idempotency_key'], declared []`) — the gate would have failed; the column is DECLARED absent at 0022 (never
