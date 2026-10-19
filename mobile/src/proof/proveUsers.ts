@@ -181,14 +181,25 @@ function h2Roster(): void {
   }
   const ownerRow = asAdmin.screen.activeRows.find((r) => r.user_id === "the-owner");
   const clerkRow = asAdmin.screen.activeRows.find((r) => r.user_id === "a-clerk");
-  check("3a: an admin is NOT offered a reset on the OWNER's row, and the row says why",
-    ownerRow?.mayReset === false && ownerRow?.ownerPasswordLocked === true,
-    `mayReset=${String(ownerRow?.mayReset)} locked=${String(ownerRow?.ownerPasswordLocked)}`);
-  check("3a: PRESENCE SIBLING — the same admin IS offered a reset on a staff row",
-    clerkRow?.mayReset === true && clerkRow?.ownerPasswordLocked === false);
+  // Widened 2026-10-19: NO action on another person's owner row — each would be refused.
+  check("owner row: an admin is offered NO reset and NO deactivate, and the row says why",
+    ownerRow?.mayReset === false && ownerRow?.mayDeactivate === false && ownerRow?.ownerAccountLocked === true,
+    `mayReset=${String(ownerRow?.mayReset)} mayDeactivate=${String(ownerRow?.mayDeactivate)} locked=${String(ownerRow?.ownerAccountLocked)}`);
+  check("owner row: PRESENCE SIBLING — the same admin IS offered reset and deactivate on a staff row",
+    clerkRow?.mayReset === true && clerkRow?.mayDeactivate === true && clerkRow?.ownerAccountLocked === false);
   const ownSelf = asOwner.screen.activeRows.find((r) => r.user_id === "the-owner");
-  check("3a: the owner's own row is the self row, not the locked one (own password is the account screen's)",
-    ownSelf?.isSelf === true && ownSelf?.ownerPasswordLocked === false);
+  check("owner row: the owner's own row is the self row, not the locked one (own password is the account screen's)",
+    ownSelf?.isSelf === true && ownSelf?.ownerAccountLocked === false);
+  const offOwner = usersScreenState(
+    { kind: "ok", body: { users: [{ ...withOwner[0], user_id: "off-owner", is_active: false }, withOwner[1], { ...withOwner[2], user_id: "off-clerk", is_active: false }] } },
+    grantsOf("admin"), "an-admin");
+  if (offOwner.kind === "roster") {
+    const o = offOwner.screen.inactiveRows.find((r) => r.user_id === "off-owner");
+    const c = offOwner.screen.inactiveRows.find((r) => r.user_id === "off-clerk");
+    check("owner row: a DEACTIVATED owner is offered no reactivate to an admin (the provider brings it back)",
+      o?.mayReactivate === false && o?.ownerAccountLocked === true);
+    check("owner row: PRESENCE SIBLING — a deactivated staff account IS reactivatable", c?.mayReactivate === true);
+  } else check("the deactivated-owner roster builds", false);
 
   // A malformed body is FATAL, not a partial roster (which would hide an admin and
   // miscount the guard).
@@ -231,6 +242,10 @@ function h3Refusals(): void {
   check("owner_password_owner_only: no diagnostic leaks", leaks(ownerOnly) === null, ownerOnly);
   check("owner_password_owner_only: it says only the owner sets it, and differs from the generic 403",
     ownerOnly.includes("เจ้าของร้านเองเท่านั้น") && ownerOnly !== forbidden, ownerOnly);
+  const ownerAcct = refused({ kind: "http", status: 403, body: { detail: { code: "owner_account_owner_only" } } });
+  check("owner_account_owner_only: no diagnostic leaks", leaks(ownerAcct) === null, ownerAcct);
+  check("owner_account_owner_only: it says only the owner manages the owner's account, distinct from the generic 403",
+    ownerAcct.includes("เจ้าของร้านเองเท่านั้น") && ownerAcct.includes("บัญชี") && ownerAcct !== forbidden, ownerAcct);
 
   // A duplicate username says so WITHOUT echoing the name that was taken.
   const dup = refused({

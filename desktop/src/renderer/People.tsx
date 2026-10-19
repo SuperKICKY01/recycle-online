@@ -37,6 +37,8 @@ import {
   type Shift,
   type Shop,
   type User,
+  OWNER_ACCOUNT_NOTE,
+  ownerAccountLocked,
 } from "../shared/people";
 import { noticeFor, type Session } from "../shared/session";
 
@@ -337,7 +339,11 @@ function UserPanel(props: Props & { user: User | null; role: Role | undefined; o
         <p className="field-hint">สิทธิ์เปลี่ยนตามตำแหน่ง แก้ได้ที่แท็บ สิทธิ์ตามตำแหน่ง</p>
       </section>
       <Notice problem={problem} saved={saved} />
-      {self ? <p className="field-hint">นี่คือบัญชีของคุณเอง — ปิดใช้งานหรือรีเซ็ตรหัสผ่านตัวเองจากที่นี่ไม่ได้</p> : (
+      {self ? <p className="field-hint">นี่คือบัญชีของคุณเอง — ปิดใช้งานหรือรีเซ็ตรหัสผ่านตัวเองจากที่นี่ไม่ได้</p>
+        : ownerAccountLocked(user, props.session.me?.user_id ?? null) ? (
+          // Another person's owner row: every action here would be refused (owner_*_owner_only).
+          <p className="field-hint" data-owner-locked>{OWNER_ACCOUNT_NOTE}</p>
+        ) : (
         <>
           <div className="void-actions">
             <button type="button" className="btn btn-quiet" disabled={busy} data-user-toggle

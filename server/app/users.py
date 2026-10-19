@@ -597,6 +597,8 @@ async def revoke_sessions(
         # matches NOTHING and this returns None -> 404. The tenant predicate is
         # a property of the table that no handler can forget; a hand-written one
         # is the version that can be wrong. Same doctrine as master._update_row.
+        # The owner's own sessions are the owner's to end (self-revocation stays allowed).
+        await _refuse_another_owners_account(conn, user_id, principal, code="owner_account_owner_only", lock=True)
         row = (
             await conn.execute(
                 text(
@@ -619,6 +621,42 @@ async def revoke_sessions(
         "username": row["username"],
         "token_version": row["token_version"],
     }
+
+
+async def _refuse_another_owners_account(
+    conn: Any, user_id: uuid.UUID, principal: Principal, *, code: str, lock: bool
+) -> None:
+    """NO ONE BUT THE OWNER ACTS ON THE OWNER'S ACCOUNT (ADVISOR-DECIDED 2026-10-17 3a, widened
+    2026-10-19 to every write on a user row): 403 `code` when the target holds the owner role
+    and is not the caller -- admins included, a second owner included. 404 when the row is not
+    visible in this tenant (the doctrine revoke_sessions states).
+
+    Every write users.manage reaches on a user row calls it: revoke-sessions, deactivate,
+    activate, unlock-login (`owner_account_owner_only`) and the password reset
+    (`owner_password_owner_only`, 3a's code, kept). No route changes a user's role or username,
+    and the owner ROLE is fixed in roles.py (`owner_role_fixed`), so those have nothing to guard.
+    The way back for a locked, deactivated or forgotten owner is provider-side:
+    scripts/reset_owner_password.py, run by us and audited.
+
+    `lock`: take FOR NO KEY UPDATE on the target row. deactivate passes False because it has
+    ALREADY locked the active-admin set, in id order, and locking one row first would invert that
+    order against a concurrent deactivate (a deadlock); an active owner holds users.manage, so its
+    row is in that set and already locked."""
+    target_role = (
+        await conn.execute(
+            text(
+                "SELECT r.code FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = :id"
+                + (" FOR NO KEY UPDATE OF u" if lock else "")
+            ),
+            {"id": user_id},
+        )
+    ).scalar_one_or_none()
+    if target_role is None:
+        raise _not_found("user")
+    if target_role == OWNER_ROLE and user_id != principal.user_id:
+        if code == "owner_password_owner_only":
+            raise forbidden(code, "รหัสผ่านของเจ้าของร้านเปลี่ยนได้โดยเจ้าของร้านเองเท่านั้น")
+        raise forbidden(code, "บัญชีของเจ้าของร้านจัดการได้โดยเจ้าของร้านเองเท่านั้น")
 
 
 def _user_or_404(row: Mapping[str, Any] | None) -> dict:
@@ -803,6 +841,9 @@ async def deactivate_user(
                 },
             )
 
+        # AFTER the set lock, never before it -- see _refuse_another_owners_account's `lock`.
+        await _refuse_another_owners_account(conn, user_id, principal, code="owner_account_owner_only", lock=False)
+
         # NO hand-written `WHERE tenant_id`, for the reason revoke_sessions
         # gives above (hard rule 2): the RLS policy already restricts the visible
         # rows to the context tenant, so an admin of tenant A naming a user id in
@@ -847,6 +888,9 @@ async def activate_user(
     live session, and a deactivated account cannot have one.
     """
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
+        # A deactivated OWNER is brought back by us (scripts/reset_owner_password.py
+        # --reactivate), never by an admin: reactivating it is acting on it.
+        await _refuse_another_owners_account(conn, user_id, principal, code="owner_account_owner_only", lock=True)
         row = (
             await conn.execute(
                 text(
@@ -907,6 +951,9 @@ async def unlock_login(
     path already allows.
     """
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
+        # An owner locked out by failed logins is unlocked by us (scripts/reset_owner_password.py
+        # --unlock) or waits out the window -- never by an admin.
+        await _refuse_another_owners_account(conn, user_id, principal, code="owner_account_owner_only", lock=True)
         urow = (
             await conn.execute(
                 text("SELECT id, username FROM users WHERE id = :id"),
@@ -1192,22 +1239,7 @@ async def reset_user_password(
     new_hash = await hash_password(body.new_password)
 
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
-        target_role = (
-            await conn.execute(
-                text(
-                    "SELECT r.code FROM users u JOIN roles r ON r.id = u.role_id"
-                    " WHERE u.id = :id FOR NO KEY UPDATE OF u"
-                ),
-                {"id": user_id},
-            )
-        ).scalar_one_or_none()
-        if target_role is None:
-            raise _not_found("user")
-        if target_role == OWNER_ROLE and user_id != principal.user_id:
-            raise forbidden(
-                "owner_password_owner_only",
-                "รหัสผ่านของเจ้าของร้านเปลี่ยนได้โดยเจ้าของร้านเองเท่านั้น",
-            )
+        await _refuse_another_owners_account(conn, user_id, principal, code="owner_password_owner_only", lock=True)
         row = (
             await conn.execute(
                 text(

@@ -27,7 +27,7 @@ import {
   checkPassword,
   DEACTIVATE_CONSEQUENCE,
   LAST_ADMIN_NOTE,
-  OWNER_PASSWORD_NOTE,
+  OWNER_ACCOUNT_NOTE,
   RESET_CONSEQUENCE,
   SELF_ROW_NOTE,
   PASSWORD_MAX_LENGTH,
@@ -140,6 +140,10 @@ export function UserActionsSheet({
                 <Text style={styles.actionDanger}>ยืนยันปิดบัญชี</Text>
               </Touchable>
             </>
+          ) : row.ownerAccountLocked ? (
+            // Another person's OWNER row (3a, widened 2026-10-19): no action at all — every
+            // one would be refused — and the note says why. Not the last-admin note.
+            <Text style={styles.note}>{OWNER_ACCOUNT_NOTE}</Text>
           ) : (
             <>
               {row.mayReset ? (
@@ -151,9 +155,6 @@ export function UserActionsSheet({
                 >
                   <Text style={styles.actionText}>ตั้งรหัสผ่านใหม่</Text>
                 </Touchable>
-              ) : row.ownerPasswordLocked ? (
-                // An owner's row: the reset is absent and the note says why (3a).
-                <Text style={styles.note}>{OWNER_PASSWORD_NOTE}</Text>
               ) : null}
 
               {row.is_active ? (

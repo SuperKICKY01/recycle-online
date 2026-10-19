@@ -18,6 +18,7 @@ import {
   isZeroMoney,
   moneyProblem,
   newUserProblems,
+  ownerAccountLocked,
   PERMISSION_TEXT,
   readShift,
   shopPatch,
@@ -61,6 +62,11 @@ void finish("PROVE_PEOPLE", async () => {
   const bad = newUserProblems({ username: "สมชาย", full_name: " ", password: "1234567", role: "" });
   check("U1 a good account has no problem; each bad field is named",
     Object.values(ok).every((x) => x === null) && Object.values(bad).every((x) => x !== null), JSON.stringify(bad));
+
+  // Widened 2026-10-19: another person's owner row offers no account action at all.
+  check("U2 another person's OWNER row is locked; the owner's own row and a staff row are not",
+    ownerAccountLocked({ user_id: "o", role: "owner" }, "a") && ownerAccountLocked({ user_id: "o", role: "owner" }, "o2")
+      && !ownerAccountLocked({ user_id: "o", role: "owner" }, "o") && !ownerAccountLocked({ user_id: "s", role: "staff" }, "a"));
 
   header("M amounts");
   check("M1 1500, 1500.5, 0.00 pass; -1, 1.234, 1e3, 1,500 do not",

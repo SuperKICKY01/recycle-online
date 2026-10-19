@@ -12,14 +12,27 @@ never touches a seeded account's login lock.
   O3  the control: the same admin resetting a STAFF password -> 200 (the guard is scoped).
   O4  the owner's OWN change through POST /users/me/password -> 200, and the new password signs in.
   O5  the owner through the reset route on their OWN id -> 200 (self is the owner).
-  R1  scripts/reset_owner_password.py REFUSES (exit 2) with no --username, and on a non-owner.
+  A1-A4 WIDENED 2026-10-19 -- every other write on a user row (revoke-sessions, deactivate,
+      activate, unlock-login): admin -> owner 403 owner_account_owner_only with the owner's row
+      unchanged in Postgres; a second owner -> owner 403; admin -> staff still works; the owner on
+      their OWN account as before (revoke 200, deactivate 403 cannot_deactivate_self, activate 200,
+      unlock 200).
+  R1  scripts/reset_owner_password.py REFUSES (exit 2) with no --username, with no --tenant-id,
+      and on a non-owner.
   R2  it resets the owner (exit 0): the new password signs in, the session minted before is 401,
       and audit_log holds the UPDATE on users for that id by `system:reset_owner_password`.
+  R3  a LOCKED-OUT owner (FAILURE_THRESHOLD wrong passwords): the right password is refused; the
+      tool's --unlock refuses without --username, then unlocks (exit 0), the owner signs in, and a
+      second audited UPDATE exists.
+  R4  a DEACTIVATED owner (set by SQL as the system actor -- no route can do it now): the tool's
+      --reactivate (exit 0) brings it back, the owner signs in, and the audit row shows is_active
+      false -> true.
 
-THE DISPROOF, RUN BY HAND (2026-10-19): delete the owner guard in
-server/app/users.py::reset_user_password -- O1 and O2 go red (200, the owner's row changed), and O4
-with them: the admin's reset has already taken the owner's password and ended the owner's session, so
-the owner's own change answers 401. That cascade IS the takeover; no other cell goes red.
+THE DISPROOFS, RUN BY HAND (2026-10-19), one per call site of
+server/app/users.py::_refuse_another_owners_account: delete the call in a route and that route's
+admin/owner2 -> owner cells go red. For the password route O4 goes red with them: the admin's reset
+has already taken the owner's password and ended the owner's session -- that cascade IS the
+takeover.
 """
 from __future__ import annotations
 
@@ -188,6 +201,36 @@ async def pg_user(ctx: Ctx, key: str) -> tuple[str, int]:
     return row[0], int(row[1])
 
 
+async def pg_state(ctx: Ctx, key: str) -> tuple[bool, int]:
+    """is_active and token_version OUT OF POSTGRES."""
+    from sqlalchemy import text
+    from app.db import tenant_connection
+    async with tenant_connection(ctx.tenant) as conn:
+        row = (await conn.execute(text("SELECT is_active, token_version FROM users WHERE id = :id"),
+                                  {"id": ctx.ids[key]})).one()
+    return bool(row[0]), int(row[1])
+
+
+async def pg_markers(ctx: Ctx, key: str) -> int:
+    """Rows in failed_login_attempts for this account (an unlock APPENDS a marker)."""
+    from sqlalchemy import text
+    from app.db import tenant_connection
+    async with tenant_connection(ctx.tenant) as conn:
+        return int((await conn.execute(text("SELECT count(*) FROM failed_login_attempts WHERE username = :u"),
+                                       {"u": U[key]})).scalar_one())
+
+
+async def pg_reactivations(ctx: Ctx) -> int:
+    from sqlalchemy import text
+    from app.db import tenant_connection
+    async with tenant_connection(ctx.tenant) as conn:
+        return int((await conn.execute(text(
+            "SELECT count(*) FROM audit_log WHERE table_name = 'users' AND action = 'UPDATE'"
+            " AND actor_username = 'system:reset_owner_password' AND new_data->>'id' = :id"
+            " AND (old_data->>'is_active')::boolean = false AND (new_data->>'is_active')::boolean = true"),
+            {"id": str(ctx.ids["owner"])})).scalar_one())
+
+
 async def pg_audit_resets(ctx: Ctx) -> int:
     from sqlalchemy import text
     from app.db import tenant_connection
@@ -203,14 +246,18 @@ async def pg_audit_resets(ctx: Ctx) -> int:
             {"id": str(ctx.ids["owner"])})).scalar_one())
 
 
-def run_reset(scratch: str, ctx: Ctx, username: str | None, password: str) -> tuple[int, str]:
+def run_reset(scratch: str, ctx: Ctx, username: str | None, password: str | None,
+              *flags: str, tenant: bool = True) -> tuple[int, str]:
     """The script, as WE run it: server/.env's own URLs (it rebinds itself to --database) and
     the new password in the environment, never on the command line."""
     env = dict(ORIG_ENV)
-    env["OWNER_NEW_PASSWORD"] = password
+    env.pop("OWNER_NEW_PASSWORD", None)
+    if password is not None:
+        env["OWNER_NEW_PASSWORD"] = password
     env["PYTHONIOENCODING"] = "utf-8"
-    args = [sys.executable, os.path.join("scripts", "reset_owner_password.py"),
-            "--database", scratch, "--tenant-id", str(ctx.tenant)]
+    args = [sys.executable, os.path.join("scripts", "reset_owner_password.py"), "--database", scratch, *flags]
+    if tenant:
+        args += ["--tenant-id", str(ctx.tenant)]
     if username is not None:
         args += ["--username", username]
     cp = subprocess.run(args, cwd=SERVER_DIR, env=env, capture_output=True, text=True,
@@ -262,11 +309,67 @@ async def run(ctx: Ctx, client: httpx.AsyncClient, scratch: str) -> None:
     check(r.status_code == 200, f"O5: owner -> own id is 200 (got {r.status_code})")
     owner_tok = await login_token(client, ctx.tenant, U["owner"], new_self)
     check(bool(owner_tok), "O5: the owner signs in with that password")
+    owner_pw = new_self
+
+    # --- A: every OTHER write on a user row (widened 2026-10-19). Each route: admin -> owner and
+    # owner2 -> owner refused with the owner's row unchanged in Postgres; admin -> staff works;
+    # the owner on their own account as before. Statuses and codes are read off the raw response.
+    async def refused_on_owner(label: str, path: str) -> None:
+        before = (await pg_state(ctx, "owner"), await pg_markers(ctx, "owner"))
+        for who in ("admin", "owner2"):
+            r = await client.post(path.format(ctx.ids["owner"]), headers=auth(tok[who]))
+            check(r.status_code == 403 and refusal_code(r) == "owner_account_owner_only",
+                  f"{label}: {who} -> owner is 403 owner_account_owner_only (got {r.status_code} {refusal_code(r)})")
+        after = (await pg_state(ctx, "owner"), await pg_markers(ctx, "owner"))
+        check(after == before, f"{label}: the owner's is_active, token_version and lockout rows are unchanged"
+                               f" ({before} -> {after})")
+
+    header("A1  revoke-sessions")
+    await refused_on_owner("A1", "/users/{}/revoke-sessions")
+    r = await client.get("/whoami", headers=auth(owner_tok or ""))
+    check(r.status_code == 200, f"A1: the owner's session survived the refused revokes (whoami {r.status_code})")
+    staff_tok = await login_token(client, ctx.tenant, U["staff"], f"staff-new-{RUN}")
+    r = await client.post(f"/users/{ctx.ids['staff']}/revoke-sessions", headers=auth(tok["admin"]))
+    r2 = await client.get("/whoami", headers=auth(staff_tok or ""))
+    check(r.status_code == 200 and r2.status_code == 401,
+          f"A1: admin -> staff revoke still works (got {r.status_code}; staff whoami now {r2.status_code})")
+    r = await client.post(f"/users/{ctx.ids['owner']}/revoke-sessions", headers=auth(owner_tok or ""))
+    check(r.status_code == 200, f"A1: the owner revokes their OWN sessions as before (got {r.status_code})")
+    owner_tok = await login_token(client, ctx.tenant, U["owner"], owner_pw)
+
+    header("A2  deactivate")
+    await refused_on_owner("A2", "/users/{}/deactivate")
+    r = await client.post(f"/users/{ctx.ids['staff']}/deactivate", headers=auth(tok["admin"]))
+    check(r.status_code == 200 and r.json().get("is_active") is False,
+          f"A2: admin -> staff deactivate still works (got {r.status_code})")
+    r = await client.post(f"/users/{ctx.ids['owner']}/deactivate", headers=auth(owner_tok or ""))
+    check(r.status_code == 403 and refusal_code(r) == "cannot_deactivate_self",
+          f"A2: the owner deactivating their OWN account is still cannot_deactivate_self"
+          f" (got {r.status_code} {refusal_code(r)})")
+
+    header("A3  activate")
+    await refused_on_owner("A3", "/users/{}/activate")
+    r = await client.post(f"/users/{ctx.ids['staff']}/activate", headers=auth(tok["admin"]))
+    check(r.status_code == 200 and r.json().get("is_active") is True,
+          f"A3: admin -> staff activate still works (got {r.status_code})")
+    r = await client.post(f"/users/{ctx.ids['owner']}/activate", headers=auth(owner_tok or ""))
+    check(r.status_code == 200, f"A3: the owner on their OWN active account is the idempotent 200 as before"
+                                f" (got {r.status_code})")
+
+    header("A4  unlock-login")
+    await refused_on_owner("A4", "/users/{}/unlock-login")
+    r = await client.post(f"/users/{ctx.ids['staff']}/unlock-login", headers=auth(tok["admin"]))
+    check(r.status_code == 200, f"A4: admin -> staff unlock still works (got {r.status_code})")
+    r = await client.post(f"/users/{ctx.ids['owner']}/unlock-login", headers=auth(owner_tok or ""))
+    check(r.status_code == 200, f"A4: the owner unlocks their OWN account as before (got {r.status_code})")
 
     header("R1  the provider script refuses without an explicit owner identity")
     rc, out = run_reset(scratch, ctx, None, f"provider-{RUN}")
     check(rc == 2 and "--username are required" in out,
           f"R1: no --username -> exit 2, refusing (exit {rc})")
+    rc, out = run_reset(scratch, ctx, U["owner"], f"provider-{RUN}", tenant=False)
+    check(rc == 2 and "--tenant-id and --username are required" in out,
+          f"R1: no --tenant-id -> exit 2, refusing (exit {rc})")
     rc, out = run_reset(scratch, ctx, U["admin"], f"provider-{RUN}")
     check(rc == 2 and "not 'owner'" in out, f"R1: an ADMIN username -> exit 2, not an owner (exit {rc})")
     check(await pg_audit_resets(ctx) == 0, "R1: the refusals wrote no audit row")
@@ -283,6 +386,38 @@ async def run(ctx: Ctx, client: httpx.AsyncClient, scratch: str) -> None:
     n = await pg_audit_resets(ctx)
     check(n == 1, f"R2: audit_log holds exactly one UPDATE of the owner's row by"
                   f" system:reset_owner_password, token_version +1, hash redacted (found {n})")
+
+    header("R3  a LOCKED-OUT owner comes back only through the provider's --unlock")
+    from app.login_guard import FAILURE_THRESHOLD
+    for i in range(FAILURE_THRESHOLD):
+        await login_token(client, ctx.tenant, U["owner"], f"wrong-{i}-{RUN}")
+    check(not await login_token(client, ctx.tenant, U["owner"], provider_pw),
+          f"R3: after {FAILURE_THRESHOLD} wrong passwords the RIGHT one is refused (locked out)")
+    rc, out = run_reset(scratch, ctx, None, None, "--unlock")
+    check(rc == 2 and "--username are required" in out, f"R3: --unlock with no --username -> exit 2 (exit {rc})")
+    rc, out = run_reset(scratch, ctx, U["owner"], None, "--unlock")
+    check(rc == 0 and "done (unlock)" in out, f"R3: --unlock exits 0 (exit {rc})")
+    check(bool(await login_token(client, ctx.tenant, U["owner"], provider_pw)),
+          "R3: the owner signs in with the same password, unlocked")
+    n = await pg_audit_resets(ctx)
+    check(n == 2, f"R3: a second audited UPDATE of the owner's row by system:reset_owner_password (found {n})")
+
+    header("R4  a DEACTIVATED owner comes back only through the provider's --reactivate")
+    from sqlalchemy import text
+    from app.db import SYSTEM_ACTOR_ID, tenant_connection
+    # No route can deactivate an owner now (A2), so the state is made by SQL as the system actor --
+    # the state a shop would be in after an older build, or a deactivation by us.
+    async with tenant_connection(ctx.tenant, actor_id=SYSTEM_ACTOR_ID,
+                                 actor_username="system:prove_owner_password") as conn:
+        await conn.execute(text("UPDATE users SET is_active = false, token_version = token_version + 1"
+                                " WHERE id = :id"), {"id": ctx.ids["owner"]})
+    check(not await login_token(client, ctx.tenant, U["owner"], provider_pw),
+          "R4: the deactivated owner cannot sign in")
+    rc, out = run_reset(scratch, ctx, U["owner"], None, "--reactivate")
+    check(rc == 0 and "done (reactivate)" in out and "is_active True" in out, f"R4: --reactivate exits 0 (exit {rc})")
+    check(bool(await login_token(client, ctx.tenant, U["owner"], provider_pw)), "R4: the owner signs in again")
+    n = await pg_reactivations(ctx)
+    check(n == 1, f"R4: audit_log holds the provider's UPDATE with is_active false -> true (found {n})")
 
 
 async def main() -> int:

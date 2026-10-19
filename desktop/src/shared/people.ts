@@ -170,6 +170,19 @@ export function tickEditable(role: Pick<Role, "code">, code: string, canManageRo
   return canManageRoles && role.code !== "owner" && !LOCKED_CODES.includes(code);
 }
 
+/**
+ * NO ACCOUNT ACTION ON ANOTHER PERSON'S OWNER ROW (3a, widened 2026-10-19). The server refuses anyone
+ * but that owner on every write to an owner's account -- deactivate, activate, unlock, sign out
+ * everywhere, set password (403 owner_account_owner_only / owner_password_owner_only), a second owner
+ * included -- so the panel offers none of them there and shows OWNER_ACCOUNT_NOTE instead. The
+ * owner's own row is the self row and keeps its own rule.
+ */
+export function ownerAccountLocked(user: { user_id: string; role: string }, meId: string | null): boolean {
+  return user.role === "owner" && user.user_id !== meId;
+}
+export const OWNER_ACCOUNT_NOTE =
+  "บัญชีของเจ้าของร้านจัดการได้โดยเจ้าของร้านเองเท่านั้น — ปิดใช้งาน ปลดล็อก ออกจากระบบทุกเครื่อง และตั้งรหัสผ่านใหม่ ทำจากที่นี่ไม่ได้";
+
 // --- the checks before a request ------------------------------------------------------------------
 
 export const PEOPLE_TEXT = {

@@ -224,6 +224,25 @@ anchor next pass.
   ลองอีกครั้ง to the master-data retry). `prove:grantrefresh` exit 0 twice; disproof reddens G3–G6 only;
   `prove:notice` 144 permission cells green; desktop `prove:peopleflow` P3b reads the reworded note. 3c: closed as
   kept, provider-side. Both TypeScript programs and the desktop typecheck exit 0.
+- **THE OWNER-TAKEOVER GAP CLOSED (ADVISOR-DECIDED 2026-10-19), 2026-10-19.** Every write on a user row, enumerated
+  from the routes: `users.py` revoke-sessions, deactivate, activate, unlock-login and password now call
+  `_refuse_another_owners_account` (403 `owner_account_owner_only`; the password keeps `owner_password_owner_only`)
+  for anyone but that owner, a second owner included; `POST /users` (cannot mint an owner: `role_exceeds_caller`) and
+  `PUT /roles/{id}/permissions` (owner role fixed: `owner_role_fixed`) were already closed, and no route changes a
+  user's role or username. In deactivate the check runs AFTER the active-admin set lock, never before it (locking the
+  target first would invert the lock order against a concurrent deactivate). The owner on their own account behaves
+  as before (self-revoke 200, self-deactivate `cannot_deactivate_self`, self-activate 200, self-unlock 200).
+  Provider recovery `reset_owner_password.py --unlock` / `--reactivate`: same refusals, and every action makes the
+  one audited `users` UPDATE (a token_version bump; `failed_login_attempts` is not an audited table).
+  `prove_owner_password` 50 cells, exit 0 twice; each call site disproved once (its own admin/owner2 -> owner cells
+  red, file restored byte-identical). Phone (`UserActionsSheet`, `proveUsers`) and desktop (`People.tsx`,
+  `provePeople` U2, `provePeopleFlow` P6) offer no account action on another person's owner row. Screens:
+  `E:\recycle-shots\lane-a\owner\` (desktop `b6_owner_row_as_admin.png`; phone `phone2_owner_row_as_admin.png`,
+  control `phone3_staff_row_as_admin.png`, on `recycle_walk_a` rebuilt from empty with a per-run owner `boss`). The
+  walk's first emulator exited on its own mid-walk (14.3 GB free; cause UNMEASURED); one cold-boot retry held.
+- **THE `lane-a` BRANCH IS ON GITHUB** (pushed 2026-10-19 alongside main; ADVISOR-DECIDED: leave it). It mirrors work
+  already on main — every lane-a commit is fast-forwarded to main after its green gate — and holds nothing main lacks
+  at each merge.
 - **RED TEAMS ON 1a (`36db720`) AND ON B6's SERVER HALF (`f3abf7b`), 2026-10-13 — fixed before the gate.** 1a: (1)
   CONFIRMED and MEASURED: migration 0025 reddened `prove_shifts` FX (`columns absent at 0022 are
   ['void_idempotency_key'], declared []`) — the gate would have failed; the column is DECLARED absent at 0022 (never

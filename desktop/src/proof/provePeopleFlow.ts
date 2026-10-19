@@ -181,6 +181,45 @@ void finish("PROVE_PEOPLEFLOW", async () => {
       opened.opening_float === "1500.00" && running === `${display("1500.00")} บาท` && exp === `${display("1500.00")} บาท` && cnt === `${display("1450.50")} บาท` && vr === `${display("-49.50")} บาท`
         && after.status === 404,
       JSON.stringify({ opened: opened.opening_float, running, exp, cnt, vr, after: after.status }));
+
+    // P6 (widened 2026-10-19): an ADMIN looking at the OWNER's row is offered no account action --
+    // every one would be refused (owner_*_owner_only) -- and sees why; the same admin on a staff row
+    // still has them. A per-run admin is made by HTTP; a SECOND instance signs in as it.
+    const adminName = `ad.${run}`;
+    const adminPw = `pw-${randomUUID()}`;
+    const madeAdmin = await http(info.base, "POST", "/users", token, { username: adminName, full_name: `ผู้ดูแล ${run}`, role: "admin", password: adminPw });
+    const adminData = mkdtempSync(join(tmpdir(), "recycle-desktop-people-admin-"));
+    const app2 = await _electron.launch({ executablePath, args: [DESKTOP_ROOT], env: { ...process.env, RECYCLE_USER_DATA: adminData } as Record<string, string> });
+    try {
+      const p2 = await app2.firstWindow();
+      await p2.fill('input[name="apiBase"]', info.base);
+      await p2.fill('input[name="shopCode"]', info.shop_code);
+      await p2.click('button[type="submit"]');
+      await p2.fill('input[name="username"]', adminName);
+      await p2.fill('input[name="password"]', adminPw);
+      await p2.click('button[type="submit"]');
+      await p2.waitForSelector(`[data-signed-in="${adminName}"]`, { timeout: 20_000 });
+      await p2.click('[data-nav="people"]');
+      await p2.click('[data-tab="users"]');
+      await p2.waitForSelector("[data-users]", { timeout: 15_000 });
+      await p2.locator("tr", { hasText: info.username }).locator("button.link").click();
+      await p2.waitForSelector(`[data-panel="user"][aria-label="บัญชี ${info.username}"]`, { timeout: 15_000 });
+      const panel = p2.locator('[data-panel="user"]');
+      const ownerNote = await panel.locator("[data-owner-locked]").count();
+      const ownerButtons = await panel.locator(".void-actions button").count();
+      const ownerPwField = await panel.locator('input[name="newPassword"]').count();
+      await shot(p2, "b6_owner_row_as_admin");
+      await p2.locator("tr", { hasText: staffName }).locator("button.link").click();
+      await p2.waitForSelector(`[data-panel="user"][aria-label="บัญชี ${staffName}"]`, { timeout: 15_000 });
+      const staffButtons = await p2.locator('[data-panel="user"] .void-actions button').count();
+      const staffNote = await p2.locator('[data-panel="user"] [data-owner-locked]').count();
+      check("P6 an admin on the OWNER's row: no account button, no password field, the owner note shown; on a staff row the buttons are there",
+        madeAdmin.status === 201 && ownerNote === 1 && ownerButtons === 0 && ownerPwField === 0 && staffButtons >= 4 && staffNote === 0,
+        JSON.stringify({ madeAdmin: madeAdmin.status, ownerNote, ownerButtons, ownerPwField, staffButtons, staffNote }));
+    } finally {
+      await app2.close().catch(() => undefined);
+      rmSync(adminData, { recursive: true, force: true });
+    }
   } finally {
     const dir = process.env["RECYCLE_SHOT_DIR"];
     if (app !== null && dir !== undefined && dir !== "") await (await app.firstWindow()).screenshot({ path: join(dir, "b6_last_state.png") }).catch(() => undefined);

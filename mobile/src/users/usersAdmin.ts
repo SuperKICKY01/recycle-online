@@ -109,9 +109,11 @@ const REFUSED_LAST_ADMIN =
 // the signed-in row (its own row points at the account screen instead), so this is
 // reachable only from a rooted client, and it is worded rather than left raw.
 const REFUSED_SELF = "ปิดบัญชีของตัวเองไม่ได้";
-// 403 owner_password_owner_only (3a, 2026-10-17) — defensive like REFUSED_SELF: the
-// screen does not OFFER a reset on an owner's row (OWNER_PASSWORD_NOTE says why).
+// 403 owner_password_owner_only (3a, 2026-10-17) and owner_account_owner_only (widened
+// 2026-10-19) — defensive like REFUSED_SELF: the screen offers NO action on another
+// person's owner row (OWNER_ACCOUNT_NOTE says why).
 const REFUSED_OWNER_PASSWORD = "รหัสผ่านของเจ้าของร้านเปลี่ยนได้โดยเจ้าของร้านเองเท่านั้น";
+const REFUSED_OWNER_ACCOUNT = "บัญชีของเจ้าของร้านจัดการได้โดยเจ้าของร้านเองเท่านั้น";
 const REFUSED_DUPLICATE = "ชื่อผู้ใช้นี้มีอยู่แล้ว ใช้ชื่ออื่น";
 const REFUSED_NOT_FOUND = "ไม่พบผู้ใช้รายนี้แล้ว — โหลดรายชื่อใหม่";
 const REFUSED_INVALID = "ระบบไม่รับค่าที่ส่งไป — ตรวจสอบข้อมูลแล้วลองอีกครั้ง";
@@ -135,11 +137,12 @@ export const LAST_ADMIN_NOTE =
   "นี่คือบัญชีผู้ดูแลระบบที่ใช้งานได้เพียงบัญชีเดียว จึงปิดไม่ได้ — ร้านต้องมีผู้ดูแลระบบอย่างน้อยหนึ่งบัญชี";
 // The signed-in row: it changes its own password elsewhere (the earlier ruling).
 export const SELF_ROW_NOTE = "นี่คือบัญชีของคุณ เปลี่ยนรหัสผ่านของคุณเองได้ที่เมนูบัญชีของฉัน";
-// An owner's row (3a): no reset is offered, and the note says what the absence
-// protects and where the owner changes it — the server refuses anyone else (403
-// owner_password_owner_only), admins included.
-export const OWNER_PASSWORD_NOTE =
-  "รหัสผ่านของเจ้าของร้านเปลี่ยนได้โดยเจ้าของร้านเองเท่านั้น ที่เมนูบัญชีของฉันในเครื่องของเจ้าของร้าน";
+// An owner's row seen by anyone else (3a, widened 2026-10-19): NO action is offered —
+// no reset, no deactivate, no reactivate — and the note says what the absence protects
+// and where the owner acts on it. The server refuses anyone else on every one of them
+// (403 owner_password_owner_only / owner_account_owner_only), admins included.
+export const OWNER_ACCOUNT_NOTE =
+  "บัญชีของเจ้าของร้านจัดการได้โดยเจ้าของร้านเองเท่านั้น — เจ้าของร้านเปลี่ยนรหัสผ่านได้ที่เมนูบัญชีของฉันในเครื่องของตัวเอง";
 
 /* ==========================================================================
  * 4. PARSING GET /users
@@ -224,9 +227,9 @@ export interface UserRow {
   /** Offer a password reset: any OTHER account that is not an owner (own password
    *  is the account screen's job; an owner's is the owner's alone, 3a). */
   mayReset: boolean;
-  /** An owner's row seen by someone else: the reset is withheld and OWNER_PASSWORD_NOTE
-   *  is shown instead (the server's owner_password_owner_only is the authority). */
-  ownerPasswordLocked: boolean;
+  /** An owner's row seen by someone else: EVERY action is withheld and OWNER_ACCOUNT_NOTE
+   *  is shown instead (the server's owner_*_owner_only refusals are the authority). */
+  ownerAccountLocked: boolean;
 }
 
 export interface UsersScreen {
@@ -263,7 +266,7 @@ export function usersAdminScreen(
     // the only one. Deactivating it would leave zero, which the server refuses
     // (last_active_admin, generalised to users.manage by 0019); not offered.
     const isLastActiveAdmin = isManager(u) && u.is_active && activeAdmins <= 1;
-    const ownerPasswordLocked = u.role === "owner" && !isSelf;
+    const ownerAccountLocked = u.role === "owner" && !isSelf;
     return {
       user_id: u.user_id,
       username: u.username,
@@ -272,10 +275,10 @@ export function usersAdminScreen(
       roleLabel: roleLabelOf(u.role),
       is_active: u.is_active,
       isSelf,
-      mayDeactivate: editable && u.is_active && !isSelf && !isLastActiveAdmin,
-      mayReactivate: editable && !u.is_active && !isSelf,
-      mayReset: editable && !isSelf && !ownerPasswordLocked,
-      ownerPasswordLocked,
+      mayDeactivate: editable && u.is_active && !isSelf && !isLastActiveAdmin && !ownerAccountLocked,
+      mayReactivate: editable && !u.is_active && !isSelf && !ownerAccountLocked,
+      mayReset: editable && !isSelf && !ownerAccountLocked,
+      ownerAccountLocked,
     };
   };
   const rows = users.map(toRow);
@@ -362,7 +365,9 @@ export function userWriteOutcome(fetch: UserFetch): UserWriteOutcome {
           ? REFUSED_SELF
           : code === "owner_password_owner_only"
             ? REFUSED_OWNER_PASSWORD
-            : REFUSED_FORBIDDEN,
+            : code === "owner_account_owner_only"
+              ? REFUSED_OWNER_ACCOUNT
+              : REFUSED_FORBIDDEN,
     };
   }
   if (fetch.status === 409) {

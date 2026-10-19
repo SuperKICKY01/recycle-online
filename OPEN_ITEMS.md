@@ -1711,7 +1711,7 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   account acts do not. B6 closed the NEW path (staff cannot be given users.manage; `users_manage_fixed`); the admin path
   predates it. Guarding the acts closes the takeover AND removes the only way back for an owner who forgot a password
   in a shop with no second owner (D7/D8's recovery argument) — which is why it is not changed here.
-  **CLOSED 2026-10-19 (ADVISOR-DECIDED 2026-10-17, 3a), uncommitted at this writing — the sha anchors next pass.**
+  **CLOSED 2026-10-19 (ADVISOR-DECIDED 2026-10-17, 3a), at `962fff6`.**
   `POST /users/{id}/password` answers 403 `owner_password_owner_only` when the target holds the owner role
   and is not the caller (admins and a second owner included); the owner's own change works through
   `/users/me/password` and through the reset route on their own id. Recovery for a forgotten owner password
@@ -1719,14 +1719,19 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   `--username` naming an owner, the password from `OWNER_NEW_PASSWORD` (never argv), written as
   `system:reset_owner_password` so the 0017 trigger audits it. `prove_owner_password.py` 19 cells, exit 0
   twice; disproof (guard deleted) reddens O1/O2 and O4 downstream. The phone hides the reset on an owner's
-  row (`OWNER_PASSWORD_NOTE`). STILL OPEN from the same finding: deactivate/unlock/revoke on an owner are
-  checked only for `users.manage` — 3a named the password, not those.
+  row. **THE REST CLOSED 2026-10-19 (ADVISOR-DECIDED 2026-10-19), uncommitted at this writing — the sha
+  anchors next pass:** revoke-sessions, deactivate, activate and unlock-login on an owner now answer 403
+  `owner_account_owner_only` to anyone but that owner (`users._refuse_another_owners_account`, one helper at
+  every write on a user row; no route changes a user's role or username, and the owner ROLE is fixed by
+  `owner_role_fixed`). Provider recovery: `reset_owner_password.py --unlock` / `--reactivate`, same refusals,
+  same audited `users` UPDATE. The phone and the desktop offer no account action on another person's owner
+  row. `prove_owner_password` 50 cells exit 0 twice; each of the five call sites disproved once.
 
 - **A YARD PHONE HALTED BY A 403 DOES NOT RESUME WHEN THE PERMISSION IS RESTORED** (red team on f3abf7b, by source:
   `mobile/src/sync/outboxRunner.ts` halts the kind until sign-in/sign-out; `outbox.ts` states the premise that a 403
   changes only when WHO is asking). The role screen now says to sign out and in on the phone; the device-side answer
   (re-probe a halted kind after a /whoami that shows the permission back) is the mobile lane's.
-  **CLOSED 2026-10-19 (ADVISOR-DECIDED 2026-10-17, 3b), uncommitted at this writing — the sha anchors next pass.**
+  **CLOSED 2026-10-19 (ADVISOR-DECIDED 2026-10-17, 3b), at `962fff6`.**
   After a refusal the phone re-reads `/whoami` on app foreground and on ลองอีกครั้ง (the refusal notice's new
   button), and lifts exactly the refusal whose permission is back (`bills.create` → the send halt,
   `bills.void` → the refused voids) — no sign-out (`src/session/grantRecheck.ts`,
