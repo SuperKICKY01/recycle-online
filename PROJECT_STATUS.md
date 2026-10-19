@@ -184,6 +184,13 @@ anchor next pass.
   read from alembic's own script directory (`code_head()`), so the next migration cannot redden it. Exit 0 twice (E0
   `at the code's head 0025`; RT now walks 0025 → 0023 → 0024 on the scratch); disproved by pinning the head to 0024
   (E0 red). The only proof that pinned a revision literal (`grep` for `"0024"` over server/scripts: this file alone).
+- **GATE 2026-10-19 (`_prove_all/20261019T113802Z`, on `1698b54`; 60 s check held, min 8.53 GB; sampler low 6.45 GB; not
+  killed): TOTAL 107, GREEN 92, EXIT-CODE-ONLY 14, RED 1 — `desktop_prove:reportsflow` F1, both runs,
+  `{"count":77,"activeMine":77,"rows":86,"pages":1,"myPages":1}`.** Cause, by the 10-17 log of the same cell
+  (`rows 338, pages 2`): F1 needs the week to exceed one 200-row page and took that volume from dev, whose bills aged out
+  of the trailing seven days. Fix: the proof tops the week up to 201 rows with its own bills on the scratch. Exit 0
+  twice (86 inherited, 201 after, 2 pages); disproved by removing the top-up (the same F1 red, file restored
+  byte-identical). Lesson: `proof-must-run-twice.md`, ninth amendment.
 - **RED TEAMS ON 1a (`36db720`) AND ON B6's SERVER HALF (`f3abf7b`), 2026-10-13 — fixed before the gate.** 1a: (1)
   CONFIRMED and MEASURED: migration 0025 reddened `prove_shifts` FX (`columns absent at 0022 are
   ['void_idempotency_key'], declared []`) — the gate would have failed; the column is DECLARED absent at 0022 (never

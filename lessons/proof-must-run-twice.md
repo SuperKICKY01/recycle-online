@@ -409,3 +409,13 @@ touch born-with methods) as the positive control, both present. The union, thirt
 `prove_user_create`, `prove_user_admin`, `prove_permissions`, and `mobile/src/proof/proveDrawer.ts`
 (run by `prove:counter`). Not found with these words is not proof of absence: re-run both
 searches at the time of the change, because the list grows with every proof.
+
+## AMENDED A NINTH TIME (lane A gate, 2026-10-19): a VOLUME inherited from dev expires with the calendar
+
+`desktop/src/proof/proveReportsFlow.ts` F1 needs the week's report to span more than one 200-row
+page, and it got that from dev, which held the week's proof runs: 338 rows on the 2026-10-17 gate,
+86 on 2026-10-19 once older bills left the trailing seven days -- red both runs, every other cell
+green. Nothing in the code changed; the window moved. A proof that needs N rows MAKES them on its
+scratch (the proof now tops the week up to 201 with its own bills; removing the top-up brings the
+same red back). Inheriting a count from dev is the third amendment's half-life, with the clock as
+the decay.

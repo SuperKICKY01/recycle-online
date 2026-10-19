@@ -1,6 +1,7 @@
 /**
- * REPORTS THROUGH THE REAL SCREENS (B7), against a scratch server (a copy of dev, which holds hundreds
- * of bills from the week's proof runs -- the report must read past the 200-row page).
+ * REPORTS THROUGH THE REAL SCREENS (B7), against a scratch server (a copy of dev). The report must read
+ * past the 200-row page, so the proof tops the week up to 201 rows with bills of its own (it no longer
+ * relies on dev's week holding hundreds -- that went red the day they aged out, gate 2026-10-19).
  *
  *   npm run prove:reportsflow
  *
@@ -57,17 +58,31 @@ void finish("PROVE_REPORTSFLOW", async () => {
     const day = (d: Date) => d.toISOString().slice(0, 10);
     const to = day(shopNow);
     const from = day(new Date(shopNow.getTime() - 6 * 86_400_000));
-    const mine: Row[] = [];
-    let cur: string | null = null;
-    let myPages = 0;
-    for (;;) {
-      const q = `/bills?from_date=${from}&to_date=${to}&limit=200&include_voided=true${cur !== null ? `&cursor=${encodeURIComponent(cur)}` : ""}`;
-      const r = (await http(info.base, "GET", q, token)).json as { bills: Row[]; next_cursor: string | null };
-      mine.push(...r.bills);
-      myPages += 1;
-      cur = r.next_cursor;
-      if (cur === null) break;
-    }
+    const readWeek = async (): Promise<{ rows: Row[]; pages: number }> => {
+      const rows: Row[] = [];
+      let cur: string | null = null;
+      let pages = 0;
+      for (;;) {
+        const q = `/bills?from_date=${from}&to_date=${to}&limit=200&include_voided=true${cur !== null ? `&cursor=${encodeURIComponent(cur)}` : ""}`;
+        const r = (await http(info.base, "GET", q, token)).json as { bills: Row[]; next_cursor: string | null };
+        rows.push(...r.bills);
+        pages += 1;
+        cur = r.next_cursor;
+        if (cur === null) break;
+      }
+      return { rows, pages };
+    };
+    // MORE THAN ONE PAGE, MADE HERE (gate 2026-10-19): the week used to clear 200 rows only because
+    // dev, which the scratch copies, held the week's proof runs -- 338 rows on 2026-10-17, 86 on
+    // 2026-10-19 once older bills aged out of the window, and F1 went red. The proof now tops the
+    // week up to 201 rows with bills of its own, on the scratch only, so F1 no longer depends on how
+    // busy dev was.
+    const before = await readWeek();
+    for (let i = before.rows.length; i <= 200; i++) await postBill(info.base, token, sellerId, `fill${String(i)}`, run);
+    const week = await readWeek();
+    const mine = week.rows;
+    const myPages = week.pages;
+    console.log(`  the week ${from}..${to}: ${String(before.rows.length)} rows inherited from dev, ${String(mine.length)} after the top-up, ${String(myPages)} pages`);
     const activeMine = mine.filter((r) => r.status === "active").length;
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports

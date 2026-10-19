@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 43 across 23 files, counted from the source headings and
+**Amendments:** 44 across 23 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -94,7 +94,7 @@ line instead of by heading depth.
 - `metro-file-map-nesting.md` -- When a resolver says a file is missing, ask the resolver — not the OS
 - `opening-a-copy-is-a-write.md` -- Opening a copy is a write to it
 - `printed-code-in-a-design-document-is-run-by-nobody.md` -- Printed code in a design document is run by nobody
-- `proof-must-run-twice.md` *(8 amendments)* -- A proof that passes only once proves the environment, not the code
+- `proof-must-run-twice.md` *(9 amendments)* -- A proof that passes only once proves the environment, not the code
 - `queue-jam-must-be-visible.md` *(1 amendment)* -- A strict ordered queue CAN deadlock. Don't skip the head — make the jam visible.
 - `render-in-shop-time-not-device-time.md` *(1 amendment)* -- Store UTC, render in the SHOP's timezone — and never slice an ISO string
 - `revoke-in-migration.md` -- Privilege changes live in the migration, not in a live one-off
@@ -9466,6 +9466,16 @@ touch born-with methods) as the positive control, both present. The union, thirt
 `prove_user_create`, `prove_user_admin`, `prove_permissions`, and `mobile/src/proof/proveDrawer.ts`
 (run by `prove:counter`). Not found with these words is not proof of absence: re-run both
 searches at the time of the change, because the list grows with every proof.
+
+## AMENDED A NINTH TIME (lane A gate, 2026-10-19): a VOLUME inherited from dev expires with the calendar
+
+`desktop/src/proof/proveReportsFlow.ts` F1 needs the week's report to span more than one 200-row
+page, and it got that from dev, which held the week's proof runs: 338 rows on the 2026-10-17 gate,
+86 on 2026-10-19 once older bills left the trailing seven days -- red both runs, every other cell
+green. Nothing in the code changed; the window moved. A proof that needs N rows MAKES them on its
+scratch (the proof now tops the week up to 201 with its own bills; removing the top-up brings the
+same red back). Inheriting a count from dev is the third amendment's half-life, with the clock as
+the decay.
 
 ---
 
