@@ -177,7 +177,7 @@ anchor next pass.
   (R2). Lesson amended: `correct-classification-can-still-render-as-an-error.md` (a reused wording function's domain
   widened by a new caller). After the fixes: `prove_bill_filters` 14, `prove:bills` 15, `prove:billsflow` 10,
   `prove:slip` 15, `prove:slipflow` 6 — each exit 0 twice.
-- **GATE 2026-10-17 (`_prove_all/20261017T164702Z`, launched 8.40 GB free under the revised >= 8 GB bar, low 5.77 GB,
+- **GATE 2026-10-17 (`_prove_all/20261017T164702Z`, launched when the 60 s watcher released at 8.44 GB free (first in-run sample 8.29) under the revised >= 8 GB bar, low 5.77 GB,
   not killed): TOTAL 107, RED 1 — `prove_seller_personal` E0 `the scratch is at 0024 (read from alembic_version: 0025)`,
   both runs.** Cause, read in the source: E0 asserted a LITERAL head (`HEAD = "0024"`), which migration 0025 (1a) moved.
   Fix: `MIGRATION = "0024"` stays for RT (it walks 0024 down and up on purpose), and E0 compares against the code's head

@@ -421,3 +421,5 @@ MOVES below head without seeding or serving -- `prove_drawer` (to 0022 and 0021)
 `prove_shifts` (to 0020), `prove_seller_personal` (to 0023); every direct caller of
 `seed_system_roles` runs on a dev-restored scratch AT head. Run each before the gate:
 `prove_shifts` 63/63 twice, `prove_drawer` 97/97, `prove_seller_personal` exit 0.
+
+**A proof never pins head (2026-10-19, after gate `20261017T164702Z` reddened `prove_seller_personal` E0 the day 0025 landed): "the current head" is read from alembic's `ScriptDirectory.get_current_head()`; a literal revision is only a migration the proof walks on purpose, or a floor (`>= "00NN"`).**

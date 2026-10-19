@@ -245,6 +245,14 @@ on 2026-08-28 — nothing weakened, only relocated.
   server and no emulator of the session's own during `prove_all`; launch only at ≥ 10 GB free,
   holding for 60 s** (this supersedes the 6 GB figure above). Never kill an application the
   session did not start.
+  **Amended 2026-10-19 (advisor-decided) — THE BAR IS ≥ 8 GB HOLDING FOR 60 s, AND A RUN BELOW 6 GB
+  WAS NOT KILLED.** Lane A's gate `_prove_all/20261017T164702Z` launched when its 60 s watcher released
+  at `free=8.44 GB` (first in-run sample `8.29 GB`), fell to `SAMPLER_LOW=5.77`, and ran to its own
+  `PROVE_ALL_EXIT=1` line (one real red) — no kill, with the owner's apps open. So free memory at the
+  kill points above is not a threshold: ~5.8 GB survived here, ~8.2 GB was killed on 2026-10-11 (with
+  the session's own server and emulator up). The harness ALSO stopped a session's 60 s memory WATCHER
+  while NO gate ran (its log fell to `free=3.69 GB` at 00:44 on 2026-10-18): the box was low from other
+  load, and the harness's note forbids restarting the watcher unasked — report it and wait.
 - **THE EMULATOR'S QUICK-BOOT SNAPSHOT CAN RESUME WEDGED — `System UI` / `Process system
   isn't responding` returns after every `Wait`, taps are swallowed, the clock stops.**
   Measured 2026-09-29 on `recycle_api36`: a walk on that guest reads nothing. Instead:
