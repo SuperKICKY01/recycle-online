@@ -22,7 +22,7 @@
 import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { statusNotice } from "../src/sync/statusNotice";
+import { statusActionHandler, statusNotice } from "../src/sync/statusNotice";
 import type { StatusInput, StatusTone } from "../src/sync/statusNotice";
 import { shopTime } from "@recycle/shop-time";
 import { useTheme, type ThemeTokens } from "./theme";
@@ -44,6 +44,8 @@ export interface StatusStripProps extends StatusInput {
    * all.
    */
   onSignIn: () => void;
+  /** ลองอีกครั้ง on a permission refusal: re-read /whoami and resume what is allowed again (3b). */
+  onRecheckGrants: () => void;
 }
 
 interface Tone {
@@ -65,12 +67,17 @@ function makeTones(t: ThemeTokens): Record<StatusTone, Tone> {
 export function StatusStrip(props: StatusStripProps) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
-  const { lastSyncedAt, onRetryMasterData, onSignIn, ...input } = props;
+  const { lastSyncedAt, onRetryMasterData, onSignIn, onRecheckGrants, ...input } = props;
   const notice = statusNotice(input);
   const tone = makeTones(t)[notice.tone];
-  // The action's KIND picks the handler. The view never chooses a label — that
-  // arrives with the kind, so "ส่งอีกครั้ง" cannot end up wired to the sign-in.
-  const onPress = notice.action?.kind === "sign_in" ? onSignIn : onRetryMasterData;
+  // The action's KIND picks the handler, through a map that is total over the kinds
+  // (statusActionHandler) — never a two-way ternary that sends every other kind to one.
+  const onPress =
+    statusActionHandler(notice.action, {
+      retry_master_data: onRetryMasterData,
+      sign_in: onSignIn,
+      recheck_grants: onRecheckGrants,
+    }) ?? undefined;
 
   return (
     <View style={[styles.strip, { backgroundColor: tone.bg }]}>

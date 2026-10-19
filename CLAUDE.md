@@ -293,6 +293,10 @@ on 2026-08-28 — nothing weakened, only relocated.
   is collected its release closes that connection underneath. The app now brings the database up once
   per JS process (`src/adapters/sqlite/localDatabase.ts`); five consecutive live changes after the fix,
   no error. If the line is seen again, it is a NEW cause: capture the full message from logcat first.
+- **`Invoke-WebRequest` HANDS BACK BYTES, NOT TEXT, WHEN A RESPONSE CARRIES NO TEXT CONTENT TYPE** —
+  Metro's `/status` answered `packager-status:running` and a `-match` on `.Content` (a `byte[]`) never matched,
+  so a readiness check reported "Metro did not start" over a running Metro (measured 2026-10-19,
+  `tools/owner/start_demo.ps1`). Instead: decode when `.Content -is [byte[]]` before matching.
 - **`adb exec-out screencap -p > shot.png` THROUGH POWERSHELL WRITES A CORRUPT PNG** — `>` is
   `Out-File`, which re-encodes the bytes. Instead: `adb shell screencap -p /sdcard/shot.png`
   then `adb pull /sdcard/shot.png <path>` (a path with NO colon after the drive).

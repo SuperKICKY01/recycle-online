@@ -1711,11 +1711,27 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   account acts do not. B6 closed the NEW path (staff cannot be given users.manage; `users_manage_fixed`); the admin path
   predates it. Guarding the acts closes the takeover AND removes the only way back for an owner who forgot a password
   in a shop with no second owner (D7/D8's recovery argument) — which is why it is not changed here.
+  **CLOSED 2026-10-19 (ADVISOR-DECIDED 2026-10-17, 3a), uncommitted at this writing — the sha anchors next pass.**
+  `POST /users/{id}/password` answers 403 `owner_password_owner_only` when the target holds the owner role
+  and is not the caller (admins and a second owner included); the owner's own change works through
+  `/users/me/password` and through the reset route on their own id. Recovery for a forgotten owner password
+  is provider-side: `server/scripts/reset_owner_password.py`, refusing without an explicit `--tenant-id` AND
+  `--username` naming an owner, the password from `OWNER_NEW_PASSWORD` (never argv), written as
+  `system:reset_owner_password` so the 0017 trigger audits it. `prove_owner_password.py` 19 cells, exit 0
+  twice; disproof (guard deleted) reddens O1/O2 and O4 downstream. The phone hides the reset on an owner's
+  row (`OWNER_PASSWORD_NOTE`). STILL OPEN from the same finding: deactivate/unlock/revoke on an owner are
+  checked only for `users.manage` — 3a named the password, not those.
 
 - **A YARD PHONE HALTED BY A 403 DOES NOT RESUME WHEN THE PERMISSION IS RESTORED** (red team on f3abf7b, by source:
   `mobile/src/sync/outboxRunner.ts` halts the kind until sign-in/sign-out; `outbox.ts` states the premise that a 403
   changes only when WHO is asking). The role screen now says to sign out and in on the phone; the device-side answer
   (re-probe a halted kind after a /whoami that shows the permission back) is the mobile lane's.
+  **CLOSED 2026-10-19 (ADVISOR-DECIDED 2026-10-17, 3b), uncommitted at this writing — the sha anchors next pass.**
+  After a refusal the phone re-reads `/whoami` on app foreground and on ลองอีกครั้ง (the refusal notice's new
+  button), and lifts exactly the refusal whose permission is back (`bills.create` → the send halt,
+  `bills.void` → the refused voids) — no sign-out (`src/session/grantRecheck.ts`,
+  `SyncEngine.resumeAfterGrantRestored`). `prove:grantrefresh` exit 0 twice, both triggers on both
+  refusals; disproof (grants never restored) reddens G3–G6 only. The desktop role screen's note now says so.
 
 - **THE ROLE SCREEN SAVES ROLE BY ROLE AND HAS NO VERSION TOKEN** (red team, desktop half, not pursued): a multi-role save
   can half-apply on a failure, and two owners editing at once overwrite each other. One owner per shop today.
@@ -5235,6 +5251,9 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
   `extra_forbidden`), and the settings screen shows `name` read-only. Whether the
   owner now wants `name` editable (a rebrand, a typo fix) is his to settle; until
   then the immutability stands. *Unblocks:* nothing built waits on it.
+  **CLOSED 2026-10-19 (ADVISOR-DECIDED 2026-10-17, 3c): KEPT, PROVIDER-SIDE.** The name stays
+  provisioning-only: `PATCH /shop` keeps refusing a `name` key, and a rename is done by us, as a
+  provisioning act, not by the shop over the API. Nothing changed in code.
 - **The shop-settings screen is ONLINE-ONLY — a CHOICE made this pass, not an open
   decision, and a cached read-only view MAY come later.** Made 2026-08-30 (P1.23
   item 4, unit 1, phase 2). Settings is not an outbox kind (a kind is the whole

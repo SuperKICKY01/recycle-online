@@ -166,6 +166,30 @@ function h2Roster(): void {
     otherAdmin?.mayDeactivate === true,
   );
 
+  // 3a (2026-10-17): an OWNER's row seen by an admin offers no reset — only the owner
+  // sets the owner's password (the server's owner_password_owner_only) — and says why.
+  const withOwner: RosterUser[] = [
+    { user_id: "the-owner", username: "boss", full_name: "เจ้าของ ร้าน", role: "owner", is_active: true },
+    { user_id: "an-admin", username: "adm", full_name: "ผู้ดูแล หนึ่ง", role: "admin", is_active: true },
+    { user_id: "a-clerk", username: "clerk2", full_name: "เสมียน สอง", role: "staff", is_active: true },
+  ];
+  const asAdmin = usersScreenState({ kind: "ok", body: { users: withOwner } }, grantsOf("admin"), "an-admin");
+  const asOwner = usersScreenState({ kind: "ok", body: { users: withOwner } }, grantsOf("owner"), "the-owner");
+  if (asAdmin.kind !== "roster" || asOwner.kind !== "roster") {
+    check("the owner rosters build", false);
+    return;
+  }
+  const ownerRow = asAdmin.screen.activeRows.find((r) => r.user_id === "the-owner");
+  const clerkRow = asAdmin.screen.activeRows.find((r) => r.user_id === "a-clerk");
+  check("3a: an admin is NOT offered a reset on the OWNER's row, and the row says why",
+    ownerRow?.mayReset === false && ownerRow?.ownerPasswordLocked === true,
+    `mayReset=${String(ownerRow?.mayReset)} locked=${String(ownerRow?.ownerPasswordLocked)}`);
+  check("3a: PRESENCE SIBLING — the same admin IS offered a reset on a staff row",
+    clerkRow?.mayReset === true && clerkRow?.ownerPasswordLocked === false);
+  const ownSelf = asOwner.screen.activeRows.find((r) => r.user_id === "the-owner");
+  check("3a: the owner's own row is the self row, not the locked one (own password is the account screen's)",
+    ownSelf?.isSelf === true && ownSelf?.ownerPasswordLocked === false);
+
   // A malformed body is FATAL, not a partial roster (which would hide an admin and
   // miscount the guard).
   const bad = usersScreenState({ kind: "ok", body: { users: [{ user_id: "x" }] } }, grantsOf("admin"), null);
@@ -201,6 +225,12 @@ function h3Refusals(): void {
   const forbidden = refused({ kind: "http", status: 403, body: { detail: { code: "admin_required" } } });
   check("403: no diagnostic leaks", leaks(forbidden) === null, forbidden);
   check("403: PRESENCE SIBLING — it names the shop owner", forbidden.includes("เจ้าของร้าน"), forbidden);
+  // 3a: the owner's password refused to anyone else is worded as that rule, not as
+  // "this account cannot manage users" (the caller CAN manage users).
+  const ownerOnly = refused({ kind: "http", status: 403, body: { detail: { code: "owner_password_owner_only" } } });
+  check("owner_password_owner_only: no diagnostic leaks", leaks(ownerOnly) === null, ownerOnly);
+  check("owner_password_owner_only: it says only the owner sets it, and differs from the generic 403",
+    ownerOnly.includes("เจ้าของร้านเองเท่านั้น") && ownerOnly !== forbidden, ownerOnly);
 
   // A duplicate username says so WITHOUT echoing the name that was taken.
   const dup = refused({

@@ -27,6 +27,7 @@
     "prove:docno": "npm run build && node dist/proof/proveDocNo.js",
     "prove:clock": "npm run build && node dist/proof/proveClock.js",
     "prove:forbidden": "npm run build && node dist/proof/proveForbidden.js",
+    "prove:grantrefresh": "npm run build && node dist/proof/proveGrantRefresh.js",
     "prove:daily": "npm run build && node dist/proof/proveDaily.js",
     "prove:signout": "npm run build && node dist/proof/proveSignOut.js",
     "prove:migration": "npm run build && node dist/proof/proveMigration.js",

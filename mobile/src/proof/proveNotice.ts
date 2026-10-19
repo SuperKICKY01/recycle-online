@@ -1168,11 +1168,12 @@ function n3StripMatrix(): void {
     (c) => `${describeStrip(c)} -> ${statusNotice(stripInput(c)).message}`,
   );
   checkAll(
-    "a permission refusal never invites a sign-in, and offers no button",
+    // 3b (2026-10-17): its one button re-reads the grants (ลองอีกครั้ง) — never a sign-in.
+    "a permission refusal never invites a sign-in; its one button is ลองอีกครั้ง, the grant recheck",
     permission,
     (c) => {
       const n = statusNotice(stripInput(c));
-      return !n.message.includes("เข้าสู่ระบบ") && n.action === null;
+      return !n.message.includes("เข้าสู่ระบบ") && n.action?.kind === "recheck_grants" && n.action.label === "ลองอีกครั้ง";
     },
     (c) => `${describeStrip(c)} -> ${statusNotice(stripInput(c)).message}`,
   );

@@ -310,6 +310,24 @@ export class SyncEngine {
   }
 
   /**
+   * THE GRANT IS BACK, ON THE SAME SESSION (3b, ADVISOR-DECIDED 2026-10-17). /whoami,
+   * re-read after a refusal (app foreground, or ลองอีกครั้ง — src/session/grantRecheck.ts),
+   * shows the permission a refused act needs; lift exactly that refusal so the next pass
+   * re-asks. It amends the premise resumeAfterSignIn states — "a sign-in is the only event
+   * that can change who is asking" stays true, but WHAT the same person may do can change
+   * under them when the owner edits a role, and the server's own /whoami is evidence of it.
+   *
+   * `submit` retracts the runner's halts (the send kind's 403 halt); `voids` clears the
+   * per-bill void refusals. NO backoff is cleared: a backoff is a fact about the network,
+   * and nothing here says the network changed. Returns how many void refusals were lifted.
+   * The server still judges every resent request; this only lets the device ask once more.
+   */
+  async resumeAfterGrantRestored(restored: { readonly submit: boolean; readonly voids: boolean }): Promise<number> {
+    if (restored.submit) this.runner.retractHalts();
+    return restored.voids ? this.store.clearVoidRefusals(this.clock.now()) : 0;
+  }
+
+  /**
    * Retract the per-kind halts so the NEXT pass RE-PROBES the server — the
    * recovery path for the version gate (red-team findings 4-5). A 426 halts every
    * kind, so without a periodic retract a floor RAISED past this build and then

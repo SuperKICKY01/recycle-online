@@ -211,6 +211,19 @@ anchor next pass.
   `emulator -kill <pid> -sleep 20` naming a STALE pid (an earlier run's adb server) — it exited harmlessly here, but
   a reused pid would be killed by the emulator, not by the launcher. `walk_fixture.py` accepts `recycle_demo` by exact
   name (after the dev refusal); that server-script change rides the 3a/3b gate before main.
+- **3a OWNER CREDENTIALS, 3b PHONE GRANTS REFRESH, 3c SHOP NAME (ADVISOR-DECIDED 2026-10-17), 2026-10-19.**
+  3a: `POST /users/{id}/password` refuses 403 `owner_password_owner_only` when the target is an owner and not the
+  caller, the role read under `FOR NO KEY UPDATE OF u` in the UPDATE's transaction; provider recovery
+  `server/scripts/reset_owner_password.py` (explicit tenant AND owner username, password from the environment,
+  audited as `system:reset_owner_password`, lockout cleared). `prove_owner_password` 19 cells exit 0 twice; disproof
+  (guard deleted) reddens O1/O2 and, downstream, O4 (the takeover had already changed the owner's password). The
+  phone withholds the reset on an owner's row and words the new code (`proveUsers` cells). 3b: the refusal notice's
+  button ลองอีกครั้ง and the app's foreground both re-read `/whoami` (`src/session/grantRecheck.ts`, wired once in
+  App.tsx through refs) and lift only what came back (`SyncEngine.resumeAfterGrantRestored`); the strip's action
+  routing is now a map total over the kinds (the old `sign_in ? … : retryMasterData` ternary would have sent
+  ลองอีกครั้ง to the master-data retry). `prove:grantrefresh` exit 0 twice; disproof reddens G3–G6 only;
+  `prove:notice` 144 permission cells green; desktop `prove:peopleflow` P3b reads the reworded note. 3c: closed as
+  kept, provider-side. Both TypeScript programs and the desktop typecheck exit 0.
 - **RED TEAMS ON 1a (`36db720`) AND ON B6's SERVER HALF (`f3abf7b`), 2026-10-13 — fixed before the gate.** 1a: (1)
   CONFIRMED and MEASURED: migration 0025 reddened `prove_shifts` FX (`columns absent at 0022 are
   ['void_idempotency_key'], declared []`) — the gate would have failed; the column is DECLARED absent at 0022 (never

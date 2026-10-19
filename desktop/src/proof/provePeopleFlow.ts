@@ -139,6 +139,11 @@ void finish("PROVE_PEOPLEFLOW", async () => {
       ownerLocked && rmLocked && before.status === 403 && afterOn.status === 200 && afterOff.status === 403
         && rolesNow.find((r) => r.code === "staff")?.permissions.includes("money.view_own") === true,
       JSON.stringify({ ownerLocked, rmLocked, before: before.status, afterOn: afterOn.status, afterOff: afterOff.status }));
+    // 3b (2026-10-17): the phone now resumes a restored permission by itself (app foreground or
+    // ลองอีกครั้ง), so the role screen must no longer tell the owner to make the yard sign out and in.
+    const hint = (await page.locator("[data-phone-hint]").innerText()).trim();
+    check("P3b the role screen's phone note says the phone resumes by itself (foreground or ลองอีกครั้ง), no sign-out",
+      hint.includes("ลองอีกครั้ง") && hint.includes("ไม่ต้องออกจากระบบ") && !hint.includes("ออกจากระบบแล้วเข้าใหม่"), hint);
 
     // P4
     const reads = () => (server.log().match(/GET \/(roles|users)[ ?]/g) ?? []).length;

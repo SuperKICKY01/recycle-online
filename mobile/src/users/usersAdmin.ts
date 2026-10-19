@@ -109,6 +109,9 @@ const REFUSED_LAST_ADMIN =
 // the signed-in row (its own row points at the account screen instead), so this is
 // reachable only from a rooted client, and it is worded rather than left raw.
 const REFUSED_SELF = "ปิดบัญชีของตัวเองไม่ได้";
+// 403 owner_password_owner_only (3a, 2026-10-17) — defensive like REFUSED_SELF: the
+// screen does not OFFER a reset on an owner's row (OWNER_PASSWORD_NOTE says why).
+const REFUSED_OWNER_PASSWORD = "รหัสผ่านของเจ้าของร้านเปลี่ยนได้โดยเจ้าของร้านเองเท่านั้น";
 const REFUSED_DUPLICATE = "ชื่อผู้ใช้นี้มีอยู่แล้ว ใช้ชื่ออื่น";
 const REFUSED_NOT_FOUND = "ไม่พบผู้ใช้รายนี้แล้ว — โหลดรายชื่อใหม่";
 const REFUSED_INVALID = "ระบบไม่รับค่าที่ส่งไป — ตรวจสอบข้อมูลแล้วลองอีกครั้ง";
@@ -132,6 +135,11 @@ export const LAST_ADMIN_NOTE =
   "นี่คือบัญชีผู้ดูแลระบบที่ใช้งานได้เพียงบัญชีเดียว จึงปิดไม่ได้ — ร้านต้องมีผู้ดูแลระบบอย่างน้อยหนึ่งบัญชี";
 // The signed-in row: it changes its own password elsewhere (the earlier ruling).
 export const SELF_ROW_NOTE = "นี่คือบัญชีของคุณ เปลี่ยนรหัสผ่านของคุณเองได้ที่เมนูบัญชีของฉัน";
+// An owner's row (3a): no reset is offered, and the note says what the absence
+// protects and where the owner changes it — the server refuses anyone else (403
+// owner_password_owner_only), admins included.
+export const OWNER_PASSWORD_NOTE =
+  "รหัสผ่านของเจ้าของร้านเปลี่ยนได้โดยเจ้าของร้านเองเท่านั้น ที่เมนูบัญชีของฉันในเครื่องของเจ้าของร้าน";
 
 /* ==========================================================================
  * 4. PARSING GET /users
@@ -213,9 +221,12 @@ export interface UserRow {
   mayDeactivate: boolean;
   /** Offer reactivate: an inactive OTHER account. */
   mayReactivate: boolean;
-  /** Offer a password reset: any OTHER account (own password is the account
-   *  screen's job). */
+  /** Offer a password reset: any OTHER account that is not an owner (own password
+   *  is the account screen's job; an owner's is the owner's alone, 3a). */
   mayReset: boolean;
+  /** An owner's row seen by someone else: the reset is withheld and OWNER_PASSWORD_NOTE
+   *  is shown instead (the server's owner_password_owner_only is the authority). */
+  ownerPasswordLocked: boolean;
 }
 
 export interface UsersScreen {
@@ -252,6 +263,7 @@ export function usersAdminScreen(
     // the only one. Deactivating it would leave zero, which the server refuses
     // (last_active_admin, generalised to users.manage by 0019); not offered.
     const isLastActiveAdmin = isManager(u) && u.is_active && activeAdmins <= 1;
+    const ownerPasswordLocked = u.role === "owner" && !isSelf;
     return {
       user_id: u.user_id,
       username: u.username,
@@ -262,7 +274,8 @@ export function usersAdminScreen(
       isSelf,
       mayDeactivate: editable && u.is_active && !isSelf && !isLastActiveAdmin,
       mayReactivate: editable && !u.is_active && !isSelf,
-      mayReset: editable && !isSelf,
+      mayReset: editable && !isSelf && !ownerPasswordLocked,
+      ownerPasswordLocked,
     };
   };
   const rows = users.map(toRow);
@@ -344,7 +357,12 @@ export function userWriteOutcome(fetch: UserFetch): UserWriteOutcome {
   if (fetch.status === 403) {
     return {
       kind: "refused",
-      message: code === "cannot_deactivate_self" ? REFUSED_SELF : REFUSED_FORBIDDEN,
+      message:
+        code === "cannot_deactivate_self"
+          ? REFUSED_SELF
+          : code === "owner_password_owner_only"
+            ? REFUSED_OWNER_PASSWORD
+            : REFUSED_FORBIDDEN,
     };
   }
   if (fetch.status === 409) {

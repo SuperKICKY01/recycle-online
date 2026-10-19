@@ -116,7 +116,7 @@ from sqlalchemy.exc import IntegrityError
 from . import login_guard
 from .auth import Principal, forbidden, get_principal, require
 from .db import constraint_name_of, tenant_connection
-from .permissions import Permission
+from .permissions import OWNER_ROLE, Permission
 
 # The refusal vocabulary is master.py's and is IMPORTED rather than restated.
 # An error shape is a CONVENTION, and a second copy of a convention drifts at
@@ -1178,10 +1178,36 @@ async def reset_user_password(
     Nothing refuses it, so it works, and it behaves exactly as the route above
     would — the bump ends the caller's own sessions, because the caller is the
     target. That is a consequence of the rule already written, not a second one.
+
+    NO ONE BUT THE OWNER SETS AN OWNER'S PASSWORD (ADVISOR-DECIDED 2026-10-17, 3a):
+    403 `owner_password_owner_only` when the target holds the owner role and is
+    not the caller -- admins included, a second owner included. Without it an
+    admin resets the owner's password and signs in as the owner (red team on
+    f3abf7b). The way back for an owner who forgot it is provider-side,
+    scripts/reset_owner_password.py, run by us and audited. The target's role is
+    read in THIS transaction, locked with the row the UPDATE will touch, so a role
+    change cannot slip between the check and the write. Proven by
+    prove_owner_password.py (O1/O2), whose named disproof is deleting this check.
     """
     new_hash = await hash_password(body.new_password)
 
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
+        target_role = (
+            await conn.execute(
+                text(
+                    "SELECT r.code FROM users u JOIN roles r ON r.id = u.role_id"
+                    " WHERE u.id = :id FOR NO KEY UPDATE OF u"
+                ),
+                {"id": user_id},
+            )
+        ).scalar_one_or_none()
+        if target_role is None:
+            raise _not_found("user")
+        if target_role == OWNER_ROLE and user_id != principal.user_id:
+            raise forbidden(
+                "owner_password_owner_only",
+                "รหัสผ่านของเจ้าของร้านเปลี่ยนได้โดยเจ้าของร้านเองเท่านั้น",
+            )
         row = (
             await conn.execute(
                 text(

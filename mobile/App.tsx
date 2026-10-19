@@ -42,7 +42,7 @@
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemeProvider, useTheme, type ThemeTokens } from "./app/theme";
@@ -55,6 +55,7 @@ import { SqliteLocalSellerStore } from "./src/adapters/sqlite/SqliteLocalSellerS
 import { SqliteIdentityStore } from "./src/adapters/sqlite/SqliteIdentityStore";
 import type { LocalIdentity } from "./src/adapters/sqlite/SqliteIdentityStore";
 import { ownerForNewRow } from "./src/session/rowOwner";
+import { createGrantRecheck, recheckStatusLine } from "./src/session/grantRecheck";
 import { SqliteLocalStore } from "./src/adapters/sqlite/SqliteLocalStore";
 import { SqliteMasterStore } from "./src/adapters/sqlite/SqliteMasterStore";
 import { SqliteShopStore } from "./src/adapters/sqlite/SqliteShopStore";
@@ -2747,6 +2748,62 @@ function AppInner() {
     })();
   }, [refresh, syncOnce]);
 
+  /*
+   * THE GRANT RECHECK (3b, ADVISOR-DECIDED 2026-10-17). After a "no permission" refusal,
+   * /whoami is re-read when the app comes to the FOREGROUND and when ลองอีกครั้ง is pressed,
+   * and the refused work resumes when the grant is back — no sign-out. The decision is
+   * src/session/grantRecheck.ts (proven headless by prove:grantrefresh); this only wires
+   * it. Built ONCE: the AppState listener must keep one controller (it remembers the last
+   * state), so the refusal and the callbacks are read through refs, at the moment of the
+   * trigger, never captured at build time.
+   */
+  const submitRefusedRef = useRef(false);
+  submitRefusedRef.current = submitRefused;
+  const voidsRefusedRef = useRef(0);
+  voidsRefusedRef.current = voidsRefusedCount;
+  const recheckCallbacksRef = useRef({ refresh, syncOnce });
+  recheckCallbacksRef.current = { refresh, syncOnce };
+  const grantRecheck = useMemo(
+    () =>
+      createGrantRecheck(
+        {
+          refusal: () => ({ submitRefused: submitRefusedRef.current, voidsRefused: voidsRefusedRef.current }),
+          readGrants: async () => {
+            const t = tokenRef.current;
+            if (t === null) return null;
+            const r = await fetchWhoAmI(t);
+            if (r.kind !== "ok") return null;
+            const who = readWhoAmI(r.body);
+            if (who === null || who.permissions === null) return null;
+            // Every /whoami rewrites the permission set and its cache (0019), this one included.
+            setGrants(who.permissions);
+            const uid = readTokenUserId(t);
+            if (uid !== null) await permissionStoreRef.current?.replace(uid, who.permissions);
+            return who.permissions;
+          },
+          resume: async (restored) => {
+            await engineRef.current?.resumeAfterGrantRestored(restored);
+            if (restored.submit) setSubmitRefused(false);
+            await recheckCallbacksRef.current.refresh();
+            void recheckCallbacksRef.current.syncOnce();
+          },
+        },
+        AppState.currentState,
+      ),
+    [],
+  );
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      void grantRecheck.onAppState(next).then((o) => {
+        if (o !== null && o.kind === "resumed") setStatus(recheckStatusLine(o));
+      });
+    });
+    return () => sub.remove();
+  }, [grantRecheck]);
+  const recheckGrantsNow = useCallback(() => {
+    void grantRecheck.onRetryPress().then((o) => setStatus(recheckStatusLine(o)));
+  }, [grantRecheck]);
+
   /* ----------------------------------------------------------- row owner -- */
 
   /**
@@ -3642,6 +3699,7 @@ function AppInner() {
             lastSyncedAt={lastSyncedAt}
             onSignIn={() => sheet("close_every_sheet")}
             onRetryMasterData={retryMasterData}
+            onRecheckGrants={recheckGrantsNow}
           />
         );
       case "prices":

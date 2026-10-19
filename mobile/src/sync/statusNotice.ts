@@ -30,6 +30,8 @@ export type StatusTone = "bad" | "warn" | "busy" | "good" | "idle";
 export type StatusAction =
   | { kind: "retry_master_data"; label: string }
   | { kind: "sign_in"; label: string }
+  /** Re-read /whoami and resume what the grants allow again (3b) — never a sign-in. */
+  | { kind: "recheck_grants"; label: string }
   | null;
 
 export interface StatusNotice {
@@ -195,6 +197,22 @@ function unspokenOwed(owed: OwedByKind): readonly string[] {
   return parts;
 }
 
+const RECHECK_GRANTS: StatusAction = { kind: "recheck_grants", label: "ลองอีกครั้ง" };
+
+/**
+ * ONE HANDLER PER ACTION KIND, AND THE MAP IS TOTAL. The strip used to choose with
+ * `kind === "sign_in" ? onSignIn : onRetryMasterData`, which routed every OTHER kind
+ * to the master-data retry — so adding `recheck_grants` would have wired ลองอีกครั้ง to
+ * the wrong action with nothing going red. Typed over the kind union, a kind without
+ * a handler is now a compile error, and the routing lives where a proof can see it.
+ */
+export type StatusActionKind = NonNullable<StatusAction>["kind"];
+export type StatusActionHandlers = { readonly [K in StatusActionKind]: () => void };
+
+export function statusActionHandler(action: StatusAction, handlers: StatusActionHandlers): (() => void) | null {
+  return action === null ? null : handlers[action.kind];
+}
+
 export function statusNotice(s: StatusInput): StatusNotice {
   /*
    * 0. THE BUILD IS TOO OLD (426) — ABOVE THE SESSION ITSELF.
@@ -300,11 +318,16 @@ export function statusNotice(s: StatusInput): StatusNotice {
    * Red, and NOT the support alarm. The colour is right — this is a real
    * disagreement about money, not a waiting state — but the sentence names the
    * shop owner, because support cannot grant a role and a phone number here would
-   * cost someone a call to the wrong person. There is also no button: the only
-   * action is a conversation, and an action the app cannot perform must never be
-   * dressed as one it can (the ยกเลิก-on-a-failed-bill mistake, one screen up).
-   * Above all it must never invite a sign-in — the same user would come back with
-   * the same role, which is a loop with a person in it.
+   * cost someone a call to the wrong person. Above all it must never invite a
+   * sign-in — the same user would come back with the same role, which is a loop
+   * with a person in it.
+   *
+   * ONE BUTTON SINCE 3b (ADVISOR-DECIDED 2026-10-17): ลองอีกครั้ง, which re-reads
+   * /whoami and resumes exactly what the grants allow again (src/session/
+   * grantRecheck.ts) — the device CAN perform that, so it is no longer an action
+   * dressed as one it can. It was absent while the only way back was a sign-in.
+   * The app coming to the foreground does the same re-read. The sentence says the
+   * order: the owner restores the permission, then the button.
    */
   if (s.account === "submit_refused" || s.voidsRefused > 0) {
     // Both facts can hold at once; neither may hide the other. The submit
@@ -321,16 +344,16 @@ export function statusNotice(s: StatusInput): StatusNotice {
         tone: "bad",
         message:
           `บัญชีนี้ไม่มีสิทธิ์ส่งบิลเข้าระบบ${held}${refusedVoids}` +
-          " — ต้องแจ้งเจ้าของร้าน",
-        action: null,
+          " — แจ้งเจ้าของร้านให้คืนสิทธิ์ แล้วกด ลองอีกครั้ง",
+        action: RECHECK_GRANTS,
       };
     }
     return {
       tone: "bad",
       message:
         `ยกเลิกบิลไม่สำเร็จ ${String(s.voidsRefused)} ใบ` +
-        " — บัญชีนี้ไม่มีสิทธิ์ยกเลิกบิล บิลยังอยู่ในระบบตามเดิม ต้องแจ้งเจ้าของร้าน",
-      action: null,
+        " — บัญชีนี้ไม่มีสิทธิ์ยกเลิกบิล บิลยังอยู่ในระบบตามเดิม แจ้งเจ้าของร้านให้คืนสิทธิ์ แล้วกด ลองอีกครั้ง",
+      action: RECHECK_GRANTS,
     };
   }
 
