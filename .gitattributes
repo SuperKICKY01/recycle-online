@@ -1,2 +1,4 @@
 * text=auto eol=lf
+# cmd.exe batch files are read with CRLF (tools/owner/*.cmd, double-clicked by the owner).
+*.cmd text eol=crlf
 desktop/src/proof/golden/*.bin binary

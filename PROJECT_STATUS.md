@@ -191,6 +191,26 @@ anchor next pass.
   of the trailing seven days. Fix: the proof tops the week up to 201 rows with its own bills on the scratch. Exit 0
   twice (86 inherited, 201 after, 2 pages); disproved by removing the top-up (the same F1 red, file restored
   byte-identical). Lesson: `proof-must-run-twice.md`, ninth amendment.
+- **GATE 2026-10-19 RE-RUN (`_prove_all/20261019T121040Z`, on `a206734`; 60 s min 9.06 GB, sampler low 7.99 GB, not
+  killed): TOTAL 107, GREEN 93, EXIT-CODE-ONLY 14, RED 0, `PROVE_ALL_EXIT=0`.** main fast-forwarded `d236ca5..a206734`
+  and pushed; paste set rebuilt at `a206734`.
+- **THE OWNER'S DEMO LAUNCHER (`tools/owner/start_demo.cmd` / `stop_demo.cmd`, runbook `docs/owner/วิธีเปิดระบบ.md`),
+  2026-10-19.** start_demo: refuses while prove_all holds its lock (exit 3, observed with the gate running) and below a
+  6 GB free floor (exit 4, observed with `-FloorGB 999`, the top consumers listed); warns in Thai when no IPv4 is the
+  APK's baked `192.168.1.238`; refuses a busy 8000/8081; starts Docker/`recycle_pg` if stopped; builds `recycle_demo`
+  from empty (migrations at head + `seed_dev.py` + `walk_fixture.py` + one shop code via `provision_shop.py`) or
+  refreshes it in place (nothing dropped; the code stays `3PTNQH8Y`); serves it on `0.0.0.0:8000`; cold-boots
+  `recycle_api36`; starts Metro; points the app's `debug_http_host` at `10.0.2.2:8081`; opens the app; starts the
+  desktop on its own userData with `config.json` naming the demo server. Every started PID is recorded with its start
+  time; stop_demo stops exactly those trees (29 processes on the last run) and leaves Docker running. Two launcher
+  bugs found by running it, both fixed and re-run: Metro's `/status` arrives as BYTES in Invoke-WebRequest (the
+  readiness check never matched), and the AVD's app kept `debug_http_host` `10.0.2.2:8082` from a lane walk ("Unable
+  to load script"). Observed after sign-in: the app's price list shows the demo catalogue; three sample bills posted
+  through `POST /bills` (B-2569-1..3) are listed by the desktop. Census before/after: nothing pre-existing stopped;
+  no emulator/qemu/adb/electron/python/node left. UNMEASURED residual: the emulator's own shutdown spawns
+  `emulator -kill <pid> -sleep 20` naming a STALE pid (an earlier run's adb server) — it exited harmlessly here, but
+  a reused pid would be killed by the emulator, not by the launcher. `walk_fixture.py` accepts `recycle_demo` by exact
+  name (after the dev refusal); that server-script change rides the 3a/3b gate before main.
 - **RED TEAMS ON 1a (`36db720`) AND ON B6's SERVER HALF (`f3abf7b`), 2026-10-13 — fixed before the gate.** 1a: (1)
   CONFIRMED and MEASURED: migration 0025 reddened `prove_shifts` FX (`columns absent at 0022 are
   ['void_idempotency_key'], declared []`) — the gate would have failed; the column is DECLARED absent at 0022 (never

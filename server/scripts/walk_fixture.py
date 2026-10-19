@@ -20,7 +20,8 @@ emulator. Nothing is deleted, nothing is deactivated.
 
 IT REFUSES unless the target is a lane walk or scratch database: RECYCLE_LANE must be set, and
 the name must be `scratch_name("recycle_walk")` or a `…_scratch_<lane>` name from
-server/scripts/lane.py — and never the database server/.env names (dev). The target's URLs are
+server/scripts/lane.py — and never the database server/.env names (dev). The one lane-free name
+it accepts is the owner's demo database `recycle_demo` (tools/owner/start_demo.cmd), by exact name. The target's URLs are
 rebound BEFORE the app is imported (lessons/a-scratch-proof-imports-the-app-only-after-it-
 rebinds-the-database.md), so the app's engine can only ever see the walk database. No
 connection string is taken on the command line.
@@ -46,6 +47,7 @@ from sqlalchemy.engine import make_url  # noqa: E402
 from lane import lane_tag, scratch_name  # noqa: E402
 
 URL_KEYS = ("APP_DATABASE_URL", "DIRECTORY_DATABASE_URL", "MIGRATION_DATABASE_URL")
+DEMO_DATABASE = "recycle_demo"
 
 # (code, Thai name). Six categories; codes are the per-tenant unique handle.
 CATEGORIES = [
@@ -157,12 +159,18 @@ def refuse(msg: str) -> None:
 
 
 def target_or_refuse(name: str) -> str:
-    tag = lane_tag()
-    if tag == "":
-        refuse("RECYCLE_LANE is not set -- a walk fixture belongs to a lane's walk database")
     dev = make_url(os.environ["APP_DATABASE_URL"]).database
     if name == dev:
         refuse(f"{name!r} is the database server/.env names (dev)")
+    # THE OWNER'S DEMO DATABASE (tools/owner/start_demo.cmd, 2026-10-19): lane-free on purpose --
+    # the owner runs the demo with no lane set -- so it is accepted by its exact name, and only
+    # after the dev refusal above.
+    if name == DEMO_DATABASE:
+        return name
+    tag = lane_tag()
+    if tag == "":
+        refuse("RECYCLE_LANE is not set -- a walk fixture belongs to a lane's walk database"
+               f" (or the owner's demo database {DEMO_DATABASE!r})")
     allowed_walk = scratch_name("recycle_walk")
     if name != allowed_walk and not (name.endswith(f"_scratch_{tag}") and name.startswith("recycle_")):
         refuse(f"{name!r} is not this lane's walk database ({allowed_walk!r}) or a recycle_*_scratch_{tag} name")
