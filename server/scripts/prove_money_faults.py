@@ -47,8 +47,11 @@ THE DISPROOFS, RUN BY HAND (2026-10-23), each mutation read back present before 
     what refuses the duplicate; the two sites turn that refusal into "already created".
   - payments.py create_payment: `FOR NO KEY UPDATE` on the bill row removed -> RH1 red (completed
     1.53 s BEFORE the release), RH1b red (no waiter), and RB red: 4 of 5 rounds accepted BOTH
-    60.00 payments against the 100.00 bill. Nothing in the schema stops that over-allocation; the
-    lock is the only guard (OPEN_ITEMS, Code debt).
+    60.00 payments against the 100.00 bill. Nothing in the schema stopped that over-allocation then;
+    SINCE MIGRATION 0026 the database refuses it as well (H4, prove_allocation_cap L2/L3). Re-measured
+    under 0026: the same mutation reddens RH1b ALONE -- RH1 stays green because the payment still
+    waits, now at 0026's trigger lock (1 waiter, not the route's query, which is what RH1b names),
+    and RB stays green, held by the database's cap.
   - shifts.py _drawer_figure: cash payments no longer subtracted -> F7 red in both shifts: stored and
     answered 1185.00 against inputs and rows 962.50 (S1), 100.00 against 60.00 (S2).
 """

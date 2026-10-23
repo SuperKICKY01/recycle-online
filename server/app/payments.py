@@ -78,6 +78,21 @@ logger = logging.getLogger("recycle.payments")
 
 PaymentMethod = Literal["cash", "promptpay", "transfer", "write_off"]
 
+# Migration 0026's refusal when a write would leave a bill's live allocations above its total,
+# restated by hand (a migration is not a library).
+_ALLOCATION_CAP_SQLSTATE = "RA001"
+
+
+def _sqlstate_of(exc: BaseException) -> str:
+    """The SQLSTATE of a database error, or "" if unknown -- walked, as shifts._sqlstate_of is,
+    because the asyncpg dialect puts it on its own wrapper and chains the driver's exception."""
+    orig = getattr(exc, "orig", None)
+    for candidate in (orig, getattr(orig, "__cause__", None), exc):
+        code = getattr(candidate, "sqlstate", None)
+        if code:
+            return str(code)
+    return ""
+
 
 def _invalid(code: str, message: str, **context: Any) -> HTTPException:
     """A PERMANENT refusal (422): no action by anyone makes this payload valid.
@@ -386,6 +401,15 @@ async def create_payment(
         _log_poison_candidate(principal, body, e)
         raise
     except SQLAlchemyError as e:
+        if _sqlstate_of(e) == _ALLOCATION_CAP_SQLSTATE:
+            # THE DATABASE'S CAP (migration 0026) refused the allocation: the bill's live
+            # allocations would exceed its total. The route's own check above refuses this first
+            # under its row lock, so reaching here means a writer got past that check -- the same
+            # refusal, the same code, PERMANENT; it names no remaining figure because the
+            # database's message is not parsed for one.
+            raise _invalid(
+                "allocation_exceeds_bill", "ยอดที่จัดสรรเกินยอดคงค้างของบิล",
+            ) from e
         _log_poison_candidate(principal, body, e)
         raise
 

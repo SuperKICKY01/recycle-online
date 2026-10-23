@@ -1740,6 +1740,12 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   of two 60.00 payments against a 100.00 bill in 4 of 5 rounds released together: nothing in the schema refuses it. The
   lock is proven held and waited on (RH1/RH1b, with its negative half), so today's code is safe; the next writer of an
   allocation that does not take the same lock is not. Not changed (H2 changes no money semantics without a defect).
+  **CLOSED 2026-10-23 (ADVISOR-DECIDED 2026-10-23, H4): migration 0026** puts the cap in the database —
+  `allocation_cap_check` behind three triggers (an allocation written; a payment made live again; a bill's total
+  lowered), locking the bill row in the route's own mode and refusing SQLSTATE RA001 (RA002 under REPEATABLE READ); the
+  route's lock stays and the route words RA001 as its own 422. `prove_allocation_cap`: with the route's lock stripped,
+  0 overpayments in 5 races (all 5 refused by the database), the refusal held deterministic (L3), the other doors by
+  SQL; migration up/down/up on a scratch; the comparison disabled reddens L2/L3/S1/S3/S4.
 
 - **A REFUSED LOCAL SELLER'S CODE GOES BACK TO THE POOL WHILE THE REFUSED ROW STILL HOLDS IT — THE NEXT OFFLINE CREATE ON
   THAT DEVICE FAILS `UNIQUE constraint failed: local_sellers.code` (found 2026-10-23 by `prove:sellerid`'s first run,
