@@ -1705,6 +1705,20 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
 
 ## Code debt found and left in place
 
+- **A CREATE THAT REUSES ANOTHER SHOP'S CLIENT-MINTED ID ANSWERS 500, NOT A REFUSAL (H1 tenant matrix, 2026-10-23,
+  measured on a scratch).** `purchase_bills`, `purchase_bill_items`, `payments`, `shifts` and `cash_movements` are each
+  `PRIMARY KEY (id)` across ALL tenants (read from `pg_constraint`); only `(tenant_id, id)` and
+  `(tenant_id, idempotency_key)` are per shop. When shop B posts a bill, line, payment, shift or movement whose id shop A
+  already holds, the INSERT meets A's row, the IntegrityError handler re-reads by idempotency key UNDER B's context, finds
+  nothing, and re-raises: 500 (`bills.py` create_bill's `except IntegrityError`, `payments.py` create_payment's,
+  `shifts.py` open_shift's and create_cash_movement's). Nothing is written in either shop and the body carries no A data
+  (`prove_tenant_matrix` "collide" cells, A and B value-equal in Postgres). What crosses is one bit to a caller who ALREADY
+  HOLDS the id: "this id exists somewhere" — an existence oracle on a random v4 id (`mobile/app/ids.ts`
+  `Crypto.randomUUID()`), not a data leak. What it would cost if an honest collision ever happened: a 500 is
+  `unavailable` on the phone, which retries that bill for ever (lessons/queue-jam-must-be-visible.md). NOT CHANGED: a 4xx
+  here is a change on the money routes, outside the H1 brief. The proof accepts a 4xx or this 500 on those cells and goes
+  red on anything written or any A data returned.
+
 - **AN ADMIN CAN RESET THE OWNER'S PASSWORD AND SIGN IN AS THE OWNER — THE OWNER'S DECISION (red team on f3abf7b,
   2026-10-13, by source).** `POST /users/{id}/password` (and deactivate, unlock, revoke) check only `users.manage`, not
   that the target's role is within the caller's — `POST /users` has that guard ("an admin cannot mint an owner"), the
@@ -1719,8 +1733,7 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   `--username` naming an owner, the password from `OWNER_NEW_PASSWORD` (never argv), written as
   `system:reset_owner_password` so the 0017 trigger audits it. `prove_owner_password.py` 19 cells, exit 0
   twice; disproof (guard deleted) reddens O1/O2 and O4 downstream. The phone hides the reset on an owner's
-  row. **THE REST CLOSED 2026-10-19 (ADVISOR-DECIDED 2026-10-19), uncommitted at this writing — the sha
-  anchors next pass:** revoke-sessions, deactivate, activate and unlock-login on an owner now answer 403
+  row. **THE REST CLOSED 2026-10-19 (ADVISOR-DECIDED 2026-10-19), at `33d8c1b`:** revoke-sessions, deactivate, activate and unlock-login on an owner now answer 403
   `owner_account_owner_only` to anyone but that owner (`users._refuse_another_owners_account`, one helper at
   every write on a user row; no route changes a user's role or username, and the owner ROLE is fixed by
   `owner_role_fixed`). Provider recovery: `reset_owner_password.py --unlock` / `--reactivate`, same refusals,
