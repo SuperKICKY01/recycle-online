@@ -1726,6 +1726,20 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   lock is proven held and waited on (RH1/RH1b, with its negative half), so today's code is safe; the next writer of an
   allocation that does not take the same lock is not. Not changed (H2 changes no money semantics without a defect).
 
+- **A REFUSED LOCAL SELLER'S CODE GOES BACK TO THE POOL WHILE THE REFUSED ROW STILL HOLDS IT — THE NEXT OFFLINE CREATE ON
+  THAT DEVICE FAILS `UNIQUE constraint failed: local_sellers.code` (found 2026-10-23 by `prove:sellerid`'s first run,
+  measured on node:sqlite, NOT on a handset).** `SqliteLocalSellerStore.markSellerCreateRefused` sets the row `failed` and
+  `spent_on = NULL` on its code (by design: the reservation was never spent server-side); the row keeps `code`, and
+  `local_sellers.code` is UNIQUE. `createLocalSeller` picks the lowest free code, so the freed one is picked at once when
+  it is the lowest, and the INSERT throws. `proveSellerStore` checks the spendable count after a refusal and never creates
+  again, so nothing caught it. Outside H3 (a seller-create defect, not personal data); not changed.
+
+- **SIGN-OUT KEEPS THE DEVICE'S PERSONAL DATA (H3, 2026-10-23, measured, NOT changed — the brief's own fence).**
+  `npm run prove:sellerid` S7 over a real file: `signOut()` plus App.tsx's permission clear empties `cached_permissions`
+  and touches nothing else — `local_sellers` (names, phones, addresses, and a REFUSED row's full ID), `cached_sellers`
+  (names, phones, last fours, trucks), `local_bills` and `local_identity` all stay, as `signOut.ts` ClearedSession and
+  App.tsx onSignOut state by design (shop data, not user data). Whether a sign-out should clear any of it is open.
+
 - **A USED IDEMPOTENCY KEY WITH A DIFFERENT BODY IS ANSWERED WITH THE ORIGINAL BILL, SILENTLY (H2, 2026-10-23, measured).**
   `POST /bills` with a key already spent answers 200 with the FIRST bill — same id, same total — whatever the new body says
   (a different weight, a different bill id, a different seller): nothing is written, nothing is refused, nothing flags
@@ -1871,7 +1885,13 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   is data once the role screen exists; 0024 downgrades to 0023 exactly). Three things it does NOT cover, each
   recorded rather than changed: (1) **`local_sellers` keeps the ID its creator typed** after the seller syncs
   (`mobile/src/adapters/sqlite/schema.ts` `local_sellers.id_number`) — whether it should be dropped once the row
-  settles is open; (2) **`audit_log` holds full seller row images** (`to_jsonb(OLD/NEW)`, migration 0017, `sellers`
+  settles is open — **CLOSED 2026-10-23 (ADVISOR-DECIDED 2026-10-23, H3):** the settle (`markSellerCreated`) NULLs
+  `id_number` and stores `id_last4` in the one UPDATE that makes the row `synced`; a device's rows settled before that
+  are minimised when the database opens; `PRAGMA secure_delete = ON` and a post-settle `wal_checkpoint(TRUNCATE)` take
+  the dropped bytes out of the file and the live WAL (`npm run prove:sellerid` S1-S6, each guard disproved). A row
+  NOT settled keeps the ID — pending, syncing, held for review, and **refused (`failed`), which never reaches the
+  server and so keeps its ID for good: what a refused row should keep is open** (the sign-out line below);
+  (2) **`audit_log` holds full seller row images** (`to_jsonb(OLD/NEW)`, migration 0017, `sellers`
   is audited), so a future `audit.read` route must apply the same gate; no route reads it today; (3) **`tenants.address`**
   (the SHOP's own address, `PATCH /shop`) is not a seller's personal data and is untouched.
 

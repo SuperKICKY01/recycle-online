@@ -102,7 +102,13 @@ export interface LocalSeller {
   name: string;
   phone: string | null;
   grade: string | null;
+  /**
+   * The ID its creator typed, held ONLY while the server does not have the seller: null once the
+   * row is `synced` (H3, ADVISOR-DECIDED 2026-10-23), when `id_last4` alone remains.
+   */
   id_number: string | null;
+  /** The minimised ID, stored at settle; null while the row is still owed (derive it from id_number). */
+  id_last4: string | null;
   address: string | null;
   vehicle_no: string | null;
   sync_state: SellerSyncState;
@@ -284,7 +290,11 @@ export interface LocalSellerStore {
    * The DURABLE in-flight guard — this kind has one, unlike the void kind.
    */
   claimSellerCreate(id: string, now: Date): Promise<boolean>;
-  /** The server created it (or recognised the replay). Writes the SERVER's id. */
+  /**
+   * The server created it (or recognised the replay). Writes the SERVER's id -- and in the SAME
+   * write drops the full `id_number`, keeping `id_last4` (H3): from here the server holds the ID,
+   * and the phone needs only the minimised form to find the seller.
+   */
   markSellerCreated(
     id: string,
     serverSellerId: string,

@@ -318,10 +318,11 @@ export function sellerRowText(m: SellerMatch): SellerRowText {
 }
 
 /**
- * The minimised ID for a LOCAL seller (one this device created and the server has not sent
- * back): the same rule as the server's master._id_last4 -- spaces and dashes dropped, the
- * last four characters, null under four. Computed when the picker is built and never
- * stored; local_sellers already holds the ID its creator typed (OPEN_ITEMS).
+ * The minimised ID for a LOCAL seller (one this device created): the same rule as the server's
+ * master._id_last4 -- whitespace and dashes dropped, the last four characters, null under four.
+ * Two callers: the picker, for a row still owed (which holds the ID its creator typed), and the
+ * settle, which STORES this in local_sellers.id_last4 and drops the full ID in the same UPDATE
+ * (H3, ADVISOR-DECIDED 2026-10-23) -- as does the open-time sweep of rows settled before that.
  */
 export function idLast4(idNumber: string | null | undefined): string | null {
   if (idNumber == null) return null;

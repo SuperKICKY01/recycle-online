@@ -2,12 +2,13 @@
  * The `LocalSellerStore` over SQLite — `local_sellers` and
  * `local_seller_codes`.
  *
- * ONE STATEMENT PER METHOD, with exactly one deliberate exception, which is the
- * same discipline `SqliteLocalStore` opens with and the same exception it names:
- * SQLite wraps every statement in an implicit transaction, so a single
- * conditional UPDATE is already atomic and the claim cannot half-happen. The
- * exception is `createLocalSeller`, which genuinely must bind a code and insert
- * a row indivisibly — see its own doc.
+ * ONE STATEMENT PER METHOD, with deliberate exceptions that each say why, which is
+ * the same discipline `SqliteLocalStore` opens with: SQLite wraps every statement
+ * in an implicit transaction, so a single conditional UPDATE is already atomic and
+ * the claim cannot half-happen. The exceptions are `createLocalSeller`, which
+ * genuinely must bind a code and insert a row indivisibly, `markSellerCreateRefused`
+ * (the row and its code), and `markSellerCreated`, which reads the ID it drops in
+ * the same transaction (H3) — see each one's own doc.
  *
  * ---------------------------------------------------------------------------
  * TWO TABLES, TWO OPPOSITE ANSWERS TO "DOES THIS CARRY AN OWNER PREDICATE"
@@ -38,6 +39,7 @@
  * argument at `local_sellers`, including the third rewrite shape — delete and
  * re-insert — that no `DO UPDATE` list covers.
  */
+import { idLast4 } from "../../cart/sellers.js";
 import type {
   CreateLocalSellerResult,
   IssuedCode,
@@ -62,6 +64,7 @@ interface SellerRow {
   phone: string | null;
   grade: string | null;
   id_number: string | null;
+  id_last4: string | null;
   address: string | null;
   vehicle_no: string | null;
   sync_state: string;
@@ -78,7 +81,7 @@ interface SellerRow {
 }
 
 const SELLER_COLUMNS =
-  "id, code, reservation_token, name, phone, grade, id_number, address," +
+  "id, code, reservation_token, name, phone, grade, id_number, id_last4, address," +
   " vehicle_no, sync_state, attempt_count, last_error, created_at," +
   " next_attempt_at, server_seller_id, settled_at, needs_review_at," +
   " needs_review_code, owner_tenant_id, owner_user_id";
@@ -150,6 +153,7 @@ function toSeller(row: SellerRow): LocalSeller {
     phone: row.phone,
     grade: row.grade,
     id_number: row.id_number,
+    id_last4: row.id_last4,
     address: row.address,
     vehicle_no: row.vehicle_no,
     sync_state: row.sync_state as SellerSyncState,
@@ -349,6 +353,9 @@ export class SqliteLocalSellerStore implements LocalSellerStore {
         draft.phone,
         draft.grade,
         draft.id_number,
+        // id_last4: stored at SETTLE, never at create -- an owed row holds the full ID it still
+        // has to send, and the picker derives its last four from that.
+        null,
         draft.address,
         draft.vehicle_no,
         "pending",
@@ -366,7 +373,7 @@ export class SqliteLocalSellerStore implements LocalSellerStore {
       ];
       await tx.run(
         `INSERT INTO local_sellers (${SELLER_COLUMNS}) VALUES (` +
-          "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params,
       );
       // The bind, in the same transaction. A code with `spent_on` set is out of
@@ -488,6 +495,18 @@ export class SqliteLocalSellerStore implements LocalSellerStore {
    * `last_error` is cleared: the row succeeded, and a stale error beside a
    * settled row is a screen saying two things at once. The attempt count is
    * KEPT, because how many tries it took is a fact about what happened.
+   *
+   * THE FULL ID LEAVES THE PHONE HERE (H3, ADVISOR-DECIDED 2026-10-23). From this
+   * write on the server holds the seller's ID; the phone keeps `id_last4` — what
+   * the picker searches — and `id_number` becomes NULL in the SAME UPDATE that
+   * makes the row `synced`, so there is no state, even for an instant, that is
+   * settled AND still holds the ID. A row the server has not taken (pending,
+   * syncing, held for review, refused) is not touched by this and keeps it.
+   *
+   * THE SECOND MULTI-STATEMENT METHOD IN THIS FILE, AND WHY. The last four is the
+   * TypeScript rule (`idLast4`, the server's transcribed), not a SQL expression —
+   * schema.ts's open-time sweep gives the reason — so the row's ID is read first,
+   * in the same transaction as the write that drops it.
    */
   async markSellerCreated(
     id: string,
@@ -495,13 +514,27 @@ export class SqliteLocalSellerStore implements LocalSellerStore {
     attempt: number,
     now: Date,
   ): Promise<void> {
-    await this.db.run(
-      `UPDATE local_sellers
-       SET sync_state = 'synced', server_seller_id = ?, settled_at = ?,
-           attempt_count = ?, last_error = NULL
-       WHERE id = ?`,
-      [serverSellerId, now.toISOString(), attempt, id],
-    );
+    await this.db.transaction(async (tx) => {
+      const rows = await tx.all<{ id_number: string | null }>(
+        "SELECT id_number FROM local_sellers WHERE id = ?",
+        [id],
+      );
+      await tx.run(
+        `UPDATE local_sellers
+         SET sync_state = 'synced', server_seller_id = ?, settled_at = ?,
+             attempt_count = ?, last_error = NULL,
+             id_last4 = ?, id_number = NULL
+         WHERE id = ?`,
+        [serverSellerId, now.toISOString(), attempt, idLast4(rows[0]?.id_number), id],
+      );
+    });
+    // THE OLD BYTES TOO. secure_delete (schema.ts CONNECTION_PRAGMAS) zeroes the dropped value in the
+    // page the UPDATE writes, but the frames written while the row was owed still sit in the WAL
+    // holding the ID until something overwrites them. A TRUNCATE checkpoint copies the current pages
+    // into the database file and empties the WAL. Outside the transaction (a checkpoint cannot run
+    // inside one); a busy reader makes it partial rather than failing, and the next settle or close
+    // finishes it -- measured clean on node:sqlite (proveSellerIdLocal S6), UNMEASURED on a handset.
+    await this.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
   }
 
   /**

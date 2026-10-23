@@ -27,6 +27,7 @@
  * STRICT is kept because it does protect the INTEGER columns and rejects
  * unknown types, not because it makes money safe.
  */
+import { idLast4 } from "../../cart/sellers.js";
 import type { SqlDriver, SqlTx } from "./driver.js";
 
 export const SCHEMA_STATEMENTS: readonly string[] = [
@@ -528,7 +529,11 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
      name              TEXT    NOT NULL,
      phone             TEXT,
      grade             TEXT,
+     /* The ID its creator typed -- held ONLY until the server has the seller. At settle it
+        is NULLed in the same UPDATE that marks the row synced, and id_last4 keeps the
+        minimised form (H3, ADVISOR-DECIDED 2026-10-23). */
      id_number         TEXT,
+     id_last4          TEXT,
      address           TEXT,
      vehicle_no        TEXT,
      sync_state        TEXT    NOT NULL,
@@ -769,6 +774,43 @@ const ADDED_SELLER_SEARCH_COLUMNS: readonly { name: string; ddl: string }[] = [
 ];
 
 /**
+ * The minimised ID on a LOCAL seller (H3, ADVISOR-DECIDED 2026-10-23: "no phone keeps a full ID
+ * number after its seller has synced"), added to local_sellers after it shipped. NULLABLE: a row
+ * still owed keeps the full id_number and has no last four stored; a settled row keeps ONLY this.
+ * The backfill is `minimiseSettledSellerIds` below, in the same transaction as the column.
+ */
+const ADDED_LOCAL_SELLER_COLUMNS: readonly { name: string; ddl: string }[] = [
+  { name: "id_last4", ddl: "id_last4 TEXT" },
+];
+
+/**
+ * A device that settled sellers BEFORE the settle learned to drop the ID still holds each full ID.
+ * Every open re-runs this; after the first it touches nothing (`id_number IS NOT NULL` on a synced
+ * row is the only thing it matches, and it removes exactly that).
+ *
+ * THE RULE IS THE TYPESCRIPT ONE (`idLast4`, the server's `_id_last4` transcribed), applied row by
+ * row, NOT a SQL expression: `replace()` knows the characters it is told, and the rule drops ALL
+ * whitespace, so a SQL copy would minimise an ID carrying a no-break space differently from the
+ * settle path. Inside initConnection's transaction, so the column and its backfill land together.
+ *
+ * ONLY `synced`. A pending, syncing or held-for-review row is still owed and needs its ID to be
+ * created; a `failed` row was refused and never reached the server -- its ID stays with it, and
+ * what a refused row should keep is not this sweep's question (OPEN_ITEMS).
+ */
+async function minimiseSettledSellerIds(tx: SqlTx): Promise<number> {
+  const rows = await tx.all<{ id: string; id_number: string }>(
+    "SELECT id, id_number FROM local_sellers WHERE sync_state = 'synced' AND id_number IS NOT NULL",
+  );
+  for (const r of rows) {
+    await tx.run(
+      "UPDATE local_sellers SET id_last4 = ?, id_number = NULL WHERE id = ? AND sync_state = 'synced'",
+      [idLast4(r.id_number), r.id],
+    );
+  }
+  return rows.length;
+}
+
+/**
  * Columns added to local_shop after IT first shipped.
  *
  * `branch_id` (server migration 0018): the yard this device's caller works at,
@@ -827,6 +869,10 @@ export const CONNECTION_PRAGMAS: readonly string[] = [
   "PRAGMA busy_timeout = 5000",
   "PRAGMA journal_mode = WAL",
   "PRAGMA foreign_keys = ON",
+  // H3 (ADVISOR-DECIDED 2026-10-23): a value NULLed or deleted is OVERWRITTEN, not left in the
+  // page's free space. Measured on node:sqlite: without it a settled seller's dropped ID was still
+  // readable in the file's bytes after its row said NULL (proveSellerIdLocal S6).
+  "PRAGMA secure_delete = ON",
 ];
 
 /**
@@ -936,7 +982,9 @@ export async function initConnection(db: SqlDriver): Promise<string[]> {
     }
     added.push(...(await migrateColumns(tx, "cached_products", ADDED_PRODUCT_CATEGORY_COLUMNS)));
     added.push(...(await migrateColumns(tx, "cached_sellers", ADDED_SELLER_SEARCH_COLUMNS)));
+    added.push(...(await migrateColumns(tx, "local_sellers", ADDED_LOCAL_SELLER_COLUMNS)));
     for (const ddl of POST_MIGRATION_STATEMENTS) await tx.run(ddl);
+    await minimiseSettledSellerIds(tx);
     return added;
   });
 }

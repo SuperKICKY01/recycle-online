@@ -27,6 +27,8 @@
  * `cached_sellers` is the RED CASE the criterion names — delete-and-reinsert
  * would destroy it. `localIds` is a fact about THIS read, recomputed each time.
  */
+import type { LocalSeller } from "../sync/localSeller.js";
+import { idLast4 } from "./sellers.js";
 
 /**
  * The shape the picker offers — structurally `app/api.ts`'s `Seller`, spelled
@@ -59,6 +61,26 @@ export interface PickerSellers {
   readonly options: PickerServerSeller[];
   /** Which of `options` are local rows the server has not sent back yet. */
   readonly localIds: ReadonlySet<string>;
+}
+
+/**
+ * A local seller as the picker offers it, its ID MINIMISED. A SETTLED row has no full ID any more
+ * (H3: the settle drops it) and carries the `id_last4` stored then; a row still owed holds the ID
+ * its creator typed, and its last four are derived here, at read time. Either way the picker never
+ * sees a full ID -- and a settled seller stays findable by its last four in the window between its
+ * settle and the refresh that brings the server's row down.
+ */
+export function localPickerSeller(s: LocalSeller): LocalPickerSeller {
+  return {
+    id: s.id,
+    code: s.code,
+    name: s.name,
+    phone: s.phone,
+    grade: s.grade,
+    vehicle_no: s.vehicle_no,
+    id_last4: s.id_last4 ?? idLast4(s.id_number),
+    server_seller_id: s.server_seller_id,
+  };
 }
 
 /**

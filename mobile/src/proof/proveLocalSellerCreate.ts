@@ -75,6 +75,7 @@ function localSeller(over: Partial<LocalSeller>): LocalSeller {
     phone: null,
     grade: null,
     id_number: "1234567890123-must-not-show",
+    id_last4: "last4-must-not-show",
     address: "addr-secret-must-not-show",
     vehicle_no: "veh-secret-must-not-show",
     sync_state: "pending",

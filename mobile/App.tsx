@@ -73,8 +73,8 @@ import type { GradeTiers, SellerChangeImpact } from "./src/cart/cart";
 import { withheldDraftNotice } from "./src/cart/draftNotice";
 import { NO_LOCKS, releaseOnSave } from "./src/cart/entry";
 import type { Locks } from "./src/cart/entry";
-import { cleanVehicleNo, gradePrice, idLast4, indexPlates } from "./src/cart/sellers";
-import { mergeSellersForPicker } from "./src/cart/pickerSellers";
+import { cleanVehicleNo, gradePrice, indexPlates } from "./src/cart/sellers";
+import { localPickerSeller, mergeSellersForPicker } from "./src/cart/pickerSellers";
 import type { Draft } from "./src/cart/types";
 import { ExpoSqliteDriver } from "./src/device/expoSqliteDriver";
 import { localDatabaseOnce } from "./src/adapters/sqlite/localDatabase";
@@ -710,21 +710,9 @@ function AppInner() {
    */
   const pickerSellers = useMemo(
     () =>
-      mergeSellersForPicker(
-        sellers,
-        localSellers.map((s) => ({
-          id: s.id,
-          code: s.code,
-          name: s.name,
-          phone: s.phone,
-          grade: s.grade,
-          // Seller search C3: the local row's own truck, and its ID MINIMISED here at read
-          // time -- local_sellers holds the ID its creator typed; the picker never sees it.
-          vehicle_no: s.vehicle_no,
-          id_last4: idLast4(s.id_number),
-          server_seller_id: s.server_seller_id,
-        })),
-      ),
+      // Seller search C3 / H3: each local row's ID MINIMISED (stored at settle, else derived
+      // from the ID an owed row still holds) -- the picker never sees a full ID.
+      mergeSellersForPicker(sellers, localSellers.map(localPickerSeller)),
     [sellers, localSellers],
   );
 
