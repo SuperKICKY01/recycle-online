@@ -1719,6 +1719,20 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   here is a change on the money routes, outside the H1 brief. The proof accepts a 4xx or this 500 on those cells and goes
   red on anything written or any A data returned.
 
+- **"A BILL'S LIVE ALLOCATIONS NEVER EXCEED ITS TOTAL" HAS NO DATABASE BACKSTOP — ONLY THE ROUTE'S ROW LOCK (H2, 2026-10-23,
+  measured by disproof).** `payments.py` create_payment reads the bill `FOR NO KEY UPDATE`, sums its live allocations and
+  refuses past the remainder (422 `allocation_exceeds_bill`). With that lock removed, `prove_money_faults` RB accepted BOTH
+  of two 60.00 payments against a 100.00 bill in 4 of 5 rounds released together: nothing in the schema refuses it. The
+  lock is proven held and waited on (RH1/RH1b, with its negative half), so today's code is safe; the next writer of an
+  allocation that does not take the same lock is not. Not changed (H2 changes no money semantics without a defect).
+
+- **A USED IDEMPOTENCY KEY WITH A DIFFERENT BODY IS ANSWERED WITH THE ORIGINAL BILL, SILENTLY (H2, 2026-10-23, measured).**
+  `POST /bills` with a key already spent answers 200 with the FIRST bill — same id, same total — whatever the new body says
+  (a different weight, a different bill id, a different seller): nothing is written, nothing is refused, nothing flags
+  the difference (`prove_money_faults` F2). The phone cannot produce this (one key per bill, minted in
+  `mobile/src/sync/createBill.ts` buildLocalBill; the stored body is replayed unchanged). Whether a differing body under
+  a spent key should be REFUSED (409) instead is the owner's call, not this milestone's.
+
 - **AN ADMIN CAN RESET THE OWNER'S PASSWORD AND SIGN IN AS THE OWNER — THE OWNER'S DECISION (red team on f3abf7b,
   2026-10-13, by source).** `POST /users/{id}/password` (and deactivate, unlock, revoke) check only `users.manage`, not
   that the target's role is within the caller's — `POST /users` has that guard ("an admin cannot mint an owner"), the

@@ -178,7 +178,8 @@ DEV_TARGETING = {"prove_audit", "prove_auth", "prove_bills", "prove_daily_report
                  "prove_master_data_gate", "prove_master_write", "prove_revocation",
                  "prove_seller_pricing", "prove_shop_time"}
 SCRATCH_SERVER = {"prove_clock_guard", "prove_year_gate"}
-MOBILE_LIVE = {"prove:forbidden", "prove:products", "prove:users", "prove:login", "prove:loginscreen", "prove:counter"}
+MOBILE_LIVE = {"prove:forbidden", "prove:products", "prove:users", "prove:login", "prove:loginscreen", "prove:counter",
+               "prove:syncfaults"}
 DEFAULT_PRE0018 = BACKUPS / "recycle_pre0018_clean_20260904T150246Z_pre-0018-clean"
 
 EXIT_LINE = re.compile(rb"^([A-Z][A-Z0-9_]*EXIT)=(\d+)\s*$", re.M)

@@ -68,6 +68,7 @@
     "prove:productpicker": "npm run build && node dist/proof/proveProductPicker.js",
     "prove:sellersearch": "npm run build && node dist/proof/proveSellerSearch.js",
     "prove:promptpay":"npm run build && node dist/proof/provePromptPay.js",
+    "prove:syncfaults": "npm run build && node dist/proof/proveSyncFaults.js",
     "prove:all": "python ../tools/prove_all.py"
   },
   "dependencies": {
