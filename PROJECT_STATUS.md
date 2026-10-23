@@ -240,6 +240,22 @@ anchor next pass.
   `E:\recycle-shots\lane-a\owner\` (desktop `b6_owner_row_as_admin.png`; phone `phone2_owner_row_as_admin.png`,
   control `phone3_staff_row_as_admin.png`, on `recycle_walk_a` rebuilt from empty with a per-run owner `boss`). The
   walk's first emulator exited on its own mid-walk (14.3 GB free; cause UNMEASURED); one cold-boot retry held.
+- **H1–H3, AN OUTSIDE REVIEW'S THREE RISKS (ADVISOR-DECIDED 2026-10-23), 2026-10-23.** H1 at `a4bbd07` + `5fee87b`:
+  `prove_tenant_matrix` enumerates `/openapi.json` (63 operations, 41 take a resource id) and reds on any id-taking
+  route without a cell; 60 cells, B's admin and owner against A's ids, A and B read value-for-value in all 22
+  tenant_id tables, an A-control per cell; the pooled connection in process (P3 is the cell a session-level SET
+  reddens) and over a one-connection server. No cross-shop read or write found; a create reusing another shop's
+  client-minted id is a 500 that writes nothing (global primary key; OPEN_ITEMS). Nemesis found five cells green by
+  construction; each fixed (`5fee87b`). H2 at `bb49048`: `prove_money_faults` (100 POSTs on one key, a spent key
+  with another body answered silently with the first bill, the real server killed between commit and response, two
+  payments racing one bill held and released, a two-shift reconciliation with named differences) and mobile
+  `prove:syncfaults` (a phone killed in the ack window and mid-batch, two devices with one shared outbox, real
+  server; added to MOBILE_LIVE). The allocation cap has no database backstop, only the row lock (OPEN_ITEMS). H3 at
+  `5241e50`: the settle drops a local seller's full ID and keeps `id_last4`; older settled rows are minimised on
+  open; `secure_delete` and a post-settle WAL checkpoint take the bytes out of the file (`prove:sellerid`, node:sqlite
+  only — the handset is UNMEASURED). Sign-out measured and NOT changed: it clears only the permission cache.
+  Found by `prove:sellerid` and recorded: a refused local seller's freed code collides with the refused row on the
+  next offline create. Lesson: `lessons/nulling-a-column-does-not-erase-it-from-the-file.md`.
 - **THE `lane-a` BRANCH IS ON GITHUB** (pushed 2026-10-19 alongside main; ADVISOR-DECIDED: leave it). It mirrors work
   already on main — every lane-a commit is fast-forwarded to main after its green gate — and holds nothing main lacks
   at each merge.
