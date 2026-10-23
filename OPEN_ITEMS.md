@@ -43,6 +43,14 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Blocking one real paying shop
 
+- **D1, SIGN-OUT CLEARS LOCAL PERSONAL DATA — DECIDED (ADVISOR-DECIDED 2026-10-23), NOT BUILT; build before the pilot
+  shop.** Sign-out is REFUSED, with a worded reason on screen, while the outbox holds unsynced bills (today's gate
+  already refuses on any owed work — `src/session/signOut.ts` `refused_pending`). With an EMPTY outbox it CLEARS the
+  device's local personal data — cached sellers' phones, any retained full ID (a refused local seller's) — AND the
+  local identity (`local_identity`, which today outlives the session on purpose: App.tsx onSignOut's comment). Today it
+  clears only the permission cache (measured, `npm run prove:sellerid` S7, at `5241e50`). Out of H4/H5 by the
+  decision.
+
 - **A SHOP THAT DOES NOT USE GRADES CANNOT USE THIS SYSTEM — found by the
   P1.8a device pass, 2026-08-17, and it is the widest consequence that pass
   produced.** A seller with no grade PARKS every bill sold against them until
@@ -697,6 +705,13 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   invented.
 
 ## Verification gaps — built, not proven
+
+- **D2, SQLite `secure_delete` ON THE PHONE — DECIDED (ADVISOR-DECIDED 2026-10-23): verify on the emulator in the next
+  walk, and record the result here.** H3 (`5241e50`) sets `PRAGMA secure_delete = ON` and checkpoints the WAL after a
+  seller settles; that a dropped ID's bytes then leave the file is MEASURED ON node:sqlite ONLY (`prove:sellerid` S6).
+  expo-sqlite is a different SQLite build on a different filesystem: whether it honours the pragma and the TRUNCATE
+  checkpoint is UNMEASURED. The walk: settle a phone-created seller, pull the app's database and `-wal` with `run-as`,
+  and search both for the ID's bytes, with an owed seller's ID as the control that must be found.
 
 - **A SYSTEM FONT-SIZE CHANGE MADE WHILE THE APP RUNS CLIPS EVERY TEXT UNTIL THE PROCESS RESTARTS — A2 item 3,
   re-diagnosed 2026-10-11 (lane A, A3), measured. FIXED IN SOURCE AND ON THE EMULATOR; OWNER DEVICES PENDING THE NEXT
@@ -1738,7 +1753,8 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   `npm run prove:sellerid` S7 over a real file: `signOut()` plus App.tsx's permission clear empties `cached_permissions`
   and touches nothing else — `local_sellers` (names, phones, addresses, and a REFUSED row's full ID), `cached_sellers`
   (names, phones, last fours, trucks), `local_bills` and `local_identity` all stay, as `signOut.ts` ClearedSession and
-  App.tsx onSignOut state by design (shop data, not user data). Whether a sign-out should clear any of it is open.
+  App.tsx onSignOut state by design (shop data, not user data). DECIDED 2026-10-23: see D1 under "Blocking one real
+  paying shop".
 
 - **A USED IDEMPOTENCY KEY WITH A DIFFERENT BODY IS ANSWERED WITH THE ORIGINAL BILL, SILENTLY (H2, 2026-10-23, measured).**
   `POST /bills` with a key already spent answers 200 with the FIRST bill — same id, same total — whatever the new body says
