@@ -16,8 +16,10 @@
  *   B6 READ BACK OVER HTTP: GET /bills/{id} says voided with that reason, and the list with
  *      include_voided still has the row (hard rule 5: voided, never deleted)
  *   B7 the default list no longer shows it; "แสดงบิลที่ยกเลิกแล้ว" brings it back, struck through
- *   B8 a reversed range typed into the date fields: the screen's own sentence, NO request sent, and
- *      the shell does not call it a network fault (red team 2026-10-12, finding 1)
+ *   B8 a reversed range typed into the date fields: the screen's own sentence, NO request sent FOR IT,
+ *      and the shell does not call it a network fault (red team 2026-10-12, finding 1)
+ *   B8b the sentence SURVIVES a stale answer: the previous range's list, held and released after the
+ *      reversed range is on screen, neither erases it nor brings rows back (gate 20261023T083140Z)
  *   B9 the server gone: a new range shows NO bills and NO count from the range before it, and says
  *      the load failed (finding 2)
  *   B11 DATES ON SCREEN ARE BUDDHIST-ERA, DAY FIRST (D-5): the date fields DISPLAY `dd/mm/25yy` equal to
@@ -201,20 +203,52 @@ void finish("PROVE_BILLSFLOW", async () => {
     check("B12 each desktop void carries its own fresh UUID key (two voids sent, two different keys)",
       keys.length === 2 && keys.every((k) => typeof k === "string" && uuid.test(k)) && keys[0] !== keys[1], JSON.stringify(keys));
 
-    const listGets = (): number => (server.log().match(/GET \/bills\?[^ ]*from_date/g) ?? []).length;
-    const before8 = listGets();
+    // B8, REWRITTEN 2026-10-23 (gate 20261023T083140Z red twice). The first version typed FIXED dates
+    // -- from 20/10/2569 then to 05/10/2569 -- which on the day it was written made the first step
+    // reversed already; from 2026-10-20 on, "from 20/10" was a VALID range to today, so a list request
+    // went out (gets: 1), and when its answer landed after "to 05/10" it ERASED the sentence
+    // (Bills.tsx load() cleared the notice for an answer to a range no longer on screen). Whether the
+    // sentence survived depended on which arrived first: false in both gate runs, true by hand. Now
+    // the race is DRIVEN, not hoped for: a valid range's answer is HELD, the reversed range is typed,
+    // and only then is the stale answer released -- the sentence must still be there. Dates are
+    // relative (the เมื่อวาน preset, then a `to` of 01/01/2569, before any yesterday this app sees).
+    const listUrls: string[] = [];
+    page.on("request", (r) => { if (r.method() === "GET" && /\/bills\?[^ ]*from_date=/.test(r.url())) listUrls.push(r.url()); });
+    const reversedGets = (): number => listUrls.filter((u) => {
+      const q = new URL(u).searchParams;
+      return (q.get("from_date") ?? "") > (q.get("to_date") ?? "");
+    }).length;
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let heldCount = 0;
+    let delivered = false;
+    await page.route(/\/bills\?.*from_date=/, async (route) => {
+      heldCount += 1;
+      const response = await route.fetch();
+      await held;
+      await route.fulfill({ response });
+      delivered = true;
+    });
     const shell8 = await page.locator(".shell-notice").count();
-    await page.fill('input[name="from"]', "20/10/2569");
-    await page.press('input[name="from"]', "Enter");
-    await page.fill('input[name="to"]', "05/10/2569");
+    await page.click("text=เมื่อวาน");
+    for (let i = 0; i < 200 && heldCount === 0; i += 1) await new Promise((r) => setTimeout(r, 25));
+    await page.fill('input[name="to"]', "01/01/2569");
     await page.press('input[name="to"]', "Enter");
     const said8 = await page.waitForSelector("text=วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น", { timeout: 5_000 }).then(() => true, () => false);
+    release();
+    for (let i = 0; i < 400 && !delivered; i += 1) await new Promise((r) => setTimeout(r, 25));
     await new Promise((r) => setTimeout(r, 1000));
+    const kept8 = (await page.locator("text=วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น").count()) > 0;
+    await page.unroute(/\/bills\?.*from_date=/);
     const offline8 = (await textOf(page)).includes("ติดต่อเซิร์ฟเวอร์ไม่ได้");
     await shot(page, "b3_reversed_range");
-    check("B8 a reversed range: the screen's sentence, no list request for it, no network line in the shell",
-      said8 && !offline8 && (await page.locator("[data-bill]").count()) === 0 && listGets() === before8 && shell8 === 0,
-      JSON.stringify({ said8, offline8, gets: listGets() - before8 }));
+    check("B8 a reversed range: the screen's sentence, no list request FOR IT, no network line in the shell",
+      said8 && !offline8 && (await page.locator("[data-bill]").count()) === 0 && reversedGets() === 0 && shell8 === 0,
+      JSON.stringify({ said8, offline8, reversedGets: reversedGets(), held: heldCount }));
+    check("B8b the sentence SURVIVES a stale answer: the previous range's list, released after the reversed range"
+      + " was typed, does not erase it (nor bring its rows back)",
+      heldCount >= 1 && delivered && kept8 && (await page.locator("[data-bill]").count()) === 0,
+      JSON.stringify({ held: heldCount, delivered, kept8 }));
 
     await page.click("text=วันนี้");
     await page.waitForSelector(`[data-bill="${docA1}"]`, { timeout: 15_000 });

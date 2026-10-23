@@ -9,7 +9,7 @@
  * Voiding is an INLINE confirmation in the detail panel, not a modal
  * (impeccable · operate.md · "Modal as first thought. Modals are usually laziness.").
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { shopDateTime } from "@recycle/shop-time";
 
 import type { ApiOutcome } from "../shared/api";
@@ -58,18 +58,31 @@ export function BillsScreen({ session, onSettle }: Props) {
   const [printing, setPrinting] = useState(false);
   const [listNotice, setListNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  /**
+   * The query the screen last ASKED for -- null while the range on screen is invalid. An answer is
+   * applied only if it answers this; `listed` already keyed the ROWS, but the notice was not keyed,
+   * and an answer for the range before a reversed one erased the reversed-range sentence (gate
+   * 20261023T083140Z, prove:billsflow B8b).
+   */
+  const asked = useRef<string | null>(null);
 
   const load = useCallback(async (f: BillFilter) => {
     const problem = rangeProblem(f);
     if (problem !== null) {
+      asked.current = null;
+      setLoading(false);
       setListNotice(problem);
       return;
     }
     const key = billsQuery(f);
+    asked.current = key;
     setLoading(true);
     const out = await session.authed((t) => session.api.get(t, key, readBillList));
-    setLoading(false);
+    // Every answer still reports the session and the network (a 401 is a 401 whichever range asked);
+    // only the SCREEN's state is reserved for the question on screen.
     onSettle(out.kind);
+    if (asked.current !== key) return;
+    setLoading(false);
     if (out.kind === "ok") {
       setListed({ key, rows: out.value });
       setFailedKey(null);
