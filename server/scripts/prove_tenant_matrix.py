@@ -7,8 +7,9 @@ graph THROUGH THE API as its own owner, so every row attacked is a row the produ
 
 WHAT IS ATTACKED, AND HOW THE LIST IS KEPT HONEST
   E1  every operation in /openapi.json is enumerated and printed. A route "takes a resource id" when
-      it has a path parameter, a query parameter named *_id or `cursor`, or a uuid-typed field
-      anywhere in its request body. EVERY such route must carry at least one matrix cell; one that
+      it has a path parameter, a query parameter named *_id or `cursor`, a uuid-typed field anywhere
+      in its request body, or a body string that names a row by secret or key (`token`, `*_token`,
+      `idempotency_key`). EVERY such route must carry at least one matrix cell; one that
       does not is RED (COVERAGE) -- a route added tomorrow fails this proof until it is attacked.
   M*  per cell, tenant B's ADMIN and then tenant B's OWNER send the request naming tenant A's id
       (the owner as well because the admin lacks roles.manage, so the admin's 403 on that route
@@ -38,12 +39,19 @@ transaction's COMMIT or ROLLBACK; the pool's reset-on-return is SQLAlchemy's def
       script re-executes itself with --serve-pool-one; application_name names the connection), with
       pg_stat_activity read before and after: A's /whoami, A's requests that fail inside their
       transaction (a duplicate-code INSERT, a foreign channel FK, a frozen-reason trigger), then B's
-      /whoami must report B's context, B's lists carry no A marker, and an UNAUTHENTICATED login for
-      tenant B with A's credentials is 401 -- all on the one backend pid.
+      /whoami reports B's context, B's lists carry no A marker, and an UNAUTHENTICATED login for
+      tenant B with A's credentials is 401 -- all on the one backend pid. WHAT THIS BLOCK CAN AND
+      CANNOT SEE (red team on a4bbd07, and the first disproof run agreed): every HTTP request sets
+      its own tenant context at the top of its transaction before it reads anything, and the only
+      no-context paths (clock_guard, the permission catalogue) read tables without RLS -- so no HTTP
+      observable can show a context CARRIED from a previous transaction. The block proves that an
+      errored request leaves the connection usable and the next one correctly scoped; that a
+      context does not carry is P3's, in process, and only P3 reddens under the session-SET disproof.
 
 THE DISPROOFS, RUN BY HAND (2026-10-23):
   - server/app/db.py: `set_config('app.tenant_id', :t, true)` -> `false` (a session-level SET).
-    P3/P5 go red: the no-context transaction on the same backend still carries A.
+    P3 goes red: the no-context transaction on the same backend still carries A and sees 178 rows.
+    Every HTTP cell, the H block included, stays green -- by construction, as said above.
   - RLS off on one table in the scratch (`ALTER TABLE sellers NO FORCE ROW LEVEL SECURITY` and
     `DISABLE ROW LEVEL SECURITY`, as the owner, after provisioning). The sellers cells go red: B's
     PATCH of A's seller is 200 and A's row changed.
@@ -183,6 +191,13 @@ def serve_pool_one(port: int) -> None:
 # ---------------------------------------------------------------------------
 # the route enumeration (E1)
 # ---------------------------------------------------------------------------
+def _is_handle_name(name: str) -> bool:
+    """A body STRING that names a row it does not carry a uuid for: a reservation secret, an
+    idempotency key. Red team on a4bbd07: POST /sellers took another shop's reservation token as a
+    plain `str` and the uuid-only classifier did not ask for a cell on it."""
+    return name == "token" or name.endswith("_token") or name == "idempotency_key"
+
+
 def _has_uuid(schema: Any, comps: dict, seen: set[str]) -> bool:
     if isinstance(schema, dict):
         ref = schema.get("$ref")
@@ -192,6 +207,8 @@ def _has_uuid(schema: Any, comps: dict, seen: set[str]) -> bool:
                 return False
             return _has_uuid(comps[name], comps, seen | {name})
         if schema.get("format") == "uuid":
+            return True
+        if any(_is_handle_name(k) for k in schema.get("properties", {})):
             return True
         return any(_has_uuid(v, comps, seen) for v in schema.values())
     if isinstance(schema, list):
@@ -366,7 +383,14 @@ async def build_graph(client: httpx.AsyncClient, t: Tenant) -> None:
                                                  "password": f"pw-extra-{RUN}-long"}))["user_id"]
     ids["device"] = str(uuid.uuid4())
     res = await call("POST", "/seller-code-reservations", {"device_id": ids["device"]})
-    ids["tokens"] = [r["token"] for r in res.get("reservations", []) if r.get("token")]
+    held = [(r["code"], r["token"]) for r in res.get("reservations", []) if r.get("token")]
+    if len(held) < 2:
+        raise RuntimeError(f"fixture {t.label}: the top-up held {len(held)} reservations, two are needed")
+    ids["tokens"] = [tok for _, tok in held]
+    # ONE reservation SPENT, the way a handset spends it -- so a cross-shop replay of a spent token
+    # meets the arm that answers 200 with a seller row (master.py create_seller, `spent`).
+    ids["res_spent"], ids["res_held"] = held[0], held[1]
+    await call("POST", "/sellers", {"code": held[0][0], "reservation_token": held[0][1], "name": f"ผู้ขายจอง {L}"})
     roles = (await call("GET", "/roles"))["roles"]
     ids["roles"] = {r["code"]: r for r in roles}
     page = await call("GET", "/bills?limit=1")
@@ -623,8 +647,16 @@ def build_cells(A: Tenant, B: Tenant) -> list[Cell]:
         Cell("GET /sellers/{seller_id}/history", "A's seller's history", "GET",
              f"/sellers/{a['seller']}/history",
              control=("GET", f"/sellers/{a['seller']}/history", None, (200,), "read")),
-        Cell("POST /sellers", "seller spending A's reservation token", "POST", "/sellers",
-             {"reservation_token": a["tokens"][0] if a["tokens"] else "none", "name": f"x {RUN}"}),
+        # Controls: A's own owner reaches BOTH arms with the same bodies -- the held one spends (201, a
+        # write the snapshot sees), the spent one replays (200 with A's seller row, carrying its id).
+        Cell("POST /sellers", "spend A's HELD reservation (its code + token)", "POST", "/sellers",
+             {"code": a["res_held"][0], "reservation_token": a["res_held"][1], "name": f"x {RUN}"},
+             control=("POST", "/sellers", {"code": a["res_held"][0], "reservation_token": a["res_held"][1],
+                                           "name": f"ผู้ขายจองสอง A-{RUN}"}, (201,), "write")),
+        Cell("POST /sellers", "replay A's SPENT reservation (its code + token)", "POST", "/sellers",
+             {"code": a["res_spent"][0], "reservation_token": a["res_spent"][1], "name": f"x {RUN}"},
+             control=("POST", "/sellers", {"code": a["res_spent"][0], "reservation_token": a["res_spent"][1],
+                                           "name": f"x {RUN}"}, (200,), "read")),
         Cell("POST /seller-code-reservations", "top up A's device (OWN)", "POST", "/seller-code-reservations",
              {"device_id": a["device"]}, kind="own", attackers=("admin",)),
         # --- people and roles
@@ -648,12 +680,17 @@ def build_cells(A: Tenant, B: Tenant) -> list[Cell]:
              control=("PUT", f"/roles/{a['roles']['staff']['id']}/permissions", {"permissions": staff_perms},
                       (200,), "write")),
         # --- sign-in: the identity claim itself (no token)
+        # A FAILED SIGN-IN IS RECORDED, BY DESIGN, UNDER THE SHOP THE REQUEST NAMED (migration 0016,
+        # login_guard.record_failed_attempt) -- so these cells are not "nothing written": they assert
+        # the exact write (one failed_login_attempts row, in the NAMED shop, the submitted username,
+        # never the password) and nothing anywhere else. Red team on a4bbd07 found the first version
+        # excluding that table and printing "nothing was written anywhere" over the rows.
         Cell("POST /auth/login", "B's admin signing in to A", "POST", "/auth/login",
              {"tenant_id": str(A.id), "username": B.names["admin"], "password": B.pw["admin"]},
-             anon=True, attackers=("anon",), exclude=frozenset({"failed_login_attempts"})),
+             kind="login", anon=True, attackers=("anon",)),
         Cell("POST /auth/login", "A's owner's credentials under B", "POST", "/auth/login",
              {"tenant_id": str(B.id), "username": A.names["owner"], "password": A.pw["owner"]},
-             anon=True, attackers=("anon",), exclude=frozenset({"failed_login_attempts"})),
+             kind="login", anon=True, attackers=("anon",)),
     ]
     return cells
 
@@ -677,6 +714,24 @@ async def run_matrix(client: httpx.AsyncClient, pg: Pg, A: Tenant, B: Tenant, ce
         b_same = not diff(before_b, after_b)
         leaks = sorted({m for body in bodies for m in leaked(body, A.markers, sent)})
         tag = f"{c.route} -- {c.label}"
+        if c.kind == "login":
+            named_a = c.body["tenant_id"] == str(A.id)
+            before_n, after_n = (before_a, after_a) if named_a else (before_b, after_b)
+            before_o, after_o = (before_b, after_b) if named_a else (before_a, after_a)
+            added = sorted(set(after_n.get("failed_login_attempts", [])) - set(before_n.get("failed_login_attempts", [])))
+            shape = (diff(before_n, after_n) == ["failed_login_attempts"] and len(added) == 1
+                     and f'"{c.body["username"]}"' in added[0] and c.body["password"] not in added[0])
+            check(all(s == 401 for s in statuses.values()), f"{tag}: refused {statuses}")
+            check(shape, f"{tag}: the ONLY write is one failed_login_attempts row in the NAMED shop"
+                         f" ({'A' if named_a else 'B'}), carrying the submitted username and not the password"
+                         f" (changed {diff(before_n, after_n)}, rows added {len(added)})")
+            check(not diff(before_o, after_o), f"{tag}: the OTHER shop's {rows_in(before_o)} rows are value-equal"
+                                               + (f" -- CHANGED {diff(before_o, after_o)}" if diff(before_o, after_o) else ""))
+            leaks = sorted({m for body in bodies for m in leaked(body, A.markers, sent)})
+            check(not leaks, f"{tag}: no A marker in the responses")
+            # In the table: A= reads "the shop-side outcome is exactly the designed one" for a login cell.
+            rows.append(Row(c.route, c.label, statuses, shape and not diff(before_o, after_o), None, "-"))
+            continue
         if c.kind == "own":
             ok_status = all(200 <= s < 300 for s in statuses.values())
             check(ok_status, f"{tag}: B's own write succeeded {statuses}")
@@ -735,18 +790,26 @@ AMBIENT = ["/bills", "/payments", "/sellers?include_inactive=true", "/products?i
 
 async def run_ambient(client: httpx.AsyncClient, A: Tenant, B: Tenant) -> None:
     today = date.today().isoformat()
+    # B OPENS A SHIFT FIRST, so /shifts/current answers a shift rather than 404 -- and every ambient
+    # read must be a 2xx: a refusal body carries no marker by construction, so a 4xx here would be a
+    # green that inspected nothing (red team on a4bbd07: /reports/summary was a 422 for a missing
+    # `by`, /shifts/current a 404). The summary is read BY PRODUCT: its rows are keyed by product id,
+    # which is a marker, so an aggregate mixing A's purchases into B's would name A's product.
+    r = await client.post("/shifts", headers=auth(B.tok["owner"]), json={"id": str(uuid.uuid4()), "opening_float": "1.00"})
+    check(r.status_code == 201, f"AMBIENT setup: B opens a shift ({r.status_code})")
+    reports = [f"/reports/daily?date={today}", f"/reports/summary?from_date={today}&to_date={today}&by=product"]
     # A free-text key B ITSELF wrote in an OWN cell (A's idempotency key, reused) is B's own data
     # now, so it is exempt here; A's row ids stay markers, and they would name a leaked A row.
-    for path in AMBIENT + [f"/reports/daily?date={today}",
-                           f"/reports/summary?from_date={today}&to_date={today}"]:
+    for path in AMBIENT + reports:
         r = await client.get(path, headers=auth(B.tok["admin"]))
         leaks = leaked(r.text, A.markers - B_WROTE, path)
-        check(r.status_code < 500 and not leaks,
+        check(200 <= r.status_code < 300 and not leaks,
               f"AMBIENT GET {path} as B's admin: {r.status_code}, no A marker"
               + (f" -- LEAKED {leaks[:4]}" if leaks else ""))
-    r = await client.get("/sellers", headers=auth(A.tok["owner"]))
-    check(A.ids["seller"] in r.text, "AMBIENT control: A's own GET /sellers carries A's seller id (the"
-                                     " marker check finds what it looks for)")
+    for path in ("/sellers", reports[1]):
+        r = await client.get(path, headers=auth(A.tok["owner"]))
+        check(r.status_code == 200 and any(m in r.text for m in (A.ids["seller"], A.ids["product"])),
+              f"AMBIENT control: A's own GET {path} carries A's id (the marker check finds what it looks for)")
 
 
 # ---------------------------------------------------------------------------
@@ -810,27 +873,44 @@ async def pooled_in_process(pg: Pg, A: Tenant, B: Tenant) -> None:
               f"P4: B on the same backend (pid {pid4}) carries B's context, sees A's seller {s4a}, its own {s4b}")
 
         cancelled = ""
+        cpid = None
         try:
             async with db.tenant_connection(A.id) as c:
+                cpid = (await c.execute(text("SELECT pg_backend_pid()"))).scalar_one()
                 await asyncio.wait_for(c.execute(text("SELECT pg_sleep(5)")), timeout=0.5)
         except (asyncio.TimeoutError, TimeoutError) as exc:
             cancelled = type(exc).__name__
         except DBAPIError as exc:
             cancelled = f"DBAPIError {type(exc.orig).__name__ if exc.orig else ''}"
-        check(bool(cancelled), f"P5: A's transaction was CANCELLED mid-statement ({cancelled})")
+        check(bool(cancelled), f"P5: A's transaction (backend pid {cpid}) was CANCELLED mid-statement ({cancelled})")
         async with db.tenant_connection(None) as c:
             pid6, t6, a6, _ = (await c.execute(guc_sql)).one()
             n6 = await visible_everywhere(c)
-        check(t6 in ("", None) and a6 in ("", None) and n6 == 0,
-              f"P6: the next no-context transaction (pid {pid6}; {'same' if pid6 == pid1 else 'a NEW'}"
-              f" backend after the cancel) carries tenant={t6!r} and sees {n6} rows")
+        # P6 MUST BE ABOUT THE CANCELLED CONNECTION, not about whichever one the pool hands out next
+        # (red team on a4bbd07: the first version read a fresh backend and passed by construction).
+        # Two honest outcomes: the SAME backend is reused and carries nothing of A, or the cancelled
+        # backend was DISCARDED -- gone from pg_stat_activity, so nothing of it can ever be reused.
+        gone = False
+        for _ in range(40):
+            if not await pg.scalar("SELECT count(*) FROM pg_stat_activity WHERE pid = :p", p=cpid):
+                gone = True
+                break
+            await asyncio.sleep(0.05)
+        if pid6 == cpid:
+            check(t6 in ("", None) and a6 in ("", None) and n6 == 0,
+                  f"P6: the cancelled backend {cpid} was REUSED and carries tenant={t6!r}, sees {n6} rows")
+        else:
+            check(gone and t6 in ("", None) and n6 == 0,
+                  f"P6: the cancelled backend {cpid} was DISCARDED (gone from pg_stat_activity: {gone}); the next"
+                  f" transaction runs on a new backend {pid6}, tenant={t6!r}, {n6} rows")
     finally:
         await one.dispose()
         db.engine = original
 
 
 async def pooled_over_http(pg: Pg, scratch: str, A: Tenant, B: Tenant) -> None:
-    header("H  POOLED CONNECTION, over HTTP: a second server with ONE pooled connection")
+    header("H  POOLED CONNECTION, over HTTP: errored requests leave the ONE connection usable and the next"
+           " request applies its own context (context SCOPING is P3's -- see the docstring)")
     os.environ["POOL_ONE_APP_NAME"] = POOL_ONE_APP_NAME
     port = free_port()
     base = f"http://127.0.0.1:{port}"
