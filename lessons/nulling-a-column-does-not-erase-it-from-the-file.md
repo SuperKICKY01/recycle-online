@@ -43,6 +43,17 @@ which happens at a close, so "after close" looks clean while the running app sti
 Measured on node:sqlite only. The handset's expo-sqlite build, its filesystem, and anything below
 SQLite (flash wear-levelling, the OS's own caches, a backup) are UNMEASURED and not covered by this.
 
+**Amended 2026-10-23 (D2, emulator walk, measured): the guards erase the CELL THEY TOUCH, NOT EVERY
+OLD COPY OF IT.** On the emulator's expo-sqlite the guards held for the ID they were built for: it was
+in the WAL before the settle and nowhere in the file, WAL or shm after. But a seeded cached seller's phone
+had a SECOND copy of its whole row in the unused space of the `cached_sellers` ROOT page, which is now an
+interior b-tree page. D1's sign-out cleared the live row (no table row holds the phone, freelist 0), and
+the stale copy stayed. A table that is rewritten wholesale (delete and re-insert) and grows past one page
+leaves such copies; a proof whose table fits in one leaf page cannot see them. So a byte-level claim
+needs a fixture at REALISTIC SIZE, and "erased" holds only for the cells the statement wrote. Clearing
+every old copy is a rebuild of the file (VACUUM, UNMEASURED), not a pragma. Where recorded:
+`OPEN_ITEMS.md § Verification gaps` D2.
+
 ## Where proven
 
 `mobile/src/proof/proveSellerIdLocal.ts` S6 (with its three disproofs in the header);
