@@ -25,7 +25,8 @@
  *   2. STOP THE SYNC LOOP — before anything else changes, so no pass can be
  *      mid-flight with a token that is about to be forgotten;
  *   3. CLEAR THE KEYSTORE, and read the answer;
- *   4. only if that succeeded, clear the in-memory session state;
+ *   4. only if that succeeded, clear the device's personal data and the signed-in
+ *      identity (D1, `SqlitePersonalDataStore`), and then the in-memory session state;
  *   5. only then does the screen render signed out.
  *
  * Step 3 is where this used to be able to lie. `SecureTokenStore.clear()`
@@ -199,8 +200,12 @@ export type SignOutOutcome =
   | { kind: "refused_pending"; owed: OwedByKind; failed: number }
   /** The keystore refused to forget the token. STILL SIGNED IN. */
   | { kind: "failed"; failure: SignOutFailure }
-  /** Done. The caller must now apply CLEARED_SESSION. */
-  | { kind: "signed_out"; failed: number };
+  /**
+   * Done. The caller must now apply CLEARED_SESSION. `personalData` says whether the device's
+   * personal data went with it (D1) -- a "failed" here is still signed out, because the keystore
+   * already forgot the token, and the screen must say the data stayed.
+   */
+  | { kind: "signed_out"; failed: number; personalData: "cleared" | "failed" };
 
 /**
  * EVERY SESSION-DERIVED VALUE, AND WHAT IT BECOMES.
@@ -211,7 +216,9 @@ export type SignOutOutcome =
  * under the next user's session. The proof asserts over this constant, so "what
  * sign-out clears" is a thing that can be read, and be wrong, in one place.
  *
- * WHAT IS DELIBERATELY ABSENT: products, sellers, prices and the master cache.
+ * WHAT IS DELIBERATELY ABSENT: products, sellers, prices and the master cache
+ * (the sellers' phones and ID numbers in the database are cleared since D1, by
+ * SignOutDeps.personalData -- the rows the picker searches stay).
  * That is SHOP data, not user data — it describes the tenant, not the person —
  * and dropping it would strand the next offline morning with no products and no
  * sellers, which is exactly the reasoning App.tsx already gives for keeping an
@@ -347,6 +354,12 @@ export interface SignOutDeps {
   /** Pause/resume the 4-second sync tick. Called with true BEFORE the clear. */
   setSyncPaused: (paused: boolean) => void;
   tokens: Pick<TokenStore, "clear">;
+  /**
+   * THE DEVICE'S PERSONAL DATA AND THE SIGNED-IN IDENTITY (D1, ADVISOR-DECIDED 2026-10-23) --
+   * `SqlitePersonalDataStore.clear`, whose header lists every table cleared and kept. Required, so
+   * a caller that forgets it is a compile error rather than a sign-out that quietly keeps the data.
+   */
+  personalData: { clear: () => Promise<ClearOutcome> };
   /** Null before the engine has been constructed (a boot that has not finished). */
   engine: { resetAfterSignOut: () => void } | null;
 }
@@ -437,8 +450,14 @@ export async function signOut(deps: SignOutDeps): Promise<SignOutOutcome> {
     return { kind: "failed", failure: { kind: "clear_failed", reason: outcome.reason } };
   }
 
+  // THE PERSONAL DATA AND THE IDENTITY, only now (D1). Not before the keystore: a clear that ran
+  // and was then followed by a keystore refusal would leave the person SIGNED IN with no identity,
+  // and every row they wrote next would carry no owner and park. The gate above has already
+  // refused if this person owes anything; the clear itself keeps every owed row of anyone's.
+  const personal = await deps.personalData.clear();
+
   // In-memory state last, and only now. The engine's send gate is device-global
   // and belongs to the departing account.
   deps.engine?.resetAfterSignOut();
-  return { kind: "signed_out", failed: deps.failed };
+  return { kind: "signed_out", failed: deps.failed, personalData: personal.kind };
 }

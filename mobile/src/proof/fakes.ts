@@ -1434,3 +1434,12 @@ export class ScriptedSellerTransport implements SellerCreateTransport {
 export function owedWith(over: Partial<OwedByKind>): OwedByKind {
   return { ...NOTHING_OWED, ...over };
 }
+
+/**
+ * A personal-data clear that touches nothing and reports success (D1). For the sign-out proofs
+ * whose subject is the session, the keystore or the gate, over no database: what the clear does to
+ * a real file is `prove:signoutclear`'s, and `prove:sellerstore` S1 runs the real one.
+ */
+export const CLEARS_NOTHING = {
+  clear: (): Promise<{ kind: "cleared" }> => Promise.resolve({ kind: "cleared" }),
+};

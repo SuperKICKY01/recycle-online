@@ -81,6 +81,7 @@ import { createLocalBill } from "../sync/createBill.js";
 import { SyncEngine } from "../sync/engine.js";
 import type { Draft } from "../cart/types.js";
 import {
+  CLEARS_NOTHING,
   ExpiredSessionTransport,
   FakeClock,
   FakeServer,
@@ -174,6 +175,7 @@ async function s1RefusedWhilePending(): Promise<void> {
       paused = p;
     },
     tokens,
+    personalData: CLEARS_NOTHING,
     engine: null,
   });
 
@@ -217,6 +219,7 @@ async function s1RefusedWhilePending(): Promise<void> {
     failed: 2,
     setSyncPaused: () => undefined,
     tokens: new MemoryTokenStore("a-token"),
+    personalData: CLEARS_NOTHING,
     engine: null,
   });
   check(
@@ -258,6 +261,7 @@ async function s2SignedOut(): Promise<void> {
     failed: 0,
     setSyncPaused: (p) => paused.push(p),
     tokens,
+    personalData: CLEARS_NOTHING,
     engine,
   });
 
@@ -419,6 +423,7 @@ async function s3ClearFails(): Promise<void> {
     failed: 0,
     setSyncPaused: (p) => paused.push(p),
     tokens,
+    personalData: CLEARS_NOTHING,
     engine,
   });
 
@@ -533,6 +538,7 @@ async function s4NoRequestsAfterwards(): Promise<void> {
         paused = p;
       },
       tokens,
+      personalData: CLEARS_NOTHING,
       engine,
     });
     check("signed out", outcome.kind === "signed_out", outcome.kind);
@@ -638,6 +644,7 @@ async function s4bInFlightPass(): Promise<void> {
         paused = p;
       },
       tokens: new MemoryTokenStore("a-token"),
+      personalData: CLEARS_NOTHING,
       engine,
     });
     order.push(`signOut:${outcome.kind}`);
@@ -788,6 +795,7 @@ async function s8SendForbiddenCleared(): Promise<void> {
       failed: 0,
       setSyncPaused: () => undefined,
       tokens: new MemoryTokenStore("a-token"),
+      personalData: CLEARS_NOTHING,
       engine,
     });
     check("signed out", outcome.kind === "signed_out", outcome.kind);
@@ -923,6 +931,7 @@ async function s5DraftSurvives(): Promise<void> {
       failed: 0,
       setSyncPaused: () => undefined,
       tokens: new MemoryTokenStore("a-token"),
+      personalData: CLEARS_NOTHING,
       engine: null,
     });
     check("signed out", outcome.kind === "signed_out", outcome.kind);
@@ -1349,6 +1358,7 @@ async function s9SessionDrivesTheSheet(): Promise<void> {
         paused = p;
       },
       tokens,
+      personalData: CLEARS_NOTHING,
       engine,
     });
     check(
@@ -1448,6 +1458,7 @@ async function s9SessionDrivesTheSheet(): Promise<void> {
       failed: 0,
       setSyncPaused: () => undefined,
       tokens: new MemoryTokenStore("a-token"),
+      personalData: CLEARS_NOTHING,
       engine,
     });
     check(

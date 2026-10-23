@@ -58,7 +58,7 @@ import type { SignOutOutcome } from "../session/signOut.js";
 import { MemoryTokenStore } from "../session/tokenStore.js";
 import { createLocalBill } from "../sync/createBill.js";
 import { NOTHING_OWED } from "../sync/outbox.js";
-import { owedWith } from "./fakes.js";
+import { CLEARS_NOTHING, owedWith } from "./fakes.js";
 import { statusNotice } from "../sync/statusNotice.js";
 import type { Clock, IdSource, LocalBill, RowOwner, UnsentBreakdown } from "../sync/types.js";
 
@@ -361,6 +361,7 @@ async function s4dSignOut(): Promise<void> {
     failed: 0,
     setSyncPaused: () => undefined,
     tokens: new MemoryTokenStore("a-token"),
+    personalData: CLEARS_NOTHING,
     engine: { resetAfterSignOut: () => undefined },
   });
   check(
@@ -384,6 +385,7 @@ async function s4dSignOut(): Promise<void> {
     failed: 0,
     setSyncPaused: () => undefined,
     tokens: new MemoryTokenStore("a-token"),
+    personalData: CLEARS_NOTHING,
     engine: { resetAfterSignOut: () => undefined },
   });
   check(

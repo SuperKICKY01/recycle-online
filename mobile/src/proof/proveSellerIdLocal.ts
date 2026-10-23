@@ -22,9 +22,10 @@
  *   S6  THE BYTES OF THE FILE: after a settle and close, the dropped ID's bytes are searched for in
  *       the database file (and any -wal), with a control -- an owed seller's ID in the same file
  *       must be FOUND by the same search.
- *   S7  SIGN-OUT, MEASURED NOT CHANGED: signOut() plus the App's permission clear over a device
- *       holding a settled seller, a refused seller, cached sellers and a synced bill -- what each
- *       table still holds afterwards is printed, and pinned as today's behaviour.
+ *   S7  SIGN-OUT (D1 since 2026-10-23; it pinned the old behaviour until then): signOut() with the
+ *       real SqlitePersonalDataStore plus the App's permission clear, over a device holding a settled
+ *       seller, a refused seller, cached sellers and a synced bill -- what each table still holds
+ *       afterwards is printed; table by table and its disproofs are `prove:signoutclear`'s.
  *
  * THE DISPROOFS, RUN BY HAND (2026-10-23):
  *   - markSellerCreated no longer sets `id_number = NULL` -> S1, S2's settle, S3 and both S6 cells
@@ -43,6 +44,7 @@ import { SqliteLocalSellerStore } from "../adapters/sqlite/SqliteLocalSellerStor
 import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { SqliteMasterStore } from "../adapters/sqlite/SqliteMasterStore.js";
 import { SqlitePermissionStore } from "../adapters/sqlite/SqlitePermissionStore.js";
+import { SqlitePersonalDataStore } from "../adapters/sqlite/SqlitePersonalDataStore.js";
 import { localPickerSeller, mergeSellersForPicker } from "../cart/pickerSellers.js";
 import { signOut } from "../session/signOut.js";
 import { buildLocalBill } from "../sync/createBill.js";
@@ -257,7 +259,7 @@ async function s6(dir: string): Promise<void> {
 }
 
 async function s7(dir: string): Promise<void> {
-  header("S7  SIGN-OUT, MEASURED (not changed): what the device still holds afterwards");
+  header("S7  SIGN-OUT (D1): what the device still holds afterwards");
   const d = await device(dir, "signout");
   await create(d, "so-settled", "ผู้ขายยืนยัน", "1-0000-00000-00-1");
   await d.sellers.claimSellerCreate("so-settled", NOW);
@@ -302,6 +304,7 @@ async function s7(dir: string): Promise<void> {
   const out = await signOut({
     owed: NOTHING_OWED, failed: 0, setSyncPaused: () => undefined,
     tokens: { clear: () => { cleared += 1; return Promise.resolve({ kind: "cleared" as const }); } },
+    personalData: new SqlitePersonalDataStore(d.driver),
     engine: null,
   });
   // App.tsx's sign-out handler then clears the permission cache beside the session (App.tsx onSignOut).
@@ -314,11 +317,13 @@ async function s7(dir: string): Promise<void> {
   check("S7: the measurement saw the device's data before sign-out (the census is not empty)",
     before.local_sellers === 2 && before.cached_sellers === 2 && before.local_bills === 1 && before.cached_permissions === 1);
   check("S7: sign-out ran and cleared the keystore once", out.kind === "signed_out" && cleared === 1);
-  check("S7 TODAY: sign-out clears the permission cache and NOTHING else on this list -- sellers (one refused row"
-    + " still holding a full ID and both addresses), cached sellers with phones, bills and the identity all stay",
-    after.cached_permissions === 0 && after.local_sellers === 2 && after.local_sellers_with_full_id === 1
-      && after.local_sellers_with_address === 2 && after.cached_sellers_with_phone === 2 && after.local_bills === 1
-      && after.local_identity === 1,
+  check("S7 (D1): sign-out clears the permission cache, the identity, every phone, address and full ID, and the"
+    + " refused seller's row; the settled seller, both cached sellers and the bill stay",
+    out.kind === "signed_out" && out.personalData === "cleared"
+      && after.cached_permissions === 0 && after.local_identity === 0 && after.local_sellers === 1
+      && after.local_sellers_with_full_id === 0 && after.local_sellers_with_address === 0
+      && after.local_sellers_with_phone === 0 && after.cached_sellers === 2 && after.cached_sellers_with_phone === 0
+      && after.local_bills === 1,
     JSON.stringify(after));
   await d.driver.close();
 }

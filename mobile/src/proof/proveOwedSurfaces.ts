@@ -94,7 +94,7 @@ import { OutboxRunner } from "../sync/outboxRunner.js";
 import type { SellerCreateOutcome, SellerCreateTransport } from "../sync/sellerCreate.js";
 import { statusNotice } from "../sync/statusNotice.js";
 import type { StatusInput } from "../sync/statusNotice.js";
-import { FakeClock, FakeServer, OnlineTransport, owedWith, PROOF_OWNER, SeqIds } from "./fakes.js";
+import { CLEARS_NOTHING, FakeClock, FakeServer, OnlineTransport, owedWith, PROOF_OWNER, SeqIds } from "./fakes.js";
 
 let failures = 0;
 
@@ -289,6 +289,7 @@ async function gate(owed: OwedByKind, failed = 0): Promise<string> {
     failed,
     setSyncPaused: () => undefined,
     tokens: new MemoryTokenStore("a-token"),
+    personalData: CLEARS_NOTHING,
     engine: { resetAfterSignOut: () => undefined },
   });
   return outcome.kind;

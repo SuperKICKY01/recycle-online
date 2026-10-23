@@ -107,6 +107,24 @@ const NEEDS_NETWORK = "การเข้าสู่ระบบครั้ง
 const THE_OWNER = "เจ้าของร้าน";
 
 /**
+ * WHAT A SIGN-OUT ERASES (D1), in the seller form's own field names (app/AddSellerSheet.tsx) so the
+ * operator recognises the fields they typed. The same noun in both sentences below.
+ */
+const SELLER_PERSONAL = "เบอร์โทร ที่อยู่ และเลขบัตรประชาชนหรือเลขที่เอกสารของผู้ขาย";
+const PERSONAL_DATA_LEAVES = `${SELLER_PERSONAL} จะถูกลบออกจากเครื่องนี้`;
+
+/**
+ * THE STATUS LINE AFTER A COMPLETED SIGN-OUT. Exported so the proof reads what App.tsx renders.
+ * A failed clear is still a sign-out -- the keystore has already forgotten the token -- so it says
+ * both: the person IS signed out, and the data is STILL on the phone, with who to tell.
+ */
+export function signedOutStatus(personalData: "cleared" | "failed"): string {
+  return personalData === "cleared"
+    ? "ออกจากระบบแล้ว"
+    : `ออกจากระบบแล้ว แต่ลบ${SELLER_PERSONAL}ออกจากเครื่องไม่สำเร็จ — ต้องแจ้ง${THE_OWNER}`;
+}
+
+/**
  * ONE SENTENCE PER KIND OF OWED WORK, AND THE TABLE IS TOTAL OVER `OutboxKind`.
  *
  * WHY A TABLE RATHER THAN A COUNT. `มีบิลรอส่ง N ใบ` was the only
@@ -160,14 +178,18 @@ function owedLines(owed: OwedByKind): readonly string[] {
     .map((kind) => OWED_LINE[kind](owed[kind]));
 }
 
-function failedLine(failed: number): readonly string[] {
+function failedLine(failed: number, refusing: boolean): readonly string[] {
   if (failed <= 0) return [];
   // Named, not blocking. These bills never drain, so refusing to sign out over
   // them would make sign-out impossible forever on this device — but they ARE
   // money the server has no record of, so they must not leave the screen either.
+  //
+  // "ออกจากระบบได้" only on the card that offers the sign-out (D1, impeccable clarify): under the
+  // refusal's title "ยังออกจากระบบไม่ได้" it contradicted the sheet's own ruling. The bills stay
+  // on the phone either way -- a sign-out never clears local_bills.
   return [
     `มีบิลที่ระบบไม่รับ ${String(failed)} ใบค้างอยู่ในเครื่อง` +
-      ` — ออกจากระบบได้ แต่ต้องแจ้งสำนักงาน`,
+      (refusing ? " — ต้องแจ้งสำนักงาน" : " — ออกจากระบบได้ แต่ต้องแจ้งสำนักงาน"),
   ];
 }
 
@@ -235,7 +257,7 @@ export function signOutCard(input: SignOutCardInput): SignOutCard {
         lines: [
           ...owedLines(input.owed),
           "แอปเวอร์ชันนี้เก่าเกินไป — งานที่ค้างอยู่ยังอยู่ครบ แต่จะส่งได้หลังอัปเดตแอป",
-          ...failedLine(input.failed),
+          ...failedLine(input.failed, true),
         ],
         actions: [{ kind: "dismiss", label: "ปิด" }],
       };
@@ -290,7 +312,7 @@ export function signOutCard(input: SignOutCardInput): SignOutCard {
               `${NEEDS_NETWORK}อยู่แล้ว และเมื่อเชื่อมต่อได้ ระบบจะส่งให้เองภายในไม่กี่วินาที`,
               "รอให้ส่งครบก่อน แล้วจึงออกจากระบบได้",
             ]),
-        ...failedLine(input.failed),
+        ...failedLine(input.failed, true),
       ],
       // A message naming an exit the operator cannot take from where they are
       // standing is half a message. That is statusNotice.ts's argument for
@@ -316,8 +338,12 @@ export function signOutCard(input: SignOutCardInput): SignOutCard {
     lines: [
       "บิลทั้งหมดส่งครบแล้ว",
       NEEDS_NETWORK,
-      "ข้อมูลสินค้าและผู้ขายจะยังอยู่ในเครื่อง",
-      ...failedLine(input.failed),
+      // D1: what the tap ERASES, then what it keeps -- said before the tap, because it cannot be
+      // undone from this phone. It replaced "ข้อมูลสินค้าและผู้ขายจะยังอยู่ในเครื่อง", which became
+      // half false the day the phones and ID numbers started leaving with the person.
+      PERSONAL_DATA_LEAVES,
+      "รายชื่อผู้ขาย สินค้า และบิล ยังอยู่ในเครื่อง",
+      ...failedLine(input.failed, false),
     ],
     actions: [
       { kind: "confirm_sign_out", label: "ออกจากระบบ" },

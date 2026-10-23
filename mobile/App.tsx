@@ -61,6 +61,7 @@ import { SqliteMasterStore } from "./src/adapters/sqlite/SqliteMasterStore";
 import { SqliteShopStore } from "./src/adapters/sqlite/SqliteShopStore";
 import { SqliteShopPolicyStore } from "./src/adapters/sqlite/SqliteShopPolicyStore";
 import { SqlitePermissionStore } from "./src/adapters/sqlite/SqlitePermissionStore";
+import { SqlitePersonalDataStore } from "./src/adapters/sqlite/SqlitePersonalDataStore";
 import {
   cartTotal,
   changeSeller,
@@ -90,7 +91,7 @@ import {
   signOut,
 } from "./src/session/signOut";
 import type { SignOutFailure } from "./src/session/signOut";
-import { signOutCard } from "./src/session/signOutNotice";
+import { signedOutStatus, signOutCard } from "./src/session/signOutNotice";
 import type { SignOutAction } from "./src/session/signOutNotice";
 import { SignOutSheet } from "./app/SignOutSheet";
 import {
@@ -1000,6 +1001,8 @@ function AppInner() {
   /** The shop's counter policy (STRUCTURE.md 1.4), refreshed beside the branch. */
   const shopPolicyStoreRef = useRef<SqliteShopPolicyStore | null>(null);
   const permissionStoreRef = useRef<SqlitePermissionStore | null>(null);
+  /** What a sign-out erases from the database (D1) -- the store's header lists it table by table. */
+  const personalDataStoreRef = useRef<SqlitePersonalDataStore | null>(null);
   const masterStoreRef = useRef<SqliteMasterStore | null>(null);
   /**
    * The SAME `SqliteLocalSellerStore` instance the engine holds, captured so the
@@ -1201,7 +1204,9 @@ function AppInner() {
         // The permission cache (server migration 0019), on the SAME driver: what
         // the server last said this user may do, read below before any network.
         const permissionStore = new SqlitePermissionStore(driver);
+        const personalDataStore = new SqlitePersonalDataStore(driver);
         if (cancelled) return;
+        personalDataStoreRef.current = personalDataStore;
         billStoreRef.current = billStore;
         draftStoreRef.current = draftStore;
         masterStoreRef.current = masterStore;
@@ -3045,14 +3050,13 @@ function AppInner() {
    * the CACHE STAMP; a non-empty list has not been through a device sign-out.
    * NOT confirmed on iOS, and no release build exists on either platform.
    *
-   * AND THE LOCAL IDENTITY IS NOT CLEARED EITHER — the one absence here that is
-   * NOT permanent, so it is written down rather than left to be inferred.
-   * SqliteIdentityStore.clear() exists, it belongs to a deliberate sign-out, and
-   * it is called from nowhere at this commit. Calling it now would strand rows:
-   * the refusal that has to guard the clearing — a sign-out that will not
-   * proceed while unsent bills carry an owner this device is about to forget —
-   * does not exist yet, and `refused_pending` above counts bills, not owners.
-   * So the identity outlives the session on purpose until that guard lands.
+   * SUPERSEDED BY D1 (ADVISOR-DECIDED 2026-10-23): the local identity and the
+   * sellers' phones, addresses and ID numbers ARE cleared now, inside signOut()
+   * after the keystore (`SqlitePersonalDataStore`, whose header lists every table
+   * cleared and kept). The guard this comment waited for exists: `owed` is this
+   * person's work of every kind, and every row already carries its own owner
+   * pair, so forgetting the identity strands nothing. The seller LIST, products
+   * and the open draft stay, for the reason above.
    */
   const onSignOut = useCallback(async () => {
     setBusy(true);
@@ -3072,6 +3076,10 @@ function AppInner() {
           syncPausedRef.current = paused;
         },
         tokens: tokenStoreRef.current,
+        // D1. A database not yet open reports a failure rather than pretending it cleared.
+        personalData: personalDataStoreRef.current ?? {
+          clear: () => Promise.resolve({ kind: "failed" as const, reason: "database not open" }),
+        },
         engine: engineRef.current,
       });
 
@@ -3124,9 +3132,13 @@ function AppInner() {
         dailyOpen: () => sheet("close_every_sheet"),
       });
       setSignOutFailure(null);
+      // The seller list in memory was read before the clear and still holds the phones: re-read it
+      // from the cache the clear just wrote (D1).
+      const master = masterStoreRef.current;
+      if (master !== null) setSellers((await master.load()).sellers);
       // No separate close for the sign-out sheet: the setter above emptied the
       // whole stack, and this sheet was in it.
-      setStatus("ออกจากระบบแล้ว");
+      setStatus(signedOutStatus(outcome.personalData));
     } finally {
       setBusy(false);
     }

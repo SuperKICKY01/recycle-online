@@ -43,13 +43,23 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Blocking one real paying shop
 
-- **D1, SIGN-OUT CLEARS LOCAL PERSONAL DATA — DECIDED (ADVISOR-DECIDED 2026-10-23), NOT BUILT; build before the pilot
-  shop.** Sign-out is REFUSED, with a worded reason on screen, while the outbox holds unsynced bills (today's gate
+- **D1, SIGN-OUT CLEARS LOCAL PERSONAL DATA — DECIDED (ADVISOR-DECIDED 2026-10-23); BUILT the same day, see the
+  last paragraph (it was: NOT BUILT, build before the pilot shop).** Sign-out is REFUSED, with a worded reason on screen, while the outbox holds unsynced bills (today's gate
   already refuses on any owed work — `src/session/signOut.ts` `refused_pending`). With an EMPTY outbox it CLEARS the
   device's local personal data — cached sellers' phones, any retained full ID (a refused local seller's) — AND the
   local identity (`local_identity`, which today outlives the session on purpose: App.tsx onSignOut's comment). Today it
   clears only the permission cache (measured, `npm run prove:sellerid` S7, at `5241e50`). Out of H4/H5 by the
   decision.
+  **BUILT 2026-10-23 (lane A, unanchored until the next pass pins the commit).** After the keystore forgets the token,
+  `signOut()` runs `SqlitePersonalDataStore.clear` (one transaction, then a TRUNCATE checkpoint): `local_identity`
+  deleted; `cached_sellers.phone` NULL; a settled or refused `local_sellers` row loses phone, address and id_number;
+  a refused row is deleted unless a parked bill waits on it or a code is bound to it. KEPT: every `local_bills` row
+  (no phone or ID on a bill; refused and unsent bills are unsent money; synced ones are the cards and the offline-void
+  rows), the draft, anyone's OWED seller create, the device/shop/reserve/codes tables and the price caches. The gate
+  is unchanged (this person's owed work of every kind). `npm run prove:signoutclear`: refused-with-pending leaves all
+  15 tables value-equal; cleared-when-empty table by table, byte search of the file before/after with controls.
+  Residual, said: a refused clear AFTER the token is gone leaves the person signed out with the data still there and
+  the status line says so (`signedOutStatus`); there is no automatic retry.
 
 - **A SHOP THAT DOES NOT USE GRADES CANNOT USE THIS SYSTEM — found by the
   P1.8a device pass, 2026-08-17, and it is the widest consequence that pass
@@ -1764,7 +1774,7 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   and touches nothing else — `local_sellers` (names, phones, addresses, and a REFUSED row's full ID), `cached_sellers`
   (names, phones, last fours, trucks), `local_bills` and `local_identity` all stay, as `signOut.ts` ClearedSession and
   App.tsx onSignOut state by design (shop data, not user data). DECIDED 2026-10-23: see D1 under "Blocking one real
-  paying shop".
+  paying shop". SUPERSEDED the same day: D1 is built and S7 now asserts the cleared state.
 
 - **A USED IDEMPOTENCY KEY WITH A DIFFERENT BODY IS ANSWERED WITH THE ORIGINAL BILL, SILENTLY (H2, 2026-10-23, measured).**
   `POST /bills` with a key already spent answers 200 with the FIRST bill — same id, same total — whatever the new body says

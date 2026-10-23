@@ -46,6 +46,7 @@ import { join } from "node:path";
 
 import { NodeSqliteDriver } from "../adapters/sqlite/nodeDriver.js";
 import { SqliteDeviceStore } from "../adapters/sqlite/SqliteDeviceStore.js";
+import { SqlitePersonalDataStore } from "../adapters/sqlite/SqlitePersonalDataStore.js";
 import { SqliteIdentityStore } from "../adapters/sqlite/SqliteIdentityStore.js";
 import { SqliteLocalSellerStore } from "../adapters/sqlite/SqliteLocalSellerStore.js";
 import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
@@ -197,6 +198,8 @@ async function s1DeviceIdentityOutlivesSignOut(): Promise<void> {
       failed: 0,
       setSyncPaused: () => undefined,
       tokens,
+      // The REAL D1 clear on this file: the device's holding must survive what sign-out erases too.
+      personalData: new SqlitePersonalDataStore(r.driver),
       engine: null,
     });
     check("the sign-out actually completed (staging control)", outcome.kind === "signed_out",
@@ -265,6 +268,7 @@ async function s1DeviceIdentityOutlivesSignOut(): Promise<void> {
       failed: 0,
       setSyncPaused: () => undefined,
       tokens: redTokens,
+      personalData: new SqlitePersonalDataStore(r.driver),
       engine: null,
     });
     const redAfter = await red.load();
