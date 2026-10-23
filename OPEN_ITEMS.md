@@ -1754,6 +1754,10 @@ and refused today's tree on `@expo/json-file` at three nested versions — pure-
   `local_sellers.code` is UNIQUE. `createLocalSeller` picks the lowest free code, so the freed one is picked at once when
   it is the lowest, and the INSERT throws. `proveSellerStore` checks the spendable count after a refusal and never creates
   again, so nothing caught it. Outside H3 (a seller-create defect, not personal data); not changed.
+  **FIXED 2026-10-23 (ADVISOR-DECIDED 2026-10-23, H5):** the refusal releases the row's code in the same UPDATE that
+  makes it `failed` (the code becomes `refused:<row id>:<code>`, keeping what it tried), and the database's open
+  releases the code of any row refused before that. `prove:sellerstore` S8 — red before the fix (the next create
+  THREW the UNIQUE error), green twice after; the release removed reddens S8a with the original error.
 
 - **SIGN-OUT KEEPS THE DEVICE'S PERSONAL DATA (H3, 2026-10-23, measured, NOT changed — the brief's own fence).**
   `npm run prove:sellerid` S7 over a real file: `signOut()` plus App.tsx's permission clear empties `cached_permissions`

@@ -816,6 +816,68 @@ async function s7RefusalReturnsTheCodeAnd409DoesNot(): Promise<void> {
   }
 }
 
+/* ------------------------------------------------------------------ S8 --- */
+
+/**
+ * H5 (ADVISOR-DECIDED 2026-10-23): AFTER A REFUSAL, THE NEXT OFFLINE SELLER IS CREATED. Found by
+ * prove:sellerid's first run (2026-10-23): a refusal returns its code to the spendable holding (S7)
+ * while the refused row still holds it, `local_sellers.code` is UNIQUE, and the next create picks the
+ * freed code and dies on `UNIQUE constraint failed: local_sellers.code` -- a weigher who cannot add a
+ * seller stops buying. S8a is the device that refuses from now on; S8b the device refused BEFORE the
+ * fix, whose refused row still holds a code the pool calls free -- repaired when the database opens.
+ */
+async function s8NextCreateAfterARefusal(): Promise<void> {
+  header("S8: H5 -- after a refusal, the next offline seller is created");
+  const r = await openRig("s8", new UuidIds("jj"));
+  const attempt = async (id: string): Promise<string> => {
+    try {
+      const res = await r.sellers.createLocalSeller(DRAFT, OWNER_A, id, LATER);
+      return res.kind === "created" ? `created ${res.seller.code}` : `refused ${res.refusal.kind}`;
+    } catch (err) {
+      return `THREW ${err instanceof Error ? err.message : String(err)}`;
+    }
+  };
+  try {
+    await r.identity.save(OWNER_A, NOW);
+    await r.sellers.saveReservations([issued(1), issued(2)], NOW);
+    await r.sellers.createLocalSeller(DRAFT, OWNER_A, "first", NOW);
+    await r.sellers.markSellerCreateRefused("first", "422 name too long", 1, LATER);
+    const next = await attempt("next");
+    check("S8a the next create after a refusal SUCCEEDS, on the code the refusal freed (S101)",
+      next === "created S101", next);
+    const refused = await r.sellers.getLocalSeller("first");
+    check("S8a the refused row is still there, terminal, and no longer holds S101 -- the code it tried is"
+      + " kept inside its tombstone", refused?.sync_state === "failed" && refused.code !== "S101"
+        && refused.code.includes("S101"), `code=${String(refused?.code)}`);
+    check("S8a the holding is right: one code free (S102), one bound to the new seller",
+      (await r.sellers.spendableCount()) === 1, `spendable=${String(await r.sellers.spendableCount())}`);
+
+    // S8b: the shape a device refused BEFORE the fix is left in -- the refused row holding a code
+    // the pool calls free. Written by SQL, then the database is opened as an app start opens it.
+    await r.sellers.saveReservations([issued(3)], NOW);
+    await r.sellers.createLocalSeller(DRAFT, OWNER_A, "old", NOW);
+    await r.driver.run("UPDATE local_sellers SET sync_state = 'failed', settled_at = ? WHERE id = 'old'",
+      [LATER.toISOString()]);
+    await r.driver.run("UPDATE local_seller_codes SET spent_on = NULL WHERE spent_on = 'old'");
+    const oldCode = (await r.sellers.getLocalSeller("old"))?.code ?? "";
+    await closeRig(r);
+    const re = await reopen(r.file, r.dir, new UuidIds("jk"));
+    Object.assign(r, re);
+    const after = await r.sellers.getLocalSeller("old");
+    const freed = (await r.sellers.listReservations()).filter((c) => c.spent_on === null).map((c) => c.code).sort();
+    const again: string[] = [];
+    for (const id of ["n2", "n3"]) again.push(await attempt(id));
+    check("S8b a device refused before the fix: the open releases the refused row's code"
+      + ` (${oldCode} -> ${String(after?.code)})`, after?.code !== oldCode && (after?.code ?? "").includes(oldCode),
+      `free codes ${JSON.stringify(freed)}`);
+    check("S8b and every free code can then be spent -- no create dies on the UNIQUE code",
+      again.every((a) => a.startsWith("created ")), JSON.stringify(again));
+  } finally {
+    await closeRig(r);
+    dispose(r.dir);
+  }
+}
+
 /* ---------------------------------------------------------------- main --- */
 
 async function main(): Promise<number> {
@@ -829,6 +891,7 @@ async function main(): Promise<number> {
   await s5TheOwnerPredicateOnSellers();
   await s6TheBootSweepIsReal();
   await s7RefusalReturnsTheCodeAnd409DoesNot();
+  await s8NextCreateAfterARefusal();
 
   console.log("");
   console.log(

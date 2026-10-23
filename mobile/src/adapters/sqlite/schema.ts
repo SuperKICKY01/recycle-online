@@ -797,6 +797,24 @@ const ADDED_LOCAL_SELLER_COLUMNS: readonly { name: string; ddl: string }[] = [
  * created; a `failed` row was refused and never reached the server -- its ID stays with it, and
  * what a refused row should keep is not this sweep's question (OPEN_ITEMS).
  */
+/**
+ * The code a REFUSED local seller keeps (H5, ADVISOR-DECIDED 2026-10-23): what it tried, inside a
+ * tombstone no create can pick -- `refused:<row id>:<code>`, unique because the row id is. A refusal
+ * returns its code to the pool (the reservation was never spent), and `local_sellers.code` is
+ * UNIQUE, so a refused row that kept the code made the next create on the device die on the index.
+ * Written by SqliteLocalSellerStore.markSellerCreateRefused, and by the open-time sweep below for a
+ * row refused before that.
+ */
+export const REFUSED_CODE = "'refused:' || id || ':' || code";
+
+/**
+ * A device whose seller was refused BEFORE the refusal learned to release the row's code still holds
+ * a refused row on a code the pool calls free. Every open re-runs this; after the first it matches
+ * nothing (a released row's code starts `refused:`). SQL is enough here: no rule is transcribed.
+ */
+const RELEASE_REFUSED_SELLER_CODES =
+  `UPDATE local_sellers SET code = ${REFUSED_CODE} WHERE sync_state = 'failed' AND code NOT LIKE 'refused:%'`;
+
 async function minimiseSettledSellerIds(tx: SqlTx): Promise<number> {
   const rows = await tx.all<{ id: string; id_number: string }>(
     "SELECT id, id_number FROM local_sellers WHERE sync_state = 'synced' AND id_number IS NOT NULL",
@@ -985,6 +1003,7 @@ export async function initConnection(db: SqlDriver): Promise<string[]> {
     added.push(...(await migrateColumns(tx, "local_sellers", ADDED_LOCAL_SELLER_COLUMNS)));
     for (const ddl of POST_MIGRATION_STATEMENTS) await tx.run(ddl);
     await minimiseSettledSellerIds(tx);
+    await tx.run(RELEASE_REFUSED_SELLER_CODES);
     return added;
   });
 }

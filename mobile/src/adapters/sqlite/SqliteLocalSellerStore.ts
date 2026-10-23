@@ -55,6 +55,7 @@ import { SEND_SCHEDULE_HORIZON_MS } from "../../time/clockSanity.js";
 import type { SqlDriver, SqlTx, SqlValue } from "./driver.js";
 import { OWNED_BY_CURRENT, ownerParams } from "./SqliteLocalStore.js";
 import { SqliteIdentityStore } from "./SqliteIdentityStore.js";
+import { REFUSED_CODE } from "./schema.js";
 
 interface SellerRow {
   id: string;
@@ -563,9 +564,15 @@ export class SqliteLocalSellerStore implements LocalSellerStore {
     now: Date,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
+      // THE ROW LETS GO OF THE CODE TOO (H5, ADVISOR-DECIDED 2026-10-23). The code goes back to the
+      // pool below, and `local_sellers.code` is UNIQUE: a refused row still holding it made the NEXT
+      // create pick it and die on the index -- a weigher who cannot add a seller stops buying. A refused
+      // create produced no seller, so its row holds no code; what it TRIED is kept inside a tombstone,
+      // `refused:<row id>:<code>`, unique because the row id is (proveSellerStore S8).
       await tx.run(
         `UPDATE local_sellers
-         SET sync_state = 'failed', last_error = ?, attempt_count = ?, settled_at = ?
+         SET sync_state = 'failed', last_error = ?, attempt_count = ?, settled_at = ?,
+             code = ${REFUSED_CODE}
          WHERE id = ?`,
         [reason, attempt, now.toISOString(), id],
       );
