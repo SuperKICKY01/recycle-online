@@ -256,6 +256,17 @@ anchor next pass.
   only — the handset is UNMEASURED). Sign-out measured and NOT changed: it clears only the permission cache.
   Found by `prove:sellerid` and recorded: a refused local seller's freed code collides with the refused row on the
   next offline create. Lesson: `lessons/nulling-a-column-does-not-erase-it-from-the-file.md`.
+- **GATE RED ON B8 FIXED; H4 AND H5 (ADVISOR-DECIDED 2026-10-23), 2026-10-23.** Gate `20261023T083140Z` red on
+  `desktop_prove:billsflow` B8: its fixed dates rotted into a valid range and the answer erased the reversed-range
+  sentence (`Bills.tsx` cleared the notice for a range no longer on screen). Fixed at `4aac8d8` — the race made a cell
+  (B8b, held answer), red twice before, green twice after; gate `20261023T095637Z` green (113, RED 0) and merged
+  (`df3883d`). H4 at `c244544`: migration 0026 — the database refuses any write leaving a bill's live allocations above
+  its total (RA001; RA002 under REPEATABLE READ), the route's lock kept; `prove_allocation_cap` with the route's lock
+  stripped: 0 overpayments in 5 races (all refused by the database), the refusal held, up/down/up on a scratch; dev
+  backed up (`recycle_20261023T103402Z_pre-0026`) and at 0026, reconcile OK. H5 at `e180eb7`: a refused local seller's
+  row releases its code (`refused:<id>:<code>`), and the next offline create succeeds; `prove:sellerstore` S8 red
+  before, green twice after. D1 (sign-out clears personal data and the identity) and D2 (secure_delete on the
+  emulator) filed in OPEN_ITEMS as decided, not built.
 - **THE `lane-a` BRANCH IS ON GITHUB** (pushed 2026-10-19 alongside main; ADVISOR-DECIDED: leave it). It mirrors work
   already on main — every lane-a commit is fast-forwarded to main after its green gate — and holds nothing main lacks
   at each merge.

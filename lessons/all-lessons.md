@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 44 across 23 files, counted from the source headings and
+**Amendments:** 45 across 24 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -76,7 +76,7 @@ line instead of by heading depth.
 - `a-sum-over-nothing-has-no-scale.md` -- A sum over nothing has no scale
 - `a-value-comparison-cannot-prove-a-path.md` *(1 amendment)* -- A value comparison cannot prove a PATH
 - `a-warning-in-one-file-does-not-protect-the-next.md` -- A warning written in one file does not protect the file beside it
-- `an-answer-belongs-to-the-question-that-asked.md` -- An answer belongs to the question that asked it
+- `an-answer-belongs-to-the-question-that-asked.md` *(1 amendment)* -- An answer belongs to the question that asked it
 - `an-error-is-one-branch-not-the-defects-shape.md` -- An error you observed is one branch, not the defect's shape
 - `be-year-comes-after-the-timezone.md` *(2 amendments)* -- The BE year comes AFTER the timezone conversion — and an ISO-shaped BE date is a trap
 - `cached-master-data-is-a-price-claim.md` -- A cached price is a claim about today, and a backwards clock makes it look fresh
@@ -6842,6 +6842,19 @@ this, because success overwrites the stale state.
 **Also learned in the same fix:** once rows empty while a new answer loads, a proof that waited for the
 OLD rows to disappear reads the loading state — wait for the NEW answer's evidence (the expected row),
 never for the absence of the old one (B2 went red exactly so, and the wait was the defect).
+
+## AMENDED 2026-10-23 (gate 20261023T083140Z): the ROWS were keyed, the NOTICE was not
+
+The same screen still broke this rule one field along. `Bills.tsx` load() kept rows behind their key,
+but after `await` it cleared the list NOTICE unconditionally — so the answer to a range typed a moment
+earlier erased the "reversed range" sentence of the range now on screen. B8 caught it only by luck:
+its fixed dates rotted into a valid intermediate range on 2026-10-20, a request went out, and the
+sentence survived or not by which arrived first (gone in both gate runs, present by hand). **Every
+piece of screen state an answer writes — rows, count, notice, loading flag — belongs to the question
+that asked; key them all, or check the question once before writing any (an `asked` ref compared after
+the await).** And make the race a cell, not a coin: HOLD the earlier answer (Playwright `page.route`),
+change the question, release it, assert the screen still describes the new question (`prove:billsflow`
+B8b; red twice before the fix, green twice after, the check removed reddens B8b alone).
 
 ---
 
