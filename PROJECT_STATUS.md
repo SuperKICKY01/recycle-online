@@ -267,6 +267,14 @@ anchor next pass.
   row releases its code (`refused:<id>:<code>`), and the next offline create succeeds; `prove:sellerstore` S8 red
   before, green twice after. D1 (sign-out clears personal data and the identity) and D2 (secure_delete on the
   emulator) filed in OPEN_ITEMS as decided, not built.
+- **D1 BUILT AND D2 WALKED (ADVISOR-DECIDED 2026-10-23), 2026-10-23.** D1 at `3d8c3b1`: after the keystore forgets the
+  token, sign-out clears the identity, cached sellers' phones, and settled/refused local sellers' phone, address and ID,
+  and deletes a refused seller's row; every bill, the draft, anyone's owed seller create and the device/shop/price
+  tables stay. Still refused while this person owes work, with the count on the sheet. `prove:signoutclear` green twice;
+  gate removed and clear removed each reddened it. D2 on the emulator against `recycle_walk_a`: a phone-created
+  seller's ID is in the WAL before sync and in none of `recycle.db`/`-wal`/`-shm` after (PASS). The same walk found a
+  stale copy of a cached seller's row in an interior page of `cached_sellers` that survives D1's sign-out — recorded in
+  OPEN_ITEMS under D2, not fixed.
 - **THE `lane-a` BRANCH IS ON GITHUB** (pushed 2026-10-19 alongside main; ADVISOR-DECIDED: leave it). It mirrors work
   already on main — every lane-a commit is fast-forwarded to main after its green gate — and holds nothing main lacks
   at each merge.

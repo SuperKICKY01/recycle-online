@@ -59,7 +59,8 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   is unchanged (this person's owed work of every kind). `npm run prove:signoutclear`: refused-with-pending leaves all
   15 tables value-equal; cleared-when-empty table by table, byte search of the file before/after with controls.
   Residual, said: a refused clear AFTER the token is gone leaves the person signed out with the data still there and
-  the status line says so (`signedOutStatus`); there is no automatic retry.
+  the status line says so (`signedOutStatus`); there is no automatic retry. A second residual, found on the emulator:
+  a stale copy of a cached seller's row survives in an interior page of `cached_sellers` (D2 below, measured).
 
 - **A SHOP THAT DOES NOT USE GRADES CANNOT USE THIS SYSTEM — found by the
   P1.8a device pass, 2026-08-17, and it is the widest consequence that pass
@@ -722,6 +723,22 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   expo-sqlite is a different SQLite build on a different filesystem: whether it honours the pragma and the TRUNCATE
   checkpoint is UNMEASURED. The walk: settle a phone-created seller, pull the app's database and `-wal` with `run-as`,
   and search both for the ID's bytes, with an owed seller's ID as the control that must be found.
+  **WALKED 2026-10-23 (lane A, emulator `recycle_api36`, cold boot, Metro bundle from the lane-a worktree with D1;
+  lane walk database `recycle_walk_a` built from empty, never dev). THE ID: PASS.** App data cleared, shop code typed,
+  signed in as the seeded admin; the walk server stopped; seller `D2Walk` created on the phone with ID `3100777778889`
+  (S006, owed). Pulled by `adb exec-out run-as … cat` into Python (bytes, no shell redirect): BEFORE sync the ID is in
+  `recycle.db-wal` 7 times (positive control). Server restarted; `sellers` row S006 read on the server holding that ID.
+  AFTER sync: the ID 0 times in `recycle.db`, `-wal` and `-shm`, while the same search finds `local_sellers` 16 times
+  and the seller's phone once in the same file; the WAL shrank 230752 -> 45352 bytes. So this phone build zeroes the
+  NULLed ID and the TRUNCATE checkpoint runs.
+  **AND A RESIDUAL THE NODE PROOFS CANNOT SEE, measured the same walk after D1's sign-out:** the seeded seller S001's
+  phone `0800000001` was in the file twice before sign-out — the live `cached_sellers` row (leaf page 43) and a stale
+  copy of the whole row (code, name, phone, grade, tenant) in page 19, the `cached_sellers` ROOT, now an interior
+  b-tree page — and once after: D1 cleared the live row (no table row holds it, freelist 0), the stale copy in the
+  root's unused space stayed. ASSUMED mechanism: the root was a leaf when the cache first held few rows, and the bytes
+  were not zeroed when it became interior. `prove:signoutclear` cannot see it (two cached rows, one leaf page). Not
+  fixed (outside D1/D2's brief); a `VACUUM` after the clear is the obvious candidate, UNMEASURED. Evidence:
+  `<session scratchpad>/d2/{before_sync,after_sync,before_signout,after_signout}/recycle.db*`.
 
 - **A SYSTEM FONT-SIZE CHANGE MADE WHILE THE APP RUNS CLIPS EVERY TEXT UNTIL THE PROCESS RESTARTS — A2 item 3,
   re-diagnosed 2026-10-11 (lane A, A3), measured. FIXED IN SOURCE AND ON THE EMULATOR; OWNER DEVICES PENDING THE NEXT
