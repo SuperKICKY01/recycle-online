@@ -452,6 +452,7 @@ class Fx:
     audit_present: bool  # the copy is a 0017+ database (audit_log + triggers exist)
     branches_present: bool  # the copy is a 0018+ database (branches, T17/T18 exist)
     payments_present: bool  # the copy is a 0020+ database (the ledger, P1..P4 exist)
+    cap_present: bool   # the copy is a 0026+ database (the allocation cap triggers exist)
     mid_payment: Any    # mid's automatic payment (0020's backfilled pair), or None
     mid_alloc: Any      # its allocation to mid, or None
     same_tenant_seller: uuidlib.UUID | None  # a seller of fx.tenant other than mid's
@@ -544,6 +545,8 @@ async def fixtures(conn: asyncpg.Connection) -> Fx:
         "SELECT to_regclass('public.branches') IS NOT NULL")
     payments_present = await conn.fetchval(
         "SELECT to_regclass('public.payments') IS NOT NULL")
+    cap_present = bool(await conn.fetchval(
+        "SELECT count(*) FROM pg_trigger WHERE tgname LIKE 'allocation_cap_%' AND NOT tgisinternal"))
     mid_payment = mid_alloc = None
     same_tenant_seller = None
     if payments_present:
@@ -584,7 +587,7 @@ async def fixtures(conn: asyncpg.Connection) -> Fx:
             be_year=top["be_year"], max_seq=top["seq"], max_bill=top["id"],
             mid=mid, mid2=mid2, mid_item=item, voided=voided[0],
             audit_present=audit_present, branches_present=branches_present,
-            payments_present=payments_present, mid_payment=mid_payment,
+            payments_present=payments_present, cap_present=cap_present, mid_payment=mid_payment,
             mid_alloc=mid_alloc, same_tenant_seller=same_tenant_seller,
             drawer_present=drawer_present, tenant_user=tenant_user,
             mid_cash_row=mid_cash_row)
@@ -623,8 +626,22 @@ IDX_DOCNO = ("CREATE UNIQUE INDEX uq_bills_tenant_docno ON purchase_bills"
              " (tenant_id, doc_no) WHERE doc_no IS NOT NULL")
 
 
+def cap_off(fx: Fx, table: str, trigger: str) -> tuple[list, list]:
+    """(apply-prefix, undo-suffix) that switch ONE of migration 0026's allocation-cap triggers off for
+    an injection and back on after its undo -- the same move T3 and T10 make with a CHECK and an FK:
+    a violation the schema now refuses can only be PLANTED with that guard down, and the reconciler
+    exists to catch one that got past every guard (a restore, a hand edit, a future writer). On a copy
+    older than 0026 there is no trigger and nothing to switch."""
+    if not fx.cap_present:
+        return [], []
+    return ([(f"ALTER TABLE {table} DISABLE TRIGGER {trigger}", ())],
+            [(f"ALTER TABLE {table} ENABLE TRIGGER {trigger}", ())])
+
+
 def build(fx: Fx) -> list[Injection]:
     mid, mid2, item, voided = fx.mid, fx.mid2, fx.mid_item, fx.voided
+    t4_off, t4_on = cap_off(fx, "purchase_bills", "allocation_cap_on_total")
+    alloc_off, alloc_on = cap_off(fx, "payment_allocations", "allocation_cap_on_allocation")
     injs = [
         Injection(
             "T1", "a bill's stored total no longer equals its lines — the one"
@@ -671,7 +688,8 @@ def build(fx: Fx) -> list[Injection]:
             "T4", "a bill with no lines at all — a receipt for money with nothing"
                   " bought. Its total is zeroed too, so T1 stays silent and T4 speaks"
                   " (with P2 on a 0020+ copy: its allocation now exceeds the total)",
-            apply=[("DELETE FROM purchase_bill_items WHERE bill_id = $1", (mid["id"],)),
+            apply=[*t4_off,
+                   ("DELETE FROM purchase_bill_items WHERE bill_id = $1", (mid["id"],)),
                    ("UPDATE purchase_bills SET total_amount = 0 WHERE id = $1", (mid["id"],))],
             undo=[("""INSERT INTO purchase_bill_items (id, tenant_id, bill_id, product_id,
                         line_no, gross_weight, tare_weight, net_weight, unit_price,
@@ -682,7 +700,8 @@ def build(fx: Fx) -> list[Injection]:
                     item["net_weight"], item["unit_price"], item["list_price"],
                     item["amount"])),
                   ("UPDATE purchase_bills SET total_amount = $2 WHERE id = $1",
-                   (mid["id"], mid["total_amount"]))],
+                   (mid["id"], mid["total_amount"])),
+                  *t4_on],
             expect={"T4": 1, **({"P2": 1} if fx.payments_present else {})},
             expect_rows=[f"doc_no={mid['doc_no']}", f"bill_id={mid['id']}"],
         ),
@@ -976,13 +995,15 @@ def build(fx: Fx) -> list[Injection]:
             # so P1 stays silent and ONLY the bill-side arithmetic can see it.
             "P2", "a bill's live allocation exceeds its total by 0.01 -- and the payment"
                   " is moved with it, so ONLY the bill-side check can see it",
-            apply=[("UPDATE payment_allocations SET amount = amount + 0.01"
+            apply=[*alloc_off,
+                   ("UPDATE payment_allocations SET amount = amount + 0.01"
                     " WHERE payment_id = $1 AND bill_id = $2", (pay["id"], mid["id"])),
                    ("UPDATE payments SET amount = amount + 0.01 WHERE id = $1", (pay["id"],))],
             undo=[("UPDATE payment_allocations SET amount = $3"
                    " WHERE payment_id = $1 AND bill_id = $2",
                    (pay["id"], mid["id"], alloc["amount"])),
-                  ("UPDATE payments SET amount = $2 WHERE id = $1", (pay["id"], pay["amount"]))],
+                  ("UPDATE payments SET amount = $2 WHERE id = $1", (pay["id"], pay["amount"])),
+                  *alloc_on],
             expect={"P2": 1},
             expect_rows=[f"doc_no={mid['doc_no']}", "over_by=0.01"],
         ))
@@ -1006,7 +1027,8 @@ def build(fx: Fx) -> list[Injection]:
         injs.append(Injection(
             "P4", "a LIVE payment recorded now allocates 0.01 to a bill voided long"
                   " before -- money sent to a debt that no longer exists",
-            apply=[("INSERT INTO payments (id, tenant_id, branch_id, seller_id, method,"
+            apply=[*alloc_off,
+                   ("INSERT INTO payments (id, tenant_id, branch_id, seller_id, method,"
                     " amount, idempotency_key, device_created_at, server_received_at,"
                     " paid_by, recorded_by_migration)"
                     " VALUES ($1, $2, $3, $4, 'cash', 0.01, $5, now(), now(), NULL, true)",
@@ -1015,7 +1037,8 @@ def build(fx: Fx) -> list[Injection]:
                    ("INSERT INTO payment_allocations (tenant_id, payment_id, bill_id, amount)"
                     " VALUES ($1, $2, $3, 0.01)", (fx.tenant, p4_id, fx.voided["id"]))],
             undo=[("DELETE FROM payment_allocations WHERE payment_id = $1", (p4_id,)),
-                  ("DELETE FROM payments WHERE id = $1", (p4_id,))],
+                  ("DELETE FROM payments WHERE id = $1", (p4_id,)),
+                  *alloc_on],
             expect={"P4": 1},
             expect_rows=[f"doc_no={fx.voided['doc_no']}", f"payment_id={p4_id}"],
         ))
