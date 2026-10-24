@@ -230,8 +230,8 @@ function main(): number {
     ),
   );
   check(
-    "selecting a product activates gross and scrolls to the measured weight entry",
-    /const selectProduct = [\s\S]*?setActive\("gross"\);[\s\S]*?scrollRef\.current\?\.scrollTo\(/.test(cartText) &&
+    "selecting a product activates its first entry (gross by weight, the count by piece, the price by lump) and scrolls to the measured entry",
+    /const selectProduct = [\s\S]*?const first = p\.pricing_basis === "piece" \? "pieces" : p\.pricing_basis === "lump" \? "price" : "gross";\s*setActive\(first\);[\s\S]*?scrollRef\.current\?\.scrollTo\(/.test(cartText) &&
       cartText.includes("grossY.current = e.nativeEvent.layout.y;"),
   );
 
