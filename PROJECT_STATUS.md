@@ -294,7 +294,10 @@ anchor next pass.
   the owner then changed rounding to the default on the phone and B-2569-1's stored lines read the same, value for
   value. Shots at font 1.0 and 1.3. The walk found and `7b3ba11` fixed: choosing a piece-priced product opened the
   keypad on a hidden gross weight. Box rebooted mid-walk (16:05 local, cause unmeasured); Postgres recovered by WAL
-  replay and the walk bill read back unchanged. Residuals in `OPEN_ITEMS.md` under "M1 (2026-10-24)". Lesson:
+  replay and the walk bill read back unchanged. Gate `20261024T165031Z` (launched 11.10 GB free, low 10.73) RED 1 of
+  121: `prove:tapaudit`'s source-pattern cell still required the literal `setActive("gross")` that `7b3ba11` replaced;
+  `5465ac0` states the basis rule in the cell (green twice; weight default mutated to "price" reddened exactly that
+  cell, file restored byte-identical). Residuals in `OPEN_ITEMS.md` under "M1 (2026-10-24)". Lesson:
   `lessons/a-destructive-step-waits-on-its-backups-own-success.md`.
 - **THE `lane-a` BRANCH IS ON GITHUB** (pushed 2026-10-19 alongside main; ADVISOR-DECIDED: leave it). It mirrors work
   already on main — every lane-a commit is fast-forwarded to main after its green gate — and holds nothing main lacks
