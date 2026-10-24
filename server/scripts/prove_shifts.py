@@ -412,6 +412,19 @@ async def sql_paid_bill(database: str) -> str:
                 " VALUES ($1,$2,$3,$4,1,$5,$6,$7,$8,$9,$10)",
                 uuid.uuid4(), TENANT_A_ID, bill_id, PRODUCT_A_ID, Decimal(BILL_GROSS), Decimal(BILL_TARE),
                 Decimal(BILL_NET), Decimal(BILL_UNIT), list_price, amount)
+            # MIGRATION 0027: at head every line the route writes RECORDS its rules -- weight-priced,
+            # nothing deducted, half-up to the satang (the only rule this fixture's arithmetic uses),
+            # the product's unit and the seller's grade. A scratch below 0027 has no such columns and
+            # writes the pre-0027 shape, which is what the route wrote then. Restated, not imported.
+            if await su.fetchval(
+                "SELECT count(*) FROM information_schema.columns WHERE table_name = 'purchase_bill_items'"
+                " AND column_name = 'rounding_rule'"):
+                await su.execute(
+                    "UPDATE purchase_bill_items i SET deduction_mode = 'none', pricing_basis = 'weight',"
+                    " quantity = i.net_weight, rounding_rule = 'half_up_0.01', unit_code = u.code,"
+                    " unit_name = u.name, tier_code = $2"
+                    " FROM products p JOIN uoms u ON u.id = p.uom_id"
+                    " WHERE i.bill_id = $1 AND p.id = i.product_id", bill_id, grade)
             payment_id = uuid.uuid4()
             await su.execute(
                 "INSERT INTO payments (id, tenant_id, branch_id, seller_id, method, amount, idempotency_key,"
@@ -449,6 +462,12 @@ FX_EXCEPT: dict[str, frozenset[str]] = {
 # tolerate). The 0022 fixture cannot write a column its schema lacks.
 FX_ABSENT_AT_0022: dict[str, frozenset[str]] = {t: frozenset() for t in FX_TABLES}
 FX_ABSENT_AT_0022["purchase_bills"] = frozenset({"void_idempotency_key"})
+# 0027 (2026-10-24): the line's money rules and their snapshot. DECLARED, never excepted, for the
+# reason above: FX still compares every one of them on the head scratch, where sql_paid_bill writes
+# what the route writes.
+FX_ABSENT_AT_0022["purchase_bill_items"] = frozenset({
+    "deduction_mode", "deduction_pct", "deduction_weight", "deduction_reason", "pricing_basis", "quantity",
+    "rounding_rule", "unit_code", "unit_name", "tier_code"})
 
 _FX_ROWS = {
     "purchase_bills": "SELECT * FROM purchase_bills WHERE id = $1",

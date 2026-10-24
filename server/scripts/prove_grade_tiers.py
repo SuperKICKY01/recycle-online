@@ -156,6 +156,7 @@ ONE_TIER_CODE = "มาตรฐาน"     # the one-tier shop's sole tier -- a
 ONE_TIER_NAME = "ราคาเดียว"
 
 ADMIN_PW = "gt-admin-pw"
+OWNER_PW = "gt-owner-pw"
 STAFF_PW = "gt-staff-pw"
 OTHER_PW = "gt-other-pw"
 ONE_PW = "gt-one-pw"
@@ -167,6 +168,10 @@ class Ctx:
         self.one = uuid.uuid4()
         self.other = uuid.uuid4()
         self.admin_id = uuid.uuid4()
+        # The MAIN shop's owner (2026-10-24): default_grade is a money rule, the OWNER's alone
+        # (app/policy.py), so cell K sets it as the owner and shows the admin refused.
+        self.owner_id = uuid.uuid4()
+        self.owner_tok = ""
         self.staff_id = uuid.uuid4()
         self.one_admin_id = uuid.uuid4()
         self.other_admin_id = uuid.uuid4()
@@ -233,6 +238,7 @@ async def provision(ctx: Ctx) -> None:
     from app.security import hash_password
 
     admin_hash = await hash_password(ADMIN_PW)
+    owner_hash = await hash_password(OWNER_PW)
     staff_hash = await hash_password(STAFF_PW)
     one_hash = await hash_password(ONE_PW)
     other_hash = await hash_password(OTHER_PW)
@@ -278,6 +284,7 @@ async def provision(ctx: Ctx) -> None:
 
     await seed(ctx.main, f"GT MAIN {RUN}",
                [(ctx.admin_id, "admin", "Main Admin", "admin", admin_hash),
+                (ctx.owner_id, "owner", "Main Owner", "owner", owner_hash),
                 (ctx.staff_id, "staff", "Main Staff", "staff", staff_hash)],
                ctx.uom["main"], ctx.cat["main"], ctx.main_product)
     await seed(ctx.one, f"GT ONE {RUN}",
@@ -483,7 +490,16 @@ async def run(ctx: Ctx, client, admin, staff, one_admin, other_admin) -> None:
 
     # =====================================================================
     header("K -- PATCH /shop default_grade is validated against the tiers (disproof c)")
-    rk = await client.patch("/shop", headers=auth(admin), json={"default_grade": "NOPE"})
+    # SINCE 2026-10-24 default_grade is a MONEY rule, the owner's alone (app/policy.py): the admin
+    # is refused before validation, and the validation itself is exercised as the owner.
+    rka = await client.patch("/shop", headers=auth(admin), json={"default_grade": MOVE_TIER})
+    try:
+        codeka = rka.json().get("detail", {}).get("code")
+    except Exception:  # noqa: BLE001
+        codeka = None
+    check(rka.status_code == 403 and codeka == "money_rule_owner_only",
+          f"K: an ADMIN setting the default grade is refused 403 money_rule_owner_only (got {rka.status_code} {codeka!r})")
+    rk = await client.patch("/shop", headers=auth(ctx.owner_tok), json={"default_grade": "NOPE"})
     # Defensive parse: under disproof (c) the readable 422 is gone and the FK's
     # 500 returns a non-JSON/empty body -- cell K must then redden cleanly, not
     # crash on json().
@@ -496,7 +512,7 @@ async def run(ctx: Ctx, client, admin, staff, one_admin, other_admin) -> None:
     check(rk.status_code == 422 and codek == "grade_not_a_tier",
           "K: a foreign default_grade is a READABLE 422, not the FK's 500 (disproof c reddens this)")
     # and a REAL tier is accepted.
-    rk2 = await client.patch("/shop", headers=auth(admin), json={"default_grade": MOVE_TIER})
+    rk2 = await client.patch("/shop", headers=auth(ctx.owner_tok), json={"default_grade": MOVE_TIER})
     check(rk2.status_code == 200 and rk2.json().get("default_grade") == MOVE_TIER,
           f"K (control): a real tier {MOVE_TIER} IS accepted as the default -> 200")
 
@@ -641,6 +657,7 @@ async def main() -> int:
 
         async with httpx.AsyncClient(base_url=BASE, timeout=30.0) as client:
             admin = await login(client, ctx.main, "admin", ADMIN_PW)
+            ctx.owner_tok = await login(client, ctx.main, "owner", OWNER_PW)
             staff = await login(client, ctx.main, "staff", STAFF_PW)
             one_admin = await login(client, ctx.one, "admin", ONE_PW)
             other_admin = await login(client, ctx.other, "admin", OTHER_PW)

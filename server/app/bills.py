@@ -12,7 +12,7 @@ import logging
 import datetime as dt
 import uuid
 from datetime import datetime
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
@@ -25,6 +25,7 @@ from .branches import Branch, branch_payload, read_branch, read_caller_branch
 from .permissions import Permission
 from .config import SHOP_TIMEZONE
 from .db import tenant_connection
+from .money_rules import DEFAULT_ROUNDING_RULE, LineIn, LineOut, LineRuleError, compute_line
 
 router = APIRouter()
 
@@ -149,10 +150,6 @@ def _be_year(when: datetime) -> int:
     that are themselves the stored ones, and cannot disagree.
     """
     return when.astimezone(SHOP_TIMEZONE).year + _BE_OFFSET
-
-
-def _line_amount(net_weight: Decimal, unit_price: Decimal) -> Decimal:
-    return (net_weight * unit_price).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +334,19 @@ class BillItemIn(BaseModel):
     # list_price is deliberately NOT accepted from the client — the server stamps
     # it from product_prices at the seller's grade (see create_bill). Pydantic
     # ignores unknown keys, so a client still sending one is simply overridden.
+    #
+    # THE RULES THE PHONE APPLIED (migration 0027, M1). ALL OPTIONAL, and absent means exactly
+    # what every client before 0027 computed: weight basis, half-up to the satang, no deduction --
+    # so a bill queued in an old outbox drains, and is recorded under the rule it was priced with.
+    # Values outside their sets are a permanent 422 from money_rules (one list, not a Literal here
+    # that could drift from it). Bounds mirror the columns, for the reason the docstring above gives.
+    pricing_basis: str | None = Field(default=None, min_length=1, max_length=16)
+    quantity: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=3)
+    rounding_rule: str | None = Field(default=None, min_length=1, max_length=16)
+    deduction_mode: str | None = Field(default=None, min_length=1, max_length=16)
+    deduction_pct: Decimal | None = Field(default=None, gt=0, le=100, max_digits=5, decimal_places=2)
+    deduction_weight: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=3)
+    deduction_reason: str | None = Field(default=None, max_length=200)
 
 
 class BillCreate(BaseModel):
@@ -462,14 +472,22 @@ async def _read_bill(conn: AsyncConnection, bill_id) -> dict | None:
     # total would then disagree with the lines with nothing to show why. A LEFT
     # JOIN keeps the money on the page and leaves the name null. Never lose a
     # money line to make a name resolve.
+    # THE UNIT, for every line (the slip printed "กก." for every unit until 2026-10-24, M0): the
+    # line's own snapshot where it has one (0027), else -- a line received before its rules were
+    # recorded -- the product's unit as it is NOW, and `rules_recorded: false` says which. A label,
+    # never a figure: no stored number of an old line is touched or re-derived.
     items = (
         await conn.execute(
             text(
                 "SELECT i.id, i.product_id, i.line_no, i.gross_weight, i.tare_weight,"
                 " i.net_weight, i.unit_price, i.list_price, i.amount,"
+                " i.deduction_mode, i.deduction_pct, i.deduction_weight, i.deduction_reason,"
+                " i.pricing_basis, i.quantity, i.rounding_rule, i.tier_code,"
+                " coalesce(i.unit_code, u.code) AS unit_code, coalesce(i.unit_name, u.name) AS unit_name,"
                 " p.code AS product_code, p.name AS product_name"
                 " FROM purchase_bill_items i"
                 " LEFT JOIN products p ON p.id = i.product_id"
+                " LEFT JOIN uoms u ON u.id = p.uom_id"
                 " WHERE i.bill_id = :id ORDER BY i.line_no"
             ),
             {"id": bill_id},
@@ -529,6 +547,21 @@ async def _read_bill(conn: AsyncConnection, bill_id) -> dict | None:
                 "unit_price": str(i["unit_price"]),
                 "list_price": str(i["list_price"]),
                 "amount": str(i["amount"]),
+                # 0027's snapshot. Null on a line received before its rules were recorded
+                # (`rules_recorded` false): such a line was weight-priced, undeducted and rounded
+                # half-up to the satang -- the only rule there was -- and its unit is the product's
+                # unit now. Additive keys; the phone reads doc_no alone from this payload.
+                "rules_recorded": i["rounding_rule"] is not None,
+                "deduction_mode": i["deduction_mode"],
+                "deduction_pct": None if i["deduction_pct"] is None else str(i["deduction_pct"]),
+                "deduction_weight": str(i["deduction_weight"]),
+                "deduction_reason": i["deduction_reason"],
+                "pricing_basis": i["pricing_basis"],
+                "quantity": None if i["quantity"] is None else str(i["quantity"]),
+                "rounding_rule": i["rounding_rule"],
+                "tier_code": i["tier_code"],
+                "unit_code": i["unit_code"],
+                "unit_name": i["unit_name"],
             }
             for i in items
         ],
@@ -550,14 +583,40 @@ async def create_bill(
     if len(set(line_nos)) != len(line_nos):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "duplicate line_no within bill")
 
-    item_amounts: list[Decimal] = []
+    # EVERY STORED FIGURE OF A LINE IS RE-DERIVED HERE (money_rules.compute_line), from the rule
+    # values the line declares -- the server's arithmetic, the phone's rule (money_rules says why the
+    # shop's CURRENT setting is not substituted). A figure the rules do not produce is a permanent 422
+    # naming the line and the rule, never a silent correction of what the seller was told.
+    computed: list[LineOut] = []
+    reasons: list[str | None] = []
     for it in body.items:
-        if it.net_weight != it.gross_weight - it.tare_weight:
+        reason = it.deduction_reason.strip() if it.deduction_reason is not None else None
+        reason = reason or None
+        try:
+            out = compute_line(LineIn(
+                gross_weight=it.gross_weight, tare_weight=it.tare_weight, unit_price=it.unit_price,
+                pricing_basis=it.pricing_basis or "weight",
+                rounding_rule=it.rounding_rule or DEFAULT_ROUNDING_RULE,
+                deduction_mode=it.deduction_mode or "none",
+                deduction_pct=it.deduction_pct, deduction_weight=it.deduction_weight,
+                quantity=it.quantity,
+            ))
+            if out.net_weight != it.net_weight:
+                raise LineRuleError(
+                    "net_mismatch",
+                    f"net_weight must equal gross_weight - tare_weight - deduction ({out.net_weight})",
+                )
+            if reason is not None and (it.deduction_mode or "none") == "none":
+                raise LineRuleError("reason_without_deduction", "a deduction_reason needs a deduction")
+        except LineRuleError as e:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
-                f"line {it.line_no}: net_weight must equal gross_weight - tare_weight",
-            )
-        item_amounts.append(_line_amount(it.net_weight, it.unit_price))
+                {"kind": "invalid", "code": e.code, "message": f"line {it.line_no}: {e}",
+                 "line_no": it.line_no},
+            ) from None
+        computed.append(out)
+        reasons.append(reason)
+    item_amounts = [c.amount for c in computed]
     server_total = sum(item_amounts, Decimal("0.00"))
 
     if body.total_amount is not None and body.total_amount != server_total:
@@ -653,11 +712,17 @@ async def create_bill(
             # Fail CLOSED when there is no tier for this grade: a 422 is terminal
             # and visible, so it can never dam the send queue the way a 500 would.
             list_prices: list[Decimal] = []
+            # THE UNIT, stamped from the product's unit AT RECEIPT, the way list_price is stamped from
+            # the price list: the line is filed under the unit the shop's own master data names, and
+            # it never moves when the product's unit is edited later (migration 0027's snapshot).
+            units: list[tuple[str, str]] = []
             for it in body.items:
                 row = (
                     await conn.execute(
                         text(
-                            "SELECT p.is_active, pp.price FROM products p"
+                            "SELECT p.is_active, pp.price, u.code AS unit_code, u.name AS unit_name"
+                            " FROM products p"
+                            " JOIN uoms u ON u.id = p.uom_id"
                             " LEFT JOIN product_prices pp"
                             "   ON pp.product_id = p.id AND pp.grade = :g"
                             " WHERE p.id = :p"
@@ -688,6 +753,7 @@ async def create_bill(
                         grade=grade,
                     )
                 list_prices.append(row["price"])
+                units.append((row["unit_code"], row["unit_name"]))
 
             # THE ARRIVAL INSTANT IS READ FIRST, ONCE, AND EVERYTHING BELOW IS
             # DERIVED FROM IT. `now()` is TRANSACTION START in Postgres, so this
@@ -873,19 +939,32 @@ async def create_bill(
                     "cb": principal.user_id,
                 },
             )
-            for it, amt, lp in zip(body.items, item_amounts, list_prices):
+            # THE SNAPSHOT (migration 0027): every line stores the rule values it was computed under,
+            # so no later setting can reach it. `grade` is the tier list_price was taken at.
+            for it, out, reason, lp, (unit_code, unit_name) in zip(
+                body.items, computed, reasons, list_prices, units
+            ):
+                mode = it.deduction_mode or "none"
                 await conn.execute(
                     text(
                         "INSERT INTO purchase_bill_items (id, tenant_id, bill_id, product_id,"
                         " line_no, gross_weight, tare_weight, net_weight, unit_price,"
-                        " list_price, amount)"
-                        " VALUES (:id, :t, :b, :p, :ln, :gw, :tw, :nw, :up, :lp, :amt)"
+                        " list_price, amount, deduction_mode, deduction_pct, deduction_weight,"
+                        " deduction_reason, pricing_basis, quantity, rounding_rule, unit_code,"
+                        " unit_name, tier_code)"
+                        " VALUES (:id, :t, :b, :p, :ln, :gw, :tw, :nw, :up, :lp, :amt, :dm, :dp,"
+                        " :dw, :dr, :pb, :q, :rr, :uc, :un, :tc)"
                     ),
                     {
                         "id": it.id, "t": principal.tenant_id, "b": body.id,
                         "p": it.product_id, "ln": it.line_no,
-                        "gw": it.gross_weight, "tw": it.tare_weight, "nw": it.net_weight,
-                        "up": it.unit_price, "lp": lp, "amt": amt,
+                        "gw": it.gross_weight, "tw": it.tare_weight, "nw": out.net_weight,
+                        "up": it.unit_price, "lp": lp, "amt": out.amount,
+                        "dm": mode, "dp": it.deduction_pct if mode == "percent" else None,
+                        "dw": out.deduction_weight, "dr": reason,
+                        "pb": it.pricing_basis or "weight", "q": out.quantity,
+                        "rr": it.rounding_rule or DEFAULT_ROUNDING_RULE,
+                        "uc": unit_code, "un": unit_name, "tc": grade,
                     },
                 )
 

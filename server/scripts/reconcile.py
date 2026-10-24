@@ -79,12 +79,13 @@ most of the day and wrong across Bangkok midnight, which is the subject of
 this case: a rule applied to production and never swept through the code that
 checks it.
 
-T2's arithmetic is the opposite call and duplicates on purpose. `round(net *
-price, 2)` is evaluated by Postgres in NUMERIC — an implementation independent of
-the `Decimal.quantize(ROUND_HALF_UP)` in `bills._line_amount`. Both round ties
-away from zero, and every value here is non-negative by CHECK, so the two must
-agree. A checker that imported `_line_amount` would agree with a bug in
-`_line_amount`.
+T2's arithmetic is the opposite call and duplicates on purpose. Since migration 0027
+it is `floor(quantity * price / step + 0.5) * step` (or `floor(... / step) * step`
+for a down rule), evaluated by Postgres in NUMERIC — an implementation independent of
+both `app/money_rules.round_amount` (Decimal.quantize) and the database's own
+`line_amount_rounded` (round/trunc) that ck_items_amount calls. Every value here is
+non-negative by CHECK, so the three must agree. A checker that imported or called
+either would agree with a bug in it.
 
 The rule that separates them: DUPLICATE ARITHMETIC, NEVER DUPLICATE A
 CONVENTION. Arithmetic has one right answer that two implementations must reach.
@@ -465,6 +466,9 @@ REQUIRED_CONSTRAINTS = {
     "purchase_bill_items": [
         "uq_items_tenant_bill_line", "fk_items_bill", "fk_items_product",
         "ck_items_net",
+        # Migration 0027: the line's rules. T2/T3 restate their arithmetic; these are what make a
+        # recorded line that breaks it unrepresentable in the first place.
+        "ck_items_rules", "ck_items_deduction", "ck_items_quantity", "ck_items_amount",
     ],
     "products": [
         "uq_products_tenant_id", "uq_products_tenant_code",
@@ -578,28 +582,52 @@ SQL_CHECKS: list[SqlCheck] = [
          ORDER BY b.doc_no
         """,
     ),
+    # T2 AND T3 SINCE MIGRATION 0027 (money rules). A line records the rule it was computed under;
+    # a line received before 0027 has none and reads as quantity = net, half-up at the satang --
+    # the only rule there was. The arithmetic is RESTATED here in a different form from the
+    # database's line_amount_rounded and from app/money_rules.py (floor(x / step + 0.5) for half-up,
+    # floor(x / step) for down, both exact on the non-negative values the CHECKs allow), so a bug
+    # in either is a disagreement here, not an agreement.
     SqlCheck(
-        "T2", "item amount = net_weight x unit_price, NUMERIC, half-up at 2dp", "items",
+        "T2", "item amount = quantity x unit_price under the line's rounding rule (pre-0027: net, half-up 2dp)",
+        "items",
         """
-        SELECT b.doc_no, i.line_no, i.id AS item_id,
-               i.net_weight, i.unit_price, i.amount AS stored_amount,
-               round(i.net_weight * i.unit_price, 2) AS expected_amount,
-               i.amount - round(i.net_weight * i.unit_price, 2) AS difference
-          FROM purchase_bill_items i
-          JOIN purchase_bills b ON b.id = i.bill_id
-         WHERE i.amount <> round(i.net_weight * i.unit_price, 2)
-         ORDER BY b.doc_no, i.line_no
+        SELECT doc_no, line_no, item_id, quantity, unit_price, rule, stored_amount, expected_amount,
+               stored_amount - expected_amount AS difference
+          FROM (
+            SELECT b.doc_no, i.line_no, i.id AS item_id, i.unit_price, i.amount AS stored_amount,
+                   coalesce(i.quantity, i.net_weight) AS quantity,
+                   coalesce(i.rounding_rule, 'half_up_0.01') AS rule,
+                   CASE coalesce(i.rounding_rule, 'half_up_0.01')
+                     WHEN 'half_up_0.01' THEN floor(coalesce(i.quantity, i.net_weight) * i.unit_price * 100 + 0.5) / 100
+                     WHEN 'down_0.01'    THEN floor(coalesce(i.quantity, i.net_weight) * i.unit_price * 100) / 100
+                     WHEN 'half_up_0.25' THEN floor(coalesce(i.quantity, i.net_weight) * i.unit_price * 4 + 0.5) / 4
+                     WHEN 'down_0.25'    THEN floor(coalesce(i.quantity, i.net_weight) * i.unit_price * 4) / 4
+                     WHEN 'half_up_1'    THEN floor(coalesce(i.quantity, i.net_weight) * i.unit_price + 0.5)
+                     WHEN 'down_1'       THEN floor(coalesce(i.quantity, i.net_weight) * i.unit_price)
+                   END AS expected_amount
+              FROM purchase_bill_items i
+              JOIN purchase_bills b ON b.id = i.bill_id
+          ) x
+         WHERE expected_amount IS NULL OR stored_amount <> expected_amount
+         ORDER BY doc_no, line_no
         """,
     ),
     SqlCheck(
-        "T3", "item net_weight = gross_weight - tare_weight", "items",
+        "T3", "item net_weight = gross - tare - deduction; a percent deduction and a weight-priced quantity follow",
+        "items",
         """
         SELECT b.doc_no, i.line_no, i.id AS item_id,
-               i.gross_weight, i.tare_weight, i.net_weight AS stored_net,
-               i.gross_weight - i.tare_weight AS expected_net
+               i.gross_weight, i.tare_weight, i.deduction_mode, i.deduction_pct, i.deduction_weight,
+               i.net_weight AS stored_net,
+               i.gross_weight - i.tare_weight - i.deduction_weight AS expected_net,
+               i.pricing_basis, i.quantity
           FROM purchase_bill_items i
           JOIN purchase_bills b ON b.id = i.bill_id
-         WHERE i.net_weight <> i.gross_weight - i.tare_weight
+         WHERE i.net_weight <> i.gross_weight - i.tare_weight - i.deduction_weight
+            OR (i.deduction_mode = 'percent' AND i.deduction_weight
+                <> floor((i.gross_weight - i.tare_weight) * i.deduction_pct * 10 + 0.5) / 1000)
+            OR (i.pricing_basis = 'weight' AND i.quantity <> i.net_weight)
          ORDER BY b.doc_no, i.line_no
         """,
     ),
@@ -1827,8 +1855,9 @@ CANNOT_SEE = [
     " a floor. It is the same gap the daily report labels"
     " understatement_possible, and it is structural, not a missing feature.",
 
-    "ANYTHING THE SCHEMA WOULD HAVE REJECTED ANYWAY. net = gross - tare"
-    " (ck_items_net), the all-or-nothing void columns"
+    "ANYTHING THE SCHEMA WOULD HAVE REJECTED ANYWAY. net = gross - tare - deduction"
+    " (ck_items_net), a recorded line's deduction, quantity and rounded amount"
+    " (ck_items_deduction / ck_items_quantity / ck_items_amount, 0027), the all-or-nothing void columns"
     " (ck_bills_void_consistency), doc_no unique per tenant"
     " (uq_bills_tenant_docno), cross-tenant references (the composite FKs),"
     " non-negative money and the NUMERIC scales are all enforced by Postgres."

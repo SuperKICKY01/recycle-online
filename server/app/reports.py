@@ -323,7 +323,8 @@ WITH per_bill AS (
     SELECT b.id,
            count(*) FILTER (WHERE i.unit_price <> i.list_price)  AS off_lines,
            coalesce(sum(i.amount), 0)                            AS paid_total,
-           coalesce(sum(round(i.net_weight * i.list_price, 2)), 0) AS list_total
+           coalesce(sum(public.line_amount_rounded(coalesce(i.quantity, i.net_weight), i.list_price,
+                                                   coalesce(i.rounding_rule, 'half_up_0.01'))), 0) AS list_total
       FROM purchase_bills b
       JOIN purchase_bill_items i ON i.bill_id = b.id
      WHERE b.voided_at IS NULL
@@ -681,12 +682,14 @@ async def daily_report(
 # and weight totals equal the sum of the rows for EVERY dimension, because every
 # item belongs to exactly one product, one seller, one user and one day.
 #
-# THE WEIGHT IS net_weight — the one the stored `amount` was computed on
-# (bills._line_amount: round(net_weight * unit_price, 2), ROUND_HALF_UP). The
-# list-basis figure rounds the SAME way, per line, reusing bills' arithmetic:
-# `round(net_weight * list_price, 2)` in Postgres NUMERIC, which rounds ties away
-# from zero and so agrees with ROUND_HALF_UP on the non-negative values a CHECK
-# guarantees (the identical expression daily's off-list uses at :323).
+# THE WEIGHT IS net_weight — after any impurity deduction (0027). The stored `amount`
+# was computed on the line's quantity under its own rounding rule (app/money_rules.py;
+# before 0027 always round(net_weight * unit_price, 2), ROUND_HALF_UP). The list-basis
+# figure rounds the SAME way, per line: line_amount_rounded(quantity, list_price, rule)
+# in Postgres NUMERIC -- the function migration 0027's ck_items_amount holds every
+# recorded line to -- with a pre-0027 line read as quantity = net, rule half_up_0.01,
+# which is `round(net_weight * list_price, 2)`, the expression this used to be (and
+# the identical one daily's off-list uses).
 #
 # THE DAY BOUNDARY AND THE DAY BUCKET ARE SHOP TIME, ON server_received_at.
 # ARCHITECTURE §6: "Every report aggregates on server_received_at", converted to
@@ -819,7 +822,11 @@ _SUMMARY_AGGREGATES = (
     "count(DISTINCT i.bill_id)                            AS bill_count,"
     " coalesce(sum(i.net_weight), 0)                      AS net_weight,"
     " coalesce(sum(i.amount), 0)                          AS paid_total,"
-    " coalesce(sum(round(i.net_weight * i.list_price, 2)), 0) AS list_total"
+    # The list basis under the LINE's own quantity and rounding rule (0027): a piece- or lump-priced
+    # line, or one rounded to the baht, compares like with like. A line received before its rules
+    # were recorded reads net x list half-up to the satang -- exactly the expression this was.
+    " coalesce(sum(public.line_amount_rounded(coalesce(i.quantity, i.net_weight), i.list_price,"
+    "                 coalesce(i.rounding_rule, 'half_up_0.01'))), 0) AS list_total"
 )
 
 

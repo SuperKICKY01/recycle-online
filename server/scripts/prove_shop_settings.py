@@ -272,9 +272,13 @@ async def main() -> int:
             # object is exactly the branch's own identity, asserted below.
             # `staff_money_visible` LEFT this set at migration 0019 (folded into
             # the staff role's grants); the phone gates on its own permissions.
+            # WIDENED 2026-10-24 (migration 0027): the shop's three money rules,
+            # which name no person either; their owner-only write is proven in
+            # prove_money_rules.py, not here.
             check(
                 set(body) == {"id", "name", "default_grade", "address", "phone",
-                              "branch", "branch_count"},
+                              "branch", "branch_count", "deduction_mode",
+                              "deduction_reason_required", "rounding_rule"},
                 f"E1: body keys are exactly the shop's and none names a person "
                 f"(keys={sorted(body)})",
             )

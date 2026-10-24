@@ -84,7 +84,7 @@ from __future__ import annotations
 import secrets
 import uuid
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
@@ -98,6 +98,7 @@ from .branches import branch_payload, read_branch, read_caller_branch
 from .config import SHOP_TIMEZONE
 from .db import constraint_name_of, tenant_connection
 from .permissions import Permission
+from .policy import MONEY_KEYS, effective_deduction, read_policy, require_owner
 
 router = APIRouter()
 
@@ -598,12 +599,23 @@ async def activate_category(
 # ---------------------------------------------------------------------------
 # products
 # ---------------------------------------------------------------------------
+# THE MONEY RULES A PRODUCT CARRIES (migration 0027). The values restate app/money_rules.py's tuples
+# (prove_shop_policy compares them member by member); a value outside the set is pydantic's 422.
+PricingBasis = Literal["weight", "piece", "lump"]
+DeductionSetting = Literal["none", "kg", "percent", "both"]
+RoundingRule = Literal["half_up_0.01", "down_0.01", "half_up_0.25", "down_0.25", "half_up_1", "down_1"]
+
+
 class ProductCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     code: Code
     name: Name
     category_id: uuid.UUID
     uom_id: uuid.UUID
+    # Both are MONEY settings (app/policy.py SETTINGS): sending either requires the OWNER. Absent,
+    # the product is born weight-priced and takes the shop's deduction rule -- today's behaviour.
+    pricing_basis: PricingBasis | None = None
+    deduction_mode: DeductionSetting | None = None
 
 
 class ProductUpdate(BaseModel):
@@ -622,6 +634,12 @@ class ProductUpdate(BaseModel):
     name: Name | None = None
     category_id: uuid.UUID | None = None
     uom_id: uuid.UUID | None = None
+    # OWNER only (money). deduction_mode null CLEARS the product's own rule: it takes the shop's.
+    pricing_basis: PricingBasis | None = None
+    deduction_mode: DeductionSetting | None = None
+
+
+_PRODUCT_NULLABLE = frozenset({"deduction_mode"})
 
 
 class PriceSet(BaseModel):
@@ -631,6 +649,7 @@ class PriceSet(BaseModel):
 
 _PRODUCT_SELECT = (
     "SELECT p.id, p.code, p.name, p.category_id, p.uom_id, p.is_active,"
+    " p.pricing_basis, p.deduction_mode,"
     " u.code AS uom_code, u.name AS uom_name"
     # No is_active predicate on the uom either: a product whose unit was retired
     # still has to render its unit. Retiring a uom stops it being OFFERED, it
@@ -639,7 +658,7 @@ _PRODUCT_SELECT = (
 )
 
 
-def _product_payload(r: Any, prices: dict[str, str]) -> dict:
+def _product_payload(r: Any, prices: dict[str, str], shop_deduction: str) -> dict:
     return {
         "id": str(r["id"]),
         "code": r["code"],
@@ -651,7 +670,16 @@ def _product_payload(r: Any, prices: dict[str, str]) -> dict:
         "is_active": r["is_active"],
         # {"A": "12.50", "B": "12.00", ...} — strings, never floats.
         "prices": prices,
+        # 0027. `deduction_mode` is the product's OWN rule (null = the shop's); the effective one is
+        # resolved HERE, by app/policy.py, so the phone never re-implements the precedence.
+        "pricing_basis": r["pricing_basis"],
+        "deduction_mode": r["deduction_mode"],
+        "deduction_mode_effective": effective_deduction(shop_deduction, r["deduction_mode"]),
     }
+
+
+async def _shop_deduction(conn: AsyncConnection) -> str:
+    return (await read_policy(conn, None)).deduction_mode
 
 
 async def _read_product(conn: AsyncConnection, product_id: uuid.UUID) -> dict | None:
@@ -669,7 +697,7 @@ async def _read_product(conn: AsyncConnection, product_id: uuid.UUID) -> dict | 
             {"p": product_id},
         )
     ).mappings().all()
-    return _product_payload(row, {p["grade"]: str(p["price"]) for p in prices})
+    return _product_payload(row, {p["grade"]: str(p["price"]) for p in prices}, await _shop_deduction(conn))
 
 
 async def _require_product(conn: AsyncConnection, product_id: uuid.UUID) -> None:
@@ -748,6 +776,7 @@ async def list_products(
                 )
             )
         ).mappings().all()
+        shop_deduction = await _shop_deduction(conn)
 
     by_product: dict[str, dict[str, str]] = {}
     for pr in prices:
@@ -755,7 +784,7 @@ async def list_products(
 
     return {
         "products": [
-            _product_payload(r, by_product.get(str(r["id"]), {})) for r in rows
+            _product_payload(r, by_product.get(str(r["id"]), {}), shop_deduction) for r in rows
         ]
     }
 
@@ -764,7 +793,11 @@ async def list_products(
 async def create_product(
     body: ProductCreate, principal: Principal = Depends(require(Permission.MASTER_WRITE))
 ) -> dict:
+    money = {k for k in body.model_fields_set & MONEY_KEYS["products"]
+             if getattr(body, k) is not None}
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
+        if money:
+            await require_owner(conn, principal, money)
         await _require_refs(
             conn, {"category_id": body.category_id, "uom_id": body.uom_id}
         )
@@ -772,8 +805,9 @@ async def create_product(
             new_id = (
                 await conn.execute(
                     text(
-                        f"INSERT INTO products (tenant_id, category_id, uom_id, code, name)"
-                        f" VALUES ({_TENANT}, :c, :u, :code, :name)"
+                        f"INSERT INTO products (tenant_id, category_id, uom_id, code, name,"
+                        f" pricing_basis, deduction_mode)"
+                        f" VALUES ({_TENANT}, :c, :u, :code, :name, :pb, :dm)"
                         f" RETURNING id"
                     ),
                     {
@@ -781,6 +815,8 @@ async def create_product(
                         "u": body.uom_id,
                         "code": body.code,
                         "name": body.name,
+                        "pb": body.pricing_basis or "weight",
+                        "dm": body.deduction_mode,
                     },
                 )
             ).scalar_one()
@@ -800,8 +836,13 @@ async def update_product(
     body: ProductUpdate,
     principal: Principal = Depends(require(Permission.MASTER_WRITE)),
 ) -> dict:
-    changes = _changes(body, nullable=frozenset())
+    changes = _changes(body, nullable=_PRODUCT_NULLABLE)
+    money = set(changes) & MONEY_KEYS["products"]
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
+        if money:
+            # OWNER only (app/policy.py), checked BEFORE the row is looked up: an admin learns that
+            # the rule is the owner's, never whether a product id exists, from this refusal.
+            await require_owner(conn, principal, money)
         await _require_refs(conn, changes)
         if not await _update_row(conn, "products", product_id, changes):
             raise _not_found("product")
@@ -1139,10 +1180,13 @@ WITH b AS (
 )
 SELECT b.id AS bill_id, b.doc_no, b.total_amount, b.paid_amount, b.server_received_at,
        b.voided_at, i.line_no, i.product_id, i.net_weight, i.unit_price,
+       coalesce(i.quantity, i.net_weight) AS quantity, coalesce(i.pricing_basis, 'weight') AS pricing_basis,
+       coalesce(i.unit_name, u.name) AS unit_name,
        p.name AS product_name
   FROM b
   LEFT JOIN purchase_bill_items i ON i.bill_id = b.id
   LEFT JOIN products p ON p.id = i.product_id
+  LEFT JOIN uoms u ON u.id = p.uom_id
  ORDER BY b.server_received_at DESC, b.id DESC, i.line_no
 """
 
@@ -1246,6 +1290,12 @@ async def seller_history(
             "product_id": str(r["product_id"]),
             "product_name": r["product_name"],
             "net_weight": str(r["net_weight"]),
+            # What the price multiplied, and its unit (0027): a piece- or lump-priced line reads as
+            # pieces or one lot, not as a weight. A pre-0027 line reads quantity = net, basis weight,
+            # and the product's unit as it is now -- a label, never a re-derived figure.
+            "quantity": str(r["quantity"]),
+            "pricing_basis": r["pricing_basis"],
+            "unit_name": r["unit_name"],
         }
         if money_included:
             line["unit_price"] = str(r["unit_price"])
@@ -2341,6 +2391,12 @@ class ShopUpdate(BaseModel):
     default_grade: GradeCode | None = None
     address: ShopAddress | None = None
     phone: ShopPhone | None = None
+    # THE SHOP'S MONEY RULES (migration 0027). OWNER only, with default_grade (app/policy.py
+    # SETTINGS says why each is money); address and phone stay with shop.settings.write. All three
+    # are NOT NULL columns, so an explicit null is a 422 (field_not_nullable), never a silent no-op.
+    deduction_mode: DeductionSetting | None = None
+    deduction_reason_required: bool | None = None
+    rounding_rule: RoundingRule | None = None
     # `staff_money_visible` (0014, P1.23 item 4 D1) was HERE until migration 0019
     # folded it into the staff role's grants as money.view_own and dropped the
     # column: whether staff see their own money is now a permission a role holds,
@@ -2359,7 +2415,8 @@ async def _read_shop(conn: Any, user_id: uuid.UUID) -> dict:
     # this row names a person -- it is the shop's own identity and its own choices.
     row = (
         await conn.execute(
-            text("SELECT id, name, default_grade, address, phone FROM tenants")
+            text("SELECT id, name, default_grade, address, phone, deduction_mode,"
+                 " deduction_reason_required, rounding_rule FROM tenants")
         )
     ).mappings().one()
     # THE CALLER'S BRANCH (migration 0018): the user's own if scoped, else the
@@ -2373,6 +2430,11 @@ async def _read_shop(conn: Any, user_id: uuid.UUID) -> dict:
         "default_grade": row["default_grade"],
         "address": row["address"],
         "phone": row["phone"],
+        # The shop's own money rules as stored (0027); the effective rule for a branch is
+        # GET /shop/policy's, which resolves the branch override through app/policy.py.
+        "deduction_mode": row["deduction_mode"],
+        "deduction_reason_required": row["deduction_reason_required"],
+        "rounding_rule": row["rounding_rule"],
         # `staff_money_visible` is NO LONGER HERE (0019): the phone gates its
         # dashboard entry on the caller's own permission set (the token claim,
         # /whoami, and its cached_permissions), not on a shop toggle.
@@ -2410,6 +2472,7 @@ async def update_shop(
     changed (see ShopUpdate).
     """
     changes = _changes(body, nullable=_SHOP_NULLABLE)
+    money = set(changes) & MONEY_KEYS["tenants"]
     # Only the fields the caller sent, as a dynamic SET -- the same shape
     # _update_row builds, and the keys are literals from ShopUpdate (extra="forbid"
     # so model_dump cannot produce a key outside {default_grade, address, phone};
@@ -2417,6 +2480,11 @@ async def update_shop(
     # role's grants), never caller strings.
     assignments = ", ".join(f"{col} = :{col}" for col in changes)
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
+        # MONEY RULES ARE THE OWNER'S (ADVISOR-DECIDED 2026-10-24): default_grade and the three 0027
+        # rules. The whole request is refused when it names one -- an admin's address change riding
+        # beside a rounding change is not half-applied.
+        if money:
+            await require_owner(conn, principal, money)
         # A default_grade being SET (not cleared) must be one of the shop's active
         # tiers (S16 / P1.24). Cleared (explicit null) takes the default away and
         # needs no tier. A foreign code is a readable 422, not the FK's 500.
@@ -2459,6 +2527,12 @@ class BranchPolicyUpdate(BaseModel):
     # 9's; extra="forbid" refuses any other key today.
     separate_cashier: bool | None = None
     shifts_enabled: bool | None = None
+    # 0027: this branch's rounding, overriding the shop's. OWNER only. Null CLEARS the override
+    # (the branch takes the shop's rule) -- the one key here for which null is a value.
+    rounding_rule: RoundingRule | None = None
+
+
+_BRANCH_NULLABLE = frozenset({"rounding_rule"})
 
 
 @router.patch("/branches/{branch_id}")
@@ -2470,8 +2544,9 @@ async def update_branch(
     # policy the yard must not flip while a load is on the scale, not a per-bill act.
     principal: Principal = Depends(require(Permission.SHOP_SETTINGS_WRITE)),
 ) -> dict:
-    """Set a branch's counter policy (separate_cashier, shifts_enabled).
-    shop.settings.write.
+    """Set a branch's counter policy (separate_cashier, shifts_enabled) -- shop.settings.write --
+    or its rounding override (rounding_rule, 0027) -- the OWNER only (app/policy.py); null clears
+    the override and the branch rounds with the shop's rule.
 
     shifts_enabled (0021) is the declared shift switch: a DISPLAY rule for the
     counter's shift screens. Nothing on a write path reads it -- POST /payments and
@@ -2500,11 +2575,14 @@ async def update_branch(
         if await read_branch(conn, branch_id) is None:
             raise _not_found("branch")
         changes = body.model_dump(exclude_unset=True)
-        if not changes or any(v is None for v in changes.values()):
+        if not changes or any(v is None for k, v in changes.items() if k not in _BRANCH_NULLABLE):
             raise _invalid(
                 "no_change",
                 "ต้องระบุนโยบายอย่างน้อยหนึ่งค่า และค่าต้องไม่ว่าง",
             )
+        money = set(changes) & MONEY_KEYS["branches"]
+        if money:
+            await require_owner(conn, principal, money)
         # Column names come from the model's two declared fields, never the wire.
         assignments = ", ".join(f"{k} = :{k}" for k in sorted(changes))
         # UPDATE scoped by RLS to this tenant; the id predicate is the subject, not
@@ -2522,11 +2600,12 @@ async def update_branch(
                 rowcount=str(result.rowcount),
             )
         updated = await read_branch(conn, branch_id)
-        shifts_enabled = (
+        policy_row = (
             await conn.execute(
-                text("SELECT shifts_enabled FROM branches WHERE id = :id"), {"id": branch_id}
+                text("SELECT shifts_enabled, rounding_rule FROM branches WHERE id = :id"), {"id": branch_id}
             )
-        ).scalar_one()
+        ).mappings().one()
+        shifts_enabled = policy_row["shifts_enabled"]
         # The five identity keys branch_payload carries, PLUS the policies, so the
         # caller reads back what it set. branch_payload itself still omits them
         # (GET /shop's five-key branch is unchanged, prove_shop_settings E1); the
@@ -2535,6 +2614,7 @@ async def update_branch(
             **branch_payload(updated),
             "separate_cashier": updated.separate_cashier,
             "shifts_enabled": bool(shifts_enabled),
+            "rounding_rule": policy_row["rounding_rule"],
         }
 
 
@@ -2591,9 +2671,17 @@ async def get_shop_policy(principal: Principal = Depends(get_principal)) -> dict
                     )
                 ).scalars().all()
             )
+        # THE MONEY RULES THE PHONE APPLIES OFFLINE (0027), through the ONE reader: the effective
+        # rounding for this caller's branch (the shop's when no branch resolves), and the shop's
+        # deduction rule and reason requirement. A product's own deduction rule rides GET /products
+        # (deduction_mode_effective). The phone caches this row; a line DECLARES the rule it used.
+        policy = await read_policy(conn, branch.id if branch is not None else None)
         return {
             "branch_id": str(branch.id) if branch is not None else None,
             "separate_cashier": branch.separate_cashier if branch is not None else None,
             "shifts_enabled": shifts_enabled,
             "payment_methods": methods,
+            "rounding_rule": policy.rounding_rule,
+            "deduction_mode": policy.deduction_mode,
+            "deduction_reason_required": policy.deduction_reason_required,
         }

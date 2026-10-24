@@ -289,6 +289,12 @@ def expected_products(ctx: Ctx, name: str, with_money: bool) -> list[dict]:
             "product_id": str(ctx.product_ids[product]),
             "product_name": PRODUCTS[product][1],
             "net_weight": weight(Decimal(net_s)),
+            # Migration 0027: what the price multiplied and its unit. Every fixture line is
+            # weight-priced (POST /bills with no rule fields), so quantity is the net, and the unit
+            # is the fixture's one uom, 'Kilogram' (inserted below) -- fixed here, not read back.
+            "quantity": weight(Decimal(net_s)),
+            "pricing_basis": "weight",
+            "unit_name": "Kilogram",
         }
         if with_money:
             line["unit_price"] = money(lp + Decimal(delta_s))
