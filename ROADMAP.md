@@ -1112,6 +1112,15 @@ one owner-only, audited, forward-only settings mechanism. The two can coexist (o
 change path and one audit over typed columns), but which one governs a new setting
 is the advisor's to say.
 
+**ANSWERED 2026-10-24 (ADVISOR-DECIDED): NO CONFLICT, BOTH GOVERN.** S16 governs
+STORAGE: every shop setting is a typed column, never a settings bag. Reading (2)
+governs POLICY: who may change a setting and what a change touches. Settings are read
+through ONE reader (STRUCTURE 1.2's `ShopPolicy`), and every record stores the values
+it used. Settings that change money or permissions are OWNER-only, by the owner
+identity 3a's guard uses (the role row, not a tick an admin can hold); operational
+settings stay with `shop.settings.write`. Which is which is the settings catalogue's
+(`server/app/policy.py`).
+
 ---
 
 ## Every settled decision, and the step that owns it

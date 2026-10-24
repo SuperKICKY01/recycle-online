@@ -40,14 +40,20 @@ from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from .config import APP_DATABASE_URL, DIRECTORY_DATABASE_URL
 
-engine = create_async_engine(APP_DATABASE_URL, pool_pre_ping=True)
+# hide_parameters: A 500's LOG MUST NOT CARRY A BOUND VALUE (M0, ADVISOR-DECIDED 2026-10-24).
+# SQLAlchemy renders a failed statement's parameters into str(exc) by default, and Starlette
+# prints that string as the last line of every unhandled traceback -- so a 500 on a seller or
+# bill write printed its phone, ID number, plate and weights into the server log. Measured
+# before this line: one forced 500 put the bill's plate in the log (scripts/
+# prove_log_redaction.py L4). The marker SQLAlchemy prints instead says parameters existed.
+engine = create_async_engine(APP_DATABASE_URL, pool_pre_ping=True, hide_parameters=True)
 
 # The shop-code directory reader. A separate engine because it is a separate
 # ROLE -- see the module docstring for why this one sets no tenant context.
 # Nothing in the application opens a connection on it yet; no endpoint resolves
 # a code. Creating the engine makes no connection, so this costs nothing until
 # something uses it.
-directory_engine = create_async_engine(DIRECTORY_DATABASE_URL, pool_pre_ping=True)
+directory_engine = create_async_engine(DIRECTORY_DATABASE_URL, pool_pre_ping=True, hide_parameters=True)
 
 # The reserved actor for a write with NO human principal. Migration 0017's audit
 # trigger REFUSES a write to an audited table when app.actor_id is unset (fail
