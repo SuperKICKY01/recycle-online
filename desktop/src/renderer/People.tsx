@@ -41,6 +41,16 @@ import {
   ownerAccountLocked,
 } from "../shared/people";
 import { noticeFor, type Session } from "../shared/session";
+import {
+  DEDUCTION_SETTINGS,
+  DEDUCTION_TEXT,
+  isOwner,
+  MONEY_TEXT,
+  moneyPatch,
+  ROUNDING_RULES,
+  ROUNDING_TEXT,
+  type ShopMoney,
+} from "../shared/moneyRules";
 
 type Tab = "shop" | "users" | "roles" | "drawer";
 
@@ -101,7 +111,13 @@ function Notice({ problem, saved }: { problem: string | null; saved: string | nu
 function ShopTab(props: Props) {
   const perms = props.session.me?.permissions ?? [];
   const can = perms.includes("shop.settings.write");
+  // MONEY RULES ARE THE OWNER'S (server migration 0027, app/policy.py): the default grade and the
+  // three rules below. The role here is the session's advisory claim, used only to decide what is
+  // drawn editable; the server refuses anyone else 403 money_rule_owner_only.
+  const owner = can && isOwner(props.session.me);
   const [shop, setShop] = useState<Shop | null>(null);
+  const [money, setMoney] = useState<ShopMoney | null>(null);
+  const [moneyBusy, setMoneyBusy] = useState(false);
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [tiers, setTiers] = useState<Tier[]>([]);
   const [form, setForm] = useState({ address: "", phone: "", default_grade: "" });
@@ -118,6 +134,7 @@ function ShopTab(props: Props) {
     if ("ok" in s) {
       setShop(s.ok);
       setForm({ address: s.ok.address ?? "", phone: s.ok.phone ?? "", default_grade: s.ok.default_grade ?? "" });
+      setMoney(s.ok.money);
     } else setProblem(s.problem);
     if ("ok" in p) setPolicy(p.ok);
     if ("ok" in t) setTiers(t.ok);
@@ -141,6 +158,28 @@ function ShopTab(props: Props) {
       } else setProblem(r.problem);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const saveMoney = async () => {
+    if (shop?.money == null || money === null) return;
+    const body = moneyPatch(shop.money, money);
+    if (Object.keys(body).length === 0) {
+      setProblem("ยังไม่ได้แก้ไขอะไร");
+      return;
+    }
+    setMoneyBusy(true);
+    try {
+      const r = await ask(props, (tk) => props.session.api.patch(tk, "/shop", body, readShop));
+      if ("ok" in r) {
+        // What the SERVER stored, never what was sent.
+        setShop(r.ok);
+        setMoney(r.ok.money);
+        setProblem(null);
+        setSaved(MONEY_TEXT.saved);
+      } else setProblem(r.problem);
+    } finally {
+      setMoneyBusy(false);
     }
   };
 
@@ -172,13 +211,45 @@ function ShopTab(props: Props) {
       </label>
       <label className="field field-narrow">
         <span className="field-label">เกรดเริ่มต้นของร้าน</span>
-        <select name="defaultGrade" value={form.default_grade} disabled={!can} onChange={(e) => setForm((f) => ({ ...f, default_grade: e.target.value }))}>
+        <select name="defaultGrade" value={form.default_grade} disabled={!owner} onChange={(e) => setForm((f) => ({ ...f, default_grade: e.target.value }))}>
           <option value="">ไม่กำหนด — ผู้ขายที่ไม่มีเกรดซื้อไม่ได้จนกว่าจะกำหนด</option>
           {tiers.map((t) => <option key={t.code} value={t.code}>{t.name.trim() === t.code ? t.code : `${t.code} · ${t.name}`}</option>)}
         </select>
       </label>
       <Notice problem={problem} saved={saved} />
       {can ? <div className="void-actions"><button type="button" className="btn btn-primary" disabled={busy} onClick={() => void save()}>{busy ? "กำลังบันทึก…" : "บันทึก"}</button></div> : null}
+      {shop.money !== null && money !== null ? (
+        <fieldset className="policy" data-money-rules>
+          <legend className="section-title">{MONEY_TEXT.title}</legend>
+          <p className="field-hint">{MONEY_TEXT.ownerNote}</p>
+          <label className="field field-narrow">
+            <span className="field-label">{MONEY_TEXT.rounding}</span>
+            <select name="roundingRule" value={money.rounding_rule} disabled={!owner}
+              onChange={(e) => setMoney((m) => (m === null ? m : { ...m, rounding_rule: e.target.value as ShopMoney["rounding_rule"] }))}>
+              {ROUNDING_RULES.map((r) => <option key={r} value={r}>{ROUNDING_TEXT[r]}</option>)}
+            </select>
+          </label>
+          <label className="field field-narrow">
+            <span className="field-label">{MONEY_TEXT.deduction}</span>
+            <select name="deductionMode" value={money.deduction_mode} disabled={!owner}
+              onChange={(e) => setMoney((m) => (m === null ? m : { ...m, deduction_mode: e.target.value as ShopMoney["deduction_mode"] }))}>
+              {DEDUCTION_SETTINGS.map((d) => <option key={d} value={d}>{DEDUCTION_TEXT[d]}</option>)}
+            </select>
+          </label>
+          <label className="check">
+            <input type="checkbox" name="reasonRequired" checked={money.deduction_reason_required} disabled={!owner}
+              onChange={(e) => setMoney((m) => (m === null ? m : { ...m, deduction_reason_required: e.target.checked }))} />
+            {MONEY_TEXT.reason}
+          </label>
+          {owner ? (
+            <div className="void-actions">
+              <button type="button" className="btn btn-primary" data-save-money disabled={moneyBusy} onClick={() => void saveMoney()}>
+                {moneyBusy ? "กำลังบันทึก…" : "บันทึกการคิดเงิน"}
+              </button>
+            </div>
+          ) : null}
+        </fieldset>
+      ) : null}
       {policy?.branch_id != null ? (
         <fieldset className="policy">
           <legend className="section-title">การทำงานของสาขานี้</legend>

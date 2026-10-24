@@ -12,6 +12,8 @@
  * holding `sellers.read_personal`. Absent keys are NOT empty values -- `sellerPatch` never sends
  * either key for a caller without the permission, so an edit by such a caller cannot erase them.
  */
+import { DEDUCTION_SETTINGS, oneOf, PRICING_BASES, type DeductionSetting, type PricingBasis } from "./moneyRules";
+
 export interface CodeName {
   readonly id: string;
   readonly code: string;
@@ -26,6 +28,12 @@ export interface Product extends CodeName {
   readonly uom_name: string;
   /** tier code -> price, the server's decimal strings */
   readonly prices: Readonly<Record<string, string>>;
+  /** Server migration 0027: what the price multiplies, the product's OWN deduction rule (null =
+   *  follow the shop), and the rule in force as the server resolves it. Weight / null / none from a
+   *  server before 0027. */
+  readonly pricing_basis: PricingBasis;
+  readonly deduction_mode: DeductionSetting | null;
+  readonly deduction_mode_effective: DeductionSetting;
 }
 
 export interface Tier extends CodeName {
@@ -72,7 +80,10 @@ export function readProduct(v: unknown): Product | null {
     if (typeof val !== "string") return null; // a price is a decimal STRING, never a number (hard rule 1)
     p[k] = val;
   }
-  return { ...base, category_id: o["category_id"], uom_id: o["uom_id"], uom_code: String(o["uom_code"] ?? ""), uom_name: String(o["uom_name"] ?? ""), prices: p };
+  return { ...base, category_id: o["category_id"], uom_id: o["uom_id"], uom_code: String(o["uom_code"] ?? ""), uom_name: String(o["uom_name"] ?? ""), prices: p,
+    pricing_basis: oneOf(o["pricing_basis"], PRICING_BASES) ?? "weight",
+    deduction_mode: oneOf(o["deduction_mode"], DEDUCTION_SETTINGS),
+    deduction_mode_effective: oneOf(o["deduction_mode_effective"], DEDUCTION_SETTINGS) ?? "none" };
 }
 export const readProducts = (json: unknown): Product[] | null => readArray(json, "products", readProduct);
 

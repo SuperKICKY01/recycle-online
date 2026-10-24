@@ -25,6 +25,7 @@ import {
   tickEditable,
 } from "../shared/people";
 import { check, finish, header } from "./harness";
+import { DEDUCTION_TEXT, isOwner, MONEY_TEXT, moneyPatch, productRulesPatch, readShopMoney, ROUNDING_TEXT } from "../shared/moneyRules";
 
 const SERVER_CODES = [
   "bills.create", "bills.read", "bills.void", "money.view_own", "money.view_shop", "master.write", "prices.write",
@@ -73,10 +74,28 @@ void finish("PROVE_PEOPLE", async () => {
     ["1500", "1500.5", "0.00"].every((x) => moneyProblem(x) === null) && ["-1", "1.234", "1e3", "1,500", ""].every((x) => moneyProblem(x) !== null));
 
   header("S the shop body");
-  const before = { name: "ร้าน", address: "เดิม", phone: "081", default_grade: "A", branch_id: "b" };
+  const before = { name: "ร้าน", address: "เดิม", phone: "081", default_grade: "A", branch_id: "b", money: null };
   check("S1 only changes; emptied -> null; nothing changed -> {}",
     JSON.stringify(shopPatch(before, { address: "ใหม่", phone: "", default_grade: "A" })) === JSON.stringify({ address: "ใหม่", phone: null })
       && JSON.stringify(shopPatch(before, { address: "เดิม", phone: "081", default_grade: "A" })) === "{}");
+
+  // M1 (2026-10-24): the shop's money rules -- read, patched as changes only, owner-only to draw.
+  header("$ the money rules");
+  const money = readShopMoney({ rounding_rule: "down_1", deduction_mode: "both", deduction_reason_required: true });
+  check("$1 a 0027 body reads its three rules; an older body (no keys) and an unknown value read null",
+    JSON.stringify(money) === JSON.stringify({ rounding_rule: "down_1", deduction_mode: "both", deduction_reason_required: true })
+      && readShopMoney({}) === null
+      && readShopMoney({ rounding_rule: "half_even_0.01", deduction_mode: "none", deduction_reason_required: false }) === null);
+  check("$2 the patch carries only what changed", money !== null
+    && JSON.stringify(moneyPatch(money, { ...money, rounding_rule: "half_up_0.25" })) === JSON.stringify({ rounding_rule: "half_up_0.25" })
+    && JSON.stringify(moneyPatch(money, money)) === "{}");
+  check("$3 only the owner is drawn the controls", isOwner({ role: "owner" }) && !isOwner({ role: "admin" }) && !isOwner(null));
+  check("$4 the wording is the phone's, literally", ROUNDING_TEXT["down_1"] === "เต็มบาท ตัดเศษทิ้ง"
+    && DEDUCTION_TEXT.both === "เลือกได้ทั้งน้ำหนักและเปอร์เซ็นต์"
+    && MONEY_TEXT.ownerNote === "แก้ได้โดยเจ้าของร้านเท่านั้น มีผลกับบิลใหม่ บิลเดิมไม่เปลี่ยน");
+  check("$5 a product's rules patch: basis and an explicit return to the shop's rule (null)",
+    JSON.stringify(productRulesPatch({ pricing_basis: "weight", deduction_mode: "kg" }, { pricing_basis: "piece", deduction_mode: null }))
+      === JSON.stringify({ pricing_basis: "piece", deduction_mode: null }));
 
   header("Z variance");
   check("Z1 0.00 and -0.00 are zero; -49.50 and 0.01 are not",

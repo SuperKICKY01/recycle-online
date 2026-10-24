@@ -171,6 +171,15 @@ void finish("PROVE_BILLSFLOW", async () => {
     const firstDay = await page.locator('[data-calendar="from"] [data-day]').first().getAttribute("data-day");
     await page.locator('[data-calendar="from"] [data-day]').first().click();
     await page.waitForFunction((d) => document.querySelector("[data-range]")?.getAttribute("data-range")?.startsWith(`${d}..`) === true, firstDay);
+    // WAIT FOR THE FIELD, NOT ONLY THE RANGE (2026-10-24, lane A): picking a day re-renders the parent
+    // (data-range moves in that render) and the field's text is replaced by DateField's effect one
+    // render LATER. Reading straight after the range moved raced that effect: measured 3 reds and 2
+    // greens on unchanged code, every red reading the refused "12/10/2026" still in the box. The
+    // assertion below is unchanged; this only stops reading before the screen has settled, and a field
+    // that never leaves the refused text still reddens it (5 s, then the same read).
+    await page.waitForFunction(
+      () => (document.querySelector('input[name="from"]') as HTMLInputElement | null)?.value !== "12/10/2026",
+      undefined, { timeout: 5_000 }).catch(() => undefined);
     const pickedShown = await page.inputValue('input[name="from"]');
     await shot(page, "b3_dates_after");
     check("B11 Buddhist-era day-first everywhere: field shows dd/mm/25yy = the label, no native picker, no Christian-era date,"

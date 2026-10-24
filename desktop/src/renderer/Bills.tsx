@@ -17,6 +17,7 @@ import {
   billsQuery,
   listCountText,
   RANGE_TEXT,
+  lineCalc,
   rangeProblem,
   mayVoid,
   PAYMENT_STATUS_TEXT,
@@ -300,9 +301,7 @@ function BillPanel(props: {
               <span>{i.product_code ?? ""} {i.product_name ?? ""}</span>
               <span className="num line-amount">{display(i.amount)}</span>
             </div>
-            <div className="line-calc">
-              ชั่งรวม {display(i.gross_weight)} − ภาชนะ {display(i.tare_weight)} = สุทธิ {display(i.net_weight)} กก. × {display(i.unit_price)} บาท/กก.
-            </div>
+            {lineCalc(i).map((text) => <div key={text} className="line-calc">{text}</div>)}
           </li>
         ))}
       </ol>

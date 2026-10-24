@@ -36,6 +36,17 @@ import {
 } from "../shared/master";
 import { display } from "../shared/money";
 import { noticeFor, type Session } from "../shared/session";
+import {
+  BASIS_TEXT,
+  DEDUCTION_SETTINGS,
+  DEDUCTION_TEXT,
+  isOwner,
+  MONEY_TEXT,
+  PRICING_BASES,
+  productRulesPatch,
+  type DeductionSetting,
+  type PricingBasis,
+} from "../shared/moneyRules";
 
 type Tab = "products" | "categories" | "uoms" | "tiers" | "sellers";
 
@@ -394,8 +405,52 @@ function ProductForm(props: PanelProps) {
       </label>
       <Actions problem={w.problem} saved={w.saved} busy={w.busy} canSave={can} onSave={save}
         {...(row !== null ? { retire: { active: row.is_active, can, onToggle: () => void w.run("products", (t) => session.api.post(t, `/products/${row.id}/${row.is_active ? "deactivate" : "activate"}`, {}, readProduct), row.is_active ? "ปิดใช้งานแล้ว — บิลเก่ายังแสดงสินค้านี้ตามเดิม" : "เปิดใช้งานแล้ว") } } : {})} />
+      {row !== null ? <ProductRules product={row} {...props} /> : null}
       {row !== null ? <PriceTable product={row} {...props} /> : null}
     </div>
+  );
+}
+
+/**
+ * A PRODUCT'S MONEY RULES (server migration 0027): what its price multiplies, and its own impurity
+ * deduction rule (or the shop's). OWNER ONLY (app/policy.py) -- every other session reads them; the
+ * server refuses anyone else 403. Its own save, apart from the product's name and unit, so an admin
+ * editing a name never sends a rule the server would refuse the whole request for.
+ */
+function ProductRules(props: PanelProps & { product: Product }) {
+  const { product, session } = props;
+  const owner = isOwner(session.me);
+  const [basis, setBasis] = useState<PricingBasis>(product.pricing_basis);
+  const [mode, setMode] = useState<DeductionSetting | null>(product.deduction_mode);
+  const w = useWrite({ ...props, flash: null });
+  const save = () => {
+    const body = productRulesPatch(product, { pricing_basis: basis, deduction_mode: mode });
+    if (Object.keys(body).length === 0) {
+      w.setProblem("ยังไม่ได้แก้ไขอะไร");
+      return;
+    }
+    void w.run("products", (t) => session.api.patch(t, `/products/${product.id}`, body, readProduct), MONEY_TEXT.saved);
+  };
+  return (
+    <section className="price-table" aria-label={MONEY_TEXT.productTitle} data-product-rules>
+      <h3 className="section-title">{MONEY_TEXT.productTitle}</h3>
+      <p className="field-hint">{MONEY_TEXT.ownerNote}</p>
+      <label className="field">
+        <span className="field-label">{MONEY_TEXT.basis}</span>
+        <select name="pricingBasis" value={basis} disabled={!owner} onChange={(e) => setBasis(e.target.value as PricingBasis)}>
+          {PRICING_BASES.map((b) => <option key={b} value={b}>{BASIS_TEXT[b]}</option>)}
+        </select>
+      </label>
+      <label className="field">
+        <span className="field-label">{MONEY_TEXT.productDeduction}</span>
+        <select name="productDeduction" value={mode ?? ""} disabled={!owner}
+          onChange={(e) => setMode(e.target.value === "" ? null : (e.target.value as DeductionSetting))}>
+          <option value="">{product.deduction_mode === null ? `${MONEY_TEXT.followShop} (${DEDUCTION_TEXT[product.deduction_mode_effective]})` : MONEY_TEXT.followShop}</option>
+          {DEDUCTION_SETTINGS.map((d) => <option key={d} value={d}>{DEDUCTION_TEXT[d]}</option>)}
+        </select>
+      </label>
+      {owner ? <Actions problem={w.problem} saved={w.saved} busy={w.busy} canSave onSave={save} /> : null}
+    </section>
   );
 }
 

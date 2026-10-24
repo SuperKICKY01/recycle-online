@@ -5,7 +5,11 @@
  *
  * One fixed bill, one fixed shop, one fixed moment of printing; the bytes for 58 and 80 mm are
  * pinned in src/proof/golden/ (written ONCE by RECYCLE_WRITE_GOLDEN=1 after the 58 mm text below was
- * read line by line, and never rewritten to make a red go away).
+ * read line by line, and never rewritten to make a red go away). REWRITTEN ONCE, DELIBERATELY,
+ * 2026-10-24 (M0/M1): the slip's format changed -- each line's own unit instead of a fixed กก., the
+ * container printed as ภาชนะ, the impurity deduction and its reason, a piece-priced line. The new
+ * 58 mm lines below were typed by hand FIRST and D1 read them green against the program's bytes
+ * before the golden files were written; the old goldens' G1/G2 red was the format change, nothing else.
  *
  *   G1/G2 the 58 / 80 mm bytes equal their golden files
  *   D1    the 58 mm slip, decoded by Node's OWN windows-874 decoder through a command parser written
@@ -47,14 +51,26 @@ const GOLDEN = join(DESKTOP_ROOT, "src", "proof", "golden");
 const SHOP: ShopHeader = { name: "ร้านรับซื้อของเก่า ทดสอบ", address: "99/1 ม.2 ต.บ้านใหม่ อ.เมือง จ.นนทบุรี 11000", phone: "081-234-5678" };
 const BILL: BillDetail = {
   id: "11111111-2222-3333-4444-555555555555", doc_no: "B-2569-0042", seller_id: "s", seller_code: "S001",
-  seller_name: "สมชาย ใจดี", vehicle_no: "1กข 1234", total_amount: "13140.00", payment_status: "paid",
-  server_received_at: "2026-10-12T03:15:00Z", status: "active", void_reason: null, paid_amount: "13140.00",
+  seller_name: "สมชาย ใจดี", vehicle_no: "1กข 1234", total_amount: "13064.00", payment_status: "paid",
+  server_received_at: "2026-10-12T03:15:00Z", status: "active", void_reason: null, paid_amount: "13064.00",
   voided_at: null,
+  // REWRITTEN 2026-10-24 (server migration 0027, M0/M1): line 1 carries a kg impurity deduction and
+  // its reason, and line 3 is piece-priced in its own unit, so the slip's three line shapes are all
+  // on the paper this proof reads. The arithmetic is the server's, restated: 1250 - 50 - 25 = 1175 x
+  // 8.50 = 9,987.50; 3 x 45.50 = 136.50; 9,987.50 + 2,940.00 + 136.50 = 13,064.00.
   items: [
     { line_no: 1, product_code: "FE-01", product_name: "เหล็กหนา", gross_weight: "1250.000", tare_weight: "50.000",
-      net_weight: "1200.000", unit_price: "8.50", amount: "10200.00" },
+      net_weight: "1175.000", unit_price: "8.50", amount: "9987.50", unit_name: "กก.", rules_recorded: true,
+      pricing_basis: "weight", quantity: "1175.000", deduction_mode: "kg", deduction_pct: null,
+      deduction_weight: "25.000", deduction_reason: "ดินติด" },
     { line_no: 2, product_code: "CU-02", product_name: "ทองแดงปอกสาย", gross_weight: "12.500", tare_weight: "0.500",
-      net_weight: "12.000", unit_price: "245.00", amount: "2940.00" },
+      net_weight: "12.000", unit_price: "245.00", amount: "2940.00", unit_name: "กก.", rules_recorded: true,
+      pricing_basis: "weight", quantity: "12.000", deduction_mode: "none", deduction_pct: null,
+      deduction_weight: "0.000", deduction_reason: null },
+    { line_no: 3, product_code: "BT-03", product_name: "แบตเตอรี่", gross_weight: "0.000", tare_weight: "0.000",
+      net_weight: "0.000", unit_price: "45.50", amount: "136.50", unit_name: "ชิ้น", rules_recorded: true,
+      pricing_basis: "piece", quantity: "3.000", deduction_mode: "none", deduction_pct: null,
+      deduction_weight: "0.000", deduction_reason: null },
   ],
 };
 const PRINTED_AT = "2026-10-12T03:20:00Z";
@@ -77,14 +93,18 @@ const EXPECTED_58 = [
   `ทะเบียนรถ${sp(16)}1กข 1234`,
   "-".repeat(32),
   "FE-01 เหล็กหนา",
-  "  ชั่ง 1,250.000 หัก 50.000 กก.",
-  `  สุทธิ 1,200.000 x 8.50${sp(1)}10,200.00`,   // 22 + 9 = 31
+  "  ชั่ง 1,250.000 ภาชนะ 50.000 กก.",            // the container is ภาชนะ, never หัก (2026-10-24)
+  "  หักสิ่งเจือปน 25.000 กก.",
+  "  เหตุผล ดินติด",
+  `  สุทธิ 1,175.000 x 8.50${sp(2)}9,987.50`,    // 22 + 8 = 30
   "CU-02 ทองแดงปอกสาย",
-  "  ชั่ง 12.500 หัก 0.500 กก.",
+  "  ชั่ง 12.500 ภาชนะ 0.500 กก.",
   `  สุทธิ 12.000 x 245.00${sp(3)}2,940.00`,     // 21 + 8 = 29
+  "BT-03 แบตเตอรี่",
+  `  3 ชิ้น x 45.50${sp(12)}136.50`,              // 14 + 6 = 20: the line's OWN unit, not กก.
   "-".repeat(32),
-  `รวมเงิน (บาท)${sp(11)}13,140.00`,             // 12 + 9 = 21
-  `จ่ายแล้ว${sp(17)}13,140.00`,                   // 6 + 9 = 15
+  `รวมเงิน (บาท)${sp(11)}13,064.00`,             // 12 + 9 = 21
+  `จ่ายแล้ว${sp(17)}13,064.00`,                   // 6 + 9 = 15
   "-".repeat(32),
   `${sp(4)}พิมพ์เมื่อ 12/10/2569 10:20`,         // 23 columns
 ];

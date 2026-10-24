@@ -23,6 +23,7 @@
 import {
   billsQuery,
   LIST_CEILING,
+  lineCalc,
   RANGE_TEXT,
   rangeProblem,
   listCountText,
@@ -121,4 +122,24 @@ void finish("PROVE_BILLS", async () => {
   check("P1 199 rows is a count; 200 rows says 'may be more' and is flagged partial",
     LIST_CEILING === 200 && under.text === "199 บิล" && !under.partial && full.partial && full.text.includes("อาจมีมากกว่านี้"),
     JSON.stringify({ under, full }));
+
+  // M0/M1 (2026-10-24): the line's OWN unit and its money rules, in words -- never a fixed กก.
+  header("U a line in its own unit");
+  const item = (extra: Record<string, unknown>) => readBillDetail({ id: "x", total_amount: "1.00", items: [{
+    line_no: 1, product_code: "P", product_name: "p", gross_weight: "100.000", tare_weight: "5.000",
+    net_weight: "92.150", unit_price: "10.00", amount: "921.50", ...extra }] })?.items[0];
+  const pctLine = item({ unit_name: "ลัง", rules_recorded: true, pricing_basis: "weight", quantity: "92.150",
+    deduction_mode: "percent", deduction_pct: "3.00", deduction_weight: "2.850", deduction_reason: "ความชื้น" });
+  check("U1 a percent deduction reads in the line's unit, with its reason on a line of its own",
+    pctLine !== undefined && JSON.stringify(lineCalc(pctLine)) === JSON.stringify([
+      "ชั่งรวม 100.000 − ภาชนะ 5.000 − หักสิ่งเจือปน 2.850 (3.00%) = สุทธิ 92.150 ลัง × 10.00 บาท/ลัง", "เหตุผลที่หัก: ความชื้น"]),
+    JSON.stringify(pctLine === undefined ? null : lineCalc(pctLine)));
+  const pieceLine = item({ unit_name: "ชิ้น", pricing_basis: "piece", quantity: "3.000", net_weight: "0.000" });
+  const lumpLine = item({ unit_name: "เหมา", pricing_basis: "lump", quantity: "1.000" });
+  const oldLine = item({});
+  check("U2 pieces, a lump, and a line from a server before 0027 (which reads as it always did, in กก.)",
+    pieceLine !== undefined && lumpLine !== undefined && oldLine !== undefined
+      && lineCalc(pieceLine)[0] === "3 ชิ้น × 10.00 บาท/ชิ้น" && lineCalc(lumpLine)[0] === "ราคาเหมา"
+      && lineCalc(oldLine)[0] === "ชั่งรวม 100.000 − ภาชนะ 5.000 = สุทธิ 92.150 กก. × 10.00 บาท/กก.",
+    JSON.stringify([pieceLine, lumpLine, oldLine].map((l) => (l === undefined ? null : lineCalc(l)))));
 });

@@ -7,12 +7,16 @@
  * answers, words each permission for a Thai office, and checks only what is plainly incomplete.
  * Money is the server's decimal string from the wire to the screen (hard rule 1).
  */
+import { readShopMoney, type ShopMoney } from "./moneyRules";
+
 export interface Shop {
   readonly name: string;
   readonly address: string | null;
   readonly phone: string | null;
   readonly default_grade: string | null;
   readonly branch_id: string | null;
+  /** The shop's money rules (server migration 0027), or null from a server before them. */
+  readonly money: ShopMoney | null;
 }
 
 export interface Policy {
@@ -59,7 +63,7 @@ export function readShop(v: unknown): Shop | null {
   if (o === null || typeof o["name"] !== "string") return null;
   const branch = obj(o["branch"]);
   return { name: o["name"], address: str(o["address"]), phone: str(o["phone"]), default_grade: str(o["default_grade"]),
-    branch_id: branch !== null ? str(branch["id"]) : null };
+    branch_id: branch !== null ? str(branch["id"]) : null, money: readShopMoney(o) };
 }
 
 export function readPolicy(v: unknown): Policy | null {

@@ -19,7 +19,7 @@
  */
 import { shopDateTime } from "@recycle/shop-time";
 
-import type { BillDetail } from "./bills";
+import type { BillDetail, BillLine } from "./bills";
 import { display } from "./money";
 
 export type PaperWidth = 58 | 80;
@@ -143,6 +143,46 @@ export function lineText(l: SlipLine, width: number): string[] {
 // --- what a slip says ---------------------------------------------------------------------------
 
 /** The slip for one bill. `printedAt` is passed in so the bytes are a function of their inputs. */
+/**
+ * ONE BILL LINE ON PAPER, under its own rules (server migration 0027, M0's unit fix).
+ *
+ *   weight  the weighing (ชั่ง ... ภาชนะ ... <unit>), the impurity deduction and its reason when there
+ *           is one, then สุทธิ <net> x <price> = amount
+ *   piece   <pieces> <unit> x <price> = amount
+ *   lump    ราคาเหมา = amount
+ *
+ * THE UNIT IS THE LINE'S OWN. Until 2026-10-24 every line printed "กก." whatever the product was
+ * measured in; a product sold by the ลัง printed as kilograms. A server before 0027 sends no unit,
+ * and only then does the old "กก." stand in -- the unit every such line was printed with.
+ *
+ * THE CONTAINER IS "ภาชนะ", NOT "หัก". The slip used to print the tare as หัก, which is exactly the
+ * word an impurity deduction needs; two different subtractions under one word on the seller's
+ * receipt is the confusion that ends at the counter. ภาชนะ is the word the phone and the desktop
+ * bill already use for the tare (impeccable · clarify · "Keep the same noun and verb for the same
+ * concept throughout the product.").
+ */
+export function itemLines(i: BillLine): SlipLine[] {
+  const name = [i.product_code, i.product_name].filter((s) => s !== null && s !== "").join(" ");
+  const unit = i.unit_name ?? "กก.";
+  const out: SlipLine[] = [{ kind: "text", text: name, align: "left", bold: true }];
+  if (i.pricing_basis === "piece") {
+    out.push({ kind: "pair", left: `  ${(i.quantity ?? "").replace(/\.0+$/, "")} ${unit} x ${display(i.unit_price)}`, right: display(i.amount) });
+    return out;
+  }
+  if (i.pricing_basis === "lump") {
+    out.push({ kind: "pair", left: "  ราคาเหมา", right: display(i.amount) });
+    return out;
+  }
+  out.push({ kind: "text", text: `  ชั่ง ${display(i.gross_weight)} ภาชนะ ${display(i.tare_weight)} ${unit}`, align: "left" });
+  if ((i.deduction_mode === "kg" || i.deduction_mode === "percent") && i.deduction_weight !== null && i.deduction_weight !== undefined) {
+    const pct = i.deduction_mode === "percent" && i.deduction_pct ? ` (${display(i.deduction_pct)}%)` : "";
+    out.push({ kind: "text", text: `  หักสิ่งเจือปน ${display(i.deduction_weight)} ${unit}${pct}`, align: "left" });
+    if (i.deduction_reason) out.push({ kind: "text", text: `  เหตุผล ${i.deduction_reason}`, align: "left" });
+  }
+  out.push({ kind: "pair", left: `  สุทธิ ${display(i.net_weight)} x ${display(i.unit_price)}`, right: display(i.amount) });
+  return out;
+}
+
 export function slipLines(shop: ShopHeader, bill: BillDetail, printedAt: string): SlipLine[] {
   const lines: SlipLine[] = [{ kind: "text", text: shop.name, align: "center", bold: true, big: true }];
   if (shop.address !== null && shop.address !== "") lines.push({ kind: "text", text: shop.address, align: "center" });
@@ -157,13 +197,7 @@ export function slipLines(shop: ShopHeader, bill: BillDetail, printedAt: string)
   );
   if (bill.vehicle_no !== null && bill.vehicle_no !== "") lines.push({ kind: "pair", left: "ทะเบียนรถ", right: bill.vehicle_no });
   lines.push({ kind: "rule" });
-  for (const i of bill.items) {
-    lines.push(
-      { kind: "text", text: [i.product_code, i.product_name].filter((s) => s !== null && s !== "").join(" "), align: "left", bold: true },
-      { kind: "text", text: `  ชั่ง ${display(i.gross_weight)} หัก ${display(i.tare_weight)} กก.`, align: "left" },
-      { kind: "pair", left: `  สุทธิ ${display(i.net_weight)} x ${display(i.unit_price)}`, right: display(i.amount) },
-    );
-  }
+  for (const i of bill.items) lines.push(...itemLines(i));
   lines.push(
     { kind: "rule" },
     { kind: "pair", left: "รวมเงิน (บาท)", right: display(bill.total_amount), bold: true },

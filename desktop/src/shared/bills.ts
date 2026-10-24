@@ -3,6 +3,8 @@
  * rule the screen enforces before it ever asks (a reason is required; hard rule 5: a wrong bill is
  * VOIDED with its reason and stays in history, never deleted).
  */
+import { display } from "./money";
+
 export interface BillRow {
   readonly id: string;
   readonly doc_no: string | null;
@@ -28,6 +30,20 @@ export interface BillLine {
   readonly net_weight: string;
   readonly unit_price: string;
   readonly amount: string;
+  /**
+   * The line's unit and money rules (server migration 0027). `unit_name` is the line's own (the
+   * product's unit when it was received); on a line received before 0027 it is the product's unit
+   * NOW and `rules_recorded` is false. OPTIONAL so a server before 0027 still reads: no unit then,
+   * and the screens fall back to the old wording. A deduction is never derived here -- only shown.
+   */
+  readonly unit_name?: string | null;
+  readonly rules_recorded?: boolean;
+  readonly pricing_basis?: "weight" | "piece" | "lump" | null;
+  readonly quantity?: string | null;
+  readonly deduction_mode?: "none" | "kg" | "percent" | null;
+  readonly deduction_pct?: string | null;
+  readonly deduction_weight?: string | null;
+  readonly deduction_reason?: string | null;
 }
 
 export interface BillDetail extends BillRow {
@@ -126,6 +142,30 @@ export function pageQuery(f: BillFilter, cursor: string | null): string {
   return cursor === null ? q : `${q}&cursor=${encodeURIComponent(cursor)}`;
 }
 
+/**
+ * A BILL LINE'S ARITHMETIC IN WORDS for the bill detail (server migration 0027): every term the
+ * server used, in the line's own unit, and the deduction's reason on a line of its own. Only the
+ * stored strings are shown -- nothing is recomputed. A line from a server before 0027 has no unit
+ * and reads as it always did, in กก.
+ */
+export function lineCalc(i: BillLine): string[] {
+  const unit = i.unit_name ?? "กก.";
+  if (i.pricing_basis === "piece") {
+    return [`${(i.quantity ?? "").replace(/\.0+$/, "")} ${unit} × ${display(i.unit_price)} บาท/${unit}`];
+  }
+  if (i.pricing_basis === "lump") return ["ราคาเหมา"];
+  const deducted = (i.deduction_mode === "kg" || i.deduction_mode === "percent") && i.deduction_weight != null;
+  const pct = i.deduction_mode === "percent" && i.deduction_pct ? ` (${display(i.deduction_pct)}%)` : "";
+  const ded = deducted ? ` − หักสิ่งเจือปน ${display(i.deduction_weight ?? "")}${pct}` : "";
+  const first = `ชั่งรวม ${display(i.gross_weight)} − ภาชนะ ${display(i.tare_weight)}${ded} = สุทธิ ${display(i.net_weight)} ${unit} × ${display(i.unit_price)} บาท/${unit}`;
+  return deducted && i.deduction_reason ? [first, `เหตุผลที่หัก: ${i.deduction_reason}`] : [first];
+}
+
+/** A value from a closed set, or null -- a value this build does not know is never coerced. */
+function oneOf<T extends string>(v: unknown, set: readonly T[]): T | null {
+  return typeof v === "string" && (set as readonly string[]).includes(v) ? (v as T) : null;
+}
+
 export function readBillDetail(json: unknown): BillDetail | null {
   const row = readBillRow(json);
   const o = json as Record<string, unknown>;
@@ -142,6 +182,14 @@ export function readBillDetail(json: unknown): BillDetail | null {
       net_weight: String(i["net_weight"]),
       unit_price: String(i["unit_price"]),
       amount: String(i["amount"]),
+      unit_name: str(i["unit_name"]),
+      rules_recorded: i["rules_recorded"] === true,
+      pricing_basis: oneOf(i["pricing_basis"], ["weight", "piece", "lump"] as const),
+      quantity: str(i["quantity"]),
+      deduction_mode: oneOf(i["deduction_mode"], ["none", "kg", "percent"] as const),
+      deduction_pct: str(i["deduction_pct"]),
+      deduction_weight: str(i["deduction_weight"]),
+      deduction_reason: str(i["deduction_reason"]),
     })),
   };
 }
