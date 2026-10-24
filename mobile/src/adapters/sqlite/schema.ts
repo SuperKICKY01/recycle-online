@@ -171,6 +171,10 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
      unit_price    TEXT    NOT NULL,
      list_price    TEXT    NOT NULL,
      amount        TEXT    NOT NULL,
+     /* The rules the line was priced under, as JSON (server migration 0027): TEXT for the reason
+        every money column here is TEXT. NULL on a line written before it -- see
+        ADDED_DRAFT_LINE_COLUMNS. */
+     rules_json    TEXT,
      UNIQUE (draft_id, seq)
    ) STRICT`,
 
@@ -230,7 +234,11 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
         ADDED_PRODUCT_CATEGORY_COLUMNS for a device that cached products before them. */
      category_id   TEXT,
      category_code TEXT,
-     category_name TEXT
+     category_name TEXT,
+     /* The product's money rules (server migration 0027): its pricing basis and its EFFECTIVE
+        deduction rule as the server resolved it. ADDED_PRODUCT_RULE_COLUMNS for an upgraded device. */
+     pricing_basis            TEXT,
+     deduction_mode_effective TEXT
    ) STRICT`,
 
   `CREATE TABLE IF NOT EXISTS cached_sellers (
@@ -388,7 +396,16 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
      only_row         INTEGER NOT NULL PRIMARY KEY CHECK (only_row = 1),
      tenant_id        TEXT    NOT NULL,
      separate_cashier INTEGER,
-     fetched_at       TEXT    NOT NULL
+     fetched_at       TEXT    NOT NULL,
+     /* THE SHOP'S MONEY RULES (server migration 0027), from the same GET /shop/policy: the effective
+        rounding rule for this caller's branch, the shop's deduction rule, and whether a deduction
+        needs a reason (INTEGER 0/1). NULL until the first refresh after the upgrade, which the cart
+        reads as the pre-0027 rule (src/cart/moneyRules.ts). ADDED_POLICY_COLUMNS for an upgraded
+        device -- this table now gains columns after it shipped, so the "needs no migration list
+        entry" note above no longer covers it. */
+     rounding_rule             TEXT,
+     deduction_mode            TEXT,
+     deduction_reason_required INTEGER
    ) STRICT`,
 
   /*
@@ -746,6 +763,26 @@ const ADDED_CACHE_TENANT_COLUMN: readonly { name: string; ddl: string }[] = [
   { name: "owner_tenant_id", ddl: "owner_tenant_id TEXT" },
 ];
 
+/**
+ * Server migration 0027, M1: a draft line's rules, a product's money rules, and the shop's money
+ * rules, each added to a table that shipped before them. NULLABLE and ADDITIVE for the reason every
+ * list here gives; every NULL reads as the pre-0027 rule, which is how that row was priced.
+ * local_draft_lines gains its FIRST migrated column here -- the note above about it gaining nothing
+ * is about the TENANT column, and still holds.
+ */
+const ADDED_DRAFT_LINE_COLUMNS: readonly { name: string; ddl: string }[] = [
+  { name: "rules_json", ddl: "rules_json TEXT" },
+];
+const ADDED_PRODUCT_RULE_COLUMNS: readonly { name: string; ddl: string }[] = [
+  { name: "pricing_basis", ddl: "pricing_basis TEXT" },
+  { name: "deduction_mode_effective", ddl: "deduction_mode_effective TEXT" },
+];
+const ADDED_POLICY_COLUMNS: readonly { name: string; ddl: string }[] = [
+  { name: "rounding_rule", ddl: "rounding_rule TEXT" },
+  { name: "deduction_mode", ddl: "deduction_mode TEXT" },
+  { name: "deduction_reason_required", ddl: "deduction_reason_required INTEGER" },
+];
+
 /** The three tables that take the tenant column and nothing else. */
 const CACHE_TABLES: readonly string[] = ["master_cache", "cached_products", "cached_sellers"];
 
@@ -1001,6 +1038,9 @@ export async function initConnection(db: SqlDriver): Promise<string[]> {
     added.push(...(await migrateColumns(tx, "cached_products", ADDED_PRODUCT_CATEGORY_COLUMNS)));
     added.push(...(await migrateColumns(tx, "cached_sellers", ADDED_SELLER_SEARCH_COLUMNS)));
     added.push(...(await migrateColumns(tx, "local_sellers", ADDED_LOCAL_SELLER_COLUMNS)));
+    added.push(...(await migrateColumns(tx, "local_draft_lines", ADDED_DRAFT_LINE_COLUMNS)));
+    added.push(...(await migrateColumns(tx, "cached_products", ADDED_PRODUCT_RULE_COLUMNS)));
+    added.push(...(await migrateColumns(tx, "cached_shop_policy", ADDED_POLICY_COLUMNS)));
     for (const ddl of POST_MIGRATION_STATEMENTS) await tx.run(ddl);
     await minimiseSettledSellerIds(tx);
     await tx.run(RELEASE_REFUSED_SELLER_CODES);

@@ -24,6 +24,20 @@ export interface BillItemPayload {
   net_weight: string;
   unit_price: string;
   list_price: string;
+  /*
+   * THE RULES THE LINE WAS PRICED UNDER (server migration 0027). OPTIONAL ON THE WIRE, and absent
+   * means the pre-0027 rule (weight, nothing deducted, half-up to the satang) -- which is exactly
+   * what every body queued before them was priced with, so an old outbox drains unchanged. All
+   * strings, decimal or enum; the server re-derives every figure and refuses one that does not
+   * follow (app/money_rules.py).
+   */
+  pricing_basis?: string;
+  rounding_rule?: string;
+  deduction_mode?: string;
+  deduction_pct?: string;
+  deduction_weight?: string;
+  deduction_reason?: string;
+  quantity?: string;
 }
 
 /** Exactly the body POST /bills accepts (server contract, Phase 1c). */

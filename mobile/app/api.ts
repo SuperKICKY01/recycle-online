@@ -54,6 +54,10 @@ export interface Product {
   /** Joined on the device from GET /product-categories (src/master/categories.ts). */
   category?: { id: string; code: string; name: string } | null;
   is_active?: boolean;
+  /** Server migration 0027: what the price multiplies, and the deduction rule in force for it
+   *  (product over shop, resolved by the server). Absent from an older server: the pre-0027 rule. */
+  pricing_basis?: "weight" | "piece" | "lump";
+  deduction_mode_effective?: "none" | "kg" | "percent" | "both";
 }
 
 /**
@@ -619,15 +623,21 @@ export function postPayment(token: string, body: PaymentCreateBody): Promise<Pay
  * 401 handling ends the session; a 200 gives {separate_cashier, branch_id}, which
  * SqliteShopPolicyStore caches for the offline entry gate (STRUCTURE.md 1.4).
  */
-export function fetchShopPolicy(
-  token: string,
-): Promise<{ separate_cashier: boolean | null; branch_id: string | null; shifts_enabled?: boolean | null }> {
+export interface ShopPolicyBody {
+  separate_cashier: boolean | null;
+  branch_id: string | null;
+  shifts_enabled?: boolean | null;
+  /* Server migration 0027: the money rules the cart applies offline. OPTIONAL: a server from before
+     them does not send the keys, and the cart then prices by the pre-0027 rule. */
+  rounding_rule?: string;
+  deduction_mode?: string;
+  deduction_reason_required?: boolean;
+}
+
+export function fetchShopPolicy(token: string): Promise<ShopPolicyBody> {
   // shifts_enabled arrived with the shifts unit's commit 2 and is OPTIONAL here: a
   // server from before it does not send the key, and absent reads as unknown.
-  return getJson<{ separate_cashier: boolean | null; branch_id: string | null; shifts_enabled?: boolean | null }>(
-    "/shop/policy",
-    token,
-  );
+  return getJson<ShopPolicyBody>("/shop/policy", token);
 }
 
 /* ------------------------------------ the cash drawer and its settings (2.4) ---- */

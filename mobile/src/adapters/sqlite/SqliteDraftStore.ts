@@ -5,7 +5,7 @@
  * Shares the connection with SqliteLocalStore. Every money and weight column
  * is TEXT, holding the decimal string verbatim.
  */
-import type { Draft, DraftForm, DraftLine } from "../../cart/types.js";
+import type { Draft, DraftForm, DraftLine, LineRules } from "../../cart/types.js";
 import type { LocalBill } from "../../sync/types.js";
 import type { SqlDriver } from "./driver.js";
 import { initConnection } from "./schema.js";
@@ -42,11 +42,47 @@ interface LineRow {
   unit_price: string;
   list_price: string;
   amount: string;
+  /** The line's money rules as JSON (0027), or NULL on a line written before them. */
+  rules_json: string | null;
 }
 
 const LINE_COLUMNS =
   "id, draft_id, seq, product_id, product_code, product_name, uom_code," +
-  " gross_weight, tare_weight, net_weight, unit_price, list_price, amount";
+  " gross_weight, tare_weight, net_weight, unit_price, list_price, amount, rules_json";
+
+/**
+ * A line's rules read back from disk, defended like parsePrices in SqliteMasterStore: a corrupt or
+ * absent value is NO RULES -- the line then goes out in the pre-0027 shape, which the server
+ * re-derives from its own figures and refuses if they do not follow -- never a throw that takes the
+ * restored cart with it. Every value inside is a string (hard rule 1: no number reaches money).
+ */
+function parseRules(json: string | null): LineRules | undefined {
+  if (json === null) return undefined;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    return undefined;
+  }
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const o = raw as Record<string, unknown>;
+  const s = (k: string): string | null => (typeof o[k] === "string" ? (o[k] as string) : null);
+  const basis = s("pricing_basis");
+  const rule = s("rounding_rule");
+  const mode = s("deduction_mode");
+  const weight = s("deduction_weight");
+  const quantity = s("quantity");
+  if (basis === null || rule === null || mode === null || weight === null || quantity === null) return undefined;
+  return {
+    pricing_basis: basis as LineRules["pricing_basis"],
+    rounding_rule: rule as LineRules["rounding_rule"],
+    deduction_mode: mode as LineRules["deduction_mode"],
+    deduction_pct: s("deduction_pct"),
+    deduction_weight: weight,
+    deduction_reason: s("deduction_reason"),
+    quantity,
+  };
+}
 
 /**
  * What a load found: the draft this person may continue, and how many were kept
@@ -150,11 +186,12 @@ export class SqliteDraftStore {
       for (const l of draft.lines) {
         await tx.run(
           `INSERT INTO local_draft_lines (${LINE_COLUMNS})
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             l.id, draft.id, l.seq, l.product_id, l.product_code, l.product_name,
             l.uom_code, l.gross_weight, l.tare_weight, l.net_weight,
             l.unit_price, l.list_price, l.amount,
+            l.rules === undefined ? null : JSON.stringify(l.rules),
           ],
         );
       }
@@ -261,7 +298,7 @@ export class SqliteDraftStore {
 
     const rows = await this.db.all<LineRow>(
       `SELECT id, seq, product_id, product_code, product_name, uom_code,
-              gross_weight, tare_weight, net_weight, unit_price, list_price, amount
+              gross_weight, tare_weight, net_weight, unit_price, list_price, amount, rules_json
        FROM local_draft_lines WHERE draft_id = ? ORDER BY seq`,
       [head.id],
     );
@@ -288,6 +325,7 @@ export class SqliteDraftStore {
           unit_price: r.unit_price,
           list_price: r.list_price,
           amount: r.amount,
+          ...(parseRules(r.rules_json) === undefined ? {} : { rules: parseRules(r.rules_json) as LineRules }),
         }),
       ),
     };

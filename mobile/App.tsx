@@ -65,11 +65,14 @@ import { SqlitePersonalDataStore } from "./src/adapters/sqlite/SqlitePersonalDat
 import {
   cartTotal,
   changeSeller,
+  deductionLines,
   newDraft,
   normaliseVehicleNo,
   setVehicleNo,
   toBillItems,
 } from "./src/cart/cart";
+import { DEFAULT_MONEY_RULES, moneyRulesFromPolicy } from "./src/cart/moneyRules";
+import type { MoneyRules } from "./src/cart/moneyRules";
 import type { GradeTiers, SellerChangeImpact } from "./src/cart/cart";
 import { withheldDraftNotice } from "./src/cart/draftNotice";
 import { NO_LOCKS, releaseOnSave } from "./src/cart/entry";
@@ -590,6 +593,10 @@ function AppInner() {
   const [counterRefusal, setCounterRefusal] = useState<string | null>(null);
   const [counterBusy, setCounterBusy] = useState(false);
   const [separateCashier, setSeparateCashier] = useState<boolean | null>(null);
+  /** THE SHOP'S MONEY RULES (server migration 0027) the cart prices with: the cache at boot, then
+   *  the policy each refresh learns. DEFAULT_MONEY_RULES -- the pre-0027 rule -- until either says
+   *  otherwise (src/cart/moneyRules.ts says why that is not an invented value). */
+  const [moneyRules, setMoneyRules] = useState<MoneyRules>(DEFAULT_MONEY_RULES);
   /** The branch's shifts_enabled from the LIVE policy read beside the branch (the
    *  closing turn of the shifts unit's commit 3). Not cached on the device, so null
    *  (unknown) after a cold offline start — mayShowCounterEntry says why that draws. */
@@ -1325,6 +1332,7 @@ function AppInner() {
         // the server answers.
         if (deviceShop !== null) {
           setSeparateCashier((await shopPolicyStore.read(deviceShop))?.separate_cashier ?? null);
+          setMoneyRules(await shopPolicyStore.readMoneyRules(deviceShop));
         }
         tokenRef.current = token;
         setToken(token);
@@ -1684,6 +1692,11 @@ function AppInner() {
           const pol = await fetchShopPolicy(t);
           await shopPolicyStoreRef.current?.save(learned.shop_id, pol.separate_cashier);
           setSeparateCashier(pol.separate_cashier);
+          // 0027: the money rules from the same answer, cached for the offline cart. A body this
+          // build cannot read (an older server) leaves the cached rules as they were.
+          const rules = moneyRulesFromPolicy(pol);
+          await shopPolicyStoreRef.current?.saveMoneyRules(learned.shop_id, rules);
+          if (rules !== null) setMoneyRules(rules);
           setShiftsEnabledHome(typeof pol.shifts_enabled === "boolean" ? pol.shifts_enabled : null);
         } catch {
           /* leave the cached policy; the entry fails open on unknown */
@@ -1888,7 +1901,7 @@ function AppInner() {
       setSettingsShop(null);
       setSettingsTiers(null);
       setSettingsTierScreen(null);
-      setSettingsScreen(shopSettingsScreen({ kind: "no_token" }, grants, []));
+      setSettingsScreen(shopSettingsScreen({ kind: "no_token" }, grants, [], readTokenRole(tokenRef.current)));
       return;
     }
     setSettingsScreen(null);
@@ -1909,7 +1922,7 @@ function AppInner() {
       const active = tiers.filter((x) => x.is_active).map((x) => ({ code: x.code, name: x.name }));
       setSettingsShop(readShopSettings(shopResult.body));
       setSettingsTiers(tiers);
-      setSettingsScreen(shopSettingsScreen(shopResult, grants, active));
+      setSettingsScreen(shopSettingsScreen(shopResult, grants, active, readTokenRole(tokenRef.current)));
       setSettingsTierScreen(tierAdminScreen(tiers, grants));
       setOnline(true);
       setSessionEnded(false);
@@ -1932,7 +1945,7 @@ function AppInner() {
         : tierResult.kind === "http"
           ? { kind: "http", status: tierResult.status, code: null }
           : tierResult; // unreachable | no_token (no_token unreachable here — token checked)
-    setSettingsScreen(shopSettingsScreen(governing, grants, []));
+    setSettingsScreen(shopSettingsScreen(governing, grants, [], readTokenRole(tokenRef.current)));
     if (governing.kind === "unreachable") {
       setOnline(false);
       return;
@@ -2012,7 +2025,7 @@ function AppInner() {
     async (patch: ShopPatch): Promise<void> => {
       const t = tokenRef.current;
       if (t === null) {
-        setSettingsScreen(shopSettingsScreen({ kind: "no_token" }, grants, []));
+        setSettingsScreen(shopSettingsScreen({ kind: "no_token" }, grants, [], readTokenRole(tokenRef.current)));
         setSessionEnded(true);
         return;
       }
@@ -2027,7 +2040,7 @@ function AppInner() {
           .filter((x) => x.is_active)
           .map((x) => ({ code: x.code, name: x.name }));
         setSettingsShop(saved.shop);
-        setSettingsScreen(formScreen(saved.shop, grants, active));
+        setSettingsScreen(formScreen(saved.shop, grants, active, readTokenRole(tokenRef.current)));
         setOnline(true);
         setSessionEnded(false);
         return;
@@ -3891,6 +3904,7 @@ function AppInner() {
                 <ConfirmSaveDialog
                   lineCount={draft.lines.length}
                   total={cartTotal(draft)}
+                  deductions={deductionLines(draft)}
                   sellerName={seller.name}
                   sellerGrade={seller.grade}
                   tiers={gradeTiers}
@@ -4575,6 +4589,7 @@ function AppInner() {
             locks={locks}
             busy={busy}
             freshness={freshness}
+            moneyRules={moneyRules}
             newLineId={() => deviceIds.newId()}
             nowIso={nowIso}
             onDraftChange={onDraftChange}

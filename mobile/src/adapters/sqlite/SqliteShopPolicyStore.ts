@@ -25,7 +25,17 @@
  * purpose: separate_cashier supplies no value the yard pays against, so it is not a
  * price claim under the 12-hour rule (cached-master-data-is-a-price-claim.md).
  */
+import { DEFAULT_MONEY_RULES } from "../../cart/moneyRules.js";
+import type { MoneyRules } from "../../cart/moneyRules.js";
+import { DEDUCTION_SETTINGS, ROUNDING_RULES } from "../../money/lineRules.js";
+import type { DeductionSetting, RoundingRule } from "../../money/lineRules.js";
 import type { SqlDriver } from "./driver.js";
+
+interface MoneyRow {
+  rounding_rule: string | null;
+  deduction_mode: string | null;
+  deduction_reason_required: number | null;
+}
 
 /** The counter policy as this device last learned it. `null` from read() means
  *  UNKNOWN (absent, another tenant, or no single branch) — the entry fails open. */
@@ -65,6 +75,47 @@ export class SqliteShopPolicyStore {
    * so the previous shop's policy is overwritten wholesale when the device changes
    * shop rather than lingering under a stale tenant_id.
    */
+  /**
+   * THE SHOP'S MONEY RULES for THIS tenant (server migration 0027), or the pre-0027 rule when none
+   * is known: no row, another tenant's row, or a row refreshed before the columns existed. That
+   * default is not invented -- it is the rule every shop is under until its owner changes one, and
+   * the rule every build before 0027 priced with -- and the line DECLARES whichever rule it used,
+   * so the server records it exactly (src/cart/moneyRules.ts says why any age is acceptable). A
+   * value outside the known sets is treated as unknown, never coerced.
+   */
+  async readMoneyRules(tenantId: string): Promise<MoneyRules> {
+    const rows = await this.db.all<MoneyRow>(
+      "SELECT rounding_rule, deduction_mode, deduction_reason_required FROM cached_shop_policy" +
+        " WHERE only_row = 1 AND tenant_id = ?",
+      [tenantId],
+    );
+    const r = rows[0];
+    if (r === undefined) return DEFAULT_MONEY_RULES;
+    const rule = r.rounding_rule;
+    const mode = r.deduction_mode;
+    if (rule === null || !(ROUNDING_RULES as readonly string[]).includes(rule)) return DEFAULT_MONEY_RULES;
+    if (mode === null || !(DEDUCTION_SETTINGS as readonly string[]).includes(mode)) return DEFAULT_MONEY_RULES;
+    return {
+      rounding_rule: rule as RoundingRule,
+      deduction_mode: mode as DeductionSetting,
+      deduction_reason_required: r.deduction_reason_required === 1,
+    };
+  }
+
+  /**
+   * Record the money rules from the SAME GET /shop/policy answer, after save() has written the row
+   * for this tenant. An UPDATE keyed on the tenant, so a row belonging to another shop is never
+   * given this shop's rules; nothing is written when the server sent none (an older server).
+   */
+  async saveMoneyRules(tenantId: string, rules: MoneyRules | null): Promise<void> {
+    if (rules === null) return;
+    await this.db.run(
+      "UPDATE cached_shop_policy SET rounding_rule = ?, deduction_mode = ?, deduction_reason_required = ?" +
+        " WHERE only_row = 1 AND tenant_id = ?",
+      [rules.rounding_rule, rules.deduction_mode, rules.deduction_reason_required ? 1 : 0, tenantId],
+    );
+  }
+
   async save(
     tenantId: string,
     separateCashier: boolean | null,
@@ -75,6 +126,14 @@ export class SqliteShopPolicyStore {
       `INSERT INTO cached_shop_policy (only_row, tenant_id, separate_cashier, fetched_at)
        VALUES (1, ?, ?, ?)
        ON CONFLICT(only_row) DO UPDATE SET
+         -- 0027: another shop's money rules must not survive under this shop's id. Kept only when
+         -- the tenant is unchanged; saveMoneyRules writes this shop's next.
+         rounding_rule = CASE WHEN cached_shop_policy.tenant_id = excluded.tenant_id
+                              THEN cached_shop_policy.rounding_rule END,
+         deduction_mode = CASE WHEN cached_shop_policy.tenant_id = excluded.tenant_id
+                               THEN cached_shop_policy.deduction_mode END,
+         deduction_reason_required = CASE WHEN cached_shop_policy.tenant_id = excluded.tenant_id
+                                          THEN cached_shop_policy.deduction_reason_required END,
          tenant_id = excluded.tenant_id,
          separate_cashier = excluded.separate_cashier,
          fetched_at = excluded.fetched_at`,

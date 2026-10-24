@@ -13,6 +13,7 @@
  *
  * Every weight and money field is a decimal STRING, as everywhere else.
  */
+import type { LineDeductionMode, PricingBasis, RoundingRule } from "../money/lineRules.js";
 
 /** Raw, unvalidated text of the entry fields, exactly as the user left them. */
 export interface DraftForm {
@@ -21,6 +22,39 @@ export interface DraftForm {
   gross: string;
   tare: string;
   price: string;
+  /*
+   * THE MONEY-RULE ENTRIES (server migration 0027, M1). OPTIONAL so a form restored from a draft
+   * saved before them still reads (form_json is JSON); absent reads as empty. Every one is cleared
+   * when the product changes and when a line is committed (entry.ts): a deduction belongs to the
+   * load on the scale, never to the next one.
+   */
+  /** The impurity deduction as typed: a weight, or a percent when `deduction_mode` is percent. */
+  deduction?: string;
+  /** Which entry the operator chose when the product offers both. */
+  deduction_mode?: "kg" | "percent";
+  /** The reason for the deduction, free text. */
+  reason?: string;
+  /** Whole pieces, for a piece-priced product. */
+  pieces?: string;
+}
+
+/**
+ * THE RULE VALUES A LINE WAS COMPUTED UNDER (server migration 0027): what the line declares on the
+ * wire and what the server re-derives every figure from. Present on every line the cart builds with
+ * the shop's rules; ABSENT on a line restored from a draft saved before them, which goes out in the
+ * pre-0027 shape (weight, nothing deducted, half-up to the satang -- exactly how it was priced).
+ */
+export interface LineRules {
+  pricing_basis: PricingBasis;
+  rounding_rule: RoundingRule;
+  deduction_mode: LineDeductionMode;
+  /** The percent typed, in percent mode; null otherwise. */
+  deduction_pct: string | null;
+  /** The weight deducted (typed, or derived from the percent); "0.000" when none. */
+  deduction_weight: string;
+  deduction_reason: string | null;
+  /** What the price multiplied: the net, the pieces, or 1 for a lump. */
+  quantity: string;
 }
 
 export interface DraftLine {
@@ -42,8 +76,10 @@ export interface DraftLine {
   net_weight: string;
   unit_price: string;
   list_price: string;
-  /** net x unit_price, HALF_UP to 2dp — the server's exact formula. */
+  /** quantity x unit_price under the line's rounding rule — the server's exact formula. */
   amount: string;
+  /** The rules it was priced under; absent on a pre-0027 draft line (see LineRules). */
+  rules?: LineRules;
 }
 
 export interface Draft {

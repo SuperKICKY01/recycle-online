@@ -44,12 +44,15 @@ import type { PaymentMethod } from "../src/counter/counterView";
 
 import {
   defaultGradeChangeConfirmation,
+  MONEY_CHANGE_CONFIRMATION,
   patchChangesGrade,
+  patchChangesMoney,
   patchIsEmpty,
   shopPatchBody,
 } from "../src/settings/shopSettings";
 import type {
   ShopEdits,
+  ShopMoneyRules,
   ShopFormScreen,
   ShopMessageScreen,
   ShopMessageTone,
@@ -610,21 +613,28 @@ function FormBody({
   const [address, setAddress] = useState<string>(form.address ?? "");
   const [phone, setPhone] = useState<string>(form.phone ?? "");
   const [pending, setPending] = useState<{ patch: ShopPatch; confirm: string } | null>(null);
+  // THE MONEY RULES' edit buffer (0027), re-seeded from the server's row like the fields above.
+  const [money, setMoney] = useState<ShopMoneyRules | null>(moneyOf(form));
 
   useEffect(() => {
     setGrade(form.grade);
     setAddress(form.address ?? "");
     setPhone(form.phone ?? "");
+    setMoney(moneyOf(form));
     setPending(null);
-  }, [form.grade, form.address, form.phone]);
+  }, [form.grade, form.address, form.phone, form.money?.rounding, form.money?.deduction, form.money?.reasonRequired]);
 
   const readOnly = form.readOnly;
 
   const attemptSave = (): void => {
     if (shop === null) return;
-    const edits: ShopEdits = { default_grade: grade, address, phone };
+    const edits: ShopEdits = { default_grade: grade, address, phone, ...(money !== null ? { money } : {}) };
     const patch = shopPatchBody(shop, edits);
     if (patchIsEmpty(patch)) return; // nothing changed — the server has no empty SET
+    if (patchChangesMoney(patch)) {
+      setPending({ patch, confirm: MONEY_CHANGE_CONFIRMATION });
+      return;
+    }
     if (patchChangesGrade(patch)) {
       // Measure-before-the-write, applied to a human: a default-grade change
       // re-prices every future ungraded walk-in and cannot be un-priced, so it is
@@ -651,7 +661,7 @@ function FormBody({
       {form.showGrade ? (
         <View style={styles.card}>
           <Text style={styles.label}>{form.gradeLabel}</Text>
-          {readOnly ? (
+          {readOnly || form.gradeReadOnly ? (
             <Text style={styles.readValue}>
               {form.gradeOptions.find((o) => o.value === form.grade)?.label ?? form.grade}
             </Text>
@@ -730,6 +740,36 @@ function FormBody({
           </>
         )}
       </View>
+
+      {/* THE MONEY RULES (server migration 0027). The owner chooses with chips, the vocabulary the
+          default grade already uses; everyone else reads the values and whose they are. */}
+      {form.money !== null && money !== null ? (
+        <View style={styles.card}>
+          <Text style={styles.formHead}>{form.money.title}</Text>
+          <Text style={styles.note}>{form.money.ownerNote}</Text>
+          <MoneyChoice
+            label={form.money.roundingLabel}
+            value={money.rounding_rule}
+            options={form.money.roundingOptions}
+            readOnly={form.money.readOnly}
+            onPick={(v) => setMoney({ ...money, rounding_rule: v })}
+          />
+          <MoneyChoice
+            label={form.money.deductionLabel}
+            value={money.deduction_mode}
+            options={form.money.deductionOptions}
+            readOnly={form.money.readOnly}
+            onPick={(v) => setMoney({ ...money, deduction_mode: v })}
+          />
+          <MoneyChoice
+            label={form.money.reasonLabel}
+            value={money.deduction_reason_required ? "yes" : "no"}
+            options={[{ value: "no", label: "ไม่บังคับ" }, { value: "yes", label: "บังคับ" }]}
+            readOnly={form.money.readOnly}
+            onPick={(v) => setMoney({ ...money, deduction_reason_required: v === "yes" })}
+          />
+        </View>
+      ) : null}
 
       {/* THE SAVE CONTROL — drawn only when the screen is editable (admin). A staff
           session has saveLabel === null and no control is drawn at all. */}
@@ -988,8 +1028,60 @@ function ServerDiagnostics() {
   );
 }
 
+/** The money group's buffer, from the form the server's row produced (null: no group). */
+function moneyOf(form: ShopFormScreen): ShopMoneyRules | null {
+  return form.money === null
+    ? null
+    : { rounding_rule: form.money.rounding, deduction_mode: form.money.deduction, deduction_reason_required: form.money.reasonRequired };
+}
+
+/** One money rule: chips for the owner, the chosen label for everyone else. */
+function MoneyChoice<T extends string>({
+  label,
+  value,
+  options,
+  readOnly,
+  onPick,
+}: {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string }[];
+  readOnly: boolean;
+  onPick: (v: T) => void;
+}) {
+  const t = useTheme();
+  const styles = useMemo(() => makeStyles(t), [t]);
+  return (
+    <View style={styles.moneyRow}>
+      <Text style={styles.label}>{label}</Text>
+      {readOnly ? (
+        <Text style={styles.readValue}>{options.find((o) => o.value === value)?.label ?? value}</Text>
+      ) : (
+        <View style={styles.chips}>
+          {options.map((opt) => {
+            const on = opt.value === value;
+            return (
+              <Touchable
+                key={opt.value}
+                style={[styles.chip, on && styles.chipOn]}
+                onPress={() => onPick(opt.value)}
+                haptic="light"
+                accessibilityLabel={opt.label}
+                selected={on}
+              >
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{opt.label}</Text>
+              </Touchable>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
 function makeStyles(t: ThemeTokens) {
   return StyleSheet.create({
+    moneyRow: { marginTop: 16 },
     fill: { flex: 1, backgroundColor: t.color.background },
     // THE ONE SCROLL REGION. Its bottom gutter is what keeps the last control (the
     // add-grade button, or the read-only note) clear of the home indicator.

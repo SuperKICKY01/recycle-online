@@ -11,6 +11,7 @@
  * Every price is a decimal STRING and stays one, here and in the database.
  * Nothing in the master-data path parses money into a number.
  */
+import type { DeductionSetting, PricingBasis } from "../money/lineRules.js";
 
 export interface MasterProduct {
   id: string;
@@ -34,6 +35,15 @@ export interface MasterProduct {
    * filters on it, so an inactive row can never be offered (src/cart/productPicker.ts).
    */
   is_active?: boolean;
+  /**
+   * THE PRODUCT'S MONEY RULES (server migration 0027), named exactly as GET /products sends them
+   * so the wire row spreads straight in. `deduction_mode_effective` is the SERVER's resolution of
+   * product over shop (app/policy.py); the phone never re-implements that precedence. OPTIONAL:
+   * a row cached before the columns existed reads undefined, which the cart reads as weight-priced
+   * with no deduction -- the pre-0027 rule (src/cart/moneyRules.ts).
+   */
+  pricing_basis?: PricingBasis;
+  deduction_mode_effective?: DeductionSetting;
 }
 
 /** The three fields of a category the cart needs: the id it filters on, code to order, name to show. */

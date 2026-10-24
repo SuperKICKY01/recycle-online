@@ -125,7 +125,7 @@ function ReportBody({ report }: { report: Extract<SellerHistoryScreen, { kind: "
                   {l.product}
                 </Text>
                 <Text style={styles.lineWeight}>
-                  {display(l.net_weight)} {report.weightUnit}
+                  {l.quantity}
                 </Text>
                 {l.unit_price !== null ? <Text style={styles.linePrice}>{display(l.unit_price)}</Text> : null}
               </View>

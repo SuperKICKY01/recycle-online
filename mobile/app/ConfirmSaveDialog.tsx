@@ -48,6 +48,12 @@ interface Props {
    * this file decides nothing.
    */
   pricedFrom: PricingProvenance | null;
+  /**
+   * Every impurity deduction on the bill, one sentence per line (cart.deductionLines), shown HERE
+   * so the seller sees what was taken off before the cash is counted out (server migration 0027).
+   * Empty when nothing is deducted, and then nothing is drawn.
+   */
+  deductions: readonly string[];
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -61,6 +67,7 @@ export function ConfirmSaveDialog({
   vehicleNo,
   busy,
   pricedFrom,
+  deductions,
   onCancel,
   onConfirm,
 }: Props) {
@@ -104,6 +111,14 @@ export function ConfirmSaveDialog({
           <Text style={vehicleNo === null ? styles.vehicleNone : styles.vehicle}>
             {vehicleNo ?? "ไม่ได้ระบุ"}
           </Text>
+          {deductions.length > 0 ? (
+            <>
+              <Text style={styles.label}>หักสิ่งเจือปน</Text>
+              {deductions.map((d) => (
+                <Text key={d} style={styles.deduction}>{d}</Text>
+              ))}
+            </>
+          ) : null}
         </View>
 
         {fate.park !== null ? <Text style={styles.park}>{fate.park}</Text> : null}
@@ -154,6 +169,7 @@ function makeStyles(t: ThemeTokens) {
     gradeNone: { fontSize: t.type.bodyLg, fontWeight: "900", color: t.color.danger, marginTop: t.space.xs},
     vehicle: { fontSize: t.type.titleLg, fontWeight: "800", color: t.color.text },
     vehicleNone: { fontSize: t.type.subhead, fontWeight: "700", color: t.color.placeholder },
+    deduction: { fontSize: t.type.bodyLg, fontWeight: "800", color: t.color.text, marginTop: t.space.xs },
     park: {
       fontSize: t.type.body, color: t.color.dangerFg, backgroundColor: t.color.dangerBg, padding: t.space.lg,
       borderRadius: t.radius.md, marginTop: t.space.x3, fontWeight: "700",

@@ -61,6 +61,10 @@
  * screen reports a state the server witnessed). `shopSaveResult` parses the
  * RESPONSE and hands the form that; the request is never rendered.
  */
+import { DEDUCTION_TEXT, moneyRulesFromPolicy, ROUNDING_TEXT } from "../cart/moneyRules.js";
+import { DEDUCTION_SETTINGS, ROUNDING_RULES } from "../money/lineRules.js";
+import type { DeductionSetting, RoundingRule } from "../money/lineRules.js";
+import type { DeviceRole } from "../session/deviceRole.js";
 import { may } from "../session/deviceRole.js";
 import type { Grants } from "../session/deviceRole.js";
 
@@ -87,6 +91,18 @@ export interface ShopSettings {
   default_grade: string | null;
   address: string | null;
   phone: string | null;
+  /**
+   * THE SHOP'S MONEY RULES (server migration 0027), or null from a server before them -- the
+   * screen then draws no money group rather than inventing values for one.
+   */
+  money: ShopMoneyRules | null;
+}
+
+/** The three money rules GET /shop returns, each validated against its known set. */
+export interface ShopMoneyRules {
+  rounding_rule: RoundingRule;
+  deduction_mode: DeductionSetting;
+  deduction_reason_required: boolean;
 }
 
 /**
@@ -135,7 +151,7 @@ export function readShopSettings(raw: unknown): ShopSettings | null {
   ) {
     return null;
   }
-  return { id, name, default_grade, address, phone };
+  return { id, name, default_grade, address, phone, money: moneyRulesFromPolicy(raw) };
 }
 
 /**
@@ -229,9 +245,41 @@ export interface ShopFormScreen {
   phoneMaxLength: number;
   /** The save control's label, or null when the screen is read-only (staff). */
   saveLabel: string | null;
+  /**
+   * True when the default grade is shown as a value: since 2026-10-24 it is a MONEY rule, the
+   * owner's alone (it decides the price an ungraded seller is paid), so an admin sees it read-only.
+   */
+  gradeReadOnly: boolean;
+  /** Null from a server before 0027. */
+  money: ShopMoneyGroup | null;
 }
 
 export type ShopSettingsScreen = ShopFormScreen | ShopMessageScreen;
+
+/** One choice of a money rule: the stored value and the shop's words for it. */
+export interface MoneyOption<T extends string> {
+  value: T;
+  label: string;
+}
+
+/**
+ * THE MONEY GROUP (server migration 0027). OWNER ONLY to change (app/policy.py): every other
+ * session sees the values and the sentence saying whose they are. A change reaches NEW bills only.
+ */
+export interface ShopMoneyGroup {
+  title: string;
+  /** True for anyone but the owner; the controls are drawn as values, with `ownerNote`. */
+  readOnly: boolean;
+  ownerNote: string;
+  roundingLabel: string;
+  rounding: RoundingRule;
+  roundingOptions: readonly MoneyOption<RoundingRule>[];
+  deductionLabel: string;
+  deduction: DeductionSetting;
+  deductionOptions: readonly MoneyOption<DeductionSetting>[];
+  reasonLabel: string;
+  reasonRequired: boolean;
+}
 
 /* ==========================================================================
  * 3. THE SENTENCES
@@ -306,6 +354,23 @@ function offlineMessage(): ShopMessageScreen {
   };
 }
 
+/**
+ * THE OWNER-ONLY 403 (money_rule_owner_only, app/policy.py): an admin who can save the address
+ * cannot save a money rule. Names who can, and that nothing was saved -- the server refuses the
+ * whole request, so the address typed beside it was not written either.
+ */
+function ownerOnlyMessage(): ShopMessageScreen {
+  return {
+    kind: "message",
+    tone: "forbidden",
+    badge: "เจ้าของร้านเท่านั้น",
+    lines: [
+      "การปัดเศษ การหักสิ่งเจือปน และเกรดเริ่มต้น แก้ได้โดยบัญชีเจ้าของร้านเท่านั้น — ยังไม่ได้บันทึกอะไร",
+    ],
+    action: null,
+  };
+}
+
 function forbiddenMessage(): ShopMessageScreen {
   return {
     kind: "message",
@@ -356,7 +421,7 @@ function shopMessage(fetch: Exclude<ShopFetch, { kind: "ok" }>): ShopMessageScre
   if (fetch.kind === "no_token") return sessionMessage();
   if (fetch.kind === "unreachable") return offlineMessage();
   if (fetch.status === 401) return sessionMessage();
-  if (fetch.status === 403) return forbiddenMessage();
+  if (fetch.status === 403) return fetch.code === "money_rule_owner_only" ? ownerOnlyMessage() : forbiddenMessage();
   if (fetch.status === 422) return tooLongMessage();
   return serverMessage();
 }
@@ -372,6 +437,7 @@ export function shopSettingsScreen(
   fetch: ShopFetch,
   grants: Grants,
   activeTiers: readonly ActiveTier[],
+  role: DeviceRole = null,
 ): ShopSettingsScreen {
   if (fetch.kind !== "ok") return shopMessage(fetch);
 
@@ -381,7 +447,7 @@ export function shopSettingsScreen(
     return unreadableSettingsScreen();
   }
 
-  return formScreen(shop, grants, activeTiers);
+  return formScreen(shop, grants, activeTiers, role);
 }
 
 /**
@@ -406,10 +472,15 @@ export function formScreen(
   shop: ShopSettings,
   grants: Grants,
   activeTiers: readonly ActiveTier[],
+  role: DeviceRole = null,
 ): ShopFormScreen {
   // shop.settings.write (server migration 0019) gates PATCH /shop; a set that
   // lacks it renders read-only, an absent set fails open onto the 403 branch.
   const readOnly = !may(grants, "shop.settings.write");
+  // MONEY RULES ARE THE OWNER'S (2026-10-24). The role is the token's ADVISORY claim, used only to
+  // decide what is drawn; an UNKNOWN role fails open, like every gate here, onto the server's 403
+  // (ownerOnlyMessage). The server reads the role row, never this.
+  const moneyReadOnly = readOnly || (role !== null && role !== "owner");
   return {
     kind: "form",
     title: "ตั้งค่าร้าน",
@@ -435,8 +506,26 @@ export function formScreen(
     phoneMaxLength: PHONE_MAX_LENGTH,
     // THE control a staff session would be refused is never drawn.
     saveLabel: readOnly ? null : "บันทึก",
+    gradeReadOnly: moneyReadOnly,
+    money: shop.money === null ? null : {
+      title: "การคิดเงิน",
+      readOnly: moneyReadOnly,
+      ownerNote: OWNER_NOTE,
+      roundingLabel: "การปัดเศษยอดเงินแต่ละรายการ",
+      rounding: shop.money.rounding_rule,
+      roundingOptions: ROUNDING_RULES.map((v) => ({ value: v, label: ROUNDING_TEXT[v] })),
+      deductionLabel: "การหักสิ่งเจือปน",
+      deduction: shop.money.deduction_mode,
+      deductionOptions: DEDUCTION_SETTINGS.map((v) => ({ value: v, label: DEDUCTION_TEXT[v] })),
+      reasonLabel: "ต้องระบุเหตุผลทุกครั้งที่หักสิ่งเจือปน",
+      reasonRequired: shop.money.deduction_reason_required,
+    },
   };
 }
+
+/** impeccable · clarify · "Success confirms the completed outcome and mentions the next
+ *  consequence only when it changes what the user should do." -- here, BEFORE the change. */
+const OWNER_NOTE = "แก้ได้โดยเจ้าของร้านเท่านั้น มีผลกับบิลใหม่ บิลเดิมไม่เปลี่ยน";
 
 /* ==========================================================================
  * 4. THE EDIT — what changed, and the confirmation a grade change earns
@@ -452,6 +541,8 @@ export interface ShopEdits {
   default_grade: string | null;
   address: string;
   phone: string;
+  /** The money rules as edited; absent when the screen drew no money group. */
+  money?: ShopMoneyRules;
 }
 
 /** Only the fields that CHANGED. A key present with `null` clears; absent = untouched. */
@@ -459,6 +550,9 @@ export interface ShopPatch {
   default_grade?: string | null;
   address?: string | null;
   phone?: string | null;
+  rounding_rule?: RoundingRule;
+  deduction_mode?: DeductionSetting;
+  deduction_reason_required?: boolean;
 }
 
 const emptyToNull = (s: string): string | null => (s.length === 0 ? null : s);
@@ -474,8 +568,25 @@ export function shopPatchBody(original: ShopSettings, edits: ShopEdits): ShopPat
   if (address !== original.address) patch.address = address;
   const phone = emptyToNull(edits.phone);
   if (phone !== original.phone) patch.phone = phone;
+  if (edits.money !== undefined && original.money !== null) {
+    if (edits.money.rounding_rule !== original.money.rounding_rule) patch.rounding_rule = edits.money.rounding_rule;
+    if (edits.money.deduction_mode !== original.money.deduction_mode) patch.deduction_mode = edits.money.deduction_mode;
+    if (edits.money.deduction_reason_required !== original.money.deduction_reason_required) {
+      patch.deduction_reason_required = edits.money.deduction_reason_required;
+    }
+  }
   return patch;
 }
+
+/** Does this pending save move a 0027 money rule? Then it earns its own confirmation. */
+export function patchChangesMoney(patch: ShopPatch): boolean {
+  return ["rounding_rule", "deduction_mode", "deduction_reason_required"].some((k) =>
+    Object.prototype.hasOwnProperty.call(patch, k));
+}
+
+/** The confirmation a money-rule change earns: what it reaches, and what it never touches. */
+export const MONEY_CHANGE_CONFIRMATION =
+  "กติกาการคิดเงินใหม่จะใช้กับบิลที่ชั่งหลังจากนี้ บิลที่บันทึกไปแล้วยังคิดตามกติกาเดิมทุกใบ — ตรวจสอบก่อนบันทึก";
 
 /** Nothing changed — the screen must NOT send an empty PATCH (the server has no SET). */
 export function patchIsEmpty(patch: ShopPatch): boolean {

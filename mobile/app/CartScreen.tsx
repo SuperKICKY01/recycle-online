@@ -73,6 +73,10 @@ import { useTheme, type ThemeTokens } from "./theme";
 import { Icon } from "./Icon";
 import { Touchable } from "./Press";
 import { display } from "../src/money/format";
+import { DEFAULT_ROUNDING_RULE } from "../src/money/lineRules";
+import { offeredModes, productDeduction, ROUNDING_TEXT } from "../src/cart/moneyRules";
+import type { EntryMode, MoneyRules } from "../src/cart/moneyRules";
+import { PERCENT_DP, PERCENT_MAX_INT_DIGITS, REASON_MAX } from "../src/cart/cart";
 import {
   ALL_CATEGORIES,
   categoryChips,
@@ -87,20 +91,36 @@ import {
 
 const UNDO_MS = 8000;
 
-/** The three numeric fields. Only two of them appear in LockableField. */
-type NumField = "gross" | "tare" | "price";
+/**
+ * The numeric fields. Only tare and price appear in LockableField. `deduction` and `pieces` are the
+ * money-rule entries (server migration 0027): drawn only for a product whose rules ask for them.
+ */
+type NumField = "gross" | "tare" | "price" | "deduction" | "pieces";
 
-const FIELD_LABEL: Record<NumField, string> = {
-  gross: "น้ำหนักรวม",
-  tare: "น้ำหนักภาชนะ",
-  price: "ราคา/หน่วย",
-};
-
-const FIELD_SCALE: Record<NumField, { dp: number; maxInt: number }> = {
-  gross: { dp: WEIGHT_DP, maxInt: WEIGHT_MAX_INT_DIGITS },
-  tare: { dp: WEIGHT_DP, maxInt: WEIGHT_MAX_INT_DIGITS },
-  price: { dp: MONEY_DP, maxInt: MONEY_MAX_INT_DIGITS },
-};
+/**
+ * The label and the keypad's bounds for a field, under the product's rules. One function, so the
+ * field, its keypad and its error all name the same thing (impeccable · clarify · "Keep the same
+ * noun and verb for the same concept throughout the product.").
+ */
+function fieldSpec(
+  field: NumField,
+  ctx: { mode: EntryMode; basis: "weight" | "piece" | "lump"; unit: string },
+): { label: string; dp: number; maxInt: number } {
+  switch (field) {
+    case "gross":
+      return { label: "น้ำหนักรวม", dp: WEIGHT_DP, maxInt: WEIGHT_MAX_INT_DIGITS };
+    case "tare":
+      return { label: "น้ำหนักภาชนะ", dp: WEIGHT_DP, maxInt: WEIGHT_MAX_INT_DIGITS };
+    case "deduction":
+      return ctx.mode === "percent"
+        ? { label: "หักสิ่งเจือปน (%)", dp: PERCENT_DP, maxInt: PERCENT_MAX_INT_DIGITS }
+        : { label: "หักสิ่งเจือปน", dp: WEIGHT_DP, maxInt: WEIGHT_MAX_INT_DIGITS };
+    case "pieces":
+      return { label: `จำนวน (${ctx.unit})`, dp: 0, maxInt: WEIGHT_MAX_INT_DIGITS };
+    case "price":
+      return { label: ctx.basis === "lump" ? "ราคาเหมา" : "ราคา/หน่วย", dp: MONEY_DP, maxInt: MONEY_MAX_INT_DIGITS };
+  }
+}
 
 interface Props {
   /**
@@ -131,6 +151,8 @@ interface Props {
    * be written into the money field at all. See src/master/freshness.ts.
    */
   freshness: Freshness;
+  /** The shop's money rules (server migration 0027) as the device last learned them. */
+  moneyRules: MoneyRules;
   newLineId: () => string;
   nowIso: () => string;
   onDraftChange: (next: Draft, immediate: boolean) => void;
@@ -152,6 +174,7 @@ export function CartScreen({
   locks,
   busy,
   freshness,
+  moneyRules,
   newLineId,
   nowIso,
   onDraftChange,
@@ -229,6 +252,18 @@ export function CartScreen({
   const listPrice = product ? gradePrice(product.prices, grade) : null;
   const stale = !freshness.mayDefaultPrice;
 
+  /*
+   * THE PRODUCT'S MONEY RULES (server migration 0027). Which fields are asked for follows from
+   * them: a weight-priced product asks for the weights and, where the shop or product allows, an
+   * impurity deduction; a piece-priced one asks for the pieces; a lump asks for one price. The
+   * rounding rule is the shop's (branch over shop, resolved by the server).
+   */
+  const basis = product?.pricing_basis ?? "weight";
+  const offered = basis === "weight" && product !== null ? offeredModes(productDeduction(product)) : [];
+  const entryMode: EntryMode =
+    form.deduction_mode !== undefined && offered.includes(form.deduction_mode) ? form.deduction_mode : (offered[0] ?? "kg");
+  const spec = (f: NumField) => fieldSpec(f, { mode: entryMode, basis, unit: product?.uom_name ?? "หน่วย" });
+
   useEffect(
     () => () => {
       if (undoTimer.current) clearTimeout(undoTimer.current);
@@ -293,8 +328,16 @@ export function CartScreen({
         tare: form.tare,
         price: form.price,
         list_price: listPrice ?? form.price,
+        basis,
+        rule: moneyRules.rounding_rule,
+        offered,
+        deductionMode: entryMode,
+        deduction: form.deduction ?? "",
+        reason: form.reason ?? "",
+        reasonRequired: moneyRules.deduction_reason_required,
+        pieces: form.pieces ?? "",
       }),
-    [editingId, form, product, listPrice],
+    [editingId, form, product, listPrice, basis, offered, entryMode, moneyRules],
   );
 
   const errorFor = (field: LineField): string | null => {
@@ -305,8 +348,10 @@ export function CartScreen({
 
   const pressKey = (key: NumKey): void => {
     if (active === null) return;
-    const { dp, maxInt } = FIELD_SCALE[active];
-    putForm({ ...form, [active]: applyKey(form[active], key, dp, maxInt) });
+    const { dp, maxInt } = spec(active);
+    // Whole pieces only: a decimal point has nowhere to go.
+    if (dp === 0 && key === ".") return;
+    putForm({ ...form, [active]: applyKey(form[active] ?? "", key, dp, maxInt) });
   };
 
   const commitLine = (): void => {
@@ -333,6 +378,17 @@ export function CartScreen({
         gross: l.gross_weight,
         tare: l.tare_weight,
         price: l.unit_price,
+        // 0027: the line's own entries come back as they were typed into the boxes.
+        ...(l.rules === undefined
+          ? {}
+          : {
+              deduction: l.rules.deduction_mode === "percent" ? (l.rules.deduction_pct ?? "")
+                : l.rules.deduction_mode === "kg" ? l.rules.deduction_weight : "",
+              ...(l.rules.deduction_mode === "percent" || l.rules.deduction_mode === "kg"
+                ? { deduction_mode: l.rules.deduction_mode } : {}),
+              reason: l.rules.deduction_reason ?? "",
+              pieces: l.rules.pricing_basis === "piece" ? l.rules.quantity.replace(/\.0+$/, "") : "",
+            }),
       },
       true,
     );
@@ -574,30 +630,102 @@ export function CartScreen({
             grossY.current = e.nativeEvent.layout.y;
           }}
         >
-          <NumericField
-            field="gross"
-            value={form.gross}
-            active={active === "gross"}
-            onPress={() => setActive("gross")}
-            disabled={busy}
-          />
+          {basis === "weight" ? (
+            <NumericField
+              field="gross"
+              label={spec("gross").label}
+              value={form.gross}
+              active={active === "gross"}
+              onPress={() => setActive("gross")}
+              disabled={busy}
+            />
+          ) : basis === "piece" ? (
+            <NumericField
+              field="pieces"
+              label={spec("pieces").label}
+              value={form.pieces ?? ""}
+              active={active === "pieces"}
+              onPress={() => setActive("pieces")}
+              disabled={busy}
+            />
+          ) : null}
         </View>
         {errorFor("gross") ? <Text style={styles.err}>{errorFor("gross")}</Text> : null}
+        {errorFor("pieces") ? <Text style={styles.err}>{errorFor("pieces")}</Text> : null}
 
-        <NumericField
-          field="tare"
-          value={form.tare}
-          active={active === "tare"}
-          lockable="tare"
-          locked={locks.tare}
-          onToggleLock={() => onLocksChange(toggleLock(locks, "tare"))}
-          onPress={() => setActive("tare")}
-          disabled={busy}
-        />
+        {basis === "weight" ? (
+          <NumericField
+            field="tare"
+            label={spec("tare").label}
+            value={form.tare}
+            active={active === "tare"}
+            lockable="tare"
+            locked={locks.tare}
+            onToggleLock={() => onLocksChange(toggleLock(locks, "tare"))}
+            onPress={() => setActive("tare")}
+            disabled={busy}
+          />
+        ) : null}
         {errorFor("tare") ? <Text style={styles.err}>{errorFor("tare")}</Text> : null}
+
+        {/*
+          THE IMPURITY DEDUCTION (server migration 0027), drawn only when the product's rule offers
+          one. Two entries offered means the operator picks per line -- a segmented pair, the same
+          chip vocabulary as the category row. The reason sits under the box it explains; it is
+          free text, so the OS keyboard is correct here (the plate's exception, not the money's).
+        */}
+        {offered.length > 0 ? (
+          <View>
+            {offered.length > 1 ? (
+              <View style={styles.modeRow} accessibilityRole="radiogroup" accessibilityLabel="วิธีหักสิ่งเจือปน">
+                {offered.map((m) => {
+                  const on = m === entryMode;
+                  const text = m === "kg" ? "หักเป็นน้ำหนัก" : "หักเป็น %";
+                  return (
+                    <Touchable
+                      key={m}
+                      style={[styles.chip, styles.modeChip, on && styles.chipOn]}
+                      onPress={() => putForm({ ...form, deduction_mode: m, deduction: "" }, true)}
+                      disabled={busy}
+                      accessibilityLabel={text}
+                      selected={on}
+                    >
+                      <Text style={[styles.chipText, on && styles.chipTextOn]}>{text}</Text>
+                    </Touchable>
+                  );
+                })}
+              </View>
+            ) : null}
+            <NumericField
+              field="deduction"
+              label={spec("deduction").label}
+              value={form.deduction ?? ""}
+              active={active === "deduction"}
+              onPress={() => setActive("deduction")}
+              disabled={busy}
+            />
+            {errorFor("deduction") ? <Text style={styles.err}>{errorFor("deduction")}</Text> : null}
+            <View style={styles.fieldBlock}>
+              <Text style={styles.label}>
+                {moneyRules.deduction_reason_required ? "เหตุผลที่หัก (ต้องระบุเมื่อหัก)" : "เหตุผลที่หัก (ถ้ามี)"}
+              </Text>
+              <TextInput
+                style={styles.vehicleInput}
+                value={form.reason ?? ""}
+                onChangeText={(v) => putForm({ ...form, reason: v })}
+                placeholder="เช่น ดินติด เปียกน้ำ มีพลาสติกปน"
+                placeholderTextColor={t.color.placeholder}
+                maxLength={REASON_MAX}
+                editable={!busy}
+              />
+            </View>
+            {errorFor("reason") ? <Text style={styles.err}>{errorFor("reason")}</Text> : null}
+          </View>
+        ) : null}
 
         <NumericField
           field="price"
+          label={spec("price").label}
           value={form.price}
           active={active === "price"}
           lockable="price"
@@ -631,12 +759,16 @@ export function CartScreen({
         ) : null}
 
         <View style={styles.readRow}>
-          <View style={styles.col}>
-            <Text style={styles.label}>น้ำหนักสุทธิ</Text>
-            <Text style={styles.computed}>
-              {candidate.ok ? display(candidate.line.net_weight) : "—"}
-            </Text>
-          </View>
+          {basis !== "lump" ? (
+            <View style={styles.col}>
+              <Text style={styles.label}>{basis === "piece" ? "จำนวน" : "น้ำหนักสุทธิ"}</Text>
+              <Text style={styles.computed}>
+                {!candidate.ok ? "—" : basis === "piece"
+                  ? (candidate.line.rules?.quantity.replace(/\.0+$/, "") ?? "—")
+                  : display(candidate.line.net_weight)}
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.col}>
             <Text style={styles.label}>เป็นเงิน</Text>
             <Text style={styles.lineAmount}>
@@ -644,6 +776,11 @@ export function CartScreen({
             </Text>
           </View>
         </View>
+        {/* Said only when the shop rounds differently from the satang, so the figure above is
+            never a surprise: the operator reads why 1,234.56 became 1,235.00. */}
+        {moneyRules.rounding_rule !== DEFAULT_ROUNDING_RULE ? (
+          <Text style={styles.roundNote}>ปัดเศษยอดเงิน: {ROUNDING_TEXT[moneyRules.rounding_rule]}</Text>
+        ) : null}
 
         <View style={styles.row}>
           <Pressable
@@ -683,9 +820,12 @@ export function CartScreen({
               <Text style={styles.lineAmt}>{display(l.amount)}</Text>
             </View>
             <Text style={styles.lineMeta}>
-              {l.product_code} · สุทธิ {display(l.net_weight)} {l.uom_code} × {display(l.unit_price)}
+              {lineSummary(l)}
               {l.unit_price !== l.list_price ? `  (เกรด ${display(l.list_price)})` : ""}
             </Text>
+            {l.rules !== undefined && l.rules.deduction_mode !== "none" ? (
+              <Text style={styles.lineDeduction}>{deductionSummary(l)}</Text>
+            ) : null}
             <View style={styles.lineBtns}>
               <Pressable style={styles.lineBtn} onPress={() => startEdit(l)} disabled={busy}>
                 <Text style={styles.lineBtnText}>แก้ไข</Text>
@@ -740,8 +880,8 @@ export function CartScreen({
 
       {active !== null ? (
         <Numpad
-          fieldLabel={FIELD_LABEL[active]}
-          value={form[active]}
+          fieldLabel={spec(active).label}
+          value={form[active] ?? ""}
           net={candidate.ok ? display(candidate.line.net_weight) : "—"}
           amount={candidate.ok ? display(candidate.line.amount) : "—"}
           onKey={pressKey}
@@ -767,6 +907,27 @@ export function CartScreen({
 }
 
 /**
+ * One line, in words, under its own rules: the net and unit for a weight-priced line, the pieces
+ * for a piece-priced one, ราคาเหมา for a lump. The unit is the product's own (never a fixed "กก.",
+ * the slip's old mistake).
+ */
+function lineSummary(l: DraftLine): string {
+  const r = l.rules;
+  if (r?.pricing_basis === "piece") return `${l.product_code} · ${r.quantity.replace(/\.0+$/, "")} ${l.uom_code} × ${display(l.unit_price)}`;
+  if (r?.pricing_basis === "lump") return `${l.product_code} · ราคาเหมา`;
+  return `${l.product_code} · สุทธิ ${display(l.net_weight)} ${l.uom_code} × ${display(l.unit_price)}`;
+}
+
+/** What was taken off and why, shown on the line before the bill is confirmed. */
+function deductionSummary(l: DraftLine): string {
+  const r = l.rules;
+  if (r === undefined || r.deduction_mode === "none") return "";
+  const pct = r.deduction_mode === "percent" && r.deduction_pct !== null ? ` (${display(r.deduction_pct)}%)` : "";
+  const why = r.deduction_reason !== null ? ` · ${r.deduction_reason}` : "";
+  return `หักสิ่งเจือปน ${display(r.deduction_weight)} ${l.uom_code}${pct}${why}`;
+}
+
+/**
  * One numeric field. Rendered as Text inside a Pressable, never a TextInput —
  * that is what removes the OS keyboard and, with it, paste.
  *
@@ -775,7 +936,7 @@ export function CartScreen({
  * unrepresentable.
  */
 function NumericField({
-  field,
+  label,
   value,
   active,
   lockable,
@@ -785,6 +946,7 @@ function NumericField({
   disabled,
 }: {
   field: NumField;
+  label: string;
   value: string;
   active: boolean;
   lockable?: LockableField;
@@ -798,7 +960,7 @@ function NumericField({
   return (
     <View style={styles.fieldBlock}>
       <View style={styles.fieldHead}>
-        <Text style={styles.label}>{FIELD_LABEL[field]}</Text>
+        <Text style={styles.label}>{label}</Text>
         {lockable !== undefined ? (
           <Pressable
             style={[styles.lockBtn, locked && styles.lockBtnOn]}
@@ -986,6 +1148,10 @@ function makeStyles(t: ThemeTokens) {
     lineName: { flex: 1, marginLeft: t.space.lg, fontSize: t.type.subhead, fontWeight: "700", color: t.color.text },
     lineAmt: { fontSize: t.type.titleLg, fontWeight: "900", color: t.color.text },
     lineMeta: { fontSize: t.type.body, color: t.color.textSubtle, marginTop: t.space.sm },
+    lineDeduction: { fontSize: t.type.body, color: t.color.text, marginTop: t.space.xs, fontWeight: "700" },
+    modeRow: { flexDirection: "row", gap: t.space.md, marginTop: t.space.xxl },
+    modeChip: { flex: 1, alignItems: "center" },
+    roundNote: { fontSize: t.type.body, color: t.color.textMuted, marginTop: t.space.sm, fontWeight: "600" },
     lineBtns: { flexDirection: "row", gap: t.space.lg, marginTop: t.space.lg },
     lineBtn: {
       flex: 1, minHeight: t.tapMin, borderRadius: t.radius.lg, backgroundColor: t.color.surfaceAlt,

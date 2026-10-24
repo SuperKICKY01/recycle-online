@@ -19,6 +19,8 @@
  * has been removed must stop being pickable, and a bill already filed to them is
  * a separate problem the server answers (422) rather than one the cache hides.
  */
+import { DEDUCTION_SETTINGS, PRICING_BASES } from "../../money/lineRules.js";
+import type { DeductionSetting, PricingBasis } from "../../money/lineRules.js";
 import type {
   MasterGradeTier,
   MasterProduct,
@@ -66,6 +68,8 @@ interface ProductRow {
   category_id: string | null;
   category_code: string | null;
   category_name: string | null;
+  pricing_basis: string | null;
+  deduction_mode_effective: string | null;
 }
 
 interface SellerRow {
@@ -93,6 +97,10 @@ interface GradeTierRow {
  * a float that had already lost precision, and putting it back into a money path
  * is the exact thing hard rule 1 forbids.
  */
+const isBasis = (v: string | null): v is PricingBasis => v !== null && (PRICING_BASES as readonly string[]).includes(v);
+const isDeduction = (v: string | null): v is DeductionSetting =>
+  v !== null && (DEDUCTION_SETTINGS as readonly string[]).includes(v);
+
 function parsePrices(json: string): Record<string, string> {
   let raw: unknown;
   try {
@@ -243,8 +251,8 @@ export class SqliteMasterStore implements MasterStore {
     // two mechanisms guarding one observable make a green about whichever still
     // works (lessons/a-green-cell-is-evidence-about-the-assertion-not-the-claim.md).
     const products = await this.db.all<ProductRow>(
-      "SELECT id, code, name, uom_code, uom_name, prices_json, category_id, category_code, category_name" +
-        " FROM cached_products" +
+      "SELECT id, code, name, uom_code, uom_name, prices_json, category_id, category_code, category_name," +
+        " pricing_basis, deduction_mode_effective FROM cached_products" +
         ` WHERE ${CACHE_TENANT_MATCHES} ORDER BY code, id`,
       [tenant],
     );
@@ -276,6 +284,10 @@ export class SqliteMasterStore implements MasterStore {
             r.category_id !== null && r.category_code !== null && r.category_name !== null
               ? { id: r.category_id, code: r.category_code, name: r.category_name }
               : null,
+          // 0027. A value outside the known sets (a newer server) is dropped rather than coerced,
+          // and absent reads as the pre-0027 rule in the cart (src/cart/moneyRules.ts).
+          ...(isBasis(r.pricing_basis) ? { pricing_basis: r.pricing_basis } : {}),
+          ...(isDeduction(r.deduction_mode_effective) ? { deduction_mode_effective: r.deduction_mode_effective } : {}),
         }),
       ),
       sellers: sellers.map(
@@ -326,11 +338,12 @@ export class SqliteMasterStore implements MasterStore {
         await tx.run(
           "INSERT INTO cached_products" +
             " (id, code, name, uom_code, uom_name, prices_json, owner_tenant_id," +
-            " category_id, category_code, category_name)" +
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " category_id, category_code, category_name, pricing_basis, deduction_mode_effective)" +
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           [
             p.id, p.code, p.name, p.uom_code, p.uom_name, JSON.stringify(p.prices), tenant,
             p.category?.id ?? null, p.category?.code ?? null, p.category?.name ?? null,
+            p.pricing_basis ?? null, p.deduction_mode_effective ?? null,
           ],
         );
       }

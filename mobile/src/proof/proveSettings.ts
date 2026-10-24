@@ -144,6 +144,9 @@ const SHOP: ShopSettings = {
   default_grade: "B",
   address: "123 ถนนทดสอบ ตำบลทดสอบ",
   phone: "0812345678",
+  // A body from a server before migration 0027 carries no money rules: the screen draws no money
+  // group. The 0027 group is proven in prove:moneyrules.
+  money: null,
 };
 /**
  * THE SHOP'S ACTIVE TIERS (S16 / P1.24). Names differ from codes ON PURPOSE, so

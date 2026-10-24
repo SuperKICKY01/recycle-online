@@ -5,13 +5,16 @@
  *
  * All arithmetic goes through src/money — never a JS number.
  */
-import { lineAmount, netWeight, parsePrice, parseWeight, sumAmounts } from "../money/money.js";
+import { computeLine, DEFAULT_ROUNDING_RULE } from "../money/lineRules.js";
+import type { LineDeductionMode, PricingBasis, RoundingRule } from "../money/lineRules.js";
+import { netWeight, parseDecimal, parsePrice, parseWeight, sumAmounts } from "../money/money.js";
 import type { FieldError } from "../money/money.js";
 import type { BillItemPayload } from "../sync/types.js";
 import { onSellerChange } from "./entry.js";
 import type { Locks } from "./entry.js";
+import type { EntryMode } from "./moneyRules.js";
 import { cleanVehicleNo } from "./sellers.js";
-import type { Draft, DraftForm, DraftLine } from "./types.js";
+import type { Draft, DraftForm, DraftLine, LineRules } from "./types.js";
 import { emptyForm } from "./types.js";
 
 export interface LineInput {
@@ -25,11 +28,45 @@ export interface LineInput {
   tare: string;
   price: string;
   list_price: string;
+  /*
+   * THE SHOP'S MONEY RULES (server migration 0027, M1) -- ALL OPTIONAL. A caller that passes
+   * `rule` applies the rules and gets a line that DECLARES them (`line.rules`); a caller that
+   * passes none gets exactly the pre-0027 line -- weight-priced, nothing deducted, half-up to the
+   * satang, no `rules` key -- the shape every older proof and every queued bill has.
+   */
+  basis?: PricingBasis;
+  rule?: RoundingRule;
+  /** The deduction entries the product offers (moneyRules.offeredModes); none when absent. */
+  offered?: readonly EntryMode[];
+  /** Which offered entry the operator chose; the first offered when unset or not offered. */
+  deductionMode?: EntryMode;
+  /** Raw keypad text: a weight in kg mode, a percent in percent mode. */
+  deduction?: string;
+  /** Free text; required when `reasonRequired` and something is deducted. */
+  reason?: string;
+  reasonRequired?: boolean;
+  /** Raw keypad text: whole pieces, for a piece-priced product. */
+  pieces?: string;
 }
 
-export type LineField = "product" | "gross" | "tare" | "price";
+export type LineField = "product" | "gross" | "tare" | "price" | "deduction" | "reason" | "pieces";
 
-export type LineError = FieldError | "no_product" | "zero_net" | "zero_amount";
+export type LineError =
+  | FieldError
+  | "no_product"
+  | "zero_net"
+  | "zero_amount"
+  | "deduction_exceeds_net"
+  | "deduction_pct_out_of_range"
+  | "reason_required"
+  | "reason_too_long"
+  | "piece_quantity_invalid";
+
+/** A percent as typed: two places, at most three integer digits (100.00). */
+export const PERCENT_DP = 2;
+export const PERCENT_MAX_INT_DIGITS = 3;
+/** The reason's bound, the server column's (ck_items_deduction_reason_len). */
+export const REASON_MAX = 200;
 
 export type LineResult =
   | { ok: true; line: Omit<DraftLine, "seq"> }
@@ -74,6 +111,8 @@ export function newDraft(
  */
 export function buildLine(input: LineInput): LineResult {
   if (input.product_id === "") return { ok: false, field: "product", error: "no_product" };
+  const basis: PricingBasis = input.basis ?? "weight";
+  if (basis !== "weight") return buildCountedLine(input, basis);
 
   const g = parseWeight(input.gross);
   if (!g.ok) return { ok: false, field: "gross", error: g.error };
@@ -86,26 +125,57 @@ export function buildLine(input: LineInput): LineResult {
   if (!n.ok) return { ok: false, field: "tare", error: n.error };
 
   /*
-   * Zero-value guard (Phase 2c-5).
-   *
-   * A zero line is not a validation error in the arithmetic sense — the money
-   * module computes it correctly and the server would accept it. It is a
-   * BUSINESS error: a line that pays nothing is either a mistyped weight or a
-   * mistyped price, and once it is on a printed slip nobody can tell which.
-   * So the guard lives here, in the cart, and money.ts keeps permitting net = 0
-   * because that is arithmetically true.
-   *
-   * Note the asymmetry the phase calls for: a tare of 0.000 is perfectly
-   * normal — loose scrap tipped straight onto the plate has no container — so
-   * only the NET and the AMOUNT are checked, never the tare itself.
+   * THE IMPURITY DEDUCTION (0027). Read only when the product offers one and something was typed;
+   * a typed zero is "nothing deducted", not a kg-mode line of zero (which the server refuses).
+   * The arithmetic is lineRules.computeLine's -- the function the golden vectors hold to the
+   * server's -- so what this previews is what the server stores.
    */
-  if (isZero(n.value)) return { ok: false, field: "gross", error: "zero_net" };
+  const offered = input.offered ?? [];
+  const typed = (input.deduction ?? "").trim();
+  let mode: LineDeductionMode = "none";
+  let pct: string | null = null;
+  let dweight: string | null = null;
+  if (offered.length > 0 && typed !== "") {
+    const chosen = input.deductionMode !== undefined && offered.includes(input.deductionMode)
+      ? input.deductionMode
+      : (offered[0] ?? "kg");
+    const d = chosen === "kg" ? parseWeight(typed) : parseDecimal(typed, PERCENT_DP, PERCENT_MAX_INT_DIGITS);
+    if (!d.ok) return { ok: false, field: "deduction", error: d.error };
+    if (!isZero(d.value)) {
+      mode = chosen;
+      if (chosen === "kg") dweight = d.value;
+      else pct = d.value;
+    }
+  }
+  const reason = (input.reason ?? "").trim();
+  if (mode !== "none" && input.reasonRequired === true && reason === "") {
+    return { ok: false, field: "reason", error: "reason_required" };
+  }
+  if (reason.length > REASON_MAX) return { ok: false, field: "reason", error: "reason_too_long" };
 
-  const amount = lineAmount(n.value, p.value);
-  // Reachable with a non-zero net AND a non-zero price: 0.001 x 0.01 rounds to
-  // 0.00. So this is a separate check, not a restatement of the one above.
-  if (isZero(amount)) return { ok: false, field: "price", error: "zero_amount" };
-
+  const rule = input.rule ?? DEFAULT_ROUNDING_RULE;
+  const r = computeLine({
+    gross: g.value, tare: t.value, unitPrice: p.value, basis, rule, mode,
+    deductionPct: pct, deductionWeight: dweight,
+  });
+  if (!r.ok) {
+    if (r.code === "deduction_exceeds_net" || r.code === "deduction_pct_out_of_range") {
+      return { ok: false, field: "deduction", error: r.code };
+    }
+    // Every other refusal is a rule this function already checked above.
+    return { ok: false, field: "gross", error: "not_a_number" };
+  }
+  /*
+   * Zero-value guard (Phase 2c-5). A zero line is not an arithmetic error -- the server would
+   * accept it -- it is a BUSINESS one: a line that pays nothing is a mistyped weight or price, and
+   * once it is on a printed slip nobody can tell which. Net and amount only, never the tare (loose
+   * scrap tipped straight on the plate has none). A deduction that takes the whole net is the same
+   * mistake, pointed at the deduction box.
+   */
+  if (isZero(r.value.netWeight)) {
+    return { ok: false, field: mode === "none" ? "gross" : "deduction", error: "zero_net" };
+  }
+  if (isZero(r.value.amount)) return { ok: false, field: "price", error: "zero_amount" };
   return {
     ok: true,
     line: {
@@ -116,10 +186,64 @@ export function buildLine(input: LineInput): LineResult {
       uom_code: input.uom_code,
       gross_weight: g.value,
       tare_weight: t.value,
-      net_weight: n.value,
+      net_weight: r.value.netWeight,
       unit_price: p.value,
       list_price: input.list_price,
-      amount,
+      amount: r.value.amount,
+      ...(input.rule === undefined
+        ? {}
+        : {
+            rules: {
+              pricing_basis: basis, rounding_rule: rule, deduction_mode: mode, deduction_pct: pct,
+              deduction_weight: r.value.deductionWeight,
+              deduction_reason: mode === "none" || reason === "" ? null : reason,
+              quantity: r.value.quantity,
+            } satisfies LineRules,
+          }),
+    },
+  };
+}
+
+/**
+ * A PIECE- OR LUMP-PRICED line (0027): the price multiplies whole pieces, or is the lump itself.
+ * No weight is asked for and none is deducted -- a deduction applies to weight-priced lines only
+ * (the server's CHECK says the same) -- so gross, tare and net are 0.000.
+ */
+function buildCountedLine(input: LineInput, basis: "piece" | "lump"): LineResult {
+  const p = parsePrice(input.price);
+  if (!p.ok) return { ok: false, field: "price", error: p.error };
+  let quantity: string | null = null;
+  if (basis === "piece") {
+    const raw = (input.pieces ?? "").trim();
+    if (raw === "") return { ok: false, field: "pieces", error: "empty" };
+    if (!/^\d+$/.test(raw) || /^0+$/.test(raw)) return { ok: false, field: "pieces", error: "piece_quantity_invalid" };
+    if (raw.replace(/^0+/, "").length > 11) return { ok: false, field: "pieces", error: "too_large" };
+    quantity = raw;
+  }
+  const rule = input.rule ?? DEFAULT_ROUNDING_RULE;
+  const r = computeLine({
+    gross: "0.000", tare: "0.000", unitPrice: p.value, basis, rule, mode: "none", quantity,
+  });
+  if (!r.ok) return { ok: false, field: basis === "piece" ? "pieces" : "price", error: "piece_quantity_invalid" };
+  if (isZero(r.value.amount)) return { ok: false, field: "price", error: "zero_amount" };
+  return {
+    ok: true,
+    line: {
+      id: input.id,
+      product_id: input.product_id,
+      product_code: input.product_code,
+      product_name: input.product_name,
+      uom_code: input.uom_code,
+      gross_weight: "0.000",
+      tare_weight: "0.000",
+      net_weight: "0.000",
+      unit_price: p.value,
+      list_price: input.list_price,
+      amount: r.value.amount,
+      rules: {
+        pricing_basis: basis, rounding_rule: rule, deduction_mode: "none", deduction_pct: null,
+        deduction_weight: "0.000", deduction_reason: null, quantity: r.value.quantity,
+      },
     },
   };
 }
@@ -337,6 +461,22 @@ export function cartTotal(draft: Draft): string {
   return sumAmounts(orderedLines(draft).map((l) => l.amount));
 }
 
+/**
+ * EVERY DEDUCTION ON THE BILL, one sentence per deducting line, for the confirmation the seller is
+ * shown before the cash is counted out (ADVISOR-DECIDED 2026-10-24 M1 b: "Shown to the seller on
+ * the phone before confirm"). Per line, never summed: two lines may be in different units, and a
+ * total of kilograms and pieces is a number that means nothing. Empty when nothing is deducted.
+ */
+export function deductionLines(draft: Draft): string[] {
+  return orderedLines(draft).flatMap((l) => {
+    const r = l.rules;
+    if (r === undefined || r.deduction_mode === "none") return [];
+    const pct = r.deduction_mode === "percent" && r.deduction_pct !== null ? ` (${r.deduction_pct}%)` : "";
+    const why = r.deduction_reason !== null ? ` · ${r.deduction_reason}` : "";
+    return [`${l.product_name}: หักสิ่งเจือปน ${r.deduction_weight} ${l.uom_code}${pct}${why}`];
+  });
+}
+
 /** Lines in stable display order. */
 export function orderedLines(draft: Draft): DraftLine[] {
   return [...draft.lines].sort((a, b) => a.seq - b.seq);
@@ -361,5 +501,24 @@ export function toBillItems(draft: Draft): BillItemPayload[] {
     net_weight: l.net_weight,
     unit_price: l.unit_price,
     list_price: l.list_price,
+    ...(l.rules === undefined ? {} : rulesOnTheWire(l.rules)),
   }));
+}
+
+/**
+ * THE RULES A LINE DECLARES (server migration 0027): the server re-derives every figure from these
+ * and stores them as the line's snapshot. Only what the mode needs is sent -- a percent only in
+ * percent mode, a deduction weight only when something was deducted, pieces only for a piece line
+ * -- because the server refuses a value the mode does not explain (money_rules.py).
+ */
+function rulesOnTheWire(r: LineRules): Partial<BillItemPayload> {
+  return {
+    pricing_basis: r.pricing_basis,
+    rounding_rule: r.rounding_rule,
+    deduction_mode: r.deduction_mode,
+    ...(r.deduction_mode === "percent" && r.deduction_pct !== null ? { deduction_pct: r.deduction_pct } : {}),
+    ...(r.deduction_mode === "none" ? {} : { deduction_weight: r.deduction_weight }),
+    ...(r.deduction_reason !== null ? { deduction_reason: r.deduction_reason } : {}),
+    ...(r.pricing_basis === "piece" ? { quantity: r.quantity } : {}),
+  };
 }

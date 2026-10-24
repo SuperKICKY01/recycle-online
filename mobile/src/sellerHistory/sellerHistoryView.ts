@@ -48,6 +48,7 @@
  * this phase's bounds. Offline, the screen says one calm sentence and draws no
  * rows; a transport failure offers ลองอีกครั้ง and never a number and never a red.
  */
+import { display } from "../money/format.js";
 import { shopDate } from "@recycle/shop-time";
 
 /* ==========================================================================
@@ -70,6 +71,10 @@ interface WireLine {
   product_name: string | null;
   net_weight: string;
   unit_price: string | null; // read only when money_included; null otherwise
+  /* Server migration 0027: what the price multiplied and its unit. Null from an older server. */
+  quantity: string | null;
+  pricing_basis: string | null;
+  unit_name: string | null;
 }
 
 interface WireBill {
@@ -127,7 +132,23 @@ function readLine(v: unknown, moneyIncluded: boolean): WireLine | null {
     unit_price = readMoney(v["unit_price"]);
     if (unit_price === null) return null;
   }
-  return { product_id, product_name, net_weight, unit_price };
+  return {
+    product_id, product_name, net_weight, unit_price,
+    quantity: readStr(v["quantity"]), pricing_basis: readStr(v["pricing_basis"]), unit_name: readStr(v["unit_name"]),
+  };
+}
+
+/**
+ * THE LINE'S QUANTITY IN WORDS, in its own unit (0027): the net and unit for a weight-priced line,
+ * the whole pieces for a piece-priced one, ราคาเหมา for a lump. A line from a server before 0027
+ * carries no unit and reads as it always did (net, WEIGHT_UNIT) -- never a unit invented for it.
+ */
+function quantityLabel(p: WireLine): string {
+  if (p.pricing_basis === "piece" && p.quantity !== null) {
+    return `${p.quantity.replace(/\.0+$/, "")} ${p.unit_name ?? ""}`.trim();
+  }
+  if (p.pricing_basis === "lump") return "ราคาเหมา";
+  return `${display(p.net_weight)} ${p.unit_name ?? WEIGHT_UNIT}`;
 }
 
 function readBill(v: unknown, moneyIncluded: boolean): WireBill | null {
@@ -216,6 +237,8 @@ export interface HistoryMessage {
 export interface HistoryLineView {
   product: string;
   net_weight: string;
+  /** The quantity and its unit, ready to draw (quantityLabel): never a bare number. */
+  quantity: string;
   /** unit_price VERBATIM, or null when money is not included. */
   unit_price: string | null;
 }
@@ -362,6 +385,7 @@ function billView(bill: WireBill): HistoryBillView {
     lines: bill.products.map((p) => ({
       product: p.product_name ?? "—",
       net_weight: p.net_weight,
+      quantity: quantityLabel(p),
       unit_price: p.unit_price,
     })),
     total: bill.total_amount,
