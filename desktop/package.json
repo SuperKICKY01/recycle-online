@@ -25,7 +25,8 @@
     "prove:people": "npm run build && node dist/proof/provePeople.cjs",
     "prove:peopleflow": "npm run build && node dist/proof/provePeopleFlow.cjs",
     "prove:reports": "npm run build && node dist/proof/proveReports.cjs",
-    "prove:reportsflow": "npm run build && node dist/proof/proveReportsFlow.cjs"
+    "prove:reportsflow": "npm run build && node dist/proof/proveReportsFlow.cjs",
+    "prove:moneyflow": "npm run build && node dist/proof/proveMoneyFlow.cjs"
   },
   "dependencies": {
     "@recycle/shop-time": "file:../packages/shop-time",

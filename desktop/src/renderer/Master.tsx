@@ -278,13 +278,16 @@ function Field(props: { label: string; name: string; value: string; onChange?: (
 
 /** The panel's footer: a refusal line, save, and retire/bring back for an existing row. */
 function Actions(props: { problem: string | null; saved: string | null; busy: boolean; canSave: boolean; onSave: () => void;
-  retire?: { active: boolean; can: boolean; onToggle: () => void } }) {
+  retire?: { active: boolean; can: boolean; onToggle: () => void };
+  /** The save button's own words where a panel holds two saves (impeccable · clarify · "Use a specific
+   *  verb and object when the outcome is not already obvious."). */
+  saveLabel?: string }) {
   return (
     <>
       {props.problem !== null ? <p className="notice notice-error" role="alert" data-panel-problem>{props.problem}</p> : null}
       {props.saved !== null ? <p className="notice notice-ok" role="status" data-panel-saved>{props.saved}</p> : null}
       <div className="void-actions">
-        {props.canSave ? <button type="button" className="btn btn-primary" disabled={props.busy} onClick={props.onSave}>{props.busy ? "กำลังบันทึก…" : "บันทึก"}</button> : null}
+        {props.canSave ? <button type="button" className="btn btn-primary" disabled={props.busy} onClick={props.onSave}>{props.busy ? "กำลังบันทึก…" : (props.saveLabel ?? "บันทึก")}</button> : null}
         {props.retire !== undefined && props.retire.can ? (
           <button type="button" className="btn btn-quiet" disabled={props.busy} data-toggle-active onClick={props.retire.onToggle}>
             {props.retire.active ? "ปิดใช้งาน" : "เปิดใช้งานอีกครั้ง"}
@@ -449,7 +452,7 @@ function ProductRules(props: PanelProps & { product: Product }) {
           {DEDUCTION_SETTINGS.map((d) => <option key={d} value={d}>{DEDUCTION_TEXT[d]}</option>)}
         </select>
       </label>
-      {owner ? <Actions problem={w.problem} saved={w.saved} busy={w.busy} canSave onSave={save} /> : null}
+      {owner ? <Actions problem={w.problem} saved={w.saved} busy={w.busy} canSave onSave={save} saveLabel="บันทึกการคิดเงิน" /> : null}
     </section>
   );
 }

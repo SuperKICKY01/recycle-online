@@ -118,6 +118,9 @@ function ShopTab(props: Props) {
   const [shop, setShop] = useState<Shop | null>(null);
   const [money, setMoney] = useState<ShopMoney | null>(null);
   const [moneyBusy, setMoneyBusy] = useState(false);
+  // The money section's OWN notice, drawn beside its own button: shown with the shop form's notice it
+  // read as though the address save had saved the money rules (measured on the owner's screenshot).
+  const [moneyNotice, setMoneyNotice] = useState<{ problem: string | null; saved: string | null }>({ problem: null, saved: null });
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [tiers, setTiers] = useState<Tier[]>([]);
   const [form, setForm] = useState({ address: "", phone: "", default_grade: "" });
@@ -165,7 +168,7 @@ function ShopTab(props: Props) {
     if (shop?.money == null || money === null) return;
     const body = moneyPatch(shop.money, money);
     if (Object.keys(body).length === 0) {
-      setProblem("ยังไม่ได้แก้ไขอะไร");
+      setMoneyNotice({ problem: "ยังไม่ได้แก้ไขอะไร", saved: null });
       return;
     }
     setMoneyBusy(true);
@@ -175,9 +178,8 @@ function ShopTab(props: Props) {
         // What the SERVER stored, never what was sent.
         setShop(r.ok);
         setMoney(r.ok.money);
-        setProblem(null);
-        setSaved(MONEY_TEXT.saved);
-      } else setProblem(r.problem);
+        setMoneyNotice({ problem: null, saved: MONEY_TEXT.saved });
+      } else setMoneyNotice({ problem: r.problem, saved: null });
     } finally {
       setMoneyBusy(false);
     }
@@ -241,6 +243,7 @@ function ShopTab(props: Props) {
               onChange={(e) => setMoney((m) => (m === null ? m : { ...m, deduction_reason_required: e.target.checked }))} />
             {MONEY_TEXT.reason}
           </label>
+          <Notice problem={moneyNotice.problem} saved={moneyNotice.saved} />
           {owner ? (
             <div className="void-actions">
               <button type="button" className="btn btn-primary" data-save-money disabled={moneyBusy} onClick={() => void saveMoney()}>
