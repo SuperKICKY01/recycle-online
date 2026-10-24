@@ -294,8 +294,11 @@ export function CartScreen({
      * A3 item 5: the next thing the operator does is type the gross weight, so the
      * weight entry is scrolled into view and gross becomes the active field. Before this
      * the selection changed nothing on screen — the fields stayed below the fold.
+     * Under 0027 the first entry follows the product's basis: a piece-priced product has
+     * no gross field (its count is), and a lump-priced one has only its price.
      */
-    setActive("gross");
+    const first = p.pricing_basis === "piece" ? "pieces" : p.pricing_basis === "lump" ? "price" : "gross";
+    setActive(first);
     if (grossY.current !== null) {
       scrollRef.current?.scrollTo({ y: Math.max(0, grossY.current - t.space.x3), animated: !reducedMotion });
     }
@@ -339,6 +342,10 @@ export function CartScreen({
       }),
     [editingId, form, product, listPrice, basis, offered, entryMode, moneyRules],
   );
+  /** The line's measure under its basis — net weight, or the count — for the read row and the keypad alike. */
+  const measureValue = !candidate.ok ? "—" : basis === "piece"
+    ? (candidate.line.rules?.quantity.replace(/\.0+$/, "") ?? "—")
+    : display(candidate.line.net_weight);
 
   const errorFor = (field: LineField): string | null => {
     if (!touched) return null;
@@ -762,11 +769,7 @@ export function CartScreen({
           {basis !== "lump" ? (
             <View style={styles.col}>
               <Text style={styles.label}>{basis === "piece" ? "จำนวน" : "น้ำหนักสุทธิ"}</Text>
-              <Text style={styles.computed}>
-                {!candidate.ok ? "—" : basis === "piece"
-                  ? (candidate.line.rules?.quantity.replace(/\.0+$/, "") ?? "—")
-                  : display(candidate.line.net_weight)}
-              </Text>
+              <Text style={styles.computed}>{measureValue}</Text>
             </View>
           ) : null}
           <View style={styles.col}>
@@ -882,7 +885,7 @@ export function CartScreen({
         <Numpad
           fieldLabel={spec(active).label}
           value={form[active] ?? ""}
-          net={candidate.ok ? display(candidate.line.net_weight) : "—"}
+          measure={basis === "lump" ? null : `${basis === "piece" ? "จำนวน" : "สุทธิ"} ${measureValue}`}
           amount={candidate.ok ? display(candidate.line.amount) : "—"}
           onKey={pressKey}
           onDone={() => setActive(null)}

@@ -25,8 +25,9 @@ interface Props {
   /** Thai label of the field being edited, e.g. "น้ำหนักรวม". */
   fieldLabel: string;
   value: string;
-  /** Live readout, already computed by the money module. */
-  net: string;
+  /** Live readout, already computed by the money module. `measure` is the small line above the
+   *  amount with its noun ("สุทธิ 92.150", "จำนวน 3"), or null where the basis has none (lump). */
+  measure: string | null;
   amount: string;
   onKey: (key: NumKey) => void;
   onDone: () => void;
@@ -38,7 +39,7 @@ const ROWS: NumKey[][] = [
   ["1", "2", "3"],
 ];
 
-export function Numpad({ fieldLabel, value, net, amount, onKey, onDone }: Props) {
+export function Numpad({ fieldLabel, value, measure, amount, onKey, onDone }: Props) {
   const t = useTheme();
   const styles = useMemo(() => makeStyles(t), [t]);
   return (
@@ -50,7 +51,7 @@ export function Numpad({ fieldLabel, value, net, amount, onKey, onDone }: Props)
           <Text style={styles.fieldValue}>{value === "" ? "0" : value}</Text>
         </View>
         <View style={styles.readoutRight}>
-          <Text style={styles.readoutSmall}>สุทธิ {net}</Text>
+          {measure !== null ? <Text style={styles.readoutSmall}>{measure}</Text> : null}
           <Text style={styles.readoutAmount}>{amount}</Text>
         </View>
       </View>
