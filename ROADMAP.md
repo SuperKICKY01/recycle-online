@@ -1083,6 +1083,35 @@ is now the today view's bill list, exactly as this decision set out. `dailyView.
 (the `/reports/daily` view-model) and its proof are untouched; only the standalone
 screen was retired.
 
+**THREE MORE, FROM THE OWNER — 2026-10-24: WHAT V1 IS, WHO CONFIGURES IT, AND WHERE
+IT IS AIMED.** Recorded as a dated entry and minting NO S-number: the brief that
+carried them asked for a dated entry, and numbering a scope decision is the
+advisor's call, not a coding session's. The owner's words, verbatim and untranslated:
+
+  "แอป v1 ที่ควรจะมีคือ list ที่พ่อผมต้องการตั้งแต่แรกจาก Sass file"
+  "เจ้าของคือ อิสระครับ สามารถปรับได้ทั้งหมดครับ โดยไม่ได้เกิดอันตราย ... เราห้าม hardcode หรือตีกรอบเลยครับ"
+  "ผมอยากอันดับ1ในวงการนี้เอาง่ายๆ ecosystem"
+
+The advisor's reading, recorded with them (ADVISOR-DECIDED 2026-10-24):
+
+1. **V1 = every requirement in `docs/SRS.md`**, plus the provider web, production
+   hosting / backup / restore / monitoring, installers and updates, and a pilot at
+   the payer's shop.
+2. **Shop-configurable by default, under three guards:** the eight hard rules in
+   `CLAUDE.md` are never configurable; a setting applies to NEW records only (each
+   record keeps a snapshot of the rules it used); every setting change is
+   owner-only and audited.
+3. **The SRS "delete bill" is a delete-looking action that VOIDS** with a reason
+   and hides the bill from default lists — hard rule 5 stands.
+4. **V1 is DESIGNED for the ecosystem but does not BUILD it:** the readiness items
+   are the V1 audit's ecosystem table (lane A, 2026-10-24).
+
+**A TENSION THIS ENTRY DOES NOT RESOLVE, named so it is not discovered later:** S16
+above stores per-tenant values BY KIND ("NO JSON BAG"), while reading (2) asks for
+one owner-only, audited, forward-only settings mechanism. The two can coexist (one
+change path and one audit over typed columns), but which one governs a new setting
+is the advisor's to say.
+
 ---
 
 ## Every settled decision, and the step that owns it
