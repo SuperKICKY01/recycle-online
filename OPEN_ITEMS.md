@@ -717,6 +717,28 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
 
 ## Verification gaps — built, not proven
 
+- **M1 (2026-10-24) — FOUND AND LEFT, one line each (lane A; built at `0994095`, `2590222`, `44d4183`, `a14272c`, `7b3ba11`).**
+  (1) **`database is locked` returned once on the phone.** On the M1 walk, a live font change (1.0 → 1.3) on the shop
+  settings screen, about a minute after the owner saved a money rule there, showed `เปิดฐานข้อมูลไม่สำเร็จ` with the full
+  text `Call to function 'NativeStatement.finalizeAsync' has been rejected. → Caused by: Error code : database is
+  locked` (UI dump; logcat carried no JS line). A cold start cleared it. Repro attempts: 0 of 9 font flips (4 idle on
+  home, 1 straight after a money save on settings, 4 more on settings), with the detector's control matched on the
+  failure dump. So 1 in 10, no reliable repro, not debugged. The 2026-10-11 fix (bring-up once per process) is still in
+  place (`App.tsx:1200`); the open suspect stays `§ Code debt` 1b item (5): a write already in flight at unmount finishing
+  beside the new root's boot writes. Whether M1's money-rule save is that write is UNMEASURED.
+  (2) **A product can be priced per piece while its unit is a weight.** The server accepts `pricing_basis = piece` on a
+  KG product; the phone then labels the count `จำนวน (Kilogram)` and the line stores `unit_code KG` with `quantity 3`
+  (walk, `recycle_walk_a`). Whether a counted product must carry a counting unit is the owner's call, not the code's.
+  (3) **The server accepts the rule a line declares, not today's setting** (offline-first; a phone may price under the
+  rule it last cached). Nothing reports lines priced under a rule other than the shop's setting at receipt.
+  (4) **`separate_cashier` and `shifts_enabled` are catalogued OPERATIONAL** (`server/app/policy.py:69-72`): admin-writable,
+  since no amount moves. Flagged for the advisor: they decide who records a payment.
+  (5) **Downgrade 0027 → 0026 is refused only where a line's arithmetic or a setting would be lost** (a deduction, a
+  non-default rounding rule or basis on any line; any setting off its default — `0027_money_rules.py:268-283`); where
+  it is allowed, it drops the unit and tier LABELS of default-rule lines, which 0026 never held.
+  (6) **The phone reads the cached money rules at any age;** absent rules mean the pre-0027 rule (`DEFAULT_MONEY_RULES`).
+  (7) **The branch rounding override has a route and no screen** (`PATCH /branches/{id}` `rounding_rule`).
+
 - **D2, SQLite `secure_delete` ON THE PHONE — DECIDED (ADVISOR-DECIDED 2026-10-23): verify on the emulator in the next
   walk, and record the result here.** H3 (`5241e50`) sets `PRAGMA secure_delete = ON` and checkpoints the WAL after a
   seller settles; that a dropped ID's bytes then leave the file is MEASURED ON node:sqlite ONLY (`prove:sellerid` S6).

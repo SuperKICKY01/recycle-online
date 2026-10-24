@@ -275,6 +275,27 @@ anchor next pass.
   seller's ID is in the WAL before sync and in none of `recycle.db`/`-wal`/`-shm` after (PASS). The same walk found a
   stale copy of a cached seller's row in an interior page of `cached_sellers` that survives D1's sign-out — recorded in
   OPEN_ITEMS under D2, not fixed.
+- **M0 AND M1 — THE MONEY RULES (ADVISOR-DECIDED 2026-10-24), 2026-10-24.** ROADMAP record `34f25ec`. M0 at `9430af6`:
+  both engines `hide_parameters=True`, `prove_log_redaction` (a forced 500's log carries no bound value); F1/F2 of the
+  2026-10-24 brief not found in the repo with those words; the slip's unit fix landed with the desktop half (`44d4183`).
+  M1, migration 0027 at `0994095`: typed settings columns (tenant deduction mode / reason required / rounding rule,
+  branch rounding override, product deduction mode and pricing basis — no JSON bag, S16), one reader (`app/policy.py`
+  ShopPolicy, a catalogue marking each key MONEY or operational), money keys OWNER-only through the same DB-read owner
+  identity as 3a (`money_rule_owner_only`, 403 to an admin), audited; every new line stores the rules it used (deduction
+  mode/pct/weight/reason, basis, quantity, rounding rule, unit code and name, tier) under CHECKs (net = gross − tare −
+  deduction; amount = `line_amount_rounded(quantity, unit_price, rule)`; all-or-none snapshot, so pre-0027 lines stay
+  as they are). The server re-derives every figure from the rule the line DECLARES and never substitutes today's
+  setting. Phone at `2590222` and `7b3ba11`, desktop at `44d4183` and `a14272c`; parity is ONE golden file
+  (`golden/line_rules_vectors.json`, 37 vectors) read by `prove_line_rules.py` and `prove:linerules`. Dev backed up
+  (`recycle_20261024T040815Z_pre-0027`) and at `0027 (head)`; dev bills and lines digest-identical before and after.
+  **Walk (lane A, emulator, `recycle_walk_a`, signed in as an owner made on the walk DB only):** a 3 % deduction with a
+  required reason refused without one, then line 100 − 5 − 2.850 = 92.150 × 15.50 → 1,428.25 at 25-satang half-up,
+  a 3-piece line at 40.00, the confirm dialog listing the deduction, B-2569-1 saved; Postgres stores both lines' rules;
+  the owner then changed rounding to the default on the phone and B-2569-1's stored lines read the same, value for
+  value. Shots at font 1.0 and 1.3. The walk found and `7b3ba11` fixed: choosing a piece-priced product opened the
+  keypad on a hidden gross weight. Box rebooted mid-walk (16:05 local, cause unmeasured); Postgres recovered by WAL
+  replay and the walk bill read back unchanged. Residuals in `OPEN_ITEMS.md` under "M1 (2026-10-24)". Lesson:
+  `lessons/a-destructive-step-waits-on-its-backups-own-success.md`.
 - **THE `lane-a` BRANCH IS ON GITHUB** (pushed 2026-10-19 alongside main; ADVISOR-DECIDED: leave it). It mirrors work
   already on main — every lane-a commit is fast-forwarded to main after its green gate — and holds nothing main lacks
   at each merge.
