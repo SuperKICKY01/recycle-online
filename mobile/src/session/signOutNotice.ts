@@ -161,6 +161,8 @@ const OWED_LINE: { readonly [K in OutboxKind]: (n: number) => string } = {
   // ราย, not ใบ: a seller is a person. And "เพิ่มใหม่ในเครื่อง" says where it
   // was created, because that is the whole reason the server has not got it.
   seller_create: (n) => `มีผู้ขายที่เพิ่มใหม่ในเครื่องรอส่ง ${String(n)} ราย`,
+  // M2: บิลขาย, not บิล -- the yard must not read an unsent SALE as an unsent purchase; ใบ, a document.
+  sale_send: (n) => `มีบิลขายรอส่ง ${String(n)} ใบ`,
 };
 
 /**

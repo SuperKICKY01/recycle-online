@@ -49,6 +49,10 @@ import { ThemeProvider, useTheme, type ThemeTokens } from "./app/theme";
 
 import { HttpTransport } from "./src/adapters/httpTransport";
 import { HttpSellerTransport } from "./src/adapters/httpSellerTransport";
+import { HttpSaleTransport } from "./src/adapters/httpSaleTransport";
+import { SqliteLocalSaleStore } from "./src/adapters/sqlite/SqliteLocalSaleStore";
+import { buildSalePayload } from "./src/sell/sellView";
+import type { CachedBuyer, LocalSale } from "./src/sync/localSale";
 import { SqliteDraftStore } from "./src/adapters/sqlite/SqliteDraftStore";
 import { SqliteDeviceStore } from "./src/adapters/sqlite/SqliteDeviceStore";
 import { SqliteLocalSellerStore } from "./src/adapters/sqlite/SqliteLocalSellerStore";
@@ -249,6 +253,7 @@ import {
   fetchSellers,
   fetchShop,
   fetchShopPolicy,
+  fetchBuyers,
   fetchSummary,
   fetchUnpaidBills,
   postPayment,
@@ -303,6 +308,8 @@ import { SellerHistorySheet } from "./app/SellerHistorySheet";
 import { TierActionsSheet } from "./app/TierActionsSheet";
 import { UsersScreen } from "./app/UsersScreen";
 import { CounterScreen } from "./app/CounterScreen";
+import { SellScreen } from "./app/SellScreen";
+import type { SellSave } from "./app/SellScreen";
 import { UserActionsSheet } from "./app/UserActionsSheet";
 import { ProductsScreen } from "./app/ProductsScreen";
 import { ProductActionsSheet } from "./app/ProductActionsSheet";
@@ -592,6 +599,13 @@ function AppInner() {
   const [counterScreen, setCounterScreen] = useState<CounterScreenState | null>(null);
   const [counterRefusal, setCounterRefusal] = useState<string | null>(null);
   const [counterBusy, setCounterBusy] = useState(false);
+  /* M2, the sell sheet: the cached buyers (null while read), why they may be stale, the device's own sales, and
+     the save's state. Read on open; a save writes the row FIRST and then asks the outbox to send it. */
+  const [sellBuyers, setSellBuyers] = useState<CachedBuyer[] | null>(null);
+  const [sellBuyersNote, setSellBuyersNote] = useState<string | null>(null);
+  const [sellSales, setSellSales] = useState<LocalSale[]>([]);
+  const [sellBusy, setSellBusy] = useState(false);
+  const [sellNotice, setSellNotice] = useState<{ text: string; ok: boolean } | null>(null);
   const [separateCashier, setSeparateCashier] = useState<boolean | null>(null);
   /** THE SHOP'S MONEY RULES (server migration 0027) the cart prices with: the cache at boot, then
    *  the policy each refresh learns. DEFAULT_MONEY_RULES -- the pre-0027 rule -- until either says
@@ -1019,6 +1033,8 @@ function AppInner() {
    * committed state than the queue that drains it.
    */
   const sellerStoreRef = useRef<SqliteLocalSellerStore | null>(null);
+  /** M2: the sale kind's store, on the SAME driver as the bill store -- the sell sheet writes the rows the engine drains. */
+  const saleStoreRef = useRef<SqliteLocalSaleStore | null>(null);
   const engineRef = useRef<SyncEngine | null>(null);
   const tokenRef = useRef<string | null>(null);
   /**
@@ -1226,6 +1242,8 @@ function AppInner() {
         // bill build read the exact rows the engine's queue drains.
         const sellerStore = SqliteLocalSellerStore.open(driver);
         sellerStoreRef.current = sellerStore;
+        const saleStore = SqliteLocalSaleStore.open(driver);
+        saleStoreRef.current = saleStore;
 
         engineRef.current = new SyncEngine({
           store: billStore,
@@ -1269,6 +1287,14 @@ function AppInner() {
             getToken: () => Promise.resolve(tokenRef.current),
             // The seller-create and reservation requests carry the version header
             // too — the whole client identifies itself, not just the bill path.
+            fetchImpl: withClientVersion((input, init) => fetch(input, init)),
+          }),
+          /* M2: THE SALE KIND, on the same driver again (local_sales is a table in the same file), and its
+             transport carries the version header like every other request this client makes. */
+          saleStore,
+          saleTransport: new HttpSaleTransport({
+            baseUrl: API_BASE_URL,
+            getToken: () => Promise.resolve(tokenRef.current),
             fetchImpl: withClientVersion((input, init) => fetch(input, init)),
           }),
           clock: systemClock,
@@ -2286,6 +2312,75 @@ function AppInner() {
     sheet("open_counter");
     void loadCounter();
   }, [loadCounter, sheet]);
+
+  /**
+   * M2, THE SELL SHEET'S READS. The cached buyers FIRST, so a yard with no signal can still sell to a buyer this
+   * phone has seen; then GET /buyers to refresh the cache when there is a connection -- and when there is not, the
+   * sheet SAYS the list may be old, never silently. The device's own sales are read from local_sales.
+   */
+  const loadSell = useCallback(async () => {
+    const store = saleStoreRef.current;
+    if (store === null) return;
+    setSellBuyers(await store.listBuyers());
+    setSellSales(await store.listSalesForScreen(50));
+    const token = tokenRef.current;
+    if (token === null) {
+      setSellBuyersNote("ยังไม่ได้เข้าสู่ระบบ — รายชื่อผู้ซื้อเป็นชุดที่เครื่องจำไว้");
+      return;
+    }
+    try {
+      await store.saveBuyers(await fetchBuyers(token));
+      setSellBuyers(await store.listBuyers());
+      setSellBuyersNote(null);
+    } catch {
+      setSellBuyersNote("อ่านรายชื่อผู้ซื้อจากระบบไม่ได้ตอนนี้ — แสดงชุดที่เครื่องจำไว้");
+    }
+  }, []);
+
+  const openSell = useCallback(() => {
+    setSellBusy(false);
+    setSellNotice(null);
+    sheet("open_sell");
+    void loadSell();
+  }, [loadSell, sheet]);
+
+  /**
+   * M2, A SALE SAVED: the id and the idempotency key are minted HERE, ONCE (hard rules 3 and 4), the row is written
+   * to local_sales BEFORE anything is sent (hard rule 8), and only then is the outbox asked to run. A send that fails
+   * leaves the row pending and the list says so; nothing here waits on the network to call the sale saved.
+   */
+  const saveSale = useCallback(async (save: SellSave) => {
+    const store = saleStoreRef.current;
+    const owner = identityStoreRef.current === null ? null : await identityStoreRef.current.load();
+    if (store === null || owner === null) {
+      setSellNotice({ text: "บันทึกไม่ได้ — ยังไม่ได้เข้าสู่ระบบในเครื่องนี้", ok: false });
+      return;
+    }
+    setSellBusy(true);
+    try {
+      const id = deviceIds.newId();
+      const payload = buildSalePayload({
+        id,
+        idempotencyKey: deviceIds.newId(),
+        buyerId: save.buyer.id,
+        deviceCreatedAt: new Date().toISOString(),
+        lines: save.lines.map((l) => ({ ...l, id: deviceIds.newId() })),
+        roundingRule: moneyRules.rounding_rule,
+        total: save.total,
+        received: save.received,
+      });
+      await store.createSale({ payload, buyer_label: `${save.buyer.code} ${save.buyer.name}`, owner, now: new Date() });
+      setSellSales(await store.listSalesForScreen(50));
+      setSellNotice({ text: "บันทึกบิลขายในเครื่องแล้ว — กำลังส่ง", ok: true });
+    } catch (err) {
+      setSellNotice({ text: `บันทึกไม่ได้: ${describe(err)}`, ok: false });
+      return;
+    } finally {
+      setSellBusy(false);
+    }
+    await syncOnce();
+    setSellSales(await store.listSalesForScreen(50));
+  }, [moneyRules, syncOnce]);
 
   /**
    * ONE DRAWER WRITE, classified by drawerOutcome (R8): a refusal is worded from its
@@ -3756,6 +3851,10 @@ function AppInner() {
       */
       case "counter_entry":
         return mayShowCounterEntry(grants, separateCashier, shiftsEnabledHome);
+      /* M2, SELL. sales.create, through `may` like every other entry (an absent set offers it; the server is the
+         authority on every request). */
+      case "sell_entry":
+        return may(grants, "sales.create");
       /*
         PRICES (P1.9). The ยกเลิกบิลนี้ rule, not the ยอดวันนี้ one: this opens a screen
         whose purpose is a WRITE the prices.write gate refuses, and a session must not
@@ -3783,6 +3882,8 @@ function AppInner() {
     switch (dest) {
       case "dashboard":
         return openDashboard;
+      case "sell":
+        return openSell;
       case "counter":
         return openCounter;
       case "prices":
@@ -4178,6 +4279,27 @@ function AppInner() {
                 />
               ),
             };
+
+      /* M2, the sell flow -- unlike the counter, OFFLINE-FIRST: the sale is written to local_sales and sent by
+         the sale_send outbox kind, so this sheet works with no signal and lists each sale's sync state. */
+      case "sell":
+        return {
+          animation: "slide",
+          back: closeTopSheet,
+          content: (
+            <SellScreen
+              products={products.filter((p) => p.is_active !== false)}
+              buyers={sellBuyers}
+              buyersNote={sellBuyersNote}
+              roundingRule={moneyRules.rounding_rule}
+              sales={sellSales}
+              busy={sellBusy}
+              notice={sellNotice}
+              onSave={(s) => void saveSale(s)}
+              onClose={closeTopSheet}
+            />
+          ),
+        };
 
       /* The cashier counter (STRUCTURE.md 2.1, commit 2) — the unpaid queue and the
          payment form, over the app's own screen (reachable only from null, like the
@@ -4629,6 +4751,8 @@ function navIcon(dest: NavDest): IconName {
   switch (dest) {
     case "dashboard":
       return "dashboard";
+    case "sell":
+      return "products";
     case "counter":
       return "cash";
     case "prices":

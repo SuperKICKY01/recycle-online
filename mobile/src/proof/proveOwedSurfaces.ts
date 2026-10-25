@@ -78,6 +78,7 @@ import { join } from "node:path";
 import { NodeSqliteDriver } from "../adapters/sqlite/nodeDriver.js";
 import { SqliteIdentityStore } from "../adapters/sqlite/SqliteIdentityStore.js";
 import { SqliteLocalSellerStore } from "../adapters/sqlite/SqliteLocalSellerStore.js";
+import { SqliteLocalSaleStore } from "../adapters/sqlite/SqliteLocalSaleStore.js";
 import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { signOut } from "../session/signOut.js";
 import { signOutCard, signOutCardText } from "../session/signOutNotice.js";
@@ -94,7 +95,7 @@ import { OutboxRunner } from "../sync/outboxRunner.js";
 import type { SellerCreateOutcome, SellerCreateTransport } from "../sync/sellerCreate.js";
 import { statusNotice } from "../sync/statusNotice.js";
 import type { StatusInput } from "../sync/statusNotice.js";
-import { CLEARS_NOTHING, FakeClock, FakeServer, OnlineTransport, owedWith, PROOF_OWNER, SeqIds } from "./fakes.js";
+import { CLEARS_NOTHING, FakeClock, FakeServer, OnlineTransport, owedWith, PROOF_OWNER, RefusingSaleTransport, SeqIds } from "./fakes.js";
 
 let failures = 0;
 
@@ -203,6 +204,9 @@ async function openRig(name: string, sellerTransport?: SellerCreateTransport): P
     sellerTransport:
       sellerTransport ??
       new FixedSellerTransport({ kind: "created", server_seller_id: "srv-not-used" }),
+    // M2: the sale kind's real store over the SAME file (an empty table here), and a transport that refuses.
+    saleStore: SqliteLocalSaleStore.open(driver),
+    saleTransport: new RefusingSaleTransport(),
   };
   const registry = buildOutboxRegistry(deps);
   return {

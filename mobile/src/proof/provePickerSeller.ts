@@ -34,6 +34,7 @@ import { join } from "node:path";
 import { NodeSqliteDriver } from "../adapters/sqlite/nodeDriver.js";
 import { SqliteIdentityStore } from "../adapters/sqlite/SqliteIdentityStore.js";
 import { SqliteLocalSellerStore } from "../adapters/sqlite/SqliteLocalSellerStore.js";
+import { SqliteLocalSaleStore } from "../adapters/sqlite/SqliteLocalSaleStore.js";
 import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { mergeSellersForPicker } from "../cart/pickerSellers.js";
 import type { LocalPickerSeller, PickerServerSeller } from "../cart/pickerSellers.js";
@@ -45,7 +46,7 @@ import { ResolvedSellerId } from "../sync/resolvedSellerId.js";
 import type { LocalSeller, LocalSellerDraft, IssuedCode } from "../sync/localSeller.js";
 import type { SellerCreateOutcome, SellerCreateTransport } from "../sync/sellerCreate.js";
 import type { LocalBill } from "../sync/types.js";
-import { FakeClock, OfflineTransport, PROOF_OWNER, SeqIds } from "./fakes.js";
+import { FakeClock, OfflineTransport, PROOF_OWNER, RefusingSaleTransport, SeqIds } from "./fakes.js";
 
 process.exitCode = 1;
 
@@ -107,6 +108,9 @@ async function openRig(name: string): Promise<Rig> {
     masterDataRetryMs: 300_000,
     sellerStore: sellers,
     sellerTransport: new NoSellerTransport(),
+    // M2: the sale kind's real store over the same file (empty here) and a transport that refuses.
+    saleStore: SqliteLocalSaleStore.open(driver),
+    saleTransport: new RefusingSaleTransport(),
   };
   return { driver, bills, sellers, clock, ids: new SeqIds(name), deps, dir };
 }

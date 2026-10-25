@@ -298,7 +298,7 @@ async function case4CrashDuringSyncing(harness: StoreHarness): Promise<void> {
     // a search, which is the whole subject of
     // lessons/a-quantified-sentence-names-no-member.md.
     "the recovery map's key set EQUALS the kind set",
-    Object.keys(recovered).sort().join(",") === "bill_send,bill_void,seller_create",
+    Object.keys(recovered).sort().join(",") === "bill_send,bill_void,sale_send,seller_create",
     JSON.stringify(Object.keys(recovered)),
   );
 

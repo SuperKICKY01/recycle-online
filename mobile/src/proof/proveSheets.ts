@@ -207,6 +207,9 @@ function walk(): { readonly stacks: readonly SheetStack[]; readonly keys: readon
  *                              cart, not to the picker
  *   dashboard                  the ยอดวันนี้ button, in the header (opens the dashboard;
  *                              the standalone daily screen was absorbed — S24)
+ *   sell                       the ขายสินค้า button, in the header (M2). This prose list
+ *                              is not exhaustive (it lacks the counter, notices and the
+ *                              settings stacks); EXPECTED_REACHABLE below is the authority
  *   seller_picker              the start-bill button, or CartScreen's change-seller
  *   seller_picker>add_seller   `+ เพิ่มผู้ขาย`, INSIDE the picker. The one two-deep
  *                              stack in the app, and the pair observed broken
@@ -263,6 +266,7 @@ const EXPECTED_REACHABLE: readonly string[] = [
   "dashboard", // the ยอดวันนี้ button opens the dashboard (P1.23 item 4 unit 3; it absorbed the daily screen)
   "notices", // the notice-count control on the main screen opens the collapsed notices (P1.23 item 3 phase C)
   "prices",
+  "sell", // the ขายสินค้า header button opens the sell flow (M2)
   "seller_history", // the ดูประวัติ control on the cart's seller header opens it (P1.21)
   "seller_picker",
   "seller_picker>add_seller",
@@ -281,6 +285,7 @@ const EXPECTED_CLOSE: readonly (readonly [string, string, string])[] = [
   ["bills", "-", "back to the cart"],
   ["confirm_save", "-", "back to the cart with the bill unsaved"],
   ["counter", "-", "back to the app's own screen. The counter stands on its own — a cashier who has finished receiving payments is finished, and there is nothing underneath it to return to (STRUCTURE.md 2.1)"],
+  ["sell", "-", "back to the app's own screen. A sale is already saved on the device when the sheet closes; nothing underneath it to return to (M2)"],
   [
     "confirm_seller_change",
     "-",

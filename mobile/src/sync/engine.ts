@@ -23,6 +23,7 @@ import type { DeviceIdentityStore } from "../session/deviceIdentity.js";
 import { buildOutboxRegistry } from "./outboxHandlers.js";
 import { OutboxRunner } from "./outboxRunner.js";
 import type { OutboxKind, OwedByKind } from "./outbox.js";
+import type { LocalSaleStore, SaleTransport } from "./localSale.js";
 
 export interface SyncEngineOptions {
   store: LocalStore;
@@ -61,6 +62,13 @@ export interface SyncEngineOptions {
    * never buy from a walk-in, with nothing on any screen to say so.
    */
   deviceStore: DeviceIdentityStore;
+  /**
+   * THE SALE KIND'S STORE AND TRANSPORT (M2) -- REQUIRED, by the argument on `sellerStore` above: a fourth member
+   * of `OutboxKind` means this engine cannot build its registry without them, and a default would let a site
+   * compile while the kind drained against something that is not the device's database.
+   */
+  saleStore: LocalSaleStore;
+  saleTransport: SaleTransport;
   /** First retry delay; doubles per attempt up to backoffMaxMs. */
   backoffBaseMs?: number;
   backoffMaxMs?: number;
@@ -130,6 +138,21 @@ export interface SyncRunResult {
    * owed and untouched for the updated build to send.
    */
   clientOutdated: number;
+  /**
+   * THE SALE KIND'S OWN COUNTERS (M2). Separate from the bill counters on purpose: App draws the PURCHASE queue's
+   * state from `attempted`/`synced`/`rejected`, and a sale moving them would tell the yard a purchase went. The two
+   * device-global facts -- a session ended, this build is too old -- stay on the shared counters above.
+   */
+  salesAttempted: number;
+  salesSynced: number;
+  /** Refused on their merits: terminal, visibly failed (hard rule 8). */
+  salesRejected: number;
+  /** Refused for a reason that can resolve (insufficient_stock under refuse; master data): parked, still owed. */
+  salesParked: number;
+  /** No answer, or one that settles nothing: still owed, retried on the backoff. */
+  salesRetryable: number;
+  /** 403: this account may not sell. The kind halts until a sign-in; the sales stay owed. */
+  salesForbidden: number;
 }
 
 const emptyResult = (): SyncRunResult => ({
@@ -148,6 +171,12 @@ const emptyResult = (): SyncRunResult => ({
   forbidden: 0,
   voidsForbidden: 0,
   clientOutdated: 0,
+  salesAttempted: 0,
+  salesSynced: 0,
+  salesRejected: 0,
+  salesParked: 0,
+  salesRetryable: 0,
+  salesForbidden: 0,
 });
 
 export class SyncEngine {
@@ -231,6 +260,8 @@ export class SyncEngine {
         masterDataRetryMs,
         sellerStore: opts.sellerStore,
         sellerTransport: opts.sellerTransport,
+        saleStore: opts.saleStore,
+        saleTransport: opts.saleTransport,
       }),
       clock: opts.clock,
       batchLimit,

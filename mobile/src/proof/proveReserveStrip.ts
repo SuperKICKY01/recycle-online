@@ -32,6 +32,7 @@ import { join } from "node:path";
 import { HttpSellerTransport } from "../adapters/httpSellerTransport.js";
 import { NodeSqliteDriver } from "../adapters/sqlite/nodeDriver.js";
 import { SqliteLocalSellerStore } from "../adapters/sqlite/SqliteLocalSellerStore.js";
+import { SqliteLocalSaleStore } from "../adapters/sqlite/SqliteLocalSaleStore.js";
 import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { reserveLevelNotice } from "../master/reserveNotice.js";
 import { reserveStripNotice } from "../master/reserveStrip.js";
@@ -40,7 +41,7 @@ import { SyncEngine } from "../sync/engine.js";
 import type { SellerCreateOutcome } from "../sync/sellerCreate.js";
 import type { RefillOutcome } from "../sync/sellerRefill.js";
 import type { LocalSeller } from "../sync/localSeller.js";
-import { FakeClock, FixedDeviceStore, OfflineTransport } from "./fakes.js";
+import { FakeClock, FixedDeviceStore, OfflineTransport, RefusingSaleTransport } from "./fakes.js";
 
 let failures = 0;
 
@@ -204,6 +205,8 @@ async function i1EnginePersistsTarget(): Promise<void> {
       sellerStore: sellers,
       sellerTransport: transport,
       deviceStore: new FixedDeviceStore("00000000-0000-4000-8000-00000000dev1"),
+      saleStore: SqliteLocalSaleStore.open(driver),
+      saleTransport: new RefusingSaleTransport(),
     });
 
     // Before any pass: never provisioned.
@@ -286,6 +289,7 @@ async function i2ExpiredSessionStopsAsking(): Promise<void> {
       store: bills, transport: new OfflineTransport(), clock,
       sellerStore: sellers, sellerTransport: transport,
       deviceStore: new FixedDeviceStore("00000000-0000-4000-8000-00000000dev2"),
+      saleStore: SqliteLocalSaleStore.open(driver), saleTransport: new RefusingSaleTransport(),
     });
     const first = await engine.runOnce();
     check("I2a the pass that hears the refill's 401 reports sessionExpired = 1 (the app raises its banner from this)",

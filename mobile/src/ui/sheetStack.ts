@@ -80,6 +80,13 @@ export const SHEET_KINDS = [
    * sheet is on screen. A leaf: nothing opens over it.
    */
   "counter",
+  /**
+   * M2. The sell flow: pick a buyer, add lines, save -- written to the device FIRST and sent by the `sale_send`
+   * outbox kind (hard rule 8), with the device's own sales listed beneath and each one's sync state. Opened from a
+   * HEADER entry like the counter beside it, so reachable only from `null`; drawn only for a session holding
+   * sales.create (`sell_entry`). A leaf: nothing opens over it.
+   */
+  "sell",
   /** P1.9. The shop's own price list, and the one screen that MOVES it. */
   "prices",
   /** P1.23. The shop's own settings, and the account this device is signed in as. */
@@ -285,6 +292,13 @@ export const SHEET_TRANSITIONS = {
     action: { kind: "open", sheet: "counter" },
     from: [null],
     site: "App.tsx header, the เคาน์เตอร์จ่ายเงิน Pressable",
+  },
+  /** M2. Header ขายสินค้า, in the body's header like the counter: reachable only from the app's own screen; the
+   *  role gate (sales.create) is the render's, not `from`'s, exactly as open_counter records. */
+  open_sell: {
+    action: { kind: "open", sheet: "sell" },
+    from: [null],
+    site: "App.tsx header, the ขายสินค้า Pressable",
   },
   /**
    * Header ราคารับซื้อ (P1.9). In the BODY's header, so it is reachable only

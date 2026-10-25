@@ -627,6 +627,48 @@ export const SCHEMA_STATEMENTS: readonly string[] = [
   // asked of this table is almost always "what is still free".
   `CREATE INDEX IF NOT EXISTS ix_local_seller_codes_free
      ON local_seller_codes (code) WHERE spent_on IS NULL`,
+
+  /*
+   * A SALE WRITTEN AT THE YARD (M2, the outbox kind `sale_send`). Offline-first: the row exists before any request.
+   * `payload_json` is the body POST /sales takes, byte for byte, written ONCE (its id and idempotency key with it,
+   * hard rules 3 and 4) and never rewritten -- a retry sends what was written. `doc_no` is the server's, NULL until
+   * sync. `parked_code`: the server's reason a resolvable refusal parked it (insufficient_stock, ...); the row stays
+   * pending and owed. The owner pair is ORIGIN (who wrote the sale) and drives OWNED_BY_CURRENT, as local_sellers.
+   * Born whole: a table that never existed needs no migration list entry.
+   */
+  `CREATE TABLE IF NOT EXISTS local_sales (
+     id                TEXT    NOT NULL PRIMARY KEY,
+     idempotency_key   TEXT    NOT NULL UNIQUE,
+     payload_json      TEXT    NOT NULL,
+     buyer_label       TEXT    NOT NULL,
+     sync_state        TEXT    NOT NULL,
+     attempt_count     INTEGER NOT NULL DEFAULT 0,
+     last_error        TEXT,
+     created_at        TEXT    NOT NULL,
+     device_created_at TEXT    NOT NULL,
+     next_attempt_at   TEXT    NOT NULL,
+     doc_no            TEXT,
+     parked_code       TEXT,
+     owner_tenant_id   TEXT,
+     owner_user_id     TEXT,
+     CHECK (sync_state IN ('pending', 'syncing', 'synced', 'failed'))
+   ) STRICT`,
+
+  // Drives listSalesToSend: state, then the order the server numbers in.
+  `CREATE INDEX IF NOT EXISTS ix_local_sales_owed
+     ON local_sales (sync_state, device_created_at, id)`,
+
+  /*
+   * The shop's BUYERS, as GET /buyers last answered, so a sale can be written with no network. TENANT-STAMPED at
+   * birth and every read carries the tenant (a mismatch reads as EMPTY, never as another shop's buyers -- the
+   * cached_grade_tiers rule). Code and name only: no ID-card column exists here or anywhere for a buyer (M2).
+   */
+  `CREATE TABLE IF NOT EXISTS cached_buyers (
+     id              TEXT NOT NULL PRIMARY KEY,
+     code            TEXT NOT NULL,
+     name            TEXT NOT NULL,
+     owner_tenant_id TEXT NOT NULL
+   ) STRICT`,
 ];
 
 /**

@@ -17,7 +17,8 @@
 
 import { VOID_REJECTED_CODE } from "./types.js";
 import type { Clock, LocalBill, LocalStore, SendOutcome, Transport, VoidOutcome } from "./types.js";
-import { BILL_SEND, BILL_VOID, SELLER_CREATE } from "./outbox.js";
+import { BILL_SEND, BILL_VOID, SALE_SEND, SELLER_CREATE } from "./outbox.js";
+import type { LocalSale, LocalSaleStore, SaleTransport } from "./localSale.js";
 import type { OutboxDisposition, OutboxHandler, OutboxRegistry } from "./outbox.js";
 import { resolveParkedBehindSettled } from "./resolveParkedSeller.js";
 import type { LocalSeller, LocalSellerStore } from "./localSeller.js";
@@ -53,6 +54,13 @@ export interface OutboxDeps {
    */
   readonly sellerStore: LocalSellerStore;
   readonly sellerTransport: SellerCreateTransport;
+  /**
+   * The sale kind's own store and transport (M2) -- REQUIRED, for the reason the seller fields are: an optional
+   * field with a default would let every construction site compile while the kind drained against something that
+   * is not the device's database.
+   */
+  readonly saleStore: LocalSaleStore;
+  readonly saleTransport: SaleTransport;
 }
 
 /** Same rendering `engine.ts` uses for a thrown transport error today. */
@@ -565,6 +573,85 @@ export function sellerCreateHandler(
   };
 }
 
+/* ------------------------------------------------------------ sale_send -- */
+
+/**
+ * THE SALE KIND (M2). Its outcome is the bill send's union and its classification IS `classifySend`, imported
+ * from this file rather than retyped -- one status, one disposition, for a bill and a sale alike. What differs is
+ * the store and the counters: a sale is not a purchase, so it never moves the bill counters App draws the purchase
+ * queue from, except the two that are facts about the DEVICE rather than the row (a session ended; this build is
+ * too old), which every kind shares.
+ */
+export function saleSendHandler(deps: OutboxDeps): OutboxHandler<LocalSale, SendOutcome> {
+  const backoffFor = (attempt: number): number =>
+    Math.min(deps.backoffBaseMs * 2 ** Math.max(0, attempt - 1), deps.backoffMaxMs);
+  const requireNext = (next: Date | null, id: string): Date => {
+    if (next === null) throw new Error(`sale_send ${id}: record needs a schedule and was handed null`);
+    return next;
+  };
+  return {
+    kind: "sale_send",
+    policy: SALE_SEND,
+    owed: (limit) => deps.saleStore.listSalesToSend(limit, deps.clock.now()),
+    owedCount: () => deps.saleStore.countSalesOwed(),
+    recover: (now) => deps.saleStore.resetSyncingSalesToPending(now),
+    rowId: (s) => s.id,
+    attempt: (s) => s.attempt_count,
+    dueAt: (s) => s.next_attempt_at,
+    claim: (s) => deps.saleStore.claimSaleSend(s.id, deps.clock.now()),
+    perform: (s) => deps.saleTransport.sendSale(s),
+    // No answer at all: offline-shaped. The key is unchanged, so a re-send cannot make a second sale.
+    onThrow: (err) => ({ kind: "unavailable", reason: describeError(err), reachable: false }),
+    classify: classifySend,
+    nextAttemptAt: (_row, d, attempt, now) => {
+      switch (d.next) {
+        case "retry":
+          return new Date(now.getTime() + backoffFor(attempt));
+        case "parked":
+          // insufficient_stock under refuse resolves when a purchase syncs; master data when the office adds it.
+          return new Date(now.getTime() + deps.masterDataRetryMs);
+        default:
+          return null;
+      }
+    },
+    record: async (row, o, _d, attempt, next, now, result) => {
+      result.salesAttempted += 1;
+      switch (o.kind) {
+        case "accepted":
+        case "duplicate":
+          await deps.saleStore.markSaleSynced(row.id, o.doc_no, attempt, now);
+          result.salesSynced += 1;
+          return;
+        case "rejected":
+          await deps.saleStore.markSaleFailed(row.id, o.reason, attempt, now);
+          result.salesRejected += 1;
+          return;
+        case "rejected_resolvable":
+          await deps.saleStore.markSalePending(row.id, o.reason, o.code, attempt, requireNext(next, row.id), now);
+          result.salesParked += 1;
+          return;
+        case "session_expired":
+          await deps.saleStore.markSalePending(row.id, o.reason, null, attempt, requireNext(next, row.id), now);
+          result.sessionExpired += 1;
+          return;
+        case "forbidden":
+          // The kind halts on the runner; the sale stays owed and untouched until a sign-in retracts the halt.
+          await deps.saleStore.markSalePending(row.id, o.reason, null, attempt, now, now);
+          result.salesForbidden += 1;
+          return;
+        case "client_outdated":
+          await deps.saleStore.markSalePending(row.id, o.reason, null, attempt, now, now);
+          result.clientOutdated += 1;
+          return;
+        case "unavailable":
+          await deps.saleStore.markSalePending(row.id, o.reason, null, attempt, requireNext(next, row.id), now);
+          result.salesRetryable += 1;
+          return;
+      }
+    },
+  };
+}
+
 /* -------------------------------------------------------- the registry -- */
 
 /**
@@ -591,6 +678,10 @@ export function sellerCreateHandler(
  * THE ORDER IS PINNED, NOT THE ADJACENCY. A runner draining a fourth kind
  * between these still satisfies the rule, and should.
  *
+ * `sale_send` IS LAST (M2), FOR THE SAME SHAPE OF REASON: a sale refused 409 insufficient_stock under a shop's
+ * negative_stock=refuse is often waiting on a purchase weighed on THIS phone in the same offline stretch. Drained
+ * after `bill_send`, that purchase is on the server before the sale is asked again in the same pass.
+ *
  * AND THIS IS A REORDERING WITH NO DIFF ANYWHERE ELSE, which is exactly what
  * makes it worth a paragraph: swap two lines here and every assertion about the
  * final queue stays green over two passes. Only a ONE-pass staging separates
@@ -601,5 +692,6 @@ export function buildOutboxRegistry(deps: OutboxDeps): OutboxRegistry {
     seller_create: sellerCreateHandler(deps),
     bill_send: billSendHandler(deps),
     bill_void: billVoidHandler(deps),
+    sale_send: saleSendHandler(deps),
   };
 }

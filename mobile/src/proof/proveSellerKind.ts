@@ -49,6 +49,7 @@ import { HttpSellerTransport } from "../adapters/httpSellerTransport.js";
 import { NodeSqliteDriver } from "../adapters/sqlite/nodeDriver.js";
 import { SqliteIdentityStore } from "../adapters/sqlite/SqliteIdentityStore.js";
 import { SqliteLocalSellerStore } from "../adapters/sqlite/SqliteLocalSellerStore.js";
+import { SqliteLocalSaleStore } from "../adapters/sqlite/SqliteLocalSaleStore.js";
 import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { createLocalBill } from "../sync/createBill.js";
 import type { BillDraft } from "../sync/createBill.js";
@@ -63,7 +64,7 @@ import type { SellerCreateOutcome, SellerCreateTransport } from "../sync/sellerC
 import { refillOnce, reserveLevel } from "../sync/sellerRefill.js";
 import type { RefillOutcome, ReservationTransport } from "../sync/sellerRefill.js";
 import type { RowOwner } from "../sync/types.js";
-import { FakeClock, FakeServer, OnlineTransport, PROOF_OWNER, SeqIds } from "./fakes.js";
+import { FakeClock, FakeServer, OnlineTransport, PROOF_OWNER, RefusingSaleTransport, SeqIds } from "./fakes.js";
 
 let failures = 0;
 
@@ -247,6 +248,9 @@ async function openRig(
     masterDataRetryMs: 300_000,
     sellerStore: sellers,
     sellerTransport,
+    // M2: the sale kind's real store over the same file (empty here) and a transport that refuses.
+    saleStore: SqliteLocalSaleStore.open(driver),
+    saleTransport: new RefusingSaleTransport(),
   };
   const registry = buildOutboxRegistry(deps);
   return {
@@ -721,7 +725,7 @@ async function k5RecoversAtBoot(): Promise<void> {
     const keys = Object.keys(rec).sort().join(",");
     check(
       "the boot map is keyed by kind and its key set EQUALS the member set",
-      keys === "bill_send,bill_void,seller_create",
+      keys === "bill_send,bill_void,sale_send,seller_create",
       keys,
     );
     // CELL 2 — EQUALITY, never containment: a sweep returning every owed row
@@ -768,7 +772,7 @@ async function k5RecoversAtBoot(): Promise<void> {
       );
       check(
         "RED CASE empty recover: the inherited KEY-SET cell is STILL GREEN",
-        Object.keys(redRec).sort().join(",") === "bill_send,bill_void,seller_create",
+        Object.keys(redRec).sort().join(",") === "bill_send,bill_void,sale_send,seller_create",
         "which is exactly why that cell cannot see this defect",
       );
       check(

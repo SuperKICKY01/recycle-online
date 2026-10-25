@@ -178,6 +178,9 @@ const OWED_STRIP_LINE: { readonly [K in OutboxKind]: ((n: number) => string) | n
   bill_send: null,
   bill_void: (n) => `รอแจ้งยกเลิกบิล ${String(n)} ใบ`,
   seller_create: (n) => `รอส่งผู้ขายที่เพิ่มใหม่ ${String(n)} ราย`,
+  // M2: NOT null -- no branch above carries a sale (pending/waitingOnMasterData/failed are purchase-bill inputs),
+  // so the strip must say it, or a phone owing a sale would read "sent everything". บิลขาย: never read as a purchase.
+  sale_send: (n) => `รอส่งบิลขาย ${String(n)} ใบ`,
 };
 
 /**

@@ -47,13 +47,15 @@
 
 import type { LocalBill, SendOutcome, VoidOutcome } from "./types.js";
 import type { LocalSeller } from "./localSeller.js";
+import type { LocalSale } from "./localSale.js";
 import type { SellerCreateOutcome } from "./sellerCreate.js";
 import type { SyncRunResult } from "./engine.js";
 
 /**
  * EVERY KIND OF WORK THE DEVICE OWES THE SERVER.
  *
- * THREE members as of P1.8b.
+ * FOUR members as of M2 (2026-10-25): `sale_send` joined -- a sale written at the yard, offline-first, drained
+ * after the purchase kinds (the argument is on the registry literal). THREE members as of P1.8b.
  *
  * SUPERSEDED 2026-08-25, and the superseded text is kept because it records why
  * the member was absent rather than forgotten. It read: "TWO members,
@@ -78,7 +80,7 @@ import type { SyncRunResult } from "./engine.js";
  * now a third runtime kind as well, and the compile error is what found every
  * site rather than anybody remembering them.
  */
-export type OutboxKind = "bill_send" | "bill_void" | "seller_create";
+export type OutboxKind = "bill_send" | "bill_void" | "seller_create" | "sale_send";
 
 /**
  * Each kind's own row type. The two bill kinds carry LocalBill; `seller_create`
@@ -92,6 +94,7 @@ export interface OutboxRow {
   bill_send: LocalBill;
   bill_void: LocalBill;
   seller_create: LocalSeller;
+  sale_send: LocalSale;
 }
 
 /**
@@ -108,6 +111,8 @@ export interface OutboxResult {
   bill_send: SendOutcome;
   bill_void: VoidOutcome;
   seller_create: SellerCreateOutcome;
+  /** The bill kind's own union, reused: every answer POST /sales gives, POST /bills gives (localSale.ts). */
+  sale_send: SendOutcome;
 }
 
 /**
@@ -349,7 +354,7 @@ export interface OutboxHandler<Row, Outcome> {
 }
 
 /**
- * THE TWO POLICIES, written as data so the difference between the kinds is
+ * THE POLICIES (two when this was written; FOUR since M2 -- SELLER_CREATE and SALE_SEND below), written as data so the difference between the kinds is
  * READABLE rather than buried in two loops diffed by eye. Transcriptions of
  * measured behaviour (engine.ts at `91d49d0`), not proposals — and
  * `VOID-KEEPS-EVERY-DIFFERENCE-THE-DESIGN-NAMES` asserts BILL_VOID field by
@@ -445,6 +450,23 @@ export const SELLER_CREATE: OutboxPolicy = {
   resendIsIdempotent: true,
 };
 
+/**
+ * THE SALE-SEND POLICY. The bill send's, member for member, and for the bill send's own reason: a sale's doc_no
+ * (S-<prefix>-<BE year>-<seq>) is assigned in ARRIVAL order and is a legal document, so two sales written 73
+ * seconds apart must reach the server in the order they were written -- `head_blocks`, which forces the re-read
+ * (the pair rule above), serial per kind. Its HEAD IS ITS OWN: a sale held at the front of its queue never holds a
+ * purchase bill, and a purchase never holds a sale. The in-flight key is prefixed because a sale id and a bill id
+ * come from the same generator (`app/ids.ts`). Idempotent by hard rule 4: the create carries its key and a repeat
+ * answers 200 with the sale the first attempt made.
+ */
+export const SALE_SEND: OutboxPolicy = {
+  blocking: "head_blocks",
+  rereadAfterEach: true,
+  concurrency: "serial_per_kind",
+  inFlightKey: (rowId) => `sale:${rowId}`,
+  resendIsIdempotent: true,
+};
+
 /* ------------------------------------------------- what the device owes -- */
 
 /**
@@ -466,7 +488,7 @@ export const SELLER_CREATE: OutboxPolicy = {
 export type OwedByKind = { readonly [K in OutboxKind]: number };
 
 /**
- * Nothing owed. A TOTAL literal, so a fourth kind is a compile error here.
+ * Nothing owed. A TOTAL literal, so a fifth kind is a compile error here.
  *
  * Exported for the surfaces and for proof fixtures that need a device with a
  * quiet outbox: written out by hand at each site, it is exactly the omission
@@ -476,6 +498,7 @@ export const NOTHING_OWED: OwedByKind = {
   bill_send: 0,
   bill_void: 0,
   seller_create: 0,
+  sale_send: 0,
 };
 
 /**

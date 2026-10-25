@@ -412,7 +412,7 @@ async function caseSurfaces(): Promise<void> {
   );
 
   header("F2: the sign-out sheet on a too-old build says UPDATE, not 'wait for a send'");
-  const owed1: OwedByKind = { bill_send: 2, bill_void: 0, seller_create: 0 };
+  const owed1: OwedByKind = { bill_send: 2, bill_void: 0, seller_create: 0, sale_send: 0 };
   const outdatedSheet = signOutCardText(
     signOutCard({ owed: owed1, failed: 0, failure: null, session: "active", appOutdated: true }),
   );

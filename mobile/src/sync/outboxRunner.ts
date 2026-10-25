@@ -82,6 +82,12 @@ function emptyRunResult(): SyncRunResult {
     forbidden: 0,
     voidsForbidden: 0,
     clientOutdated: 0,
+    salesAttempted: 0,
+    salesSynced: 0,
+    salesRejected: 0,
+    salesParked: 0,
+    salesRetryable: 0,
+    salesForbidden: 0,
   };
 }
 

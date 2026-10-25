@@ -634,6 +634,18 @@ export interface ShopPolicyBody {
   deduction_reason_required?: boolean;
 }
 
+/**
+ * GET /buyers (M2) -- the shop's active buyers, for the sell screen's offline cache. NARROWED to identity and name
+ * on purpose, `Seller`'s argument: a buyer carries a phone, an address and a taxpayer number on the wire, and none
+ * of them belongs in a yard phone's cache. Throws HttpStatusError on a refusal, like its getJson siblings.
+ */
+export async function fetchBuyers(token: string): Promise<{ id: string; code: string; name: string }[]> {
+  const body = await getJson<{ buyers?: { id?: unknown; code?: unknown; name?: unknown }[] }>("/buyers", token);
+  return (body.buyers ?? []).flatMap((b) =>
+    typeof b.id === "string" && typeof b.code === "string" && typeof b.name === "string" ? [{ id: b.id, code: b.code, name: b.name }] : [],
+  );
+}
+
 export function fetchShopPolicy(token: string): Promise<ShopPolicyBody> {
   // shifts_enabled arrived with the shifts unit's commit 2 and is OPTIONAL here: a
   // server from before it does not send the key, and absent reads as unknown.

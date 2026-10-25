@@ -331,11 +331,13 @@ async function o1RegistryAndRecovery(): Promise<void> {
    */
   const kinds = Object.keys(r.registry);
   check(
-    "registry member order is seller_create, bill_send, bill_void — LOAD-BEARING, the runner drains in this order",
-    kinds.length === 3 &&
+    // M2: sale_send joins LAST (a purchase settles before a parked sale is asked again; outboxHandlers.ts).
+    "registry member order is seller_create, bill_send, bill_void, sale_send — LOAD-BEARING, the runner drains in this order",
+    kinds.length === 4 &&
       kinds[0] === "seller_create" &&
       kinds[1] === "bill_send" &&
-      kinds[2] === "bill_void",
+      kinds[2] === "bill_void" &&
+      kinds[3] === "sale_send",
     JSON.stringify(kinds),
   );
 
@@ -373,7 +375,7 @@ async function o1RegistryAndRecovery(): Promise<void> {
   );
   check(
     "the pass report is keyed by kind, EVERY kind present",
-    Object.keys(rep.performed).sort().join(",") === "bill_send,bill_void,seller_create" &&
+    Object.keys(rep.performed).sort().join(",") === "bill_send,bill_void,sale_send,seller_create" &&
       rep.performed.bill_send === 1 &&
       rep.performed.bill_void === 0 &&
       // A kind the runner drained and found nothing for is a visible ZERO,

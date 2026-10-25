@@ -64,6 +64,7 @@ import { NodeSqliteDriver } from "../adapters/sqlite/nodeDriver.js";
 import { SqliteDeviceStore } from "../adapters/sqlite/SqliteDeviceStore.js";
 import { SqliteIdentityStore } from "../adapters/sqlite/SqliteIdentityStore.js";
 import { SqliteLocalSellerStore } from "../adapters/sqlite/SqliteLocalSellerStore.js";
+import { SqliteLocalSaleStore } from "../adapters/sqlite/SqliteLocalSaleStore.js";
 import { SqliteLocalStore } from "../adapters/sqlite/SqliteLocalStore.js";
 import { createLocalBill } from "../sync/createBill.js";
 import type { BillDraft } from "../sync/createBill.js";
@@ -95,6 +96,7 @@ import {
   OfflineTransport,
   OnlineTransport,
   PROOF_OWNER,
+  RefusingSaleTransport,
   SeqIds,
 } from "./fakes.js";
 
@@ -279,6 +281,9 @@ async function openRig(name: string, sellerTransport?: FixedSellerTransport): Pr
     masterDataRetryMs: 300_000,
     sellerStore: sellers,
     sellerTransport: st,
+    // M2: the sale kind's real store over the same file (empty here) and a transport that refuses.
+    saleStore: SqliteLocalSaleStore.open(driver),
+    saleTransport: new RefusingSaleTransport(),
   };
   return {
     driver,
@@ -298,6 +303,8 @@ async function openRig(name: string, sellerTransport?: FixedSellerTransport): Pr
       sellerStore: sellers,
       sellerTransport: st,
       deviceStore: device,
+      saleStore: deps.saleStore,
+      saleTransport: deps.saleTransport,
       backoffBaseMs: 1000,
       backoffMaxMs: 30_000,
       masterDataRetryMs: 300_000,
@@ -470,6 +477,8 @@ async function p1NeverOffered(): Promise<void> {
       masterDataRetryMs: 300_000,
       sellerStore: r.sellers,
       sellerTransport: settling,
+      saleStore: SqliteLocalSaleStore.open(r.driver),
+      saleTransport: new RefusingSaleTransport(),
     };
     const runner2 = new OutboxRunner({ registry: buildOutboxRegistry(deps2), clock: r.clock });
     // The seller's backoff was set by its bounce; move past it so the settle can

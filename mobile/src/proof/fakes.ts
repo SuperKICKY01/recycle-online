@@ -31,6 +31,7 @@ import type {
 import type { SellerCreateOutcome, SellerCreateTransport } from "../sync/sellerCreate.js";
 import type { RefillOutcome, ReservationTransport } from "../sync/sellerRefill.js";
 import type { DeviceId, DeviceIdentityStore } from "../session/deviceIdentity.js";
+import type { CachedBuyer, LocalSale, LocalSaleStore, SaleTransport } from "../sync/localSale.js";
 
 const clone = <T>(value: T): T => structuredClone(value);
 
@@ -1365,6 +1366,61 @@ export class FixedDeviceStore implements DeviceIdentityStore {
   }
 }
 
+/* -------------------------------------------------------- the sale kind -- */
+
+/**
+ * A `LocalSaleStore` THAT HOLDS NOTHING AND REFUSES EVERY WRITE (M2) -- `EmptySellerStore`'s argument, one kind on:
+ * the reads are empty because that is TRUE of a proof with no sales (an empty queue, a zero count, a sweep of
+ * nothing), and the writes throw so that ~80 bill and seller proofs stand as an assertion that the sale kind never
+ * acts on a row that does not exist. `resetSyncingSalesToPending` is the one writer that answers, for the reason
+ * the seller store's sweep does: every boot calls every kind's recover.
+ */
+export class EmptySaleStore implements LocalSaleStore {
+  private refuse(method: string): never {
+    throw new Error(`EmptySaleStore.${method}: a proof with no sales reached the sale kind's writer.`);
+  }
+  createSale(): Promise<void> {
+    return this.refuse("createSale");
+  }
+  listSalesToSend(): Promise<LocalSale[]> {
+    return Promise.resolve([]);
+  }
+  countSalesOwed(): Promise<number> {
+    return Promise.resolve(0);
+  }
+  claimSaleSend(): Promise<boolean> {
+    return this.refuse("claimSaleSend");
+  }
+  markSaleSynced(): Promise<void> {
+    return this.refuse("markSaleSynced");
+  }
+  markSaleFailed(): Promise<void> {
+    return this.refuse("markSaleFailed");
+  }
+  markSalePending(): Promise<void> {
+    return this.refuse("markSalePending");
+  }
+  resetSyncingSalesToPending(): Promise<string[]> {
+    return Promise.resolve([]);
+  }
+  listSalesForScreen(): Promise<LocalSale[]> {
+    return Promise.resolve([]);
+  }
+  saveBuyers(): Promise<void> {
+    return this.refuse("saveBuyers");
+  }
+  listBuyers(): Promise<CachedBuyer[]> {
+    return Promise.resolve([]);
+  }
+}
+
+/** A `SaleTransport` that refuses to be called: with no rows there is nothing to send. */
+export class RefusingSaleTransport implements SaleTransport {
+  sendSale(): Promise<SendOutcome> {
+    throw new Error("RefusingSaleTransport.sendSale: a proof with no sales performed a sale send.");
+  }
+}
+
 /**
  * The seller-kind deps for a proof that has no sellers in it.
  *
@@ -1375,8 +1431,14 @@ export function noSellerKind(): {
   sellerStore: LocalSellerStore;
   sellerTransport: SellerCreateTransport & ReservationTransport;
   deviceStore: DeviceIdentityStore;
+  saleStore: LocalSaleStore;
+  saleTransport: SaleTransport;
 } {
   return {
+    // M2: the sale kind's deps ride here by the deviceStore precedent below -- the ~70 sites that spread this
+    // helper hold no sales, and the sites that do NOT spread it are the ones that must answer the question.
+    saleStore: new EmptySaleStore(),
+    saleTransport: new RefusingSaleTransport(),
     sellerStore: new EmptySellerStore(),
     sellerTransport: new RefusingSellerTransport(),
     // P1.8b GATES: the pass tops the holding up, so an engine cannot be built
