@@ -401,6 +401,12 @@ TENANT_TABLES = [
     # cross-tenant reference is structurally impossible; no per-tenant SQL check yet. Its constraints
     # are DELIBERATELY NOT in REQUIRED_CONSTRAINTS, the 0005..0021 decision.
     "owner_flags",
+    # Migration 0029 (M2): buyers (master data, AUDITED), the sell side (sale_bills, sale_bill_items,
+    # sale_doc_no_counters), money in (sale_receipts, sale_receipt_allocations) and the stock ledger
+    # (stock_movements, append-only). Every reference is a composite FK, so a cross-tenant reference is
+    # structurally impossible. Constraints DELIBERATELY NOT in REQUIRED_CONSTRAINTS, the 0005..0028 decision.
+    "buyers", "sale_doc_no_counters", "sale_bills", "sale_bill_items", "sale_receipts",
+    "sale_receipt_allocations", "stock_movements",
 ]
 
 # Tables that hold NO shop data and carry NO tenant_id, by design: alembic's
@@ -458,6 +464,9 @@ AUDITED_TABLES = frozenset({
     # here: the payments species (insert-plus-void, no in-place rewrite), so listing
     # it would demand a trigger it must not carry.
     "shifts", "branch_payment_methods", "shop_payment_channels",
+    # Migration 0029: buyers is master data a shop edits. The sell side and the ledger are NOT here --
+    # the transactional species, the author on the row.
+    "buyers",
 })
 
 # Named constraints and indexes the row checks lean on. If one is missing, the
@@ -1108,7 +1117,14 @@ SELECT (SELECT count(*) FROM purchase_bills)                              AS bil
        (SELECT count(*) FROM cash_movements)                               AS cash_movements,
        (SELECT count(*) FROM branch_payment_methods)                       AS branch_payment_methods,
        (SELECT count(*) FROM shop_payment_channels)                        AS shop_payment_channels,
-       (SELECT count(*) FROM owner_flags)                                  AS owner_flags
+       (SELECT count(*) FROM owner_flags)                                  AS owner_flags,
+       (SELECT count(*) FROM buyers)                                       AS buyers,
+       (SELECT count(*) FROM sale_doc_no_counters)                         AS sale_counters,
+       (SELECT count(*) FROM sale_bills)                                   AS sale_bills,
+       (SELECT count(*) FROM sale_bill_items)                              AS sale_items,
+       (SELECT count(*) FROM sale_receipts)                                AS sale_receipts,
+       (SELECT count(*) FROM sale_receipt_allocations)                     AS sale_allocations,
+       (SELECT count(*) FROM stock_movements)                              AS stock_movements
 """
 
 # Which SCOPE_SQL column feeds each table's running total for X2.
@@ -1136,6 +1152,13 @@ SCOPE_COLUMN = {
     "branch_payment_methods": "branch_payment_methods",
     "shop_payment_channels": "shop_payment_channels",
     "owner_flags": "owner_flags",
+    "buyers": "buyers",
+    "sale_doc_no_counters": "sale_counters",
+    "sale_bills": "sale_bills",
+    "sale_bill_items": "sale_items",
+    "sale_receipts": "sale_receipts",
+    "sale_receipt_allocations": "sale_allocations",
+    "stock_movements": "stock_movements",
 }
 
 CHECKS_PER_TENANT = len(SQL_CHECKS) + 4      # T0 + the SQL checks + T7/T8/T9

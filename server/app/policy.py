@@ -41,7 +41,9 @@ from sqlalchemy import text
 from .auth import Principal, forbidden
 from .permissions import OWNER_ROLE
 
-Kind = Literal["money", "payment", "operational", "identity"]
+# 'price' (0029): a default price the shop keeps beside its products -- written under prices.write like
+# the buy prices; a line stores the price it USED, so the default reaches no existing record.
+Kind = Literal["money", "payment", "operational", "price", "identity"]
 # The kinds only the owner may change.
 OWNER_KINDS: frozenset[str] = frozenset({"money", "payment"})
 
@@ -66,6 +68,8 @@ SETTINGS: tuple[Setting, ...] = (
     Setting("tenants", "deduction_reason_required", "money", "PATCH /shop",
             "whether a deduction needs a reason -- a control on money taken off a seller's weight"),
     Setting("tenants", "rounding_rule", "money", "PATCH /shop", "how every line's amount is rounded"),
+    Setting("tenants", "negative_stock", "money", "PATCH /shop",
+            "whether a sale may take a product's stock below zero (allow, flagged) or is refused (0029)"),
     Setting("tenants", "address", "operational", "PATCH /shop", "printed on the slip; worth nothing"),
     Setting("tenants", "phone", "operational", "PATCH /shop", "printed on the slip; worth nothing"),
     Setting("tenants", "seller_code_target_holding", "operational", "none",
@@ -88,6 +92,8 @@ SETTINGS: tuple[Setting, ...] = (
             "this product's deduction entry, overriding the shop's"),
     Setting("products", "pricing_basis", "money", "POST /products, PATCH /products/{id}",
             "what the price multiplies: weight, pieces, or one lump sum"),
+    Setting("products", "sell_price", "price", "PUT /products/{id}/sell-price",
+            "the default sell price a new sale line starts from; the line stores the price used (0029)"),
 )
 
 IDENTITY_COLUMNS: dict[str, frozenset[str]] = {

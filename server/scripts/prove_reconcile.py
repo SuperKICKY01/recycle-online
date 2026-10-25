@@ -384,6 +384,13 @@ async def normalise(conn: asyncpg.Connection, database: str, *, restored: bool) 
             "DELETE FROM payments WHERE idempotency_key IN"
             " (SELECT 'auto:' || id::text FROM purchase_bills WHERE doc_no IS NULL)")
         print(f"  cause 1, the ledger rows on those bills : {pays}, {allocs}")
+    # 0029's backfill gave those lines their stock movements too; they go before the lines
+    # (fk_movements_purchase_item), gated on the table so a pre-0029 copy still normalises.
+    if await conn.fetchval("SELECT to_regclass('public.stock_movements') IS NOT NULL"):
+        moves = await conn.execute(
+            "DELETE FROM stock_movements WHERE purchase_item_id IN (SELECT i.id FROM purchase_bill_items i"
+            " JOIN purchase_bills b ON b.id = i.bill_id WHERE b.doc_no IS NULL)")
+        print(f"  cause 1, the stock movements on those bills : {moves}")
     items = await conn.execute(
         "DELETE FROM purchase_bill_items WHERE bill_id IN"
         " (SELECT id FROM purchase_bills WHERE doc_no IS NULL)")
@@ -456,6 +463,9 @@ class Fx:
     mid_payment: Any    # mid's automatic payment (0020's backfilled pair), or None
     mid_alloc: Any      # its allocation to mid, or None
     same_tenant_seller: uuidlib.UUID | None  # a seller of fx.tenant other than mid's
+    # 0029: mid's line's stock movements (its purchase movement; a reversal too if voided), captured whole so
+    # T4 can lift them with the line it deletes and put them back byte for byte. Empty below 0029.
+    mid_moves: list = field(default_factory=list)
     drawer_present: bool = False  # the copy is a 0021+ database (shifts, H1..H3 exist)
     tenant_user: uuidlib.UUID | None = None  # a user of fx.tenant, to open/close a shift
     mid_cash_row: Any = None  # the branch_payment_methods cash row of mid's branch
@@ -591,6 +601,11 @@ async def fixtures(conn: asyncpg.Connection) -> Fx:
             mid_alloc=mid_alloc, same_tenant_seller=same_tenant_seller,
             drawer_present=drawer_present, tenant_user=tenant_user,
             mid_cash_row=mid_cash_row)
+    if await conn.fetchval("SELECT to_regclass('public.stock_movements') IS NOT NULL"):
+        # Originals before reversals, so the put-back satisfies fk_movements_reverses in order.
+        fx.mid_moves = list(await conn.fetch(
+            "SELECT * FROM stock_movements WHERE purchase_item_id = $1"
+            " ORDER BY (reverses_movement_id IS NOT NULL), id", item["id"]))
     print(f"  tenants in copy   : {fx.tenants}  (every expectation about a tenant count"
           " below is derived from this number, at runtime)")
     print(f"  tenant under test : {tenant}  ({len(bills)} numbered bills,"
@@ -641,6 +656,13 @@ def cap_off(fx: Fx, table: str, trigger: str) -> tuple[list, list]:
 def build(fx: Fx) -> list[Injection]:
     mid, mid2, item, voided = fx.mid, fx.mid2, fx.mid_item, fx.voided
     t4_off, t4_on = cap_off(fx, "purchase_bills", "allocation_cap_on_total")
+    # 0029: T4 deletes mid's line, which fk_movements_purchase_item refuses while its movements stand -- so they
+    # go first (one statement: a reversal and its original together) and come back, whole, after the line.
+    moves_off = ([("DELETE FROM stock_movements WHERE purchase_item_id = $1", (item["id"],))]
+                 if fx.mid_moves else [])
+    moves_on = [(f"INSERT INTO stock_movements ({', '.join(m.keys())})"
+                 f" VALUES ({', '.join(f'${i + 1}' for i in range(len(m)))})", tuple(m.values()))
+                for m in fx.mid_moves]
     alloc_off, alloc_on = cap_off(fx, "payment_allocations", "allocation_cap_on_allocation")
     injs = [
         Injection(
@@ -688,7 +710,7 @@ def build(fx: Fx) -> list[Injection]:
             "T4", "a bill with no lines at all — a receipt for money with nothing"
                   " bought. Its total is zeroed too, so T1 stays silent and T4 speaks"
                   " (with P2 on a 0020+ copy: its allocation now exceeds the total)",
-            apply=[*t4_off,
+            apply=[*t4_off, *moves_off,
                    ("DELETE FROM purchase_bill_items WHERE bill_id = $1", (mid["id"],)),
                    ("UPDATE purchase_bills SET total_amount = 0 WHERE id = $1", (mid["id"],))],
             undo=[("""INSERT INTO purchase_bill_items (id, tenant_id, bill_id, product_id,
@@ -699,6 +721,7 @@ def build(fx: Fx) -> list[Injection]:
                     item["line_no"], item["gross_weight"], item["tare_weight"],
                     item["net_weight"], item["unit_price"], item["list_price"],
                     item["amount"])),
+                  *moves_on,
                   ("UPDATE purchase_bills SET total_amount = $2 WHERE id = $1",
                    (mid["id"], mid["total_amount"])),
                   *t4_on],

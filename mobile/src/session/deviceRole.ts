@@ -71,7 +71,8 @@ export type DeviceRole = "owner" | "admin" | "staff" | null;
 const ROLES: readonly string[] = ["owner", "admin", "staff"];
 
 /**
- * The permission catalogue, MIRRORED from server/app/permissions.py (16 codes since
+ * The permission catalogue, MIRRORED from server/app/permissions.py (22 codes since migration 0029 minted
+ * the six sales/buyers/stock codes, 16 since
  * migration 0024 minted sellers.read_personal, 15 since 0022 minted shifts.manage; this line said 13 while the union below held
  * 14, a count left stale when 0020 added payments.record).
  * A courtesy list for the call sites, so a typo at a gate is a compile error;
@@ -91,6 +92,13 @@ export type Permission =
   // gate reads it -- the phone never caches either field -- but the union mirrors
   // the catalogue.
   | "sellers.read_personal"
+  // Migration 0029 (M2): selling, money in from buyers, buyers, stock adjustments.
+  | "sales.create"
+  | "sales.read"
+  | "sales.void"
+  | "sales.receive"
+  | "buyers.write"
+  | "stock.adjust"
   | "money.view_own"
   | "money.view_shop"
   | "master.write"

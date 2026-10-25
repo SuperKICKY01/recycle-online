@@ -31,14 +31,16 @@ const SERVER_CODES = [
   "bills.create", "bills.read", "bills.void", "money.view_own", "money.view_shop", "master.write", "prices.write",
   "sellers.create", "sellers.write", "tiers.manage", "users.manage", "shop.settings.write", "roles.manage",
   "payments.record", "shifts.manage", "sellers.read_personal",
+  // Server migration 0029 (M2).
+  "sales.create", "sales.read", "sales.void", "sales.receive", "buyers.write", "stock.adjust",
 ];
 
 void finish("PROVE_PEOPLE", async () => {
   header("L labels");
   const unlabelled = SERVER_CODES.filter((c) => (PERMISSION_TEXT[c] ?? "") === "");
   const placed = groupCatalogue(SERVER_CODES).flatMap((g) => g.codes);
-  check("L1 all 16 codes labelled; the groups place each exactly once",
-    SERVER_CODES.length === 16 && unlabelled.length === 0 && placed.length === 16 && new Set(placed).size === 16,
+  check("L1 all 22 codes labelled; the groups place each exactly once",
+    SERVER_CODES.length === 22 && unlabelled.length === 0 && placed.length === 22 && new Set(placed).size === 22,
     JSON.stringify({ unlabelled, placed: placed.length }));
   const withUnknown = groupCatalogue([...SERVER_CODES, "reports.export"]);
   check("L1 a code the client does not know is still shown, under อื่น ๆ",

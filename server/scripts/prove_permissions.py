@@ -107,6 +107,8 @@ PERMS: tuple[str, ...] = (
     # Migration 0024 (seller search, C1): the sixteenth code -- an INLINE gate in the
     # seller responses, not a route gate, so it adds no matrix site.
     "sellers.read_personal",
+    # Migration 0029 (M2): the seventeenth to twenty-second codes.
+    "sales.create", "sales.read", "sales.void", "sales.receive", "buyers.write", "stock.adjust",
 )
 
 BASE = ""

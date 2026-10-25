@@ -22,6 +22,13 @@ const ALL: readonly string[] = [
   "shifts.manage",
   // Migration 0024 (seller search, C1): the sixteenth code. Owner and admin hold it.
   "sellers.read_personal",
+  // Migration 0029 (M2): the seventeenth to twenty-second codes.
+  "sales.create",
+  "sales.read",
+  "sales.void",
+  "sales.receive",
+  "buyers.write",
+  "stock.adjust",
   "money.view_own",
   "money.view_shop",
   "master.write",
@@ -38,8 +45,10 @@ const ALL: readonly string[] = [
 export const OWNER_GRANTS: ReadonlySet<string> = new Set(ALL);
 /** The admin: everything but roles.manage. */
 export const ADMIN_GRANTS: ReadonlySet<string> = new Set(ALL.filter((p) => p !== "roles.manage"));
-/** The staff role at birth: weigh, read bills, create a seller. No money, no void. */
-export const STAFF_GRANTS: ReadonlySet<string> = new Set(["bills.create", "bills.read", "sellers.create"]);
+/** The staff role at birth: weigh, read bills, create a seller -- and since 0029 sell and read sales
+ *  (mirroring bills.create / bills.read). No money, no void. */
+export const STAFF_GRANTS: ReadonlySet<string> = new Set(["bills.create", "bills.read", "sellers.create",
+  "sales.create", "sales.read"]);
 /** Staff plus the folded toggle: money on their own bills (the former staff_money_visible = true). */
 export const STAFF_MONEY_GRANTS: ReadonlySet<string> = new Set([...STAFF_GRANTS, "money.view_own"]);
 /** An ABSENT set: a token this build cannot read, no cache. Fails OPEN. */

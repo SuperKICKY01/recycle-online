@@ -95,6 +95,16 @@ class Permission(StrEnum):
     # every role holding users.manage (owner and admin at birth); staff does not hold
     # it. ASSUMED pending P1.1/PDPA advice (OPEN_ITEMS.md).
     SELLERS_READ_PERSONAL = "sellers.read_personal"
+    # Migration 0029 (M2, ADVISOR-DECIDED 2026-10-25): sales, buyers, stock. Each is granted at the
+    # migration to every role holding the code it mirrors (sales.create <- bills.create, sales.read <-
+    # bills.read, sales.void <- bills.void, sales.receive <- payments.record, buyers.write <-
+    # sellers.write, stock.adjust <- master.write), so a shop's own roles follow its purchase side.
+    SALES_CREATE = "sales.create"
+    SALES_READ = "sales.read"
+    SALES_VOID = "sales.void"
+    SALES_RECEIVE = "sales.receive"
+    BUYERS_WRITE = "buyers.write"
+    STOCK_ADJUST = "stock.adjust"
 
 
 # What each permission gates, by route. ASCII, because migration 0019 restates the
@@ -161,6 +171,16 @@ DESCRIPTIONS: Mapping[Permission, str] = {
         " POST /sellers, PATCH /sellers/id, POST /sellers/id/deactivate and /activate;"
         " without it those keys are absent and the caller may not write them"
     ),
+    # 0029's literals, word for word.
+    Permission.SALES_CREATE: "create a sell bill: POST /sales",
+    Permission.SALES_READ: "read the shop sell bills: GET /sales, GET /sales/id",
+    Permission.SALES_VOID: "void a sell bill: POST /sales/id/void",
+    Permission.SALES_RECEIVE: "record money received from a buyer: POST /sale-receipts, GET /sale-receipts",
+    Permission.BUYERS_WRITE: (
+        "create, edit, retire and reactivate a buyer: POST /buyers, PATCH /buyers/id,"
+        " POST /buyers/id/deactivate and /activate"
+    ),
+    Permission.STOCK_ADJUST: "record a stock adjustment with a reason: POST /stock/adjustments",
 }
 
 # Section 3.1's codes NOT minted by unit 1, each against the unit that gates it.
@@ -201,7 +221,9 @@ SYSTEM_ROLE_GRANTS: Mapping[str, frozenset[Permission]] = {
     OWNER_ROLE: frozenset(Permission),
     ADMIN_ROLE: frozenset(Permission) - {Permission.ROLES_MANAGE},
     STAFF_ROLE: frozenset(
-        {Permission.BILLS_CREATE, Permission.BILLS_READ, Permission.SELLERS_CREATE}
+        {Permission.BILLS_CREATE, Permission.BILLS_READ, Permission.SELLERS_CREATE,
+         # 0029: the yard sells as it buys (mirrors bills.create / bills.read).
+         Permission.SALES_CREATE, Permission.SALES_READ}
     ),
 }
 

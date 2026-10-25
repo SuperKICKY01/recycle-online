@@ -142,10 +142,19 @@ export const PERMISSION_TEXT: Readonly<Record<string, string>> = {
   "users.manage": "จัดการบัญชีพนักงาน (เจ้าของร้านและผู้ดูแลเท่านั้น)",
   "shop.settings.write": "แก้ไขข้อมูลและการตั้งค่าร้าน",
   "roles.manage": "กำหนดสิทธิ์ตามตำแหน่ง (เจ้าของร้านเท่านั้น)",
+  // Server migration 0029 (M2).
+  "sales.create": "สร้างบิลขาย",
+  "sales.read": "ดูบิลขาย",
+  "sales.void": "ยกเลิกบิลขาย",
+  "sales.receive": "รับเงินจากผู้ซื้อและดูรายการรับ",
+  "buyers.write": "เพิ่ม แก้ไข และปิดใช้งานผู้ซื้อ",
+  "stock.adjust": "ปรับยอดสต็อก (ต้องระบุเหตุผล)",
 };
 
 export const PERMISSION_GROUPS: readonly { title: string; codes: readonly string[] }[] = [
   { title: "บิล", codes: ["bills.create", "bills.read", "bills.void"] },
+  { title: "ขาย", codes: ["sales.create", "sales.read", "sales.void", "sales.receive", "buyers.write"] },
+  { title: "สต็อก", codes: ["stock.adjust"] },
   { title: "เงิน", codes: ["money.view_own", "money.view_shop", "payments.record", "shifts.manage"] },
   { title: "ข้อมูลหลัก", codes: ["master.write", "prices.write", "tiers.manage"] },
   { title: "ผู้ขาย", codes: ["sellers.create", "sellers.write", "sellers.read_personal"] },
