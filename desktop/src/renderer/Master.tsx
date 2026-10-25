@@ -38,6 +38,7 @@ import {
   type UomKind,
 } from "../shared/master";
 import { display } from "../shared/money";
+import { buyerCreate, buyerPatch, buyerProblem, readBuyer, readBuyers, type Buyer, type BuyerForm } from "../shared/sales";
 import { noticeFor, type Session } from "../shared/session";
 import {
   BASIS_TEXT,
@@ -51,7 +52,7 @@ import {
   type PricingBasis,
 } from "../shared/moneyRules";
 
-type Tab = "products" | "categories" | "uoms" | "tiers" | "sellers";
+type Tab = "products" | "categories" | "uoms" | "tiers" | "sellers" | "buyers";
 
 const TABS: readonly { id: Tab; label: string; addLabel: string }[] = [
   { id: "products", label: "สินค้าและราคา", addLabel: "เพิ่มสินค้า" },
@@ -59,6 +60,8 @@ const TABS: readonly { id: Tab; label: string; addLabel: string }[] = [
   { id: "uoms", label: "หน่วยนับ", addLabel: "เพิ่มหน่วยนับ" },
   { id: "tiers", label: "เกรด", addLabel: "เพิ่มเกรด" },
   { id: "sellers", label: "ผู้ขาย", addLabel: "เพิ่มผู้ขาย" },
+  // M2 (SRS 1.5): who the shop sells to. No ID-card data -- an optional 13-digit taxpayer number only.
+  { id: "buyers", label: "ผู้ซื้อ", addLabel: "เพิ่มผู้ซื้อ" },
 ];
 
 interface Data {
@@ -67,6 +70,7 @@ interface Data {
   readonly uoms: CodeName[];
   readonly tiers: Tier[];
   readonly sellers: Seller[];
+  readonly buyers: Buyer[];
 }
 
 interface Props {
@@ -104,20 +108,22 @@ export function MasterScreen({ session, onSettle }: Props) {
 
   const load = useCallback(async () => {
     const all = "?include_inactive=true";
-    const [p, c, u, t, s] = await Promise.all([
+    const [p, c, u, t, s, b] = await Promise.all([
       ask(session, onSettle, (tk) => session.api.get(tk, `/products${all}`, readProducts)),
       ask(session, onSettle, (tk) => session.api.get(tk, `/product-categories${all}`, readCodeNames("product_categories"))),
       ask(session, onSettle, (tk) => session.api.get(tk, `/uoms${all}`, readCodeNames("uoms"))),
       ask(session, onSettle, (tk) => session.api.get(tk, `/grade-tiers${all}`, readTiers)),
       ask(session, onSettle, (tk) => session.api.get(tk, `/sellers${all}`, readSellers)),
+      ask(session, onSettle, (tk) => session.api.get(tk, `/buyers${all}`, readBuyers)),
     ]);
-    const firstProblem = [p, c, u, t, s].find((r): r is { problem: string } => "problem" in r);
-    if (firstProblem !== undefined || !("ok" in p) || !("ok" in c) || !("ok" in u) || !("ok" in t) || !("ok" in s)) {
+    const firstProblem = [p, c, u, t, s, b].find((r): r is { problem: string } => "problem" in r);
+    if (firstProblem !== undefined || !("ok" in p) || !("ok" in c) || !("ok" in u) || !("ok" in t) || !("ok" in s) || !("ok" in b)) {
       setFailed(firstProblem?.problem ?? "โหลดข้อมูลหลักไม่สำเร็จ");
       return;
     }
     setFailed(null);
-    setData({ products: p.ok, categories: c.ok, uoms: u.ok, tiers: [...t.ok].sort((a, b) => a.sort_order - b.sort_order), sellers: s.ok });
+    setData({ products: p.ok, categories: c.ok, uoms: u.ok, tiers: [...t.ok].sort((a, b2) => a.sort_order - b2.sort_order), sellers: s.ok,
+      buyers: b.ok });
   }, [session, onSettle]);
 
   useEffect(() => { void load(); }, [load]);
@@ -134,7 +140,7 @@ export function MasterScreen({ session, onSettle }: Props) {
 
   const current = TABS.find((t) => t.id === tab) ?? TABS[0];
   const canAdd = tab === "products" || tab === "categories" || tab === "uoms" ? may(perms, PERM.master)
-    : tab === "tiers" ? may(perms, PERM.tiers) : may(perms, PERM.sellerCreate);
+    : tab === "tiers" ? may(perms, PERM.tiers) : tab === "buyers" ? perms.includes("buyers.write") : may(perms, PERM.sellerCreate);
 
   return (
     <div className="master" data-screen="master">
@@ -225,6 +231,11 @@ function MasterTable(props: { tab: Tab; data: Data; query: string; showInactive:
   } else if (tab === "categories") {
     cols = ["รหัส", "ชื่อ"];
     body = keep(data.categories, (r) => [r.code, r.name]).map((r) => row(r, [r.name]));
+  } else if (tab === "buyers") {
+    cols = ["รหัส", "ชื่อผู้ซื้อ", "เบอร์โทร", "เลขผู้เสียภาษี"];
+    body = keep(data.buyers, (b) => [b.code, b.name, b.phone, b.tax_id]).map((b) => row(b, [
+      b.name, <span key="ph" className="nowrap">{b.phone ?? ""}</span>, b.tax_id ?? "",
+    ]));
   } else if (tab === "tiers") {
     cols = ["รหัส", "ชื่อเกรด", "ลำดับ"];
     body = keep(data.tiers, (t) => [t.code, t.name]).map((t) => row(t, [t.name, String(data.tiers.indexOf(t) + 1)]));
@@ -269,6 +280,7 @@ function MasterPanel(props: PanelProps) {
       {tab === "categories" || tab === "uoms" ? <CodeNameForm {...props} /> : null}
       {tab === "tiers" ? <TierForm {...props} /> : null}
       {tab === "sellers" ? <SellerFormPanel {...props} /> : null}
+      {tab === "buyers" ? <BuyerFormPanel {...props} /> : null}
     </aside>
   );
 }
@@ -650,6 +662,46 @@ function SellerFormPanel(props: PanelProps) {
       )}
       <Actions problem={w.problem} saved={w.saved} busy={w.busy} canSave={can} onSave={save}
         {...(row !== null ? { retire: { active: row.is_active, can: may(perms, PERM.sellerWrite), onToggle: () => void w.run("sellers", (t) => session.api.post(t, `/sellers/${row.id}/${row.is_active ? "deactivate" : "activate"}`, {}, readSeller), row.is_active ? "ปิดใช้งานแล้ว — บิลเก่ายังแสดงชื่อผู้ขายนี้ตามเดิม" : "เปิดใช้งานแล้ว") } } : {})} />
+    </div>
+  );
+}
+
+/** A buyer (M2, SRS 1.5): code (blank = the server assigns C001...), name, phone, address, an optional 13-digit
+ *  taxpayer number, a note. No ID-card field exists to fill (ADVISOR-DECIDED 2026-10-25). */
+function BuyerFormPanel(props: PanelProps) {
+  const { id, data, perms, session } = props;
+  const row = id === "new" ? null : data.buyers.find((b) => b.id === id) ?? null;
+  const can = perms.includes("buyers.write");
+  const [form, setForm] = useState<BuyerForm>({ code: row?.code ?? "", name: row?.name ?? "", phone: row?.phone ?? "",
+    address: row?.address ?? "", tax_id: row?.tax_id ?? "", note: row?.note ?? "" });
+  const w = useWrite(props);
+  const set = (k: keyof BuyerForm) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const save = () => {
+    const p = buyerProblem(form);
+    if (p !== null) { w.setProblem(p); return; }
+    if (row === null) {
+      void w.run("buyers", (t) => session.api.post(t, "/buyers", buyerCreate(form), readBuyer), "เพิ่มผู้ซื้อแล้ว");
+      return;
+    }
+    const body = buyerPatch(row, form);
+    if (Object.keys(body).length === 0) { w.setProblem("ยังไม่ได้แก้ไขอะไร"); return; }
+    void w.run("buyers", (t) => session.api.patch(t, `/buyers/${row.id}`, body, readBuyer), "บันทึกแล้ว");
+  };
+  return (
+    <div className="form-stack">
+      <Field label="รหัสผู้ซื้อ" name="code" value={form.code} onChange={set("code")} readOnly={row !== null}
+        hint={row !== null ? "รหัสแก้ไขไม่ได้" : "เว้นว่างได้ — ระบบจะกำหนดรหัสให้"} />
+      <Field label="ชื่อผู้ซื้อ / บริษัท" name="name" value={form.name} onChange={set("name")} readOnly={!can} />
+      <Field label="เบอร์โทร" name="phone" value={form.phone} onChange={set("phone")} readOnly={!can} inputMode="tel" />
+      <label className="field">
+        <span className="field-label">ที่อยู่</span>
+        <textarea name="address" rows={3} value={form.address} readOnly={!can} onChange={(e) => set("address")(e.target.value)} />
+      </label>
+      <Field label="เลขประจำตัวผู้เสียภาษี (ถ้ามี)" name="tax_id" value={form.tax_id} onChange={set("tax_id")} readOnly={!can} inputMode="numeric"
+        hint="ตัวเลข 13 หลัก สำหรับออกใบกำกับภาษี — ไม่เก็บเลขบัตรประชาชน" />
+      <Field label="หมายเหตุ" name="note" value={form.note} onChange={set("note")} readOnly={!can} />
+      <Actions problem={w.problem} saved={w.saved} busy={w.busy} canSave={can} onSave={save}
+        {...(row !== null ? { retire: { active: row.is_active, can, onToggle: () => void w.run("buyers", (t) => session.api.post(t, `/buyers/${row.id}/${row.is_active ? "deactivate" : "activate"}`, {}, readBuyer), row.is_active ? "ปิดใช้งานแล้ว — บิลขายเก่ายังแสดงชื่อผู้ซื้อนี้ตามเดิม" : "เปิดใช้งานแล้ว") } } : {})} />
     </div>
   );
 }

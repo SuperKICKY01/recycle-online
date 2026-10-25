@@ -16,12 +16,16 @@ import { BillsScreen } from "./Bills";
 import { MasterScreen } from "./Master";
 import { PeopleScreen } from "./People";
 import { ReportsScreen } from "./Reports";
+import { SalesScreen } from "./Sales";
 import { PrinterScreen } from "./Slip";
+import { StockScreen } from "./Stock";
 import { Shell, type NavItem } from "./Shell";
 import { SetupScreen, SignInScreen } from "./SignIn";
 
 const NAV: readonly NavItem[] = [
   { id: "bills", label: "บิลรับซื้อ", icon: "receipt", enabled: true },
+  { id: "sales", label: "บิลขาย", icon: "tag", enabled: true },
+  { id: "stock", label: "สินค้าคงเหลือ", icon: "layers", enabled: true },
   { id: "master", label: "ข้อมูลหลัก", icon: "box", enabled: true },
   { id: "people", label: "ร้านและพนักงาน", icon: "store", enabled: true },
   { id: "reports", label: "รายงาน", icon: "chart", enabled: true },
@@ -227,6 +231,8 @@ function App() {
     >
       {shellNotice !== null ? <p className="notice notice-warn shell-notice" role="status">{shellNotice}</p> : null}
       {current === "printer" ? <PrinterScreen />
+        : current === "sales" ? <SalesScreen session={sessionRef.current} onSettle={settle} />
+        : current === "stock" ? <StockScreen session={sessionRef.current} onSettle={settle} />
         : current === "master" ? <MasterScreen session={sessionRef.current} onSettle={settle} />
         : current === "people" ? <PeopleScreen session={sessionRef.current} onSettle={settle} />
         : current === "reports" ? <ReportsScreen session={sessionRef.current} onSettle={settle} />

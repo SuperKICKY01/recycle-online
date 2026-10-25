@@ -12,6 +12,9 @@ const PATHS = {
   box: "M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8",
   store: "M3 9l1.5-5h15L21 9M3 9v11h18V9M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0M10 20v-5h4v5",
   chart: "M4 20V10M10 20V4M16 20v-7M22 20H2",
+  // M2: a price tag (sales) and stacked layers (stock), the same 24-unit grid and stroke.
+  tag: "M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9-9-9zM8 8h.01",
+  layers: "M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5",
 } as const;
 
 export type IconName = keyof typeof PATHS;

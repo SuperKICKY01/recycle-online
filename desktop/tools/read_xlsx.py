@@ -11,6 +11,9 @@ nothing here shares code with the writer (standard library only: zipfile, xml.et
   numfmts      numFmtId -> formatCode
   xf_numfmt    cellXfs index -> numFmtId
   cells        ref -> {"type": "n"|"inlineStr", "text": the cell's text exactly as stored, "style": index}
+  sheets       M2: EVERY sheet, in workbook order, as {"name", "part", "declared", "cells"} -- the part the
+               workbook's relationship names, whether [Content_Types].xml declares it, and its cells as above.
+               sheet_name / cells stay the FIRST sheet's, so every earlier reader is unchanged.
 """
 import json
 import sys
@@ -19,6 +22,24 @@ import zipfile
 
 NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
       "ct": "http://schemas.openxmlformats.org/package/2006/content-types"}
+
+
+def read_cells(sh) -> dict:
+    cells = {}
+    for c in sh.iter(f"{{{NS['m']}}}c"):
+        t = c.get("t", "n")
+        if t == "inlineStr":
+            node = c.find("m:is/m:t", NS)
+            text = node.text if node is not None else ""
+        else:
+            node = c.find("m:v", NS)
+            text = node.text if node is not None else ""
+        cells[c.get("r")] = {"type": t, "text": text, "style": c.get("s")}
+    return cells
+
+
+RELNS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+PKGREL = "http://schemas.openxmlformats.org/package/2006/relationships"
 
 
 def main(path: str) -> int:
@@ -44,8 +65,15 @@ def main(path: str) -> int:
                 node = c.find("m:v", NS)
                 text = node.text if node is not None else ""
             cells[c.get("r")] = {"type": t, "text": text, "style": c.get("s")}
+        rels = ET.fromstring(z.read("xl/_rels/workbook.xml.rels"))
+        target = {r.get("Id"): r.get("Target") for r in rels.findall(f"{{{PKGREL}}}Relationship")}
+        sheets = []
+        for s in wb.findall("m:sheets/m:sheet", NS):
+            part = "xl/" + target.get(s.get(f"{{{RELNS}}}id"), "")
+            sheets.append({"name": s.get("name"), "part": part, "declared": "/" + part in overrides,
+                           "cells": read_cells(ET.fromstring(z.read(part))) if part in parts else {}})
     out = {"zip_ok": bad is None, "parts": parts, "content_ok": content_ok, "sheet_name": sheet_name,
-           "numfmts": numfmts, "xf_numfmt": xf, "cells": cells}
+           "numfmts": numfmts, "xf_numfmt": xf, "cells": cells, "sheets": sheets}
     sys.stdout.buffer.write(json.dumps(out, ensure_ascii=False).encode("utf-8"))
     return 0
 

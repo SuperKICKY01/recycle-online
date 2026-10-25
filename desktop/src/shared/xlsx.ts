@@ -14,6 +14,9 @@ export type ColumnKind = "text" | "money" | "weight";
 
 export interface Sheet {
   readonly name: string;
+  /** M2 (SRS 3: "มีหัวกระดาษเป็นชื่อกิจการ"): a title line above the header, e.g. the shop's name and the range.
+   *  Absent, the header is row 1 exactly as before. */
+  readonly title?: string;
   readonly columns: readonly { readonly header: string; readonly kind: ColumnKind; readonly width?: number }[];
   readonly rows: readonly (readonly (string | null)[])[];
 }
@@ -52,9 +55,12 @@ function cell(ref: string, value: string | null, kind: ColumnKind | "header"): s
 
 function sheetXml(sheet: Sheet): string {
   const cols = sheet.columns.map((c, i) => `<col min="${String(i + 1)}" max="${String(i + 1)}" width="${String(c.width ?? 16)}" customWidth="1"/>`).join("");
-  const head = `<row r="1">${sheet.columns.map((c, i) => cell(`${columnName(i)}1`, c.header, "header")).join("")}</row>`;
+  const top = sheet.title !== undefined ? 1 : 0;
+  const titleRow = sheet.title !== undefined ? `<row r="1">${cell("A1", sheet.title, "header")}</row>` : "";
+  const hr = top + 1;
+  const head = `${titleRow}<row r="${String(hr)}">${sheet.columns.map((c, i) => cell(`${columnName(i)}${String(hr)}`, c.header, "header")).join("")}</row>`;
   const body = sheet.rows.map((r, ri) => {
-    const n = ri + 2;
+    const n = ri + hr + 1;
     return `<row r="${String(n)}">${sheet.columns.map((c, ci) => cell(`${columnName(ci)}${String(n)}`, r[ci] ?? null, c.kind)).join("")}</row>`;
   }).join("");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -64,18 +70,38 @@ function sheetXml(sheet: Sheet): string {
 const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0.00"/><numFmt numFmtId="165" formatCode="#,##0.000"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Tahoma"/></font><font><b/><sz val="11"/><name val="Tahoma"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 
-function parts(sheet: Sheet): [string, string][] {
+/** A sheet name Excel accepts: at most 31 characters, none of \ / ? * [ ] :, and unique in the workbook. */
+function sheetNames(sheets: readonly Sheet[]): string[] {
+  const seen = new Set<string>();
+  return sheets.map((s, i) => {
+    let base = s.name.replace(/[\\/?*[\]:]/g, " ").trim().slice(0, 31) || `Sheet${String(i + 1)}`;
+    let name = base;
+    for (let n = 2; seen.has(name.toLowerCase()); n += 1) {
+      const suffix = ` (${String(n)})`;
+      base = base.slice(0, 31 - suffix.length);
+      name = base + suffix;
+    }
+    seen.add(name.toLowerCase());
+    return name;
+  });
+}
+
+function parts(sheets: readonly Sheet[]): [string, string][] {
+  const names = sheetNames(sheets);
+  const overrides = sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${String(i + 1)}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("");
+  const sheetTags = names.map((n, i) => `<sheet name="${xmlText(n)}" sheetId="${String(i + 1)}" r:id="rId${String(i + 1)}"/>`).join("");
+  const rels = sheets.map((_, i) => `<Relationship Id="rId${String(i + 1)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${String(i + 1)}.xml"/>`).join("");
   return [
     ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`],
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${overrides}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`],
     ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
     ["xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xmlText(sheet.name.slice(0, 31).replace(/[\\/?*[\]:]/g, " "))}" sheetId="1" r:id="rId1"/></sheets></workbook>`],
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheetTags}</sheets></workbook>`],
     ["xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}<Relationship Id="rId${String(sheets.length + 1)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
     ["xl/styles.xml", STYLES],
-    ["xl/worksheets/sheet1.xml", sheetXml(sheet)],
+    ...sheets.map((s, i): [string, string] => [`xl/worksheets/sheet${String(i + 1)}.xml`, sheetXml(s)]),
   ];
 }
 
@@ -101,12 +127,15 @@ export function crc32(data: Uint8Array): number {
 const DOS_TIME = 0;
 const DOS_DATE = (0 << 9) | (1 << 5) | 1;
 
-export function buildXlsx(sheet: Sheet): Uint8Array {
+/** One sheet or several (M2: one per product category). A workbook needs at least one sheet; an empty list
+ *  gets one empty sheet named "ว่าง" rather than a file Excel refuses to open. */
+export function buildXlsx(sheetOrSheets: Sheet | readonly Sheet[]): Uint8Array {
   const out: number[] = [];
   const central: number[] = [];
   const u16 = (a: number[], v: number) => a.push(v & 0xff, (v >>> 8) & 0xff);
   const u32 = (a: number[], v: number) => a.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff);
-  const entries = parts(sheet);
+  const list: readonly Sheet[] = Array.isArray(sheetOrSheets) ? sheetOrSheets : [sheetOrSheets as Sheet];
+  const entries = parts(list.length > 0 ? list : [{ name: "ว่าง", columns: [], rows: [] }]);
   for (const [name, text] of entries) {
     const nameBytes = enc.encode(name);
     const data = enc.encode(text);

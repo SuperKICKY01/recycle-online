@@ -29,7 +29,8 @@ THE CELLS, and the disproof each stands against:
   T2  THE TOKEN IN FLIGHT: a token minted WITHOUT the claim (the pre-0019
       shape, signed with the server's own secret) is ACCEPTED and /whoami
       resolves the full set from the ROW. The deploy signs nobody out.
-  M   THE MATRIX, 49 route gates (36 before 0029 added 13 for M2; 34 before 0020 added GET and POST /payments):
+  M   THE MATRIX, 50 route gates (49 before POST /sales/quote; 36 before 0029 added 13 for M2; 34 before 0020
+      added GET and POST /payments):
       for each (route, permission) the principal
       holding every permission BUT that one reads 403 kind=forbidden
       code=permission_required required_permission=<that one>, and the all
@@ -368,7 +369,7 @@ async def run(ctx: Ctx, client: httpx.AsyncClient, scratch: str) -> None:
           f" /whoami resolves the full set from the ROW (got {r.status_code})")
 
     # ---------------------------------------------------------------- M
-    header("M  the matrix: 49 route gates, all-but-one refused naming it, all succeeds")
+    header("M  the matrix: 50 route gates, all-but-one refused naming it, all succeeds")
     m = Matrix(client, ctx)
     # bills
     created = await m.site("bills.create", "POST", "/bills", bill_body("m-create"))
@@ -450,6 +451,9 @@ async def run(ctx: Ctx, client: httpx.AsyncClient, scratch: str) -> None:
         "id": sale_id, "buyer_id": buyer_id, "device_created_at": now_iso, "idempotency_key": f"sale-{RUN}-matrix",
         "items": [{"id": str(uuid.uuid4()), "product_id": str(PRODUCT_A_ID), "line_no": 1, "gross_weight": "1.000",
                    "tare_weight": "0.000", "net_weight": "1.000", "unit_price": "20.00"}]})
+    await m.site("sales.create", "POST", "/sales/quote", {
+        "items": [{"id": str(uuid.uuid4()), "product_id": str(PRODUCT_A_ID), "line_no": 1, "gross_weight": "1.000",
+                   "tare_weight": "0.000", "net_weight": "1.000", "unit_price": "20.00"}]})
     await m.site("sales.read", "GET", "/sales")
     await m.site("sales.read", "GET", f"/sales/{sale_id}")
     await m.site("sales.receive", "POST", "/sale-receipts", {
@@ -464,9 +468,9 @@ async def run(ctx: Ctx, client: httpx.AsyncClient, scratch: str) -> None:
     await m.site("prices.write", "PUT", f"/products/{PRODUCT_A_ID}/sell-price", {"price": "20.00"})
     today = dt.date.today().isoformat()
     await m.site("money.view_shop", "GET", f"/reports/sales?from_date={today}&to_date={today}")
-    # 49 since 0029 (36 + the 13 above), edited by name.
-    check(m.sites == 49, f"M: the matrix visited 49 route gates (control; visited {m.sites})")
-    check(refusal_codes_seen.count("admin_required") == 0 and len(refusal_codes_seen) == 49,
+    # 49 since 0029 (36 + the 13 above), edited by name; 50 with POST /sales/quote (the desktop sale form).
+    check(m.sites == 50, f"M: the matrix visited 50 route gates (control; visited {m.sites})")
+    check(refusal_codes_seen.count("admin_required") == 0 and len(refusal_codes_seen) == 50,
           f"M: NO refusal in this run answered admin_required, over {len(refusal_codes_seen)}"
           " refusals read (section 12's disproof)")
 

@@ -10,6 +10,8 @@ import { DESKTOP_ROOT } from "./harness";
 export interface XlsxRead {
   zip_ok: boolean; parts: string[]; content_ok: boolean; sheet_name: string; numfmts: Record<string, string>;
   xf_numfmt: string[]; cells: Record<string, { type: string; text: string; style: string | null }>;
+  /** M2: every sheet in workbook order (the first is also `sheet_name` / `cells`). */
+  sheets: { name: string; part: string; declared: boolean; cells: Record<string, { type: string; text: string; style: string | null }> }[];
 }
 
 export function readXlsx(path: string): XlsxRead {

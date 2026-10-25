@@ -35,6 +35,10 @@ THE CELLS
   SC11 reports: GET /reports/sales by product and by day -- amount, cost and gross_profit equal the stored lines'
        sums, voided bills excluded; GET /stock reads the balance and value of the hand table.
   SC12 reconcile.py over the whole scratch: RECONCILE_EXIT=0 (S1..S5 restate the ledger independently).
+  SC13 the quote (POST /sales/quote, the desktop form's): STAFF quotes 30.500 - 0.500 kg x 15.33 under a DECLARED
+       down_1 with a WRONG net -> 200, net 30.000, amount and total 459.00 (by hand), and the tenant's bills, lines,
+       movements and flags unchanged. CONTROL: the same body to POST /sales -> 422 net_mismatch; a product of no
+       tenant -> the quote refuses product_not_found. (Runs before SC12, so the reconcile covers it.)
 """
 from __future__ import annotations
 
@@ -307,6 +311,33 @@ async def cells(fx: Fx, db: Db) -> None:
           and not has_key(rep, "profit") and (steel["quantity"], steel["value"]) == (q_s, v_s),
           f"SC11 report totals {rep['totals']} == stored {dict(sums)}; stock STEEL {steel['quantity']} / {steel['value']}"
           f" == ledger {q_s} / {v_s}")
+
+    header("SC13  the quote: the line rule's figures under the DECLARED rule, and nothing written")
+    count_q = ("SELECT (SELECT count(*) FROM sale_bills WHERE tenant_id = $1) || '/' || (SELECT count(*) FROM sale_bill_items"
+               " WHERE tenant_id = $1) || '/' || (SELECT count(*) FROM stock_movements WHERE tenant_id = $1) || '/' ||"
+               " (SELECT count(*) FROM owner_flags WHERE tenant_id = $1)")
+    before = await db.fetchval(count_q, fx.shop.id)
+    # By hand: (30.500 - 0.500) x 15.33 = 459.90 -> down_1 -> 459.00. The net sent is WRONG on purpose: the quote is
+    # how a client learns the net, so it must not check one.
+    qb = fx.sale_body("steel", "30.500", "15.33")
+    qb["items"][0].update({"tare_weight": "0.500", "net_weight": "999.000", "rounding_rule": "down_1"})
+    rq = await fx.c.post("/sales/quote", headers=auth(fx.shop.tok["staff"]), json=qb)
+    after = await db.fetchval(count_q, fx.shop.id)
+    j = rq.json() if rq.status_code == 200 else {}
+    it = (j.get("items") or [{}])[0]
+    check(rq.status_code == 200 and (it.get("net_weight"), it.get("quantity"), it.get("amount"), j.get("total_amount"))
+          == ("30.000", "30.000", "459.00", "459.00") and after == before,
+          f"SC13 STAFF quote: {rq.status_code} net/qty/amount/total {(it.get('net_weight'), it.get('quantity'), it.get('amount'), j.get('total_amount'))}"
+          f" == 30.000/30.000/459.00/459.00; bills/lines/movements/flags {before} -> {after} (nothing written)")
+    rc = await fx.c.post("/sales", headers=auth(fx.shop.tok["staff"]), json=qb)
+    qf = fx.sale_body("steel", "1.000", "1.00")
+    qf["items"][0]["product_id"] = str(uuid.uuid4())
+    rf = await fx.c.post("/sales/quote", headers=auth(fx.shop.tok["staff"]), json=qf)
+    after2 = await db.fetchval(count_q, fx.shop.id)
+    check(rc.status_code == 422 and code_of(rc) == "net_mismatch" and rf.status_code == 422 and code_of(rf) == "product_not_found"
+          and after2 == before,
+          f"SC13 CONTROL: the same body to POST /sales -> {rc.status_code} {code_of(rc)} (the create still checks the net);"
+          f" a product of no tenant -> quote {rf.status_code} {code_of(rf)}; counts {after2}")
 
 
 def reconcile(scratch: str) -> None:

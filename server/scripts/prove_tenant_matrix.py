@@ -486,7 +486,7 @@ class Cell:
     # own     -- B reuses one of A's free-text keys: a 2xx that wrote only into B
     kind: str = "refuse"
     empty: str = ""
-    control: tuple | None = None     # (method, url, body, wanted statuses, "write" | "read")
+    control: tuple | None = None     # (method, url, body, wanted statuses, "write" | "read" | "compute")
     exclude: frozenset[str] = frozenset()
     attackers: tuple[str, ...] = ("admin", "owner")
     anon: bool = False               # sent with no token (login)
@@ -644,6 +644,12 @@ def build_cells(A: Tenant, B: Tenant) -> list[Cell]:
               "items": [{"id": str(uuid.uuid4()), "product_id": b["product"], "line_no": 1, "gross_weight": "1.000",
                          "tare_weight": "0.000", "net_weight": "1.000", "unit_price": "1.00"}]},
              kind="own", attackers=("admin",)),
+        Cell("POST /sales/quote", "quote of A's product", "POST", "/sales/quote",
+             {"items": [{"id": str(uuid.uuid4()), "product_id": a["product"], "line_no": 1, "gross_weight": "1.000",
+                         "tare_weight": "0.000", "net_weight": "1.000", "unit_price": "1.00"}]},
+             control=("POST", "/sales/quote",
+                      {"items": [{"id": str(uuid.uuid4()), "product_id": a["product"], "line_no": 1, "gross_weight": "1.000",
+                                  "tare_weight": "0.000", "net_weight": "1.000", "unit_price": "1.00"}]}, (200,), "compute")),
         Cell("POST /sale-receipts", "receipt allocated to A's sale", "POST", "/sale-receipts",
              {"id": str(uuid.uuid4()), "buyer_id": b["buyer"], "method": "cash", "amount": "1.00",
               "idempotency_key": f"x-{uuid.uuid4()}", "device_created_at": now_iso(),
@@ -861,6 +867,14 @@ async def run_matrix(client: httpx.AsyncClient, pg: Pg, A: Tenant, B: Tenant, ce
                 check(r.status_code in want and seen,
                       f"{tag}: A-CONTROL {m} by A's owner is {r.status_code} and the snapshot SEES it"
                       f" ({diff(after_a, after_ctl)})")
+            elif what == "compute":
+                # A computation (POST /sales/quote) answers with arithmetic on the caller's own input: no row to
+                # see, no secret to carry. Its control is that A's owner is ANSWERED -- so B's refusal is the
+                # tenancy, not a malformed body -- and that the answer wrote nothing.
+                still = not diff(after_a, after_ctl)
+                check(r.status_code in want and still,
+                      f"{tag}: A-CONTROL {m} by A's owner is {r.status_code} and writes nothing"
+                      f" ({diff(after_a, after_ctl) or 'no change'})")
             else:
                 found = any(mk in r.text for mk in A.markers)
                 check(r.status_code in want and found,

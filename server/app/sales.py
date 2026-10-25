@@ -156,15 +156,16 @@ async def read_sale(conn: AsyncConnection, bill_id: Any, *, with_cost: bool) -> 
     return out
 
 
-@router.post("/sales", status_code=status.HTTP_201_CREATED)
-async def create_sale(body: SaleCreate, response: Response,
-                      principal: Principal = Depends(require(Permission.SALES_CREATE))) -> dict:
-    nos = [it.line_no for it in body.items]
+def _compute_lines(items: list[SaleItemIn], *, check_net: bool) -> tuple[list[LineOut], list[str | None], Decimal]:
+    """Every line through the ONE line rule (app/line_rules.py), as a sale's create and its quote both need it.
+    `check_net`: the create refuses a client net that is not the rule's; the quote is how a client LEARNS the net,
+    so it does not check one."""
+    nos = [it.line_no for it in items]
     if len(set(nos)) != len(nos):
         raise _invalid("duplicate_line_no", "duplicate line_no within bill")
     computed: list[LineOut] = []
     reasons: list[str | None] = []
-    for it in body.items:
+    for it in items:
         reason = (it.deduction_reason or "").strip() or None
         try:
             out = compute_line(LineIn(
@@ -172,7 +173,7 @@ async def create_sale(body: SaleCreate, response: Response,
                 pricing_basis=it.pricing_basis or "weight", rounding_rule=it.rounding_rule or DEFAULT_ROUNDING_RULE,
                 deduction_mode=it.deduction_mode or "none", deduction_pct=it.deduction_pct,
                 deduction_weight=it.deduction_weight, quantity=it.quantity))
-            if out.net_weight != it.net_weight:
+            if check_net and out.net_weight != it.net_weight:
                 raise LineRuleError("net_mismatch", f"net_weight must equal gross_weight - tare_weight - deduction ({out.net_weight})")
             if reason is not None and (it.deduction_mode or "none") == "none":
                 raise LineRuleError("reason_without_deduction", "a deduction_reason needs a deduction")
@@ -180,7 +181,46 @@ async def create_sale(body: SaleCreate, response: Response,
             raise _invalid(e.code, f"line {it.line_no}: {e}", line_no=it.line_no) from None
         computed.append(out)
         reasons.append(reason)
-    total = sum((c.amount for c in computed), Decimal("0.00"))
+    return computed, reasons, sum((c.amount for c in computed), Decimal("0.00"))
+
+
+async def _product_refs(conn: AsyncConnection, items: list[SaleItemIn]) -> list[dict]:
+    """Each line's product in THIS tenant (RLS): its sell price and unit, or the refusal a sale gets for it."""
+    refs: list[dict] = []
+    for it in items:
+        row = (await conn.execute(text(
+            "SELECT p.is_active, p.sell_price, u.code AS unit_code, u.name AS unit_name FROM products p"
+            " JOIN uoms u ON u.id = p.uom_id WHERE p.id = :p"), {"p": it.product_id})).mappings().first()
+        if row is None:
+            raise _invalid("product_not_found", f"product_id {it.product_id} does not exist in this tenant")
+        if not row["is_active"]:
+            raise _master_data_missing("product_inactive", "สินค้านี้ถูกปิดใช้งานแล้ว", product_id=str(it.product_id))
+        refs.append(dict(row))
+    return refs
+
+
+class SaleQuote(BaseModel):
+    # Only the lines are read; a client may send its whole draft body (id, buyer_id, ...) and the rest is ignored.
+    items: list[SaleItemIn] = Field(min_length=1)
+
+
+@router.post("/sales/quote")
+async def quote_sale(body: SaleQuote, principal: Principal = Depends(require(Permission.SALES_CREATE))) -> dict:
+    """What the server WOULD store for these lines -- net, quantity, amount, total -- writing nothing. The desktop's
+    sale form shows this and sends the quote's net and total back with the create, so no client computes money.
+    It refuses a product the create would refuse (not in this tenant, or retired), so the form learns it here."""
+    computed, _reasons, total = _compute_lines(body.items, check_net=False)
+    async with tenant_connection(principal.tenant_id) as conn:
+        await _product_refs(conn, body.items)
+    return {"total_amount": str(total), "items": [
+        {"line_no": it.line_no, "net_weight": str(c.net_weight), "deduction_weight": str(c.deduction_weight),
+         "quantity": str(c.quantity), "amount": str(c.amount)} for it, c in zip(body.items, computed)]}
+
+
+@router.post("/sales", status_code=status.HTTP_201_CREATED)
+async def create_sale(body: SaleCreate, response: Response,
+                      principal: Principal = Depends(require(Permission.SALES_CREATE))) -> dict:
+    computed, reasons, total = _compute_lines(body.items, check_net=True)
     if body.total_amount is not None and body.total_amount != total:
         raise _invalid("total_mismatch", f"total mismatch: client sent {body.total_amount}, server computed {total}")
     if body.received_amount is not None and body.received_amount > total:
@@ -199,16 +239,7 @@ async def create_sale(body: SaleCreate, response: Response,
                 raise _invalid("buyer_not_found", "buyer_id does not exist in this tenant")
             if not buyer["is_active"]:
                 raise _master_data_missing("buyer_inactive", "ผู้ซื้อรายนี้ถูกปิดใช้งานแล้ว", buyer_id=str(body.buyer_id))
-            refs: list[dict] = []
-            for it in body.items:
-                row = (await conn.execute(text(
-                    "SELECT p.is_active, p.sell_price, u.code AS unit_code, u.name AS unit_name FROM products p"
-                    " JOIN uoms u ON u.id = p.uom_id WHERE p.id = :p"), {"p": it.product_id})).mappings().first()
-                if row is None:
-                    raise _invalid("product_not_found", f"product_id {it.product_id} does not exist in this tenant")
-                if not row["is_active"]:
-                    raise _master_data_missing("product_inactive", "สินค้านี้ถูกปิดใช้งานแล้ว", product_id=str(it.product_id))
-                refs.append(dict(row))
+            refs = await _product_refs(conn, body.items)
             policy = (await conn.execute(text("SELECT negative_stock FROM tenants"))).scalar_one()
 
             received_at = (await conn.execute(text("SELECT now()"))).scalar_one()

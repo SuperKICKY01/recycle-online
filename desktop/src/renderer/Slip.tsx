@@ -37,8 +37,9 @@ export function readShop(v: unknown): ShopHeader | null {
   return { name: o["name"], address: str(o["address"]), phone: str(o["phone"]) };
 }
 
-/** The preview: each line drawn from its structure, inside a paper of the chosen width. */
-function Paper({ lines, width }: { lines: readonly SlipLine[]; width: PaperWidth }) {
+/** The preview: each line drawn from its structure, inside a paper of the chosen width. Exported for the
+ *  sale slip (M2), which draws its own lines the same way. */
+export function Paper({ lines, width }: { lines: readonly SlipLine[]; width: PaperWidth }) {
   return (
     // Thai glyphs run wider than the monospace `ch`, so the paper gets room to spare and scrolls
     // sideways rather than re-breaking a line the printer will print whole.

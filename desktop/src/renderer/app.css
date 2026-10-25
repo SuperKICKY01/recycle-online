@@ -301,3 +301,22 @@ textarea { resize: vertical; }
 .field-narrow input { max-width: 220px; }
 .field-hint { color: var(--text-muted); font-size: 0.875rem; }
 .muted { color: var(--text-muted); }
+
+/* M2: sales and stock. */
+.panel-sub { margin: 4px 0 12px; color: var(--text-muted); font-size: 0.875rem; }
+.row-warn td { background: var(--warn-soft); }
+.figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px 16px; margin: 14px 0; }
+.figures > div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.figures dt { color: var(--text-muted); font-size: 0.875rem; }
+.figures dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.row-inline { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.sale-total { display: flex; justify-content: space-between; align-items: baseline; max-width: 420px; padding: 10px 0;
+  border-top: 1px solid var(--border); font-size: var(--step-1); font-weight: 700; font-variant-numeric: tabular-nums; }
+.grid input { width: 9ch; font-variant-numeric: tabular-nums; text-align: right; }
+/* A sale line's weight runs to 11 digits and 3 decimals: the typed value must stay readable whole. */
+.sale-form .grid input { width: 13ch; }
+/* A table wider than its panel scrolls inside it rather than spilling past the panel's edge. */
+.table-scroll { overflow-x: auto; max-width: 100%; }
+.grid select { max-width: 24ch; }
+.unit { color: var(--text-muted); font-size: 0.875rem; }
+.void-confirm { margin-top: 12px; padding: 12px; border: 1px solid var(--danger); border-radius: var(--radius); background: var(--danger-soft); }
