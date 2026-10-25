@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 51 across 27 files, counted from the source headings and
+**Amendments:** 52 across 27 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -100,7 +100,7 @@ line instead of by heading depth.
 - `printed-code-in-a-design-document-is-run-by-nobody.md` -- Printed code in a design document is run by nobody
 - `proof-must-run-twice.md` *(9 amendments)* -- A proof that passes only once proves the environment, not the code
 - `queue-jam-must-be-visible.md` *(1 amendment)* -- A strict ordered queue CAN deadlock. Don't skip the head — make the jam visible.
-- `render-in-shop-time-not-device-time.md` *(1 amendment)* -- Store UTC, render in the SHOP's timezone — and never slice an ISO string
+- `render-in-shop-time-not-device-time.md` *(2 amendments)* -- Store UTC, render in the SHOP's timezone — and never slice an ISO string
 - `revoke-in-migration.md` -- Privilege changes live in the migration, not in a live one-off
 - `schema-audit.md` -- Audit a migration field-by-field against the agreed schema before commit
 - `set-local-per-request.md` -- Tenant context = SET LOCAL, per request, fail closed
@@ -10089,6 +10089,20 @@ This matters most for the consumer that does not exist yet. The desktop thermal
 slip must PORT this module, and the trim will look like a line worth deleting.
 It is not: the slip is the artifact the seller keeps, and `—` where the time
 should be is printed on paper.
+
+## Amendment (M2, 2026-10-26): a PROOF that derives a business date in UTC is green seventeen hours a day
+
+`prove_sales` SC11 asked `GET /reports/sales` for `yesterday..today` with `today = datetime.now(timezone.utc).date()`.
+The report's range is in SHOP days (UTC+7). From 00:00 to 17:00 UTC the two calendars agree and the cell was green --
+every run the author made. Gate `_prove_all/20261025T191356Z` ran at 19:14 UTC, when the shop's day was already the
+26th: every sale fell on shop day 26 Oct, the cell asked for 24-25 Oct, the report correctly answered 0 bills, and
+the gate went RED on both runs. Reproduced at 19:48 UTC; the same run's SC14.5, which already derived the shop day,
+was green beside it. Fixed by the same derivation (`prove_sales` SC11), green twice inside the window.
+
+The rule applies to the CHECKER as much as to the product: a proof that builds a date for a business query builds it
+in shop time, by the one derivation. And a date bug of this shape is invisible to every run made in the hours the
+calendars agree -- **for any date a proof derives, ask what it computes at 17:30 UTC.** The gate that runs at night
+is the only instrument that found it.
 
 ---
 

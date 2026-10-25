@@ -308,8 +308,12 @@ async def cells(fx: Fx, db: Db) -> None:
           f" admin reads cost {aread.json().get('cost_amount')}; staff void {svoid.status_code}, adjust {sadj.status_code}")
 
     header("SC11  reports and the stock screen read what was stored")
-    today = datetime.now(timezone.utc).date().isoformat()
-    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    # The report's range is in SHOP days (UTC+7, BRIEFING section 7). A UTC date here asked for the wrong days for the
+    # seven hours a day the two calendars differ (17:00-24:00 UTC): gate _prove_all/20261025T191356Z ran at 19:14 UTC,
+    # every sale fell on shop day 26 Oct, and this cell asked for 24-25 Oct -> 0 bills, red. Same derivation as SC14.5.
+    shop_today = (datetime.now(timezone.utc) + timedelta(hours=7)).date()
+    today = shop_today.isoformat()
+    yesterday = (shop_today - timedelta(days=1)).isoformat()
     rep = await fx.call("GET", f"/reports/sales?from_date={yesterday}&to_date={today}&by=product")
     sums = await db.fetchrow(
         "SELECT sum(i.amount)::text AS a, sum(i.cost_amount)::text AS c, (sum(i.amount) - sum(i.cost_amount))::text AS g"
