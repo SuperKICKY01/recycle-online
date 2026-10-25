@@ -739,6 +739,32 @@ what already exists; that cost a full day on 2026-08-12, and the diagnosis is at
   (6) **The phone reads the cached money rules at any age;** absent rules mean the pre-0027 rule (`DEFAULT_MONEY_RULES`).
   (7) **The branch rounding override has a route and no screen** (`PATCH /branches/{id}` `rounding_rule`).
 
+- **M2 (2026-10-26) — FOUND AND LEFT, one line each (lane A; `b1b8846` … `2ffaa2f`).**
+  (1) **The phone's product cache holds no sell price,** so the phone's sale line starts with the price empty and the yard
+  types it; the desktop form defaults it from `products.sell_price`. Needs a cached column and the refresh to carry it.
+  (2) **`verify_backup.py`'s SOURCE_REVISION check fails on every `backup_db` dump** (the three pre-migration dev backups
+  of 0028/0029/0030); each dump's revision was read from its own `alembic_version` COPY block instead. A tool gap.
+  (3) **A dev-build LogBox toast ("Open debugger to view warnings") after a live font change** on the walk; Metro's log
+  and `logcat -s ReactNativeJS:W/E` both carried no app warning, so its source is UNMEASURED.
+  (4) **`prove:sheets`' docstring list of reachable stacks omits the counter, notices and settings stacks** (drift
+  predating M2); `EXPECTED_REACHABLE` is the authority and is complete.
+  (5) **`build_all_lessons.py` counts only `## AMENDED`/`## Amendment`;** two lessons carry `## Amended …` headings it does
+  not count (`concurrency-tests-need-a-barrier.md`; `correct-classification-can-still-render-as-an-error.md`, its
+  2026-10-12 entry).
+  (6) **A phone sale parked on `insufficient_stock` (shop set `negative_stock` = refuse) retries on the slow cadence for
+  ever;** the list says `รอสต็อก …` but nothing escalates to the owner, and the money may already have been taken.
+  (7) **`SaleCreate.device_created_at` is unbounded** (red team, NOT traced): a sale stamped far in the future would be
+  flagged `late_purchase` by every later purchase of that product. No money moves; the flag table can fill.
+  (8) **Two concurrent purchase voids sharing two products in opposite `line_no` order may deadlock** (red team, NOT
+  traced: `bills.py` orders the advisory locks per bill); the loser would 500 and be retried by the client.
+  (9) **`lock_product` builds its key from `current_setting('app.tenant_id', true)`;** with no tenant set the key is NULL
+  and NO lock is taken, silently. Unreachable through a route (`tenant_connection` always sets it); a fail-open.
+  (10) **The stock screens label the unit cost `ราคาเฉลี่ย`** (average), but since `8388875` it is the cost the next sale
+  is charged, which is the newest purchase's when `cost_basis` = `last_purchase`.
+  (11) **No deduction on a sale line, on either client** (the forms offer none; the server accepts one).
+  (12) **The phone's `บิลล่าสุด` strip showed a purchase (`B-2569-1`, `ส่งแล้ว`) synced to an EARLIER walk's server**
+  under the walk's new owner; the walk server's log has no `POST /bills`. Pre-existing local state, not M2; observed.
+
 - **D2, SQLite `secure_delete` ON THE PHONE — DECIDED (ADVISOR-DECIDED 2026-10-23): verify on the emulator in the next
   walk, and record the result here.** H3 (`5241e50`) sets `PRAGMA secure_delete = ON` and checkpoints the WAL after a
   seller settles; that a dropped ID's bytes then leave the file is MEASURED ON node:sqlite ONLY (`prove:sellerid` S6).

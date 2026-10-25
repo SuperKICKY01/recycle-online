@@ -299,6 +299,42 @@ anchor next pass.
   `5465ac0` states the basis rule in the cell (green twice; weight default mutated to "price" reddened exactly that
   cell, file restored byte-identical). Residuals in `OPEN_ITEMS.md` under "M1 (2026-10-24)". Lesson:
   `lessons/a-destructive-step-waits-on-its-backups-own-success.md`.
+- **R1–R3 AND M2 — RULINGS; BUYERS, SELL BILLS, MONEY IN, THE STOCK LEDGER, COST, GROSS PROFIT (ADVISOR-DECIDED
+  2026-10-25), 2026-10-26.** Eleven commits on lane-a, `b1b8846` … `2ffaa2f`.
+  **Rulings** (`b1b8846`, `415071b`; migration 0028): `separate_cashier`, `shifts_enabled` and the payment methods are
+  OWNER-only (kind `payment` in the catalogue); a piece- or lump-priced product needs a counting unit (`uoms.kind`; 422
+  `unit_not_counting`; owner list `GET /products/unit-mismatches`; nothing auto-changed); a line off the rule in force at
+  its `device_created_at` is accepted and flagged (`owner_flags` `off_rule`). `prove_rulings` 21 cells.
+  **Schema** (`783f442`, `37f8319`; migrations 0029, 0030): buyers (no ID-card column), sell bills with their own
+  `S-<prefix>-<BE year>-<seq>`, lines carrying `cost_per_unit`/`cost_amount`, receipts and allocations, the append-only
+  `stock_movements` ledger (purchase backfill marked `recorded_by_migration`), `tenants.negative_stock` (default allow),
+  `products.sell_price`, six permissions mirrored. Dev migrated after verified backups `recycle_20261025T065055Z_pre-0028`,
+  `…T071406Z_pre-0029`, `…T093526Z_pre-0030`; dev at `0030 (head)`. 0030 closed a ledger gap the schema-first split left in
+  dev (lesson `a-derived-table-lands-with-every-writer.md`).
+  **Server** (`f0d03a9`): `POST/GET /sales`, void (a compensating movement, nothing deleted), `POST /sale-receipts`
+  (partial payment, ค้างรับ), buyers, `GET /stock`, `GET /stock/movements`, `POST /stock/adjustments` (reason required),
+  weighted-average cost stored on each line and never re-costed (a late purchase flags `late_purchase`), negative stock
+  allow (flagged) / refuse (409), `GET /reports/sales` (`gross_profit`, never `profit`). Golden sale vectors S1–S6 run
+  in BOTH suites (43 vectors each); `golden/stock_cost_vectors.json` (7 cases).
+  **Gate 3** (`_prove_all/20261025T095430Z`) RED 4, three causes, fixed at `f8212cb`: 0029's downgrade guard counted
+  `NOT recorded_by_migration` and refused after any app-written purchase (now by kind; `prove_m2_schema` D0–D3).
+  **Desktop** (`371bde8`): sale form quoted by `POST /sales/quote` and declaring the shop's rounding rule, list, receipt,
+  void, slip (no cost on paper); buyers; stock with adjustments; reports ขายและกำไรขั้นต้น with Excel, one sheet per
+  category. `prove:sales` 17, `prove:salesflow` 9. **Gate 4** (`_prove_all/20261025T140212Z`, launched 13.85 GB free,
+  low 11.45): PROVE_ALL_EXIT=0, 127, RED 0.
+  **Red team** on the server diff (nemesis, given the diff and not the argument): six findings, all re-measured, fixed
+  at `8388875` with `prove_sales` SC14 and seven disproofs — an unknown cost now flagged whatever the arm; refuse
+  proven from a positive balance; one cost rule on the stock screen; `/reports/sales` one snapshot and the fixed
+  offset; `total_value` the whole ledger. The opening-stock cost is the owner's (`OPEN_ITEMS.md § Decisions open`).
+  **Phone** (`e4077ab`, `2ffaa2f`): ขายสินค้า, offline-first through a fourth outbox kind `sale_send` (required store and
+  transport; registered last; `head_blocks`; 409 `insufficient_stock` parks), `local_sales`, `cached_buyers`.
+  `prove:salesend` 12 cells, three disproofs. **Walk** (emulator, fresh `recycle_walk_a`, per-run owner, shop code
+  `5K8D3PAA`; shots `E:\recycle-shots\lane-a\sell`, 1.0 and 1.3): two sales saved OFFLINE and sent by the outbox when
+  the network returned — S-B-2569-1 C001 1052.40 and S-B-2569-2 C002 950.95 / 500.00 / 450.95, read back over HTTP,
+  equal to the hand figures. It found the save notice and the list stating "not sent" over a synced row; fixed at
+  `2ffaa2f`, shown live. Lessons (git, `3a5bf75..2ffaa2f`): two new (`a-derived-table-lands-with-every-writer.md`,
+  `a-money-figure-reads-its-authority.md`) and six amended, the first new one among them. Residuals:
+  `OPEN_ITEMS.md` "M2 (2026-10-26)".
 - **THE `lane-a` BRANCH IS ON GITHUB** (pushed 2026-10-19 alongside main; ADVISOR-DECIDED: leave it). It mirrors work
   already on main — every lane-a commit is fast-forwarded to main after its green gate — and holds nothing main lacks
   at each merge.
@@ -4289,6 +4325,13 @@ structural design on 2026-09-03 ("เอาหมด"), and its section 3 is exa
 per-action permission model, built as migration 0019 (`§ Current phase`). The
 word stays in the list above because the list is quoted verbatim from its
 source; the permission model is IN the product now. The rest of the list stands.
+
+**Superseded 2026-10-26 for "sell flow, stock, buyers, Excel export, reports":** M2
+(ADVISOR-DECIDED 2026-10-25; `§ Current phase`, "R1–R3 AND M2") built buyers, sell
+bills on the phone and the desktop, the stock ledger with weighted-average cost,
+and the sales and stock reports with Excel export. The words stay above for the
+reason the permission note gives. Still out: other income/expense (M3),
+employee master, profile images, QR codes, scale integration.
 
 **In the product, not yet started**: the entire `desktop/` back
 office — master-data editing, bill viewing, ESC/POS thermal slips
