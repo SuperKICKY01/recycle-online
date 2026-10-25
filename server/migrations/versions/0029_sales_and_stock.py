@@ -492,9 +492,14 @@ def downgrade() -> None:
     bind = op.get_bind()
     for t in (*_LIFTED, *_NEW):
         op.execute(f"ALTER TABLE {t} NO FORCE ROW LEVEL SECURITY")
+    # A movement is held by what it IS, not by who wrote it: a purchase movement and its reversal are DERIVED from
+    # the purchase lines (upgrade() rebuilds them column for column -- quantity, amount, the bill's received/voided
+    # time), whether this migration's backfill or POST /bills wrote them. Only a sale, its reversal or an
+    # adjustment is a record nothing else holds. (Counting `NOT recorded_by_migration` refused the first downgrade
+    # after any purchase -- gate _prove_all/20261025T095430Z, prove_drawer T23-2.)
     held = bind.exec_driver_sql(
         "SELECT (SELECT count(*) FROM buyers), (SELECT count(*) FROM sale_bills), (SELECT count(*) FROM sale_receipts),"
-        " (SELECT count(*) FROM stock_movements WHERE NOT recorded_by_migration),"
+        " (SELECT count(*) FROM stock_movements WHERE kind NOT IN ('purchase', 'void_purchase')),"
         " (SELECT count(*) FROM owner_flags WHERE kind <> 'off_rule' OR sale_item_id IS NOT NULL),"
         " (SELECT count(*) FROM tenants WHERE negative_stock <> 'allow'),"
         " (SELECT count(*) FROM products WHERE sell_price IS NOT NULL)"
@@ -504,7 +509,7 @@ def downgrade() -> None:
             op.execute(f"ALTER TABLE {t} FORCE ROW LEVEL SECURITY")
         raise RuntimeError(
             "REFUSING to downgrade 0029: it would destroy sale records, stock movements or a shop's declaration --"
-            f" buyers={held[0]}, sale bills={held[1]}, receipts={held[2]}, movements recorded by the app={held[3]},"
+            f" buyers={held[0]}, sale bills={held[1]}, receipts={held[2]}, sale/adjustment movements={held[3]},"
             f" sale/stock flags={held[4]}, tenants with a negative-stock rule={held[5]}, products with a sell price={held[6]}."
             " Nothing is changed."
         )

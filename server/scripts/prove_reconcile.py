@@ -664,6 +664,14 @@ def build(fx: Fx) -> list[Injection]:
                  f" VALUES ({', '.join(f'${i + 1}' for i in range(len(m)))})", tuple(m.values()))
                 for m in fx.mid_moves]
     alloc_off, alloc_on = cap_off(fx, "payment_allocations", "allocation_cap_on_allocation")
+    # 0029: the ledger is a THIRD copy of a line's amount (its purchase movement's value; L1 checks they agree).
+    # T2 moves every downstream copy with the line -- the bill total, and this -- so ONLY the arithmetic check
+    # sees the drift. mid is active, so it has no reversal to move. Empty below 0029: nothing to move.
+    mid_purchase = next((m for m in fx.mid_moves if m["kind"] == "purchase"), None)
+    t2_move_on = ([("UPDATE stock_movements SET value = value + 0.01 WHERE id = $1", (mid_purchase["id"],))]
+                  if mid_purchase is not None else [])
+    t2_move_off = ([("UPDATE stock_movements SET value = $2 WHERE id = $1", (mid_purchase["id"], mid_purchase["value"]))]
+                   if mid_purchase is not None else [])
     injs = [
         Injection(
             "T1", "a bill's stored total no longer equals its lines — the one"
@@ -681,11 +689,11 @@ def build(fx: Fx) -> list[Injection]:
             apply=[("UPDATE purchase_bill_items SET amount = amount + 0.01 WHERE id = $1",
                     (item["id"],)),
                    ("UPDATE purchase_bills SET total_amount = total_amount + 0.01"
-                    " WHERE id = $1", (mid["id"],))],
+                    " WHERE id = $1", (mid["id"],)), *t2_move_on],
             undo=[("UPDATE purchase_bill_items SET amount = $2 WHERE id = $1",
                    (item["id"], item["amount"])),
                   ("UPDATE purchase_bills SET total_amount = $2 WHERE id = $1",
-                   (mid["id"], mid["total_amount"]))],
+                   (mid["id"], mid["total_amount"])), *t2_move_off],
             expect={"T2": 1},
             expect_rows=[f"doc_no={mid['doc_no']}",
                          f"stored_amount={item['amount'] + Decimal('0.01')}",

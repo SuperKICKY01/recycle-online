@@ -24,6 +24,11 @@ stores, never what a route says.
   K7  a sale doc_no in the purchase shape (B-2569-1) -> ck_sale_bills_doc_no
   K8  a receipt of 0.00 -> ck_sale_receipts_amount
   K9  CONTROL: a well-formed sale bill, line, movement and receipt in one transaction are ACCEPTED.
+  D0  precondition: the copy holds nothing else 0029's downgrade guard counts (sales, buyers, adjustments, ...).
+  D1  an adjustment (a movement only the app holds) -> `downgrade 0028` REFUSES, head unchanged, FORCE kept.
+  D2  a purchase movement written by the app (recorded_by_migration = false) -> `downgrade 0028` PROCEEDS: a
+      purchase movement is derived from its line, whoever wrote it (gate _prove_all/20261025T095430Z refused here).
+  D3  `upgrade head` rebuilds it: one equal purchase movement per purchase line again.
 
 DISPROOFS: --break ck_sale_items_cost | ck_sale_items_amount | ck_sale_items_net | ck_sale_bills_doc_no |
            ck_sale_receipts_amount   (its K cell must redden; the control K9 stays green)
@@ -210,6 +215,54 @@ async def main() -> int:
             check(got == want, f"{cell} refused by {want}: got {got}{note}")
         got = await attempt([mk_buyer, mk_bill(), mk_line(), mk_move(), mk_receipt()])
         check(got == "ACCEPTED", f"K9 CONTROL a well-formed sale, line, movement and receipt: {got}")
+
+        print("\n== D  0029's downgrade holds what only the app records, and lets go of what upgrade() rebuilds ==")
+        def alembic(*a: str) -> subprocess.CompletedProcess:
+            return subprocess.run([sys.executable, "-m", "alembic", *a], cwd=SERVER_DIR, env=env, capture_output=True)
+        force_q = "SELECT relforcerowsecurity FROM pg_class WHERE oid = 'stock_movements'::regclass"
+        equal_q = ("SELECT count(*) FROM stock_movements m JOIN purchase_bill_items i ON i.id = m.purchase_item_id"
+                   " WHERE m.kind = 'purchase' AND m.quantity = coalesce(i.quantity, i.net_weight) AND m.value = i.amount")
+        others = await c.fetchrow(
+            "SELECT (SELECT count(*) FROM buyers) AS buyers, (SELECT count(*) FROM sale_bills) AS sales,"
+            " (SELECT count(*) FROM sale_receipts) AS receipts,"
+            " (SELECT count(*) FROM stock_movements WHERE kind NOT IN ('purchase', 'void_purchase')) AS app_only,"
+            " (SELECT count(*) FROM owner_flags WHERE kind <> 'off_rule' OR sale_item_id IS NOT NULL) AS flags,"
+            " (SELECT count(*) FROM tenants WHERE negative_stock <> 'allow') AS refusing,"
+            " (SELECT count(*) FROM products WHERE sell_price IS NOT NULL) AS priced")
+        check(not any(others.values()),
+              f"D0 precondition: the copy holds nothing else the guard counts, so D1/D2 move on ONE planted row ({dict(others)})")
+        # D1: a movement only the app holds -- an adjustment -- and the downgrade refuses, changing nothing.
+        adj_key = f"adj-d1-{uuid.uuid4()}"
+        await c.execute("INSERT INTO stock_movements (tenant_id, branch_id, product_id, kind, quantity, value, reason, created_by,"
+                        " idempotency_key, device_created_at) VALUES ($1, $2, $3, 'adjust', 1.000, 0, 'นับสต็อก D1', $4, $5, now())",
+                        tid, br, prod, user, adj_key)
+        d1 = alembic("downgrade", "0028")
+        d1_rev = await c.fetchval("SELECT version_num FROM alembic_version")
+        d1_err = d1.stderr.decode("utf-8", "replace")
+        check(d1.returncode != 0 and d1_rev == rev and "sale/adjustment movements=1" in d1_err and await c.fetchval(force_q),
+              f"D1 an app adjustment holds the downgrade: exit {d1.returncode}, head {d1_rev}, refusal names it"
+              f" {'sale/adjustment movements=1' in d1_err}, FORCE kept")
+        if d1_rev != rev:
+            # The guard let it through (D1 is red): put the copy back at head so D2/D3 still read something.
+            alembic("upgrade", "head")
+        else:
+            await c.execute("DELETE FROM stock_movements WHERE idempotency_key = $1", adj_key)   # this scratch only
+        # D2: a purchase movement the APP wrote (recorded_by_migration = false, as POST /bills writes it) does NOT hold
+        # the downgrade -- upgrade() rebuilds it -- and D3 shows the rebuild, line for line.
+        lines = await c.fetchval("SELECT count(*) FROM purchase_bill_items")
+        app_written = await c.fetchval("UPDATE stock_movements SET recorded_by_migration = false WHERE id ="
+                                       " (SELECT id FROM stock_movements WHERE kind = 'purchase' LIMIT 1) RETURNING id")
+        d2 = alembic("downgrade", "0028")
+        d2_rev = await c.fetchval("SELECT version_num FROM alembic_version")
+        gone = await c.fetchval("SELECT to_regclass('public.stock_movements') IS NULL")
+        check(app_written is not None and d2.returncode == 0 and d2_rev == "0028" and gone,
+              f"D2 an app-written purchase movement does not hold it: exit {d2.returncode}, head {d2_rev}, ledger dropped {gone}"
+              + ("" if d2.returncode == 0 else f" -- {d2.stderr.decode('utf-8', 'replace')[-300:]}"))
+        d3 = alembic("upgrade", "head")
+        d3_rev = await c.fetchval("SELECT version_num FROM alembic_version")
+        rebuilt = await c.fetchval(equal_q) if d3.returncode == 0 else -1
+        check(d3.returncode == 0 and d3_rev == rev and rebuilt == lines,
+              f"D3 upgrade() rebuilds it: exit {d3.returncode}, head {d3_rev}, equal purchase movements {rebuilt}/{lines}")
     finally:
         await c.close()
     print(f"\n  passes={len(passes)}  failures={len(failures)}")

@@ -23,3 +23,19 @@ change in this commit.
 
 The same split also put a checker ahead of its writer (S1 in reconcile.py reddened two proofs the same day); the
 checker moved to the writer's commit. A checker of a derivation lands with the derivation, never before it.
+
+## AMENDED (2026-10-25) -- a guard over a derived table names the PROPERTY, not the writer
+
+0029's downgrade refuses when it would destroy what nothing else holds. It counted "movements recorded by the app"
+(`NOT recorded_by_migration`): it told derived from held by WHO wrote the row. That stood while the migration was
+the only writer of purchase movements. The next commit taught `POST /bills` to write the SAME derived row -- and
+from then on one purchase made every downgrade below 0029 impossible: gate `_prove_all/20261025T095430Z` reddened
+prove_drawer and prove_seller_personal on it, and the dev dump of that morning already held 74 such rows (dev
+itself could no longer be rolled back). No proof had ever driven the guard either way, so nothing saw it.
+
+The rule: a guard (or checker) over a derived table classifies a row by what it IS -- here its `kind`: a purchase
+movement or its reversal is rebuilt by `upgrade()` whoever wrote it; a sale, its reversal or an adjustment is held
+-- never by which writer produced it. A writer flag answers "who", and the next writer changes the answer without
+changing the row. And a refusal guard gets a cell that makes it refuse AND one that makes it proceed
+(`prove_m2_schema` D1 refuses, D2 proceeds -- each made to redden by a mutation of the guard, D3 the rebuild): a
+guard never seen both ways is a guard nobody observed.

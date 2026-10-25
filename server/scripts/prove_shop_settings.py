@@ -275,10 +275,14 @@ async def main() -> int:
             # WIDENED 2026-10-24 (migration 0027): the shop's three money rules,
             # which name no person either; their owner-only write is proven in
             # prove_money_rules.py, not here.
+            # WIDENED 2026-10-25 (migration 0029, M2): `negative_stock`, the shop's
+            # allow/refuse declaration for selling below zero -- a shop setting that
+            # names no person; its write is proven in prove_sales.py, not here.
             check(
                 set(body) == {"id", "name", "default_grade", "address", "phone",
                               "branch", "branch_count", "deduction_mode",
-                              "deduction_reason_required", "rounding_rule"},
+                              "deduction_reason_required", "rounding_rule",
+                              "negative_stock"},
                 f"E1: body keys are exactly the shop's and none names a person "
                 f"(keys={sorted(body)})",
             )

@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 46 across 24 files, counted from the source headings and
+**Amendments:** 47 across 25 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -43,7 +43,7 @@ line instead of by heading depth.
 - `a-control-must-contain-what-fooled-you.md` *(1 amendment)* -- A control must contain the thing that fools the counter
 - `a-default-exit-code-is-a-default-verdict.md` *(1 amendment)* -- A default exit code is a default verdict
 - `a-defaulted-getattr-is-a-silent-dead-branch.md` *(1 amendment)* -- A defaulted `getattr` is a silent dead branch
-- `a-derived-table-lands-with-every-writer.md` -- A table derived from other rows lands in the same commit as every writer that keeps it derived
+- `a-derived-table-lands-with-every-writer.md` *(1 amendment)* -- A table derived from other rows lands in the same commit as every writer that keeps it derived
 - `a-destructive-step-waits-on-its-backups-own-success.md` -- A destructive step waits on its backup's own success
 - `a-differential-control-is-only-as-good-as-its-weaker-side.md` *(1 amendment)* -- A differential control is only as good as its weaker side
 - `a-disproof-that-opens-a-gate-must-still-parse.md` -- A disproof that opens a gate must still produce a body that parses
@@ -2859,6 +2859,22 @@ change in this commit.
 
 The same split also put a checker ahead of its writer (S1 in reconcile.py reddened two proofs the same day); the
 checker moved to the writer's commit. A checker of a derivation lands with the derivation, never before it.
+
+## AMENDED (2026-10-25) -- a guard over a derived table names the PROPERTY, not the writer
+
+0029's downgrade refuses when it would destroy what nothing else holds. It counted "movements recorded by the app"
+(`NOT recorded_by_migration`): it told derived from held by WHO wrote the row. That stood while the migration was
+the only writer of purchase movements. The next commit taught `POST /bills` to write the SAME derived row -- and
+from then on one purchase made every downgrade below 0029 impossible: gate `_prove_all/20261025T095430Z` reddened
+prove_drawer and prove_seller_personal on it, and the dev dump of that morning already held 74 such rows (dev
+itself could no longer be rolled back). No proof had ever driven the guard either way, so nothing saw it.
+
+The rule: a guard (or checker) over a derived table classifies a row by what it IS -- here its `kind`: a purchase
+movement or its reversal is rebuilt by `upgrade()` whoever wrote it; a sale, its reversal or an adjustment is held
+-- never by which writer produced it. A writer flag answers "who", and the next writer changes the answer without
+changing the row. And a refusal guard gets a cell that makes it refuse AND one that makes it proceed
+(`prove_m2_schema` D1 refuses, D2 proceeds -- each made to redden by a mutation of the guard, D3 the rebuild): a
+guard never seen both ways is a guard nobody observed.
 
 ---
 
