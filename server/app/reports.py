@@ -1018,8 +1018,12 @@ async def summary_report(
 # STORED cost_amount -- never re-derived from today's ledger (hard rule 6: a purchase that syncs late does not
 # move a sale already costed). gross_profit = amount - cost. It is named gross_profit (กำไรขั้นต้น in every
 # client) and NEVER `profit`: net profit needs expenses, which arrive with M3.
+# The day bucket is the fixed shop offset (_SHOP_OFFSET_SECONDS, from config.SHOP_TIMEZONE), exactly as the purchase
+# report's _DAY_BUCKET -- never a named zone, which would make Postgres's tz database a second authority beside the
+# _day_window this route bounds its range with (red team 2026-10-25, finding 5; BRIEFING section 7).
+_SALE_DAY = "(s.server_received_at AT TIME ZONE make_interval(secs => :shop_offset_secs))::date::text"
 _SALES_GROUPS = {
-    "day": ("(s.server_received_at AT TIME ZONE :tz)::date::text", "(s.server_received_at AT TIME ZONE :tz)::date::text"),
+    "day": (_SALE_DAY, _SALE_DAY),
     "product": ("i.product_id::text", "max(p.code) || ' ' || max(p.name)"),
     "buyer": ("s.buyer_id::text", "max(b.code) || ' ' || max(b.name)"),
 }
@@ -1039,7 +1043,8 @@ async def sales_report(
         raise _invalid("range_reversed", "วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น")
     key, label = _SALES_GROUPS[by]
     where = ["s.voided_at IS NULL", "s.server_received_at >= :f", "s.server_received_at < :t"]
-    params: dict[str, Any] = {"f": _day_window(from_date)[0], "t": _day_window(to_date)[1], "tz": SHOP_TIMEZONE_NAME}
+    params: dict[str, Any] = {"f": _day_window(from_date)[0], "t": _day_window(to_date)[1],
+                              "shop_offset_secs": _SHOP_OFFSET_SECONDS}
     for col, val, name in (("p.category_id", category_id, "cat"), ("i.product_id", product_id, "prod"),
                            ("s.buyer_id", buyer_id, "buyer")):
         if val is not None:
@@ -1047,7 +1052,9 @@ async def sales_report(
             params[name] = val
     base = (" FROM sale_bill_items i JOIN sale_bills s ON s.id = i.bill_id JOIN products p ON p.id = i.product_id"
             " JOIN buyers b ON b.id = s.buyer_id WHERE " + " AND ".join(where))
-    async with tenant_connection(principal.tenant_id) as conn:
+    # Rows and totals are TWO reads an owner compares: one snapshot, as the daily and summary routes (finding 3;
+    # lessons/a-report-is-many-reads-that-must-agree.md).
+    async with tenant_connection(principal.tenant_id, isolation_level="REPEATABLE READ") as conn:
         rows = (await conn.execute(text(
             f"SELECT {key} AS key, {label} AS label, count(DISTINCT s.id) AS bills, sum(i.amount) AS amount,"
             f" sum(i.cost_amount) AS cost, max(i.unit_code) AS unit_code, count(DISTINCT i.unit_code) AS units,"

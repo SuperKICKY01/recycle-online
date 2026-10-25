@@ -288,7 +288,11 @@ async def create_sale(body: SaleCreate, response: Response,
                 if cost.balance_after < 0:
                     await flag(conn, "negative_stock", branch.id, movement_id=mid, sale_item_id=it.id,
                                balance_after=cost.balance_after)
-                if cost.basis == "none":
+                # A cost of 0.0000 is an UNKNOWN cost whichever arm produced it: never bought (basis none), or an
+                # average over stock that entered at no value (an adjustment of a never-bought product is valued
+                # 0.00, so the average arm answers 0 -- red team 2026-10-25, finding 1). Either way the stored
+                # gross profit is the whole amount, and the owner must be told.
+                if cost.cost_per_unit == 0:
                     await flag(conn, "no_cost", branch.id, sale_item_id=it.id)
                 await flag_if_off_rule(conn, branch_id=branch.id, product_id=it.product_id, item_column="sale_item_id",
                                        item_id=it.id, rounding_rule=it.rounding_rule or DEFAULT_ROUNDING_RULE,

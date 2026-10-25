@@ -60,3 +60,17 @@ not know" into a confident wrong answer. See also
 [[unavailable-is-not-rejected]] for why the refusal here is 424 (parks, still
 owed) and not 422 (terminal) — that classification is what makes fail-blank
 survivable instead of stranding a load already tipped onto the pile.
+
+## AMENDED (M2, 2026-10-25) -- the flag that names a default must be keyed to the VALUE, not to the arm
+
+Where a default cannot be avoided, it is made honest by a flag. The sale cost rule (`app/stock_cost.py`) answers
+0.0000 for a product never bought (arm `none`), and the sale was flagged `no_cost` -- ON THAT ARM. But stock can
+also enter at 0.00 by a counted adjustment of a never-bought product (the adjustment is valued at the product's
+current cost, which is that same invented 0); the next sale then takes the AVERAGE arm over a ledger worth 0.00 and
+answers 0.0000 again, unflagged, storing a gross profit equal to the whole sale -- for ever, since a sale line is
+never re-costed (hard rule 6). The red team found it by asking which other path produces the invented value.
+
+The rule: a flag (or a refusal) for an invented value tests the VALUE (`cost_per_unit == 0`), never the branch that
+happened to produce it first; ask what else can produce that value. The fix flags it whatever the arm (`prove_sales`
+SC14.1, disproved by restoring the arm test). What a cost for such stock SHOULD be is the owner's decision, not a
+default -- `OPEN_ITEMS.md § Decisions open`, "WHAT DOES STOCK THAT ENTERED WITHOUT A PURCHASE COST?".

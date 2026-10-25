@@ -12,11 +12,11 @@ lesson file; anything written here is destroyed by the next run.
 byte for byte, with line endings normalised to LF on both sides first. It exits
 1 on any difference. That is how a lesson edited without regenerating is caught.
 
-**Sources:** 78 lesson files, `lessons/*.md`, ASCII filename order.
+**Sources:** 79 lesson files, `lessons/*.md`, ASCII filename order.
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 47 across 25 files, counted from the source headings and
+**Amendments:** 50 across 27 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -51,13 +51,14 @@ line instead of by heading depth.
 - `a-fail-closed-trigger-conscripts-every-writer-of-its-table.md` *(1 amendment)* -- A trigger that REFUSES a write without new context conscripts every writer of that table
 - `a-gate-that-matches-a-keyword-misses-its-aliases.md` -- A gate that matches a keyword misses the engine's aliases for it
 - `a-grant-boundary-belongs-to-a-database-not-a-role.md` -- A grant boundary belongs to a DATABASE, not to a role
-- `a-green-cell-is-evidence-about-the-assertion-not-the-claim.md` *(2 amendments)* -- A green cell is evidence about the assertion, not about the claim
+- `a-green-cell-is-evidence-about-the-assertion-not-the-claim.md` *(3 amendments)* -- A green cell is evidence about the assertion, not about the claim
 - `a-guard-on-loan-from-the-route-table.md` -- A guard on loan from the route table
 - `a-label-is-a-reference-with-no-checker.md` -- A label is a reference, and nothing in this repository checks one
 - `a-lock-is-proven-by-what-waits-not-by-a-race.md` *(1 amendment)* -- A lock is proven by what waits, not by a race
 - `a-lockfile-not-node-modules-is-what-a-clone-installs.md` -- A green suite runs against the node_modules you HAVE, not the lockfile a clone installs from
 - `a-migration-reads-zero-under-force-rls.md` -- A migration reading tenant data sees zero rows under FORCE RLS
 - `a-migration-stack-is-a-log-not-a-schema.md` -- A migration stack is a log, not a schema
+- `a-money-figure-reads-its-authority.md` -- A money figure on a screen reads the authority that owns it, never a nearby copy
 - `a-mutation-on-a-protected-write-path-needs-a-scratch-database.md` -- A mutation on a protected write path needs a scratch database
 - `a-narrowing-type-is-not-a-barrier-to-the-object.md` -- A narrowing type stops the FIELD being named, not the OBJECT being passed
 - `a-new-required-field-refuses-every-queued-payload.md` -- A new required field on a write route refuses every payload already queued offline
@@ -77,7 +78,7 @@ line instead of by heading depth.
 - `a-stored-future-instant-is-a-promise-about-a-clock.md` -- A stored future instant is a promise about a clock you do not control
 - `a-sum-over-nothing-has-no-scale.md` -- A sum over nothing has no scale
 - `a-value-comparison-cannot-prove-a-path.md` *(1 amendment)* -- A value comparison cannot prove a PATH
-- `a-warning-in-one-file-does-not-protect-the-next.md` -- A warning written in one file does not protect the file beside it
+- `a-warning-in-one-file-does-not-protect-the-next.md` *(1 amendment)* -- A warning written in one file does not protect the file beside it
 - `an-answer-belongs-to-the-question-that-asked.md` *(1 amendment)* -- An answer belongs to the question that asked it
 - `an-error-is-one-branch-not-the-defects-shape.md` -- An error you observed is one branch, not the defect's shape
 - `be-year-comes-after-the-timezone.md` *(2 amendments)* -- The BE year comes AFTER the timezone conversion — and an ISO-shaped BE date is a trap
@@ -91,7 +92,7 @@ line instead of by heading depth.
 - `diagnosis-must-precede-the-fix.md` -- Diagnose before you fix: read the real error and the real files first
 - `doc-no-is-arrival-order-not-event-time.md` -- doc_no is arrival order; device clocks are wrong. Report on server time.
 - `edge-must-reject-what-the-column-rounds.md` -- Postgres ROUNDS to the column scale — so the edge must reject, or you ship a queue jam
-- `fallback-default-is-a-wrong-number.md` -- A fallback default the server will refuse is a wrong number, not a convenience
+- `fallback-default-is-a-wrong-number.md` *(1 amendment)* -- A fallback default the server will refuse is a wrong number, not a convenience
 - `login-resolves-under-tenant.md` -- Login resolves the user INSIDE tenant context
 - `metro-file-map-nesting.md` -- When a resolver says a file is missing, ask the resolver — not the OS
 - `nulling-a-column-does-not-erase-it-from-the-file.md` -- Nulling a column does not erase it from the file
@@ -3889,6 +3890,21 @@ nothing more. Name in the cell's own text WHICH claim it carries, and when two
 cells can both go green for different reasons, keep both — the pair is the
 evidence, not either half.
 
+## AMENDED (M2, 2026-10-25) -- a refusal observed only from a state where its condition ALREADY held
+
+`prove_sales` SC7 claimed "negative_stock=refuse refuses a sale that would overdraw". It sold 200.000 against a
+10.000 balance under `allow` (balance -190.000), THEN set `refuse` and sold 1.000 more: 409. Every conjunct was
+true -- and equally true for the wrong guard `ledger.quantity < 0` ("refuse any sale of an already-overdrawn
+product"), under which a refuse-shop sells 200 against 10 and is accepted. The red team named the mutation; run
+against SC7 it stayed green. The fixture's already-negative balance filled the gap between the assertion (a 409)
+and the claim (an OVERDRAW is refused). The cell that carries the claim starts from a POSITIVE balance and asks
+both ways: 20.000 against 10.000 refused, 5.000 accepted (SC14.2) -- and the same mutation reddens it while SC7
+stays green, which is the measurement.
+
+The same day's smaller instance, on the author's own docstring: SC11 was described as "by product and by day" and
+ran by=product only; the by=day query -- whose SQL the next fix changed -- had never had a figure checked. A
+docstring listing what a cell covers is a claim about the cell: grep the cell for each thing it lists.
+
 ---
 
 **SOURCE:** `a-guard-on-loan-from-the-route-table.md`
@@ -4477,6 +4493,50 @@ opposite directions, and neither rule implies the other. Also a sibling of
 `a-docstring-that-states-a-filter-is-a-claim-about-its-caller.md` rather than of
 the never-went-red family: there is no instrument to be vacuous and no cell to
 be green, only a sentence that was true once and is not flagged when it turns.
+
+---
+
+**SOURCE:** `a-money-figure-reads-its-authority.md`
+
+# A money figure on a screen reads the authority that owns it, never a nearby copy
+
+**Rule.** When a route shows a money figure that a rule or a table already defines -- a unit cost the sale path
+charges, a stock value the ledger sums -- it CALLS that rule or READS that table over the domain the figure names.
+It does not re-derive the figure with arithmetic of its own, and it does not total the rows it happens to be
+drawing. A second derivation is a second authority, and two authorities disagree exactly where one of them has a
+guard the other lacks.
+
+## The two instances (M2, 2026-10-25, found by a red-team pass)
+
+**A second reader of the cost rule.** The sale path costs a line by `app/stock_cost.unit_cost`: the average
+(value / quantity) only while quantity > 0 AND value >= 0, else the newest purchase's unit cost. `GET /stock`
+showed an "average cost" computed in place as `value / quantity if quantity > 0` -- the same rule minus one guard.
+Reachable with the shop's default `negative_stock = allow`: buy 10 @ 1.00, sell 1000, buy 2000 @ 0.01 leaves
+quantity 1010.000 and value -970.00; the stock screen showed -0.9604 while the next sale was costed at 0.0100.
+Neither number was "wrong" by its own code; the owner was shown one and charged the other. The golden cost
+vectors had no case with quantity > 0 and value < 0, so deleting the guard from `unit_cost` itself was green too.
+
+**A total over the wrong domain.** `GET /stock`'s `total_value` summed the rows the route listed, and the route
+lists active products by default. Retiring a product that still held 1000.00 of goods lowered the branch's stock
+value by 1000.00 with nothing having moved, and `?include_inactive=true` returned a different total over the same
+ledger. The figure is named "the stock's value"; its domain is the ledger, not the page.
+
+## The fix and its proof
+
+`GET /stock` builds each product's `Ledger` (with the newest live purchase, one SQL fragment shared with the sale
+path's `read_ledger`) and calls `unit_cost`; it reports the arm as `cost_basis`. `total_value` is one SUM over the
+branch's movements in the same REPEATABLE READ snapshot as the rows. `prove_sales` SC14.4 drives the ledger above
+and requires the screen's unit cost to equal the next sale's cost; SC14.6 retires a product holding stock and
+requires the total unchanged and equal to the ledger's own sum; a golden vector pins `unit_cost`'s guard. Each
+was disproved by restoring the copy it replaced.
+
+## How to spot the next one
+
+For every money figure a route computes, ask: **does a module or a table already define this number?** If yes,
+the route calls it -- and a cell compares the route's figure with the authority's over a state where a guard
+matters (a negative value, a retired row, an empty set). For every total, ask **what domain does its NAME claim?**
+and sum that domain, whatever the list beside it shows. Related: [[a-checker-must-not-share-the-code-it-checks]]
+is the opposite bound -- a CHECKER must be independent of the code it checks; a PRODUCTION reader must not be.
 
 ---
 
@@ -6936,6 +6996,22 @@ anyway.
    author, with the warning in a sibling file. Any argument of the form "we wrote
    it down, so we will remember" has to survive that number.
 
+## AMENDED (M2, 2026-10-25) -- the SAME file, two notes, one new route ignored both
+
+`GET /reports/sales` was added to `server/app/reports.py`, the file that already carried both warnings in prose:
+"a report is many reads that must agree" (REPEATABLE READ, stated at the daily and summary routes) and "the day
+bucket is the fixed offset, never a named zone" (`_DAY_BUCKET`'s note: Postgres's zone database must not be a
+second authority). The new route opened its two reads at READ COMMITTED and bucketed its days `AT TIME ZONE
+'Asia/Bangkok'`. A red-team pass found both; the author had not -- the notes sat 50 and 300 lines above. The
+interval here is not "a sibling file": it is the next function down.
+
+AND THE CHECK THAT EXISTED COULD NOT HAVE CAUGHT IT. `prove_daily_report` R asserts that
+`tenant_connection(..., isolation_level="REPEATABLE READ")` yields `repeatable read` -- it proves the OPTION, so
+it stays green for any route that never passes the option. A guard against this class reads each ROUTE: the
+sales report's cell (`prove_sales` SC14.3) slices `sales_report`'s own source and requires the option there, with
+`summary_report` sliced the same way as the positive control; SC14.5 requires the fixed-offset expression and runs
+`by=day` for its figures. Each was disproved by reverting its fix.
+
 ---
 
 **SOURCE:** `an-answer-belongs-to-the-question-that-asked.md`
@@ -8843,6 +8919,20 @@ not know" into a confident wrong answer. See also
 [[unavailable-is-not-rejected]] for why the refusal here is 424 (parks, still
 owed) and not 422 (terminal) — that classification is what makes fail-blank
 survivable instead of stranding a load already tipped onto the pile.
+
+## AMENDED (M2, 2026-10-25) -- the flag that names a default must be keyed to the VALUE, not to the arm
+
+Where a default cannot be avoided, it is made honest by a flag. The sale cost rule (`app/stock_cost.py`) answers
+0.0000 for a product never bought (arm `none`), and the sale was flagged `no_cost` -- ON THAT ARM. But stock can
+also enter at 0.00 by a counted adjustment of a never-bought product (the adjustment is valued at the product's
+current cost, which is that same invented 0); the next sale then takes the AVERAGE arm over a ledger worth 0.00 and
+answers 0.0000 again, unflagged, storing a gross profit equal to the whole sale -- for ever, since a sale line is
+never re-costed (hard rule 6). The red team found it by asking which other path produces the invented value.
+
+The rule: a flag (or a refusal) for an invented value tests the VALUE (`cost_per_unit == 0`), never the branch that
+happened to produce it first; ask what else can produce that value. The fix flags it whatever the arm (`prove_sales`
+SC14.1, disproved by restoring the arm test). What a cost for such stock SHOULD be is the owner's decision, not a
+default -- `OPEN_ITEMS.md § Decisions open`, "WHAT DOES STOCK THAT ENTERED WITHOUT A PURCHASE COST?".
 
 ---
 

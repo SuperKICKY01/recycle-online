@@ -42,6 +42,15 @@
       ]
     },
     {
+      "name": "quantity back above zero with the value still negative: the average arm is closed (value >= 0), the newest purchase prices the line -- without that guard the average would read -970.00 / 1010.000 = -0.9604 (red team 2026-10-25, finding 4)",
+      "steps": [
+        {"op": "buy", "quantity": "10.000", "value": "10.00"},
+        {"op": "sell", "quantity": "1000.000", "expect": {"cost_per_unit": "1.0000", "cost_amount": "1000.00", "basis": "average", "balance_after": "-990.000"}},
+        {"op": "buy", "quantity": "2000.000", "value": "20.00"},
+        {"op": "sell", "quantity": "1.000", "expect": {"cost_per_unit": "0.0100", "cost_amount": "0.01", "basis": "last_purchase", "balance_after": "1009.000"}}
+      ]
+    },
+    {
       "name": "pieces: a whole count at an average of a lump of money",
       "steps": [
         {"op": "buy", "quantity": "3.000", "value": "100.00"},

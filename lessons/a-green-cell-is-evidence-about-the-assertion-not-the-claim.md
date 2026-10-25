@@ -252,3 +252,18 @@ An assertion is a sentence, and a green is evidence about that sentence and
 nothing more. Name in the cell's own text WHICH claim it carries, and when two
 cells can both go green for different reasons, keep both — the pair is the
 evidence, not either half.
+
+## AMENDED (M2, 2026-10-25) -- a refusal observed only from a state where its condition ALREADY held
+
+`prove_sales` SC7 claimed "negative_stock=refuse refuses a sale that would overdraw". It sold 200.000 against a
+10.000 balance under `allow` (balance -190.000), THEN set `refuse` and sold 1.000 more: 409. Every conjunct was
+true -- and equally true for the wrong guard `ledger.quantity < 0` ("refuse any sale of an already-overdrawn
+product"), under which a refuse-shop sells 200 against 10 and is accepted. The red team named the mutation; run
+against SC7 it stayed green. The fixture's already-negative balance filled the gap between the assertion (a 409)
+and the claim (an OVERDRAW is refused). The cell that carries the claim starts from a POSITIVE balance and asks
+both ways: 20.000 against 10.000 refused, 5.000 accepted (SC14.2) -- and the same mutation reddens it while SC7
+stays green, which is the measurement.
+
+The same day's smaller instance, on the author's own docstring: SC11 was described as "by product and by day" and
+ran by=product only; the by=day query -- whose SQL the next fix changed -- had never had a figure checked. A
+docstring listing what a cell covers is a claim about the cell: grep the cell for each thing it lists.

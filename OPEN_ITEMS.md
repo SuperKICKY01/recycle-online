@@ -4268,6 +4268,18 @@ out; and `pg_authid` and `pg_shadow` are both **refused**, which bounds `0009:68
 
 ## Decisions open — the owner's, not the code's
 
+- **WHAT DOES STOCK THAT ENTERED WITHOUT A PURCHASE COST? (M2, raised 2026-10-25 by the red team, finding 1.)**
+  Measured in the code at lane-a `371bde8`: `POST /stock/adjustments` values a +quantity at the product's current
+  unit cost (`stock_cost.unit_cost`), which is 0.0000 for a product never bought, and `AdjustmentIn` has no field
+  for a cost. So opening stock (ยกยอดมา) enters at 0.00, and every later sale of it stores cost 0 and กำไรขั้นต้น
+  equal to the whole amount -- permanently, since a sale line is never re-costed (hard rule 6). DONE, unanchored
+  (anchor next pass): such a line is now flagged `no_cost` whatever arm costed it (it was flagged only on the
+  `none` arm, and the average arm answered 0.0000 silently). OPEN, the owner's: (a) should a +adjustment of a
+  product with no cost carry a cost the person types (and who may type it), or be refused until a purchase
+  exists, or stay at 0 and flagged as today? (b) a SECOND, smaller face of the same gap is NOT flagged: buy 10
+  @ 10.00 after opening 100 at 0.00 gives an average of 100.00 / 110.000 = 0.9091 -- understated, non-zero, so
+  no flag. Answering (a) answers (b). Proof of the flag: `prove_sales` SC14.1.
+
 - **BRANCHES ADOPTED, AND ROADMAP's D8 SUPERSEDED — two decisions the owner took
   2026-09-03 on the structural design (`STRUCTURE.md`, measured at `b25d7b0`),
   recorded as his. DECIDED, not open; left in this section because it is where a

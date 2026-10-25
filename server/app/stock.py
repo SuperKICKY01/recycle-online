@@ -42,6 +42,15 @@ async def lock_product(conn: Any, branch_id: uuid.UUID, product_id: uuid.UUID) -
     )
 
 
+# THE NEWEST LIVE PURCHASE of a product at a branch -- the last_purchase arm of stock_cost.unit_cost. ONE copy,
+# read by the sale path (read_ledger) and by GET /stock alike; `lm` is the movement alias, :b the branch and
+# `{product}` the product expression the caller binds.
+_LAST_PURCHASE = ("SELECT lm.value, lm.quantity FROM stock_movements lm WHERE lm.branch_id = :b AND lm.product_id = {product}"
+                  " AND lm.kind = 'purchase' AND lm.quantity > 0"
+                  " AND NOT EXISTS (SELECT 1 FROM stock_movements r WHERE r.reverses_movement_id = lm.id)"
+                  " ORDER BY lm.created_at DESC, lm.id DESC LIMIT 1")
+
+
 async def read_ledger(conn: Any, branch_id: uuid.UUID, product_id: uuid.UUID) -> Ledger:
     row = (
         await conn.execute(
@@ -51,13 +60,7 @@ async def read_ledger(conn: Any, branch_id: uuid.UUID, product_id: uuid.UUID) ->
         )
     ).mappings().one()
     last = (
-        await conn.execute(
-            text("SELECT value, quantity FROM stock_movements WHERE branch_id = :b AND product_id = :p"
-                 " AND kind = 'purchase' AND quantity > 0"
-                 " AND NOT EXISTS (SELECT 1 FROM stock_movements r WHERE r.reverses_movement_id = stock_movements.id)"
-                 " ORDER BY created_at DESC, id DESC LIMIT 1"),
-            {"b": branch_id, "p": product_id},
-        )
+        await conn.execute(text(_LAST_PURCHASE.format(product=":p")), {"b": branch_id, "p": product_id})
     ).mappings().first()
     return Ledger(quantity=Decimal(row["q"]), value=Decimal(row["v"]),
                   last_unit_cost=None if last is None else Decimal(last["value"]) / Decimal(last["quantity"]))
@@ -114,7 +117,6 @@ async def _branch_or_caller(conn: Any, principal: Principal, branch_id: uuid.UUI
 # ---------------------------------------------------------------------------
 # routes
 # ---------------------------------------------------------------------------
-_M4 = Decimal("0.0001")
 REASON_REQUIRED = "ต้องระบุเหตุผลการปรับสต็อก"
 INSUFFICIENT_STOCK_MESSAGE = "สินค้าคงเหลือไม่พอ — ร้านตั้งค่าไม่ให้ขายหรือปรับลดเกินสต็อก"
 
@@ -122,34 +124,46 @@ INSUFFICIENT_STOCK_MESSAGE = "สินค้าคงเหลือไม่�
 @router.get("/stock")
 async def stock_balances(branch_id: uuid.UUID | None = Query(None), include_inactive: bool = Query(False),
                          principal: Principal = Depends(get_principal)) -> dict:
-    """Balance and stock value per product at one branch: the sums of the ledger, nothing cached. The average
-    cost (value / balance, 4 dp) is shown only where the balance is positive. Value and average are MONEY:
-    present only for money.view_shop; a yard account sees quantities."""
+    """Balance and stock value per product at one branch: the sums of the ledger, nothing cached. Value, unit cost
+    and the total are MONEY: present only for money.view_shop; a yard account sees quantities.
+
+    `average_cost` is the unit cost THE NEXT SALE WOULD BE CHARGED -- stock_cost.unit_cost over the same ledger,
+    not a second copy of its arithmetic (red team 2026-10-25, finding 4: a copy without the value >= 0 guard showed
+    a negative average while the sale path costed at the last purchase). Null where the rule has no cost (`none`);
+    `cost_basis` names the arm. `total_value` is the branch's WHOLE ledger, whichever products are listed (finding
+    6: retiring a product holding stock must not lower the stock's value); rows and total are one snapshot."""
     money = principal.has(Permission.MONEY_VIEW_SHOP)
-    async with tenant_connection(principal.tenant_id) as conn:
+    async with tenant_connection(principal.tenant_id, isolation_level="REPEATABLE READ") as conn:
         branch = await _branch_or_caller(conn, principal, branch_id)
         rows = (await conn.execute(text(
             "SELECT p.id, p.code, p.name, p.is_active, p.category_id, u.code AS unit_code, u.name AS unit_name,"
-            " coalesce(sum(m.quantity), 0) AS q, coalesce(sum(m.value), 0) AS v, count(m.id) AS moves"
+            " coalesce(sum(m.quantity), 0) AS q, coalesce(sum(m.value), 0) AS v, count(m.id) AS moves,"
+            " last.value AS last_v, last.quantity AS last_q"
             " FROM products p JOIN uoms u ON u.id = p.uom_id"
             " LEFT JOIN stock_movements m ON m.product_id = p.id AND m.branch_id = :b"
+            f" LEFT JOIN LATERAL ({_LAST_PURCHASE.format(product='p.id')}) last ON true"
             + ("" if include_inactive else " WHERE p.is_active") +
-            " GROUP BY p.id, p.code, p.name, p.is_active, p.category_id, u.code, u.name ORDER BY p.code"),
+            " GROUP BY p.id, p.code, p.name, p.is_active, p.category_id, u.code, u.name, last.value, last.quantity"
+            " ORDER BY p.code"),
             {"b": branch.id})).mappings().all()
-    items, total = [], Decimal("0.00")
+        total = Decimal((await conn.execute(text(
+            "SELECT coalesce(sum(value), 0) FROM stock_movements WHERE branch_id = :b"), {"b": branch.id})).scalar_one())
+    items = []
     for r in rows:
         q, v = Decimal(r["q"]).quantize(Decimal("0.001")), Decimal(r["v"]).quantize(_M)
         it = {"product_id": str(r["id"]), "code": r["code"], "name": r["name"], "is_active": r["is_active"],
               "category_id": str(r["category_id"]), "unit_code": r["unit_code"], "unit_name": r["unit_name"],
               "quantity": str(q), "movements": int(r["moves"])}
         if money:
+            last = None if r["last_v"] is None else Decimal(r["last_v"]) / Decimal(r["last_q"])
+            cpu, basis = unit_cost(Ledger(quantity=Decimal(r["q"]), value=Decimal(r["v"]), last_unit_cost=last))
             it["value"] = str(v)
-            it["average_cost"] = str((v / q).quantize(_M4, rounding=ROUND_HALF_UP)) if q > 0 else None
-            total += v
+            it["average_cost"] = None if basis == "none" else str(cpu)
+            it["cost_basis"] = basis
         items.append(it)
     out = {"branch_id": str(branch.id), "items": items}
     if money:
-        out["total_value"] = str(total)
+        out["total_value"] = str(total.quantize(_M))
     return out
 
 

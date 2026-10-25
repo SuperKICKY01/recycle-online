@@ -97,3 +97,19 @@ anyway.
 5. **Count the interval.** Here it was under an hour, in one session, by one
    author, with the warning in a sibling file. Any argument of the form "we wrote
    it down, so we will remember" has to survive that number.
+
+## AMENDED (M2, 2026-10-25) -- the SAME file, two notes, one new route ignored both
+
+`GET /reports/sales` was added to `server/app/reports.py`, the file that already carried both warnings in prose:
+"a report is many reads that must agree" (REPEATABLE READ, stated at the daily and summary routes) and "the day
+bucket is the fixed offset, never a named zone" (`_DAY_BUCKET`'s note: Postgres's zone database must not be a
+second authority). The new route opened its two reads at READ COMMITTED and bucketed its days `AT TIME ZONE
+'Asia/Bangkok'`. A red-team pass found both; the author had not -- the notes sat 50 and 300 lines above. The
+interval here is not "a sibling file": it is the next function down.
+
+AND THE CHECK THAT EXISTED COULD NOT HAVE CAUGHT IT. `prove_daily_report` R asserts that
+`tenant_connection(..., isolation_level="REPEATABLE READ")` yields `repeatable read` -- it proves the OPTION, so
+it stays green for any route that never passes the option. A guard against this class reads each ROUTE: the
+sales report's cell (`prove_sales` SC14.3) slices `sales_report`'s own source and requires the option there, with
+`summary_report` sliced the same way as the positive control; SC14.5 requires the fixed-offset expression and runs
+`by=day` for its figures. Each was disproved by reverting its fix.
