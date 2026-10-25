@@ -1968,7 +1968,9 @@ function AppInner() {
     // under the operator's thumb (observed on the emulator, 2026-09-29).
     if (!keepShown) setPaymentsScreen(null);
     const [polRes, chRes] = await Promise.all([fetchShopPolicyValue(t), fetchPaymentChannels(t)]);
-    const screen = drawerSettingsScreen(polRes, chRes);
+    // Ruling R1: the shifts and methods switches are drawn editable for the owner only. The role is
+    // the token's advisory claim, used only to decide what is drawn; the server refuses anyone else.
+    const screen = drawerSettingsScreen(polRes, chRes, readTokenRole(t) === "owner");
     if (screen === "session") {
       setSessionEnded(true);
       return;

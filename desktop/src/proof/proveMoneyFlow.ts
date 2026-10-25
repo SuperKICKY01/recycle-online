@@ -10,6 +10,8 @@
  *   M3 a bill with an impurity deduction and a reason (POST /bills, the line declaring its rules):
  *      the bill detail reads the deduction, its reason and the line's OWN unit (never a fixed กก.),
  *      and the slip preview prints ภาชนะ for the container and หักสิ่งเจือปน for the deduction
+ *   M4 rulings R1/R2: the owner's branch payment switches are editable, and the owner's unit list shows
+ *      exactly the codes GET /products/unit-mismatches returns (state `none` when it returns none)
  *
  * What an ADMIN is refused is the server's to prove (scripts/prove_money_rules.py O1-O4, over HTTP);
  * the screens draw nothing editable for one (prove:people $3). RECYCLE_SHOT_DIR collects screenshots.
@@ -72,6 +74,21 @@ void finish("PROVE_MONEYFLOW", async () => {
       enabled && shop["rounding_rule"] === "down_1" && shop["deduction_mode"] === "both" && shop["deduction_reason_required"] === true
         && saved.startsWith("บันทึกกติกาการคิดเงินแล้ว"),
       JSON.stringify({ enabled, rounding: shop["rounding_rule"], mode: shop["deduction_mode"], req: shop["deduction_reason_required"], saved }));
+
+    // M4 (rulings R1, R2) -- on the OWNER's shop tab the branch's payment switches are editable, and the
+    // owner's unit list shows exactly what the server lists (both sides read from the real server).
+    await page.waitForSelector('[data-unit-mismatches] [data-mismatch-state], [data-unit-mismatches] [role="alert"]', { timeout: 20_000 });
+    const ownerSwitches = await page.locator('input[name="separateCashier"]').isEnabled()
+      && await page.locator('input[name="shiftsEnabled"]').isEnabled();
+    const apiMismatch = ((await http(info.base, "GET", "/products/unit-mismatches", token)).json as { products: { code: string }[] }).products
+      .map((p) => p.code).sort();
+    const state = await page.locator("[data-unit-mismatches] [data-mismatch-state]").getAttribute("data-mismatch-state");
+    const shownRows = (await page.locator("[data-unit-mismatches] [data-mismatch]").evaluateAll((els) => els.map((e) => e.getAttribute("data-mismatch") ?? ""))).sort();
+    await shot(page, "r2_owner_unit_list");
+    check("M4 R1/R2: the owner's branch switches are editable, and the unit list equals GET /products/unit-mismatches",
+      ownerSwitches && JSON.stringify(shownRows) === JSON.stringify(apiMismatch)
+        && state === (apiMismatch.length === 0 ? "none" : "listed"),
+      JSON.stringify({ ownerSwitches, apiMismatch, shownRows, state }));
 
     // M2 -- a product's rules
     const products = ((await http(info.base, "GET", "/products", token)).json as { products: { id: string; code: string; uom_name: string }[] }).products;

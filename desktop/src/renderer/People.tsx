@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { shopDateTime } from "@recycle/shop-time";
 
 import type { ApiOutcome } from "../shared/api";
-import { readTiers, type Tier } from "../shared/master";
+import { readTiers, readUnitMismatches, UOM_KIND_TEXT, type Tier, type UnitMismatch } from "../shared/master";
 import { display } from "../shared/money";
 import {
   groupCatalogue,
@@ -42,6 +42,7 @@ import {
 } from "../shared/people";
 import { noticeFor, type Session } from "../shared/session";
 import {
+  BASIS_TEXT,
   DEDUCTION_SETTINGS,
   DEDUCTION_TEXT,
   isOwner,
@@ -254,21 +255,69 @@ function ShopTab(props: Props) {
         </fieldset>
       ) : null}
       {policy?.branch_id != null ? (
-        <fieldset className="policy">
+        <fieldset className="policy" data-branch-policy>
           <legend className="section-title">การทำงานของสาขานี้</legend>
+          {/* WHO TAKES THE MONEY IS THE OWNER'S (ruling R1, server app/policy.py kind `payment`). */}
+          <p className="field-hint">ผู้รับเงินและการใช้กะ แก้ได้โดยเจ้าของร้านเท่านั้น</p>
           <label className="check">
-            <input type="checkbox" name="separateCashier" checked={policy.separate_cashier === true} disabled={!can}
+            <input type="checkbox" name="separateCashier" checked={policy.separate_cashier === true} disabled={!owner}
               onChange={(e) => void setPolicyFlag("separate_cashier", e.target.checked)} />
             แยกจุดจ่ายเงิน — บิลออกจากตาชั่งโดยยังไม่จ่าย แล้วไปจ่ายที่เคาน์เตอร์
           </label>
           <label className="check">
-            <input type="checkbox" name="shiftsEnabled" checked={policy.shifts_enabled === true} disabled={!can}
+            <input type="checkbox" name="shiftsEnabled" checked={policy.shifts_enabled === true} disabled={!owner}
               onChange={(e) => void setPolicyFlag("shifts_enabled", e.target.checked)} />
             ใช้กะและลิ้นชักเงิน — นับเงินเปิด-ปิดกะทุกครั้ง
           </label>
         </fieldset>
       ) : null}
+      {owner ? <UnitMismatches {...props} /> : null}
     </div>
+  );
+}
+
+/**
+ * THE OWNER'S LIST (ruling R2): every product priced per piece or as a lump on a unit not declared a
+ * counting unit -- a line of such a product reads "3 x 40.00" against Kilogram. A READ: nothing here
+ * changes a product. The owner fixes each in master data (declare the unit, or move the product).
+ */
+function UnitMismatches(props: Props) {
+  const [rows, setRows] = useState<UnitMismatch[] | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => {
+    void (async () => {
+      const r = await ask(props, (tk) => props.session.api.get(tk, "/products/unit-mismatches", readUnitMismatches));
+      if ("ok" in r) setRows(r.ok); else setProblem(r.problem);
+    })();
+  }, [props.session, props.onSettle]); // stable: never `props`, a new object every render
+  return (
+    <section className="policy" data-unit-mismatches aria-labelledby="unit-mismatch-title">
+      <h3 className="section-title" id="unit-mismatch-title">สินค้าที่หน่วยไม่ตรงกับวิธีคิดราคา</h3>
+      {problem !== null ? <p className="notice notice-error" role="alert">{problem}</p>
+        : rows === null ? <p className="field-hint" aria-busy="true">กำลังตรวจสินค้า…</p>
+          : rows.length === 0 ? <p className="field-hint" data-mismatch-state="none">ทุกสินค้าที่คิดเป็นชิ้นหรือเหมาใช้หน่วยนับแล้ว</p>
+            : (
+              <>
+                <p className="field-hint">
+                  สินค้าเหล่านี้คิดราคาเป็นชิ้นหรือเหมา แต่หน่วยยังไม่ใช่หน่วยนับ — แก้ที่ ข้อมูลหลัก › หน่วยนับ
+                  (ระบุว่าเป็นหน่วยนับ) หรือเปลี่ยนหน่วยของสินค้า ระบบไม่เปลี่ยนให้เอง
+                </p>
+                <table className="grid" data-mismatch-state="listed">
+                  <thead><tr><th>รหัส</th><th>สินค้า</th><th>คิดราคา</th><th>หน่วยตอนนี้</th></tr></thead>
+                  <tbody>
+                    {rows.map((m) => (
+                      <tr key={m.id} data-mismatch={m.code}>
+                        <td>{m.code}</td>
+                        <td>{m.name}{m.is_active ? "" : " (ปิดใช้งาน)"}</td>
+                        <td>{BASIS_TEXT[m.pricing_basis]}</td>
+                        <td>{m.uom_name} · {UOM_KIND_TEXT[m.uom_kind ?? "undeclared"]}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+    </section>
   );
 }
 

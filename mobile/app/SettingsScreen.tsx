@@ -357,6 +357,8 @@ function PaymentsGroup({ payments }: { payments: PaymentsSettings }) {
   return (
     <View style={styles.body}>
       <Text style={styles.formHead}>{screen.heading}</Text>
+      {/* Ruling R1: anyone but the owner reads these two switches; the note says whose they are. */}
+      <Text style={styles.note} testID="payments-owner-note">{screen.ownerNote}</Text>
 
       {/* THE SHIFTS SWITCH — the declared display rule the counter's pay-gate reads. */}
       <View style={styles.card}>
@@ -366,7 +368,7 @@ function PaymentsGroup({ payments }: { payments: PaymentsSettings }) {
           <Switch
             value={shown("shifts", screen.shifts.value)}
             onValueChange={(v) => flip("shifts", v, () => payments.onToggleShifts(v))}
-            disabled={busy}
+            disabled={busy || !screen.switchesEditable}
             trackColor={track}
             accessibilityLabel={screen.shifts.label}
           />
@@ -384,7 +386,7 @@ function PaymentsGroup({ payments }: { payments: PaymentsSettings }) {
             <Switch
               value={shown(m.method, m.value)}
               onValueChange={(v) => flip(m.method, v, () => payments.onToggleMethod(m.method, v))}
-              disabled={busy}
+              disabled={busy || !screen.switchesEditable}
               trackColor={track}
               accessibilityLabel={m.label}
             />

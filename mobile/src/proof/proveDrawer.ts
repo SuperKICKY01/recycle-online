@@ -511,8 +511,18 @@ function d9Settings(t: Tally): void {
   t.check("2(d) sibling: ADMIN is shown it", mayShowDrawerSettings(grantsOf("admin")));
   const pol: PaymentFetch = { kind: "ok", body: { branch_id: "b1", separate_cashier: false, shifts_enabled: false, payment_methods: ["cash"] } };
   const ch: PaymentFetch = { kind: "ok", body: { channels: [] } };
-  const s = drawerSettingsScreen(pol, ch);
+  const s = drawerSettingsScreen(pol, ch, true);
   t.check("both reads land → the form", s !== "session" && s.kind === "form");
+  // Ruling R1: the shifts and methods switches are the OWNER's; the same reads for an admin draw them read-only.
+  const asAdmin = drawerSettingsScreen(pol, ch, false);
+  t.check("R1: the OWNER's form draws the shifts and methods switches editable",
+    s !== "session" && s.kind === "form" && s.switchesEditable === true);
+  t.check("R1: an ADMIN's form draws them read-only, with the owner note (literal Thai)",
+    asAdmin !== "session" && asAdmin.kind === "form" && asAdmin.switchesEditable === false &&
+      asAdmin.ownerNote === "การใช้กะและวิธีจ่าย แก้ได้โดยเจ้าของร้านเท่านั้น");
+  const src = readFileSync(join(process.cwd(), "app", "SettingsScreen.tsx"), "utf8");
+  t.check("R1: SettingsScreen disables both switch kinds on switchesEditable (source, counted: 2)",
+    (src.match(/disabled=\{busy \|\| !screen\.switchesEditable\}/g) ?? []).length === 2);
   if (s !== "session" && s.kind === "form") {
     t.check("the methods switches: cash ON, transfer OFF (from ['cash'])",
       s.methods.map((m) => `${m.method}=${String(m.value)}`).join() === "cash=true,transfer=false");
@@ -520,11 +530,11 @@ function d9Settings(t: Tally): void {
     t.check("the immutability note is there, not an edit control",
       s.immutableNote.startsWith("หมายเลขบัญชีและพร้อมเพย์แก้ไขไม่ได้หลังบันทึก"));
   }
-  const failed = drawerSettingsScreen(pol, { kind: "unreachable" });
+  const failed = drawerSettingsScreen(pol, { kind: "unreachable" }, true);
   t.check("a failed channel read → a MESSAGE, never a half form", failed !== "session" && failed.kind === "message");
-  const noBranch = drawerSettingsScreen({ kind: "ok", body: { branch_id: null, separate_cashier: null, shifts_enabled: null, payment_methods: null } }, ch);
+  const noBranch = drawerSettingsScreen({ kind: "ok", body: { branch_id: null, separate_cashier: null, shifts_enabled: null, payment_methods: null } }, ch, true);
   t.check("no single branch → a message (no switch that writes nowhere)", noBranch !== "session" && noBranch.kind === "message");
-  t.check("401 → session", drawerSettingsScreen(http(401), ch) === "session");
+  t.check("401 → session", drawerSettingsScreen(http(401), ch, true) === "session");
   const pp = checkChannelDraft({ kind: "promptpay", label: " ร้าน ", proxyType: "phone", proxy: "0812345678", bankCode: "KBANK", accountNo: "9", accountName: "x" });
   t.check("add promptpay: coherent body — no bank keys even when typed",
     pp.ok && pp.body.kind === "promptpay" && !("bank_code" in pp.body) && !("account_no" in pp.body) && pp.body.label === "ร้าน");

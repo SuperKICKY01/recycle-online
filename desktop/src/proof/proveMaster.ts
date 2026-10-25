@@ -13,7 +13,8 @@
  *   M1 search: contains, case-insensitive; a phone typed without dashes finds one stored with them
  *   T1 moveTier: one place up or down, unchanged at an edge
  */
-import { matches, priceProblem, readProduct, readSeller, sellerCreate, sellerPatch, type Seller } from "../shared/master";
+import { matches, priceProblem, readOneCodeName, readProduct, readSeller, readUnitMismatches, sellerCreate, sellerPatch, UOM_KIND_TEXT,
+  type Seller } from "../shared/master";
 import { moveTier } from "../shared/master";
 import { check, finish, header } from "./harness";
 
@@ -27,6 +28,24 @@ void finish("PROVE_MASTER", async () => {
   check("R1 personal keys absent stay absent (undefined, not empty); present when the server sent them",
     plain !== null && plain.id_number === undefined && plain.address === undefined && full?.id_number === "3100700000019",
     JSON.stringify({ plain, full: full?.id_number }));
+
+  // Ruling R2 (server migration 0028): a unit's kind, a product's unit kind, the owner's mismatch list.
+  const unit = readOneCodeName({ id: "u", code: "PC", name: "ชิ้น", is_active: true, kind: "count" });
+  const undeclared = readOneCodeName({ id: "u2", code: "X", name: "x", is_active: true, kind: null });
+  const category = readOneCodeName({ id: "c", code: "FE", name: "เหล็ก", is_active: true });
+  check("R2 a unit's kind reads (count / null = undeclared); a category carries no kind key at all",
+    unit?.kind === "count" && undeclared !== null && undeclared.kind === null && category !== null && !("kind" in category),
+    JSON.stringify({ unit, undeclared, category }));
+  check("R2 a product reads its unit's kind; an unknown kind reads as undeclared, never as weight",
+    readProduct({ ...base, prices: {}, uom_kind: "weight" })?.uom_kind === "weight"
+      && readProduct({ ...base, prices: {}, uom_kind: "litre" })?.uom_kind === null);
+  const mm = readUnitMismatches({ products: [{ id: "p", code: "PC1", name: "ซิงก์", is_active: true, pricing_basis: "piece",
+    uom_id: "u", uom_code: "KG", uom_name: "Kilogram", uom_kind: "weight" }] });
+  check("R2 the mismatch list reads; a row with no basis is refused whole",
+    mm?.[0]?.code === "PC1" && mm[0].pricing_basis === "piece" && mm[0].uom_kind === "weight"
+      && readUnitMismatches({ products: [{ id: "p", code: "PC1", name: "x", is_active: true, uom_code: "KG", uom_name: "K" }] }) === null);
+  check("R2 the kind words (literal Thai)", UOM_KIND_TEXT.count === "หน่วยนับ (เช่น ชิ้น ลัง เหมา)"
+    && UOM_KIND_TEXT.undeclared === "ยังไม่ได้ระบุ");
 
   header("S the seller bodies");
   const before: Seller = { id: "s", code: "S1", name: "สมชาย", is_active: true, phone: "081-234-5678", grade: "A", vehicle_no: "1กข 1234",

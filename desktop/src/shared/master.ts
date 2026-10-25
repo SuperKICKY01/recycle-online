@@ -19,13 +19,27 @@ export interface CodeName {
   readonly code: string;
   readonly name: string;
   readonly is_active: boolean;
+  /** Units only (server migration 0028, ruling R2): what the unit measures; null = not declared.
+   *  Undefined on a category. */
+  readonly kind?: UomKind | null;
 }
+
+export const UOM_KINDS = ["weight", "count"] as const;
+export type UomKind = (typeof UOM_KINDS)[number];
+/** The words the unit form and the owner's list use for a kind. */
+export const UOM_KIND_TEXT: Readonly<Record<UomKind | "undeclared", string>> = {
+  weight: "หน่วยน้ำหนัก (เช่น กก.)",
+  count: "หน่วยนับ (เช่น ชิ้น ลัง เหมา)",
+  undeclared: "ยังไม่ได้ระบุ",
+};
 
 export interface Product extends CodeName {
   readonly category_id: string;
   readonly uom_id: string;
   readonly uom_code: string;
   readonly uom_name: string;
+  /** Server migration 0028: the product's unit's kind, null = not declared. */
+  readonly uom_kind: UomKind | null;
   /** tier code -> price, the server's decimal strings */
   readonly prices: Readonly<Record<string, string>>;
   /** Server migration 0027: what the price multiplies, the product's OWN deduction rule (null =
@@ -56,7 +70,9 @@ function readCodeName(v: unknown): CodeName | null {
   const o = v as Record<string, unknown> | null;
   if (o === null || typeof o !== "object") return null;
   if (typeof o["id"] !== "string" || typeof o["code"] !== "string" || typeof o["name"] !== "string" || typeof o["is_active"] !== "boolean") return null;
-  return { id: o["id"], code: o["code"], name: o["name"], is_active: o["is_active"] };
+  const base = { id: o["id"], code: o["code"], name: o["name"], is_active: o["is_active"] };
+  // `kind` is a unit's key only; a category carries none, and keeps none here.
+  return "kind" in o ? { ...base, kind: oneOf(o["kind"], UOM_KINDS) } : base;
 }
 
 function readArray<T>(json: unknown, key: string, one: (v: unknown) => T | null): T[] | null {
@@ -80,12 +96,36 @@ export function readProduct(v: unknown): Product | null {
     if (typeof val !== "string") return null; // a price is a decimal STRING, never a number (hard rule 1)
     p[k] = val;
   }
-  return { ...base, category_id: o["category_id"], uom_id: o["uom_id"], uom_code: String(o["uom_code"] ?? ""), uom_name: String(o["uom_name"] ?? ""), prices: p,
+  return { ...base, category_id: o["category_id"], uom_id: o["uom_id"], uom_code: String(o["uom_code"] ?? ""), uom_name: String(o["uom_name"] ?? ""),
+    uom_kind: oneOf(o["uom_kind"], UOM_KINDS), prices: p,
     pricing_basis: oneOf(o["pricing_basis"], PRICING_BASES) ?? "weight",
     deduction_mode: oneOf(o["deduction_mode"], DEDUCTION_SETTINGS),
     deduction_mode_effective: oneOf(o["deduction_mode_effective"], DEDUCTION_SETTINGS) ?? "none" };
 }
 export const readProducts = (json: unknown): Product[] | null => readArray(json, "products", readProduct);
+
+/** One row of GET /products/unit-mismatches (ruling R2): a product priced by count on a unit not
+ *  declared a counting unit. A READ for the owner; the server changes no product. */
+export interface UnitMismatch {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly pricing_basis: PricingBasis;
+  readonly uom_code: string;
+  readonly uom_name: string;
+  readonly uom_kind: UomKind | null;
+  readonly is_active: boolean;
+}
+
+function readUnitMismatch(v: unknown): UnitMismatch | null {
+  const base = readCodeName(v);
+  const o = v as Record<string, unknown>;
+  const basis = oneOf(o?.["pricing_basis"], PRICING_BASES);
+  if (base === null || basis === null || typeof o["uom_code"] !== "string" || typeof o["uom_name"] !== "string") return null;
+  return { id: base.id, code: base.code, name: base.name, is_active: base.is_active, pricing_basis: basis,
+    uom_code: o["uom_code"], uom_name: o["uom_name"], uom_kind: oneOf(o["uom_kind"], UOM_KINDS) };
+}
+export const readUnitMismatches = (json: unknown): UnitMismatch[] | null => readArray(json, "products", readUnitMismatch);
 
 export function readTier(v: unknown): Tier | null {
   const base = readCodeName(v);

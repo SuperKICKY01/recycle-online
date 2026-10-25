@@ -336,6 +336,22 @@ function h5Validation(): void {
   const emptyRename = checkRenameEntity("   ", "category");
   check("a rename refuses an empty name", emptyRename.ok === false);
 
+  // Ruling R2 (2026-10-25): a unit made on the phone is DECLARED weight or count; a category never says.
+  const noKind = checkNewEntity({ code: "BOX", name: "ลัง", kind: "unit", existing: [], uomKind: null });
+  check("R2: a new UNIT with no kind chosen is refused on the kind field (literal Thai)",
+    noKind.ok === false && noKind.field === "kind" && noKind.message === "เลือกว่าหน่วยนี้วัดน้ำหนักหรือนับจำนวน");
+  const countUnit = checkNewEntity({ code: "BOX", name: "ลัง", kind: "unit", existing: [], uomKind: "count" });
+  check("R2: a new unit declared count sends kind=count",
+    countUnit.ok === true && countUnit.ok && JSON.stringify(countUnit.body) === JSON.stringify({ code: "BOX", name: "ลัง", kind: "count" }));
+  const catKind = checkNewEntity({ code: "PAPER", name: "กระดาษ", kind: "category", existing: [], uomKind: "count" });
+  check("R2 sibling: a CATEGORY never carries a kind, whatever the form held",
+    catKind.ok === true && catKind.ok && !("kind" in catKind.body));
+  const notCounting = refused({ kind: "http", status: 422, body: { detail: { code: "unit_not_counting", uom_kind: "weight" } } });
+  check("R2: 422 unit_not_counting is worded as the fix (choose a counting unit), not the generic refusal",
+    notCounting === "สินค้านี้คิดราคาเป็นชิ้นหรือเหมา จึงต้องใช้หน่วยนับ — เลือกหน่วยนับแทน", notCounting);
+  const otherInvalid = refused({ kind: "http", status: 422, body: { detail: { code: "uom_inactive" } } });
+  check("R2 sibling: any other 422 keeps the generic sentence", otherInvalid !== notCounting && otherInvalid.length > 0, otherInvalid);
+
   // Refusals — worded from status/code, over the whole sentence, with a sibling.
   const dupWrite = refused({ kind: "http", status: 409, body: { detail: { code: "duplicate_code", conflicting_code: "PRD-0000" } } });
   check("409 duplicate_code: no diagnostic leaks and no echoed code", leaks(dupWrite) === null && !dupWrite.includes("PRD-0000"), dupWrite);

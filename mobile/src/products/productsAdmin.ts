@@ -82,10 +82,16 @@ export interface ProductPatchBody {
   uom_id: string;
 }
 
-/** POST /product-categories and POST /uoms share this body. */
+/** What a unit measures (server migration 0028, ruling R2). */
+export type UomKind = "weight" | "count";
+export const UOM_KIND_LABEL: Readonly<Record<UomKind, string>> = { weight: "วัดน้ำหนัก", count: "นับจำนวน" };
+
+/** POST /product-categories and POST /uoms share this body; `kind` is a unit's only, and the phone
+ *  always sends it for a new unit (a unit made here is never left undeclared). */
 export interface EntityCreateBody {
   code: string;
   name: string;
+  kind?: UomKind;
 }
 
 /** PATCH /product-categories/{id} and PATCH /uoms/{id} — the server accepts ONLY
@@ -448,7 +454,9 @@ export type EntityKind = "category" | "unit";
 
 export type NewEntityCheck =
   | { ok: true; body: EntityCreateBody }
-  | { ok: false; field: "code" | "name"; message: string };
+  | { ok: false; field: "code" | "name" | "kind"; message: string };
+
+export const NEED_UOM_KIND = "เลือกว่าหน่วยนี้วัดน้ำหนักหรือนับจำนวน";
 
 const ENTITY_WORD: Record<EntityKind, string> = { category: "หมวดหมู่", unit: "หน่วยนับ" };
 
@@ -459,6 +467,8 @@ export function checkNewEntity(input: {
   name: string;
   kind: EntityKind;
   existing: readonly { code: string }[];
+  /** A unit's kind (ruling R2); required for a unit, ignored for a category. */
+  uomKind?: UomKind | null;
 }): NewEntityCheck {
   const code = input.code.trim();
   const name = input.name.trim();
@@ -469,6 +479,10 @@ export function checkNewEntity(input: {
   if (name.length > PRODUCT_NAME_MAX_LENGTH) return { ok: false, field: "name", message: NAME_TOO_LONG };
   if (input.existing.some((e) => e.code === code)) {
     return { ok: false, field: "code", message: `มี${word}รหัส ${code} อยู่แล้ว` };
+  }
+  if (input.kind === "unit") {
+    if (input.uomKind == null) return { ok: false, field: "kind", message: NEED_UOM_KIND };
+    return { ok: true, body: { code, name, kind: input.uomKind } };
   }
   return { ok: true, body: { code, name } };
 }
@@ -506,6 +520,15 @@ const REFUSED_NOT_FOUND = "ไม่พบรายการนี้แล้�
 // 400/422 — an over-scale/foreign value, or a category/unit deactivated out from
 // under the form (category_inactive / uom_inactive). Never rendered raw.
 const REFUSED_INVALID = "ระบบไม่รับค่าที่ส่งไป — ตรวจสอบข้อมูลแล้วลองอีกครั้ง";
+// 422 unit_not_counting (ruling R2): a product counted per piece or lump moved onto a unit that is not a
+// counting unit. Names the fix, never the server's prose.
+export const REFUSED_UNIT_NOT_COUNTING = "สินค้านี้คิดราคาเป็นชิ้นหรือเหมา จึงต้องใช้หน่วยนับ — เลือกหน่วยนับแทน";
+
+function detailCode(body: unknown): string | null {
+  const d = typeof body === "object" && body !== null ? (body as { detail?: unknown }).detail : null;
+  return typeof d === "object" && d !== null && typeof (d as { code?: unknown }).code === "string"
+    ? (d as { code: string }).code : null;
+}
 
 /**
  * WHAT ONE create/edit/deactivate/activate PRODUCED, classified on the STATUS and
@@ -523,6 +546,9 @@ export function productWriteOutcome(fetch: ProductFetch): ProductWriteOutcome {
   if (fetch.status === 403) return { kind: "refused", message: REFUSED_FORBIDDEN };
   if (fetch.status === 409) return { kind: "refused", message: REFUSED_DUPLICATE };
   if (fetch.status === 404) return { kind: "refused", message: REFUSED_NOT_FOUND };
+  if (fetch.status === 422 && detailCode(fetch.body) === "unit_not_counting") {
+    return { kind: "refused", message: REFUSED_UNIT_NOT_COUNTING };
+  }
   if (fetch.status === 400 || fetch.status === 422) return { kind: "refused", message: REFUSED_INVALID };
   return { kind: "refused", message: REFUSED_SERVER };
 }

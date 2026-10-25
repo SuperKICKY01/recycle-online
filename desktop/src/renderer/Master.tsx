@@ -28,11 +28,14 @@ import {
   sellerCreate,
   sellerPatch,
   textProblem,
+  UOM_KIND_TEXT,
+  UOM_KINDS,
   type CodeName,
   type Product,
   type Seller,
   type SellerForm,
   type Tier,
+  type UomKind,
 } from "../shared/master";
 import { display } from "../shared/money";
 import { noticeFor, type Session } from "../shared/session";
@@ -212,9 +215,16 @@ function MasterTable(props: { tab: Tab; data: Data; query: string; showInactive:
         ))}
       </span>,
     ]));
-  } else if (tab === "categories" || tab === "uoms") {
+  } else if (tab === "uoms") {
+    // The kind (ruling R2), so a unit nobody has declared stands out where it is fixed.
+    cols = ["รหัส", "ชื่อ", "วัดอะไร"];
+    body = keep(data.uoms, (r) => [r.code, r.name]).map((r) => row(r, [r.name,
+      <span key="k" className={r.kind == null ? "muted" : undefined} data-uom-kind={r.kind ?? "undeclared"}>
+        {UOM_KIND_TEXT[r.kind ?? "undeclared"]}
+      </span>]));
+  } else if (tab === "categories") {
     cols = ["รหัส", "ชื่อ"];
-    body = keep(data[tab], (r) => [r.code, r.name]).map((r) => row(r, [r.name]));
+    body = keep(data.categories, (r) => [r.code, r.name]).map((r) => row(r, [r.name]));
   } else if (tab === "tiers") {
     cols = ["รหัส", "ชื่อเกรด", "ลำดับ"];
     body = keep(data.tiers, (t) => [t.code, t.name]).map((t) => row(t, [t.name, String(data.tiers.indexOf(t) + 1)]));
@@ -330,6 +340,10 @@ function CodeNameForm(props: PanelProps) {
   const row = id === "new" ? null : data[key].find((r) => r.id === id) ?? null;
   const [code, setCode] = useState(row?.code ?? "");
   const [name, setName] = useState(row?.name ?? "");
+  // Units only (ruling R2): what the unit measures. "" = not declared, which a unit may stay, but a
+  // declared kind is never cleared back (the server refuses a null).
+  const isUnit = tab === "uoms";
+  const [kind, setKind] = useState<UomKind | "">(row?.kind ?? "");
   const [checks, setChecks] = useState<{ code: string | null; name: string | null }>({ code: null, name: null });
   const w = useWrite(props);
   const can = may(perms, PERM.master);
@@ -338,15 +352,36 @@ function CodeNameForm(props: PanelProps) {
     const c = { code: row === null ? textProblem(code, 64, true) : null, name: textProblem(name, 200, true) };
     setChecks(c);
     if (c.code !== null || c.name !== null) return;
-    void (row === null
-      ? w.run(key, (t) => session.api.post(t, path, { code: code.trim(), name: name.trim() }, readOneCodeName), "เพิ่มแล้ว")
-      : w.run(key, (t) => session.api.patch(t, `${path}/${row.id}`, { name: name.trim() }, readOneCodeName), "บันทึกแล้ว"));
+    const withKind = isUnit && kind !== "" ? { kind } : {};
+    if (row === null) {
+      void w.run(key, (t) => session.api.post(t, path, { code: code.trim(), name: name.trim(), ...withKind }, readOneCodeName), "เพิ่มแล้ว");
+      return;
+    }
+    const body: Record<string, string> = {};
+    if (name.trim() !== row.name) body["name"] = name.trim();
+    if (isUnit && kind !== "" && kind !== row.kind) body["kind"] = kind;
+    if (Object.keys(body).length === 0) {
+      w.setProblem("ยังไม่ได้แก้ไขอะไร");
+      return;
+    }
+    void w.run(key, (t) => session.api.patch(t, `${path}/${row.id}`, body, readOneCodeName), "บันทึกแล้ว");
   };
   return (
     <div className="form-stack">
       <Field label="รหัส" name="code" value={code} onChange={setCode} readOnly={row !== null} problem={checks.code}
         {...(row !== null ? { hint: "รหัสแก้ไขไม่ได้ — ถ้าผิด ให้เพิ่มรายการใหม่แล้วปิดใช้งานรายการเดิม" } : {})} />
       <Field label="ชื่อ" name="name" value={name} onChange={setName} problem={checks.name} readOnly={!can} />
+      {isUnit ? (
+        <label className="field">
+          <span className="field-label">หน่วยนี้วัดอะไร</span>
+          <select name="uomKind" value={kind} disabled={!can} onChange={(e) => setKind(e.target.value as UomKind | "")}>
+            {/* Undeclared is offered only while the unit IS undeclared: a declared kind cannot be cleared. */}
+            {row?.kind == null ? <option value="">{UOM_KIND_TEXT.undeclared}</option> : null}
+            {UOM_KINDS.map((k) => <option key={k} value={k}>{UOM_KIND_TEXT[k]}</option>)}
+          </select>
+          <span className="field-hint">สินค้าที่คิดราคาเป็นชิ้นหรือเหมาต้องใช้หน่วยนับ</span>
+        </label>
+      ) : null}
       <Actions problem={w.problem} saved={w.saved} busy={w.busy} canSave={can} onSave={save}
         {...(row !== null ? { retire: { active: row.is_active, can, onToggle: () => void w.run(key, (t) => session.api.post(t, `${path}/${row.id}/${row.is_active ? "deactivate" : "activate"}`, {}, readOneCodeName), row.is_active ? "ปิดใช้งานแล้ว" : "เปิดใช้งานแล้ว") } } : {})} />
     </div>

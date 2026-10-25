@@ -13,6 +13,8 @@
  *      typing the phone without dashes
  *   F6 a STAFF account (no sellers.read_personal) opens that seller: no ID or address field, the
  *      last four shown, and neither value anywhere in the window's HTML
+ *   F7 ruling R2: the unit F1 added (undeclared) is declared a counting unit on screen; stored and listed so
+ *   F8 ruling R1: the admin's branch switches are disabled with the owner note; no owner unit list
  */
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -160,6 +162,37 @@ void finish("PROVE_MASTERFLOW", async () => {
     check("F5 the admin's seller is stored with ID and address, and found by the phone typed without dashes",
       stored?.id_number === idNeedle && stored.address === addrNeedle && found.length === 1 && (found[0] ?? "").includes(`ผู้ขายทดสอบ ${run}`),
       JSON.stringify({ found, stored: stored?.code }));
+    await page.fill('input[name="masterSearch"]', "");
+
+    // F7 (ruling R2): the unit F1 added undeclared is declared a COUNTING unit on screen; the server holds it.
+    await page.click('[data-tab="uoms"]');
+    const listedBefore = await page.locator(`[data-master="uoms"] [data-row="U${run}"] [data-uom-kind]`).getAttribute("data-uom-kind");
+    await page.click(`[data-master="uoms"] [data-row="U${run}"] button.link`);
+    await panel("uoms").locator('select[name="uomKind"]').selectOption("count");
+    await panel("uoms").locator("button", { hasText: "บันทึก" }).click();
+    await panel("uoms").locator("[data-panel-saved]").waitFor({ timeout: 15_000 });
+    const kindStored = ((await http(info.base, "GET", "/uoms", token)).json as { uoms: { code: string; kind: string | null }[] })
+      .uoms.find((u) => u.code === `U${run}`)?.kind;
+    const undeclaredOffered = await panel("uoms").locator('select[name="uomKind"] option[value=""]').count();
+    await closePanel(page);
+    const listedAfter = await page.locator(`[data-master="uoms"] [data-row="U${run}"] [data-uom-kind]`).getAttribute("data-uom-kind");
+    check("F7 R2: a unit listed undeclared is declared count on screen, stored count, listed count -- and undeclared is no longer offered",
+      listedBefore === "undeclared" && kindStored === "count" && listedAfter === "count" && undeclaredOffered === 0,
+      JSON.stringify({ listedBefore, kindStored, listedAfter, undeclaredOffered }));
+
+    // F8 (ruling R1): the ADMIN reads the branch's payment switches but cannot change them, and is not
+    // shown the owner's unit list.
+    await page.click('[data-nav="people"]');
+    await page.waitForSelector("[data-branch-policy]", { timeout: 20_000 });
+    const cashierDisabled = await page.locator('input[name="separateCashier"]').isDisabled();
+    const shiftsDisabled = await page.locator('input[name="shiftsEnabled"]').isDisabled();
+    const note = await page.locator("[data-branch-policy] .field-hint").innerText();
+    const ownerList = await page.locator("[data-unit-mismatches]").count();
+    await shot(page, "r1_admin_branch_policy");
+    check("F8 R1: the admin's branch switches are drawn disabled with the owner note; the owner's unit list is not drawn",
+      cashierDisabled && shiftsDisabled && note === "ผู้รับเงินและการใช้กะ แก้ได้โดยเจ้าของร้านเท่านั้น" && ownerList === 0,
+      JSON.stringify({ cashierDisabled, shiftsDisabled, note, ownerList }));
+    await page.click('[data-nav="master"]');
 
     const staffName = `staff-${run.toLowerCase()}`;
     const staffPw = `pw-${randomUUID()}`;

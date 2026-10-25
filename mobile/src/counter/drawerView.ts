@@ -858,6 +858,9 @@ export function mayShowDrawerSettings(grants: Grants): boolean {
 }
 
 export const SETTINGS_HEADING = "การจ่ายเงิน";
+/** Ruling R1 (2026-10-25): the shifts switch and the methods are the OWNER's (server app/policy.py,
+ *  kind `payment`); the shop's own accounts below stay with shop.settings.write. */
+export const OWNER_ONLY_NOTE = "การใช้กะและวิธีจ่าย แก้ได้โดยเจ้าของร้านเท่านั้น";
 export const SHIFTS_SWITCH_LABEL = "ใช้ระบบกะและลิ้นชักเงินสด";
 export const SHIFTS_SWITCH_NOTE = "เมื่อเปิด ต้องเปิดกะก่อนจึงจะจ่ายเงินที่เคาน์เตอร์ได้";
 export const METHODS_HEADING = "วิธีจ่ายที่เคาน์เตอร์";
@@ -901,6 +904,9 @@ export type DrawerSettingsScreen =
       kind: "form";
       branchId: string;
       heading: string;
+      /** false for anyone but the owner: the shifts and methods switches are drawn read-only. */
+      switchesEditable: boolean;
+      ownerNote: string;
       shifts: { label: string; note: string; value: boolean };
       methodsHeading: string;
       methodsNote: string;
@@ -955,6 +961,7 @@ function failedRead(f: PaymentFetch): DrawerSettingsScreen | "session" {
 export function drawerSettingsScreen(
   policyFetch: PaymentFetch,
   channelsFetch: PaymentFetch,
+  isOwner: boolean,
 ): DrawerSettingsScreen | "session" {
   if (policyFetch.kind !== "ok") return failedRead(policyFetch);
   if (channelsFetch.kind !== "ok") return failedRead(channelsFetch);
@@ -969,6 +976,8 @@ export function drawerSettingsScreen(
     kind: "form",
     branchId: policy.branchId,
     heading: SETTINGS_HEADING,
+    switchesEditable: isOwner,
+    ownerNote: OWNER_ONLY_NOTE,
     shifts: { label: SHIFTS_SWITCH_LABEL, note: SHIFTS_SWITCH_NOTE, value: policy.shiftsEnabled },
     methodsHeading: METHODS_HEADING,
     methodsNote: METHODS_NOTE,

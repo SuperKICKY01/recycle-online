@@ -300,3 +300,4 @@ textarea { resize: vertical; }
 .field-row .field:first-child { flex: 1; }
 .field-narrow input { max-width: 220px; }
 .field-hint { color: var(--text-muted); font-size: 0.875rem; }
+.muted { color: var(--text-muted); }

@@ -33,6 +33,7 @@ import {
   productListModel,
   PRODUCT_CODE_MAX_LENGTH,
   PRODUCT_NAME_MAX_LENGTH,
+  UOM_KIND_LABEL,
   type ActivityFilter,
   type AdminEntity,
   type AdminProduct,
@@ -45,6 +46,7 @@ import {
   type ProductsMessage,
   type ProductsScreenState,
   type ProductTab,
+  type UomKind,
 } from "../src/products/productsAdmin";
 import { Badge, Button, Card, EmptyState, Field, GroupCard, Row, SectionHeading, Segmented, type Tone } from "./Kit";
 import { SheetHeader } from "./SheetHeader";
@@ -523,10 +525,12 @@ function EntityTab({
 
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
+  // A unit's kind (ruling R2). Nothing is preselected: a unit made here is declared on purpose.
+  const [uomKind, setUomKind] = useState<UomKind | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const submit = (): void => {
-    const v = checkNewEntity({ code, name, kind, existing: entities });
+    const v = checkNewEntity({ code, name, kind, existing: entities, uomKind });
     if (!v.ok) {
       setError(v.message);
       return;
@@ -534,6 +538,7 @@ function EntityTab({
     onCreate(kind, v.body);
     setCode("");
     setName("");
+    setUomKind(null);
     setError(null);
   };
 
@@ -608,6 +613,20 @@ function EntityTab({
               maxLength={PRODUCT_NAME_MAX_LENGTH}
               style={styles.field}
             />
+            {kind === "unit" ? (
+              <View style={styles.field}>
+                <Text style={styles.kindLabel}>หน่วยนี้</Text>
+                <Segmented<UomKind | "">
+                  options={(["weight", "count"] as const).map((k) => ({ value: k, label: UOM_KIND_LABEL[k] }))}
+                  value={uomKind ?? ""}
+                  onChange={(v) => {
+                    setUomKind(v === "" ? null : v);
+                    setError(null);
+                  }}
+                />
+                <Text style={styles.kindHint}>สินค้าที่คิดราคาเป็นชิ้นหรือเหมาต้องใช้หน่วยนับ</Text>
+              </View>
+            ) : null}
             {error !== null ? <Text style={styles.refusal}>{error}</Text> : null}
             <Button label={`เพิ่ม${word}`} icon="plus" onPress={submit} busy={busy} style={styles.addBtn} />
           </Card>
@@ -734,6 +753,8 @@ function makeStyles(t: ThemeTokens) {
       paddingHorizontal: t.layout.screenPad,
       marginTop: t.space.md,
     },
+    kindLabel: { fontSize: t.type.body, fontWeight: "700", color: t.color.text, marginBottom: t.space.sm },
+    kindHint: { fontSize: t.type.body, color: t.color.textMuted, marginTop: t.space.sm },
     filterBar: {
       paddingHorizontal: t.layout.screenPad,
       paddingTop: t.space.md,
