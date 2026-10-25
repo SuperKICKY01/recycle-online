@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from . import clock_guard, login_guard, permissions, version_gate
 from .auth import PRINCIPAL_JOIN, PRINCIPAL_PERMISSIONS, Principal, get_principal
 from .bills import router as bills_router
+from .buyers import router as buyers_router
 from .channels import router as channels_router
 from .db import directory_engine, engine, tenant_connection
 from .directory import router as directory_router
@@ -29,8 +30,10 @@ from .master import router as master_router
 from .payments import router as payments_router
 from .reports import router as reports_router
 from .roles import router as roles_router
+from .sales import router as sales_router
 from .security import DUMMY_HASH, create_access_token, verify_password
 from .shifts import router as shifts_router
+from .stock import router as stock_router
 from .users import router as users_router
 
 
@@ -285,13 +288,16 @@ app.add_middleware(
 
 
 app.include_router(bills_router)
+app.include_router(buyers_router)
 app.include_router(channels_router)
 app.include_router(directory_router)
 app.include_router(master_router)
 app.include_router(payments_router)
 app.include_router(reports_router)
 app.include_router(roles_router)
+app.include_router(sales_router)
 app.include_router(shifts_router)
+app.include_router(stock_router)
 app.include_router(users_router)
 
 _INVALID_LOGIN = HTTPException(

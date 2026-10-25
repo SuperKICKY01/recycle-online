@@ -1092,6 +1092,106 @@ SQL_CHECKS: list[SqlCheck] = [
         HAVING count(*) > 1
         """,
     ),
+    # -----------------------------------------------------------------------
+    # THE STOCK LEDGER AND MONEY IN (migration 0029, M2). Restated here in SQL from the migration's
+    # docstring; nothing imported from app/stock.py or app/sales.py
+    # (lessons/a-checker-must-not-share-the-code-it-checks.md).
+    # -----------------------------------------------------------------------
+    SqlCheck(
+        # Every purchase line moved stock in exactly once, by its own quantity (its stored quantity, else
+        # its net -- a pre-0027 line was weight-priced) and its amount; a voided bill's line moved it back
+        # out exactly once. A purchase line with no movement is stock the ledger never saw.
+        "L1", "every purchase line has its one purchase movement (and a voided bill's line its one"
+              " reversal), each equal to the line", "stock_movements",
+        """
+        SELECT b.doc_no, i.line_no, i.id::text AS item_id, b.voided_at IS NOT NULL AS voided,
+               count(m.id) FILTER (WHERE m.kind = 'purchase') AS ins,
+               count(m.id) FILTER (WHERE m.kind = 'void_purchase') AS reversals,
+               coalesce(sum(m.quantity) FILTER (WHERE m.kind = 'purchase'), 0) AS moved_qty,
+               coalesce(i.quantity, i.net_weight) AS line_qty,
+               coalesce(sum(m.value) FILTER (WHERE m.kind = 'purchase'), 0) AS moved_value, i.amount
+          FROM purchase_bill_items i
+          JOIN purchase_bills b ON b.id = i.bill_id
+          LEFT JOIN stock_movements m ON m.purchase_item_id = i.id
+         GROUP BY b.doc_no, i.line_no, i.id, b.voided_at, i.quantity, i.net_weight, i.amount
+        HAVING count(m.id) FILTER (WHERE m.kind = 'purchase') <> 1
+            OR count(m.id) FILTER (WHERE m.kind = 'void_purchase') <> (CASE WHEN b.voided_at IS NULL THEN 0 ELSE 1 END)
+            OR coalesce(sum(m.quantity) FILTER (WHERE m.kind = 'purchase'), 0) <> coalesce(i.quantity, i.net_weight)
+            OR coalesce(sum(m.value) FILTER (WHERE m.kind = 'purchase'), 0) <> i.amount
+         ORDER BY b.doc_no, i.line_no
+        """,
+    ),
+    SqlCheck(
+        # Every sale line moved stock out exactly once, by minus its quantity and minus its STORED cost;
+        # a voided sale's line moved it back exactly once. The cost the line stores and the value the
+        # ledger lost are one figure, or the stock value drifts from what was charged as cost.
+        "L2", "every sale line has its one sale movement (-quantity, -cost_amount), and a voided"
+              " sale's line its one reversal", "stock_movements",
+        """
+        SELECT s.doc_no, i.line_no, i.id::text AS item_id, s.voided_at IS NOT NULL AS voided,
+               count(m.id) FILTER (WHERE m.kind = 'sale') AS outs,
+               count(m.id) FILTER (WHERE m.kind = 'void_sale') AS reversals,
+               coalesce(sum(m.quantity) FILTER (WHERE m.kind = 'sale'), 0) AS moved_qty, i.quantity,
+               coalesce(sum(m.value) FILTER (WHERE m.kind = 'sale'), 0) AS moved_value, i.cost_amount
+          FROM sale_bill_items i
+          JOIN sale_bills s ON s.id = i.bill_id
+          LEFT JOIN stock_movements m ON m.sale_item_id = i.id
+         GROUP BY s.doc_no, i.line_no, i.id, s.voided_at, i.quantity, i.cost_amount
+        HAVING count(m.id) FILTER (WHERE m.kind = 'sale') <> 1
+            OR count(m.id) FILTER (WHERE m.kind = 'void_sale') <> (CASE WHEN s.voided_at IS NULL THEN 0 ELSE 1 END)
+            OR coalesce(sum(m.quantity) FILTER (WHERE m.kind = 'sale'), 0) <> -i.quantity
+            OR coalesce(sum(m.value) FILTER (WHERE m.kind = 'sale'), 0) <> -i.cost_amount
+         ORDER BY s.doc_no, i.line_no
+        """,
+    ),
+    SqlCheck(
+        # A reversal is the exact negative of the movement it names, at the same branch and product.
+        "L3", "every void movement is the exact negative of the movement it reverses", "stock_movements",
+        """
+        SELECT v.id::text AS void_id, v.kind, o.id::text AS original_id, o.kind AS original_kind,
+               v.quantity, o.quantity AS original_qty, v.value, o.value AS original_value
+          FROM stock_movements v
+          JOIN stock_movements o ON o.id = v.reverses_movement_id
+         WHERE v.quantity <> -o.quantity OR v.value <> -o.value
+            OR v.branch_id <> o.branch_id OR v.product_id <> o.product_id
+            OR (v.kind = 'void_purchase' AND o.kind <> 'purchase')
+            OR (v.kind = 'void_sale' AND o.kind <> 'sale')
+        """,
+    ),
+    SqlCheck(
+        # A sale's total is its lines' amounts; a line's cost is quantity x cost per unit at the satang.
+        "L4", "a sale bill's total equals its lines, and each line's cost_amount equals"
+              " round(quantity x cost_per_unit, 2)", "sale_bills",
+        """
+        SELECT s.doc_no, s.total_amount, sum(i.amount) AS lines_total,
+               count(*) FILTER (WHERE i.cost_amount <> round(i.quantity * i.cost_per_unit, 2)) AS bad_cost_lines
+          FROM sale_bills s JOIN sale_bill_items i ON i.bill_id = s.id
+         GROUP BY s.doc_no, s.total_amount
+        HAVING s.total_amount <> sum(i.amount)
+            OR count(*) FILTER (WHERE i.cost_amount <> round(i.quantity * i.cost_per_unit, 2)) > 0
+        """,
+    ),
+    SqlCheck(
+        # 0020's P1/P2 for money IN: a receipt allocates no more than it holds; a sale is never received
+        # beyond its total; a receipt and the bill it pays name the same buyer.
+        "L5", "sale receipts: allocations within the receipt, received within the bill's total,"
+              " and the same buyer", "sale_receipts",
+        """
+        SELECT 'receipt over-allocated' AS problem, r.id::text AS row_id, r.amount AS held, sum(a.amount) AS allocated
+          FROM sale_receipts r JOIN sale_receipt_allocations a ON a.receipt_id = r.id
+         GROUP BY r.id, r.amount HAVING sum(a.amount) > r.amount
+        UNION ALL
+        SELECT 'bill over-received', s.id::text, s.total_amount, sum(a.amount)
+          FROM sale_bills s JOIN sale_receipt_allocations a ON a.bill_id = s.id
+          JOIN sale_receipts r ON r.id = a.receipt_id AND r.voided_at IS NULL
+         GROUP BY s.id, s.total_amount HAVING sum(a.amount) > s.total_amount
+        UNION ALL
+        SELECT 'buyer differs', a.receipt_id::text, NULL::numeric, NULL::numeric
+          FROM sale_receipt_allocations a JOIN sale_receipts r ON r.id = a.receipt_id
+          JOIN sale_bills s ON s.id = a.bill_id
+         WHERE r.buyer_id <> s.buyer_id
+        """,
+    ),
 ]
 
 SCOPE_SQL = """

@@ -187,6 +187,7 @@ a client that naively slices the string gets the SHOP clock, not UTC.
 from __future__ import annotations
 
 import datetime as dt
+import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
 
@@ -1007,4 +1008,61 @@ async def summary_report(
         "rows": [{"key": r["key"], "label": r["label"], **_summary_figures(r)} for r in rows],
         # key/label null: totals is the aggregate over every row, keyed by nothing.
         "totals": {"key": None, "label": None, **_summary_figures(totals)},
+    }
+
+
+# ---------------------------------------------------------------------------
+# M2 (ADVISOR-DECIDED 2026-10-25): SALES AND GROSS PROFIT
+# ---------------------------------------------------------------------------
+# Live sale bills only (a voided bill sold nothing). Amount is the lines' stored amount; cost is the lines'
+# STORED cost_amount -- never re-derived from today's ledger (hard rule 6: a purchase that syncs late does not
+# move a sale already costed). gross_profit = amount - cost. It is named gross_profit (กำไรขั้นต้น in every
+# client) and NEVER `profit`: net profit needs expenses, which arrive with M3.
+_SALES_GROUPS = {
+    "day": ("(s.server_received_at AT TIME ZONE :tz)::date::text", "(s.server_received_at AT TIME ZONE :tz)::date::text"),
+    "product": ("i.product_id::text", "max(p.code) || ' ' || max(p.name)"),
+    "buyer": ("s.buyer_id::text", "max(b.code) || ' ' || max(b.name)"),
+}
+
+
+@router.get("/reports/sales")
+async def sales_report(
+    from_date: dt.date = Query(..., description="first shop day, inclusive"),
+    to_date: dt.date = Query(..., description="last shop day, inclusive"),
+    by: Literal["day", "product", "buyer"] = Query("day"),
+    category_id: uuid.UUID | None = Query(None),
+    product_id: uuid.UUID | None = Query(None),
+    buyer_id: uuid.UUID | None = Query(None),
+    principal: Principal = Depends(require(Permission.MONEY_VIEW_SHOP)),
+) -> dict:
+    if to_date < from_date:
+        raise _invalid("range_reversed", "วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น")
+    key, label = _SALES_GROUPS[by]
+    where = ["s.voided_at IS NULL", "s.server_received_at >= :f", "s.server_received_at < :t"]
+    params: dict[str, Any] = {"f": _day_window(from_date)[0], "t": _day_window(to_date)[1], "tz": SHOP_TIMEZONE_NAME}
+    for col, val, name in (("p.category_id", category_id, "cat"), ("i.product_id", product_id, "prod"),
+                           ("s.buyer_id", buyer_id, "buyer")):
+        if val is not None:
+            where.append(f"{col} = :{name}")
+            params[name] = val
+    base = (" FROM sale_bill_items i JOIN sale_bills s ON s.id = i.bill_id JOIN products p ON p.id = i.product_id"
+            " JOIN buyers b ON b.id = s.buyer_id WHERE " + " AND ".join(where))
+    async with tenant_connection(principal.tenant_id) as conn:
+        rows = (await conn.execute(text(
+            f"SELECT {key} AS key, {label} AS label, count(DISTINCT s.id) AS bills, sum(i.amount) AS amount,"
+            f" sum(i.cost_amount) AS cost, max(i.unit_code) AS unit_code, count(DISTINCT i.unit_code) AS units,"
+            f" sum(i.quantity) AS quantity{base} GROUP BY {key} ORDER BY {key}"), params)).mappings().all()
+        tot = (await conn.execute(text(f"SELECT count(DISTINCT s.id) AS bills, coalesce(sum(i.amount), 0) AS amount,"
+                                       f" coalesce(sum(i.cost_amount), 0) AS cost{base}"), params)).mappings().one()
+    def figures(r: Any) -> dict:
+        amount, cost = Decimal(r["amount"] or 0).quantize(Decimal("0.01")), Decimal(r["cost"] or 0).quantize(Decimal("0.01"))
+        return {"bills": int(r["bills"]), "amount": str(amount), "cost": str(cost), "gross_profit": str(amount - cost)}
+    return {
+        "from_date": from_date.isoformat(), "to_date": to_date.isoformat(), "by": by,
+        "rows": [{"key": r["key"], "label": r["label"], **figures(r),
+                  # A product row sums ONE unit; a day or buyer row mixes units, so its quantity means nothing and
+                  # is not sent (never a kilogram added to a piece).
+                  **({"quantity": str(r["quantity"]), "unit_code": r["unit_code"]} if by == "product" and r["units"] == 1 else {})}
+                 for r in rows],
+        "totals": figures(tot),
     }

@@ -693,7 +693,7 @@ class PriceSet(BaseModel):
 
 _PRODUCT_SELECT = (
     "SELECT p.id, p.code, p.name, p.category_id, p.uom_id, p.is_active,"
-    " p.pricing_basis, p.deduction_mode,"
+    " p.pricing_basis, p.deduction_mode, p.sell_price,"
     " u.code AS uom_code, u.name AS uom_name, u.kind AS uom_kind"
     # No is_active predicate on the uom either: a product whose unit was retired
     # still has to render its unit. Retiring a uom stops it being OFFERED, it
@@ -716,6 +716,8 @@ def _product_payload(r: Any, prices: dict[str, str], shop_deduction: str) -> dic
         "is_active": r["is_active"],
         # {"A": "12.50", "B": "12.00", ...} — strings, never floats.
         "prices": prices,
+        # 0029: the default sell price a new sale line starts from (null = none set). A line stores the price used.
+        "sell_price": None if r["sell_price"] is None else str(r["sell_price"]),
         # 0027. `deduction_mode` is the product's OWN rule (null = the shop's); the effective one is
         # resolved HERE, by app/policy.py, so the phone never re-implements the precedence.
         "pricing_basis": r["pricing_basis"],
@@ -988,6 +990,27 @@ async def set_product_price(
             ),
             {"p": product_id, "g": grade, "price": body.price},
         )
+        return await _read_product(conn, product_id)
+
+
+class SellPriceSet(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # null CLEARS the default: a new sale line then starts with no price and the seller types one.
+    price: Price | None
+
+
+@router.put("/products/{product_id}/sell-price")
+async def set_sell_price(
+    product_id: uuid.UUID,
+    body: SellPriceSet,
+    principal: Principal = Depends(require(Permission.PRICES_WRITE)),
+) -> dict:
+    """The default sell price (0029, SRS 1.3 ราคาขาย@). THE FUTURE ONLY, as for the buy prices: a sale line stores
+    the price it USED (unit_price) and this default at that moment (list_price), and nothing recomputes either.
+    Under prices.write, the buy prices' gate (app/policy.py kind `price`). products is audited."""
+    async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
+        await _require_product(conn, product_id)
+        await conn.execute(text("UPDATE products SET sell_price = :p WHERE id = :id"), {"p": body.price, "id": product_id})
         return await _read_product(conn, product_id)
 
 
@@ -2476,6 +2499,8 @@ class ShopUpdate(BaseModel):
     deduction_mode: DeductionSetting | None = None
     deduction_reason_required: bool | None = None
     rounding_rule: RoundingRule | None = None
+    # 0029 (M2): may a sale take a product's stock below zero. A money rule, the OWNER's (app/policy.py).
+    negative_stock: Literal["allow", "refuse"] | None = None
     # `staff_money_visible` (0014, P1.23 item 4 D1) was HERE until migration 0019
     # folded it into the staff role's grants as money.view_own and dropped the
     # column: whether staff see their own money is now a permission a role holds,
@@ -2495,7 +2520,7 @@ async def _read_shop(conn: Any, user_id: uuid.UUID) -> dict:
     row = (
         await conn.execute(
             text("SELECT id, name, default_grade, address, phone, deduction_mode,"
-                 " deduction_reason_required, rounding_rule FROM tenants")
+                 " deduction_reason_required, rounding_rule, negative_stock FROM tenants")
         )
     ).mappings().one()
     # THE CALLER'S BRANCH (migration 0018): the user's own if scoped, else the
@@ -2514,6 +2539,7 @@ async def _read_shop(conn: Any, user_id: uuid.UUID) -> dict:
         "deduction_mode": row["deduction_mode"],
         "deduction_reason_required": row["deduction_reason_required"],
         "rounding_rule": row["rounding_rule"],
+        "negative_stock": row["negative_stock"],
         # `staff_money_visible` is NO LONGER HERE (0019): the phone gates its
         # dashboard entry on the caller's own permission set (the token claim,
         # /whoami, and its cached_permissions), not on a shop toggle.

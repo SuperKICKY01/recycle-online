@@ -27,6 +27,7 @@ from .config import SHOP_TIMEZONE
 from .db import tenant_connection
 from .money_rules import DEFAULT_ROUNDING_RULE, LineIn, LineOut, LineRuleError, compute_line
 from .policy import flag_if_off_rule
+from .stock import flag, flag_late_sales, insert_movement, lock_product, read_ledger
 
 router = APIRouter()
 
@@ -977,6 +978,16 @@ async def create_bill(
                     deduction_mode=mode, pricing_basis=it.pricing_basis or "weight",
                     at=body.device_created_at,
                 )
+                # THE STOCK LEDGER (0029): the line moves its quantity in at its amount, in this transaction, under
+                # the product's lock (app/stock.py). A sale already recorded for this product at this branch but
+                # WEIGHED AFTER this purchase was weighed was costed without it: its stored cost stands (hard rule
+                # 6) and the owner is told -- one late_purchase flag per such sale line.
+                await lock_product(conn, branch.id, it.product_id)
+                await insert_movement(conn, branch_id=branch.id, product_id=it.product_id, kind="purchase",
+                                      quantity=out.quantity, value=out.amount, purchase_item_id=it.id,
+                                      created_at=received_at)
+                await flag_late_sales(conn, branch_id=branch.id, product_id=it.product_id,
+                                      purchase_item_id=it.id, weighed_at=body.device_created_at)
 
             # THE AUTOMATIC PAYMENT (migration 0020). Same transaction as the
             # bill and its lines: a bill without its payment row is a bill the
@@ -1202,4 +1213,19 @@ async def void_bill(
             if body.idempotency_key is not None and h["void_idempotency_key"] == body.idempotency_key:
                 return await _read_bill(conn, bill_id)
             raise HTTPException(status.HTTP_409_CONFLICT, detail=VOID_REFUSED_ALREADY)
+        # THE STOCK COMES BACK OUT (0029): each line's purchase movement is reversed exactly, naming it -- never
+        # edited. A void is never refused for stock: if the reversal takes the balance below zero (the goods were
+        # already sold), the owner is told by a negative_stock flag on the reversal.
+        moves = (await conn.execute(text(
+            "SELECT m.id, m.branch_id, m.product_id, m.quantity, m.value, m.purchase_item_id FROM stock_movements m"
+            " JOIN purchase_bill_items i ON i.id = m.purchase_item_id"
+            " WHERE i.bill_id = :b AND m.kind = 'purchase' ORDER BY i.line_no"), {"b": bill_id})).mappings().all()
+        for m in moves:
+            await lock_product(conn, m["branch_id"], m["product_id"])
+            mid = await insert_movement(conn, branch_id=m["branch_id"], product_id=m["product_id"], kind="void_purchase",
+                                        quantity=-m["quantity"], value=-m["value"],
+                                        purchase_item_id=m["purchase_item_id"], reverses_movement_id=m["id"])
+            after = (await read_ledger(conn, m["branch_id"], m["product_id"])).quantity
+            if after < 0:
+                await flag(conn, "negative_stock", m["branch_id"], movement_id=mid, balance_after=after)
         return await _read_bill(conn, bill_id)

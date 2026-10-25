@@ -1,0 +1,52 @@
+{
+  "about": "Weighted-average cost of a sale line (M2, app/stock_cost.py). Each case is a sequence of ledger steps on ONE product at ONE branch; every expected figure was worked by hand from the rule in stock_cost.py's docstring, never by running it. buy: a purchase movement (+quantity, +value). sell: cost_out, then a movement (-quantity, -cost_amount). Decimal strings only.",
+  "cases": [
+    {
+      "name": "the worked example: two buys average, a sale at the average, a third buy re-averages",
+      "steps": [
+        {"op": "buy", "quantity": "100.000", "value": "1000.00"},
+        {"op": "buy", "quantity": "50.000", "value": "650.00"},
+        {"op": "sell", "quantity": "30.000", "expect": {"cost_per_unit": "11.0000", "cost_amount": "330.00", "basis": "average", "balance_after": "120.000"}},
+        {"op": "buy", "quantity": "30.000", "value": "375.00"},
+        {"op": "sell", "quantity": "45.000", "expect": {"cost_per_unit": "11.3000", "cost_amount": "508.50", "basis": "average", "balance_after": "105.000"}}
+      ]
+    },
+    {
+      "name": "an average that does not terminate rounds half-up to 4 places; the cost to the satang",
+      "steps": [
+        {"op": "buy", "quantity": "3.000", "value": "10.00"},
+        {"op": "sell", "quantity": "1.000", "expect": {"cost_per_unit": "3.3333", "cost_amount": "3.33", "basis": "average", "balance_after": "2.000"}},
+        {"op": "sell", "quantity": "2.000", "expect": {"cost_per_unit": "3.3350", "cost_amount": "6.67", "basis": "average", "balance_after": "0.000"}}
+      ]
+    },
+    {
+      "name": "selling more than is on hand: the average still prices the whole line; the balance goes negative",
+      "steps": [
+        {"op": "buy", "quantity": "10.000", "value": "120.00"},
+        {"op": "sell", "quantity": "15.000", "expect": {"cost_per_unit": "12.0000", "cost_amount": "180.00", "basis": "average", "balance_after": "-5.000"}}
+      ]
+    },
+    {
+      "name": "nothing on hand (or overdrawn): the newest purchase's unit cost",
+      "steps": [
+        {"op": "buy", "quantity": "10.000", "value": "120.00"},
+        {"op": "buy", "quantity": "4.000", "value": "50.00"},
+        {"op": "sell", "quantity": "14.000", "expect": {"cost_per_unit": "12.1429", "cost_amount": "170.00", "basis": "average", "balance_after": "0.000"}},
+        {"op": "sell", "quantity": "2.000", "expect": {"cost_per_unit": "12.5000", "cost_amount": "25.00", "basis": "last_purchase", "balance_after": "-2.000"}}
+      ]
+    },
+    {
+      "name": "never bought: cost 0, basis none (the line is flagged no_cost)",
+      "steps": [
+        {"op": "sell", "quantity": "5.000", "expect": {"cost_per_unit": "0.0000", "cost_amount": "0.00", "basis": "none", "balance_after": "-5.000"}}
+      ]
+    },
+    {
+      "name": "pieces: a whole count at an average of a lump of money",
+      "steps": [
+        {"op": "buy", "quantity": "3.000", "value": "100.00"},
+        {"op": "sell", "quantity": "2.000", "expect": {"cost_per_unit": "33.3333", "cost_amount": "66.67", "basis": "average", "balance_after": "1.000"}}
+      ]
+    }
+  ]
+}

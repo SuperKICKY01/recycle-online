@@ -112,6 +112,24 @@
      "error": "deduction_weight_required"},
     {"id": "E14 a pricing basis off the list",
      "in": {"gross": "10.000", "tare": "0.000", "unit_price": "10.00", "basis": "per_bag", "rule": "half_up_0.01", "mode": "none"},
-     "error": "pricing_basis_unknown"}
+     "error": "pricing_basis_unknown"},
+    {"id": "S1 SALE a truckload out: 2450.500 x 8.75 = 21441.875, half-up satang",
+     "in": {"gross": "2450.500", "tare": "0.000", "unit_price": "8.75", "basis": "weight", "rule": "half_up_0.01", "mode": "none"},
+     "out": {"deduction_weight": "0.000", "net_weight": "2450.500", "quantity": "2450.500", "amount": "21441.88"}},
+    {"id": "S2 SALE the same load, down to the baht",
+     "in": {"gross": "2450.500", "tare": "0.000", "unit_price": "8.75", "basis": "weight", "rule": "down_1", "mode": "none"},
+     "out": {"deduction_weight": "0.000", "net_weight": "2450.500", "quantity": "2450.500", "amount": "21441.00"}},
+    {"id": "S3 SALE the buyer's 1.50% moisture off (1250.000 - 50.000) = 18.000; 1182.000 x 12.40",
+     "in": {"gross": "1250.000", "tare": "50.000", "unit_price": "12.40", "basis": "weight", "rule": "half_up_0.01", "mode": "percent", "deduction_pct": "1.50"},
+     "out": {"deduction_weight": "18.000", "net_weight": "1182.000", "quantity": "1182.000", "amount": "14656.80"}},
+    {"id": "S4 SALE a kg deduction: 980.000 - 30.000 - 12.500 = 937.500 x 9.60",
+     "in": {"gross": "980.000", "tare": "30.000", "unit_price": "9.60", "basis": "weight", "rule": "half_up_0.01", "mode": "kg", "deduction_weight": "12.500"},
+     "out": {"deduction_weight": "12.500", "net_weight": "937.500", "quantity": "937.500", "amount": "9000.00"}},
+    {"id": "S5 SALE seven pieces at 185.00",
+     "in": {"gross": "0.000", "tare": "0.000", "unit_price": "185.00", "basis": "piece", "rule": "half_up_0.01", "mode": "none", "quantity": "7"},
+     "out": {"deduction_weight": "0.000", "net_weight": "0.000", "quantity": "7.000", "amount": "1295.00"}},
+    {"id": "S6 SALE one lot at 5250.13, half-up quarter: 21000.52 quarters -> 21001",
+     "in": {"gross": "0.000", "tare": "0.000", "unit_price": "5250.13", "basis": "lump", "rule": "half_up_0.25", "mode": "none"},
+     "out": {"deduction_weight": "0.000", "net_weight": "0.000", "quantity": "1.000", "amount": "5250.25"}}
   ]
 }
