@@ -606,6 +606,8 @@ function AppInner() {
   const [sellSales, setSellSales] = useState<LocalSale[]>([]);
   const [sellBusy, setSellBusy] = useState(false);
   const [sellNotice, setSellNotice] = useState<{ text: string; ok: boolean } | null>(null);
+  /** The sale this sheet just saved: its notice is DERIVED from that row's current state, never written once. */
+  const [sellJustSaved, setSellJustSaved] = useState<string | null>(null);
   const [separateCashier, setSeparateCashier] = useState<boolean | null>(null);
   /** THE SHOP'S MONEY RULES (server migration 0027) the cart prices with: the cache at boot, then
    *  the policy each refresh learns. DEFAULT_MONEY_RULES -- the pre-0027 rule -- until either says
@@ -1530,6 +1532,12 @@ function AppInner() {
     // A pass tops the holding up (topUpReservations) and persists the target, so
     // refresh the reserve for the strip and the add-seller refusal.
     void readReserve();
+    // M2: a pass that touched a sale re-reads the sell sheet's list, so a sale sent IN THE BACKGROUND reads as sent
+    // (walk 2026-10-26: the row was synced S-B-2569-1 while the open sheet still said ยังไม่มีเลขที่). A local,
+    // owner-filtered read: safe even if the session ended mid-pass.
+    if (r.salesAttempted > 0 && saleStoreRef.current !== null) {
+      void saleStoreRef.current.listSalesForScreen(50).then(setSellSales);
+    }
 
     /*
      * THE SESSION MAY HAVE ENDED WHILE THIS PASS WAS IN FLIGHT.
@@ -2340,6 +2348,7 @@ function AppInner() {
   const openSell = useCallback(() => {
     setSellBusy(false);
     setSellNotice(null);
+    setSellJustSaved(null);
     sheet("open_sell");
     void loadSell();
   }, [loadSell, sheet]);
@@ -2371,7 +2380,10 @@ function AppInner() {
       });
       await store.createSale({ payload, buyer_label: `${save.buyer.code} ${save.buyer.name}`, owner, now: new Date() });
       setSellSales(await store.listSalesForScreen(50));
-      setSellNotice({ text: "บันทึกบิลขายในเครื่องแล้ว — กำลังส่ง", ok: true });
+      // Not a sentence written once ("…กำลังส่ง" read on a phone with no signal while the row said not sent --
+      // walk 2026-10-26): the screen derives it from this row's state, every render.
+      setSellNotice(null);
+      setSellJustSaved(id);
     } catch (err) {
       setSellNotice({ text: `บันทึกไม่ได้: ${describe(err)}`, ok: false });
       return;
@@ -4295,6 +4307,7 @@ function AppInner() {
               sales={sellSales}
               busy={sellBusy}
               notice={sellNotice}
+              justSavedId={sellJustSaved}
               onSave={(s) => void saveSale(s)}
               onClose={closeTopSheet}
             />

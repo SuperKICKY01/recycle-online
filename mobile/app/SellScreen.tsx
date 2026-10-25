@@ -27,6 +27,13 @@ export interface SellSave {
 }
 
 const EMPTY: SellDraftLine = { productId: "", gross: "", tare: "", pieces: "", price: "" };
+
+/** The confirmation for the sale just saved, from ITS state: saved here, then sent with its number, or not yet. */
+function savedLine(s: LocalSale): string {
+  if (s.sync_state === "synced") return `บันทึกและส่งแล้ว · เลขที่ ${s.doc_no ?? "—"}`;
+  if (s.sync_state === "failed") return "บันทึกในเครื่องแล้ว แต่เซิร์ฟเวอร์ไม่รับ — ดูรายการด้านล่าง";
+  return "บันทึกในเครื่องแล้ว — ยังส่งไม่ได้ จะส่งให้เองเมื่อมีสัญญาณ";
+}
 const TONE = { positive: "success", neutral: "neutral", warning: "warning", danger: "danger" } as const;
 
 export function SellScreen({
@@ -37,6 +44,7 @@ export function SellScreen({
   sales,
   busy,
   notice,
+  justSavedId,
   onSave,
   onClose,
 }: {
@@ -48,7 +56,10 @@ export function SellScreen({
   readonly roundingRule: string;
   readonly sales: readonly LocalSale[];
   readonly busy: boolean;
+  /** An error from the save itself (nothing was written), or null. */
   readonly notice: { readonly text: string; readonly ok: boolean } | null;
+  /** The sale just saved: the confirmation under the button is derived from THAT row's state in `sales`. */
+  readonly justSavedId: string | null;
   /** App mints the ids, writes the row FIRST, then asks the outbox to send. */
   readonly onSave: (save: SellSave) => void;
   readonly onClose: () => void;
@@ -66,6 +77,7 @@ export function SellScreen({
   const total = sellTotal(results);
   const rp = receivedProblem(received, total);
   const buyer = buyers?.find((b) => b.id === buyerId) ?? null;
+  const justSaved = justSavedId === null ? undefined : sales.find((s) => s.id === justSavedId);
   const setLine = (i: number, patch: Partial<SellDraftLine>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
   const save = () => {
@@ -100,7 +112,8 @@ export function SellScreen({
         ) : (
           <GroupCard>
             {buyers.map((b) => (
-              <Row key={b.id} label={`${b.code} · ${b.name}`} {...(b.id === buyerId ? { value: "เลือกแล้ว" } : {})}
+              <Row key={b.id} label={`${b.code} · ${b.name}`}
+                {...(b.id === buyerId ? { icon: "check" as const, value: "เลือกแล้ว" } : {})}
                 onPress={() => setBuyerId(b.id)} />
             ))}
           </GroupCard>
@@ -138,7 +151,7 @@ export function SellScreen({
                   onChangeText={(v) => setLine(i, { pieces: v })} />
               ) : null}
               {p !== undefined ? (
-                <Field label={basis === "lump" ? "ราคาเหมา (บาท)" : `ราคาขายต่อ${p.uom_name} (บาท)`} keyboardType="decimal-pad"
+                <Field label={basis === "lump" ? "ราคาเหมา (บาท)" : `ราคาขายต่อ ${p.uom_name} (บาท)`} keyboardType="decimal-pad"
                   value={l.price} onChangeText={(v) => setLine(i, { price: v })} />
               ) : null}
               {r !== undefined && r.ok ? (
@@ -162,7 +175,10 @@ export function SellScreen({
           <Field label="รับเงินแล้ว (บาท) — เว้นว่างถ้ายังไม่รับ" keyboardType="decimal-pad" value={received}
             onChangeText={setReceived} {...(rp === null ? {} : { error: rp })} />
           {notice !== null ? <Text style={notice.ok ? styles.ok : styles.error}>{notice.text}</Text> : null}
-          <Button label="บันทึกบิลขาย" busy={busy} onPress={save} />
+          {justSaved !== undefined ? (
+            <Text style={justSaved.sync_state === "synced" ? styles.ok : styles.note}>{savedLine(justSaved)}</Text>
+          ) : null}
+          <Button label="บันทึกบิลขาย" busy={busy} onPress={save} style={styles.saveButton} />
           <Text style={styles.note}>บันทึกลงเครื่องก่อน แล้วส่งเมื่อมีสัญญาณ — เลขที่บิลมาจากระบบตอนส่งสำเร็จ</Text>
         </Card>
 
@@ -199,6 +215,8 @@ function makeStyles(t: ThemeTokens) {
     half: { flex: 1 },
     lineFigures: { marginTop: 8 },
     totalCard: { marginTop: 12 },
+    // The field and the button touched at 1.3 (walk 2026-10-26); the kit's card gap, not a new number.
+    saveButton: { marginTop: t.layout.cardGap },
     muted: { color: c.textMuted, fontSize: 14 },
     note: { color: c.textMuted, fontSize: 13, marginTop: 6 },
     error: { color: c.danger, fontSize: 14, marginTop: 6 },

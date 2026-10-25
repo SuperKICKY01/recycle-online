@@ -696,3 +696,21 @@ outcome kind, whether the SHELL speaks at all — only unreachable and outdated 
 refusal the server answered is LEFT to the screen that asked (`prove:bills` H1). **Ask, when a new
 caller reuses a wording function: what outcomes could the old caller produce, and what does the new one
 add?** A domain that widened is a call site the function was never written for.
+
+## Amendment (M2 walk, 2026-10-26): a message about asynchronous work, written at the event, outlives the work
+
+The phone's sell sheet saved a sale to the device and set ONE sentence at that moment, `บันทึกบิลขายในเครื่องแล้ว —
+กำลังส่ง` ("saved, sending"). On the emulator with no network it stood above a row reading `ยังไม่ได้ส่ง`: the
+sync attempt had failed, nothing re-wrote the sentence, and the screen said two opposite things. The same
+screen's LIST was read when the sheet opened; when the outbox sent the sale in the background 41 s later, the row
+in SQLite was `synced`, `S-B-2569-1`, and the open sheet still said `ยังไม่มีเลขที่ — รอส่ง` until it was closed and
+reopened. Every proof was green: the kind, the store and the transport were all right -- `prove:salesend` drives
+the engine, not the screen, and nothing rendered the sheet across a background pass.
+
+The rule: when work continues AFTER the event a message describes (an outbox send, a sync, a retry), the message
+is a FUNCTION of the row's current state, re-evaluated when the row changes -- never a string set once at the
+event. Keep the event's identity (which row was just saved) and derive the words from that row every render; and
+whatever the background process writes, the open screen re-reads (here: a pass with `salesAttempted > 0`
+re-reads the list). **Ask of any confirmation: can the thing it confirms still change after it is drawn?** If
+so, it is a view of a row, not a sentence. Found only by WALKING the real path offline and then online with the
+sheet left open -- a two-state staging no headless proof had.

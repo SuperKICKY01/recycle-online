@@ -135,7 +135,8 @@ export type SaleStateTone = "positive" | "neutral" | "warning" | "danger";
 
 /** The words and tone a sale's sync state reads as on the list. Failure is never silent (hard rule 8). */
 export function saleStateLine(sale: Pick<LocalSale, "sync_state" | "doc_no" | "parked_code" | "last_error">): { text: string; tone: SaleStateTone } {
-  if (sale.sync_state === "synced") return { text: `ส่งแล้ว · ${sale.doc_no ?? "ไม่ทราบเลขที่"}`, tone: "positive" };
+  // The number is the list row's own title (saleDocLabel); repeating it here said it twice (walk 2026-10-26).
+  if (sale.sync_state === "synced") return { text: sale.doc_no === null ? "ส่งแล้ว · ไม่ทราบเลขที่" : "ส่งแล้ว", tone: "positive" };
   if (sale.sync_state === "failed") return { text: `เซิร์ฟเวอร์ไม่รับบิลนี้ — ${sale.last_error ?? "ไม่ทราบสาเหตุ"}`, tone: "danger" };
   if (sale.parked_code === "insufficient_stock") return { text: "รอสต็อก — ร้านตั้งไม่ให้ขายเกินสต็อก จะลองส่งใหม่เอง", tone: "warning" };
   if (sale.parked_code !== null) return { text: "รอข้อมูลหลักจากสำนักงาน — จะลองส่งใหม่เอง", tone: "warning" };
