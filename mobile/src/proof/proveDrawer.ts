@@ -637,6 +637,16 @@ async function login(username: string, password: string): Promise<string | null>
   return ((await res.json()) as { access_token?: string }).access_token ?? null;
 }
 
+/** Ruling R1 (2026-10-25): the counter switches and the payment methods are the OWNER's. Dev seeds no
+ *  owner; the gate mints a per-run one on its mobile scratch (tools/prove_all.py runs
+ *  server/scripts/scratch_user.py) and passes it by ENVIRONMENT, never argv. Absent, null: the cell that
+ *  needs it goes red naming the variable, never a silent skip. */
+export async function ownerLogin(): Promise<string | null> {
+  const u = process.env.RECYCLE_OWNER_USERNAME;
+  const p = process.env.RECYCLE_OWNER_PASSWORD;
+  return u === undefined || p === undefined ? null : login(u, p);
+}
+
 async function call(token: string, method: string, path: string, body?: unknown): Promise<PaymentFetch> {
   let res: Response;
   try {
@@ -683,8 +693,11 @@ export async function drawerLive(t: Tally): Promise<void> {
   t.header("L the REAL server: shifts on → gate closed → open → in/out → pay → blind close → reason once");
   const admin = await login("admin", "tenantA-pw-123");
   const staff = await login("staff", "tenantA-staff-789");
-  t.check("L0: the seeded tenant-A admin and staff sign in", admin !== null && staff !== null, `api=${API}`);
-  if (admin === null || staff === null) throw new Error(`login failed at ${API}`);
+  const owner = await ownerLogin();
+  t.check("L0: the seeded tenant-A admin and staff, and the gate's per-run owner, sign in",
+    admin !== null && staff !== null && owner !== null,
+    `api=${API}${process.env.RECYCLE_OWNER_USERNAME === undefined ? " RECYCLE_OWNER_USERNAME is not set" : ""}`);
+  if (admin === null || staff === null || owner === null) throw new Error(`login failed at ${API}`);
 
   const pol0 = counterPolicy(await call(admin, "GET", "/shop/policy"));
   const branchId = pol0.branchId;
@@ -705,8 +718,9 @@ export async function drawerLive(t: Tally): Promise<void> {
   let channelId: string | null = null;
   try {
     // L1: shifts ON, read back, the gate closes on the REAL answers.
-    const p1 = await call(admin, "PATCH", `/branches/${branchId}`, { shifts_enabled: true, separate_cashier: true });
-    t.check("L1: PATCH /branches turns shifts_enabled (and separate_cashier) ON", p1.kind === "ok", statusOf(p1));
+    // The OWNER writes the switches (ruling R1); the admin's 403 is held by prove:counter R2 and the server.
+    const p1 = await call(owner, "PATCH", `/branches/${branchId}`, { shifts_enabled: true, separate_cashier: true });
+    t.check("L1: PATCH /branches (as the owner) turns shifts_enabled (and separate_cashier) ON", p1.kind === "ok", statusOf(p1));
     const pol1 = counterPolicy(await call(admin, "GET", "/shop/policy"));
     t.check("L1: GET /shop/policy now reads shifts_enabled = true", pol1.shiftsEnabled === true);
     const s1 = shiftState(await call(admin, "GET", "/shifts/current"));
@@ -793,8 +807,8 @@ export async function drawerLive(t: Tally): Promise<void> {
 
     // L6: transfer on (if it was not), pay by transfer naming the channel.
     if (!entry.transfer) {
-      const m = await call(admin, "PUT", `/branches/${branchId}/payment-methods/transfer`, { is_active: true });
-      t.check("L6: transfer switched ON for the branch (it was off)", m.kind === "ok", statusOf(m));
+      const m = await call(owner, "PUT", `/branches/${branchId}/payment-methods/transfer`, { is_active: true });
+      t.check("L6: transfer switched ON for the branch by the owner (it was off)", m.kind === "ok", statusOf(m));
     }
     const pol6 = counterPolicy(await call(admin, "GET", "/shop/policy"));
     t.check("L6: R7 — over the real policy the form now offers transfer", offeredMethods(pol6).includes("transfer"));
@@ -875,10 +889,10 @@ export async function drawerLive(t: Tally): Promise<void> {
       t.check("Lz: the channel this run created is deactivated", d.kind === "ok", statusOf(d));
     }
     if (!entry.transfer) {
-      const m = await call(admin, "PUT", `/branches/${branchId}/payment-methods/transfer`, { is_active: false });
+      const m = await call(owner, "PUT", `/branches/${branchId}/payment-methods/transfer`, { is_active: false });
       t.check("Lz: transfer restored to OFF (as found)", m.kind === "ok", statusOf(m));
     }
-    const back = await call(admin, "PATCH", `/branches/${branchId}`, {
+    const back = await call(owner, "PATCH", `/branches/${branchId}`, {
       shifts_enabled: entry.shifts,
       ...(entry.cashier === null ? {} : { separate_cashier: entry.cashier }),
     });

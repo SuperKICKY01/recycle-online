@@ -26,6 +26,7 @@ from .permissions import Permission
 from .config import SHOP_TIMEZONE
 from .db import tenant_connection
 from .money_rules import DEFAULT_ROUNDING_RULE, LineIn, LineOut, LineRuleError, compute_line
+from .policy import flag_if_off_rule
 
 router = APIRouter()
 
@@ -966,6 +967,15 @@ async def create_bill(
                         "rr": it.rounding_rule or DEFAULT_ROUNDING_RULE,
                         "uc": unit_code, "un": unit_name, "tc": grade,
                     },
+                )
+                # R3 (2026-10-25): a line priced under a rule the shop did not have in force when the
+                # load was weighed is ACCEPTED (the money is paid) and FLAGGED for the owner, in this
+                # transaction. A legacy body (no rule fields) declares the defaults and is judged on them.
+                await flag_if_off_rule(
+                    conn, branch_id=branch.id, product_id=it.product_id, item_column="purchase_item_id",
+                    item_id=it.id, rounding_rule=it.rounding_rule or DEFAULT_ROUNDING_RULE,
+                    deduction_mode=mode, pricing_basis=it.pricing_basis or "weight",
+                    at=body.device_created_at,
                 )
 
             # THE AUTOMATIC PAYMENT (migration 0020). Same transaction as the

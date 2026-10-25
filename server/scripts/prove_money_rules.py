@@ -25,8 +25,8 @@ THE CELLS
   O5  owner -> PATCH /shop rounding_rule + deduction_mode + deduction_reason_required: 200, the row
       holds them, and audit_log holds ONE tenants UPDATE by the owner with old and new values.
   O6  OPERATIONAL settings stay with shop.settings.write: admin -> PATCH /shop address 200 (audited as
-      the admin), admin -> PATCH /branches shifts_enabled 200. Staff -> PATCH /shop address 403
-      permission_required (the control: the gate above the owner check still stands).
+      the admin). Staff -> PATCH /shop address 403 permission_required (the control: the gate above the
+      owner check still stands). shifts_enabled left this cell with ruling R1 (prove_rulings.py).
   P1  precedence, branch over shop: owner sets the branch's rounding; /shop/policy reports it; cleared
       with null, /shop/policy reports the shop's again.
   P2  precedence, product over shop: a product's deduction_mode overrides; GET /products reports the
@@ -235,9 +235,10 @@ async def build(c: httpx.AsyncClient, shop: Shop) -> None:
     await call("POST", "/grade-tiers", {"code": "A", "name": "เกรด A"})
     await call("POST", "/grade-tiers", {"code": "B", "name": "เกรด B"})
     s["kg"] = (await call("POST", "/uoms", {"code": "KG", "name": "กก."}))["id"]
-    s["pc"] = (await call("POST", "/uoms", {"code": "PC", "name": "ชิ้น"}))["id"]
-    s["lot"] = (await call("POST", "/uoms", {"code": "LOT", "name": "เหมา"}))["id"]
-    s["box"] = (await call("POST", "/uoms", {"code": "BOX", "name": "ลัง"}))["id"]
+    # Ruling R2 (0028): a product priced by count must sit on a unit declared `count`.
+    s["pc"] = (await call("POST", "/uoms", {"code": "PC", "name": "ชิ้น", "kind": "count"}))["id"]
+    s["lot"] = (await call("POST", "/uoms", {"code": "LOT", "name": "เหมา", "kind": "count"}))["id"]
+    s["box"] = (await call("POST", "/uoms", {"code": "BOX", "name": "ลัง", "kind": "count"}))["id"]
     s["cat"] = (await call("POST", "/product-categories", {"code": "FE", "name": "เหล็ก"}))["id"]
 
     async def product(code: str, uom: str, price: str, **rules: str) -> str:
@@ -275,15 +276,15 @@ async def post_bill(c: httpx.AsyncClient, shop: Shop, body: dict, who: str = "ow
 # ---------------------------------------------------------------------------
 async def catalogue(db: Db) -> None:
     header("C1  the settings catalogue equals the columns (set equality per table)")
-    from app.policy import IDENTITY_COLUMNS, SETTINGS
-    for t in ("tenants", "branches", "products"):
+    from app.policy import CATALOGUED_TABLES, IDENTITY_COLUMNS, SETTINGS
+    for t in CATALOGUED_TABLES:
         cols = {r[0] for r in await db.fetch(
             "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1", t)}
         declared = {s.column for s in SETTINGS if s.table == t} | set(IDENTITY_COLUMNS[t])
         check(cols == declared, f"C1 {t}: every column is declared (undeclared {sorted(cols - declared)},"
                                 f" stale {sorted(declared - cols)})")
-    money = sorted(f"{s.table}.{s.column}" for s in SETTINGS if s.kind == "money")
-    print(f"      money (owner-only): {money}")
+    owner = sorted(f"{s.table}.{s.column} ({s.kind})" for s in SETTINGS if s.kind in ("money", "payment"))
+    print(f"      owner-only: {owner}")
 
 
 async def owner_only(c: httpx.AsyncClient, db: Db, shop: Shop) -> None:
@@ -342,12 +343,13 @@ async def owner_only(c: httpx.AsyncClient, db: Db, shop: Shop) -> None:
     r = await c.patch("/shop", headers=auth(shop.tok["admin"]), json={"address": f"ถนน {RUN}"})
     adm = await db.fetchval("SELECT count(*) FROM audit_log WHERE tenant_id = $1 AND table_name = 'tenants'"
                             " AND actor_user_id = $2 AND new_data->>'address' = $3", shop.id, shop.uid["admin"], f"ถนน {RUN}")
-    rs = await c.patch(f"/branches/{shop.ids['branch']}", headers=auth(shop.tok["admin"]), json={"shifts_enabled": True})
     st = await c.patch("/shop", headers=auth(shop.tok["staff"]), json={"address": "staff"})
-    check(r.status_code == 200 and adm == 1 and rs.status_code == 200 and st.status_code == 403
+    # shifts_enabled was this cell's second operational write until ruling R1 (2026-10-25) made it a
+    # payment rule; prove_rulings.py R1 holds it (admin 403, owner 200, audited).
+    check(r.status_code == 200 and adm == 1 and st.status_code == 403
           and code_of(st) == "permission_required",
-          f"O6 operational: admin address {r.status_code} (audited as admin: {adm}), admin shifts_enabled"
-          f" {rs.status_code}; staff address {st.status_code} {code_of(st)}")
+          f"O6 operational: admin address {r.status_code} (audited as admin: {adm});"
+          f" staff address {st.status_code} {code_of(st)}")
 
 
 async def precedence(c: httpx.AsyncClient, shop: Shop) -> None:
@@ -611,9 +613,10 @@ async def main() -> int:
     os.environ["DIRECTORY_DATABASE_URL"] = dir_live.set(database=SCRATCH_DB).render_as_string(hide_password=False)
     db = Db(os.environ["APP_DATABASE_URL"], SCRATCH_DB)
     rev = await db.fetchval("SELECT version_num FROM alembic_version")
-    if rev is None or rev < "0027":
-        # The live database has not taken 0027 yet: upgrade THE SCRATCH (never live) to head, so this
-        # proof runs on a migrated copy BEFORE the migration touches dev.
+    if rev is None or rev < "0028":
+        # The live database has not taken the head yet: upgrade THE SCRATCH (never live) to head, so this
+        # proof runs on a migrated copy BEFORE the migration touches dev (0028 since ruling R2: the
+        # product reads name the unit's kind).
         env = dict(os.environ)
         env["MIGRATION_DATABASE_URL"] = make_url(os.environ["MIGRATION_DATABASE_URL"]).set(
             database=SCRATCH_DB).render_as_string(hide_password=False)

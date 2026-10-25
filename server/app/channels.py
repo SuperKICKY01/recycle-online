@@ -2,7 +2,7 @@
 half of the shifts unit's commit 2 (migration 0021's branch_payment_methods and
 shop_payment_channels; 0022 adds the born-with trigger and payments.channel_id).
 
-  PUT   /branches/{id}/payment-methods/{method}   is_active, shop.settings.write
+  PUT   /branches/{id}/payment-methods/{method}   is_active, shop.settings.write AND the OWNER (R1)
   POST  /shop/payment-channels                    shop.settings.write
   PATCH /shop/payment-channels/{id}               label / is_active, shop.settings.write
   GET   /shop/payment-channels                    any principal, MASKED below
@@ -38,6 +38,7 @@ from .auth import Principal, get_principal, require
 from .branches import read_branch
 from .db import tenant_connection
 from .permissions import Permission
+from .policy import MONEY_KEYS, require_owner
 
 router = APIRouter()
 
@@ -75,12 +76,18 @@ async def set_branch_method(
     """Turn a method on or off for a branch. A method outside the set is 422 at the
     path (the same set as payments.method and the table's CHECK). Upserted: a
     method a branch never had is created, one it had is toggled -- never deleted
-    (no DELETE grant). Audited (0021), so the actor rides the connection."""
+    (no DELETE grant). Audited (0021), so the actor rides the connection.
+
+    THE OWNER ONLY (ruling R1, 2026-10-25): how a seller may be paid is a payment setting in
+    app/policy.py's catalogue, so an admin holding shop.settings.write is 403
+    money_rule_owner_only and nothing is written. Branch existence is checked first, so a
+    foreign branch is the same 404 for everyone."""
     async with tenant_connection(
         principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username
     ) as conn:
         if await read_branch(conn, branch_id) is None:
             raise _not_found("branch_not_found", "ไม่พบสาขานี้")
+        await require_owner(conn, principal, set(MONEY_KEYS["branch_payment_methods"]))
         await conn.execute(
             text(
                 "INSERT INTO branch_payment_methods (tenant_id, branch_id, method, is_active)"

@@ -392,17 +392,26 @@ async def _seat_seller_grade(conn: AsyncConnection, grade: str | None) -> str | 
 # ---------------------------------------------------------------------------
 # uoms
 # ---------------------------------------------------------------------------
+# What a unit measures (migration 0028, ruling R2). Optional on create so every client that does not
+# send it still works; the unit is then NOT DECLARED, and a product priced by count on it is refused
+# until the shop declares it 'count'.
+UomKind = Literal["weight", "count"]
+
+
 class UomCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     code: Code
     name: Name
+    kind: UomKind | None = None
 
 
 class UomUpdate(BaseModel):
-    """`code` is absent on purpose — see the note on ProductUpdate."""
+    """`code` is absent on purpose — see the note on ProductUpdate. `kind` can be declared or changed,
+    never cleared back to undeclared (null is refused like any other null here)."""
 
     model_config = ConfigDict(extra="forbid")
     name: Name | None = None
+    kind: UomKind | None = None
 
 
 def _uom_payload(r: Any) -> dict:
@@ -410,11 +419,29 @@ def _uom_payload(r: Any) -> dict:
         "id": str(r["id"]),
         "code": r["code"],
         "name": r["name"],
+        "kind": r["kind"],
         "is_active": r["is_active"],
     }
 
 
-_UOM_SELECT = "SELECT id, code, name, is_active FROM uoms"
+_UOM_SELECT = "SELECT id, code, name, kind, is_active FROM uoms"
+
+# R2: what a product priced this way must be measured in.
+_COUNTED_BASES = frozenset({"piece", "lump"})
+UNIT_NOT_COUNTING_MESSAGE = "สินค้าที่คิดราคาเป็นชิ้นหรือเหมาต้องใช้หน่วยนับ (ไม่ใช่หน่วยน้ำหนัก)"
+
+
+async def _refuse_counted_on_weight(conn: AsyncConnection, basis: str, uom_id: Any) -> None:
+    """R2: 422 unit_not_counting when a piece- or lump-priced product would sit on a unit that is not
+    declared 'count' -- a weight unit, or one never declared. Called on create, and on an edit that
+    moves the basis or the unit; an edit of anything else on an existing mismatch is NOT refused (the
+    owner's list names it; trapping its name or price would help nobody)."""
+    if basis not in _COUNTED_BASES:
+        return
+    kind = (await conn.execute(text("SELECT kind FROM uoms WHERE id = :id"), {"id": uom_id})).scalar_one_or_none()
+    if kind != "count":
+        raise _invalid("unit_not_counting", UNIT_NOT_COUNTING_MESSAGE,
+                       pricing_basis=basis, uom_kind=str(kind) if kind is not None else "undeclared")
 
 
 async def _read_uom(conn: AsyncConnection, uom_id: uuid.UUID) -> dict | None:
@@ -448,11 +475,11 @@ async def create_uom(
             row = (
                 await conn.execute(
                     text(
-                        f"INSERT INTO uoms (tenant_id, code, name)"
-                        f" VALUES ({_TENANT}, :code, :name)"
-                        f" RETURNING id, code, name, is_active"
+                        f"INSERT INTO uoms (tenant_id, code, name, kind)"
+                        f" VALUES ({_TENANT}, :code, :name, :kind)"
+                        f" RETURNING id, code, name, kind, is_active"
                     ),
-                    {"code": body.code, "name": body.name},
+                    {"code": body.code, "name": body.name, "kind": body.kind},
                 )
             ).mappings().one()
         except IntegrityError as e:
@@ -469,6 +496,23 @@ async def update_uom(
 ) -> dict:
     changes = _changes(body, nullable=frozenset())
     async with tenant_connection(principal.tenant_id, actor_id=principal.user_id, actor_username=principal.username) as conn:
+        if changes.get("kind") == "weight":
+            # R2: a unit cannot become a weight unit underneath a product counted in it -- that would
+            # make the mismatch the route refuses on the product side. Retired products count: they
+            # can be reactivated.
+            counted = (
+                await conn.execute(
+                    text("SELECT count(*) FROM products WHERE uom_id = :u AND pricing_basis IN ('piece', 'lump')"),
+                    {"u": uom_id},
+                )
+            ).scalar_one()
+            if counted:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    detail={"kind": "conflict", "code": "uom_kind_in_use",
+                            "message": "หน่วยนี้มีสินค้าที่คิดราคาเป็นชิ้นหรือเหมาอยู่ จึงเปลี่ยนเป็นหน่วยน้ำหนักไม่ได้",
+                            "products": str(counted)},
+                )
         if not await _update_row(conn, "uoms", uom_id, changes):
             raise _not_found("uom")
         return await _read_uom(conn, uom_id)
@@ -650,7 +694,7 @@ class PriceSet(BaseModel):
 _PRODUCT_SELECT = (
     "SELECT p.id, p.code, p.name, p.category_id, p.uom_id, p.is_active,"
     " p.pricing_basis, p.deduction_mode,"
-    " u.code AS uom_code, u.name AS uom_name"
+    " u.code AS uom_code, u.name AS uom_name, u.kind AS uom_kind"
     # No is_active predicate on the uom either: a product whose unit was retired
     # still has to render its unit. Retiring a uom stops it being OFFERED, it
     # does not un-say what a product is measured in.
@@ -667,6 +711,8 @@ def _product_payload(r: Any, prices: dict[str, str], shop_deduction: str) -> dic
         "uom_id": str(r["uom_id"]),
         "uom_code": r["uom_code"],
         "uom_name": r["uom_name"],
+        # 0028 (R2): weight | count | null (not declared).
+        "uom_kind": r["uom_kind"],
         "is_active": r["is_active"],
         # {"A": "12.50", "B": "12.00", ...} — strings, never floats.
         "prices": prices,
@@ -801,6 +847,7 @@ async def create_product(
         await _require_refs(
             conn, {"category_id": body.category_id, "uom_id": body.uom_id}
         )
+        await _refuse_counted_on_weight(conn, body.pricing_basis or "weight", body.uom_id)
         try:
             new_id = (
                 await conn.execute(
@@ -844,9 +891,41 @@ async def update_product(
             # the rule is the owner's, never whether a product id exists, from this refusal.
             await require_owner(conn, principal, money)
         await _require_refs(conn, changes)
+        if "pricing_basis" in changes or "uom_id" in changes:
+            # R2: the product as it WOULD stand after this edit -- its basis and unit, each the new
+            # value if sent, else the current one.
+            cur = (
+                await conn.execute(text("SELECT pricing_basis, uom_id FROM products WHERE id = :id"),
+                                   {"id": product_id})
+            ).mappings().first()
+            if cur is None:
+                raise _not_found("product")
+            await _refuse_counted_on_weight(conn, changes.get("pricing_basis", cur["pricing_basis"]),
+                                            changes.get("uom_id", cur["uom_id"]))
         if not await _update_row(conn, "products", product_id, changes):
             raise _not_found("product")
         return await _read_product(conn, product_id)
+
+
+@router.get("/products/unit-mismatches")
+async def list_unit_mismatches(principal: Principal = Depends(require(Permission.MASTER_WRITE))) -> dict:
+    """R2's list for the owner: every product (retired ones included -- they can come back) priced per
+    piece or as a lump on a unit not declared 'count'. A READ: nothing is changed on any product. The
+    shop resolves each by declaring the unit 'count' (PATCH /uoms/{id}) or by moving the product to
+    another unit -- its own decision, never this route's."""
+    async with tenant_connection(principal.tenant_id) as conn:
+        rows = (
+            await conn.execute(
+                text(f"{_PRODUCT_SELECT} WHERE p.pricing_basis IN ('piece', 'lump')"
+                     " AND (u.kind IS DISTINCT FROM 'count') ORDER BY p.code")
+            )
+        ).mappings().all()
+    return {"products": [
+        {"id": str(r["id"]), "code": r["code"], "name": r["name"], "pricing_basis": r["pricing_basis"],
+         "uom_id": str(r["uom_id"]), "uom_code": r["uom_code"], "uom_name": r["uom_name"],
+         "uom_kind": r["uom_kind"], "is_active": r["is_active"]}
+        for r in rows
+    ]}
 
 
 @router.post("/products/{product_id}/deactivate")
@@ -2544,9 +2623,11 @@ async def update_branch(
     # policy the yard must not flip while a load is on the scale, not a per-bill act.
     principal: Principal = Depends(require(Permission.SHOP_SETTINGS_WRITE)),
 ) -> dict:
-    """Set a branch's counter policy (separate_cashier, shifts_enabled) -- shop.settings.write --
-    or its rounding override (rounding_rule, 0027) -- the OWNER only (app/policy.py); null clears
-    the override and the branch rounds with the shop's rule.
+    """Set a branch's counter policy (separate_cashier, shifts_enabled) or its rounding override
+    (rounding_rule, 0027; null clears it and the branch rounds with the shop's rule). EVERY key here
+    is the OWNER's (app/policy.py): rounding is a money rule, and since ruling R1 (2026-10-25) the
+    two counter switches are payment rules -- they decide who takes the money. shop.settings.write
+    remains the gate above, so staff are refused before the owner check is reached.
 
     shifts_enabled (0021) is the declared shift switch: a DISPLAY rule for the
     counter's shift screens. Nothing on a write path reads it -- POST /payments and

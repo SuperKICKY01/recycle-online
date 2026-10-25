@@ -396,6 +396,11 @@ TENANT_TABLES = [
     # constraints are DELIBERATELY NOT in REQUIRED_CONSTRAINTS, the 0005..0020
     # decision: a dump taken before 0021 has none of them.
     "shifts", "cash_movements", "branch_payment_methods", "shop_payment_channels",
+    # Migration 0028 (ruling R3): the owner's exception flags. Append-only (SELECT, INSERT), a
+    # transactional table NOT audited. Its references are composite FKs (branch, line), so a
+    # cross-tenant reference is structurally impossible; no per-tenant SQL check yet. Its constraints
+    # are DELIBERATELY NOT in REQUIRED_CONSTRAINTS, the 0005..0021 decision.
+    "owner_flags",
 ]
 
 # Tables that hold NO shop data and carry NO tenant_id, by design: alembic's
@@ -1102,7 +1107,8 @@ SELECT (SELECT count(*) FROM purchase_bills)                              AS bil
        (SELECT count(*) FROM shifts)                                       AS shifts,
        (SELECT count(*) FROM cash_movements)                               AS cash_movements,
        (SELECT count(*) FROM branch_payment_methods)                       AS branch_payment_methods,
-       (SELECT count(*) FROM shop_payment_channels)                        AS shop_payment_channels
+       (SELECT count(*) FROM shop_payment_channels)                        AS shop_payment_channels,
+       (SELECT count(*) FROM owner_flags)                                  AS owner_flags
 """
 
 # Which SCOPE_SQL column feeds each table's running total for X2.
@@ -1129,6 +1135,7 @@ SCOPE_COLUMN = {
     "cash_movements": "cash_movements",
     "branch_payment_methods": "branch_payment_methods",
     "shop_payment_channels": "shop_payment_channels",
+    "owner_flags": "owner_flags",
 }
 
 CHECKS_PER_TENANT = len(SQL_CHECKS) + 4      # T0 + the SQL checks + T7/T8/T9

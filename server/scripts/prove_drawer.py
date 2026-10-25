@@ -133,6 +133,7 @@ from app.seeddata import (  # noqa: E402
     TENANT_A_STAFF_PASSWORD,
     TENANT_B_ID,
 )
+from app.security import hash_password  # noqa: E402
 
 try:  # pragma: no cover
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -626,7 +627,15 @@ def run_g() -> None:
 async def run_cells(client: httpx.AsyncClient, db: Db, scratch: str) -> None:
     admin = await login(client, ADMIN_USERNAME, TENANT_A_PASSWORD)
     staff = await login(client, STAFF_USERNAME, TENANT_A_STAFF_PASSWORD)
-    if not check(bool(admin) and bool(staff), "E0: admin and staff of Shop A log in"):
+    # Ruling R1 (2026-10-25): the counter switches and the payment methods are the OWNER's. Dev seeds
+    # no owner, so one is minted on THIS scratch by SQL as the system actor (never a seeded account).
+    owner_name, owner_pw = f"own-drawer-{RUN}", f"pw-own-drawer-{RUN}"
+    await db.exec_as(TENANT_A_ID,
+                     "INSERT INTO users (id, tenant_id, username, full_name, role_id, password_hash)"
+                     " VALUES ($1, $2, $3, $3, (SELECT id FROM roles WHERE tenant_id = $2 AND code = 'owner'), $4)",
+                     uuid.uuid4(), TENANT_A_ID, owner_name, await hash_password(owner_pw))
+    owner = await login(client, owner_name, owner_pw)
+    if not check(bool(admin) and bool(staff) and bool(owner), "E0: admin, staff and a minted owner of Shop A log in"):
         return
     admin_id = await db.fetchval("SELECT id FROM users WHERE tenant_id = $1 AND username = $2",
                                  TENANT_A_ID, ADMIN_USERNAME)
@@ -974,11 +983,12 @@ async def run_cells(client: httpx.AsyncClient, db: Db, scratch: str) -> None:
 
     # ------------------------------------------------------------------ INV
     header("INV invariant 1: the switches OFF, and money is still accepted")
-    r1 = await client.patch(f"/branches/{branch_id}", headers=auth(admin),
+    # The OWNER writes the switches (ruling R1); prove_rulings.py holds the admin's 403.
+    r1 = await client.patch(f"/branches/{branch_id}", headers=auth(owner),
                             json={"shifts_enabled": True})
-    r2 = await client.patch(f"/branches/{branch_id}", headers=auth(admin),
+    r2 = await client.patch(f"/branches/{branch_id}", headers=auth(owner),
                             json={"shifts_enabled": False})
-    r3 = await client.put(f"/branches/{branch_id}/payment-methods/cash", headers=auth(admin),
+    r3 = await client.put(f"/branches/{branch_id}/payment-methods/cash", headers=auth(owner),
                           json={"is_active": False})
     pol = await client.get("/shop/policy", headers=auth(admin))
     polb = pol.json() if pol.status_code == 200 else {}
@@ -1003,9 +1013,9 @@ async def run_cells(client: httpx.AsyncClient, db: Db, scratch: str) -> None:
           f"INV2 a bill is ACCEPTED and its automatic cash payment written (bill"
           f" {r.status_code}, auto rows {auto})")
     r = await client.put(f"/branches/{branch_id}/payment-methods/not_a_method",
-                         headers=auth(admin), json={"is_active": True})
+                         headers=auth(owner), json={"is_active": True})
     check(r.status_code == 422, f"INV3 a method outside the set is 422 ({r.status_code})")
-    r = await client.put(f"/branches/{branch_id}/payment-methods/cash", headers=auth(admin),
+    r = await client.put(f"/branches/{branch_id}/payment-methods/cash", headers=auth(owner),
                          json={"is_active": True})
     check(r.status_code == 200 and r.json().get("is_active") is True,
           f"INV4 cash re-activated (restore) ({r.status_code})")

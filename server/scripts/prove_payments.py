@@ -339,6 +339,25 @@ class Db:
         finally:
             await conn.close()
 
+    async def mint_owner(self) -> tuple[str, str]:
+        """Ruling R1 (2026-10-25): separate_cashier is the OWNER's, and dev seeds no owner -- so one is
+        minted on THIS scratch, as the system actor (users is audited), never a seeded account."""
+        from app.security import hash_password
+        name, pw = f"own-pay-{RUN}", f"pw-own-pay-{RUN}"
+        conn = await asyncpg.connect(self.dsn)
+        try:
+            async with conn.transaction():
+                await conn.execute("SELECT set_config('app.actor_id', $1, true), set_config('app.actor_username', $2,"
+                                   " true), set_config('app.tenant_id', $3, true)",
+                                   SYSTEM_ACTOR, "system:prove_payments", str(TENANT_A_ID))
+                await conn.execute(
+                    "INSERT INTO users (id, tenant_id, username, full_name, role_id, password_hash) VALUES"
+                    " ($1, $2, $3, $3, (SELECT id FROM roles WHERE tenant_id = $2 AND code = 'owner'), $4)",
+                    uuid.uuid4(), TENANT_A_ID, name, await hash_password(pw))
+        finally:
+            await conn.close()
+        return name, pw
+
 
 def alloc_sum(led: dict) -> str:
     return str(sum((a["amount"] for a in led["allocations"]), Decimal("0.00")).quantize(Decimal("0.01")))
@@ -759,11 +778,23 @@ async def run(client: httpx.AsyncClient, db: Db, scratch: str) -> None:
                            json={"separate_cashier": True, "doc_prefix": "Z"})
     check(r.status_code == 422,
           f"W3: an unknown key -> 422 (extra=forbid) (got {r.status_code})")
+    # Ruling R1 (2026-10-25): WHO takes the money is the owner's. The admin is refused and nothing moves;
+    # the owner flips it.
     r = await client.patch(f"/branches/{branch_id}", headers=auth(admin),
+                           json={"separate_cashier": True})
+    sw0 = await db.fetchval(
+        "SELECT separate_cashier FROM branches WHERE tenant_id = $1", TENANT_A_ID)
+    check(r.status_code == 403 and detail_of(r).get("code") == "money_rule_owner_only" and sw0 is False,
+          f"W4a: admin PATCH separate_cashier -> 403 money_rule_owner_only, column still false"
+          f" (got {r.status_code} {detail_of(r).get('code')!r} {sw0!r})")
+    owner_name, owner_pw = await db.mint_owner()
+    owner = await login(client, owner_name, owner_pw)
+    owner_id = (await client.get("/whoami", headers=auth(owner))).json().get("user_id") if owner else None
+    r = await client.patch(f"/branches/{branch_id}", headers=auth(owner),
                            json={"separate_cashier": True})
     body = r.json() if r.status_code == 200 else {}
     check(r.status_code == 200 and body.get("separate_cashier") is True,
-          f"W4: admin PATCH separate_cashier=true -> 200, reads back true"
+          f"W4: owner PATCH separate_cashier=true -> 200, reads back true"
           f" (got {r.status_code} {body.get('separate_cashier')!r})")
     sw = await db.fetchval(
         "SELECT separate_cashier FROM branches WHERE tenant_id = $1", TENANT_A_ID)
@@ -778,13 +809,13 @@ async def run(client: httpx.AsyncClient, db: Db, scratch: str) -> None:
           f" (got {r.status_code} status={bw.get('payment_status')} pays={len(ledw['payments'])})")
     audited = await db.fetchval(
         "SELECT count(*) FROM audit_log WHERE tenant_id = $1 AND table_name = 'branches'"
-        " AND action = 'UPDATE' AND actor_user_id = $2", TENANT_A_ID, uuid.UUID(admin_id))
+        " AND action = 'UPDATE' AND actor_user_id = $2", TENANT_A_ID, uuid.UUID(owner_id))
     check(audited >= 1,
-          f"W7: the flip is in audit_log as a branches UPDATE by the admin actor (got {audited})")
-    r = await client.patch(f"/branches/{branch_id}", headers=auth(admin),
+          f"W7: the flip is in audit_log as a branches UPDATE by the owner actor (got {audited})")
+    r = await client.patch(f"/branches/{branch_id}", headers=auth(owner),
                            json={"separate_cashier": False})
     check(r.status_code == 200 and r.json().get("separate_cashier") is False,
-          f"W8: admin PATCH separate_cashier=false -> 200, reads back false (got {r.status_code})")
+          f"W8: owner PATCH separate_cashier=false -> 200, reads back false (got {r.status_code})")
 
     # ---------------------------------------------------------------- MB
     # ONE PAYMENT ACROSS SEVERAL DISTINCT BILLS -- section 2.1's first many-to-many

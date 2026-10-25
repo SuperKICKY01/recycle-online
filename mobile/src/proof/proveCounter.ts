@@ -61,7 +61,7 @@ import {
 import { SETTINGS_HEADING, SHIFT_FIRST_LINE } from "../counter/drawerView.js";
 import { NAV_ITEMS } from "../ui/navRow.js";
 import { grantsOf } from "./proofGrants.js";
-import { drawerHeadless, drawerLive } from "./proveDrawer.js";
+import { drawerHeadless, drawerLive, ownerLogin } from "./proveDrawer.js";
 import { withClientVersion } from "../net/clientVersion.js";
 import type { Clock, IdSource } from "../sync/types.js";
 
@@ -484,6 +484,12 @@ async function liveRound(): Promise<void> {
   const staff = await login("staff", "tenantA-staff-789");
   check("R0: the seeded tenant-A staff can sign in", staff !== null);
   if (staff === null) throw new Error("staff login failed");
+  // Ruling R1 (2026-10-25): separate_cashier is the OWNER's. Dev seeds no owner, so the gate mints one
+  // on its mobile scratch (tools/prove_all.py, scripts/scratch_user.py) and hands it over by environment.
+  const owner = await ownerLogin();
+  check("R0: the gate's per-run tenant-A owner can sign in", owner !== null,
+    process.env.RECYCLE_OWNER_USERNAME === undefined ? "RECYCLE_OWNER_USERNAME is not set" : "");
+  if (owner === null) throw new Error("owner login failed (the gate passes RECYCLE_OWNER_USERNAME/PASSWORD)");
 
   // R1: learn the branch, read the policy (the new GET /shop/policy route).
   const shop = await jget(admin, "/shop");
@@ -498,8 +504,12 @@ async function liveRound(): Promise<void> {
       pol0.status === 200 && typeof policyOf(pol0.body) === "boolean",
       `status ${String(pol0.status)}`);
 
-    // R2: flip the switch ON, and the policy route reflects it.
-    check("R2: PATCH /branches turns separate_cashier ON (201/200)", (await patchBranch(admin, branchId, true)) < 300);
+    // R2: the ADMIN is refused (R1), then the OWNER flips the switch ON, and the policy route reflects it.
+    const adminTry = await patchBranch(admin, branchId, true);
+    const polStill = await jget(admin, "/shop/policy");
+    check("R2: the ADMIN's PATCH /branches separate_cashier is 403 and the switch stays OFF (ruling R1)",
+      adminTry === 403 && policyOf(polStill.body) === false, `status ${String(adminTry)}`);
+    check("R2: the OWNER's PATCH /branches turns separate_cashier ON (201/200)", (await patchBranch(owner, branchId, true)) < 300);
     branchOn = true;
     const polOn = await jget(admin, "/shop/policy");
     check("R2: GET /shop/policy now reads separate_cashier = true", policyOf(polOn.body) === true);
@@ -585,7 +595,7 @@ async function liveRound(): Promise<void> {
   } finally {
     // Restore the switch: the mobile scratch is shared across the live proofs.
     if (branchOn) {
-      const back = await patchBranch(admin, branchId, false);
+      const back = await patchBranch(owner, branchId, false);
       check("Rz: separate_cashier restored to OFF (shared scratch hygiene)", back < 300, `status ${String(back)}`);
     }
   }

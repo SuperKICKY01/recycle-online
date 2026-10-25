@@ -684,6 +684,23 @@ def seed_code(db: str, code: str) -> None:
     say(f"  seeded shop code {code} for tenant A on {db}")
 
 
+def mint_owner(db: str, out: Path) -> dict[str, str]:
+    """Ruling R1 (2026-10-25): the counter switches and payment methods are the OWNER's, and dev seeds no
+    owner. Mint a per-run one on `db` (scripts/scratch_user.py) for the MOBILE_LIVE proofs, which sign in
+    over HTTP only. The credential travels to them by environment, never argv, and is masked in
+    results.json."""
+    with (out / f"scratch_user_{db}.log").open("wb") as fh:
+        cp = subprocess.run(["uv", "run", "python", "scripts/scratch_user.py", "--database", db, "--role", "owner"],
+                            cwd=str(SERVER), stdout=subprocess.PIPE, stderr=fh,
+                            env={**os.environ, "PYTHONUTF8": "1"})
+    line = next((ln for ln in cp.stdout.decode("utf-8", "replace").splitlines() if ln.startswith("SCRATCH_USER=")), None)
+    if cp.returncode != 0 or line is None:
+        raise Refused(f"scratch_user.py on {db} exit {cp.returncode}, no SCRATCH_USER line -- see scratch_user_{db}.log")
+    cred = json.loads(line[len("SCRATCH_USER="):])
+    say(f"  minted a per-run owner {cred['username']} for tenant A on {db}")
+    return {"RECYCLE_OWNER_USERNAME": cred["username"], "RECYCLE_OWNER_PASSWORD": cred["password"]}
+
+
 def discriminate(servers: dict[str, Server], codes: dict[str, str]) -> None:
     """Every server must resolve ITS database's code and refuse the other two."""
     for label, srv in servers.items():
@@ -766,6 +783,7 @@ def _main(args) -> int:
         restore(dump, db, out)
     seed_code(MOBILE_DB, LOGINSCREEN_CODE)
     seed_code(SCRATCH_BOUND_DB, SCRATCH_BOUND_CODE)
+    mobile_owner = mint_owner(MOBILE_DB, out)
     for e in plan:
         if e["name"] == "prove_branches":
             e["argv"] += ["--from", str(args.pre0018), "--database", BRANCHES_DB]
@@ -793,10 +811,12 @@ def _main(args) -> int:
                 env_extra["API_BASE_URL"] = servers["scratch"].base
             if e["name"] in MOBILE_LIVE:
                 env_extra["RECYCLE_API_BASE"] = servers["mobile"].base
+                env_extra.update(mobile_owner)
             runs = [run_proof(e, n, out, env_extra, args.timeout) for n in range(1, args.runs + 1)]
             for r in runs:
                 say(f"[{i}/{len(plan)}] {e['name']} run{r['run']} exit={r['exit']} exit_line={r['exit_line']} {r['seconds']}s")
-            results[e["name"]] = {"argv": e["argv"], "env": env_extra, "runs": runs}
+            shown = {k: ("(masked)" if "PASSWORD" in k else v) for k, v in env_extra.items()}
+            results[e["name"]] = {"argv": e["argv"], "env": shown, "runs": runs}
             (out / "results.json").write_text(json.dumps(results, indent=1, ensure_ascii=False), encoding="utf-8")
     finally:
         for s in servers.values():
