@@ -9,7 +9,8 @@ stores, never what a route says.
 
   B1  THE BACKFILL: one purchase movement per purchase line (quantity = its quantity, else its net; value = its
       amount) and one reversal per line of a voided bill -- counted against the lines, not against a literal.
-  B2  every backfilled movement is marked recorded_by_migration; none other exists yet.
+  B2  every movement marked recorded_by_migration is a purchase movement or its reversal (0029's and 0030's
+      backfills), and there is at least one.
   P1  six new codes in the catalogue (22 in all), each granted to exactly the roles holding the code it mirrors.
   G1  APPEND-ONLY: recycle_app holds no UPDATE or DELETE on stock_movements, sale_bill_items or
       sale_receipt_allocations, and no DELETE on buyers, sale_bills, sale_receipts.
@@ -108,9 +109,12 @@ async def main() -> int:
                                 " WHERE v.kind = 'void_purchase' AND v.quantity = -o.quantity AND v.value = -o.value")
         check(lines > 0 and ins == lines and outs == voided,
               f"B1 one equal purchase movement per line ({ins}/{lines}) and one exact reversal per voided line ({outs}/{voided})")
-        unmarked = await c.fetchval("SELECT count(*) FROM stock_movements WHERE NOT recorded_by_migration")
-        total = await c.fetchval("SELECT count(*) FROM stock_movements")
-        check(unmarked == 0 and total == lines + voided, f"B2 all {total} movements marked recorded_by_migration ({unmarked} not)")
+        # The reconstruction is only ever a purchase movement or its reversal; whatever the app writes later is not
+        # marked. (Until 2026-10-25 this asserted total == lines + voided, which stops holding the moment the app
+        # writes its own movements -- gate _prove_all/20261025T085702Z.)
+        marked = dict(await c.fetch("SELECT kind, count(*) FROM stock_movements WHERE recorded_by_migration GROUP BY kind"))
+        check(set(marked) <= {"purchase", "void_purchase"} and marked.get("purchase", 0) > 0,
+              f"B2 movements marked recorded_by_migration are purchase/void_purchase only: {marked}")
         n = await c.fetchval("SELECT count(*) FROM permissions")
         ok = n == 22
         detail = []

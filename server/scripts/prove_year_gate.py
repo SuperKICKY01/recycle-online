@@ -170,6 +170,12 @@ def clear_bills() -> None:
     if sql("SELECT to_regclass('public.payment_allocations') IS NOT NULL") == "t":
         sql(f"DELETE FROM payment_allocations WHERE tenant_id = '{TENANT_A_ID}'")
         sql(f"DELETE FROM payments WHERE tenant_id = '{TENANT_A_ID}'")
+    # 0028/0029: a purchase line is named by its stock movements and may be by an owner flag; both go
+    # first (fk_movements_purchase_item, fk_owner_flags_purchase_item), guarded like the ledger above.
+    if sql("SELECT to_regclass('public.owner_flags') IS NOT NULL") == "t":
+        sql(f"DELETE FROM owner_flags WHERE tenant_id = '{TENANT_A_ID}'")
+    if sql("SELECT to_regclass('public.stock_movements') IS NOT NULL") == "t":
+        sql(f"DELETE FROM stock_movements WHERE tenant_id = '{TENANT_A_ID}'")
     sql(f"DELETE FROM purchase_bill_items WHERE tenant_id = '{TENANT_A_ID}'")
     sql(f"DELETE FROM purchase_bills WHERE tenant_id = '{TENANT_A_ID}'")
 

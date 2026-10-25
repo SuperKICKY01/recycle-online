@@ -7,7 +7,7 @@ and a STAFF user in Shop A (the born-with roles 0019 seeded). Every role change 
 the REAL routes and read back from Postgres as a superuser, value against value.
 
   R1  GET /roles as admin -> every role's permission set EQUALS role_permissions in Postgres, and the
-      catalogue is the 16 codes
+      catalogue is the 22 codes (16 until migration 0029 minted the six sales/buyers/stock codes)
   R2  GET /roles as staff -> 403 naming users.manage
   R3  PUT as ADMIN (no roles.manage) -> 403 naming roles.manage; the staff set unchanged
   R4  the owner ADDS money.view_own to staff -> the staff token issued BEFORE the change reads
@@ -144,7 +144,7 @@ def run_cells(base: str) -> None:
     roles = r.json().get("roles", []) if r.status_code == 200 else []
     agree = all(set(x["permissions"]) == db_set(x["id"]) for x in roles)
     cat = {c["code"] for c in r.json().get("catalogue", [])} if r.status_code == 200 else set()
-    check(r.status_code == 200 and {"owner", "admin", "staff"} <= {x["code"] for x in roles} and agree and len(cat) == 16,
+    check(r.status_code == 200 and {"owner", "admin", "staff"} <= {x["code"] for x in roles} and agree and len(cat) == 22,
           f"R1 GET /roles: every set equals Postgres ({agree}); catalogue {len(cat)} codes")
     r = httpx.get(f"{base}/roles", headers=stf, timeout=15)
     check(r.status_code == 403 and detail(r).get("required_permission") == "users.manage",

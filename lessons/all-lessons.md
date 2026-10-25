@@ -12,7 +12,7 @@ lesson file; anything written here is destroyed by the next run.
 byte for byte, with line endings normalised to LF on both sides first. It exits
 1 on any difference. That is how a lesson edited without regenerating is caught.
 
-**Sources:** 77 lesson files, `lessons/*.md`, ASCII filename order.
+**Sources:** 78 lesson files, `lessons/*.md`, ASCII filename order.
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
@@ -43,6 +43,7 @@ line instead of by heading depth.
 - `a-control-must-contain-what-fooled-you.md` *(1 amendment)* -- A control must contain the thing that fools the counter
 - `a-default-exit-code-is-a-default-verdict.md` *(1 amendment)* -- A default exit code is a default verdict
 - `a-defaulted-getattr-is-a-silent-dead-branch.md` *(1 amendment)* -- A defaulted `getattr` is a silent dead branch
+- `a-derived-table-lands-with-every-writer.md` -- A table derived from other rows lands in the same commit as every writer that keeps it derived
 - `a-destructive-step-waits-on-its-backups-own-success.md` -- A destructive step waits on its backup's own success
 - `a-differential-control-is-only-as-good-as-its-weaker-side.md` *(1 amendment)* -- A differential control is only as good as its weaker side
 - `a-disproof-that-opens-a-gate-must-still-parse.md` -- A disproof that opens a gate must still produce a body that parses
@@ -2828,6 +2829,36 @@ fallback — as the decorative member, and every test would agree with them.
 Related: [[a-check-that-never-went-red-was-never-observed]] (the seventh mechanism
 this separates from), [[a-lock-is-proven-by-what-waits-not-by-a-race]] (why the
 race is not the way in), [[concurrency-tests-need-a-barrier]].
+
+---
+
+**SOURCE:** `a-derived-table-lands-with-every-writer.md`
+
+# A table derived from other rows lands in the same commit as every writer that keeps it derived
+
+**Applies to:** any table whose rows must exist for each row of another table (a ledger row per bill line, a
+summary per day, an audit row per write) -- on THIS project, where the gate's dev-targeting proofs write to the
+shared dev database between commits.
+
+## What happened (M2, 2026-10-25)
+
+Migration 0029 created `stock_movements` and backfilled one movement per existing purchase line. The commit that
+teaches `POST /bills` and its void to write a movement was planned as the NEXT commit (schema, then server). In
+between, a gate ran: its dev-targeting proofs (`prove_bills`, `prove_auth`, ...) posted and voided bills on DEV
+through the old route, which writes no movement. Dev ended with 3741 purchase lines against 3707 movements and 627
+voided lines against 619 reversals (`prove_m2_schema` B1, `_prove_all/20261025T085702Z`). Every scratch is restored
+from a dump of dev, so the gap reached every proof; the reconciler's "every line has its movement" could never be
+green again on any copy. Closing it took a data migration (0030), not a code fix.
+
+## The rule
+
+A derived table and EVERY writer that keeps it derived ship in ONE commit -- or the commit that creates the table
+does not migrate dev until the writers exist. "Schema first, routes next" is safe only for tables nothing depends
+on per row. Before migrating dev, ask: which existing routes write the rows this table must mirror? If any, they
+change in this commit.
+
+The same split also put a checker ahead of its writer (S1 in reconcile.py reddened two proofs the same day); the
+checker moved to the writer's commit. A checker of a derivation lands with the derivation, never before it.
 
 ---
 
