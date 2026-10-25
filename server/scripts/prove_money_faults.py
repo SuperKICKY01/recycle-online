@@ -260,6 +260,8 @@ class Shop:
         self.names = {"owner": f"owner-mf-{RUN}", "admin": f"admin-mf-{RUN}"}
         self.pw = {k: f"pw-{k}-mf-{RUN}" for k in self.names}
         self.tok = ""
+        # Ruling R1 (2026-10-25): separate_cashier is the OWNER's; set_separate signs as the owner.
+        self.owner_tok = ""
         self.ids: dict[str, str] = {}
 
 
@@ -345,7 +347,7 @@ async def bills_with_key(db: Db, shop: Shop, key: str) -> int:
 
 
 async def set_separate(client: httpx.AsyncClient, shop: Shop, on: bool) -> None:
-    r = await client.patch(f"/branches/{shop.ids['branch']}", headers=auth(shop.tok), json={"separate_cashier": on})
+    r = await client.patch(f"/branches/{shop.ids['branch']}", headers=auth(shop.owner_tok), json={"separate_cashier": on})
     if r.status_code != 200:
         raise RuntimeError(f"PATCH /branches separate_cashier={on} -> {r.status_code} {r.text[:200]}")
 
@@ -763,7 +765,10 @@ async def main() -> int:
             r = await client.post("/auth/login", json={"tenant_id": str(shop.id), "username": shop.names["admin"],
                                                        "password": shop.pw["admin"]})
             shop.tok = r.json().get("access_token", "") if r.status_code == 200 else ""
-            check(bool(shop.tok), "E1: the per-run admin signs in")
+            ro = await client.post("/auth/login", json={"tenant_id": str(shop.id), "username": shop.names["owner"],
+                                                        "password": shop.pw["owner"]})
+            shop.owner_tok = ro.json().get("access_token", "") if ro.status_code == 200 else ""
+            check(bool(shop.tok) and bool(shop.owner_tok), "E1: the per-run admin and owner sign in")
             try:
                 await build(client, shop)
             except Exception as exc:  # noqa: BLE001

@@ -230,6 +230,10 @@ class Shop:
         self.name = f"admin-cap-{RUN}"
         self.pw = f"pw-admin-cap-{RUN}"
         self.tok = ""
+        # Ruling R1 (2026-10-25): separate_cashier is the OWNER's, so a per-run owner signs set_separate.
+        self.owner = uuid.uuid4()
+        self.owner_name = f"owner-cap-{RUN}"
+        self.owner_tok = ""
         self.ids: dict[str, str] = {}
 
 
@@ -247,6 +251,10 @@ async def provision(shop: Shop) -> None:
         await conn.execute(text("INSERT INTO users (id, tenant_id, username, full_name, role_id, password_hash)"
                                 " VALUES (:id, :t, :u, :u, :r, :ph)"),
                            {"id": shop.admin, "t": shop.id, "u": shop.name, "r": roles["admin"],
+                            "ph": await hash_password(shop.pw)})
+        await conn.execute(text("INSERT INTO users (id, tenant_id, username, full_name, role_id, password_hash)"
+                                " VALUES (:id, :t, :u, :u, :r, :ph)"),
+                           {"id": shop.owner, "t": shop.id, "u": shop.owner_name, "r": roles["owner"],
                             "ph": await hash_password(shop.pw)})
 
 
@@ -294,7 +302,7 @@ def payment_body(shop: Shop, method: str, amount: str, bill: str | None, alloc: 
 
 
 async def set_separate(client: httpx.AsyncClient, shop: Shop, on: bool) -> None:
-    r = await client.patch(f"/branches/{shop.ids['branch']}", headers=auth(shop.tok), json={"separate_cashier": on})
+    r = await client.patch(f"/branches/{shop.ids['branch']}", headers=auth(shop.owner_tok), json={"separate_cashier": on})
     if r.status_code != 200:
         raise RuntimeError(f"PATCH /branches separate_cashier={on} -> {r.status_code}")
 
@@ -585,7 +593,10 @@ async def main() -> int:
         async with httpx.AsyncClient(base_url=srv.base, timeout=60.0) as client:
             r = await client.post("/auth/login", json={"tenant_id": str(shop.id), "username": shop.name, "password": shop.pw})
             shop.tok = r.json().get("access_token", "") if r.status_code == 200 else ""
-            check(bool(shop.tok), "E1 the per-run admin signs in")
+            ro = await client.post("/auth/login", json={"tenant_id": str(shop.id), "username": shop.owner_name,
+                                                        "password": shop.pw})
+            shop.owner_tok = ro.json().get("access_token", "") if ro.status_code == 200 else ""
+            check(bool(shop.tok) and bool(shop.owner_tok), "E1 the per-run admin and owner sign in")
             await build(client, shop)
             await normal_cells(client, db, shop)
     finally:

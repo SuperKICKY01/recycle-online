@@ -16,7 +16,7 @@ byte for byte, with line endings normalised to LF on both sides first. It exits
 
 **Excluded:** `README.md` -- it is the index, not a lesson -- and this file.
 
-**Amendments:** 45 across 24 files, counted from the source headings and
+**Amendments:** 46 across 24 files, counted from the source headings and
 shown per entry in the table of contents below.
 
 **No date field, deliberately.** No lesson file carries one and it cannot be
@@ -64,7 +64,7 @@ line instead of by heading depth.
 - `a-platform-can-refuse-an-effect-and-record-it-as-done.md` -- A platform can refuse an effect and record it as done
 - `a-proof-fixture-must-be-a-row-the-product-could-produce.md` *(1 amendment)* -- A proof fixture must be a row the product could have produced
 - `a-proof-must-establish-what-it-is-talking-to.md` -- A proof must establish WHAT IT IS TALKING TO before it asserts anything about the answers
-- `a-quantified-sentence-names-no-member.md` *(4 amendments)* -- A sentence that quantifies over a set names no member of it
+- `a-quantified-sentence-names-no-member.md` *(5 amendments)* -- A sentence that quantifies over a set names no member of it
 - `a-refusal-hands-back-what-it-refused.md` *(1 amendment)* -- A 422 is a MIRROR — the framework hands back the value it refused, and one of those values is a password
 - `a-report-is-many-reads-that-must-agree.md` -- A report is many reads; under READ COMMITTED they are many moments
 - `a-round-trip-must-agree-on-its-key-space.md` -- A round trip must agree on its key space
@@ -5528,6 +5528,21 @@ MOVES below head without seeding or serving -- `prove_drawer` (to 0022 and 0021)
 `prove_shifts` 63/63 twice, `prove_drawer` 97/97, `prove_seller_personal` exit 0.
 
 **A proof never pins head (2026-10-19, after gate `20261017T164702Z` reddened `prove_seller_personal` E0 the day 0025 landed): "the current head" is read from alembic's `ScriptDirectory.get_current_head()`; a literal revision is only a migration the proof walks on purpose, or a floor (`>= "00NN"`).**
+
+## AMENDED (M1 ruling R1, 2026-10-25) — A SWEEP FOR A WRITE MUST NAME THE KEY ALONE, NEVER THE KEY WITH ITS VALUE
+
+Ruling R1 made `separate_cashier`, `shifts_enabled` and the payment methods the owner's, which conscripted
+every proof that WRITES one of them as an admin. The sweep for those writers was
+`separate_cashier.{0,30}(True|False|true|false)` -- the key AND a literal value. It found five files and
+missed `prove_allocation_cap` and `prove_money_faults`, whose helpers write `{"separate_cashier": on}` with
+the value in a VARIABLE. Both were GREEN at the commit (no one ran them), and the first gate after it went
+RED on proof 1/123 with a 403 (`_prove_all/20261025T072706Z`, stopped; a stale lock file left behind).
+
+The value is the part a caller is free to compute, so a pattern that names it measures the call sites that
+happened to type it. Sweep for a WRITE by the key alone (`"separate_cashier"`, `separate_cashier:`) and
+classify every hit by reading it; the wider sweep found eight files, of which the two above were the gap.
+The same day's control: re-run the narrow pattern over the fixed tree and it still finds only the five --
+the instrument never saw the other two, before or after.
 
 ---
 
